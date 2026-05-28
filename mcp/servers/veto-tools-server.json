@@ -1,0 +1,70 @@
+{
+  "id": "veto-builtin-tools",
+  "name": "Veto Built-in Tools",
+  "version": "1.0.0",
+  "serverType": "local",
+  "endpoint": "local://veto-sandbox",
+  "tools": {
+    "read_safe_file": {
+      "description": "Read a file's contents with path traversal protection",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "filePath": { "type": "string", "description": "Path to the file within sandbox" }
+        },
+        "required": ["filePath"]
+      }
+    },
+    "compile_cpp_target": {
+      "description": "Compile a C++ source file",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sourcePath": { "type": "string", "description": "Path to C++ source file" },
+          "outputName": { "type": "string", "description": "Output binary name" },
+          "extraFlags": { "type": "string", "description": "Additional compiler flags" }
+        },
+        "required": ["sourcePath"]
+      }
+    },
+    "list_directory": {
+      "description": "List contents of a directory",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "dirPath": { "type": "string", "description": "Directory path" },
+          "recursive": { "type": "boolean", "description": "List recursively" }
+        },
+        "required": ["dirPath"]
+      }
+    },
+    "diff_text_files": {
+      "description": "Compute unified diff between two text files",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "fileA": { "type": "string", "description": "First file" },
+          "fileB": { "type": "string", "description": "Second file" }
+        },
+        "required": ["fileA", "fileB"]
+      }
+    },
+    "search_in_files": {
+      "description": "Search for text patterns in files",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "pattern": { "type": "string", "description": "Search pattern" },
+          "dirPath": { "type": "string", "description": "Search directory" },
+          "fileGlob": { "type": "string", "description": "File glob pattern" }
+        },
+        "required": ["pattern"]
+      }
+    }
+  },
+  "metadata": {
+    "vendor": "Project Veto",
+    "security": "sandboxed",
+    "requiresNetwork": "false"
+  }
+}

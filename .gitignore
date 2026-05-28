@@ -1,0 +1,55 @@
+# Project Veto — .gitignore
+
+## Java / Gradle
+veto-client-core/build/
+veto-client-core/.gradle/
+veto-client-core/bin/
+veto-client-core/*.class
+veto-client-core/*.jar
+veto-client-core/*.war
+!veto-client-core/gradle/wrapper/gradle-wrapper.jar
+*.log
+
+## Maven (removed in Gradle migration)
+veto-client-core/target/
+veto-client-core/.mvn/
+
+## Node / UI
+veto-ui/node_modules/
+veto-ui/dist/
+veto-ui/.vite/
+
+## IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+*.swp
+*.swo
+*~
+
+## OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+## Veto Runtime
+vault/
+work/
+audit/
+logs/
+models/
+temp/
+
+## Environment
+.env
+.env.local
+*.env.local
+*.pem
+*.key
+
+## Build artifacts
+*.gguf
+*.enc
+*.gz

@@ -1,0 +1,65 @@
+# Project Veto — Core Engine Configuration
+server:
+  port: 8443
+
+veto:
+  bus:
+    websocket:
+      port: 9090
+      path: /veto/bus
+      heartbeat-interval-ms: 30000
+      reconnect-delay-ms: 5000
+      max-reconnect-attempts: 10
+    grpc:
+      port: 9091
+      max-message-size: 4194304  # 4 MB
+
+  veto-gateway:
+    enabled: true
+    llama-cpp:
+      model-path: ${VETO_LLAMA_MODEL_PATH:./models/veto-slm.gguf}
+      n-ctx: 2048
+      n-gpu-layers: 0
+      temperature: 0.1
+      gbnf-grammar-path: ./grammars/veto-output.gbnf
+    intercept-all-outbound: true
+    redact-secrets: true
+    enforce-structural-constraints: true
+
+  orchestrator:
+    max-workers: 4
+    worker-idle-timeout-ms: 60000
+    circuit-breaker-threshold: 3
+    circuit-breaker-reset-ms: 30000
+
+  sandbox:
+    allowed-capabilities:
+      - read_safe_file
+      - compile_cpp_target
+      - list_directory
+      - diff_text_files
+      - search_in_files
+    forbid-generic-shell: true
+    temp-dir: ${VETO_TEMP_DIR:./work/sandbox}
+
+  vault:
+    store-path: ${VETO_VAULT_PATH:./vault/credentials.enc}
+    master-key-env: VETO_VAULT_KEY
+    key-derivation-iterations: 600000
+
+  observability:
+    audit-log-path: ./audit/
+    log-rotation-days: 365
+    encryption-enabled: true
+    tamper-proof: true
+
+  mcp:
+    server-registry-path: ./mcp/servers/
+    wasm-sandbox-enabled: true
+    max-wasm-memory-mb: 64
+    discovery-interval-ms: 60000
+
+logging:
+  level:
+    top.focess.veto: DEBUG
+    org.springframework: WARN
