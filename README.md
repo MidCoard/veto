@@ -1,8 +1,5 @@
 # Project Veto — Zero-Trust Cloud-Edge Agent Backend
 
-**Version:** 1.0.0-SNAPSHOT  
-**Status:** Backend Implementation
-
 ## Overview
 
 Project Veto is the core backend engine for the **enterprise-grade, multi-tenant Agent Client**. It operates on a **Cloud-Edge Collaborative Topology**, providing the critical security and orchestration layers that ensure local data sovereignty while leveraging cloud reasoning.
@@ -71,7 +68,7 @@ D:\ideaProjects\Veto\
 
 ## Prerequisites
 
-- **JDK 17+** (OpenJDK or Oracle JDK)
+- **JDK 21+** (LTS)
 - **Gradle 8.10+** (or use the included wrapper)
 - **Optional:** `llama.cpp` server for C7 Local SLM
 
