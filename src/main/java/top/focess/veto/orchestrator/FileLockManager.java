@@ -15,7 +15,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 /**
- * C5 File Lock Manager â€?manages local file-lock contention between worker processes.
+ * C5 File Lock Manager  - manages local file-lock contention between worker processes.
  * Prevents concurrent access to shared files across the swarm.
  */
 @Component

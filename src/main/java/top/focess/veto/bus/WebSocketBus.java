@@ -18,7 +18,7 @@ import java.util.concurrent.*;
 import java.util.function.Consumer;
 
 /**
- * C3 Communication Bus â€?WebSocket transport layer.
+ * C3 Communication Bus  - WebSocket transport layer.
  * Single umbilical to the Java Spring Boot cloud backend.
  * Handles bidirectional routing of DAG task payloads with heartbeat and reconnection.
  */

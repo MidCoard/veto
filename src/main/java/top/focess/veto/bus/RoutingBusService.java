@@ -11,7 +11,7 @@ import org.springframework.stereotype.Service;
 import java.util.concurrent.*;
 
 /**
- * C3 Communication & Routing Bus â€?top-level service.
+ * C3 Communication & Routing Bus  - top-level service.
  * Orchestrates WebSocket transport, DAG payload routing, and lifecycle.
  * This is the single umbilical cord between the Veto client and the cloud backend.
  */

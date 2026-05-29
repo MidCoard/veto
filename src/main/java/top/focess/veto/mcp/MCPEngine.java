@@ -11,7 +11,7 @@ import java.util.concurrent.*;
 import java.util.stream.Collectors;
 
 /**
- * C4 MCP Extensibility Engine â€?top-level service.
+ * C4 MCP Extensibility Engine  - top-level service.
  * Implements the Model Context Protocol for dynamic discovery and mounting of
  * local/enterprise MCP Servers. Third-party plugins run within WASM sandboxes.
  */

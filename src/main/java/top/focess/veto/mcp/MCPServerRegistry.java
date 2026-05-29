@@ -14,7 +14,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
- * C4 MCP Server Registry â€?dynamically discovers and mounts local/enterprise MCP Servers.
+ * C4 MCP Server Registry  - dynamically discovers and mounts local/enterprise MCP Servers.
  * Watches the configured registry path for new server definitions.
  */
 @Component

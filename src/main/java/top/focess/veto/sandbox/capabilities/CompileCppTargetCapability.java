@@ -14,7 +14,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * Atomic capability: compile_cpp_target.
  * Compiles a C++ source file using a predefined compiler toolchain.
- * No arbitrary shell execution â€?only controlled compile invocation.
+ * No arbitrary shell execution  - only controlled compile invocation.
  */
 @Component
 public class CompileCppTargetCapability implements AtomicCapability {

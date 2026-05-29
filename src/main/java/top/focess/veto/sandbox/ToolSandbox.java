@@ -18,7 +18,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 /**
- * C6 Atomic Tool Execution Sandbox â€?top-level service.
+ * C6 Atomic Tool Execution Sandbox  - top-level service.
  * Executes physical OS operations through strictly predefined atomic capabilities.
  * No generic command injection (run_bash) is ever allowed.
  * Integrates with C5 SwarmOrchestrator for execution and C8 CredentialVault for secret injection.
@@ -54,7 +54,7 @@ public class ToolSandbox {
                 capabilityMap.put(name, cap);
                 log.info("C6 Sandbox: Registered capability '{}'", name);
             } else {
-                log.warn("C6 Sandbox: Capability '{}' not in allowed list â€?ignoring", name);
+                log.warn("C6 Sandbox: Capability '{}' not in allowed list  - ignoring", name);
             }
         }
 

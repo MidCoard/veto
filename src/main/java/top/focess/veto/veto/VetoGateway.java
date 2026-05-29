@@ -9,7 +9,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 /**
- * C7 Local SLM Veto Gateway â€?THE CORE OF PROJECT VETO.
+ * C7 Local SLM Veto Gateway  - THE CORE OF PROJECT VETO.
  *
  * The absolute choke point for all outbound data.
  * Intercepts all raw data read by C4 (MCP) or C6 (Sandbox).
@@ -30,10 +30,9 @@ public class VetoGateway {
     private final GBNFGrammarEngine grammarEngine;
     private final AuditLogger auditLogger;
 
-    @jakarta.annotation.Resource(name = "vetoGatewayStats")
-    private java.util.concurrent.atomic.AtomicLong totalVetoes = new java.util.concurrent.atomic.AtomicLong(0);
-    private java.util.concurrent.atomic.AtomicLong totalPasses = new java.util.concurrent.atomic.AtomicLong(0);
-    private java.util.concurrent.atomic.AtomicLong totalRedactions = new java.util.concurrent.atomic.AtomicLong(0);
+    private final java.util.concurrent.atomic.AtomicLong totalVetoes = new java.util.concurrent.atomic.AtomicLong(0);
+    private final java.util.concurrent.atomic.AtomicLong totalPasses = new java.util.concurrent.atomic.AtomicLong(0);
+    private final java.util.concurrent.atomic.AtomicLong totalRedactions = new java.util.concurrent.atomic.AtomicLong(0);
 
     public VetoGateway(VetoGatewayConfiguration config, LlamaCppBridge llamaCppBridge,
                        SemanticRedactor semanticRedactor, GBNFGrammarEngine grammarEngine,
@@ -70,7 +69,7 @@ public class VetoGateway {
     }
 
     /**
-     * THE VETO GATE â€?every outbound payload passes through here.
+     * THE VETO GATE  - every outbound payload passes through here.
      *
      * @param payload      The raw payload data to be sent to the cloud
      * @param dagPayloadId The DAG payload ID for audit trail
@@ -124,7 +123,7 @@ public class VetoGateway {
                 decision = VetoDecision.REDACT;
                 totalVetoes.incrementAndGet();
                 reason = "Payload required redaction (" + deterministicReport.getTotalRedactions() + " deterministic, SLM analysis)";
-                log.info("C7 VetoGateway: VETO/REDACT applied â€?{}", reason);
+                log.info("C7 VetoGateway: VETO/REDACT applied  - {}", reason);
             } else {
                 decision = VetoDecision.PASS;
                 totalPasses.incrementAndGet();
@@ -151,7 +150,7 @@ public class VetoGateway {
             return new VetoResult(decision, finalPayload, reason, deterministicReport.getTotalRedactions());
 
         } catch (Exception e) {
-            log.error("C7 VetoGateway: Processing error â€?falling back to BLOCK", e);
+            log.error("C7 VetoGateway: Processing error  - falling back to BLOCK", e);
             auditLogger.logError(dagPayloadId, requestId, componentSource, e.getMessage());
             return VetoResult.block("Veto gateway processing error: " + e.getMessage());
         }

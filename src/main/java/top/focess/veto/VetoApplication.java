@@ -5,9 +5,9 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
- * Project Veto â€?Zero-Trust Cloud-Edge Agent Client.
+ * Project Veto  - Zero-Trust Cloud-Edge Agent Client.
  *
- * Entry point for the core engine hosting components C3â€“C9:
+ * Entry point for the core engine hosting components C3 - C9:
  *   C3: Communication & Routing Bus
  *   C4: MCP Extensibility Engine
  *   C5: Swarm Lifecycle Orchestrator

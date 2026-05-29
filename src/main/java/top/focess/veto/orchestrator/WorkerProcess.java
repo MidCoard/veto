@@ -12,7 +12,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * C5 Swarm Lifecycle â€?an isolated worker process for executing sub-tasks.
+ * C5 Swarm Lifecycle  - an isolated worker process for executing sub-tasks.
  * Workers are spawned by the SwarmOrchestrator and run with strict resource isolation.
  */
 public class WorkerProcess {

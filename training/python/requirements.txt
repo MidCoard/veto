@@ -1,0 +1,29 @@
+# Project Veto — Model Training Pipeline Dependencies
+# Pinned for reproducibility. Update versions carefully.
+
+# Core ML
+torch>=2.4.0,<3.0.0
+transformers>=4.44.0,<5.0.0
+accelerate>=0.33.0,<1.0.0
+datasets>=2.21.0,<3.0.0
+peft>=0.12.0,<1.0.0
+bitsandbytes>=0.44.0,<1.0.0
+scipy>=1.14.0,<2.0.0
+
+# (Optional) Unsloth for faster QLoRA — uncomment if installed:
+# unsloth>=2024.8.0
+
+# GGUF conversion / inference
+llama-cpp-python>=0.3.0,<1.0.0
+
+# HuggingFace Hub (model download / upload)
+huggingface-hub>=0.24.0,<1.0.0
+
+# Utilities
+safetensors>=0.4.0,<1.0.0
+sentencepiece>=0.2.0,<1.0.0
+einops>=0.8.0,<1.0.0
+
+# Evaluation
+scikit-learn>=1.5.0,<2.0.0
+jsonschema>=4.23.0,<5.0.0

@@ -1,0 +1,12 @@
+{
+  "total_generated": 600,
+  "train_count": 480,
+  "eval_count": 120,
+  "task_distribution": {
+    "redaction": 226,
+    "structural_constraint": 146,
+    "veto_decision": 228
+  },
+  "generated_at": "2026-05-28T21:39:35.317690",
+  "seed": 42
+}

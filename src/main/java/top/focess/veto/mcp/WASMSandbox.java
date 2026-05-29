@@ -8,7 +8,7 @@ import org.springframework.stereotype.Component;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * C4 WASM Sandbox â€?sandboxed execution environment for third-party MCP plugins.
+ * C4 WASM Sandbox  - sandboxed execution environment for third-party MCP plugins.
  * Third-party plugins run within strict WebAssembly isolation with bounded memory.
  * (Foundation: actual WASM runtime integration requires a library like chicory or wasmtime;
  *  this provides the sandbox abstraction and resource limits.)

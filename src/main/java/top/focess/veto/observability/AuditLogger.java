@@ -10,7 +10,7 @@ import org.springframework.stereotype.Service;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * C9 Observability & Shadow Audit â€?top-level service.
+ * C9 Observability & Shadow Audit  - top-level service.
  * A tamper-proof black box that logs the exact diff of data before and after
  * the C7 Veto Gateway redaction. Logs are encrypted and stored locally for
  * enterprise compliance audits.

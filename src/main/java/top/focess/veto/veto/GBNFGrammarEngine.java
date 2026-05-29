@@ -11,7 +11,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * C7 GBNF Grammar Engine â€?manages GBNF (GGML BNF) grammars for constrained decoding.
+ * C7 GBNF Grammar Engine  - manages GBNF (GGML BNF) grammars for constrained decoding.
  * GBNF grammars define the structural constraints that the local SLM must adhere to,
  * ensuring that redacted output follows strict schemas.
  */

@@ -21,6 +21,8 @@ dependencies {
     // Spring Boot
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-websocket")
+    implementation("org.springframework.boot:spring-boot-starter-actuator")
+    implementation("org.springframework.boot:spring-boot-starter-validation")
 
     // gRPC
     implementation("io.grpc:grpc-netty-shaded:1.62.2")
@@ -66,8 +68,14 @@ protobuf {
     }
 }
 
+springBoot {
+    mainClass = "top.focess.veto.VetoApplication"
+}
+
 tasks.withType<JavaCompile> {
     options.encoding = "UTF-8"
+    options.compilerArgs.add("-encoding")
+    options.compilerArgs.add("UTF-8")
 }
 
 tasks.withType<Test> {

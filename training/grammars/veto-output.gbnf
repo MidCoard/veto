@@ -1,0 +1,21 @@
+# Veto Gateway Output Grammar
+# GBNF grammar for constraining SLM output to structured JSON
+# This is a reference copy. The active grammar is at project-root/grammars/veto-output.gbnf
+
+root ::= veto-response
+
+veto-response ::= "{" ws "veto_decision" ws ":" ws decision ws "," ws "data" ws ":" ws data-block ws "}"
+
+decision ::= "\"pass\"" | "\"redact\"" | "\"block\""
+
+data-block ::= "{" ws data-fields ws "}"
+
+data-fields ::= data-field ("," ws data-field)*
+
+data-field ::= string ":" ws (string | number | "null")
+
+string ::= "\"" ([^"\\] | "\\" (["\\/bfnrt] | "u" [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F]))* "\""
+
+number ::= "-"? ([0-9] | [1-9] [0-9]*) ("." [0-9]+)? ([eE] [+-]? [0-9]+)?
+
+ws ::= [ \t\n]*

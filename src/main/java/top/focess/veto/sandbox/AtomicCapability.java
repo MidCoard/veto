@@ -3,7 +3,7 @@ package top.focess.veto.sandbox;
 import top.focess.veto.model.ToolExecutionRequest;
 
 /**
- * C6 Atomic Capability Interface â€?defines a single, atomic tool execution capability.
+ * C6 Atomic Capability Interface  - defines a single, atomic tool execution capability.
  * Each capability performs exactly one type of OS operation, with strict input validation.
  * No generic command injection (run_bash, exec_raw) is allowed.
  */
