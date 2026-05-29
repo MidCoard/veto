@@ -9,7 +9,7 @@ project:
     - Focess
   license: Proprietary
   links:
-    homepage: https://github.com/focess/veto
+    homepage: https://github.com/MidCoard/veto
   java:
     version: 17
     groupId: top.focess
@@ -17,7 +17,7 @@ project:
 
 release:
   github:
-    owner: focess
+    owner: MidCoard
     overwrite: true
     sign: true
 
@@ -29,7 +29,7 @@ distributions:
     artifacts:
       - path: build/libs/{{projectName}}-{{projectVersion}}.jar
     brew:
-      active: ALWAYS
+      active: NEVER
       formulaName: veto
     scoop:
       active: ALWAYS

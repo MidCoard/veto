@@ -4,7 +4,7 @@
 
 Project Veto is the core backend engine for the **enterprise-grade, multi-tenant Agent Client**. It operates on a **Cloud-Edge Collaborative Topology**, providing the critical security and orchestration layers that ensure local data sovereignty while leveraging cloud reasoning.
 
-This repository contains the **Veto Backend** (C3-C9). For the frontend presentation layer, please refer to the [Veto UI Repository](https://github.com/example/veto-ui).
+This repository contains the **Veto Backend** (C3-C9). For the frontend presentation layer, please refer to the [Veto UI Repository](https://github.com/MidCoard/veto-ui).
 
 ### The Veto Philosophy
 
