@@ -10,7 +10,7 @@ import java.nio.file.Path;
 import java.util.concurrent.*;
 
 /**
- * C7 LlamaCpp Bridge â€?interface to llama.cpp for local SLM inference.
+ * C7 LlamaCpp Bridge ï¿½?interface to llama.cpp for local SLM inference.
  * Manages the llama.cpp subprocess lifecycle and provides grammar-constrained decoding
  * using GBNF grammars. The SLM (quantized 1B-3B model) acts as the intent firewall
  * and semantic redactor.
@@ -26,6 +26,7 @@ public class LlamaCppBridge {
     private Process llamaProcess;
     private PrintWriter processInput;
     private BufferedReader processOutput;
+    private Path grammarTempFile;
     private final ExecutorService inferenceExecutor = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "veto-llamacpp");
         t.setDaemon(true);
@@ -61,8 +62,9 @@ public class LlamaCppBridge {
         try {
             // Build the llama.cpp command with grammar-constrained decoding
             String gbnfGrammar = grammarEngine.loadVetoOutputGrammar();
-            Path grammarTemp = Files.createTempFile("veto-grammar-", ".gbnf");
-            Files.writeString(grammarTemp, gbnfGrammar);
+            this.grammarTempFile = Files.createTempFile("veto-grammar-", ".gbnf");
+            this.grammarTempFile.toFile().deleteOnExit();
+            Files.writeString(this.grammarTempFile, gbnfGrammar);
 
             ProcessBuilder pb = new ProcessBuilder(
                 "llama-server",
@@ -70,7 +72,7 @@ public class LlamaCppBridge {
                 "--ctx-size", String.valueOf(config.getLlamaCpp().getNCtx()),
                 "--n-gpu-layers", String.valueOf(config.getLlamaCpp().getNGpuLayers()),
                 "--temp", String.valueOf(config.getLlamaCpp().getTemperature()),
-                "--grammar-file", grammarTemp.toAbsolutePath().toString(),
+                "--grammar-file", this.grammarTempFile.toAbsolutePath().toString(),
                 "--port", "0", // Random port
                 "--embedding", "false",
                 "--cont-batching"
@@ -118,14 +120,27 @@ public class LlamaCppBridge {
                 processInput.flush();
 
                 StringBuilder response = new StringBuilder();
+                int openBraces = 0;
+                boolean jsonStarted = false;
                 String line;
                 long deadline = System.currentTimeMillis() + 30_000; // 30s timeout
 
-                while ((line = processOutput.readLine()) != null
-                    && System.currentTimeMillis() < deadline) {
+                while (System.currentTimeMillis() < deadline) {
+                    line = processOutput.readLine();
+                    if (line == null) break;
+                    
                     response.append(line);
-                    if (line.trim().endsWith("}")) {
-                        break; // Complete JSON object
+                    for (char c : line.toCharArray()) {
+                        if (c == '{') {
+                            openBraces++;
+                            jsonStarted = true;
+                        } else if (c == '}') {
+                            openBraces--;
+                        }
+                    }
+                    
+                    if (jsonStarted && openBraces == 0) {
+                        break; // Complete JSON object detected
                     }
                 }
 
@@ -183,6 +198,30 @@ public class LlamaCppBridge {
                 }
             }
         });
+    }
+
+    /**
+     * Restart the llama.cpp subprocess with a different model.
+     * Used by TrainingManager after a new model is trained and deployed.
+     *
+     * @param newModelPath path to the new GGUF model file
+     * @return true if the restart succeeded
+     */
+    public synchronized boolean restartWithModel(String newModelPath) {
+        log.info("C7 LlamaCpp: Restarting with new model '{}'", newModelPath);
+        stop();
+
+        // Update the config model path
+        this.config.getLlamaCpp().setModelPath(newModelPath);
+
+        // Small delay to let ports release
+        try {
+            Thread.sleep(2000);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+
+        return start();
     }
 
     public boolean isAvailable() { return available; }

@@ -1,23 +1,22 @@
 # Project Veto — .gitignore
 
+## Markdown Files
+*.md
+!README.md
+
 ## Java / Gradle
-veto-client-core/build/
-veto-client-core/.gradle/
-veto-client-core/bin/
-veto-client-core/*.class
-veto-client-core/*.jar
-veto-client-core/*.war
-!veto-client-core/gradle/wrapper/gradle-wrapper.jar
+build/
+.gradle/
+bin/
+*.class
+*.jar
+*.war
+!gradle/wrapper/gradle-wrapper.jar
 *.log
 
-## Maven (removed in Gradle migration)
-veto-client-core/target/
-veto-client-core/.mvn/
-
-## Node / UI
-veto-ui/node_modules/
-veto-ui/dist/
-veto-ui/.vite/
+## Maven (legacy)
+target/
+.mvn/
 
 ## IDE
 .idea/
@@ -34,22 +33,26 @@ veto-ui/.vite/
 Thumbs.db
 Desktop.ini
 
-## Veto Runtime
+## Veto Runtime (Local Persistence)
 vault/
 work/
 audit/
 logs/
 models/
 temp/
+grammars/cache/
 
-## Environment
+## Environment & Secrets
 .env
 .env.local
 *.env.local
 *.pem
 *.key
+credentials.enc
 
-## Build artifacts
+## Build & Model Artifacts
 *.gguf
 *.enc
 *.gz
+*.tmp
+veto-grammar-*.gbnf

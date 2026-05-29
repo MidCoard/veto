@@ -9,7 +9,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * C5 Circuit Breaker â€?prevents cascading failures by tracking consecutive errors
+ * C5 Circuit Breaker  - prevents cascading failures by tracking consecutive errors
  * and tripping to OPEN state when thresholds are exceeded.
  * After a reset period, transitions to HALF_OPEN to test recovery.
  */
@@ -58,7 +58,7 @@ public class CircuitBreaker {
     /**
      * Record a successful execution.
      */
-    public void recordSuccess() {
+    public synchronized void recordSuccess() {
         CircuitState currentState = state.get();
         if (currentState == CircuitState.HALF_OPEN) {
             // Recovery confirmed
@@ -73,7 +73,7 @@ public class CircuitBreaker {
     /**
      * Record a failed execution.
      */
-    public void recordFailure() {
+    public synchronized void recordFailure() {
         int failures = failureCount.incrementAndGet();
         lastFailureTime.set(System.currentTimeMillis());
 

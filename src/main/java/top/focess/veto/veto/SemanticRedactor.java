@@ -9,7 +9,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
- * C7 Semantic Redactor â€?intercepts and redacts sensitive literals from outbound data.
+ * C7 Semantic Redactor  - intercepts and redacts sensitive literals from outbound data.
  * Identifies secrets, proprietary physics parameters, IP addresses, and other sensitive
  * information before the data flows through C3 to the cloud.
  *
@@ -41,7 +41,7 @@ public class SemanticRedactor {
             "[REDACTED_KEY]",
             RedactionType.SECRET_KEY
         ),
-        // SSH private key headers â€?matches BEGIN/END format with optional key type and PRIVATE
+        // SSH private key headers  - matches BEGIN/END format with optional key type and PRIVATE
         new RedactionRule(
             Pattern.compile("-----BEGIN (?:RSA |DSA |EC |OPENSSH )?PRIVATE KEY-----.*?-----END (?:RSA |DSA |EC |OPENSSH )?PRIVATE KEY-----",
                 Pattern.DOTALL | Pattern.CASE_INSENSITIVE),
@@ -85,9 +85,9 @@ public class SemanticRedactor {
     private final List<Pattern> proprietaryParameterPatterns = new ArrayList<>();
 
     public SemanticRedactor() {
-        // Default proprietary physics patterns
-        proprietaryParameterPatterns.add(Pattern.compile("\\b(?:norm|peak|magnitude)_(?:max|min|avg)\\s*[:=]\\s*\\d+(?:\\.\\d+)?(?:e[+-]?\\d+)?\\b"));
-        proprietaryParameterPatterns.add(Pattern.compile("\\barray_\\w+_config\\s*[:=]\\s*\\{[^}]+\\}"));
+        // Broadened proprietary physics patterns
+        proprietaryParameterPatterns.add(Pattern.compile("(?i)\\b(?:norm|peak|magnitude|amplitude|frequency|phase)_(?:max|min|avg|offset|val|value)\\s*[:=]\\s*[-+]?\\d+(?:\\.\\d+)?(?:e[+-]?\\d+)?\\b"));
+        proprietaryParameterPatterns.add(Pattern.compile("(?i)\\b(?:array|grid|topology|mesh)_\\w+_(?:config|params|data|setup)\\s*[:=]\\s*\\{.*?\\}", Pattern.DOTALL));
     }
 
     /**
@@ -166,7 +166,7 @@ public class SemanticRedactor {
         try {
             if (llmSuggestion.contains("\"redacted_fields\"")) {
                 // The SLM identified specific fields to redact
-                // This is a simplified implementation â€?in production, the
+                // This is a simplified implementation  - in production, the
                 // SLM output is parsed via the GBNF grammar
                 log.debug("C7 Redactor: Applying SLM-suggested redactions");
             }

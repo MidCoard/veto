@@ -14,7 +14,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
- * C5 Swarm Lifecycle Orchestrator â€?the local process manager.
+ * C5 Swarm Lifecycle Orchestrator  - the local process manager.
  * Spawns isolated worker threads for parallel sub-tasks, manages local file-lock
  * contention, and acts as a circuit breaker to kill deadlocked sub-agents.
  */
@@ -77,7 +77,7 @@ public class SwarmOrchestrator {
         if (!circuitBreaker.allowRequest()) {
             task.markFailed("Circuit breaker is OPEN");
             return CompletableFuture.failedFuture(
-                new IllegalStateException("Circuit breaker is OPEN â€?rejecting request"));
+                new IllegalStateException("Circuit breaker is OPEN  - rejecting request"));
         }
 
         WorkerProcess worker = findAvailableWorker();
@@ -139,10 +139,11 @@ public class SwarmOrchestrator {
                             var task = w.getCurrentTask().get();
                             long runningMs = System.currentTimeMillis() - task.getCreatedAt().toEpochMilli();
                             if (runningMs > 300_000) { // 5 minutes
-                                log.warn("C5 SwarmOrchestrator: Deadlock detected â€?Worker[{}] running '{}' for {}ms",
+                                log.warn("C5 SwarmOrchestrator: Deadlock detected  - Worker[{}] running '{}' for {}ms",
                                     w.getId(), task.getCapabilityName(), runningMs);
                                 w.kill();
                                 killedCount++;
+                                workers.remove(w);
                                 // Replace with fresh worker
                                 workers.add(new WorkerProcess(config));
                             }
@@ -162,7 +163,7 @@ public class SwarmOrchestrator {
                 }
             }
 
-            log.debug("C5 SwarmOrchestrator: Maintenance â€?workers={}, active={}, idle={}, killed={}",
+            log.debug("C5 SwarmOrchestrator: Maintenance  - workers={}, active={}, idle={}, killed={}",
                 workers.size(), activeCount, idleCount, killedCount);
 
         } catch (Exception e) {

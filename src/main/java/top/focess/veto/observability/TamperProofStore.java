@@ -17,7 +17,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 /**
- * C9 Tamper-Proof Store â€?encrypted, hash-chained persistent audit log.
+ * C9 Tamper-Proof Store  - encrypted, hash-chained persistent audit log.
  * Each entry includes the previous entry's hash, forming an immutable chain.
  * Logs are encrypted at rest using AES-256-GCM.
  */
@@ -228,11 +228,12 @@ public class TamperProofStore {
 
     private SecretKey deriveStoreKey() {
         try {
-            KeyGenerator kg = KeyGenerator.getInstance("AES");
-            kg.init(256);
-            return kg.generateKey();
+            // Use SHA-256 to derive a 256-bit key from the configured password/key
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] keyBytes = digest.digest(config.getEncryptionKey().getBytes(StandardCharsets.UTF_8));
+            return new javax.crypto.spec.SecretKeySpec(keyBytes, "AES");
         } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException("AES not available", e);
+            throw new RuntimeException("SHA-256 not available", e);
         }
     }
 
