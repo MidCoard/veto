@@ -1,0 +1,47 @@
+project:
+  name: veto
+  version: 1.0.0-SNAPSHOT
+  description: Zero-Trust Cloud-Edge Agent Backend
+  longDescription: |
+    Project Veto is the core backend engine for the enterprise-grade, multi-tenant Agent Client.
+    It operates on a Cloud-Edge Collaborative Topology, providing critical security and orchestration layers.
+  authors:
+    - Focess
+  license: Proprietary
+  links:
+    homepage: https://github.com/focess/veto
+  java:
+    version: 17
+    groupId: top.focess
+    artifactId: veto
+
+release:
+  github:
+    owner: focess
+    overwrite: true
+    sign: true
+
+distributions:
+  veto:
+    type: JAVA_BINARY
+    executable:
+      name: veto
+    artifacts:
+      - path: build/libs/{{projectName}}-{{projectVersion}}.jar
+    brew:
+      active: ALWAYS
+      formulaName: veto
+    scoop:
+      active: ALWAYS
+
+  veto-native:
+    type: NATIVE_IMAGE
+    executable:
+      name: veto
+    artifacts:
+      - path: artifacts/veto-backend-ubuntu-latest/veto
+        platform: linux-x86_64
+      - path: artifacts/veto-backend-windows-latest/veto.exe
+        platform: windows-x86_64
+      - path: artifacts/veto-backend-macos-latest/veto
+        platform: osx-x86_64

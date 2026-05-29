@@ -1,0 +1,39 @@
+name: Native Binary Build
+
+on:
+  push:
+    tags: [ 'v*.*.*' ]
+
+jobs:
+  build-native:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup GraalVM
+        uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: '21'
+          distribution: 'graalvm'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          native-image-job-reports: 'true'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Build Native Image
+        run: ./gradlew nativeCompile
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: veto-backend-${{ matrix.os }}
+          path: |
+            build/native/nativeCompile/veto*
+            build/native/nativeCompile/*.exe

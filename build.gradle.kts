@@ -1,16 +1,28 @@
 plugins {
     java
-    id("org.springframework.boot") version "3.2.5"
-    id("io.spring.dependency-management") version "1.1.4"
+    id("org.springframework.boot") version "3.4.0"
+    id("io.spring.dependency-management") version "1.1.6"
     id("com.google.protobuf") version "0.9.4"
+    id("com.diffplug.spotless") version "6.25.0"
+    id("org.graalvm.buildtools.native") version "0.10.3"
 }
 
 group = "top.focess"
 version = "1.0.0-SNAPSHOT"
 
 java {
-    sourceCompatibility = JavaVersion.VERSION_17
-    targetCompatibility = JavaVersion.VERSION_17
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
+
+spotless {
+    java {
+        googleJavaFormat("1.19.2")
+        target("src/main/java/**/*.java", "src/test/java/**/*.java")
+        removeUnusedImports()
+        trimTrailingWhitespace()
+        endWithNewline()
+    }
 }
 
 repositories {
