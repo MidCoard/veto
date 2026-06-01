@@ -100,6 +100,28 @@ public class AuditLogger {
             AuditRecord.AuditAction.TOOL_EXECUTION,
             false);
 
+      tamperProofStore.append(record);
+      totalRecordsWritten.incrementAndGet();
+  }
+
+    /**
+     * Log an LLM exchange event (request/response).
+     */
+    public void logLLMExchange(
+            String requestId, String modelName, String requestPayload, String rawResponsePayload) {
+        AuditRecord record =
+                new AuditRecord(
+                        "LLM-EXCHANGE",
+                        requestId,
+                        "C7-UniformLLMCaller",
+                        requestPayload,
+                        rawResponsePayload,
+                        "Model: " + modelName,
+                        tamperProofStore.getChainTailHash(),
+                        AuditRecord.AuditAction
+                                .VETO_INTERCEPTION, // Reusing action or add new one? VETO_INTERCEPTION is for C7
+                        false);
+
     tamperProofStore.append(record);
     totalRecordsWritten.incrementAndGet();
   }

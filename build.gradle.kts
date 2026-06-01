@@ -55,6 +55,11 @@ dependencies {
     // WebSocket Client
     implementation("org.java-websocket:Java-WebSocket:1.5.6")
 
+    // Official LLM SDKs
+    implementation("com.openai:openai-java:4.37.0")
+    implementation("com.anthropic:anthropic-java:2.35.0")
+    implementation("com.google.genai:google-genai:1.53.0")
+
     // Testing
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")

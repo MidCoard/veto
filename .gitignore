@@ -1,4 +1,4 @@
-# Project Veto ï¿?.gitignore
+# Project Veto ï¿½?.gitignore
 
 ## Markdown Files
 *.md
@@ -34,13 +34,13 @@ Thumbs.db
 Desktop.ini
 
 ## Veto Runtime (Local Persistence)
-vault/
-work/
-audit/
-logs/
-models/
-temp/
-grammars/cache/
+/vault/
+/work/
+/audit/
+/logs/
+/models/
+/temp/
+/grammars/cache/
 
 ## Environment & Secrets
 .env
@@ -56,3 +56,5 @@ credentials.enc
 *.gz
 *.tmp
 veto-grammar-*.gbnf
+
+plans/
