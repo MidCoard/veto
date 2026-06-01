@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.List;
 import java.util.Map;
-
 import org.junit.jupiter.api.Test;
 import top.focess.veto.llm.core.ToolDefinition;
 
@@ -41,7 +40,11 @@ class SchemaNormalizerServiceTest {
                         new ToolDefinition(
                                 "list_files",
                                 "List files in dir",
-                                Map.of("type", "object", "properties", Map.of("path", Map.of("type", "string")))));
+                                Map.of(
+                                        "type",
+                                        "object",
+                                        "properties",
+                                        Map.of("path", Map.of("type", "string")))));
 
         Map<String, Object> schema = normalizer.buildOpenAIResponseSchema(tools);
 

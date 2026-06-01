@@ -15,7 +15,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EnableScheduling
 public class VetoApplication {
 
-  public static void main(String[] args) {
-    SpringApplication.run(VetoApplication.class, args);
-  }
+    public static void main(String[] args) {
+        SpringApplication.run(VetoApplication.class, args);
+    }
 }

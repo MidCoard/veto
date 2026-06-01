@@ -8,7 +8,7 @@ package top.focess.veto.llm.egress;
  * local broker URL plus a low-value internal token — the real secret never enters this JVM.
  *
  * @param baseUrl the effective base URL for the call
- * @param apiKey  the API key or internal token to use
+ * @param apiKey the API key or internal token to use
  */
 public record EgressEndpoint(String baseUrl, String apiKey) {
 }

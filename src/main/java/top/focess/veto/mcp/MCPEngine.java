@@ -16,126 +16,134 @@ import top.focess.veto.model.ToolExecutionRequest;
 @Service
 public class MCPEngine {
 
-  private static final Logger log = LoggerFactory.getLogger(MCPEngine.class);
+    private static final Logger log = LoggerFactory.getLogger(MCPEngine.class);
 
-  private final MCPServerRegistry registry;
-  private final MCPConfiguration config;
-  private final WASMSandbox wasmSandbox;
+    private final MCPServerRegistry registry;
+    private final MCPConfiguration config;
+    private final WASMSandbox wasmSandbox;
 
-  private final ConcurrentHashMap<String, MCProtocol> activeProtocols = new ConcurrentHashMap<>();
-  private ScheduledExecutorService discoveryScheduler;
+    private final ConcurrentHashMap<String, MCProtocol> activeProtocols = new ConcurrentHashMap<>();
+    private ScheduledExecutorService discoveryScheduler;
 
-  public MCPEngine(MCPServerRegistry registry, MCPConfiguration config, WASMSandbox wasmSandbox) {
-    this.registry = registry;
-    this.config = config;
-    this.wasmSandbox = wasmSandbox;
-  }
-
-  @PostConstruct
-  public void init() {
-    // Initial discovery
-    registry.discoverServers();
-    syncActiveProtocols();
-
-    // Periodic discovery
-    discoveryScheduler =
-        Executors.newSingleThreadScheduledExecutor(
-            r -> {
-              Thread t = new Thread(r, "veto-mcp-discovery");
-              t.setDaemon(true);
-              return t;
-            });
-    discoveryScheduler.scheduleAtFixedRate(
-        this::discoveryCycle,
-        config.getDiscoveryIntervalMs(),
-        config.getDiscoveryIntervalMs(),
-        TimeUnit.MILLISECONDS);
-
-    log.info("C4 MCP Engine: Initialized. {} active protocols.", activeProtocols.size());
-  }
-
-  /** Execute a tool through an MCP server. */
-  public CompletableFuture<String> executeTool(ToolExecutionRequest request) {
-    String capabilityName = request.getCapabilityName();
-
-    // Find matching protocol
-    MCProtocol protocol = findProtocol(capabilityName);
-    if (protocol == null) {
-      return CompletableFuture.failedFuture(
-          new IllegalArgumentException("No MCP tool found for: " + capabilityName));
+    public MCPEngine(MCPServerRegistry registry, MCPConfiguration config, WASMSandbox wasmSandbox) {
+        this.registry = registry;
+        this.config = config;
+        this.wasmSandbox = wasmSandbox;
     }
 
-    var serverDef = registry.getServer(protocol.getServerId());
-    if (serverDef.isEmpty()) {
-      return CompletableFuture.failedFuture(
-          new IllegalStateException("Server not registered: " + protocol.getServerId()));
+    @PostConstruct
+    public void init() {
+        // Initial discovery
+        registry.discoverServers();
+        syncActiveProtocols();
+
+        // Periodic discovery
+        discoveryScheduler =
+                Executors.newSingleThreadScheduledExecutor(
+                        r -> {
+                            Thread t = new Thread(r, "veto-mcp-discovery");
+                            t.setDaemon(true);
+                            return t;
+                        });
+        discoveryScheduler.scheduleAtFixedRate(
+                this::discoveryCycle,
+                config.getDiscoveryIntervalMs(),
+                config.getDiscoveryIntervalMs(),
+                TimeUnit.MILLISECONDS);
+
+        log.info("C4 MCP Engine: Initialized. {} active protocols.", activeProtocols.size());
     }
 
-    // Route to appropriate executor
-    var server = serverDef.get();
-    if ("wasm".equals(server.getServerType())) {
-      return executeInWASM(server, request);
-    } else {
-      return executeViaEndpoint(server, request);
+    /**
+     * Execute a tool through an MCP server.
+     */
+    public CompletableFuture<String> executeTool(ToolExecutionRequest request) {
+        String capabilityName = request.getCapabilityName();
+
+        // Find matching protocol
+        MCProtocol protocol = findProtocol(capabilityName);
+        if (protocol == null) {
+            return CompletableFuture.failedFuture(
+                    new IllegalArgumentException("No MCP tool found for: " + capabilityName));
+        }
+
+        var serverDef = registry.getServer(protocol.getServerId());
+        if (serverDef.isEmpty()) {
+            return CompletableFuture.failedFuture(
+                    new IllegalStateException("Server not registered: " + protocol.getServerId()));
+        }
+
+        // Route to appropriate executor
+        var server = serverDef.get();
+        if ("wasm".equals(server.getServerType())) {
+            return executeInWASM(server, request);
+        } else {
+            return executeViaEndpoint(server, request);
+        }
     }
-  }
 
-  private CompletableFuture<String> executeViaEndpoint(
-      MCPServerRegistry.MCPServerDefinition server, ToolExecutionRequest request) {
-    // For local/enterprise servers, route via endpoint
-    log.debug(
-        "C4 MCP: Executing '{}' via endpoint {}",
-        request.getCapabilityName(),
-        server.getEndpoint());
-    return CompletableFuture.completedFuture(
-        "{\"status\":\"routed\",\"server\":\""
-            + server.getId()
-            + "\",\"tool\":\""
-            + request.getCapabilityName()
-            + "\"}");
-  }
-
-  private CompletableFuture<String> executeInWASM(
-      MCPServerRegistry.MCPServerDefinition server, ToolExecutionRequest request) {
-    if (!config.isWasmSandboxEnabled()) {
-      return CompletableFuture.completedFuture("{\"error\":\"WASM sandbox is disabled\"}");
+    private CompletableFuture<String> executeViaEndpoint(
+            MCPServerRegistry.MCPServerDefinition server, ToolExecutionRequest request) {
+        // For local/enterprise servers, route via endpoint
+        log.debug(
+                "C4 MCP: Executing '{}' via endpoint {}",
+                request.getCapabilityName(),
+                server.getEndpoint());
+        return CompletableFuture.completedFuture(
+                "{\"status\":\"routed\",\"server\":\""
+                        + server.getId()
+                        + "\",\"tool\":\""
+                        + request.getCapabilityName()
+                        + "\"}");
     }
-    return wasmSandbox.execute(server, request);
-  }
 
-  /** Find a protocol matching the given capability name. */
-  public MCProtocol findProtocol(String capabilityName) {
-    return activeProtocols.get(capabilityName);
-  }
-
-  /** Sync active protocols from the registry. */
-  private void syncActiveProtocols() {
-    activeProtocols.clear();
-    for (MCProtocol protocol : registry.getAllProtocols()) {
-      if (protocol.getStatus() == MCProtocol.MCProtocolStatus.ACTIVE) {
-        activeProtocols.put(protocol.getToolName(), protocol);
-      }
+    private CompletableFuture<String> executeInWASM(
+            MCPServerRegistry.MCPServerDefinition server, ToolExecutionRequest request) {
+        if (!config.isWasmSandboxEnabled()) {
+            return CompletableFuture.completedFuture("{\"error\":\"WASM sandbox is disabled\"}");
+        }
+        return wasmSandbox.execute(server, request);
     }
-  }
 
-  private void discoveryCycle() {
-    try {
-      registry.discoverServers();
-      syncActiveProtocols();
-      log.debug("C4 MCP: Discovery cycle complete. {} protocols active.", activeProtocols.size());
-    } catch (Exception e) {
-      log.warn("C4 MCP: Discovery cycle error", e);
+    /**
+     * Find a protocol matching the given capability name.
+     */
+    public MCProtocol findProtocol(String capabilityName) {
+        return activeProtocols.get(capabilityName);
     }
-  }
 
-  public List<MCProtocol> getActiveProtocols() {
-    return List.copyOf(activeProtocols.values());
-  }
-
-  public void shutdown() {
-    if (discoveryScheduler != null) {
-      discoveryScheduler.shutdown();
+    /**
+     * Sync active protocols from the registry.
+     */
+    private void syncActiveProtocols() {
+        activeProtocols.clear();
+        for (MCProtocol protocol : registry.getAllProtocols()) {
+            if (protocol.getStatus() == MCProtocol.MCProtocolStatus.ACTIVE) {
+                activeProtocols.put(protocol.getToolName(), protocol);
+            }
+        }
     }
-    log.info("C4 MCP Engine: Shut down");
-  }
+
+    private void discoveryCycle() {
+        try {
+            registry.discoverServers();
+            syncActiveProtocols();
+            log.debug(
+                    "C4 MCP: Discovery cycle complete. {} protocols active.",
+                    activeProtocols.size());
+        } catch (Exception e) {
+            log.warn("C4 MCP: Discovery cycle error", e);
+        }
+    }
+
+    public List<MCProtocol> getActiveProtocols() {
+        return List.copyOf(activeProtocols.values());
+    }
+
+    public void shutdown() {
+        if (discoveryScheduler != null) {
+            discoveryScheduler.shutdown();
+        }
+        log.info("C4 MCP Engine: Shut down");
+    }
 }

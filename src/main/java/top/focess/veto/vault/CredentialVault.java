@@ -2,10 +2,8 @@ package top.focess.veto.vault;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
-
 import java.util.Optional;
 import java.util.Set;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -26,7 +24,7 @@ public class CredentialVault {
     /**
      * Constructs a new CredentialVault with the specified secure store and injection service.
      *
-     * @param secureStore      the secure store for encrypted credential persistence
+     * @param secureStore the secure store for encrypted credential persistence
      * @param injectionService the service for injecting credentials into the sandbox
      */
     public CredentialVault(SecureStore secureStore, InjectionService injectionService) {
@@ -59,7 +57,7 @@ public class CredentialVault {
     /**
      * Store a credential securely.
      *
-     * @param key   the key to identify the credential
+     * @param key the key to identify the credential
      * @param value the secret value to store
      */
     public void store(String key, String value) {

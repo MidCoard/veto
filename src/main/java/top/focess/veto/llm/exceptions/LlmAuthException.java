@@ -17,7 +17,7 @@ public class LlmAuthException extends LlmException {
      * Constructs a new LlmAuthException with the specified message and cause.
      *
      * @param message the detail message
-     * @param cause   the cause of the exception
+     * @param cause the cause of the exception
      */
     public LlmAuthException(String message, Throwable cause) {
         super(message, cause, false);

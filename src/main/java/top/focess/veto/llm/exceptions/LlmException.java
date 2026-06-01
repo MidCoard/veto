@@ -14,7 +14,7 @@ public class LlmException extends RuntimeException {
     /**
      * Constructs a new LlmException with the specified message and retryable flag.
      *
-     * @param message   the detail message
+     * @param message the detail message
      * @param retryable whether the exception is retryable
      */
     public LlmException(String message, boolean retryable) {
@@ -25,8 +25,8 @@ public class LlmException extends RuntimeException {
     /**
      * Constructs a new LlmException with the specified message, cause, and retryable flag.
      *
-     * @param message   the detail message
-     * @param cause     the cause of the exception
+     * @param message the detail message
+     * @param cause the cause of the exception
      * @param retryable whether the exception is retryable
      */
     public LlmException(String message, Throwable cause, boolean retryable) {

@@ -10,13 +10,13 @@ import java.util.List;
  * resolved at call time by the {@code CredentialResolver}, so secrets never live in a request
  * object that may be logged, serialized, or echoed into the audit trail.
  *
- * @param systemPrompt  the system instructions for the LLM
- * @param userPrompt    the user input for the LLM
- * @param tools         the list of available tools
- * @param providerType  the target provider type
- * @param modelName     the name of the model to use
+ * @param systemPrompt the system instructions for the LLM
+ * @param userPrompt the user input for the LLM
+ * @param tools the list of available tools
+ * @param providerType the target provider type
+ * @param modelName the name of the model to use
  * @param credentialKey the key to resolve the credential from the vault
- * @param options       the LLM options (temperature, max tokens, etc.)
+ * @param options the LLM options (temperature, max tokens, etc.)
  */
 public record VetoRequest(
         String systemPrompt,

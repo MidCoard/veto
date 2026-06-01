@@ -5,7 +5,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 import java.util.List;
-
 import org.junit.jupiter.api.Test;
 import top.focess.veto.llm.egress.EgressEndpoint;
 import top.focess.veto.llm.egress.LlmEgress;

@@ -9,37 +9,37 @@ import org.springframework.context.annotation.Configuration;
 @ConfigurationProperties(prefix = "veto.sandbox")
 public class SandboxConfiguration {
 
-  private List<String> allowedCapabilities =
-      List.of(
-          "read_safe_file",
-          "compile_cpp_target",
-          "list_directory",
-          "diff_text_files",
-          "search_in_files");
-  private boolean forbidGenericShell = true;
-  private String tempDir = "./work/sandbox";
+    private List<String> allowedCapabilities =
+            List.of(
+                    "read_safe_file",
+                    "compile_cpp_target",
+                    "list_directory",
+                    "diff_text_files",
+                    "search_in_files");
+    private boolean forbidGenericShell = true;
+    private String tempDir = "./work/sandbox";
 
-  public List<String> getAllowedCapabilities() {
-    return allowedCapabilities;
-  }
+    public List<String> getAllowedCapabilities() {
+        return allowedCapabilities;
+    }
 
-  public void setAllowedCapabilities(List<String> allowedCapabilities) {
-    this.allowedCapabilities = allowedCapabilities;
-  }
+    public void setAllowedCapabilities(List<String> allowedCapabilities) {
+        this.allowedCapabilities = allowedCapabilities;
+    }
 
-  public boolean isForbidGenericShell() {
-    return forbidGenericShell;
-  }
+    public boolean isForbidGenericShell() {
+        return forbidGenericShell;
+    }
 
-  public void setForbidGenericShell(boolean forbidGenericShell) {
-    this.forbidGenericShell = forbidGenericShell;
-  }
+    public void setForbidGenericShell(boolean forbidGenericShell) {
+        this.forbidGenericShell = forbidGenericShell;
+    }
 
-  public String getTempDir() {
-    return tempDir;
-  }
+    public String getTempDir() {
+        return tempDir;
+    }
 
-  public void setTempDir(String tempDir) {
-    this.tempDir = tempDir;
-  }
+    public void setTempDir(String tempDir) {
+        this.tempDir = tempDir;
+    }
 }

@@ -13,9 +13,9 @@ public interface LlmEgress {
     /**
      * Resolve the transport target for a call.
      *
-     * @param providerType   the target provider
+     * @param providerType the target provider
      * @param defaultBaseUrl the provider's own base URL (may be {@code null} for the SDK default)
-     * @param credentialKey  the Vault reference for the credential (never the secret value)
+     * @param credentialKey the Vault reference for the credential (never the secret value)
      */
     EgressEndpoint resolve(ProviderType providerType, String defaultBaseUrl, String credentialKey);
 }

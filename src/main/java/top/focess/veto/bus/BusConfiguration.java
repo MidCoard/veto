@@ -8,91 +8,91 @@ import org.springframework.context.annotation.Configuration;
 @ConfigurationProperties(prefix = "veto.bus")
 public class BusConfiguration {
 
-  private WebSocketConfig websocket = new WebSocketConfig();
-  private GrpcConfig grpc = new GrpcConfig();
+    private WebSocketConfig websocket = new WebSocketConfig();
+    private GrpcConfig grpc = new GrpcConfig();
 
-  public WebSocketConfig getWebsocket() {
-    return websocket;
-  }
-
-  public void setWebsocket(WebSocketConfig websocket) {
-    this.websocket = websocket;
-  }
-
-  public GrpcConfig getGrpc() {
-    return grpc;
-  }
-
-  public void setGrpc(GrpcConfig grpc) {
-    this.grpc = grpc;
-  }
-
-  public static class WebSocketConfig {
-    private int port = 9090;
-    private String path = "/veto/bus";
-    private int heartbeatIntervalMs = 30000;
-    private int reconnectDelayMs = 5000;
-    private int maxReconnectAttempts = 10;
-
-    public int getPort() {
-      return port;
+    public WebSocketConfig getWebsocket() {
+        return websocket;
     }
 
-    public void setPort(int port) {
-      this.port = port;
+    public void setWebsocket(WebSocketConfig websocket) {
+        this.websocket = websocket;
     }
 
-    public String getPath() {
-      return path;
+    public GrpcConfig getGrpc() {
+        return grpc;
     }
 
-    public void setPath(String path) {
-      this.path = path;
+    public void setGrpc(GrpcConfig grpc) {
+        this.grpc = grpc;
     }
 
-    public int getHeartbeatIntervalMs() {
-      return heartbeatIntervalMs;
+    public static class WebSocketConfig {
+        private int port = 9090;
+        private String path = "/veto/bus";
+        private int heartbeatIntervalMs = 30000;
+        private int reconnectDelayMs = 5000;
+        private int maxReconnectAttempts = 10;
+
+        public int getPort() {
+            return port;
+        }
+
+        public void setPort(int port) {
+            this.port = port;
+        }
+
+        public String getPath() {
+            return path;
+        }
+
+        public void setPath(String path) {
+            this.path = path;
+        }
+
+        public int getHeartbeatIntervalMs() {
+            return heartbeatIntervalMs;
+        }
+
+        public void setHeartbeatIntervalMs(int heartbeatIntervalMs) {
+            this.heartbeatIntervalMs = heartbeatIntervalMs;
+        }
+
+        public int getReconnectDelayMs() {
+            return reconnectDelayMs;
+        }
+
+        public void setReconnectDelayMs(int reconnectDelayMs) {
+            this.reconnectDelayMs = reconnectDelayMs;
+        }
+
+        public int getMaxReconnectAttempts() {
+            return maxReconnectAttempts;
+        }
+
+        public void setMaxReconnectAttempts(int maxReconnectAttempts) {
+            this.maxReconnectAttempts = maxReconnectAttempts;
+        }
     }
 
-    public void setHeartbeatIntervalMs(int heartbeatIntervalMs) {
-      this.heartbeatIntervalMs = heartbeatIntervalMs;
-    }
+    public static class GrpcConfig {
+        private int port = 9091;
+        private int maxMessageSize = 4194304;
 
-    public int getReconnectDelayMs() {
-      return reconnectDelayMs;
-    }
+        public int getPort() {
+            return port;
+        }
 
-    public void setReconnectDelayMs(int reconnectDelayMs) {
-      this.reconnectDelayMs = reconnectDelayMs;
-    }
+        public void setPort(int port) {
+            this.port = port;
+        }
 
-    public int getMaxReconnectAttempts() {
-      return maxReconnectAttempts;
-    }
+        public int getMaxMessageSize() {
+            return maxMessageSize;
+        }
 
-    public void setMaxReconnectAttempts(int maxReconnectAttempts) {
-      this.maxReconnectAttempts = maxReconnectAttempts;
+        public void setMaxMessageSize(int maxMessageSize) {
+            this.maxMessageSize = maxMessageSize;
+        }
     }
-  }
-
-  public static class GrpcConfig {
-    private int port = 9091;
-    private int maxMessageSize = 4194304;
-
-    public int getPort() {
-      return port;
-    }
-
-    public void setPort(int port) {
-      this.port = port;
-    }
-
-    public int getMaxMessageSize() {
-      return maxMessageSize;
-    }
-
-    public void setMaxMessageSize(int maxMessageSize) {
-      this.maxMessageSize = maxMessageSize;
-    }
-  }
 }

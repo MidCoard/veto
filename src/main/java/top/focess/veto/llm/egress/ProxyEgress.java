@@ -34,7 +34,8 @@ public class ProxyEgress implements LlmEgress {
         String brokerBaseUrl = properties.baseUrlFor(providerType);
         if (brokerBaseUrl == null || brokerBaseUrl.isBlank()) {
             throw new ModelCapabilityException(
-                    "Egress proxy mode is enabled but no broker base URL is configured for " + providerType);
+                    "Egress proxy mode is enabled but no broker base URL is configured for "
+                            + providerType);
         }
         // The credential reference is encoded by the broker route; the engine only proves it is the
         // engine via the internal token. The real secret is never resolved or held here.

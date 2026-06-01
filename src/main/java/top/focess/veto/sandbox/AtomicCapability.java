@@ -9,26 +9,26 @@ import top.focess.veto.model.ToolExecutionRequest;
  */
 public interface AtomicCapability {
 
-  /**
-   * @return The unique name of this capability (e.g., "read_safe_file", "compile_cpp_target")
-   */
-  String getName();
+    /**
+     * @return The unique name of this capability (e.g., "read_safe_file", "compile_cpp_target")
+     */
+    String getName();
 
-  /**
-   * Execute the capability with the given request.
-   *
-   * @param request The validated tool execution request
-   * @return Structured result string (typically JSON)
-   * @throws SecurityException if the request violates security constraints
-   * @throws IllegalArgumentException if the request arguments are invalid
-   */
-  String execute(ToolExecutionRequest request) throws SecurityException, IllegalArgumentException;
+    /**
+     * Execute the capability with the given request.
+     *
+     * @param request The validated tool execution request
+     * @return Structured result string (typically JSON)
+     * @throws SecurityException        if the request violates security constraints
+     * @throws IllegalArgumentException if the request arguments are invalid
+     */
+    String execute(ToolExecutionRequest request) throws SecurityException, IllegalArgumentException;
 
-  /**
-   * Validate that the request arguments are safe to execute.
-   *
-   * @param request The tool execution request
-   * @throws SecurityException if validation fails
-   */
-  void validate(ToolExecutionRequest request) throws SecurityException;
+    /**
+     * Validate that the request arguments are safe to execute.
+     *
+     * @param request The tool execution request
+     * @throws SecurityException if validation fails
+     */
+    void validate(ToolExecutionRequest request) throws SecurityException;
 }

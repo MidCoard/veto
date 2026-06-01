@@ -17,132 +17,134 @@ import top.focess.veto.sandbox.AtomicCapability;
 @Component
 public class SearchInFilesCapability implements AtomicCapability {
 
-  private static final Logger log = LoggerFactory.getLogger(SearchInFilesCapability.class);
+    private static final Logger log = LoggerFactory.getLogger(SearchInFilesCapability.class);
 
-  private static final int MAX_RESULTS = 100;
-  private static final int MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB search limits
+    private static final int MAX_RESULTS = 100;
+    private static final int MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB search limits
 
-  private final Path sandboxRoot;
+    private final Path sandboxRoot;
 
-  public SearchInFilesCapability() {
-    this.sandboxRoot =
-        Paths.get(System.getProperty("veto.sandbox.tempDir", "./work/sandbox")).normalize();
-  }
-
-  @Override
-  public String getName() {
-    return "search_in_files";
-  }
-
-  @Override
-  public void validate(ToolExecutionRequest request) throws SecurityException {
-    String pattern = getStringArg(request, "pattern");
-    if (pattern == null || pattern.isBlank()) {
-      throw new IllegalArgumentException("'pattern' argument is required");
+    public SearchInFilesCapability() {
+        this.sandboxRoot =
+                Paths.get(System.getProperty("veto.sandbox.tempDir", "./work/sandbox")).normalize();
     }
 
-    // Limit pattern length to prevent ReDoS
-    if (pattern.length() > 200) {
-      throw new SecurityException("Search pattern exceeds maximum length of 200 characters");
-    }
-  }
-
-  @Override
-  public String execute(ToolExecutionRequest request) throws SecurityException {
-    validate(request);
-
-    String pattern = getStringArg(request, "pattern");
-    String dirPath = getStringArg(request, "dirPath");
-    String fileGlob = getStringArg(request, "fileGlob");
-
-    Path searchDir = dirPath != null && !dirPath.isBlank() ? resolveSafePath(dirPath) : sandboxRoot;
-
-    log.info("C6 Sandbox: Searching for '{}' in {}", pattern, searchDir);
-
-    List<Map<String, Object>> results = new ArrayList<>();
-
-    try {
-      PathMatcher matcher =
-          fileGlob != null && !fileGlob.isBlank()
-              ? FileSystems.getDefault().getPathMatcher("glob:" + fileGlob)
-              : null;
-
-      try (var stream = Files.walk(searchDir, 5)) {
-        stream
-            .filter(Files::isRegularFile)
-            .filter(
-                p -> {
-                  try {
-                    return Files.size(p) <= MAX_FILE_SIZE;
-                  } catch (IOException e) {
-                    return false;
-                  }
-                })
-            .filter(p -> matcher == null || matcher.matches(p.getFileName()))
-            .forEach(file -> searchInFile(file, pattern, results));
-      }
-    } catch (IOException e) {
-      log.error("C6 Sandbox: Search I/O error", e);
-      return "{\"status\":\"error\",\"message\":\"" + escapeJson(e.getMessage()) + "\"}";
+    @Override
+    public String getName() {
+        return "search_in_files";
     }
 
-    String resultJson =
-        results.stream()
-            .map(
-                r ->
-                    String.format(
-                        "{\"file\":\"%s\",\"line\":%d,\"content\":\"%s\"}",
-                        escapeJson((String) r.get("file")),
-                        r.get("line"),
-                        escapeJson((String) r.get("content"))))
-            .collect(Collectors.joining(",", "[", "]"));
-
-    return String.format(
-        "{\"status\":\"ok\",\"pattern\":\"%s\",\"total\":%d,\"results\":%s}",
-        escapeJson(pattern), results.size(), resultJson);
-  }
-
-  private void searchInFile(Path file, String pattern, List<Map<String, Object>> results) {
-    if (results.size() >= MAX_RESULTS) return;
-
-    try {
-      List<String> lines = Files.readAllLines(file);
-      for (int i = 0; i < lines.size() && results.size() < MAX_RESULTS; i++) {
-        if (lines.get(i).toLowerCase().contains(pattern.toLowerCase())) {
-          Map<String, Object> match = new LinkedHashMap<>();
-          match.put("file", sandboxRoot.relativize(file).toString());
-          match.put("line", i + 1);
-          String truncated =
-              lines.get(i).length() > 200 ? lines.get(i).substring(0, 200) + "..." : lines.get(i);
-          match.put("content", truncated);
-          results.add(match);
+    @Override
+    public void validate(ToolExecutionRequest request) throws SecurityException {
+        String pattern = getStringArg(request, "pattern");
+        if (pattern == null || pattern.isBlank()) {
+            throw new IllegalArgumentException("'pattern' argument is required");
         }
-      }
-    } catch (IOException e) {
-      log.debug("C6 Sandbox: Could not read '{}' for search", file);
+
+        // Limit pattern length to prevent ReDoS
+        if (pattern.length() > 200) {
+            throw new SecurityException("Search pattern exceeds maximum length of 200 characters");
+        }
     }
-  }
 
-  private Path resolveSafePath(String filePath) {
-    Path userPath = Paths.get(filePath).normalize();
-    Path resolved = sandboxRoot.resolve(userPath).normalize();
-    if (!resolved.startsWith(sandboxRoot)) {
-      throw new SecurityException("Path traversal: " + filePath);
+    @Override
+    public String execute(ToolExecutionRequest request) throws SecurityException {
+        validate(request);
+
+        String pattern = getStringArg(request, "pattern");
+        String dirPath = getStringArg(request, "dirPath");
+        String fileGlob = getStringArg(request, "fileGlob");
+
+        Path searchDir =
+                dirPath != null && !dirPath.isBlank() ? resolveSafePath(dirPath) : sandboxRoot;
+
+        log.info("C6 Sandbox: Searching for '{}' in {}", pattern, searchDir);
+
+        List<Map<String, Object>> results = new ArrayList<>();
+
+        try {
+            PathMatcher matcher =
+                    fileGlob != null && !fileGlob.isBlank()
+                            ? FileSystems.getDefault().getPathMatcher("glob:" + fileGlob)
+                            : null;
+
+            try (var stream = Files.walk(searchDir, 5)) {
+                stream.filter(Files::isRegularFile)
+                        .filter(
+                                p -> {
+                                    try {
+                                        return Files.size(p) <= MAX_FILE_SIZE;
+                                    } catch (IOException e) {
+                                        return false;
+                                    }
+                                })
+                        .filter(p -> matcher == null || matcher.matches(p.getFileName()))
+                        .forEach(file -> searchInFile(file, pattern, results));
+            }
+        } catch (IOException e) {
+            log.error("C6 Sandbox: Search I/O error", e);
+            return "{\"status\":\"error\",\"message\":\"" + escapeJson(e.getMessage()) + "\"}";
+        }
+
+        String resultJson =
+                results.stream()
+                        .map(
+                                r ->
+                                        String.format(
+                                                "{\"file\":\"%s\",\"line\":%d,\"content\":\"%s\"}",
+                                                escapeJson((String) r.get("file")),
+                                                r.get("line"),
+                                                escapeJson((String) r.get("content"))))
+                        .collect(Collectors.joining(",", "[", "]"));
+
+        return String.format(
+                "{\"status\":\"ok\",\"pattern\":\"%s\",\"total\":%d,\"results\":%s}",
+                escapeJson(pattern), results.size(), resultJson);
     }
-    return resolved;
-  }
 
-  private String getStringArg(ToolExecutionRequest request, String key) {
-    Object val = request.getArguments().get(key);
-    return val != null ? val.toString() : null;
-  }
+    private void searchInFile(Path file, String pattern, List<Map<String, Object>> results) {
+        if (results.size() >= MAX_RESULTS) return;
 
-  private String escapeJson(String s) {
-    if (s == null) return "";
-    return s.replace("\\", "\\\\")
-        .replace("\"", "\\\"")
-        .replace("\n", "\\n")
-        .replace("\r", "\\r")
-        .replace("\t", "\\t");
-  }
+        try {
+            List<String> lines = Files.readAllLines(file);
+            for (int i = 0; i < lines.size() && results.size() < MAX_RESULTS; i++) {
+                if (lines.get(i).toLowerCase().contains(pattern.toLowerCase())) {
+                    Map<String, Object> match = new LinkedHashMap<>();
+                    match.put("file", sandboxRoot.relativize(file).toString());
+                    match.put("line", i + 1);
+                    String truncated =
+                            lines.get(i).length() > 200
+                                    ? lines.get(i).substring(0, 200) + "..."
+                                    : lines.get(i);
+                    match.put("content", truncated);
+                    results.add(match);
+                }
+            }
+        } catch (IOException e) {
+            log.debug("C6 Sandbox: Could not read '{}' for search", file);
+        }
+    }
+
+    private Path resolveSafePath(String filePath) {
+        Path userPath = Paths.get(filePath).normalize();
+        Path resolved = sandboxRoot.resolve(userPath).normalize();
+        if (!resolved.startsWith(sandboxRoot)) {
+            throw new SecurityException("Path traversal: " + filePath);
+        }
+        return resolved;
+    }
+
+    private String getStringArg(ToolExecutionRequest request, String key) {
+        Object val = request.getArguments().get(key);
+        return val != null ? val.toString() : null;
+    }
+
+    private String escapeJson(String s) {
+        if (s == null) return "";
+        return s.replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+                .replace("\t", "\\t");
+    }
 }

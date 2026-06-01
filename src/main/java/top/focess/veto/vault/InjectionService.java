@@ -1,7 +1,6 @@
 package top.focess.veto.vault;
 
 import java.util.*;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -60,7 +59,10 @@ public class InjectionService {
         activeInjections.put(request.getId(), new HashMap<>(resolved));
 
         if (!missing.isEmpty()) {
-            log.warn("C8 Injection: Missing credentials for request {}: {}", request.getId(), missing);
+            log.warn(
+                    "C8 Injection: Missing credentials for request {}: {}",
+                    request.getId(),
+                    missing);
         }
 
         log.info(
@@ -72,8 +74,8 @@ public class InjectionService {
     }
 
     /**
-     * Release injected credentials after execution completes. Ensures credentials are not retained in
-     * memory.
+     * Release injected credentials after execution completes. Ensures credentials are not retained
+     * in memory.
      *
      * @param requestId the unique ID of the request to release
      */

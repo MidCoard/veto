@@ -17,7 +17,7 @@ java {
 
 spotless {
     java {
-        googleJavaFormat("1.19.2")
+        googleJavaFormat("1.19.2").aosp()
         target("src/main/java/**/*.java", "src/test/java/**/*.java")
         removeUnusedImports()
         trimTrailingWhitespace()

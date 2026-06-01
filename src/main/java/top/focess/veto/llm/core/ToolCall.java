@@ -1,7 +1,6 @@
 package top.focess.veto.llm.core;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-
 import java.util.Map;
 
 /**
@@ -12,8 +11,9 @@ import java.util.Map;
  * the agent action would vanish.
  *
  * @param toolName the name of the tool being called
- * @param args     the arguments for the tool call
+ * @param args the arguments for the tool call
  */
 public record ToolCall(
-        @JsonProperty("tool_name") String toolName, @JsonProperty("args") Map<String, Object> args) {
+        @JsonProperty("tool_name") String toolName,
+        @JsonProperty("args") Map<String, Object> args) {
 }

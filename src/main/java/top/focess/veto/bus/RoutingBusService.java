@@ -17,79 +17,84 @@ import top.focess.veto.model.DAGPayload;
 @Service
 public class RoutingBusService {
 
-  private static final Logger log = LoggerFactory.getLogger(RoutingBusService.class);
+    private static final Logger log = LoggerFactory.getLogger(RoutingBusService.class);
 
-  private final WebSocketBus webSocketBus;
-  private final BusConfiguration config;
-  private final ObjectMapper objectMapper;
+    private final WebSocketBus webSocketBus;
+    private final BusConfiguration config;
+    private final ObjectMapper objectMapper;
 
-  private final ConcurrentMap<String, DAGPayload> activePayloads = new ConcurrentHashMap<>();
-  private final ConcurrentMap<String, CompletableFuture<DAGPayload>> pendingFutures =
-      new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, DAGPayload> activePayloads = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, CompletableFuture<DAGPayload>> pendingFutures =
+            new ConcurrentHashMap<>();
 
-  public RoutingBusService(
-      WebSocketBus webSocketBus, BusConfiguration config, ObjectMapper objectMapper) {
-    this.webSocketBus = webSocketBus;
-    this.config = config;
-    this.objectMapper = objectMapper;
-  }
+    public RoutingBusService(
+            WebSocketBus webSocketBus, BusConfiguration config, ObjectMapper objectMapper) {
+        this.webSocketBus = webSocketBus;
+        this.config = config;
+        this.objectMapper = objectMapper;
+    }
 
-  @PostConstruct
-  public void init() {
-    // Register fallback route for unhandled messages
-    webSocketBus.registerMessageRoute(
-        "fallback",
-        payload -> {
-          log.debug("C3 Bus: Fallback message received ({} bytes)", payload.length());
-        });
+    @PostConstruct
+    public void init() {
+        // Register fallback route for unhandled messages
+        webSocketBus.registerMessageRoute(
+                "fallback",
+                payload -> {
+                    log.debug("C3 Bus: Fallback message received ({} bytes)", payload.length());
+                });
 
-    log.info(
-        "C3 RoutingBusService: Initialized. WS port={}, gRPC port={}",
-        config.getWebsocket().getPort(),
-        config.getGrpc().getPort());
-  }
+        log.info(
+                "C3 RoutingBusService: Initialized. WS port={}, gRPC port={}",
+                config.getWebsocket().getPort(),
+                config.getGrpc().getPort());
+    }
 
-  @PreDestroy
-  public void shutdown() {
-    webSocketBus.disconnect();
-    log.info("C3 RoutingBusService: Shut down");
-  }
+    @PreDestroy
+    public void shutdown() {
+        webSocketBus.disconnect();
+        log.info("C3 RoutingBusService: Shut down");
+    }
 
-  /** Submit a DAG payload to the cloud backend and return a future for the response. */
-  public CompletableFuture<DAGPayload> submitDAGPayload(DAGPayload payload) {
-    CompletableFuture<DAGPayload> future = new CompletableFuture<>();
-    activePayloads.put(payload.getId(), payload);
-    pendingFutures.put(payload.getId(), future);
+    /**
+     * Submit a DAG payload to the cloud backend and return a future for the response.
+     */
+    public CompletableFuture<DAGPayload> submitDAGPayload(DAGPayload payload) {
+        CompletableFuture<DAGPayload> future = new CompletableFuture<>();
+        activePayloads.put(payload.getId(), payload);
+        pendingFutures.put(payload.getId(), future);
 
-    webSocketBus.sendDAGPayload(payload);
+        webSocketBus.sendDAGPayload(payload);
 
-    // Timeout
-    future
-        .orTimeout(120, TimeUnit.SECONDS)
-        .whenComplete(
-            (result, error) -> {
-              pendingFutures.remove(payload.getId());
-              activePayloads.remove(payload.getId());
-            });
+        // Timeout
+        future.orTimeout(120, TimeUnit.SECONDS)
+                .whenComplete(
+                        (result, error) -> {
+                            pendingFutures.remove(payload.getId());
+                            activePayloads.remove(payload.getId());
+                        });
 
-    return future;
-  }
+        return future;
+    }
 
-  /** Connect to the cloud backend. */
-  public CompletableFuture<Boolean> connect(String backendUrl) {
-    return webSocketBus.connect(backendUrl);
-  }
+    /**
+     * Connect to the cloud backend.
+     */
+    public CompletableFuture<Boolean> connect(String backendUrl) {
+        return webSocketBus.connect(backendUrl);
+    }
 
-  /** Disconnect from the cloud backend. */
-  public void disconnect() {
-    webSocketBus.disconnect();
-  }
+    /**
+     * Disconnect from the cloud backend.
+     */
+    public void disconnect() {
+        webSocketBus.disconnect();
+    }
 
-  public boolean isConnected() {
-    return webSocketBus.isConnected();
-  }
+    public boolean isConnected() {
+        return webSocketBus.isConnected();
+    }
 
-  public int getActivePayloadCount() {
-    return activePayloads.size();
-  }
+    public int getActivePayloadCount() {
+        return activePayloads.size();
+    }
 }

@@ -9,9 +9,9 @@ import java.time.Duration;
  * <p>All sampling fields are nullable — {@code null} means "use the provider default".
  *
  * @param temperature the sampling temperature
- * @param topP        the nucleus sampling top-P value
- * @param maxTokens   the maximum number of tokens to generate
- * @param timeout     the timeout duration for the call
+ * @param topP the nucleus sampling top-P value
+ * @param maxTokens the maximum number of tokens to generate
+ * @param timeout the timeout duration for the call
  */
 public record LlmOptions(Double temperature, Double topP, Integer maxTokens, Duration timeout) {
     private static final LlmOptions DEFAULTS =

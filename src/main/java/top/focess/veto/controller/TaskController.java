@@ -20,128 +20,139 @@ import top.focess.veto.model.DAGPayload;
 @RequestMapping("/api/tasks")
 public class TaskController {
 
-  private static final Logger log = LoggerFactory.getLogger(TaskController.class);
+    private static final Logger log = LoggerFactory.getLogger(TaskController.class);
 
-  private final RoutingBusService routingBusService;
-  private final ConcurrentHashMap<String, DAGPayload> taskStore = new ConcurrentHashMap<>();
+    private final RoutingBusService routingBusService;
+    private final ConcurrentHashMap<String, DAGPayload> taskStore = new ConcurrentHashMap<>();
 
-  public TaskController(RoutingBusService routingBusService) {
-    this.routingBusService = routingBusService;
-  }
-
-  /** POST /api/tasks - Create and submit a new DAG task. */
-  @PostMapping(
-      consumes = MediaType.APPLICATION_JSON_VALUE,
-      produces = MediaType.APPLICATION_JSON_VALUE)
-  public ResponseEntity<Map<String, Object>> createTask(@RequestBody Map<String, Object> request) {
-    String taskType = (String) request.get("taskType");
-    if (taskType == null || taskType.isBlank()) {
-      return ResponseEntity.badRequest()
-          .body(
-              Map.of(
-                  "status", "error",
-                  "message", "taskType is required"));
+    public TaskController(RoutingBusService routingBusService) {
+        this.routingBusService = routingBusService;
     }
 
-    Map<String, Object> parameters =
-        (Map<String, Object>) request.getOrDefault("parameters", Map.of());
-    String sourceComponent = (String) request.getOrDefault("sourceComponent", "REST-API");
-    String targetComponent = (String) request.getOrDefault("targetComponent", "C3-Bus");
-
-    DAGPayload payload =
-        DAGPayload.builder()
-            .id(
-                request.containsKey("id")
-                    ? (String) request.get("id")
-                    : UUID.randomUUID().toString())
-            .taskType(taskType)
-            .parameters(parameters)
-            .sourceComponent(sourceComponent)
-            .targetComponent(targetComponent)
-            .build();
-
-    taskStore.put(payload.getId(), payload);
-    log.info("REST: Created task id={}, type={}", payload.getId(), payload.getTaskType());
-
-    if (routingBusService.isConnected()) {
-      routingBusService.submitDAGPayload(payload);
-    } else {
-      log.warn("REST: Bus not connected - task stored locally only");
-    }
-
-    return ResponseEntity.ok(
-        Map.of(
-            "status", "ok",
-            "id", payload.getId(),
-            "taskType", payload.getTaskType(),
-            "dagStatus", payload.getStatus().name(),
-            "timestamp", Instant.now().toString()));
-  }
-
-  /** GET /api/tasks/{id} - Get DAG task status and details. */
-  @GetMapping(value = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
-  public ResponseEntity<Map<String, Object>> getTask(@PathVariable("id") String id) {
-    DAGPayload payload = taskStore.get(id);
-    if (payload == null) {
-      return ResponseEntity.notFound().build();
-    }
-
-    java.util.HashMap<String, Object> result = new java.util.HashMap<>();
-    result.put("status", "ok");
-    result.put("id", payload.getId());
-    result.put("taskType", payload.getTaskType());
-    result.put("dagStatus", payload.getStatus().name());
-    result.put("parameters", payload.getParameters());
-    result.put("dependencies", payload.getDependencies());
-    result.put("sourceComponent", payload.getSourceComponent());
-    result.put("targetComponent", payload.getTargetComponent());
-    result.put("createdAt", payload.getCreatedAt().toString());
-    result.put("updatedAt", payload.getUpdatedAt().toString());
-    result.put("timestamp", Instant.now().toString());
-    return ResponseEntity.ok(result);
-  }
-
-  /** GET /api/tasks - List all tasks. */
-  @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
-  public ResponseEntity<Map<String, Object>> listTasks() {
-    return ResponseEntity.ok(
-        Map.of(
-            "status", "ok",
-            "total", taskStore.size(),
-            "tasks",
-                taskStore.values().stream()
-                    .map(
-                        p ->
+    /**
+     * POST /api/tasks - Create and submit a new DAG task.
+     */
+    @PostMapping(
+            consumes = MediaType.APPLICATION_JSON_VALUE,
+            produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<Map<String, Object>> createTask(
+            @RequestBody Map<String, Object> request) {
+        String taskType = (String) request.get("taskType");
+        if (taskType == null || taskType.isBlank()) {
+            return ResponseEntity.badRequest()
+                    .body(
                             Map.of(
-                                "id", p.getId(),
-                                "taskType", p.getTaskType(),
-                                "status", p.getStatus().name(),
-                                "createdAt", p.getCreatedAt().toString()))
-                    .toList(),
-            "busConnected", routingBusService.isConnected(),
-            "timestamp", Instant.now().toString()));
-  }
+                                    "status", "error",
+                                    "message", "taskType is required"));
+        }
 
-  /** DELETE /api/tasks/{id} - Cancel a task. */
-  @DeleteMapping(value = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
-  public ResponseEntity<Map<String, Object>> cancelTask(@PathVariable("id") String id) {
-    DAGPayload existing = taskStore.get(id);
-    if (existing == null) {
-      return ResponseEntity.notFound().build();
+        Map<String, Object> parameters =
+                (Map<String, Object>) request.getOrDefault("parameters", Map.of());
+        String sourceComponent = (String) request.getOrDefault("sourceComponent", "REST-API");
+        String targetComponent = (String) request.getOrDefault("targetComponent", "C3-Bus");
+
+        DAGPayload payload =
+                DAGPayload.builder()
+                        .id(
+                                request.containsKey("id")
+                                        ? (String) request.get("id")
+                                        : UUID.randomUUID().toString())
+                        .taskType(taskType)
+                        .parameters(parameters)
+                        .sourceComponent(sourceComponent)
+                        .targetComponent(targetComponent)
+                        .build();
+
+        taskStore.put(payload.getId(), payload);
+        log.info("REST: Created task id={}, type={}", payload.getId(), payload.getTaskType());
+
+        if (routingBusService.isConnected()) {
+            routingBusService.submitDAGPayload(payload);
+        } else {
+            log.warn("REST: Bus not connected - task stored locally only");
+        }
+
+        return ResponseEntity.ok(
+                Map.of(
+                        "status", "ok",
+                        "id", payload.getId(),
+                        "taskType", payload.getTaskType(),
+                        "dagStatus", payload.getStatus().name(),
+                        "timestamp", Instant.now().toString()));
     }
 
-    DAGPayload cancelled = existing.withStatus(DAGPayload.DAGPayloadStatus.CANCELLED);
-    taskStore.put(id, cancelled);
+    /**
+     * GET /api/tasks/{id} - Get DAG task status and details.
+     */
+    @GetMapping(value = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<Map<String, Object>> getTask(@PathVariable("id") String id) {
+        DAGPayload payload = taskStore.get(id);
+        if (payload == null) {
+            return ResponseEntity.notFound().build();
+        }
 
-    return ResponseEntity.ok(
-        Map.of(
-            "status",
-            "ok",
-            "id",
-            id,
-            "newStatus",
-            DAGPayload.DAGPayloadStatus.CANCELLED.name(),
-            "timestamp",
-            Instant.now().toString()));
-  }
+        java.util.HashMap<String, Object> result = new java.util.HashMap<>();
+        result.put("status", "ok");
+        result.put("id", payload.getId());
+        result.put("taskType", payload.getTaskType());
+        result.put("dagStatus", payload.getStatus().name());
+        result.put("parameters", payload.getParameters());
+        result.put("dependencies", payload.getDependencies());
+        result.put("sourceComponent", payload.getSourceComponent());
+        result.put("targetComponent", payload.getTargetComponent());
+        result.put("createdAt", payload.getCreatedAt().toString());
+        result.put("updatedAt", payload.getUpdatedAt().toString());
+        result.put("timestamp", Instant.now().toString());
+        return ResponseEntity.ok(result);
+    }
+
+    /**
+     * GET /api/tasks - List all tasks.
+     */
+    @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<Map<String, Object>> listTasks() {
+        return ResponseEntity.ok(
+                Map.of(
+                        "status", "ok",
+                        "total", taskStore.size(),
+                        "tasks",
+                        taskStore.values().stream()
+                                .map(
+                                        p ->
+                                                Map.of(
+                                                        "id", p.getId(),
+                                                        "taskType", p.getTaskType(),
+                                                        "status", p.getStatus().name(),
+                                                        "createdAt",
+                                                        p.getCreatedAt()
+                                                                .toString()))
+                                .toList(),
+                        "busConnected", routingBusService.isConnected(),
+                        "timestamp", Instant.now().toString()));
+    }
+
+    /**
+     * DELETE /api/tasks/{id} - Cancel a task.
+     */
+    @DeleteMapping(value = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<Map<String, Object>> cancelTask(@PathVariable("id") String id) {
+        DAGPayload existing = taskStore.get(id);
+        if (existing == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        DAGPayload cancelled = existing.withStatus(DAGPayload.DAGPayloadStatus.CANCELLED);
+        taskStore.put(id, cancelled);
+
+        return ResponseEntity.ok(
+                Map.of(
+                        "status",
+                        "ok",
+                        "id",
+                        id,
+                        "newStatus",
+                        DAGPayload.DAGPayloadStatus.CANCELLED.name(),
+                        "timestamp",
+                        Instant.now().toString()));
+    }
 }

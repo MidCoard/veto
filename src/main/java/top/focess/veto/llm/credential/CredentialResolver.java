@@ -26,7 +26,7 @@ public class CredentialResolver {
     /**
      * Resolves the API key for the given provider type and credential key.
      *
-     * @param providerType  the target provider type
+     * @param providerType the target provider type
      * @param credentialKey the key used to look up the credential in the vault
      * @return the resolved API key
      * @throws LlmAuthException if the credential key is missing or no credential is found
@@ -35,11 +35,11 @@ public class CredentialResolver {
         if (credentialKey == null || credentialKey.isBlank()) {
             throw new LlmAuthException("Credential key is missing for provider " + providerType);
         }
-        return vault
-                .retrieve(credentialKey)
+        return vault.retrieve(credentialKey)
                 .orElseThrow(
                         () ->
                                 new LlmAuthException(
-                                        "No credential registered in Vault under key: " + credentialKey));
+                                        "No credential registered in Vault under key: "
+                                                + credentialKey));
     }
 }

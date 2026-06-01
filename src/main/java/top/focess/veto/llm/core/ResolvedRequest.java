@@ -11,7 +11,7 @@ package top.focess.veto.llm.core;
  *
  * @param request the original VetoRequest
  * @param baseUrl the effective base URL for the call
- * @param apiKey  the API key or internal token to use
+ * @param apiKey the API key or internal token to use
  */
 public record ResolvedRequest(VetoRequest request, String baseUrl, String apiKey) {
     /**

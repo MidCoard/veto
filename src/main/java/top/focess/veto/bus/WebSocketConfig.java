@@ -15,22 +15,22 @@ import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry
 @EnableWebSocket
 public class WebSocketConfig implements WebSocketConfigurer {
 
-  private static final Logger log = LoggerFactory.getLogger(WebSocketConfig.class);
+    private static final Logger log = LoggerFactory.getLogger(WebSocketConfig.class);
 
-  private final VetoWebSocketHandler vetoWebSocketHandler;
+    private final VetoWebSocketHandler vetoWebSocketHandler;
 
-  public WebSocketConfig(VetoWebSocketHandler vetoWebSocketHandler) {
-    this.vetoWebSocketHandler = vetoWebSocketHandler;
-  }
+    public WebSocketConfig(VetoWebSocketHandler vetoWebSocketHandler) {
+        this.vetoWebSocketHandler = vetoWebSocketHandler;
+    }
 
-  @Override
-  public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
-    registry
-        .addHandler(vetoWebSocketHandler, "/ws/veto/bus")
-        .setAllowedOrigins("*")
-        .withSockJS()
-        .setClientLibraryUrl("https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js");
+    @Override
+    public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
+        registry.addHandler(vetoWebSocketHandler, "/ws/veto/bus")
+                .setAllowedOrigins("*")
+                .withSockJS()
+                .setClientLibraryUrl(
+                        "https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js");
 
-    log.info("WS Config: Registered /ws/veto/bus handler with SockJS fallback");
-  }
+        log.info("WS Config: Registered /ws/veto/bus handler with SockJS fallback");
+    }
 }

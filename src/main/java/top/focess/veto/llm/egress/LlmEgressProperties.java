@@ -2,7 +2,6 @@ package top.focess.veto.llm.egress;
 
 import java.util.HashMap;
 import java.util.Map;
-
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 import top.focess.veto.llm.core.ProviderType;
@@ -34,9 +33,7 @@ public class LlmEgressProperties {
      */
     private String internalToken;
 
-    /**
-     * Per-provider broker base URLs used in proxy mode.
-     */
+    /** Per-provider broker base URLs used in proxy mode. */
     private Map<ProviderType, String> proxyBaseUrls = new HashMap<>();
 
     /**

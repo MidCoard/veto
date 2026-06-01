@@ -8,7 +8,6 @@ import java.security.spec.KeySpec;
 import java.util.*;
 import javax.crypto.*;
 import javax.crypto.spec.*;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -50,8 +49,8 @@ public class SecureStore {
     }
 
     /**
-     * Initialize the secure store. Creates the store file if it doesn't exist. Derives the encryption
-     * key from the master environment variable.
+     * Initialize the secure store. Creates the store file if it doesn't exist. Derives the
+     * encryption key from the master environment variable.
      */
     public synchronized void initialize() {
         if (initialized) return;
@@ -117,9 +116,7 @@ public class SecureStore {
         }
     }
 
-    /**
-     * Retrieve a decrypted credential.
-     */
+    /** Retrieve a decrypted credential. */
     public synchronized Optional<String> retrieve(String key) {
         if (!initialized) initialize();
 
@@ -138,9 +135,7 @@ public class SecureStore {
         }
     }
 
-    /**
-     * Delete a stored credential.
-     */
+    /** Delete a stored credential. */
     public synchronized void delete(String key) {
         if (!initialized) initialize();
 

@@ -14,28 +14,33 @@ import top.focess.veto.veto.LlamaCppBridge;
 @Configuration
 public class TrainingAutoConfiguration {
 
-  private static final Logger log = LoggerFactory.getLogger(TrainingAutoConfiguration.class);
+    private static final Logger log = LoggerFactory.getLogger(TrainingAutoConfiguration.class);
 
-  private final TrainingManager trainingManager;
-  private final LlamaCppBridge llamaCppBridge;
+    private final TrainingManager trainingManager;
+    private final LlamaCppBridge llamaCppBridge;
 
-  public TrainingAutoConfiguration(TrainingManager trainingManager, LlamaCppBridge llamaCppBridge) {
-    this.trainingManager = trainingManager;
-    this.llamaCppBridge = llamaCppBridge;
-  }
+    public TrainingAutoConfiguration(
+            TrainingManager trainingManager, LlamaCppBridge llamaCppBridge) {
+        this.trainingManager = trainingManager;
+        this.llamaCppBridge = llamaCppBridge;
+    }
 
-  @PostConstruct
-  public void registerDeployCallback() {
-    trainingManager.setDeployCallback(
-        modelPath -> {
-          log.info("Auto-deploy triggered: restarting LlamaCppBridge with model '{}'", modelPath);
-          boolean restarted = llamaCppBridge.restartWithModel(modelPath);
-          if (restarted) {
-            log.info("C7 VetoGateway: Restarted with newly trained model: {}", modelPath);
-          } else {
-            log.error("C7 VetoGateway: Failed to restart with model: {}", modelPath);
-          }
-        });
-    log.info("Training deploy callback registered -> LlamaCppBridge");
-  }
+    @PostConstruct
+    public void registerDeployCallback() {
+        trainingManager.setDeployCallback(
+                modelPath -> {
+                    log.info(
+                            "Auto-deploy triggered: restarting LlamaCppBridge with model '{}'",
+                            modelPath);
+                    boolean restarted = llamaCppBridge.restartWithModel(modelPath);
+                    if (restarted) {
+                        log.info(
+                                "C7 VetoGateway: Restarted with newly trained model: {}",
+                                modelPath);
+                    } else {
+                        log.error("C7 VetoGateway: Failed to restart with model: {}", modelPath);
+                    }
+                });
+        log.info("Training deploy callback registered -> LlamaCppBridge");
+    }
 }

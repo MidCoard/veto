@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-
 import org.springframework.stereotype.Service;
 import top.focess.veto.llm.core.ToolDefinition;
 
@@ -27,7 +26,11 @@ public class SchemaNormalizerService {
         // 1. thought
         properties.put(
                 "thought",
-                orderedMap("type", "string", "description", "Deep reasoning string explaining the plan"));
+                orderedMap(
+                        "type",
+                        "string",
+                        "description",
+                        "Deep reasoning string explaining the plan"));
 
         // 2. call
         List<Map<String, Object>> toolSchemas = new ArrayList<>();
@@ -55,7 +58,10 @@ public class SchemaNormalizerService {
                         "object",
                         "properties",
                         orderedMap(
-                                "tool_name", orderedMap("type", "null"), "args", orderedMap("type", "object")),
+                                "tool_name",
+                                orderedMap("type", "null"),
+                                "args",
+                                orderedMap("type", "object")),
                         "required",
                         List.of("tool_name", "args"),
                         "additionalProperties",
@@ -100,7 +106,8 @@ public class SchemaNormalizerService {
                 List<String> requiredFields = new ArrayList<>();
                 for (Map.Entry<String, Object> entry : properties.entrySet()) {
                     normalizedProperties.put(
-                            entry.getKey(), normalizeForOpenAI((Map<String, Object>) entry.getValue()));
+                            entry.getKey(),
+                            normalizeForOpenAI((Map<String, Object>) entry.getValue()));
                     requiredFields.add(entry.getKey());
                 }
                 normalized.put("properties", normalizedProperties);
@@ -131,7 +138,11 @@ public class SchemaNormalizerService {
                             "type",
                             "object",
                             "properties",
-                            orderedMap("tool_name", orderedMap("const", tool.name()), "args", tool.inputSchema()),
+                            orderedMap(
+                                    "tool_name",
+                                    orderedMap("const", tool.name()),
+                                    "args",
+                                    tool.inputSchema()),
                             "required",
                             List.of("tool_name", "args")));
         }
@@ -141,7 +152,10 @@ public class SchemaNormalizerService {
                         "object",
                         "properties",
                         orderedMap(
-                                "tool_name", orderedMap("type", "null"), "args", orderedMap("type", "object")),
+                                "tool_name",
+                                orderedMap("type", "null"),
+                                "args",
+                                orderedMap("type", "object")),
                         "required",
                         List.of("tool_name", "args")));
 

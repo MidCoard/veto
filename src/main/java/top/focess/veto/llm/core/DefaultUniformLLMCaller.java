@@ -1,7 +1,6 @@
 package top.focess.veto.llm.core;
 
 import java.util.List;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -32,7 +31,7 @@ public class DefaultUniformLLMCaller implements UniformLLMCaller {
      * Constructs a new DefaultUniformLLMCaller with the specified strategies and egress.
      *
      * @param strategies the list of available LLM provider strategies
-     * @param egress     the egress strategy for outgoing calls
+     * @param egress the egress strategy for outgoing calls
      */
     public DefaultUniformLLMCaller(List<LLMProviderStrategy> strategies, LlmEgress egress) {
         this.strategies = strategies;
@@ -48,10 +47,13 @@ public class DefaultUniformLLMCaller implements UniformLLMCaller {
                         .orElseThrow(
                                 () ->
                                         new ModelCapabilityException(
-                                                "No provider registered for type: " + request.providerType()));
+                                                "No provider registered for type: "
+                                                        + request.providerType()));
         EgressEndpoint endpoint =
-                egress.resolve(request.providerType(), provider.defaultBaseUrl(), request.credentialKey());
-        ResolvedRequest resolved = new ResolvedRequest(request, endpoint.baseUrl(), endpoint.apiKey());
+                egress.resolve(
+                        request.providerType(), provider.defaultBaseUrl(), request.credentialKey());
+        ResolvedRequest resolved =
+                new ResolvedRequest(request, endpoint.baseUrl(), endpoint.apiKey());
         LlmException last = null;
         for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
             try {

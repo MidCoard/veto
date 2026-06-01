@@ -22,105 +22,114 @@ import top.focess.veto.orchestrator.SwarmOrchestrator;
 @Service
 public class ToolSandbox {
 
-  private static final Logger log = LoggerFactory.getLogger(ToolSandbox.class);
+    private static final Logger log = LoggerFactory.getLogger(ToolSandbox.class);
 
-  private final SandboxConfiguration config;
-  private final SwarmOrchestrator orchestrator;
-  private final List<AtomicCapability> capabilities;
-  private final ConcurrentHashMap<String, AtomicCapability> capabilityMap =
-      new ConcurrentHashMap<>();
+    private final SandboxConfiguration config;
+    private final SwarmOrchestrator orchestrator;
+    private final List<AtomicCapability> capabilities;
+    private final ConcurrentHashMap<String, AtomicCapability> capabilityMap =
+            new ConcurrentHashMap<>();
 
-  public ToolSandbox(
-      SandboxConfiguration config,
-      SwarmOrchestrator orchestrator,
-      List<AtomicCapability> capabilities) {
-    this.config = config;
-    this.orchestrator = orchestrator;
-    this.capabilities = capabilities;
-  }
-
-  @PostConstruct
-  public void init() throws IOException {
-    // Initialize sandbox temp directory
-    Path tempDir = Path.of(config.getTempDir());
-    Files.createDirectories(tempDir);
-    System.setProperty("veto.sandbox.tempDir", tempDir.toAbsolutePath().toString());
-
-    // Register capabilities
-    for (AtomicCapability cap : capabilities) {
-      String name = cap.getName();
-      if (config.getAllowedCapabilities().contains(name)) {
-        capabilityMap.put(name, cap);
-        log.info("C6 Sandbox: Registered capability '{}'", name);
-      } else {
-        log.warn("C6 Sandbox: Capability '{}' not in allowed list  - ignoring", name);
-      }
+    public ToolSandbox(
+            SandboxConfiguration config,
+            SwarmOrchestrator orchestrator,
+            List<AtomicCapability> capabilities) {
+        this.config = config;
+        this.orchestrator = orchestrator;
+        this.capabilities = capabilities;
     }
 
-    if (config.isForbidGenericShell()) {
-      log.info("C6 Sandbox: Generic shell execution is FORBIDDEN (veto enforced)");
+    @PostConstruct
+    public void init() throws IOException {
+        // Initialize sandbox temp directory
+        Path tempDir = Path.of(config.getTempDir());
+        Files.createDirectories(tempDir);
+        System.setProperty("veto.sandbox.tempDir", tempDir.toAbsolutePath().toString());
+
+        // Register capabilities
+        for (AtomicCapability cap : capabilities) {
+            String name = cap.getName();
+            if (config.getAllowedCapabilities().contains(name)) {
+                capabilityMap.put(name, cap);
+                log.info("C6 Sandbox: Registered capability '{}'", name);
+            } else {
+                log.warn("C6 Sandbox: Capability '{}' not in allowed list  - ignoring", name);
+            }
+        }
+
+        if (config.isForbidGenericShell()) {
+            log.info("C6 Sandbox: Generic shell execution is FORBIDDEN (veto enforced)");
+        }
+
+        log.info(
+                "C6 Sandbox: Initialized with {} of {} capabilities registered",
+                capabilityMap.size(),
+                capabilities.size());
     }
 
-    log.info(
-        "C6 Sandbox: Initialized with {} of {} capabilities registered",
-        capabilityMap.size(),
-        capabilities.size());
-  }
-
-  @PreDestroy
-  public void shutdown() {
-    log.info("C6 Sandbox: Shut down");
-  }
-
-  /**
-   * Execute a tool within the sandbox via the orchestrator. Routes to the appropriate atomic
-   * capability.
-   */
-  public CompletableFuture<String> execute(ToolExecutionRequest request) {
-    String capName = request.getCapabilityName();
-
-    // Strict check: forbidden generic shell
-    if (config.isForbidGenericShell() && isForbiddenExecution(request)) {
-      request.markVetoed("Generic shell execution is forbidden by policy");
-      return CompletableFuture.completedFuture(
-          "{\"status\":\"vetoed\",\"reason\":\"Generic shell execution (run_bash) is forbidden by C6 policy\"}");
+    @PreDestroy
+    public void shutdown() {
+        log.info("C6 Sandbox: Shut down");
     }
 
-    AtomicCapability capability = capabilityMap.get(capName);
-    if (capability == null) {
-      request.markFailed("Unknown capability: " + capName);
-      return CompletableFuture.failedFuture(
-          new IllegalArgumentException(
-              "Unknown capability: " + capName + ". Allowed: " + capabilityMap.keySet()));
+    /**
+     * Execute a tool within the sandbox via the orchestrator. Routes to the appropriate atomic
+     * capability.
+     */
+    public CompletableFuture<String> execute(ToolExecutionRequest request) {
+        String capName = request.getCapabilityName();
+
+        // Strict check: forbidden generic shell
+        if (config.isForbidGenericShell() && isForbiddenExecution(request)) {
+            request.markVetoed("Generic shell execution is forbidden by policy");
+            return CompletableFuture.completedFuture(
+                    "{\"status\":\"vetoed\",\"reason\":\"Generic shell execution (run_bash) is forbidden by C6 policy\"}");
+        }
+
+        AtomicCapability capability = capabilityMap.get(capName);
+        if (capability == null) {
+            request.markFailed("Unknown capability: " + capName);
+            return CompletableFuture.failedFuture(
+                    new IllegalArgumentException(
+                            "Unknown capability: "
+                                    + capName
+                                    + ". Allowed: "
+                                    + capabilityMap.keySet()));
+        }
+
+        log.info("C6 Sandbox: Executing '{}' (id={})", capName, request.getId());
+        return orchestrator.execute(
+                request,
+                cap -> {
+                    log.debug("C6 Sandbox: Worker executing '{}'", cap.getCapabilityName());
+                    return capability.execute(cap);
+                });
     }
 
-    log.info("C6 Sandbox: Executing '{}' (id={})", capName, request.getId());
-    return orchestrator.execute(
-        request,
-        cap -> {
-          log.debug("C6 Sandbox: Worker executing '{}'", cap.getCapabilityName());
-          return capability.execute(cap);
-        });
-  }
+    /**
+     * Check if a request is attempting forbidden generic execution.
+     */
+    private boolean isForbiddenExecution(ToolExecutionRequest request) {
+        String name = request.getCapabilityName().toLowerCase();
+        return name.contains("run_bash")
+                || name.contains("exec_raw")
+                || name.contains("shell")
+                || name.contains("command_injection")
+                || name.contains("eval")
+                || name.contains("system");
+    }
 
-  /** Check if a request is attempting forbidden generic execution. */
-  private boolean isForbiddenExecution(ToolExecutionRequest request) {
-    String name = request.getCapabilityName().toLowerCase();
-    return name.contains("run_bash")
-        || name.contains("exec_raw")
-        || name.contains("shell")
-        || name.contains("command_injection")
-        || name.contains("eval")
-        || name.contains("system");
-  }
+    /**
+     * List all registered capabilities.
+     */
+    public Set<String> getRegisteredCapabilities() {
+        return Collections.unmodifiableSet(capabilityMap.keySet());
+    }
 
-  /** List all registered capabilities. */
-  public Set<String> getRegisteredCapabilities() {
-    return Collections.unmodifiableSet(capabilityMap.keySet());
-  }
-
-  /** Get a specific capability. */
-  public Optional<AtomicCapability> getCapability(String name) {
-    return Optional.ofNullable(capabilityMap.get(name));
-  }
+    /**
+     * Get a specific capability.
+     */
+    public Optional<AtomicCapability> getCapability(String name) {
+        return Optional.ofNullable(capabilityMap.get(name));
+    }
 }

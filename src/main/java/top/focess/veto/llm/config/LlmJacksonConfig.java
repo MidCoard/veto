@@ -20,6 +20,7 @@ public class LlmJacksonConfig {
      */
     @Bean(LLM_OBJECT_MAPPER)
     public ObjectMapper llmObjectMapper() {
-        return new ObjectMapper().configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+        return new ObjectMapper()
+                .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     }
 }
