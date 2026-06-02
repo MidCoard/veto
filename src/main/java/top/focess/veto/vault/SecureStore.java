@@ -80,18 +80,14 @@ public class SecureStore {
         log.info("C8 Vault: Unlocked — {} credentials loaded", credentialCache.size());
     }
 
-    /**
-     * Locks the vault, wiping the encryption key and decrypted credentials from memory.
-     */
+    /** Locks the vault, wiping the encryption key and decrypted credentials from memory. */
     public synchronized void lock() {
         this.storeKey = null;
         this.credentialCache.clear();
         log.info("C8 Vault: Locked — credentials cleared from memory");
     }
 
-    /**
-     * Returns true if the vault is unlocked and ready for operations.
-     */
+    /** Returns true if the vault is unlocked and ready for operations. */
     public boolean isUnlocked() {
         return storeKey != null;
     }
@@ -147,9 +143,7 @@ public class SecureStore {
         return credentialCache.containsKey(key);
     }
 
-    /**
-     * Returns whether the secure store has been initialized.
-     */
+    /** Returns whether the secure store has been initialized. */
     public boolean isInitialized() {
         return initialized;
     }
@@ -238,9 +232,7 @@ public class SecureStore {
         }
     }
 
-    /**
-     * Thrown when an operation is attempted on a locked vault.
-     */
+    /** Thrown when an operation is attempted on a locked vault. */
     public static class VaultLockedException extends RuntimeException {
         public VaultLockedException(String message) {
             super(message);

@@ -10,26 +10,18 @@ import org.springframework.context.annotation.Configuration;
 @ConfigurationProperties(prefix = "veto.vault")
 public class CredentialVaultConfiguration {
 
-    /**
-     * Base directory for all vault files.
-     */
+    /** Base directory for all vault files. */
     private String vaultHome = expandTilde("~/.veto");
 
-    /**
-     * Number of iterations for key derivation (Argon2id).
-     */
+    /** Number of iterations for key derivation (Argon2id). */
     private int keyDerivationIterations = 3;
 
-    /**
-     * Returns the base directory for all vault files.
-     */
+    /** Returns the base directory for all vault files. */
     public String getVaultHome() {
         return vaultHome;
     }
 
-    /**
-     * Sets the base directory for all vault files.
-     */
+    /** Sets the base directory for all vault files. */
     public void setVaultHome(String vaultHome) {
         this.vaultHome = expandTilde(vaultHome);
     }
@@ -44,9 +36,7 @@ public class CredentialVaultConfiguration {
         this.keyDerivationIterations = keyDerivationIterations;
     }
 
-    /**
-     * Derives the path to the encrypted credentials store.
-     */
+    /** Derives the path to the encrypted credentials store. */
     public String getStorePath() {
         return vaultHome + "/vault/credentials.enc";
     }

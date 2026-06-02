@@ -143,8 +143,7 @@ public class MCPServerRegistry {
         default void onServerRegistered(MCPServerDefinition definition) {
         }
 
-        default void onServerUnregistered(String serverId) {
-        }
+        default void onServerUnregistered(String serverId) {}
     }
 
     /** JSON-deserializable MCP server definition. */

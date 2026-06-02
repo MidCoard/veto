@@ -196,8 +196,7 @@ public class SemanticRedactor {
         }
     }
 
-    public record RedactionEntry(RedactionType type, String originalExcerpt, String replacement) {
-    }
+    public record RedactionEntry(RedactionType type, String originalExcerpt, String replacement) {}
 
     public record RedactionRule(Pattern pattern, String replacement, RedactionType type) {}
 

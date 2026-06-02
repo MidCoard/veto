@@ -112,8 +112,7 @@ public class Agent {
         private Instant createdAt = Instant.now();
         private String sessionId;
 
-        public Builder() {
-        }
+        public Builder() {}
 
         Builder(Agent agent) {
             this.id = agent.id;

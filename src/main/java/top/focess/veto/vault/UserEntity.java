@@ -1,7 +1,6 @@
 package top.focess.veto.vault;
 
 import jakarta.persistence.*;
-
 import java.time.Instant;
 
 /**
@@ -27,8 +26,7 @@ public class UserEntity {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
-    protected UserEntity() {
-    }
+    protected UserEntity() {}
 
     public UserEntity(
             String username,

@@ -52,9 +52,7 @@ public class CredentialVault {
 
     // ── Lock / Unlock ───────────────────────────────────────────────────────
 
-    /**
-     * Unlocks the vault for a specific user with their Vault Key.
-     */
+    /** Unlocks the vault for a specific user with their Vault Key. */
     public synchronized void unlock(SecretKey vaultKey, String username) {
         currentStore = new SecureStore(config, username);
         currentStore.initialize();
@@ -67,9 +65,7 @@ public class CredentialVault {
                 currentStore.listKeys().size());
     }
 
-    /**
-     * Locks the vault and wipes the current user's decrypted credentials from memory.
-     */
+    /** Locks the vault and wipes the current user's decrypted credentials from memory. */
     public synchronized void lock() {
         if (currentStore != null) {
             currentStore.lock();

@@ -6,7 +6,6 @@ import java.security.*;
 import java.util.*;
 import javax.crypto.*;
 import javax.crypto.spec.*;
-
 import org.bouncycastle.crypto.generators.Argon2BytesGenerator;
 import org.bouncycastle.crypto.params.Argon2Parameters;
 import org.slf4j.Logger;
@@ -128,9 +127,7 @@ public class VaultKeyManager {
         }
     }
 
-    /**
-     * Returns true if the vault has been set up (vault-key.enc exists with at least one entry).
-     */
+    /** Returns true if the vault has been set up (vault-key.enc exists with at least one entry). */
     public boolean isSetupComplete() {
         Map<String, String> entries = loadKeyFile();
         return !entries.isEmpty();

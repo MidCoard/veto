@@ -4,7 +4,6 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import javax.crypto.SecretKey;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
@@ -120,9 +119,7 @@ public class AuthController {
 
     // ── Login ───────────────────────────────────────────────────────────────
 
-    /**
-     * POST /api/auth/login — Authenticate and unlock the user's credential vault.
-     */
+    /** POST /api/auth/login — Authenticate and unlock the user's credential vault. */
     @PostMapping(
             value = "/login",
             consumes = MediaType.APPLICATION_JSON_VALUE,
@@ -185,9 +182,7 @@ public class AuthController {
 
     // ── Logout ──────────────────────────────────────────────────────────────
 
-    /**
-     * POST /api/auth/logout — Invalidate session and lock vault if no other sessions active.
-     */
+    /** POST /api/auth/logout — Invalidate session and lock vault if no other sessions active. */
     @PostMapping(value = "/logout", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Map<String, Object>> logout(@RequestHeader(TOKEN_HEADER) String token) {
         var session = sessionManager.validate(token);
@@ -214,9 +209,7 @@ public class AuthController {
 
     // ── Status ──────────────────────────────────────────────────────────────
 
-    /**
-     * GET /api/auth/status — Returns vault and session state.
-     */
+    /** GET /api/auth/status — Returns vault and session state. */
     @GetMapping(value = "/status", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Map<String, Object>> status(
             @RequestHeader(value = TOKEN_HEADER, required = false) String token) {
@@ -243,9 +236,7 @@ public class AuthController {
 
     // ── User management (admin only) ────────────────────────────────────────
 
-    /**
-     * POST /api/auth/users — Add a new user with their own Vault Key. Requires admin session.
-     */
+    /** POST /api/auth/users — Add a new user with their own Vault Key. Requires admin session. */
     @PostMapping(
             value = "/users",
             consumes = MediaType.APPLICATION_JSON_VALUE,

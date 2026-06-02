@@ -142,8 +142,7 @@ public class TrainingProgress {
             DecisionAccuracy decisionAccuracy,
             RedactionAccuracy redactionAccuracy,
             StructuralValidation structuralValidation) {
-        public record GbnfCompliance(int validJsonCount, double validJsonRate) {
-        }
+        public record GbnfCompliance(int validJsonCount, double validJsonRate) {}
 
         public record DecisionAccuracy(int correct, int total, double accuracy) {}
 

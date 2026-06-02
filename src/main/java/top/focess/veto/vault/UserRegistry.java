@@ -4,7 +4,6 @@ import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.Optional;
-
 import org.bouncycastle.crypto.generators.Argon2BytesGenerator;
 import org.bouncycastle.crypto.params.Argon2Parameters;
 import org.slf4j.Logger;
@@ -52,9 +51,7 @@ public class UserRegistry {
         return user;
     }
 
-    /**
-     * Authenticates by verifying the password against the stored Argon2id hash.
-     */
+    /** Authenticates by verifying the password against the stored Argon2id hash. */
     @Transactional(readOnly = true)
     public Optional<UserEntity> authenticate(String username, String password) {
         Optional<UserEntity> user = repo.findById(username);
@@ -69,9 +66,7 @@ public class UserRegistry {
         return Optional.empty();
     }
 
-    /**
-     * Returns true if any user exists (vault has been set up).
-     */
+    /** Returns true if any user exists (vault has been set up). */
     @Transactional(readOnly = true)
     public boolean anyUserExists() {
         return repo.count() > 0;
@@ -107,14 +102,11 @@ public class UserRegistry {
         }
     }
 
-    /**
-     * Role constants.
-     */
+    /** Role constants. */
     public static final class Role {
         public static final String ADMIN = "ADMIN";
         public static final String USER = "USER";
 
-        private Role() {
-        }
+        private Role() {}
     }
 }
