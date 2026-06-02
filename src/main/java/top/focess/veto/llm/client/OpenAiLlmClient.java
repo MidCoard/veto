@@ -11,9 +11,7 @@ import com.openai.models.chat.completions.ChatCompletionCreateParams;
 import com.openai.models.chat.completions.ChatCompletionMessageParam;
 import com.openai.models.chat.completions.ChatCompletionSystemMessageParam;
 import com.openai.models.chat.completions.ChatCompletionUserMessageParam;
-
 import java.util.Map;
-
 import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.llm.core.ResolvedRequest;
 import top.focess.veto.llm.core.VetoRequest;

@@ -3,9 +3,11 @@ package top.focess.veto.llm.provider;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
+import top.focess.veto.llm.client.LlmClient;
 import top.focess.veto.llm.client.LlmClientFactory;
 import top.focess.veto.llm.config.LlmJacksonConfig;
 import top.focess.veto.llm.core.ProviderType;
+import top.focess.veto.llm.core.ResolvedRequest;
 import top.focess.veto.observability.AuditLogger;
 
 /**
@@ -31,6 +33,13 @@ public class DeepSeekProvider extends OpenAiCompatibleProvider {
     @Override
     protected String providerName() {
         return "DeepSeek";
+    }
+
+    @Override
+    protected LlmClient.RawCompletion invoke(ResolvedRequest resolved) throws Exception {
+        return clientFactory
+                .deepSeek(resolved.baseUrl(), resolved.apiKey(), providerName())
+                .complete(resolved);
     }
 
     @Override

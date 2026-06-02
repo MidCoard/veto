@@ -119,16 +119,12 @@ public class ToolSandbox {
                 || name.contains("system");
     }
 
-    /**
-     * List all registered capabilities.
-     */
+    /** List all registered capabilities. */
     public Set<String> getRegisteredCapabilities() {
         return Collections.unmodifiableSet(capabilityMap.keySet());
     }
 
-    /**
-     * Get a specific capability.
-     */
+    /** Get a specific capability. */
     public Optional<AtomicCapability> getCapability(String name) {
         return Optional.ofNullable(capabilityMap.get(name));
     }

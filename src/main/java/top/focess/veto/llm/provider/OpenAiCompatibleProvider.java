@@ -38,7 +38,7 @@ public abstract class OpenAiCompatibleProvider extends AbstractLlmProvider {
     protected abstract boolean supportsJsonSchema();
 
     @Override
-    protected final LlmClient.RawCompletion invoke(ResolvedRequest resolved) throws Exception {
+    protected LlmClient.RawCompletion invoke(ResolvedRequest resolved) throws Exception {
         return clientFactory
                 .openAi(resolved.baseUrl(), resolved.apiKey(), supportsJsonSchema(), providerName())
                 .complete(resolved);

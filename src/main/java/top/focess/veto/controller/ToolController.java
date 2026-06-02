@@ -123,9 +123,7 @@ public class ToolController {
                         Instant.now().toString()));
     }
 
-    /**
-     * GET /api/tool/capabilities - List all registered atomic capabilities.
-     */
+    /** GET /api/tool/capabilities - List all registered atomic capabilities. */
     @GetMapping(value = "/capabilities", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Map<String, Object>> listCapabilities() {
         return ResponseEntity.ok(

@@ -19,7 +19,7 @@ public interface AtomicCapability {
      *
      * @param request The validated tool execution request
      * @return Structured result string (typically JSON)
-     * @throws SecurityException        if the request violates security constraints
+     * @throws SecurityException if the request violates security constraints
      * @throws IllegalArgumentException if the request arguments are invalid
      */
     String execute(ToolExecutionRequest request) throws SecurityException, IllegalArgumentException;

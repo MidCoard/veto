@@ -1,0 +1,17 @@
+# Test configuration — overrides main application.yml for all tests
+spring:
+  datasource:
+    url: jdbc:h2:mem:veto_test;DB_CLOSE_DELAY=-1
+    username: sa
+    password: ""
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+
+veto:
+  vault:
+    vault-home: ./build/tmp/veto-test

@@ -225,9 +225,7 @@ public class TrainingManager {
         return true;
     }
 
-    /**
-     * Cancel the current training run by killing the Python subprocess.
-     */
+    /** Cancel the current training run by killing the Python subprocess. */
     public synchronized void cancelTraining() {
         if (!running.get()) {
             return;
@@ -276,7 +274,7 @@ public class TrainingManager {
      * Run a Python script located in the training/python directory.
      *
      * @param workingDir the python/ directory
-     * @param command    the command to run (e.g. "prepare_data.py" or "train.py --epochs 3")
+     * @param command the command to run (e.g. "prepare_data.py" or "train.py --epochs 3")
      * @return true if the script exited with code 0
      */
     private boolean runPythonScript(Path workingDir, String command) {
@@ -354,9 +352,7 @@ public class TrainingManager {
         }
     }
 
-    /**
-     * Resolve the Python interpreter path, preferring the venv if it exists.
-     */
+    /** Resolve the Python interpreter path, preferring the venv if it exists. */
     private String resolvePythonPath() {
         // If a venv is configured and exists, use its Python
         if (!config.getVenvPath().isEmpty()) {

@@ -56,9 +56,7 @@ public class CircuitBreaker {
         }
     }
 
-    /**
-     * Record a successful execution.
-     */
+    /** Record a successful execution. */
     public synchronized void recordSuccess() {
         CircuitState currentState = state.get();
         if (currentState == CircuitState.HALF_OPEN) {
@@ -71,9 +69,7 @@ public class CircuitBreaker {
         failureCount.set(0);
     }
 
-    /**
-     * Record a failed execution.
-     */
+    /** Record a failed execution. */
     public synchronized void recordFailure() {
         int failures = failureCount.incrementAndGet();
         lastFailureTime.set(System.currentTimeMillis());
@@ -91,9 +87,7 @@ public class CircuitBreaker {
         }
     }
 
-    /**
-     * Reset the circuit breaker to closed state.
-     */
+    /** Reset the circuit breaker to closed state. */
     public void reset() {
         state.set(CircuitState.CLOSED);
         failureCount.set(0);

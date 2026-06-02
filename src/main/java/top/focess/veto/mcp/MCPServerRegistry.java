@@ -60,9 +60,7 @@ public class MCPServerRegistry {
         log.info("C4 MCP: Discovery complete. {} servers registered.", servers.size());
     }
 
-    /**
-     * Register a server from a JSON definition file.
-     */
+    /** Register a server from a JSON definition file. */
     public MCPServerDefinition registerServer(Path definitionFile) {
         try {
             byte[] content = Files.readAllBytes(definitionFile);
@@ -103,39 +101,29 @@ public class MCPServerRegistry {
         }
     }
 
-    /**
-     * Get all protocols across all registered servers.
-     */
+    /** Get all protocols across all registered servers. */
     public List<MCProtocol> getAllProtocols() {
         List<MCProtocol> all = new ArrayList<>();
         toolRegistry.values().forEach(all::addAll);
         return Collections.unmodifiableList(all);
     }
 
-    /**
-     * Get protocols for a specific server.
-     */
+    /** Get protocols for a specific server. */
     public List<MCProtocol> getServerProtocols(String serverId) {
         return toolRegistry.getOrDefault(serverId, Collections.emptyList());
     }
 
-    /**
-     * Get all registered server definitions.
-     */
+    /** Get all registered server definitions. */
     public Map<String, MCPServerDefinition> getServers() {
         return Collections.unmodifiableMap(servers);
     }
 
-    /**
-     * Get a specific server definition.
-     */
+    /** Get a specific server definition. */
     public Optional<MCPServerDefinition> getServer(String serverId) {
         return Optional.ofNullable(servers.get(serverId));
     }
 
-    /**
-     * Remove a server.
-     */
+    /** Remove a server. */
     public void unregisterServer(String serverId) {
         MCPServerDefinition removed = servers.remove(serverId);
         toolRegistry.remove(serverId);
@@ -159,9 +147,7 @@ public class MCPServerRegistry {
         }
     }
 
-    /**
-     * JSON-deserializable MCP server definition.
-     */
+    /** JSON-deserializable MCP server definition. */
     public static class MCPServerDefinition {
         private String id;
         private String name;

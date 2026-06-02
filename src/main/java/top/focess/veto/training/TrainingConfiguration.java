@@ -16,24 +16,16 @@ public class TrainingConfiguration {
      */
     private String pythonPath = "python";
 
-    /**
-     * Root directory of the training pipeline (relative to project root).
-     */
+    /** Root directory of the training pipeline (relative to project root). */
     private String trainingDir = "./training";
 
-    /**
-     * Directory where models are output and looked up.
-     */
+    /** Directory where models are output and looked up. */
     private String modelOutputDir = "./models";
 
-    /**
-     * HuggingFace base model for fine-tuning.
-     */
+    /** HuggingFace base model for fine-tuning. */
     private String baseModel = "Qwen/Qwen2.5-1.5B-Instruct";
 
-    /**
-     * Default GGUF filename expected by the LlamaCppBridge.
-     */
+    /** Default GGUF filename expected by the LlamaCppBridge. */
     private String defaultGgufName = "veto-slm.gguf";
 
     /** Maximum hours a training run can take before forced cancellation. */

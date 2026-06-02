@@ -32,9 +32,7 @@ public class GBNFGrammarEngine {
         return loadGrammar(config.getLlamaCpp().getGbnfGrammarPath());
     }
 
-    /**
-     * Load a grammar from file, with caching.
-     */
+    /** Load a grammar from file, with caching. */
     public String loadGrammar(String grammarPath) {
         return grammarCache.computeIfAbsent(
                 grammarPath,
@@ -95,9 +93,7 @@ string ::= "\\"" [^"]* "\\""
                 """;
     }
 
-    /**
-     * Get the secrets redaction grammar.
-     */
+    /** Get the secrets redaction grammar. */
     public String getSecretsRedactionGrammar() {
         return """
 root ::= redaction-response
@@ -110,9 +106,7 @@ string ::= "\\"" [^"]* "\\""
                 """;
     }
 
-    /**
-     * Register a custom grammar.
-     */
+    /** Register a custom grammar. */
     public void registerGrammar(String name, String grammar) {
         grammarCache.put(name, grammar);
         log.info("C7 GBNF: Registered grammar '{}'", name);

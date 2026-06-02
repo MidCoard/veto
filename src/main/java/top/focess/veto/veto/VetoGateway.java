@@ -83,9 +83,9 @@ public class VetoGateway {
     /**
      * THE VETO GATE - every outbound payload passes through here.
      *
-     * @param payload         The raw payload data to be sent to the cloud
-     * @param dagPayloadId    The DAG payload ID for audit trail
-     * @param requestId       The tool execution request ID for audit trail
+     * @param payload The raw payload data to be sent to the cloud
+     * @param dagPayloadId The DAG payload ID for audit trail
+     * @param requestId The tool execution request ID for audit trail
      * @param componentSource Source component (C4 MCP or C6 Sandbox)
      * @return VetoResult containing the decision and processed payload
      */

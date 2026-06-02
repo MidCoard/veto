@@ -1,0 +1,9 @@
+# ── Local Integration Test Configuration ──
+# Copy this file to application-local.yml and fill in real API keys.
+# application-local.yml is gitignored — never committed.
+
+veto:
+  test:
+    deepseek:
+      api-key: "sk-your-deepseek-key-here"
+      model: "deepseek-v4-pro"

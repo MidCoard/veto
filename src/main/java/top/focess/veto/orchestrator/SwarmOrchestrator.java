@@ -124,9 +124,7 @@ public class SwarmOrchestrator {
         return null;
     }
 
-    /**
-     * Periodic maintenance: reap idle workers, detect deadlocks.
-     */
+    /** Periodic maintenance: reap idle workers, detect deadlocks. */
     private void maintenanceCycle() {
         try {
             int activeCount = 0;

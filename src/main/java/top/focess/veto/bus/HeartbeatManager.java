@@ -54,9 +54,7 @@ public class HeartbeatManager {
         log.info("C3 Heartbeat: Started (interval={}ms)", intervalMs);
     }
 
-    /**
-     * Stop sending heartbeats.
-     */
+    /** Stop sending heartbeats. */
     public synchronized void stop() {
         if (heartbeatFuture != null) {
             heartbeatFuture.cancel(false);
@@ -90,9 +88,7 @@ public class HeartbeatManager {
         }
     }
 
-    /**
-     * Record a heartbeat acknowledgment from the server.
-     */
+    /** Record a heartbeat acknowledgment from the server. */
     public void recordAck() {
         lastHeartbeatAck.set(System.currentTimeMillis());
     }

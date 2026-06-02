@@ -81,9 +81,7 @@ public class TaskController {
                         "timestamp", Instant.now().toString()));
     }
 
-    /**
-     * GET /api/tasks/{id} - Get DAG task status and details.
-     */
+    /** GET /api/tasks/{id} - Get DAG task status and details. */
     @GetMapping(value = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Map<String, Object>> getTask(@PathVariable("id") String id) {
         DAGPayload payload = taskStore.get(id);
@@ -106,34 +104,36 @@ public class TaskController {
         return ResponseEntity.ok(result);
     }
 
-    /**
-     * GET /api/tasks - List all tasks.
-     */
+    /** GET /api/tasks - List all tasks. */
     @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Map<String, Object>> listTasks() {
         return ResponseEntity.ok(
                 Map.of(
-                        "status", "ok",
-                        "total", taskStore.size(),
+                        "status",
+                        "ok",
+                        "total",
+                        taskStore.size(),
                         "tasks",
                         taskStore.values().stream()
                                 .map(
                                         p ->
                                                 Map.of(
-                                                        "id", p.getId(),
-                                                        "taskType", p.getTaskType(),
-                                                        "status", p.getStatus().name(),
+                                                        "id",
+                                                        p.getId(),
+                                                        "taskType",
+                                                        p.getTaskType(),
+                                                        "status",
+                                                        p.getStatus().name(),
                                                         "createdAt",
-                                                        p.getCreatedAt()
-                                                                .toString()))
+                                                        p.getCreatedAt().toString()))
                                 .toList(),
-                        "busConnected", routingBusService.isConnected(),
-                        "timestamp", Instant.now().toString()));
+                        "busConnected",
+                        routingBusService.isConnected(),
+                        "timestamp",
+                        Instant.now().toString()));
     }
 
-    /**
-     * DELETE /api/tasks/{id} - Cancel a task.
-     */
+    /** DELETE /api/tasks/{id} - Cancel a task. */
     @DeleteMapping(value = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Map<String, Object>> cancelTask(@PathVariable("id") String id) {
         DAGPayload existing = taskStore.get(id);

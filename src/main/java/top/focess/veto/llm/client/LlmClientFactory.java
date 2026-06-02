@@ -3,7 +3,6 @@ package top.focess.veto.llm.client;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiFunction;
-
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import top.focess.veto.llm.config.LlmJacksonConfig;
@@ -35,7 +34,7 @@ public class LlmClientFactory {
     /**
      * Constructs a new LlmClientFactory with the specified dependencies.
      *
-     * @param objectMapper     the mapper for JSON serialization (used by adapters)
+     * @param objectMapper the mapper for JSON serialization (used by adapters)
      * @param schemaNormalizer the service for normalizing schemas (used by adapters)
      */
     public LlmClientFactory(
@@ -51,9 +50,9 @@ public class LlmClientFactory {
      * Registers a builder for a client SDK type. Typically called once per type from a
      * {@code @Configuration} class.
      *
-     * @param <T>        the client type
+     * @param <T> the client type
      * @param clientType the class of the client
-     * @param builder    a function that accepts {@code (baseUrl, apiKey)} and returns a new client
+     * @param builder a function that accepts {@code (baseUrl, apiKey)} and returns a new client
      */
     public <T> void register(Class<T> clientType, BiFunction<String, String, T> builder) {
         builders.compute(
@@ -95,14 +94,8 @@ public class LlmClientFactory {
     // ── Convenience methods (return our own LlmClient, not SDK types) ────────
 
     /**
-     * Returns an {@link LlmClient} backed by a cached {@code OpenAIClient}. Shared by OpenAI,
-     * DeepSeek, and any OpenAI-compatible provider.
-     *
-     * @param baseUrl the base URL for the API
-     * @param apiKey the API key for authentication
-     * @param supportsJsonSchema whether the provider supports strict {@code json_schema}
-     * @param providerName the human-readable provider name for error messages
-     * @return the LlmClient adapter
+     * Returns an {@link LlmClient} backed by a cached {@code OpenAIClient}. For OpenAI and
+     * providers that support strict {@code json_schema}.
      */
     public LlmClient openAi(
             String baseUrl, String apiKey, boolean supportsJsonSchema, String providerName) {
@@ -110,6 +103,14 @@ public class LlmClientFactory {
                 get(com.openai.client.OpenAIClient.class, baseUrl, apiKey);
         return new OpenAiLlmClient(
                 sdk, supportsJsonSchema, providerName, objectMapper, schemaNormalizer);
+    }
+
+    /**
+     * Returns an {@link LlmClient} that speaks pure REST JSON to DeepSeek and other
+     * OpenAI-compatible providers. No OpenAI SDK dependency — uses JDK {@code HttpClient} directly.
+     */
+    public LlmClient deepSeek(String baseUrl, String apiKey, String providerName) {
+        return new DeepSeekLlmClient(baseUrl, apiKey, providerName, objectMapper, schemaNormalizer);
     }
 
     /**
@@ -129,7 +130,7 @@ public class LlmClientFactory {
      * Returns an {@link LlmClient} backed by a cached Gemini {@code Client}.
      *
      * @param baseUrl the base URL for the API
-     * @param apiKey  the API key for authentication
+     * @param apiKey the API key for authentication
      * @return the LlmClient adapter
      */
     public LlmClient gemini(String baseUrl, String apiKey) {

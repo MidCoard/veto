@@ -100,9 +100,7 @@ public class TrainingController {
                         trainingManager.getProgress()));
     }
 
-    /**
-     * Get current training progress.
-     */
+    /** Get current training progress. */
     @GetMapping("/progress")
     public ResponseEntity<Map<String, Object>> getProgress() {
         TrainingProgress p = trainingManager.getProgress();
@@ -160,9 +158,7 @@ public class TrainingController {
         }
     }
 
-    /**
-     * Get overall training system status (configuration info).
-     */
+    /** Get overall training system status (configuration info). */
     @GetMapping("/status")
     public ResponseEntity<Map<String, Object>> getStatus() {
         return ResponseEntity.ok(

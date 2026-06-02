@@ -3,6 +3,7 @@ package top.focess.veto.vault;
 import java.util.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 import top.focess.veto.model.ToolExecutionRequest;
 
@@ -10,32 +11,26 @@ import top.focess.veto.model.ToolExecutionRequest;
  * C8 Injection Service - injects credentials into C6 Sandbox temporarily during execution.
  * Credentials are injected only for the duration of the tool execution and are never exposed to C3
  * (Communication Bus).
+ *
+ * <p>Resolves credentials via {@link CredentialVault}, which delegates to the current user's
+ * per-user {@link SecureStore}.
  */
 @Component
 public class InjectionService {
 
     private static final Logger log = LoggerFactory.getLogger(InjectionService.class);
 
-    private final SecureStore secureStore;
+    private final CredentialVault vault;
 
     // Active injection sessions - cleared after use
     private final Map<String, Map<String, String>> activeInjections = new HashMap<>();
 
-    /**
-     * Constructs a new InjectionService with the specified secure store.
-     *
-     * @param secureStore the secure store to retrieve credentials from for injection
-     */
-    public InjectionService(SecureStore secureStore) {
-        this.secureStore = secureStore;
+    public InjectionService(@Lazy CredentialVault vault) {
+        this.vault = vault;
     }
 
     /**
-     * Inject credentials required by a tool execution request into the sandbox environment. The
-     * credentials are passed through a temporary, ephemeral context.
-     *
-     * @param request The tool execution request specifying required credentials
-     * @return A map of credential name -> resolved value for injection
+     * Inject credentials required by a tool execution request into the sandbox environment.
      */
     public synchronized Map<String, String> injectForExecution(ToolExecutionRequest request) {
         Set<String> requiredCreds = request.getRequiredCredentials();
@@ -47,7 +42,7 @@ public class InjectionService {
         List<String> missing = new ArrayList<>();
 
         for (String credKey : requiredCreds) {
-            Optional<String> value = secureStore.retrieve(credKey);
+            Optional<String> value = vault.retrieve(credKey);
             if (value.isPresent()) {
                 resolved.put(credKey, value.get());
             } else {
@@ -55,7 +50,6 @@ public class InjectionService {
             }
         }
 
-        // Track active injection session
         activeInjections.put(request.getId(), new HashMap<>(resolved));
 
         if (!missing.isEmpty()) {
@@ -73,50 +67,33 @@ public class InjectionService {
         return Collections.unmodifiableMap(resolved);
     }
 
-    /**
-     * Release injected credentials after execution completes. Ensures credentials are not retained
-     * in memory.
-     *
-     * @param requestId the unique ID of the request to release
-     */
+    /** Release injected credentials after execution completes. */
     public synchronized void releaseInjection(String requestId) {
         Map<String, String> injected = activeInjections.remove(requestId);
         if (injected != null) {
-            // Clear the values to prevent memory retention
             injected.clear();
             log.debug("C8 Injection: Released injection session '{}'", requestId);
         }
     }
 
-    /**
-     * Get active injections for a request (without values - just the keys).
-     *
-     * @param requestId the unique ID of the request
-     * @return a set of credential keys that are currently injected
-     */
+    /** Get active injections for a request (keys only, not values). */
     public synchronized Set<String> getActiveInjectionKeys(String requestId) {
         Map<String, String> injection = activeInjections.get(requestId);
         return injection != null ? injection.keySet() : Set.of();
     }
 
-    /**
-     * Returns the number of active injection sessions.
-     *
-     * @return the active injection count
-     */
     public synchronized int getActiveInjectionCount() {
         return activeInjections.size();
     }
 
-    /**
-     * Validate that a set of credential keys are available in the secure store.
-     *
-     * @param credentialKeys the set of keys to check
-     * @return true if all keys exist, false otherwise
-     */
+    /** Validate that a set of credential keys are available in the vault. */
     public synchronized boolean validateCredentialsAvailable(Set<String> credentialKeys) {
         for (String key : credentialKeys) {
-            if (!secureStore.exists(key)) {
+            try {
+                if (vault.retrieve(key).isEmpty()) {
+                    return false;
+                }
+            } catch (Exception e) {
                 return false;
             }
         }

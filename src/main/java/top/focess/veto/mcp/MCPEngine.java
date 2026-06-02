@@ -105,16 +105,12 @@ public class MCPEngine {
         return wasmSandbox.execute(server, request);
     }
 
-    /**
-     * Find a protocol matching the given capability name.
-     */
+    /** Find a protocol matching the given capability name. */
     public MCProtocol findProtocol(String capabilityName) {
         return activeProtocols.get(capabilityName);
     }
 
-    /**
-     * Sync active protocols from the registry.
-     */
+    /** Sync active protocols from the registry. */
     private void syncActiveProtocols() {
         activeProtocols.clear();
         for (MCProtocol protocol : registry.getAllProtocols()) {

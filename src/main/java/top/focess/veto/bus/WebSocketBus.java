@@ -76,25 +76,19 @@ public class WebSocketBus extends TextWebSocketHandler {
         return future;
     }
 
-    /**
-     * Register a DAG payload route.
-     */
+    /** Register a DAG payload route. */
     public void registerDAGRoute(String taskType, Consumer<DAGPayload> handler) {
         dagRouteTable.put(taskType, handler);
         log.debug("C3 Bus: Registered DAG route for taskType={}", taskType);
     }
 
-    /**
-     * Register a generic message route.
-     */
+    /** Register a generic message route. */
     public void registerMessageRoute(String messageType, Consumer<String> handler) {
         messageRouteTable.put(messageType, handler);
         log.debug("C3 Bus: Registered message route for type={}", messageType);
     }
 
-    /**
-     * Send a DAG payload to the cloud backend.
-     */
+    /** Send a DAG payload to the cloud backend. */
     public synchronized void sendDAGPayload(DAGPayload payload) {
         if (!isConnected()) {
             log.warn("C3 Bus: Cannot send DAG payload, not connected");
@@ -112,9 +106,7 @@ public class WebSocketBus extends TextWebSocketHandler {
         }
     }
 
-    /**
-     * Send a raw message.
-     */
+    /** Send a raw message. */
     public synchronized void sendMessage(String message) {
         if (!isConnected()) {
             log.warn("C3 Bus: Cannot send message, not connected");

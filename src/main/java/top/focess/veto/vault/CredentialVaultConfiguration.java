@@ -10,61 +10,51 @@ import org.springframework.context.annotation.Configuration;
 @ConfigurationProperties(prefix = "veto.vault")
 public class CredentialVaultConfiguration {
 
-    private String storePath = "./vault/credentials.enc";
-    private String masterKeyEnv = "VETO_VAULT_KEY";
-    private int keyDerivationIterations = 600000;
+    /**
+     * Base directory for all vault files.
+     */
+    private String vaultHome = expandTilde("~/.veto");
 
     /**
-     * Returns the path to the credential store file.
-     *
-     * @return the store path
+     * Number of iterations for key derivation (Argon2id).
      */
-    public String getStorePath() {
-        return storePath;
+    private int keyDerivationIterations = 3;
+
+    /**
+     * Returns the base directory for all vault files.
+     */
+    public String getVaultHome() {
+        return vaultHome;
     }
 
     /**
-     * Sets the path to the credential store file.
-     *
-     * @param storePath the store path to set
+     * Sets the base directory for all vault files.
      */
-    public void setStorePath(String storePath) {
-        this.storePath = storePath;
+    public void setVaultHome(String vaultHome) {
+        this.vaultHome = expandTilde(vaultHome);
     }
 
-    /**
-     * Returns the environment variable name for the master key.
-     *
-     * @return the master key environment variable name
-     */
-    public String getMasterKeyEnv() {
-        return masterKeyEnv;
-    }
-
-    /**
-     * Sets the environment variable name for the master key.
-     *
-     * @param masterKeyEnv the master key environment variable name to set
-     */
-    public void setMasterKeyEnv(String masterKeyEnv) {
-        this.masterKeyEnv = masterKeyEnv;
-    }
-
-    /**
-     * Returns the number of iterations for key derivation (PBKDF2).
-     *
-     * @return the number of iterations
-     */
+    /** Returns the number of iterations for key derivation (Argon2id). */
     public int getKeyDerivationIterations() {
         return keyDerivationIterations;
     }
 
-    /**
-     * Sets the number of iterations for key derivation (PBKDF2).
-     *
-     * @param keyDerivationIterations the number of iterations to set
-     */
+    /** Sets the number of iterations for key derivation (Argon2id). */
     public void setKeyDerivationIterations(int keyDerivationIterations) {
         this.keyDerivationIterations = keyDerivationIterations;
+    }
+
+    /**
+     * Derives the path to the encrypted credentials store.
+     */
+    public String getStorePath() {
+        return vaultHome + "/vault/credentials.enc";
+    }
+
+    private static String expandTilde(String path) {
+        if (path.startsWith("~/")) {
+            return System.getProperty("user.home") + path.substring(1);
+        }
+        return path;
     }
 }

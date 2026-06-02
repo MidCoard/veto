@@ -31,9 +31,7 @@ public class TrainingProgress {
     private volatile Instant completedAt = null;
     private volatile String errorMessage = "";
 
-    /**
-     * Optional evaluation report attached after evaluation.
-     */
+    /** Optional evaluation report attached after evaluation. */
     private volatile EvaluationReport evaluation = null;
 
     public TrainingProgress() {}
@@ -147,8 +145,7 @@ public class TrainingProgress {
         public record GbnfCompliance(int validJsonCount, double validJsonRate) {
         }
 
-        public record DecisionAccuracy(int correct, int total, double accuracy) {
-        }
+        public record DecisionAccuracy(int correct, int total, double accuracy) {}
 
         public record RedactionAccuracy(
                 int truePositives,
@@ -156,8 +153,7 @@ public class TrainingProgress {
                 int falseNegatives,
                 double precision,
                 double recall,
-                double f1) {
-        }
+                double f1) {}
 
         public record StructuralValidation(int correct, int total, double accuracy) {}
     }

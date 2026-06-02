@@ -83,9 +83,7 @@ public class VetoController {
                         "timestamp", Instant.now().toString()));
     }
 
-    /**
-     * POST /api/veto/check - Simple check: test if a string contains sensitive data.
-     */
+    /** POST /api/veto/check - Simple check: test if a string contains sensitive data. */
     @PostMapping(
             value = "/check",
             consumes = MediaType.APPLICATION_JSON_VALUE,

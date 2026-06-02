@@ -3,7 +3,10 @@ package top.focess.veto.vault;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.nio.file.Path;
+import java.security.SecureRandom;
 import java.util.Optional;
+import javax.crypto.KeyGenerator;
+import javax.crypto.SecretKey;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -12,22 +15,27 @@ class SecureStoreTest {
 
     private SecureStore secureStore;
     private CredentialVaultConfiguration config;
+    private SecretKey vaultKey;
 
     @TempDir
     Path tempDir;
 
     @BeforeEach
-    void setUp() {
-        System.setProperty("VETO_VAULT_KEY", "test-master-key-for-veto-vault-unit-tests");
+    void setUp() throws Exception {
         config = new CredentialVaultConfiguration();
-        config.setStorePath(tempDir.resolve("test-creds.enc").toString());
-        config.setKeyDerivationIterations(1);
-        secureStore = new SecureStore(config);
+        config.setVaultHome(tempDir.resolve(".veto").toString());
+        secureStore = new SecureStore(config, "test-user");
+        secureStore.initialize();
+
+        // Generate a test Vault Key and unlock
+        KeyGenerator kg = KeyGenerator.getInstance("AES");
+        kg.init(256, SecureRandom.getInstanceStrong());
+        vaultKey = kg.generateKey();
+        secureStore.unlock(vaultKey);
     }
 
     @Test
     void testStoreAndRetrieve() {
-        secureStore.initialize();
         secureStore.store("api-key-openai", "sk-test123");
         secureStore.store("ssh-profile", "user@host:22");
 
@@ -42,14 +50,12 @@ class SecureStoreTest {
 
     @Test
     void testRetrieveNonexistent() {
-        secureStore.initialize();
         Optional<String> result = secureStore.retrieve("nonexistent-key");
         assertFalse(result.isPresent());
     }
 
     @Test
     void testListKeys() {
-        secureStore.initialize();
         secureStore.store("key1", "val1");
         secureStore.store("key2", "val2");
 
@@ -61,7 +67,6 @@ class SecureStoreTest {
 
     @Test
     void testDelete() {
-        secureStore.initialize();
         secureStore.store("temp-key", "temp-value");
         assertTrue(secureStore.exists("temp-key"));
 
@@ -71,14 +76,26 @@ class SecureStoreTest {
 
     @Test
     void testPersistenceAcrossInstances() {
-        secureStore.initialize();
         secureStore.store("persistent-key", "persistent-value");
 
-        SecureStore store2 = new SecureStore(config);
+        // Create a second store with the same config and unlock with the same key
+        SecureStore store2 = new SecureStore(config, "test-user");
         store2.initialize();
+        store2.unlock(vaultKey);
 
         Optional<String> retrieved = store2.retrieve("persistent-key");
         assertTrue(retrieved.isPresent());
         assertEquals("persistent-value", retrieved.get());
+    }
+
+    @Test
+    void testLockWipesCredentials() {
+        secureStore.store("key", "value");
+        assertTrue(secureStore.retrieve("key").isPresent());
+
+        secureStore.lock();
+
+        // After lock, operations should throw
+        assertThrows(SecureStore.VaultLockedException.class, () -> secureStore.retrieve("key"));
     }
 }

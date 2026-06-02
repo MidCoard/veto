@@ -102,9 +102,7 @@ public class DiffCalculator {
         return s.substring(0, 120) + "...";
     }
 
-    /**
-     * Result of a diff computation.
-     */
+    /** Result of a diff computation. */
     public record DiffResult(
             int totalChanges,
             int charsChanged,
@@ -116,9 +114,7 @@ public class DiffCalculator {
         }
     }
 
-    /**
-     * A single line-level diff entry.
-     */
+    /** A single line-level diff entry. */
     public record DiffLine(int lineNumber, String original, String redacted) {
         public boolean isModified() {
             return !original.equals(redacted);

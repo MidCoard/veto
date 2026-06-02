@@ -27,9 +27,9 @@ public class FileLockManager {
     /**
      * Acquire a file lock with a timeout.
      *
-     * @param path    The file path to lock
+     * @param path The file path to lock
      * @param timeout Maximum time to wait for the lock
-     * @param unit    Time unit for timeout
+     * @param unit Time unit for timeout
      * @return true if lock was acquired, false if timed out
      * @throws IOException if lock acquisition fails
      */
@@ -94,17 +94,13 @@ public class FileLockManager {
         }
     }
 
-    /**
-     * Check if a path is currently locked.
-     */
+    /** Check if a path is currently locked. */
     public boolean isLocked(Path path) {
         FileLockHandle handle = activeLocks.get(path);
         return handle != null && handle.lock.isValid();
     }
 
-    /**
-     * Release all locks (called during shutdown).
-     */
+    /** Release all locks (called during shutdown). */
     public void releaseAll() {
         for (Path p : activeLocks.keySet()) {
             releaseLock(p);

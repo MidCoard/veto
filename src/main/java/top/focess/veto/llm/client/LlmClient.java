@@ -28,7 +28,7 @@ public abstract class LlmClient {
      * Raw provider output plus a secret-free, audit-safe summary of the request that produced it.
      *
      * @param requestSummary a non-sensitive summary of the request
-     * @param rawResponse    the raw response string from the provider
+     * @param rawResponse the raw response string from the provider
      */
     public record RawCompletion(String requestSummary, String rawResponse) {
     }

@@ -270,9 +270,7 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
         }
     }
 
-    /**
-     * Send a DAGPayload result to all connected clients.
-     */
+    /** Send a DAGPayload result to all connected clients. */
     public void streamDAGResult(DAGPayload payload) {
         try {
             String json =
@@ -290,9 +288,7 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
         }
     }
 
-    /**
-     * Stream a veto result to all connected clients.
-     */
+    /** Stream a veto result to all connected clients. */
     public void streamVetoResult(VetoGateway.VetoResult result, String dagPayloadId) {
         try {
             String json =

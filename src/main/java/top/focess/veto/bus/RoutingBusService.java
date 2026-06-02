@@ -76,16 +76,12 @@ public class RoutingBusService {
         return future;
     }
 
-    /**
-     * Connect to the cloud backend.
-     */
+    /** Connect to the cloud backend. */
     public CompletableFuture<Boolean> connect(String backendUrl) {
         return webSocketBus.connect(backendUrl);
     }
 
-    /**
-     * Disconnect from the cloud backend.
-     */
+    /** Disconnect from the cloud backend. */
     public void disconnect() {
         webSocketBus.disconnect();
     }

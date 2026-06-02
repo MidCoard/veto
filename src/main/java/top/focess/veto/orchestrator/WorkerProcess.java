@@ -87,18 +87,14 @@ public class WorkerProcess {
                 executor);
     }
 
-    /**
-     * Check if this worker has been idle too long.
-     */
+    /** Check if this worker has been idle too long. */
     public boolean isIdleTimedOut() {
         if (busy.get()) return false;
         long idleMs = Instant.now().toEpochMilli() - lastActivity.get().toEpochMilli();
         return idleMs > config.getWorkerIdleTimeoutMs();
     }
 
-    /**
-     * Forcefully kill this worker's current task.
-     */
+    /** Forcefully kill this worker's current task. */
     public void kill() {
         log.warn("C5 Worker[{}]: Kill signal received", id);
         executor.shutdownNow();

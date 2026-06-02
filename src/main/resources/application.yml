@@ -2,6 +2,20 @@
 server:
   port: 8443
 
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/veto
+    username: veto
+    password: ""
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
 veto:
   bus:
     websocket:
@@ -43,9 +57,7 @@ veto:
     temp-dir: ${VETO_TEMP_DIR:./work/sandbox}
 
   vault:
-    store-path: ${VETO_VAULT_PATH:./vault/credentials.enc}
-    master-key-env: VETO_VAULT_KEY
-    key-derivation-iterations: 600000
+    vault-home: ${VETO_VAULT_HOME:~/.veto}
 
   observability:
     audit-log-path: ./audit/

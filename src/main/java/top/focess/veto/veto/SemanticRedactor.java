@@ -184,9 +184,7 @@ public class SemanticRedactor {
         log.info("C7 Redactor: Added proprietary pattern '{}'", regex);
     }
 
-    /**
-     * Redaction report containing original, redacted, and all entries.
-     */
+    /** Redaction report containing original, redacted, and all entries. */
     public record RedactionReport(
             String originalPayload, String redactedPayload, List<RedactionEntry> entries) {
         public int getTotalRedactions() {
@@ -201,8 +199,7 @@ public class SemanticRedactor {
     public record RedactionEntry(RedactionType type, String originalExcerpt, String replacement) {
     }
 
-    public record RedactionRule(Pattern pattern, String replacement, RedactionType type) {
-    }
+    public record RedactionRule(Pattern pattern, String replacement, RedactionType type) {}
 
     public enum RedactionType {
         IP_ADDRESS,

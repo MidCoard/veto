@@ -35,6 +35,7 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-websocket")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("org.springframework.boot:spring-boot-starter-validation")
+    implementation("org.springframework.boot:spring-boot-starter-data-jpa")
 
     // gRPC
     implementation("io.grpc:grpc-netty-shaded:1.62.2")
@@ -56,9 +57,14 @@ dependencies {
     implementation("org.java-websocket:Java-WebSocket:1.5.6")
 
     // Official LLM SDKs
-    implementation("com.openai:openai-java:4.37.0")
+    implementation("com.openai:openai-java:4.38.0")
     implementation("com.anthropic:anthropic-java:2.35.0")
-    implementation("com.google.genai:google-genai:1.53.0")
+    implementation("com.google.genai:google-genai:1.56.0")
+
+    // Database
+    implementation("io.projectreactor:reactor-core")
+    runtimeOnly("org.postgresql:postgresql")
+    testRuntimeOnly("com.h2database:h2")
 
     // Testing
     testImplementation("org.springframework.boot:spring-boot-starter-test")

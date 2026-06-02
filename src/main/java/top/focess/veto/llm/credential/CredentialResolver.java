@@ -4,6 +4,7 @@ import org.springframework.stereotype.Service;
 import top.focess.veto.llm.core.ProviderType;
 import top.focess.veto.llm.exceptions.LlmAuthException;
 import top.focess.veto.vault.CredentialVault;
+import top.focess.veto.vault.SecureStore;
 
 /**
  * Resolves the API key for a request from the C8 {@link CredentialVault}, keyed by {@code
@@ -35,11 +36,15 @@ public class CredentialResolver {
         if (credentialKey == null || credentialKey.isBlank()) {
             throw new LlmAuthException("Credential key is missing for provider " + providerType);
         }
-        return vault.retrieve(credentialKey)
-                .orElseThrow(
-                        () ->
-                                new LlmAuthException(
-                                        "No credential registered in Vault under key: "
-                                                + credentialKey));
+        try {
+            return vault.retrieve(credentialKey)
+                    .orElseThrow(
+                            () ->
+                                    new LlmAuthException(
+                                            "No credential registered in Vault under key: "
+                                                    + credentialKey));
+        } catch (SecureStore.VaultLockedException e) {
+            throw new LlmAuthException("Vault is locked — authenticate before making LLM calls", e);
+        }
     }
 }

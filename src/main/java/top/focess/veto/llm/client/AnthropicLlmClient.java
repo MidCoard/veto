@@ -9,9 +9,7 @@ import com.anthropic.models.messages.Model;
 import com.anthropic.models.messages.Tool;
 import com.anthropic.models.messages.ToolChoice;
 import com.anthropic.models.messages.ToolChoiceTool;
-
 import java.util.Map;
-
 import top.focess.veto.llm.core.ResolvedRequest;
 import top.focess.veto.llm.core.VetoRequest;
 import top.focess.veto.llm.exceptions.ModelCapabilityException;

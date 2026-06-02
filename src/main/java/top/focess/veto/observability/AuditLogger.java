@@ -85,9 +85,7 @@ public class AuditLogger {
                         .substring(0, Math.min(8, record.getCurrentHash().length())));
     }
 
-    /**
-     * Log a tool execution event.
-     */
+    /** Log a tool execution event. */
     public void logToolExecution(
             String dagPayloadId,
             String requestId,
@@ -130,9 +128,7 @@ public class AuditLogger {
         totalRecordsWritten.incrementAndGet();
     }
 
-    /**
-     * Log a credential injection event (without the actual credential values).
-     */
+    /** Log a credential injection event (without the actual credential values). */
     public void logCredentialInjection(String dagPayloadId, String requestId, String credKeys) {
         AuditRecord record =
                 new AuditRecord(
@@ -150,9 +146,7 @@ public class AuditLogger {
         totalRecordsWritten.incrementAndGet();
     }
 
-    /**
-     * Log a system error event.
-     */
+    /** Log a system error event. */
     public void logError(
             String dagPayloadId, String requestId, String componentSource, String errorMessage) {
         AuditRecord record =
@@ -171,9 +165,7 @@ public class AuditLogger {
         totalRecordsWritten.incrementAndGet();
     }
 
-    /**
-     * Verify the integrity of the entire audit chain.
-     */
+    /** Verify the integrity of the entire audit chain. */
     public TamperProofStore.ChainVerificationResult verifyAuditChain() {
         return tamperProofStore.verifyChain();
     }

@@ -55,7 +55,7 @@ public class VetoGatewayConfiguration {
     }
 
     public static class LlamaCppConfig {
-        private String modelPath = "${VETO_LLAMA_MODEL_PATH:./models/veto-slm.gguf}";
+        private String modelPath = "./models/veto-slm.gguf";
         private int nCtx = 2048;
         private int nGpuLayers = 0;
         private double temperature = 0.1;

@@ -49,6 +49,7 @@ Desktop.ini
 *.pem
 *.key
 credentials.enc
+application-local.yml
 
 ## Build & Model Artifacts
 *.gguf

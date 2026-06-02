@@ -76,9 +76,7 @@ public class ReconnectionHandler {
                 TimeUnit.MILLISECONDS);
     }
 
-    /**
-     * Reset the reconnection state (call after successful initial connect).
-     */
+    /** Reset the reconnection state (call after successful initial connect). */
     public void reset() {
         reconnectAttempts.set(0);
         reconnecting = false;

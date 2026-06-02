@@ -180,9 +180,7 @@ public class LlamaCppBridge {
         log.warn("C7 LlamaCpp: Kill current inference requested");
     }
 
-    /**
-     * Gracefully stop the llama.cpp subprocess.
-     */
+    /** Gracefully stop the llama.cpp subprocess. */
     public synchronized void stop() {
         available = false;
         if (llamaProcess != null && llamaProcess.isAlive()) {

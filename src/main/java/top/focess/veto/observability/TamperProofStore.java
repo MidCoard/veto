@@ -105,9 +105,7 @@ public class TamperProofStore {
         }
     }
 
-    /**
-     * Verify the integrity of the entire audit chain from a given start.
-     */
+    /** Verify the integrity of the entire audit chain from a given start. */
     public ChainVerificationResult verifyChain() {
         List<String> violations = new ArrayList<>();
         int recordsChecked = 0;
@@ -160,9 +158,7 @@ public class TamperProofStore {
         return new ChainVerificationResult(recordsChecked, intact, summary);
     }
 
-    /**
-     * Export audit records for a date range. Requires the store encryption key.
-     */
+    /** Export audit records for a date range. Requires the store encryption key. */
     public List<String> exportRecords(LocalDate from, LocalDate to) {
         List<String> records = new ArrayList<>();
         try {
@@ -311,9 +307,7 @@ public class TamperProofStore {
         return chainTailHash;
     }
 
-    /**
-     * Result of an audit chain verification.
-     */
+    /** Result of an audit chain verification. */
     public record ChainVerificationResult(
             int recordsChecked, boolean chainIntact, String summary) {}
 }

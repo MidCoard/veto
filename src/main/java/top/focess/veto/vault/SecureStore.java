@@ -4,20 +4,24 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.security.*;
-import java.security.spec.KeySpec;
 import java.util.*;
 import javax.crypto.*;
 import javax.crypto.spec.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Component;
 
 /**
- * C8 Secure Store - encrypted on-disk storage for credentials. Uses AES-256-GCM with a key derived
- * from a master password via PBKDF2. The store file is a map of credential names to encrypted
- * blobs.
+ * C8 Secure Store — encrypted on-disk storage for a single user's credentials. Uses AES-256-GCM.
+ * The encryption key (Vault Key) is provided externally via {@link #unlock(SecretKey)} after the
+ * user authenticates.
+ *
+ * <p>Each user has their own credential file at {@code
+ * {vaultHome}/vault/credentials/{username}.enc}, encrypted with a per-user Vault Key. No user can
+ * read another user's credentials.
+ *
+ * <p>The vault starts LOCKED. No credentials can be stored or retrieved until the owning user logs
+ * in.
  */
-@Component
 public class SecureStore {
 
     private static final Logger log = LoggerFactory.getLogger(SecureStore.class);
@@ -25,87 +29,78 @@ public class SecureStore {
     private static final String ALGORITHM = "AES/GCM/NoPadding";
     private static final int GCM_TAG_LENGTH = 128;
     private static final int GCM_IV_LENGTH = 12;
-    private static final int AES_KEY_SIZE = 256;
-    private static final int SALT_LENGTH = 32;
-    private static final String KEY_DERIVATION_ALGO = "PBKDF2WithHmacSHA256";
     private static final String STORE_HEADER = "VETO_CREDENTIAL_STORE_V1";
 
-    private final CredentialVaultConfiguration config;
     private final Path storePath;
+    private final String username;
     private volatile boolean initialized = false;
-    private SecretKey storeKey;
+    private volatile SecretKey storeKey;
 
     // In-memory credential cache (encrypted blobs)
     private final Map<String, String> credentialCache = new LinkedHashMap<>();
 
-    /**
-     * Constructs a new SecureStore with the specified configuration.
-     *
-     * @param config the configuration for the secure store
-     */
-    public SecureStore(CredentialVaultConfiguration config) {
-        this.config = config;
-        this.storePath = Path.of(config.getStorePath());
+    public SecureStore(CredentialVaultConfiguration config, String username) {
+        this.username = username;
+        this.storePath = Path.of(config.getVaultHome(), "vault", "credentials", username + ".enc");
     }
 
     /**
-     * Initialize the secure store. Creates the store file if it doesn't exist. Derives the
-     * encryption key from the master environment variable.
+     * Returns the username this store belongs to.
      */
+    public String getUsername() {
+        return username;
+    }
+
+    // ── Lifecycle ───────────────────────────────────────────────────────────
+
+    /** Initializes the store — creates directories, reads the header. Vault remains LOCKED. */
     public synchronized void initialize() {
-        if (initialized) return;
-
-        String masterKey = System.getenv(config.getMasterKeyEnv());
-        if (masterKey == null || masterKey.isBlank()) {
-            // Also check system property (useful for testing)
-            masterKey = System.getProperty(config.getMasterKeyEnv());
+        if (initialized) {
+            return;
         }
-        if (masterKey == null || masterKey.isBlank()) {
-            log.warn(
-                    "C8 Vault: Master key not found in env '{}'. "
-                            + "Vault will use a generated ephemeral key (lost on restart). "
-                            + "Set {} environment variable for persistence.",
-                    config.getMasterKeyEnv(),
-                    config.getMasterKeyEnv());
-            // Fallback: generate ephemeral key for development
-            try {
-                KeyGenerator kg = KeyGenerator.getInstance("AES");
-                kg.init(AES_KEY_SIZE);
-                storeKey = kg.generateKey();
-            } catch (NoSuchAlgorithmException e) {
-                throw new RuntimeException("AES not available", e);
-            }
-        } else {
-            try {
-                storeKey = deriveKey(masterKey);
-            } catch (Exception e) {
-                throw new RuntimeException("Failed to derive vault key", e);
-            }
-        }
-
-        // Create parent directories
         try {
             Files.createDirectories(storePath.getParent());
         } catch (IOException e) {
             log.warn("C8 Vault: Cannot create store directory", e);
         }
-
-        // Load existing store
-        loadStore();
-
         initialized = true;
-        log.info(
-                "C8 Vault: Secure store initialized at '{}' ({} credentials loaded)",
-                storePath,
-                credentialCache.size());
+        log.info("C8 Vault: Secure store at '{}' (LOCKED — waiting for login)", storePath);
     }
 
     /**
-     * Store a credential securely (encrypted at rest).
+     * Unlocks the vault with the given Vault Key. Loads and decrypts all credentials into the
+     * in-memory cache.
      */
-    public synchronized void store(String key, String value) {
-        if (!initialized) initialize();
+    public synchronized void unlock(SecretKey vaultKey) {
+        if (!initialized) {
+            initialize();
+        }
+        this.storeKey = vaultKey;
+        loadStore();
+        log.info("C8 Vault: Unlocked — {} credentials loaded", credentialCache.size());
+    }
 
+    /**
+     * Locks the vault, wiping the encryption key and decrypted credentials from memory.
+     */
+    public synchronized void lock() {
+        this.storeKey = null;
+        this.credentialCache.clear();
+        log.info("C8 Vault: Locked — credentials cleared from memory");
+    }
+
+    /**
+     * Returns true if the vault is unlocked and ready for operations.
+     */
+    public boolean isUnlocked() {
+        return storeKey != null;
+    }
+
+    // ── Credential operations ───────────────────────────────────────────────
+
+    /** Store a credential securely (encrypted at rest). */
+    public synchronized void store(String key, String value) {
+        requireUnlocked();
         try {
             String encrypted = encrypt(value);
             credentialCache.put(key, encrypted);
@@ -118,17 +113,14 @@ public class SecureStore {
 
     /** Retrieve a decrypted credential. */
     public synchronized Optional<String> retrieve(String key) {
-        if (!initialized) initialize();
-
+        requireUnlocked();
         String encrypted = credentialCache.get(key);
         if (encrypted == null) {
             log.debug("C8 Vault: Credential '{}' not found", key);
             return Optional.empty();
         }
-
         try {
-            String decrypted = decrypt(encrypted);
-            return Optional.of(decrypted);
+            return Optional.of(decrypt(encrypted));
         } catch (Exception e) {
             log.error("C8 Vault: Failed to decrypt credential '{}'", key, e);
             return Optional.empty();
@@ -137,35 +129,32 @@ public class SecureStore {
 
     /** Delete a stored credential. */
     public synchronized void delete(String key) {
-        if (!initialized) initialize();
-
+        requireUnlocked();
         credentialCache.remove(key);
         saveStore();
         log.debug("C8 Vault: Deleted credential '{}'", key);
     }
 
-    /**
-     * List all stored credential keys (not the values).
-     *
-     * @return a set of all credential keys
-     */
+    /** List all stored credential keys (not the values). */
     public Set<String> listKeys() {
-        if (!initialized) initialize();
+        requireUnlocked();
         return Collections.unmodifiableSet(credentialCache.keySet());
     }
 
-    /**
-     * Check if a credential exists in the secure store.
-     *
-     * @param key the key to check
-     * @return true if it exists, false otherwise
-     */
+    /** Check if a credential exists in the secure store. */
     public boolean exists(String key) {
-        if (!initialized) initialize();
+        requireUnlocked();
         return credentialCache.containsKey(key);
     }
 
-    // ---- Encryption / Decryption ----
+    /**
+     * Returns whether the secure store has been initialized.
+     */
+    public boolean isInitialized() {
+        return initialized;
+    }
+
+    // ── Encryption / Decryption ─────────────────────────────────────────────
 
     private String encrypt(String plaintext) throws Exception {
         byte[] iv = new byte[GCM_IV_LENGTH];
@@ -176,7 +165,6 @@ public class SecureStore {
         cipher.init(Cipher.ENCRYPT_MODE, storeKey, spec);
         byte[] ciphertext = cipher.doFinal(plaintext.getBytes(StandardCharsets.UTF_8));
 
-        // Prepend IV to ciphertext
         byte[] combined = new byte[iv.length + ciphertext.length];
         System.arraycopy(iv, 0, combined, 0, iv.length);
         System.arraycopy(ciphertext, 0, combined, iv.length, ciphertext.length);
@@ -189,7 +177,6 @@ public class SecureStore {
         if (combined.length < GCM_IV_LENGTH) {
             throw new IllegalArgumentException("Invalid encrypted blob");
         }
-
         byte[] iv = new byte[GCM_IV_LENGTH];
         byte[] ciphertext = new byte[combined.length - GCM_IV_LENGTH];
         System.arraycopy(combined, 0, iv, 0, GCM_IV_LENGTH);
@@ -203,44 +190,24 @@ public class SecureStore {
         return new String(plaintext, StandardCharsets.UTF_8);
     }
 
-    private SecretKey deriveKey(String masterPassword) throws Exception {
-        byte[] salt = loadSalt();
-        if (salt == null) {
-            salt = new byte[SALT_LENGTH];
-            SecureRandom.getInstanceStrong().nextBytes(salt);
-            saveSalt(salt);
-        }
-
-        KeySpec spec =
-                new PBEKeySpec(
-                        masterPassword.toCharArray(), salt,
-                        config.getKeyDerivationIterations(), AES_KEY_SIZE);
-        SecretKeyFactory factory = SecretKeyFactory.getInstance(KEY_DERIVATION_ALGO);
-        return new SecretKeySpec(factory.generateSecret(spec).getEncoded(), "AES");
-    }
-
-    // ---- Persistence ----
+    // ── Persistence ─────────────────────────────────────────────────────────
 
     private void loadStore() {
         if (!Files.exists(storePath)) {
-            log.info("C8 Vault: No existing store file at '{}', creating new", storePath);
+            log.info("C8 Vault: No existing store file at '{}', starting fresh", storePath);
             return;
         }
-
         try (BufferedReader reader = Files.newBufferedReader(storePath)) {
             String header = reader.readLine();
             if (!STORE_HEADER.equals(header)) {
                 log.warn("C8 Vault: Invalid store header");
                 return;
             }
-
             String line;
             while ((line = reader.readLine()) != null) {
                 int sep = line.indexOf(':');
                 if (sep > 0) {
-                    String key = line.substring(0, sep);
-                    String value = line.substring(sep + 1);
-                    credentialCache.put(key, value);
+                    credentialCache.put(line.substring(0, sep), line.substring(sep + 1));
                 }
             }
         } catch (IOException e) {
@@ -262,35 +229,21 @@ public class SecureStore {
         }
     }
 
-    // ---- Salt management ----
-
-    private byte[] loadSalt() {
-        Path saltPath = storePath.resolveSibling(storePath.getFileName() + ".salt");
-        try {
-            if (Files.exists(saltPath)) {
-                return Files.readAllBytes(saltPath);
-            }
-        } catch (IOException e) {
-            log.warn("C8 Vault: Cannot load salt", e);
+    private void requireUnlocked() {
+        if (!initialized) {
+            initialize();
         }
-        return null;
-    }
-
-    private void saveSalt(byte[] salt) {
-        Path saltPath = storePath.resolveSibling(storePath.getFileName() + ".salt");
-        try {
-            Files.write(saltPath, salt);
-        } catch (IOException e) {
-            log.warn("C8 Vault: Cannot save salt", e);
+        if (storeKey == null) {
+            throw new VaultLockedException("Vault is locked — authenticate first");
         }
     }
 
     /**
-     * Returns whether the secure store has been initialized.
-     *
-     * @return true if initialized, false otherwise
+     * Thrown when an operation is attempted on a locked vault.
      */
-    public boolean isInitialized() {
-        return initialized;
+    public static class VaultLockedException extends RuntimeException {
+        public VaultLockedException(String message) {
+            super(message);
+        }
     }
 }
