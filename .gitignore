@@ -59,3 +59,4 @@ application-local.yml
 veto-grammar-*.gbnf
 
 plans/
+gradle.properties
