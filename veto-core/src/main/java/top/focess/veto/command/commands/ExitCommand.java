@@ -1,37 +1,33 @@
 package top.focess.veto.command.commands;
 
-import java.util.List;
-import java.util.Map;
-
-import top.focess.veto.command.ArgDef;
-import top.focess.veto.command.CommandHandler;
+import top.focess.command.Command;
+import top.focess.command.CommandResult;
+import top.focess.veto.command.TerminalIO;
 import top.focess.veto.contract.ResponseType;
 import top.focess.veto.contract.TerminalResponse;
 
-public class ExitCommand implements CommandHandler {
+public class ExitCommand extends Command {
 
-    @Override
-    public String name() {
-        return "exit";
+    public ExitCommand() {
+        super("exit", "quit");
+        addExecutor(
+                (sender, args, io) -> {
+                    ((TerminalIO) io)
+                            .respond(
+                                    new TerminalResponse(
+                                            ResponseType.MESSAGE,
+                                            "Goodbye.",
+                                            java.util.Map.of("exit", true)));
+                    return CommandResult.ALLOW;
+                });
     }
 
     @Override
-    public String description() {
-        return "Quit the terminal";
+    public void init() {
     }
 
     @Override
-    public String usage() {
-        return "exit";
-    }
-
-    @Override
-    public List<ArgDef> arguments() {
-        return List.of();
-    }
-
-    @Override
-    public TerminalResponse execute(Map<String, Object> args, String sessionToken) {
-        return new TerminalResponse(ResponseType.MESSAGE, "Goodbye.", Map.of("exit", true));
+    public java.util.List<String> usage(top.focess.command.CommandSender s) {
+        return java.util.List.of("/exit");
     }
 }

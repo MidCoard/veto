@@ -1,47 +1,73 @@
 package top.focess.veto.terminal;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-
 import java.io.*;
 import java.nio.file.*;
 import java.util.UUID;
-
 import top.focess.veto.contract.TerminalRequest;
 import top.focess.veto.contract.TerminalResponse;
 
 /**
- * Encapsulates all file-based IPC with the Veto backend.
+ * File-based IPC with the Veto backend.
  *
- * <p>Writes {@link TerminalRequest} JSON files to {@code ~/.veto/terminal/in/} and polls {@code
- * ~/.veto/terminal/out/} for the matching {@link TerminalResponse}.
+ * <h3>Request/Response Lifecycle</h3>
+ *
+ * <pre>
+ * Terminal                              Backend
+ * ────────                              ───────
+ * send(req) →
+ *   writes in/{id}.json ────────────→ TerminalChannel picks up
+ *   polls out/{id}.json ←──────────── TerminalIO.respond() writes here
+ *   deletes response file
+ *   returns SendResult{response, id}
+ *
+ * if response.type == PROMPT:
+ *   sendFollowUp(id, reply) →
+ *     writes in/{id}-next.json ─────→ TerminalIO.readInput() polls this
+ *     polls out/{id}.json ←────────── TerminalIO.respond() writes again
+ *     deletes response file
+ *     returns next response
+ * </pre>
  */
 public class FileChannel {
 
-    private static final Path VAULT_HOME = Path.of(System.getProperty("user.home"), ".veto");
-    private static final Path IN_DIR = VAULT_HOME.resolve("terminal/in");
-    private static final Path OUT_DIR = VAULT_HOME.resolve("terminal/out");
+    private static final Path VAULT = Path.of(System.getProperty("user.home"), ".veto");
+    private static final Path IN = VAULT.resolve("terminal/in");
+    private static final Path OUT = VAULT.resolve("terminal/out");
 
-    private final ObjectMapper json;
+    private final ObjectMapper json = new ObjectMapper();
 
-    public FileChannel() {
-        this.json = new ObjectMapper();
+    public record SendResult(TerminalResponse response, String requestId) {
     }
 
     /**
-     * Send a request and block until a response arrives or timeout.
-     *
-     * @param request   the request to send
-     * @param timeoutMs maximum wait in milliseconds
-     * @return the response, or null on timeout / I/O error
+     * Send a new top-level request. Generates a random request ID, writes to {@code in/{id}.json},
+     * polls {@code out/{id}.json} for the response.
      */
-    public TerminalResponse send(TerminalRequest request, long timeoutMs) {
-        try {
-            Files.createDirectories(IN_DIR);
-            Files.createDirectories(OUT_DIR);
+    public SendResult send(TerminalRequest request, long timeoutMs) {
+        String id = UUID.randomUUID().toString();
+        TerminalResponse resp = sendTo(id + ".json", id + ".json", request, timeoutMs);
+        return new SendResult(resp, id);
+    }
 
-            String id = UUID.randomUUID().toString();
-            Path reqFile = IN_DIR.resolve(id + ".json");
-            Path respFile = OUT_DIR.resolve(id + ".json");
+    /**
+     * Follow-up to an existing request (after a PROMPT). Writes to {@code in/{requestId}-next.json}
+     * so the backend's IOHandler picks it up, then polls {@code out/{requestId}.json} for the next
+     * response.
+     */
+    public TerminalResponse sendFollowUp(
+            String requestId, TerminalRequest request, long timeoutMs) {
+        return sendTo(requestId + "-next.json", requestId + ".json", request, timeoutMs);
+    }
+
+    private TerminalResponse sendTo(
+            String inFile, String outFile, TerminalRequest request, long timeoutMs) {
+        try {
+            Files.createDirectories(IN);
+            Files.createDirectories(OUT);
+
+            Path reqFile = IN.resolve(inFile);
+            Path respFile = OUT.resolve(outFile);
 
             json.writeValue(reqFile.toFile(), request);
 
@@ -60,16 +86,12 @@ public class FileChannel {
             TerminalResponse resp = json.readValue(respFile.toFile(), TerminalResponse.class);
             Files.delete(respFile);
             return resp;
-
         } catch (Exception e) {
             return null;
         }
     }
 
-    /**
-     * Expose the vault home for diagnostics.
-     */
     public Path vaultHome() {
-        return VAULT_HOME;
+        return VAULT;
     }
 }

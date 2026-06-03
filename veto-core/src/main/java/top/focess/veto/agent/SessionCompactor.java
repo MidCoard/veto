@@ -3,7 +3,6 @@ package top.focess.veto.agent;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.llm.core.*;
@@ -25,14 +24,10 @@ public class SessionCompactor {
      */
     private static final int TOKEN_THRESHOLD = 8000;
 
-    /**
-     * Keep at least this many recent turns uncompacted.
-     */
+    /** Keep at least this many recent turns uncompacted. */
     private static final int KEEP_RECENT = 5;
 
-    /**
-     * Approximate tokens per character (conservative estimate).
-     */
+    /** Approximate tokens per character (conservative estimate). */
     private static final double CHARS_PER_TOKEN = 3.5;
 
     private final UniformLLMCaller caller;
@@ -43,9 +38,7 @@ public class SessionCompactor {
         this.memory = "";
     }
 
-    /**
-     * Estimates the token count from the agent's turns.
-     */
+    /** Estimates the token count from the agent's turns. */
     public int estimateTokens(Agent agent) {
         int chars = agent.systemPrompt().length();
         for (var t : agent.turns()) {
@@ -55,9 +48,7 @@ public class SessionCompactor {
         return (int) (chars / CHARS_PER_TOKEN);
     }
 
-    /**
-     * Returns true if compaction is needed.
-     */
+    /** Returns true if compaction is needed. */
     public boolean shouldCompact(Agent agent) {
         return agent.turns().size() > KEEP_RECENT && estimateTokens(agent) > TOKEN_THRESHOLD;
     }

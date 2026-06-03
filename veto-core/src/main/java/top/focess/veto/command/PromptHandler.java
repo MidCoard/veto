@@ -1,4 +1,4 @@
-package top.focess.veto.command.commands;
+package top.focess.veto.command;
 
 import java.time.Duration;
 import java.util.List;
@@ -12,71 +12,47 @@ import top.focess.veto.agent.Agent;
 import top.focess.veto.agent.AgentState;
 import top.focess.veto.agent.SessionCompactor;
 import top.focess.veto.agent.TurnRecord;
-import top.focess.veto.command.ArgDef;
-import top.focess.veto.command.CommandHandler;
 import top.focess.veto.contract.ResponseType;
 import top.focess.veto.contract.TerminalResponse;
-import top.focess.veto.llm.core.LlmOptions;
-import top.focess.veto.llm.core.ProviderType;
-import top.focess.veto.llm.core.UniformLLMCaller;
-import top.focess.veto.llm.core.VetoRequest;
-import top.focess.veto.llm.core.VetoResponse;
+import top.focess.veto.llm.core.*;
 import top.focess.veto.vault.CredentialVault;
 
-public class SendCommand implements CommandHandler {
+/**
+ * Handles plain-text prompts routed directly to the LLM agent. No command prefix needed — any text
+ * without a leading / is an implicit prompt.
+ */
+public class PromptHandler {
 
-    private static final Logger log = LoggerFactory.getLogger(SendCommand.class);
+    private static final Logger log = LoggerFactory.getLogger(PromptHandler.class);
 
     private final CredentialVault vault;
     private final UniformLLMCaller caller;
-    private final ConcurrentHashMap<String, Agent> sessions;
-    private final ConcurrentHashMap<String, SessionCompactor> compactors;
-    private final ConcurrentHashMap<String, String> activePatterns;
+    private final ConcurrentHashMap<String, Agent> sessions = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, SessionCompactor> compactors =
+            new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, String> activePatterns = new ConcurrentHashMap<>();
 
-    public SendCommand(
-            CredentialVault vault,
-            UniformLLMCaller caller,
-            ConcurrentHashMap<String, Agent> sessions,
-            ConcurrentHashMap<String, SessionCompactor> compactors,
-            ConcurrentHashMap<String, String> activePatterns) {
+    public PromptHandler(CredentialVault vault, UniformLLMCaller caller) {
         this.vault = vault;
         this.caller = caller;
-        this.sessions = sessions;
-        this.compactors = compactors;
-        this.activePatterns = activePatterns;
     }
 
-    @Override
-    public String name() {
-        return "send";
+    public Map<String, Agent> sessions() {
+        return sessions;
     }
 
-    @Override
-    public String description() {
-        return "Send a prompt to the agent";
+    public Map<String, String> activePatterns() {
+        return activePatterns;
     }
 
-    @Override
-    public String usage() {
-        return "send <message>";
-    }
-
-    @Override
-    public List<ArgDef> arguments() {
-        return List.of(new ArgDef("message", "string", true, "The prompt to send"));
-    }
-
-    @Override
-    public TerminalResponse execute(Map<String, Object> args, String sessionToken) {
+    public TerminalResponse handle(String prompt, String sessionToken) {
         String user = vault.getCurrentUser();
-        if (user == null)
-            return TerminalResponse.error("Not logged in. Use: login <username> <password>");
-
-        String message = (String) args.getOrDefault("prompt", "");
-        if (message.isBlank()) return TerminalResponse.error("Usage: send <message>");
+        if (user == null) {
+            return TerminalResponse.error("Not logged in. Use /login.");
+        }
+        if (prompt.isBlank()) return TerminalResponse.error("Empty prompt");
 
         String sid = UUID.randomUUID().toString();
-
         ProviderType provider = ProviderType.DEEPSEEK;
         String model = "deepseek-v4-pro";
         String credKey = "deepseek-key";
@@ -87,21 +63,19 @@ public class SendCommand implements CommandHandler {
                         sid,
                         k ->
                                 Agent.builder()
-                                        .name("terminal-agent-" + k.substring(0, 8))
+                                        .name("agent-" + k.substring(0, 8))
                                         .systemPrompt(sysPrompt)
                                         .sessionId(k)
                                         .build()
                                         .withState(AgentState.RUNNING));
-
         try {
             VetoResponse r =
                     caller.call(
                             new VetoRequest(
                                     agent.systemPrompt()
-                                            + "\n\nRespond in JSON:"
-                                            + " {\"thought\":\"...\", \"call\":null,"
-                                            + " \"is_finished\":true}",
-                                    message,
+                                            + "\n\nRespond in JSON: {\"thought\":\"...\","
+                                            + " \"call\":null, \"is_finished\":true}",
+                                    prompt,
                                     List.of(),
                                     provider,
                                     model,
@@ -116,20 +90,15 @@ public class SendCommand implements CommandHandler {
             SessionCompactor compactor =
                     compactors.computeIfAbsent(sid, k -> new SessionCompactor(caller));
             if (compactor.shouldCompact(agent)) {
-                log.info(
-                        "Compacting session {} ({} turns)",
-                        sid.substring(0, 8),
-                        agent.turns().size());
                 agent = compactor.compact(agent);
             }
             sessions.put(sid, agent);
-
             return new TerminalResponse(
                     ResponseType.MESSAGE,
                     r.thought(),
                     Map.of("sessionId", sid, "turnNumber", agent.turns().size()));
         } catch (Exception e) {
-            log.error("Send failed", e);
+            log.error("Prompt failed", e);
             return TerminalResponse.error("LLM call failed: " + e.getMessage());
         }
     }

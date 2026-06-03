@@ -60,3 +60,6 @@ veto-grammar-*.gbnf
 
 plans/
 gradle.properties
+
+## Claude Code
+.claude/

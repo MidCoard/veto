@@ -1,70 +1,81 @@
 package top.focess.veto.command.commands;
 
-import java.util.List;
-import java.util.Map;
 import javax.crypto.SecretKey;
 
-import top.focess.veto.command.ArgDef;
-import top.focess.veto.command.CommandHandler;
+import top.focess.command.*;
+import top.focess.veto.command.TerminalIO;
 import top.focess.veto.contract.ResponseType;
 import top.focess.veto.contract.TerminalResponse;
-import top.focess.veto.vault.CredentialVault;
-import top.focess.veto.vault.UserRegistry;
-import top.focess.veto.vault.VaultKeyManager;
+import top.focess.veto.vault.*;
 
-public class SignupCommand implements CommandHandler {
-
-    private final UserRegistry users;
-    private final VaultKeyManager keys;
-    private final CredentialVault vault;
+public class SignupCommand extends Command {
 
     public SignupCommand(UserRegistry users, VaultKeyManager keys, CredentialVault vault) {
-        this.users = users;
-        this.keys = keys;
-        this.vault = vault;
+        super("signup");
+        addExecutor(
+                (sender, args, io) -> {
+                    TerminalIO tio = (TerminalIO) io;
+                    if (users.anyUserExists()) {
+                        tio.error("Already set up. Use /login.");
+                        return CommandResult.REFUSE;
+                    }
+                    String u = args.get("user"), p = args.get("pass");
+
+                    if (u == null) {
+                        tio.respond(
+                                new TerminalResponse(
+                                        ResponseType.PROMPT,
+                                        "Choose a username:",
+                                        java.util.Map.of()));
+                        try {
+                            u = tio.input(60_000);
+                        } catch (InputTimeoutException e) {
+                            u = null;
+                        }
+                        if (u == null || u.isBlank()) {
+                            tio.error("Signup cancelled");
+                            return CommandResult.REFUSE;
+                        }
+                    }
+                    if (p == null) {
+                        tio.respond(
+                                new TerminalResponse(
+                                        ResponseType.PROMPT,
+                                        "Choose a password:",
+                                        java.util.Map.of("mask", true)));
+                        try {
+                            p = tio.input(60_000);
+                        } catch (InputTimeoutException e) {
+                            p = null;
+                        }
+                        if (p == null || p.isBlank()) {
+                            tio.error("Signup cancelled");
+                            return CommandResult.REFUSE;
+                        }
+                    }
+
+                    var entity = users.create(u, p, UserRegistry.Role.ADMIN);
+                    SecretKey mk = keys.deriveMasterKey(u, p, entity.getPasswordSalt());
+                    SecretKey vk = keys.generateVaultKey();
+                    keys.wrapVaultKey(vk, mk, u);
+                    vault.unlock(vk, u);
+                    tio.respond(
+                            new TerminalResponse(
+                                    ResponseType.MESSAGE,
+                                    "Welcome, " + u + "!",
+                                    java.util.Map.of("username", u)));
+                    return CommandResult.ALLOW;
+                },
+                CommandArgument.ofNullable(DataConverter.DEFAULT_DATA_CONVERTER).named("user"),
+                CommandArgument.ofNullable(DataConverter.DEFAULT_DATA_CONVERTER).named("pass"));
     }
 
     @Override
-    public String name() {
-        return "signup";
+    public void init() {
     }
 
     @Override
-    public String description() {
-        return "Create account (first-run only)";
-    }
-
-    @Override
-    public String usage() {
-        return "signup <username> <password>";
-    }
-
-    @Override
-    public List<ArgDef> arguments() {
-        return List.of(
-                new ArgDef("username", "string", true, "User name"),
-                new ArgDef("password", "string", true, "Password"));
-    }
-
-    @Override
-    public TerminalResponse execute(Map<String, Object> args, String sessionToken) {
-        String username = (String) args.get("arg1");
-        String password = (String) args.get("arg2");
-        if (username == null || password == null)
-            return TerminalResponse.error("Usage: signup <username> <password>");
-
-        if (users.anyUserExists())
-            return TerminalResponse.error("Vault already set up. Use login instead.");
-
-        var entity = users.create(username, password, UserRegistry.Role.ADMIN);
-        SecretKey mk = keys.deriveMasterKey(username, password, entity.getPasswordSalt());
-        SecretKey vk = keys.generateVaultKey();
-        keys.wrapVaultKey(vk, mk, username);
-        vault.unlock(vk, username);
-
-        return new TerminalResponse(
-                ResponseType.MESSAGE,
-                "Account created. Welcome, " + username + "!",
-                Map.of("username", username));
+    public java.util.List<String> usage(top.focess.command.CommandSender s) {
+        return java.util.List.of("/signup [user] [pass]");
     }
 }

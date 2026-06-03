@@ -1,56 +1,55 @@
 package top.focess.veto.command.commands;
 
-import java.util.List;
 import java.util.Map;
 
-import top.focess.veto.command.ArgDef;
-import top.focess.veto.command.CommandHandler;
+import top.focess.command.Command;
+import top.focess.command.CommandResult;
+import top.focess.veto.command.PromptHandler;
+import top.focess.veto.command.TerminalIO;
 import top.focess.veto.contract.ResponseType;
 import top.focess.veto.contract.TerminalResponse;
 import top.focess.veto.vault.CredentialVault;
 
-public class StatusCommand implements CommandHandler {
+public class StatusCommand extends Command {
 
-    private final CredentialVault vault;
-
-    public StatusCommand(CredentialVault vault) {
-        this.vault = vault;
+    public StatusCommand(CredentialVault vault, PromptHandler ph) {
+        super("status");
+        addExecutor(
+                (sender, args, io) -> {
+                    TerminalIO tio = (TerminalIO) io;
+                    String user = vault.getCurrentUser();
+                    if (user == null) {
+                        tio.error("Not logged in. Use /login.");
+                        return CommandResult.REFUSE;
+                    }
+                    int sessions = ph.sessions().size();
+                    int turns =
+                            ph.sessions().values().stream().mapToInt(a -> a.turns().size()).sum();
+                    tio.respond(
+                            new TerminalResponse(
+                                    ResponseType.TABLE,
+                                    "",
+                                    Map.of(
+                                            "headers",
+                                            java.util.List.of("", ""),
+                                            "rows",
+                                            java.util.List.of(
+                                                    java.util.List.of("User", user),
+                                                    java.util.List.of(
+                                                            "Sessions", String.valueOf(sessions)),
+                                                    java.util.List.of(
+                                                            "Total turns",
+                                                            String.valueOf(turns))))));
+                    return CommandResult.ALLOW;
+                });
     }
 
     @Override
-    public String name() {
-        return "status";
+    public void init() {
     }
 
     @Override
-    public String description() {
-        return "Show vault, session, and backend status";
-    }
-
-    @Override
-    public String usage() {
-        return "status";
-    }
-
-    @Override
-    public List<ArgDef> arguments() {
-        return List.of();
-    }
-
-    @Override
-    public TerminalResponse execute(Map<String, Object> args, String sessionToken) {
-        String user = vault.getCurrentUser();
-        boolean unlocked = vault.isUnlocked();
-        String displaySession =
-                sessionToken != null
-                        ? sessionToken.substring(0, Math.min(8, sessionToken.length())) + "..."
-                        : "(none)";
-        String content =
-                String.format(
-                        "Backend user: %s%nVault: %s%nSession: %s",
-                        user != null ? user : "(none)",
-                        unlocked ? "unlocked" : "locked",
-                        displaySession);
-        return new TerminalResponse(ResponseType.MESSAGE, content);
+    public java.util.List<String> usage(top.focess.command.CommandSender s) {
+        return java.util.List.of("/status");
     }
 }

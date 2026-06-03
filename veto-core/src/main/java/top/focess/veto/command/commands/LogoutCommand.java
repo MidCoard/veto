@@ -1,46 +1,35 @@
 package top.focess.veto.command.commands;
 
-import java.util.List;
-import java.util.Map;
-
-import top.focess.veto.command.ArgDef;
-import top.focess.veto.command.CommandHandler;
+import top.focess.command.Command;
+import top.focess.command.CommandResult;
+import top.focess.veto.command.TerminalIO;
 import top.focess.veto.contract.ResponseType;
 import top.focess.veto.contract.TerminalResponse;
 import top.focess.veto.vault.CredentialVault;
 
-public class LogoutCommand implements CommandHandler {
-
-    private final CredentialVault vault;
+public class LogoutCommand extends Command {
 
     public LogoutCommand(CredentialVault vault) {
-        this.vault = vault;
+        super("logout");
+        addExecutor(
+                (sender, args, io) -> {
+                    vault.lock();
+                    ((TerminalIO) io)
+                            .respond(
+                                    new TerminalResponse(
+                                            ResponseType.MESSAGE,
+                                            "Logged out.",
+                                            java.util.Map.of("clearSession", true)));
+                    return CommandResult.ALLOW;
+                });
     }
 
     @Override
-    public String name() {
-        return "logout";
+    public void init() {
     }
 
     @Override
-    public String description() {
-        return "End session and lock vault";
-    }
-
-    @Override
-    public String usage() {
-        return "logout";
-    }
-
-    @Override
-    public List<ArgDef> arguments() {
-        return List.of();
-    }
-
-    @Override
-    public TerminalResponse execute(Map<String, Object> args, String sessionToken) {
-        vault.lock();
-        return new TerminalResponse(
-                ResponseType.MESSAGE, "Logged out. Vault locked.", Map.of("clearSession", true));
+    public java.util.List<String> usage(top.focess.command.CommandSender s) {
+        return java.util.List.of("/logout");
     }
 }

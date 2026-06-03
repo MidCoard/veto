@@ -16,6 +16,7 @@ java {
 }
 
 repositories {
+    mavenLocal()
     mavenCentral()
 }
 
@@ -43,7 +44,7 @@ dependencies {
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310")
 
     // Focess Command API
-    implementation("top.focess:focess-command:2.0.0")
+    implementation("top.focess:focess-command:2.1.0")
 
     // Encryption
     implementation("org.bouncycastle:bcprov-jdk18on:1.78.1")

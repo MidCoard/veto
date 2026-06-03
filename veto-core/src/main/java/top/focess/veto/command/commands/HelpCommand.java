@@ -1,48 +1,45 @@
 package top.focess.veto.command.commands;
 
-import java.util.List;
+import java.util.Collection;
 import java.util.Map;
 
-import top.focess.veto.command.ArgDef;
-import top.focess.veto.command.CommandHandler;
+import top.focess.command.Command;
+import top.focess.command.CommandResult;
+import top.focess.veto.command.TerminalIO;
 import top.focess.veto.contract.ResponseType;
 import top.focess.veto.contract.TerminalResponse;
 
-public class HelpCommand implements CommandHandler {
+public class HelpCommand extends Command {
 
-    private final List<CommandHandler> allHandlers;
+    private final Collection<Command> all;
+    private final Map<String, String> descriptions;
 
-    public HelpCommand(List<CommandHandler> allHandlers) {
-        this.allHandlers = allHandlers;
+    public HelpCommand(Collection<Command> all, Map<String, String> descriptions) {
+        super("help", "h");
+        this.all = all;
+        this.descriptions = descriptions;
+        addExecutor(
+                (sender, args, io) -> {
+                    TerminalIO tio = (TerminalIO) io;
+                    StringBuilder sb = new StringBuilder();
+                    int maxName = all.stream().mapToInt(c -> c.getName().length()).max().orElse(10);
+                    for (Command c : all) {
+                        if (c.getName().equals("help")) continue;
+                        String desc = descriptions.getOrDefault(c.getName(), "");
+                        sb.append(String.format("  /%-" + maxName + "s  %s\n", c.getName(), desc));
+                    }
+                    sb.append("\nType anything to chat with the agent.");
+                    tio.respond(new TerminalResponse(ResponseType.MESSAGE, sb.toString()));
+                    return CommandResult.ALLOW;
+                });
     }
 
     @Override
-    public String name() {
-        return "help";
+    public void init() {
     }
 
     @Override
-    public String description() {
-        return "Show available commands";
-    }
-
-    @Override
-    public String usage() {
-        return "help";
-    }
-
-    @Override
-    public List<ArgDef> arguments() {
-        return List.of();
-    }
-
-    @Override
-    public TerminalResponse execute(Map<String, Object> args, String sessionToken) {
-        StringBuilder sb = new StringBuilder("Commands:\n");
-        for (CommandHandler h : allHandlers) {
-            sb.append(String.format("  /%-20s %s\n", h.name(), h.description()));
-        }
-        sb.append("\nType a command to get started.");
-        return new TerminalResponse(ResponseType.MESSAGE, sb.toString());
+    public java.util.List<String> usage(top.focess.command.CommandSender s) {
+        return java.util.List.of("/help");
     }
 }

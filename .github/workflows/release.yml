@@ -5,34 +5,126 @@ on:
     tags: [ 'v*.*.*' ]
 
 jobs:
-  release:
+  # 1. Build fat JAR
+  build-jar:
+    name: Build JAR
     runs-on: ubuntu-latest
-    needs: [build-native] # Assuming we merge native into release or wait for it
-    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Build Fat JAR
+        run: ./gradlew veto-core:bootJar
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: veto-jar
+          path: veto-core/build/libs/*.jar
+
+  # 2a. Native images (matrix across OSes)
+  build-native:
+    name: Native on ${{ matrix.os }}
+    needs: [ build-jar ]
+    strategy:
+      matrix:
+        os: [ ubuntu-latest, windows-latest, macos-latest ]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup GraalVM
+        uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: '21'
+          distribution: 'graalvm'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          native-image-job-reports: 'true'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Build Native Image
+        run: ./gradlew veto-core:nativeCompile
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: veto-${{ matrix.os }}
+          path: |
+            veto-core/build/native/nativeCompile/veto*
+            veto-core/build/native/nativeCompile/*.exe
+
+  # 2b. Docker (parallel with native builds)
+  docker:
+    name: Docker Publish
+    needs: [ build-jar ]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/MidCoard/veto
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  # 3. GitHub Release — collects all artifacts
+  github-release:
+    name: Create GitHub Release
+    needs: [ build-native, docker ]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          java-version: '21'
-          distribution: 'temurin'
-
-      - name: Download Native Artifacts
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
 
-      - name: Build Fat JAR
-        run: ./gradlew bootJar
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
 
       - name: Run JReleaser
         uses: jreleaser/release-action@v2
         env:
           JRELEASER_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          version: early-access
           arguments: full-release

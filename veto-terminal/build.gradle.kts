@@ -1,5 +1,6 @@
 plugins {
     application
+    kotlin("jvm") version "2.0.21"
     id("com.diffplug.spotless") version "6.25.0"
 }
 
@@ -25,6 +26,9 @@ dependencies {
 
     // JLine 3 for terminal I/O, line editing, ANSI, Display
     implementation("org.jline:jline:3.26.1")
+
+    // Mordant — rich terminal output (tables, spinners, panels, ANSI detection)
+    implementation("com.github.ajalt.mordant:mordant:3.0.2")
 
     // Jackson — declared explicitly, NOT inherited from Spring Boot BOM
     implementation("com.fasterxml.jackson.core:jackson-databind:2.18.0")

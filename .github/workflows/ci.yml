@@ -1,4 +1,4 @@
-name: Continuous Integration
+name: CI
 
 on:
   push:
@@ -10,7 +10,7 @@ jobs:
   build:
     name: Build & Test
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -31,10 +31,10 @@ jobs:
         run: ./gradlew test
 
       - name: Build Fat JAR
-        run: ./gradlew bootJar
+        run: ./gradlew veto-core:bootJar
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: veto-backend-jar
-          path: build/libs/*.jar
+          name: veto-jar
+          path: veto-core/build/libs/*.jar

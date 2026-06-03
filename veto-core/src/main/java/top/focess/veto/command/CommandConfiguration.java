@@ -1,13 +1,11 @@
 package top.focess.veto.command;
 
 import java.nio.file.Path;
-import java.util.*;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import top.focess.veto.agent.Agent;
-import top.focess.veto.agent.SessionCompactor;
 import top.focess.veto.command.commands.*;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.vault.*;
@@ -15,11 +13,12 @@ import top.focess.veto.vault.*;
 @Configuration
 public class CommandConfiguration {
 
-    // Shared state (was in TerminalChannel, now here for command access)
-    private final ConcurrentHashMap<String, Agent> sessions = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, SessionCompactor> compactors =
-            new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, String> activePatterns = new ConcurrentHashMap<>();
+
+    @Bean
+    public PromptHandler promptHandler(CredentialVault vault, UniformLLMCaller caller) {
+        return new PromptHandler(vault, caller);
+    }
 
     @Bean
     public CommandRegistry commandRegistry(
@@ -27,30 +26,35 @@ public class CommandConfiguration {
             UserRegistry users,
             VaultKeyManager keys,
             UniformLLMCaller caller,
-            CredentialVaultConfiguration vaultConfig) {
+            CredentialVaultConfiguration vaultConfig,
+            PromptHandler promptHandler) {
 
         CommandRegistry registry = new CommandRegistry();
+        registry.setPromptHandler(promptHandler);
         Path vaultHome = Path.of(vaultConfig.getVaultHome());
 
-        // Order matters: earlier = higher in /help listing
-        registry.register(new StatusCommand(vault));
-        registry.register(new SendCommand(vault, caller, sessions, compactors, activePatterns));
-        registry.register(new TurnsCommand(sessions));
+        Map<String, String> descs = new LinkedHashMap<>();
+
         registry.register(new LoginCommand(users, keys, vault));
+        descs.put("login", "Sign in to your account");
+
         registry.register(new LogoutCommand(vault));
+        descs.put("logout", "Sign out and lock the vault");
+
         registry.register(new SignupCommand(users, keys, vault));
+        descs.put("signup", "Create a new account (first-run)");
+
+        registry.register(new StatusCommand(vault, promptHandler));
+        descs.put("status", "Show session info and usage stats");
+
         registry.register(new ExitCommand());
+        descs.put("exit", "Quit the terminal");
 
-        // Agent pattern sub-commands
-        AgentPatternCommands apc = new AgentPatternCommands(vault, activePatterns, vaultHome);
-        for (CommandHandler h : apc.all()) {
-            registry.register(h);
-        }
+        PatternCommand pc = new PatternCommand(vault, activePatterns, vaultHome);
+        registry.register(pc);
+        descs.put("pattern", "Manage agent patterns (provider, model, key)");
 
-        // HelpCommand needs the full handler list — register it last
-        List<CommandHandler> handlerList = new ArrayList<>(registry.handlers());
-        registry.register(new HelpCommand(handlerList));
-
+        registry.register(new HelpCommand(registry.all(), descs));
         return registry;
     }
 }
