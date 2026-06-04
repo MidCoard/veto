@@ -56,6 +56,12 @@ veto:
     forbid-generic-shell: true
     temp-dir: ${VETO_TEMP_DIR:./work/sandbox}
 
+  terminal:
+    max-concurrent-connections: 16
+    request-timeout-ms: 60000
+    watch-poll-interval-ms: 200
+    stale-pending-ttl-ms: 300000
+
   vault:
     vault-home: ${VETO_VAULT_HOME:~/.veto}
 

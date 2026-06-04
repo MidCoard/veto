@@ -1,10 +1,8 @@
 package top.focess.veto.terminal;
 
 import com.github.ajalt.mordant.terminal.Terminal;
-
 import java.util.List;
 import java.util.Map;
-
 import top.focess.veto.contract.TerminalResponse;
 
 public class MordantRenderer {

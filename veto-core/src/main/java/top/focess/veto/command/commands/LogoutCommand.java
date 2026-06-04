@@ -1,26 +1,43 @@
 package top.focess.veto.command.commands;
 
-import top.focess.command.Command;
-import top.focess.command.CommandResult;
+import java.util.List;
+import java.util.Map;
+
+import top.focess.command.CommandSender;
+import top.focess.veto.command.PromptHandler;
 import top.focess.veto.command.TerminalIO;
+import top.focess.veto.command.TerminalSessionManager;
+import top.focess.veto.command.VetoCommand;
 import top.focess.veto.contract.ResponseType;
 import top.focess.veto.contract.TerminalResponse;
 import top.focess.veto.vault.CredentialVault;
 
-public class LogoutCommand extends Command {
+public class LogoutCommand extends VetoCommand {
 
-    public LogoutCommand(CredentialVault vault) {
-        super("logout");
+    private final CredentialVault vault;
+    private final TerminalSessionManager sessions;
+    private final PromptHandler promptHandler;
+
+    public LogoutCommand(
+            CredentialVault vault, TerminalSessionManager sessions, PromptHandler promptHandler) {
+        super("logout", "Sign out");
+        this.vault = vault;
+        this.sessions = sessions;
+        this.promptHandler = promptHandler;
         addExecutor(
                 (sender, args, io) -> {
                     vault.lock();
+                    if (sender instanceof top.focess.veto.command.VetoCommandSender vs
+                            && vs.isLoggedIn()) {
+                        sessions.invalidateAll(vs.getUsername());
+                    }
                     ((TerminalIO) io)
                             .respond(
                                     new TerminalResponse(
                                             ResponseType.MESSAGE,
                                             "Logged out.",
-                                            java.util.Map.of("clearSession", true)));
-                    return CommandResult.ALLOW;
+                                            Map.of("clearSession", true)));
+                    return allow();
                 });
     }
 
@@ -29,7 +46,7 @@ public class LogoutCommand extends Command {
     }
 
     @Override
-    public java.util.List<String> usage(top.focess.command.CommandSender s) {
-        return java.util.List.of("/logout");
+    public List<String> usage(CommandSender s) {
+        return List.of("/logout");
     }
 }

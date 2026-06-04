@@ -45,6 +45,7 @@ dependencies {
 
     // Focess Command API
     implementation("top.focess:focess-command:2.1.0")
+    implementation("top.focess:focess-scheduler:2.0.0")
 
     // Encryption
     implementation("org.bouncycastle:bcprov-jdk18on:1.78.1")

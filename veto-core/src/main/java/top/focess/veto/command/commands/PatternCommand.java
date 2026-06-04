@@ -1,50 +1,43 @@
 package top.focess.veto.command.commands;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
-import java.io.IOException;
-import java.nio.file.*;
-import java.util.*;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-
 import top.focess.command.Command;
-import top.focess.command.CommandArgument;
-import top.focess.command.CommandResult;
-import top.focess.command.DataConverter;
+import top.focess.command.CommandSender;
 import top.focess.veto.command.TerminalIO;
+import top.focess.veto.command.VetoCommand;
+import top.focess.veto.command.VetoCommandSender;
 import top.focess.veto.contract.ResponseType;
 import top.focess.veto.contract.TerminalResponse;
 import top.focess.veto.llm.core.ProviderType;
+import top.focess.veto.model.AgentPatternEntity;
+import top.focess.veto.model.AgentPatternRepository;
 import top.focess.veto.vault.CredentialVault;
 
-public class PatternCommand extends Command {
+public class PatternCommand extends VetoCommand {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
     private final CredentialVault vault;
+    private final AgentPatternRepository repo;
     private final ConcurrentHashMap<String, String> active;
-    private final Path dir;
 
-    private record AgentPattern(
-            String name,
-            String provider,
-            String model,
-            String credentialKey,
-            String systemPrompt) {
-    }
-
-    public PatternCommand(CredentialVault v, ConcurrentHashMap<String, String> a, Path vh) {
-        super("pattern", "ap");
+    public PatternCommand(
+            CredentialVault v,
+            AgentPatternRepository repo,
+            ConcurrentHashMap<String, String> active) {
+        super("pattern", "Manage agent patterns", "ap");
         this.vault = v;
-        this.active = a;
-        this.dir = vh.resolve("terminal/patterns");
+        this.repo = repo;
+        this.active = active;
+
+        var nameArg = arg("name").completer(this::completePatternName);
 
         // /pattern create <name> <provider> <model> <apikey> [sysprompt]
         addExecutor(
                 (sender, args, io) -> {
                     TerminalIO tio = (TerminalIO) io;
-                    String u = currentUser(tio);
-                    if (u == null) return CommandResult.REFUSE;
+                    String u = user(sender, tio);
+                    if (u == null) return refuse();
                     try {
                         String n = args.<String>get("name"),
                                 p = args.<String>get("provider").toUpperCase();
@@ -55,211 +48,180 @@ public class PatternCommand extends Command {
                                         : "You are a helpful coding assistant. Be concise.";
                         ProviderType.valueOf(p);
                         vault.store("pattern-" + n, key);
-                        List<AgentPattern> pats = load(u);
-                        pats.removeIf(x -> x.name().equals(n));
-                        pats.add(new AgentPattern(n, p, m, "pattern-" + n, sp));
-                        save(u, pats);
+                        repo.save(new AgentPatternEntity(n, p, m, "pattern-" + n, sp, u));
                         tio.message("Pattern '" + n + "' created (" + p + "/" + m + ").");
-                        return CommandResult.ALLOW;
+                        return allow();
                     } catch (IllegalArgumentException e) {
                         tio.error("Unknown provider");
-                        return CommandResult.REFUSE;
+                        return refuse();
                     } catch (Exception e) {
                         tio.error(e.getMessage());
-                        return CommandResult.REFUSE;
+                        return refuse();
                     }
                 },
-                CommandArgument.of("create"),
-                CommandArgument.ofString().named("name"),
-                CommandArgument.ofString().named("provider"),
-                CommandArgument.ofString().named("model"),
-                CommandArgument.ofString().named("apikey"),
-                CommandArgument.ofNullable(DataConverter.DEFAULT_DATA_CONVERTER)
-                        .named("sysprompt"));
+                fixed("create"),
+                arg("name"),
+                arg("provider"),
+                arg("model"),
+                arg("apikey"),
+                opt("sysprompt"));
 
         // /pattern list
         addExecutor(
                 (sender, args, io) -> {
                     TerminalIO tio = (TerminalIO) io;
-                    String u = currentUser(tio);
-                    if (u == null) return CommandResult.REFUSE;
-                    try {
-                        String act = active.get(u);
-                        List<AgentPattern> pats = load(u);
-                        if (pats.isEmpty()) {
-                            tio.message(
-                                    "No patterns. /pattern create <name> <provider> <model> <apikey>");
-                            return CommandResult.ALLOW;
-                        }
-                        tio.respond(
-                                new TerminalResponse(
-                                        ResponseType.TABLE,
-                                        "",
-                                        Map.of(
-                                                "headers",
-                                                List.of(
-                                                        "NAME",
-                                                        "PROVIDER",
-                                                        "MODEL",
-                                                        "ACTIVE"),
-                                                "rows",
-                                                pats.stream()
-                                                        .map(
-                                                                x ->
-                                                                        List.of(
-                                                                                x.name()
-                                                                                        + (x.name()
-                                                                                        .equals(
-                                                                                                act)
-                                                                                        ? " *"
-                                                                                        : ""),
-                                                                                x
-                                                                                        .provider(),
-                                                                                x.model(),
-                                                                                x.name()
-                                                                                        .equals(
-                                                                                                act)
-                                                                                        ? "✓"
-                                                                                        : ""))
-                                                        .toList())));
-                        return CommandResult.ALLOW;
-                    } catch (Exception e) {
-                        tio.error(e.getMessage());
-                        return CommandResult.REFUSE;
+                    String u = user(sender, tio);
+                    if (u == null) return refuse();
+                    var pats = repo.findByOwner(u);
+                    if (pats.isEmpty()) {
+                        tio.message("No patterns. /pattern create ...");
+                        return allow();
                     }
+                    String act = active.get(u);
+                    tio.respond(
+                            new TerminalResponse(
+                                    ResponseType.TABLE,
+                                    "",
+                                    Map.of(
+                                            "headers",
+                                            List.of("NAME", "PROVIDER", "MODEL", "ACTIVE"),
+                                            "rows",
+                                            pats.stream()
+                                                    .map(
+                                                            p ->
+                                                                    List.of(
+                                                                            p.getName()
+                                                                                    + (p.getName()
+                                                                                    .equals(
+                                                                                            act)
+                                                                                    ? " *"
+                                                                                    : ""),
+                                                                            p.getProvider(),
+                                                                            p.getModel(),
+                                                                            p.getName()
+                                                                                    .equals(
+                                                                                            act)
+                                                                                    ? "✓"
+                                                                                    : ""))
+                                                    .toList())));
+                    return allow();
                 },
-                CommandArgument.of("list"));
+                fixed("list"));
 
         // /pattern use <name>
         addExecutor(
                 (sender, args, io) -> {
                     TerminalIO tio = (TerminalIO) io;
-                    String u = currentUser(tio);
-                    if (u == null) return CommandResult.REFUSE;
-                    try {
-                        String n = args.get("name");
-                        var f = load(u).stream().filter(x -> x.name().equals(n)).findFirst();
-                        if (f.isEmpty()) {
-                            tio.error("Pattern not found: " + n);
-                            return CommandResult.REFUSE;
-                        }
-                        active.put(u, n);
-                        tio.message(
-                                "Using '"
-                                        + n
-                                        + "' ("
-                                        + f.get().provider()
-                                        + "/"
-                                        + f.get().model()
-                                        + ").");
-                        return CommandResult.ALLOW;
-                    } catch (Exception e) {
-                        tio.error(e.getMessage());
-                        return CommandResult.REFUSE;
+                    String u = user(sender, tio);
+                    if (u == null) return refuse();
+                    String n = args.get("name");
+                    var f =
+                            repo.findByOwner(u).stream()
+                                    .filter(p -> p.getName().equals(n))
+                                    .findFirst();
+                    if (f.isEmpty()) {
+                        tio.error("Pattern not found: " + n);
+                        return refuse();
                     }
+                    active.put(u, n);
+                    tio.message(
+                            "Using '"
+                                    + n
+                                    + "' ("
+                                    + f.get().getProvider()
+                                    + "/"
+                                    + f.get().getModel()
+                                    + ").");
+                    return allow();
                 },
-                CommandArgument.of("use"),
-                CommandArgument.ofString().named("name"));
+                fixed("use"),
+                nameArg);
 
         // /pattern delete <name>
         addExecutor(
                 (sender, args, io) -> {
                     TerminalIO tio = (TerminalIO) io;
-                    String u = currentUser(tio);
-                    if (u == null) return CommandResult.REFUSE;
-                    try {
-                        String n = args.get("name");
-                        List<AgentPattern> pats = load(u);
-                        if (!pats.removeIf(x -> x.name().equals(n))) {
-                            tio.error("Pattern not found: " + n);
-                            return CommandResult.REFUSE;
-                        }
-                        save(u, pats);
-                        if (n.equals(active.get(u))) active.remove(u);
-                        try {
-                            vault.delete("pattern-" + n);
-                        } catch (Exception ign) {
-                        }
-                        tio.message("Pattern '" + n + "' deleted.");
-                        return CommandResult.ALLOW;
-                    } catch (Exception e) {
-                        tio.error(e.getMessage());
-                        return CommandResult.REFUSE;
+                    String u = user(sender, tio);
+                    if (u == null) return refuse();
+                    String n = args.get("name");
+                    var pats = repo.findByOwner(u);
+                    if (pats.stream().noneMatch(p -> p.getName().equals(n))) {
+                        tio.error("Pattern not found: " + n);
+                        return refuse();
                     }
+                    repo.deleteByNameAndOwner(n, u);
+                    if (n.equals(active.get(u))) active.remove(u);
+                    try {
+                        vault.delete("pattern-" + n);
+                    } catch (Exception ign) {
+                    }
+                    tio.message("Pattern '" + n + "' deleted.");
+                    return allow();
                 },
-                CommandArgument.of("delete"),
-                CommandArgument.ofString().named("name"));
+                fixed("delete"),
+                nameArg);
 
         // /pattern show <name>
         addExecutor(
                 (sender, args, io) -> {
                     TerminalIO tio = (TerminalIO) io;
-                    String u = currentUser(tio);
-                    if (u == null) return CommandResult.REFUSE;
-                    try {
-                        String n = args.get("name");
-                        var f = load(u).stream().filter(x -> x.name().equals(n)).findFirst();
-                        if (f.isEmpty()) {
-                            tio.error("Pattern not found: " + n);
-                            return CommandResult.REFUSE;
-                        }
-                        var p = f.get();
-                        tio.respond(
-                                new TerminalResponse(
-                                        ResponseType.TABLE,
-                                        "",
-                                        Map.of(
-                                                "headers",
-                                                List.of("Property", "Value"),
-                                                "rows",
-                                                List.of(
-                                                        List.of("Name", p.name()),
-                                                        List.of("Provider", p.provider()),
-                                                        List.of("Model", p.model()),
-                                                        List.of("System Prompt", p.systemPrompt()),
-                                                        List.of(
-                                                                "Active",
-                                                                p.name().equals(active.get(u))
-                                                                        ? "yes"
-                                                                        : "no")))));
-                        return CommandResult.ALLOW;
-                    } catch (Exception e) {
-                        tio.error(e.getMessage());
-                        return CommandResult.REFUSE;
+                    String u = user(sender, tio);
+                    if (u == null) return refuse();
+                    String n = args.get("name");
+                    var f =
+                            repo.findByOwner(u).stream()
+                                    .filter(p -> p.getName().equals(n))
+                                    .findFirst();
+                    if (f.isEmpty()) {
+                        tio.error("Pattern not found: " + n);
+                        return refuse();
                     }
+                    var p = f.get();
+                    tio.respond(
+                            new TerminalResponse(
+                                    ResponseType.TABLE,
+                                    "",
+                                    Map.of(
+                                            "headers",
+                                            List.of("Property", "Value"),
+                                            "rows",
+                                            List.of(
+                                                    List.of("Name", p.getName()),
+                                                    List.of("Provider", p.getProvider()),
+                                                    List.of("Model", p.getModel()),
+                                                    List.of("System Prompt", p.getSystemPrompt()),
+                                                    List.of(
+                                                            "Active",
+                                                            p.getName().equals(active.get(u))
+                                                                    ? "yes"
+                                                                    : "no")))));
+                    return allow();
                 },
-                CommandArgument.of("show"),
-                CommandArgument.ofString().named("name"));
+                fixed("show"),
+                nameArg);
 
-        // /pattern (no subcommand) → help
+        // /pattern (no subcommand)
         addExecutor(
                 (sender, args, io) -> {
-                    ((TerminalIO) io)
-                            .message(
-                                    "/pattern create <name> <provider> <model> <apikey> [sysprompt]\n"
-                                            + "/pattern list\n/pattern use <name>\n/pattern delete <name>\n/pattern show <name>");
-                    return CommandResult.ALLOW;
+                    ((TerminalIO) io).message("/pattern create|list|use|delete|show");
+                    return allow();
                 });
     }
 
-    private String currentUser(TerminalIO tio) {
-        String u = vault.getCurrentUser();
-        if (u == null) tio.error("Not logged in");
-        return u;
+    private List<String> completePatternName(CommandSender sender, Command cmd, String[] argv) {
+        String u = sender instanceof VetoCommandSender vs ? vs.getUsername() : null;
+        if (u == null) return List.of();
+        String prefix = argv.length > 0 ? argv[argv.length - 1].toLowerCase() : "";
+        return repo.findByOwner(u).stream()
+                .map(AgentPatternEntity::getName)
+                .filter(n -> n.toLowerCase().startsWith(prefix))
+                .toList();
     }
 
-    private List<AgentPattern> load(String u) throws IOException {
-        Path f = dir.resolve(u + ".json");
-        return Files.exists(f)
-                ? JSON.readValue(f.toFile(), new TypeReference<>() {
-        })
-                : new ArrayList<>();
-    }
-
-    private void save(String u, List<AgentPattern> p) throws IOException {
-        Path f = dir.resolve(u + ".json");
-        Files.createDirectories(f.getParent());
-        JSON.writeValue(f.toFile(), p);
+    private String user(CommandSender s, TerminalIO tio) {
+        if (s instanceof VetoCommandSender vs && vs.isLoggedIn()) return vs.getUsername();
+        tio.error("Not logged in");
+        return null;
     }
 
     @Override
@@ -267,7 +229,7 @@ public class PatternCommand extends Command {
     }
 
     @Override
-    public List<String> usage(top.focess.command.CommandSender s) {
+    public List<String> usage(CommandSender s) {
         return List.of("/pattern <create|list|use|delete|show> [args...]");
     }
 }

@@ -1,18 +1,17 @@
 package top.focess.veto.command;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-
 import java.io.IOException;
 import java.nio.file.*;
-
 import top.focess.command.IOHandler;
-import top.focess.veto.contract.ResponseType;
 import top.focess.veto.contract.TerminalResponse;
 
 /**
- * IOHandler that owns the file channel. Uses the 2.1.0 library's built-in {@link #input(long)} for
- * blocking input and {@link #input(String)} for feeding replies. Structured responses are written
- * to the output file via {@link #respond(TerminalResponse)}.
+ * I/O bridge between the {@code focess-command} framework and the file-based terminal IPC.
+ *
+ * <p>Commands write responses via {@link #respond(TerminalResponse)} which serializes to the output
+ * file. When a command needs user interaction (PROMPT), it calls {@link #input(long)} which blocks
+ * until the terminal frontend supplies the follow-up via the file channel.
  */
 public class TerminalIO extends IOHandler {
 
@@ -21,59 +20,62 @@ public class TerminalIO extends IOHandler {
     private final Path outDir;
     private final String requestId;
     private TerminalResponse lastResponse;
-    private final StringBuilder log = new StringBuilder();
+    private volatile long lastActivityNanos;
+    private volatile boolean responded;
 
     public TerminalIO(Path outDir, String requestId) {
         this.outDir = outDir;
         this.requestId = requestId;
+        this.lastActivityNanos = System.nanoTime();
     }
 
-    /**
-     * Library standard: plain-text output (debug/status messages).
-     */
     @Override
     public void output(String msg) {
-        log.append(msg).append("\n");
     }
 
     /**
-     * Write a structured response to the output file.
+     * Write a structured response back to the terminal. The response is serialized to the output
+     * file that the terminal's {@code FileChannel} is polling.
+     *
+     * <p>Sets the {@code responded} flag so the dispatch callback knows the command already wrote
+     * its response and doesn't need to write again — preventing stale re-writes that corrupt the
+     * PROMPT / follow-up protocol.
      */
     public void respond(TerminalResponse resp) {
         this.lastResponse = resp;
+        this.responded = true;
+        this.lastActivityNanos = System.nanoTime();
         try {
-            Path file = outDir.resolve(requestId + ".json");
-            JSON.writeValue(file.toFile(), resp);
-        } catch (IOException e) {
-            log.append("ERROR: ").append(e.getMessage());
+            JSON.writeValue(outDir.resolve(requestId + ".json").toFile(), resp);
+        } catch (IOException ignored) {
         }
     }
 
     /**
-     * The most recent response.
+     * True if the command has already written at least one response via {@link #respond}.
      */
+    public boolean hasResponded() {
+        return responded;
+    }
+
     public TerminalResponse getResponse() {
         return lastResponse;
     }
 
-    /**
-     * Accumulated plain-text output.
-     */
-    public String getLog() {
-        return log.toString();
-    }
-
-    /**
-     * Convenience: respond with a simple error message.
-     */
     public void error(String msg) {
-        respond(new TerminalResponse(ResponseType.ERROR, msg));
+        respond(TerminalResponse.error(msg));
+    }
+
+    public void message(String msg) {
+        respond(new TerminalResponse(top.focess.veto.contract.ResponseType.MESSAGE, msg));
     }
 
     /**
-     * Convenience: respond with a simple message.
+     * Returns true if no activity has been recorded on this I/O handler for longer than {@code
+     * ttlMs}. Used by the terminal channel to clean up abandoned PROMPT interactions.
      */
-    public void message(String msg) {
-        respond(new TerminalResponse(ResponseType.MESSAGE, msg));
+    public boolean isStale(long ttlMs) {
+        long elapsedMs = (System.nanoTime() - lastActivityNanos) / 1_000_000;
+        return elapsedMs > ttlMs;
     }
 }

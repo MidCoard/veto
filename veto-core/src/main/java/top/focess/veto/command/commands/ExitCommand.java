@@ -1,15 +1,18 @@
 package top.focess.veto.command.commands;
 
-import top.focess.command.Command;
-import top.focess.command.CommandResult;
+import java.util.List;
+import java.util.Map;
+
+import top.focess.command.CommandSender;
 import top.focess.veto.command.TerminalIO;
+import top.focess.veto.command.VetoCommand;
 import top.focess.veto.contract.ResponseType;
 import top.focess.veto.contract.TerminalResponse;
 
-public class ExitCommand extends Command {
+public class ExitCommand extends VetoCommand {
 
     public ExitCommand() {
-        super("exit", "quit");
+        super("exit", "Quit the terminal", "quit");
         addExecutor(
                 (sender, args, io) -> {
                     ((TerminalIO) io)
@@ -17,8 +20,8 @@ public class ExitCommand extends Command {
                                     new TerminalResponse(
                                             ResponseType.MESSAGE,
                                             "Goodbye.",
-                                            java.util.Map.of("exit", true)));
-                    return CommandResult.ALLOW;
+                                            Map.of("exit", true)));
+                    return allow();
                 });
     }
 
@@ -27,7 +30,7 @@ public class ExitCommand extends Command {
     }
 
     @Override
-    public java.util.List<String> usage(top.focess.command.CommandSender s) {
-        return java.util.List.of("/exit");
+    public List<String> usage(CommandSender s) {
+        return List.of("/exit");
     }
 }
