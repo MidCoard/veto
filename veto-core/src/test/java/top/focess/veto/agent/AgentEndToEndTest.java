@@ -15,9 +15,7 @@ import org.springframework.test.context.ActiveProfiles;
 import top.focess.veto.llm.core.*;
 import top.focess.veto.vault.*;
 
-/**
- * End-to-end test: full login flow → credential binding → agent → LLM call.
- */
+/** End-to-end test: full login flow → credential binding → agent → LLM call. */
 @SpringBootTest
 @ActiveProfiles("local")
 class AgentEndToEndTest {
@@ -26,14 +24,10 @@ class AgentEndToEndTest {
     private static final String TEST_USER = "test-user";
     private static final String TEST_PASSWORD = "test-password-123";
 
-    @Autowired
-    private UniformLLMCaller caller;
-    @Autowired
-    private CredentialVault vault;
-    @Autowired
-    private VaultKeyManager vaultKeyManager;
-    @Autowired
-    private UserRegistry userRegistry;
+    @Autowired private UniformLLMCaller caller;
+    @Autowired private CredentialVault vault;
+    @Autowired private VaultKeyManager vaultKeyManager;
+    @Autowired private UserRegistry userRegistry;
 
     @Value("${veto.test.deepseek.api-key:}")
     private String apiKey;

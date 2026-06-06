@@ -34,9 +34,7 @@ public class MCPServerRegistry {
         this.objectMapper = objectMapper;
     }
 
-    /**
-     * Scan the registry path for MCP server definitions.
-     */
+    /** Scan the registry path for MCP server definitions. */
     public void discoverServers() {
         Path registryPath = Paths.get(config.getServerRegistryPath());
         if (!Files.exists(registryPath)) {

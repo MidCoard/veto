@@ -10,5 +10,4 @@ import com.fasterxml.jackson.annotation.JsonProperty;
  * @param isFinished whether the agent has completed its task
  */
 public record VetoResponse(
-        String thought, ToolCall call, @JsonProperty("is_finished") boolean isFinished) {
-}
+        String thought, ToolCall call, @JsonProperty("is_finished") boolean isFinished) {}

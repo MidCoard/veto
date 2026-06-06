@@ -3,9 +3,7 @@ package top.focess.veto.vault;
 import jakarta.persistence.*;
 import java.time.Instant;
 
-/**
- * JPA entity for the {@code users} table — replaces the old {@code users.json} file.
- */
+/** JPA entity for the {@code users} table — replaces the old {@code users.json} file. */
 @Entity
 @Table(name = "users")
 public class UserEntity {

@@ -41,9 +41,7 @@ public class WorkerProcess {
         log.debug("C5 Worker[{}]: Spawned", id);
     }
 
-    /**
-     * Execute a task on this worker. Returns a future that completes with the result.
-     */
+    /** Execute a task on this worker. Returns a future that completes with the result. */
     public CompletableFuture<String> execute(
             ToolExecutionRequest task,
             java.util.function.Function<ToolExecutionRequest, String> executorFn) {

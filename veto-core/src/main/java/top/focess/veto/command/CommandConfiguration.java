@@ -43,7 +43,7 @@ public class CommandConfiguration {
         registry.register(new StatusCommand(vault, promptHandler));
         registry.register(new ExitCommand());
         registry.register(new PatternCommand(vault, patternRepo, activePatterns));
-        registry.register(new HelpCommand(registry.all()));
+        registry.register(new HelpCommand());
         return registry;
     }
 }

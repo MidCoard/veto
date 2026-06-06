@@ -78,9 +78,7 @@ public class Agent {
         return new Builder(this).state(newState).build();
     }
 
-    /**
-     * Records a completed turn and appends it to the turn history.
-     */
+    /** Records a completed turn and appends it to the turn history. */
     public Agent appendTurn(TurnRecord turn) {
         List<TurnRecord> newTurns = new ArrayList<>(this.turns);
         newTurns.add(turn);

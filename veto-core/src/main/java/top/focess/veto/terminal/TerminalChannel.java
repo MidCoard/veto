@@ -1,21 +1,12 @@
 package top.focess.veto.terminal;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
-
 import java.io.IOException;
 import java.nio.file.*;
-import java.nio.file.attribute.AclEntry;
-import java.nio.file.attribute.AclEntryPermission;
-import java.nio.file.attribute.AclEntryType;
-import java.nio.file.attribute.AclFileAttributeView;
-import java.nio.file.attribute.PosixFilePermission;
 import java.time.Duration;
-import java.util.EnumSet;
-import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,43 +14,44 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import top.focess.scheduler.ThreadPoolScheduler;
 import top.focess.veto.command.CommandRegistry;
-import top.focess.veto.command.TerminalIO;
-import top.focess.veto.contract.TerminalRequest;
-import top.focess.veto.contract.TerminalResponse;
+import top.focess.veto.contract.IpcChannel;
+import top.focess.veto.contract.IpcFile;
+import top.focess.veto.contract.IpcFrame;
 import top.focess.veto.vault.CredentialVaultConfiguration;
 
 /**
- * File-based IPC channel between the terminal frontend and the command backend.
+ * Backend IPC server. Each terminal connection uses two unidirectional files:
  *
- * <p>Watches {@code ~/.veto/terminal/in/} for new request files, dispatches each to {@link
- * CommandRegistry}, and writes the response to {@code ~/.veto/terminal/out/}. A {@link Semaphore}
- * caps the number of concurrently executing terminal sessions so the backend is never overwhelmed.
+ * <ul>
+ *   <li>{@code <id>-req.ipc} — terminal writes requests, backend reads them
+ *   <li>{@code <id>-resp.ipc} — backend writes responses, terminal reads them
+ * </ul>
+ *
+ * <p>The backend sends streaming deltas, prompts, and terminal frames on the resp channel while
+ * still listening for {@code cancel}, {@code heartbeat}, and {@code bye} on the req channel —
+ * independent, no contention.
  */
 @Component
 public class TerminalChannel {
 
     private static final Logger log = LoggerFactory.getLogger(TerminalChannel.class);
 
-    private final ObjectMapper json = new ObjectMapper();
+    private static final Duration POLL_INTERVAL = Duration.ofMillis(50);
+    private static final Duration RECEIVE_TIMEOUT = Duration.ofSeconds(90);
+    private static final Duration HEARTBEAT_DEADLINE = Duration.ofSeconds(90);
+    private static final int IPC_FILE_SIZE_KB = 256;
+    private static final int IPC_FILE_SIZE = IPC_FILE_SIZE_KB * 1024;
+
     private final CredentialVaultConfiguration config;
     private final CommandRegistry registry;
     private final ThreadPoolScheduler scheduler;
-    private final Map<String, TerminalIO> pending = new ConcurrentHashMap<>();
+    private final Map<String, ServerSession> activeSessions = new ConcurrentHashMap<>();
     private Semaphore connectionLimiter = new Semaphore(16);
 
     private volatile boolean running;
 
     @Value("${veto.terminal.max-concurrent-connections:16}")
     private int maxConcurrentConnections;
-
-    @Value("${veto.terminal.request-timeout-ms:60000}")
-    private long requestTimeoutMs;
-
-    @Value("${veto.terminal.watch-poll-interval-ms:200}")
-    private long watchPollIntervalMs;
-
-    @Value("${veto.terminal.stale-pending-ttl-ms:300000}")
-    private long stalePendingTtlMs;
 
     public TerminalChannel(CredentialVaultConfiguration config, CommandRegistry registry) {
         this.config = config;
@@ -69,245 +61,231 @@ public class TerminalChannel {
 
     @PostConstruct
     public void start() {
-        this.connectionLimiter = new Semaphore(Math.max(1, maxConcurrentConnections));
+        connectionLimiter = new Semaphore(Math.max(1, maxConcurrentConnections));
         running = true;
-        scheduler.run(this::watch, "terminal-channel");
-        scheduler.runTimer(
-                this::cleanupStalePending,
-                Duration.ofMillis(stalePendingTtlMs),
-                Duration.ofMillis(stalePendingTtlMs),
-                "terminal-cleanup");
-        log.info(
-                "Terminal channel started (max-connections={}, request-timeout={}ms)",
-                maxConcurrentConnections,
-                requestTimeoutMs);
+        scheduler.run(this::discoveryLoop, "terminal-discovery");
+        log.info("Terminal IPC server started (max={})", maxConcurrentConnections);
     }
 
     @PreDestroy
     public void stop() {
         running = false;
         scheduler.shutdown();
-        log.info("Terminal channel stopped");
+        for (ServerSession session : activeSessions.values()) {
+            session.close();
+        }
+        log.info("Terminal IPC server stopped");
     }
 
-    /**
-     * Main watch loop — scans the {@code in/} directory for new request files and dispatches them
-     * asynchronously. A {@link Semaphore} gates entry so that at most {@code
-     * maxConcurrentConnections} requests execute at once.
-     */
-    private void watch() {
-        Path inDir = Path.of(config.getVaultHome(), "terminal", "in");
-        Path outDir = Path.of(config.getVaultHome(), "terminal", "out");
+    // ── Discovery ───────────────────────────────────────────────────────
+
+    private Path terminalDir() {
+        return Path.of(config.getVaultHome(), "terminal");
+    }
+
+    private void discoveryLoop() {
+        Path dir = terminalDir();
         try {
-            Files.createDirectories(inDir);
-            Files.createDirectories(outDir);
-            lockdown(inDir);
-            lockdown(outDir);
+            Files.createDirectories(dir);
         } catch (IOException e) {
-            log.error("Cannot create terminal I/O directories", e);
+            log.error("Cannot create terminal dir {}", dir, e);
             return;
         }
 
-        while (running) {
-            try (var stream = Files.newDirectoryStream(inDir, "*.json")) {
-                for (Path file : stream) {
+        processExisting(dir);
+
+        try (WatchService watcher = FileSystems.getDefault().newWatchService()) {
+            dir.register(watcher, StandardWatchEventKinds.ENTRY_CREATE);
+
+            while (running) {
+                WatchKey key;
+                try {
+                    key = watcher.poll(100, TimeUnit.MILLISECONDS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+                if (key == null) continue;
+
+                for (WatchEvent<?> event : key.pollEvents()) {
                     if (!running) break;
-                    String filename = file.getFileName().toString();
+                    if (event.kind() == StandardWatchEventKinds.OVERFLOW) continue;
+                    Path name = (Path) event.context();
+                    if (name == null) continue;
+                    String filename = name.toString();
+                    // Only react to -req files — the resp file is created later in accept()
+                    if (!filename.endsWith("-req.ipc")) continue;
 
-                    // Follow-up input from an in-progress PROMPT interaction
-                    if (filename.contains("-next")) {
-                        handleFollowUp(file, filename);
-                        continue;
+                    Path file = dir.resolve(name);
+                    if (!Files.exists(file)) continue;
+                    accept(file);
+                }
+                key.reset();
+            }
+        } catch (IOException e) {
+            log.error("WatchService failed", e);
+        }
+    }
+
+    private void processExisting(Path dir) {
+        try (var stream = Files.newDirectoryStream(dir, "*-req.ipc")) {
+            for (Path file : stream) accept(file);
+        } catch (IOException e) {
+            log.warn("Could not process existing ipc files", e);
+        }
+    }
+
+    // ── Connection management ───────────────────────────────────────────
+
+    private void accept(Path reqFile) {
+        String baseName = reqFile.getFileName().toString();
+        String terminalId = baseName.replace("-req.ipc", "");
+
+        if (activeSessions.containsKey(terminalId)) return;
+
+        if (!connectionLimiter.tryAcquire()) {
+            log.warn(
+                    "Connection limit reached ({}) — rejecting {}",
+                    maxConcurrentConnections,
+                    terminalId);
+            try {
+                Path respFile = terminalDir().resolve(terminalId + "-resp.ipc");
+                IpcChannel resp =
+                        new IpcChannel(new IpcFile(respFile, IPC_FILE_SIZE), POLL_INTERVAL);
+                resp.send(
+                        new IpcFrame.Error(
+                                "Server busy — too many connections (max "
+                                        + maxConcurrentConnections
+                                        + "). Try again later."));
+                resp.close();
+                Files.deleteIfExists(respFile);
+            } catch (IOException ignored) {
+            }
+            return;
+        }
+
+        try {
+            Path respFile = terminalDir().resolve(terminalId + "-resp.ipc");
+            IpcChannel reqChannel =
+                    new IpcChannel(new IpcFile(reqFile, IPC_FILE_SIZE), POLL_INTERVAL);
+            IpcChannel respChannel =
+                    new IpcChannel(new IpcFile(respFile, IPC_FILE_SIZE), POLL_INTERVAL);
+            ServerSession session = new ServerSession(terminalId, reqChannel, respChannel);
+            activeSessions.put(terminalId, session);
+            scheduler.submit(
+                    () -> serveLoop(session),
+                    "term-" + terminalId.substring(0, Math.min(8, terminalId.length())));
+            log.debug("Accepted terminal {}", terminalId);
+        } catch (IOException e) {
+            log.error("Failed to open IPC files for {}", terminalId, e);
+            connectionLimiter.release();
+        }
+    }
+
+    // ── Serve loop ──────────────────────────────────────────────────────
+
+    private Void serveLoop(ServerSession session) {
+        IpcChannel reqChannel = session.reqChannel;
+        IpcChannel respChannel = session.respChannel;
+        String terminalId = session.terminalId;
+
+        while (running) {
+            try {
+                IpcFrame frame = reqChannel.receive(RECEIVE_TIMEOUT);
+
+                if (frame == null) {
+                    long now = System.nanoTime();
+                    if (now - session.lastHeartbeatNanos > HEARTBEAT_DEADLINE.toNanos()) {
+                        log.debug(
+                                "Terminal {} heartbeat deadline exceeded — cleaning up",
+                                terminalId);
+                        break;
                     }
+                    continue;
+                }
 
-                    // New top-level request
-                    handleNewRequest(file, filename, inDir, outDir);
+                switch (frame) {
+                    case IpcFrame.Heartbeat h -> session.lastHeartbeatNanos = System.nanoTime();
+                    case IpcFrame.Bye b -> {
+                        log.debug("Terminal {} sent bye — cleaning up", terminalId);
+                        removeSession(session);
+                        return null;
+                    }
+                    case IpcFrame.Request req -> {
+                        session.lastHeartbeatNanos = System.nanoTime();
+                        registry.dispatch(terminalId, req.raw(), reqChannel, respChannel);
+                        session.lastHeartbeatNanos = System.nanoTime();
+                    }
+                    case IpcFrame.Complete comp -> {
+                        session.lastHeartbeatNanos = System.nanoTime();
+                        List<String> completions = registry.complete(terminalId, comp.raw());
+                        respChannel.send(IpcFrame.doneContent(String.join("\n", completions)));
+                        session.lastHeartbeatNanos = System.nanoTime();
+                    }
+                    case IpcFrame.Cancel c -> {
+                        session.lastHeartbeatNanos = System.nanoTime();
+                        respChannel.send(new IpcFrame.Done(Map.of("cancelled", true)));
+                    }
+                    case IpcFrame.Hint h -> {
+                        session.lastHeartbeatNanos = System.nanoTime();
+                        String[] hint = registry.hint(terminalId, h.raw());
+                        if (hint[0] != null && !hint[0].isBlank()) {
+                            respChannel.send(
+                                    new IpcFrame.Done(
+                                            hint[1] != null
+                                                    ? Map.of("description", hint[1])
+                                                    : Map.of(),
+                                            hint[0]));
+                        } else {
+                            respChannel.send(new IpcFrame.Done(Map.of(), ""));
+                        }
+                    }
+                    default -> {}
                 }
             } catch (IOException e) {
-                log.warn("Scan of {} failed", inDir, e);
-            }
-
-            try {
-                Thread.sleep(watchPollIntervalMs);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
+                log.warn("I/O error for terminal {}: {}", terminalId, e.getMessage());
                 break;
             }
         }
+
+        removeSession(session);
+        return null;
     }
 
-    private void handleFollowUp(Path file, String filename) {
-        String requestId = filename.replace("-next.json", "");
-        TerminalIO io = pending.get(requestId);
-        if (io == null) {
-            // Request already completed/abandoned — clean up the orphaned follow-up
-            log.debug("No pending request for follow-up {} — removing", requestId);
-            try {
-                Files.deleteIfExists(file);
-            } catch (IOException ignored) {
-            }
-            return;
-        }
-        // Feed the input directly — io.input(String) sets flag=true and notifyAll(),
-        // which wakes up the command thread blocked in io.input(long).
-        // Do NOT call io.hasInput() here; it would deadlock because hasInput()
-        // waits for flag==true, which only io.input(String) can set.
-        try {
-            TerminalRequest fu = json.readValue(file.toFile(), TerminalRequest.class);
-            Files.delete(file);
-            io.input(fu.raw().trim());
-        } catch (Exception e) {
-            log.error("Failed to feed follow-up for {}", requestId, e);
-            try {
-                Files.deleteIfExists(file);
-            } catch (IOException ignored) {
-            }
-        }
+    private void removeSession(ServerSession session) {
+        activeSessions.remove(session.terminalId);
+        connectionLimiter.release();
+        session.close();
+        log.debug("Removed terminal {}", session.terminalId);
     }
 
-    private void handleNewRequest(Path file, String filename, Path inDir, Path outDir) {
-        String requestId = filename.replace(".json", "");
-        boolean acquired = false;
-        try {
-            TerminalRequest req = json.readValue(file.toFile(), TerminalRequest.class);
-            Files.delete(file);
-
-            // Try to acquire a permit; if none available, return an error immediately
-            if (!connectionLimiter.tryAcquire()) {
-                log.warn(
-                        "Connection limit reached ({}) — rejecting {}",
-                        maxConcurrentConnections,
-                        requestId);
-                TerminalResponse busy =
-                        TerminalResponse.error(
-                                "Server busy — too many terminal connections. "
-                                        + "Try again shortly.");
-                json.writeValue(outDir.resolve(requestId + ".json").toFile(), busy);
-                return;
-            }
-            acquired = true;
-
-            TerminalIO io = new TerminalIO(outDir, requestId);
-            pending.put(requestId, io);
-
-            scheduler.submit(
-                    () -> {
-                        try {
-                            TerminalResponse resp =
-                                    registry.dispatch(req.raw(), req.sessionToken(), io);
-                            // Only write the response if the command did NOT already write one
-                            // via io.respond(). If it did, writing again would corrupt the
-                            // PROMPT/follow-up protocol: the terminal already consumed the
-                            // response, deleted the file, and sent the follow-up. A re-write
-                            // would inject a stale response that the terminal misreads.
-                            if (!io.hasResponded()) {
-                                Path outFile = outDir.resolve(requestId + ".json");
-                                json.writeValue(outFile.toFile(), resp);
-                            }
-                        } catch (Exception e) {
-                            log.error("Dispatch failed for {}", requestId, e);
-                            if (!io.hasResponded()) {
-                                try {
-                                    Path outFile = outDir.resolve(requestId + ".json");
-                                    json.writeValue(
-                                            outFile.toFile(),
-                                            TerminalResponse.error(
-                                                    "Internal error: " + e.getMessage()));
-                                } catch (Exception inner) {
-                                    log.error("Failed to write error response", inner);
-                                }
-                            }
-                        } finally {
-                            pending.remove(requestId);
-                            connectionLimiter.release();
-                        }
-                        return null;
-                    },
-                    "cmd-" + requestId.substring(0, Math.min(8, requestId.length())));
-        } catch (Exception e) {
-            log.error("Failed processing request {}", requestId, e);
-            if (acquired) {
-                connectionLimiter.release();
-            }
-            try {
-                Files.deleteIfExists(file);
-            } catch (IOException ignored) {
-            }
-        }
-    }
-
-    /**
-     * Periodically removes pending entries that have been idle for longer than {@code
-     * stalePendingTtlMs} without receiving a follow-up.
-     */
-    private void cleanupStalePending() {
-        long now = System.currentTimeMillis();
-        Iterator<Map.Entry<String, TerminalIO>> it = pending.entrySet().iterator();
-        while (it.hasNext()) {
-            Map.Entry<String, TerminalIO> entry = it.next();
-            TerminalIO io = entry.getValue();
-            if (io.isStale(stalePendingTtlMs)) {
-                log.debug("Removing stale pending request {}", entry.getKey());
-                it.remove();
-                connectionLimiter.release();
-            }
-        }
-    }
-
-    /**
-     * Exposed for health checks.
-     */
     public int activeConnections() {
-        return pending.size();
+        return activeSessions.size();
     }
 
-    /**
-     * Exposed for health checks.
-     */
-    public int availablePermits() {
-        return connectionLimiter.availablePermits();
-    }
+    // ── ServerSession ───────────────────────────────────────────────────
 
-    // ── File-permission lockdown ──────────────────────────────────────────────
+    private static class ServerSession {
+        final String terminalId;
+        final IpcChannel reqChannel;
+        final IpcChannel respChannel;
+        volatile long lastHeartbeatNanos = System.nanoTime();
 
-    /**
-     * Best-effort owner-only permissions on the directory and its vault-root ancestors. On POSIX
-     * this means {@code 0700}; on Windows it replaces the ACL with owner-full-control only.
-     */
-    private void lockdown(Path dir) {
-        Path vaultRoot = Path.of(config.getVaultHome());
-        Path p = dir;
-        while (p != null && p.startsWith(vaultRoot)) {
+        ServerSession(String terminalId, IpcChannel reqChannel, IpcChannel respChannel) {
+            this.terminalId = terminalId;
+            this.reqChannel = reqChannel;
+            this.respChannel = respChannel;
+        }
+
+        void close() {
             try {
-                if (Files.getFileStore(p).supportsFileAttributeView("posix")) {
-                    Set<PosixFilePermission> perms =
-                            Files.isDirectory(p)
-                                    ? EnumSet.of(
-                                    PosixFilePermission.OWNER_READ,
-                                    PosixFilePermission.OWNER_WRITE,
-                                    PosixFilePermission.OWNER_EXECUTE)
-                                    : EnumSet.of(
-                                    PosixFilePermission.OWNER_READ,
-                                    PosixFilePermission.OWNER_WRITE);
-                    Files.setPosixFilePermissions(p, perms);
-                } else {
-                    AclFileAttributeView acl =
-                            Files.getFileAttributeView(p, AclFileAttributeView.class);
-                    if (acl != null) {
-                        var entry =
-                                AclEntry.newBuilder()
-                                        .setType(AclEntryType.ALLOW)
-                                        .setPrincipal(acl.getOwner())
-                                        .setPermissions(EnumSet.allOf(AclEntryPermission.class))
-                                        .build();
-                        acl.setAcl(java.util.List.of(entry));
-                    }
-                }
-            } catch (Exception e) {
-                log.debug("Could not lock down {}: {}", p, e.getMessage());
+                reqChannel.close();
+            } catch (IOException ignored) {
             }
-            if (p.equals(vaultRoot)) break;
-            p = p.getParent();
+            try {
+                respChannel.close();
+            } catch (IOException ignored) {
+            }
         }
     }
 }

@@ -247,9 +247,7 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
         sessionRoutes.remove(session.getId());
     }
 
-    /**
-     * Broadcast a message to all connected clients except the sender.
-     */
+    /** Broadcast a message to all connected clients except the sender. */
     public void broadcast(Map<String, Object> message, String excludeSessionId) {
         String json;
         try {

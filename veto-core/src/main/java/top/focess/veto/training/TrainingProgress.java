@@ -8,9 +8,7 @@ import java.time.Instant;
  */
 public class TrainingProgress {
 
-    /**
-     * Training pipeline states.
-     */
+    /** Training pipeline states. */
     public enum Status {
         IDLE,
         PREPARING_DATA,

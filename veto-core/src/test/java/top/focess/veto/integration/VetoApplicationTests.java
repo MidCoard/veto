@@ -26,34 +26,28 @@ import top.focess.veto.veto.VetoGatewayConfiguration;
         classes = VetoApplication.class,
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
-                "veto.veto-gateway.enabled=true",
-                "veto.veto-gateway.redact-secrets=true",
-                "veto.veto-gateway.enforce-structural-constraints=true",
-                "veto.vault.master-key-env=veto.test.key",
-                "veto.sandbox.temp-dir=build/tmp/test-sandbox",
-                "veto.observability.encryption-enabled=false"
+            "veto.veto-gateway.enabled=true",
+            "veto.veto-gateway.redact-secrets=true",
+            "veto.veto-gateway.enforce-structural-constraints=true",
+            "veto.vault.master-key-env=veto.test.key",
+            "veto.sandbox.temp-dir=build/tmp/test-sandbox",
+            "veto.observability.encryption-enabled=false"
         })
 class VetoApplicationTests {
 
-    @LocalServerPort
-    private int port;
+    @LocalServerPort private int port;
 
-    @Autowired
-    private ApplicationContext context;
+    @Autowired private ApplicationContext context;
 
-    @Autowired
-    private VetoGateway vetoGateway;
+    @Autowired private VetoGateway vetoGateway;
 
-    @Autowired
-    private SemanticRedactor semanticRedactor;
+    @Autowired private SemanticRedactor semanticRedactor;
 
-    @Autowired
-    private GBNFGrammarEngine grammarEngine;
+    @Autowired private GBNFGrammarEngine grammarEngine;
 
     private final RestTemplate restTemplate = new RestTemplate();
 
-    @Autowired
-    private AuditLogger auditLogger;
+    @Autowired private AuditLogger auditLogger;
 
     public VetoApplicationTests() {
         // Don't throw exceptions on non-2xx responses - we test error codes

@@ -35,9 +35,7 @@ public class UserRegistry {
         this.repo = repo;
     }
 
-    /**
-     * Creates a user with the given role. Use Role.ADMIN for the first user.
-     */
+    /** Creates a user with the given role. Use Role.ADMIN for the first user. */
     public UserEntity create(String username, String password, String role) {
         if (repo.existsById(username)) {
             throw new IllegalArgumentException("User '" + username + "' already exists");

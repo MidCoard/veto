@@ -29,9 +29,7 @@ public class TaskController {
         this.routingBusService = routingBusService;
     }
 
-    /**
-     * POST /api/tasks - Create and submit a new DAG task.
-     */
+    /** POST /api/tasks - Create and submit a new DAG task. */
     @PostMapping(
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)

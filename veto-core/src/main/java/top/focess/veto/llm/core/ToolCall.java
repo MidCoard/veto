@@ -15,5 +15,4 @@ import java.util.Map;
  */
 public record ToolCall(
         @JsonProperty("tool_name") String toolName,
-        @JsonProperty("args") Map<String, Object> args) {
-}
+        @JsonProperty("args") Map<String, Object> args) {}

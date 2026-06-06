@@ -43,9 +43,7 @@ public class AuthController {
 
     // ── Setup (first-run) ───────────────────────────────────────────────────
 
-    /**
-     * POST /api/auth/setup — First-run admin creation. Only works when no users exist.
-     */
+    /** POST /api/auth/setup — First-run admin creation. Only works when no users exist. */
     @PostMapping(
             value = "/setup",
             consumes = MediaType.APPLICATION_JSON_VALUE,

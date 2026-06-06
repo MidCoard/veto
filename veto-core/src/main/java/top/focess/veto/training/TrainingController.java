@@ -72,9 +72,7 @@ public class TrainingController {
         }
     }
 
-    /**
-     * Cancel the current training run.
-     */
+    /** Cancel the current training run. */
     @PostMapping("/cancel")
     public ResponseEntity<Map<String, Object>> cancelTraining() {
         if (!trainingManager.isRunning()) {

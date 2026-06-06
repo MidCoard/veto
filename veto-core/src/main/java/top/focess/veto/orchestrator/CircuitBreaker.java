@@ -27,9 +27,7 @@ public class CircuitBreaker {
         this.config = config;
     }
 
-    /**
-     * Check if the circuit breaker allows execution.
-     */
+    /** Check if the circuit breaker allows execution. */
     public boolean allowRequest() {
         CircuitState currentState = state.get();
 

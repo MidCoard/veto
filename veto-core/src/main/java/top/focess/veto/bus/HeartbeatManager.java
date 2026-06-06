@@ -30,9 +30,7 @@ public class HeartbeatManager {
         this.config = config;
     }
 
-    /**
-     * Start sending heartbeats at the configured interval.
-     */
+    /** Start sending heartbeats at the configured interval. */
     public synchronized void start(WebSocketBus bus) {
         this.bus = bus;
         if (heartbeatFuture != null && !heartbeatFuture.isCancelled()) {

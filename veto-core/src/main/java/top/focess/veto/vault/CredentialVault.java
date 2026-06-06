@@ -34,9 +34,7 @@ public class CredentialVault {
         this.injectionService = injectionService;
     }
 
-    /**
-     * Initializes the vault directory. Vault remains LOCKED until a user logs in.
-     */
+    /** Initializes the vault directory. Vault remains LOCKED until a user logs in. */
     @PostConstruct
     public void init() {
         log.info("C8 CredentialVault: Initialized (LOCKED). Waiting for authentication.");

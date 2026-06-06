@@ -31,9 +31,7 @@ public class ReconnectionHandler {
         this.config = config;
     }
 
-    /**
-     * Schedule an exponential-backoff reconnection attempt.
-     */
+    /** Schedule an exponential-backoff reconnection attempt. */
     public void scheduleReconnect(WebSocketBus bus, String backendUrl) {
         if (backendUrl == null || backendUrl.isEmpty()) {
             log.warn("C3 Reconnect: No backend URL to reconnect to");

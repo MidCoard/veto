@@ -1,7 +1,6 @@
 package top.focess.veto.model;
 
 import jakarta.persistence.*;
-
 import java.time.Instant;
 import java.util.UUID;
 
@@ -9,8 +8,7 @@ import java.util.UUID;
 @Table(name = "agent_patterns")
 public class AgentPatternEntity {
 
-    @Id
-    private String id;
+    @Id private String id;
 
     @Column(nullable = false)
     private String name;
@@ -33,8 +31,7 @@ public class AgentPatternEntity {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
-    protected AgentPatternEntity() {
-    }
+    protected AgentPatternEntity() {}
 
     public AgentPatternEntity(
             String name,

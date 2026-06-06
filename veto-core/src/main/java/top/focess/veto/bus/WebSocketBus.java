@@ -44,9 +44,7 @@ public class WebSocketBus extends TextWebSocketHandler {
         this.reconnectionHandler = reconnectionHandler;
     }
 
-    /**
-     * Connect to the cloud backend WebSocket endpoint.
-     */
+    /** Connect to the cloud backend WebSocket endpoint. */
     public CompletableFuture<Boolean> connect(String backendUrl) {
         CompletableFuture<Boolean> future = new CompletableFuture<>();
         try {

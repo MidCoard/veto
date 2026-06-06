@@ -35,9 +35,7 @@ public class ToolController {
         this.toolSandbox = toolSandbox;
     }
 
-    /**
-     * POST /api/tool/execute - Submit a tool execution request.
-     */
+    /** POST /api/tool/execute - Submit a tool execution request. */
     @PostMapping(
             value = "/execute",
             consumes = MediaType.APPLICATION_JSON_VALUE,
@@ -58,9 +56,9 @@ public class ToolController {
         Set<String> requiredCredentials =
                 request.containsKey("requiredCredentials")
                         ? Set.copyOf(
-                        (java.util.List<String>)
-                                request.getOrDefault(
-                                        "requiredCredentials", java.util.List.of()))
+                                (java.util.List<String>)
+                                        request.getOrDefault(
+                                                "requiredCredentials", java.util.List.of()))
                         : Set.of();
 
         String sessionId = (String) request.getOrDefault("sessionId", "");

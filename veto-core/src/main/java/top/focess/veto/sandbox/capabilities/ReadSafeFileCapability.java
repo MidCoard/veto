@@ -111,9 +111,7 @@ public class ReadSafeFileCapability implements AtomicCapability {
         }
     }
 
-    /**
-     * Resolve a file path against the sandbox root, preventing traversal attacks.
-     */
+    /** Resolve a file path against the sandbox root, preventing traversal attacks. */
     private Path resolveSafePath(String filePath) {
         Path userPath = Paths.get(filePath).normalize();
         Path resolved = sandboxRoot.resolve(userPath).normalize();

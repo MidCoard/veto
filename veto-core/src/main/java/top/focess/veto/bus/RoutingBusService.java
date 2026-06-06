@@ -55,9 +55,7 @@ public class RoutingBusService {
         log.info("C3 RoutingBusService: Shut down");
     }
 
-    /**
-     * Submit a DAG payload to the cloud backend and return a future for the response.
-     */
+    /** Submit a DAG payload to the cloud backend and return a future for the response. */
     public CompletableFuture<DAGPayload> submitDAGPayload(DAGPayload payload) {
         CompletableFuture<DAGPayload> future = new CompletableFuture<>();
         activePayloads.put(payload.getId(), payload);

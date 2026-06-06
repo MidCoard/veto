@@ -44,7 +44,7 @@ dependencies {
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310")
 
     // Focess Command API
-    implementation("top.focess:focess-command:2.1.0")
+    implementation("top.focess:focess-command:2.2.0")
     implementation("top.focess:focess-scheduler:2.0.0")
 
     // Encryption

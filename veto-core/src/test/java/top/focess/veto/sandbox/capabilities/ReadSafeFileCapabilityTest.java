@@ -13,8 +13,7 @@ import top.focess.veto.model.ToolExecutionRequest;
 class ReadSafeFileCapabilityTest {
 
     private ReadSafeFileCapability capability;
-    @TempDir
-    Path tempDir;
+    @TempDir Path tempDir;
 
     @BeforeEach
     void setUp() {

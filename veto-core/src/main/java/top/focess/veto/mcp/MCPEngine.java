@@ -54,9 +54,7 @@ public class MCPEngine {
         log.info("C4 MCP Engine: Initialized. {} active protocols.", activeProtocols.size());
     }
 
-    /**
-     * Execute a tool through an MCP server.
-     */
+    /** Execute a tool through an MCP server. */
     public CompletableFuture<String> executeTool(ToolExecutionRequest request) {
         String capabilityName = request.getCapabilityName();
 

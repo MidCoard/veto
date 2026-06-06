@@ -11,11 +11,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class HeartbeatManagerTest {
 
-    @Mock
-    private BusConfiguration config;
+    @Mock private BusConfiguration config;
 
-    @InjectMocks
-    private HeartbeatManager heartbeatManager;
+    @InjectMocks private HeartbeatManager heartbeatManager;
 
     @Test
     void testInitialState() {

@@ -6,16 +6,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import top.focess.command.*;
-import top.focess.veto.contract.ResponseType;
-import top.focess.veto.contract.TerminalResponse;
+import top.focess.veto.contract.IpcChannel;
 
 /**
  * Registry that wraps the {@link CommandManager} from {@code focess-command} and adapts it for the
- * Veto terminal environment.
- *
- * <p>Command dispatch is delegated to {@link CommandManager#dispatch(CommandSender, String,
- * IOHandler)} which handles input splitting (with quote support), command lookup, argument parsing,
- * and execution — eliminating the need for manual parsing in this class.
+ * Veto terminal IPC protocol.
  */
 @Component
 public class CommandRegistry {
@@ -43,101 +38,131 @@ public class CommandRegistry {
         log.info("Registry: {} commands", manager.getCommands().size());
     }
 
-    /**
-     * Dispatch raw terminal input. Plain text (no leading {@code /}) is routed to the {@link
-     * PromptHandler}. Prefixed input is delegated to {@link CommandManager#dispatch(CommandSender,
-     * String, IOHandler)} which handles splitting, lookup, and execution.
-     */
-    /**
-     * Magic prefix that signals a Tab-completion request instead of a normal command dispatch.
-     */
-    private static final String COMPLETION_PREFIX = "\0complete:";
+    /** Dispatch a request frame. The sender owns all I/O. */
+    public void dispatch(
+            String terminalId, String raw, IpcChannel reqChannel, IpcChannel respChannel) {
+        String username = sessionManager != null ? sessionManager.resolve(terminalId) : null;
+        VetoCommandSender sender =
+                new VetoCommandSender(username, terminalId, reqChannel, respChannel);
 
-    public TerminalResponse dispatch(String raw, String sessionToken, TerminalIO io) {
-        if (raw == null || raw.isBlank()) return TerminalResponse.error("Empty input");
-
-        // ── Completion protocol: "\0complete:<partial>" returns matching commands ──
-        if (raw.startsWith(COMPLETION_PREFIX)) {
-            String partial = raw.substring(COMPLETION_PREFIX.length());
-            List<String> completions = complete(partial, sessionToken);
-            io.respond(new TerminalResponse(ResponseType.LIST, String.join("\n", completions)));
-            // Return null — caller (TerminalChannel) sees hasResponded() == true and skips its own
-            // write
-            return io.getResponse();
+        if (raw == null || raw.isBlank()) {
+            sender.error("Empty input");
+            return;
         }
 
-        // Plain text → agent prompt
         if (!raw.trim().startsWith("/")) {
-            if (promptHandler == null) return TerminalResponse.error("Agent not available");
-            return promptHandler.handle(raw.trim(), sessionToken);
+            if (promptHandler == null) {
+                sender.error("Agent not available");
+                return;
+            }
+            promptHandler.handle(raw.trim(), terminalId, sender);
+            return;
         }
 
-        // Strip leading "/" — CommandManager.dispatch takes the bare command name as first token
         String input = raw.trim().substring(1);
 
-        String username = sessionManager != null ? sessionManager.resolve(sessionToken) : null;
-        VetoCommandSender sender = new VetoCommandSender(username);
-
         try {
-            ExecutionResult result = manager.dispatch(sender, input, io);
-            CommandResult cr = result.getResult();
+            ExecutionResult result = manager.dispatch(sender, input);
+            CommandResult cr = result.result();
 
-            if (cr == CommandResult.COMMAND_NOT_FOUND) {
-                String cmdName = input.split("\\s+", 2)[0].toLowerCase();
-                return unknown(cmdName);
+            // Only handle the two states the framework declares EXPLICIT
+            if (CommandResult.EXPLICIT.contains(cr)) {
+                if (cr == CommandResult.COMMAND_NOT_FOUND) {
+                    String cmdName = input.split("\\s+", 2)[0].toLowerCase();
+                    sender.error("Unknown: /" + cmdName + " — try /help");
+                } else {
+                    sender.error(result.getMessage().orElse("Command failed"));
+                }
+                return;
             }
-            if (cr == CommandResult.ARGS_NOT_EXECUTED || cr == CommandResult.REFUSE_EXCEPTION) {
-                return TerminalResponse.error(result.getMessage().orElse("Command failed"));
+
+            if (!sender.hasResponded()) {
+                sender.done(Map.of());
             }
-            TerminalResponse resp = io.getResponse();
-            return resp != null ? resp : TerminalResponse.error("No response");
         } catch (Exception e) {
-            log.error("Dispatch failed", e);
-            return TerminalResponse.error(e.getMessage());
+            log.error("Dispatch failed for {}", terminalId, e);
+            if (!sender.hasResponded()) {
+                sender.error(e.getMessage());
+            }
         }
     }
 
     /**
-     * Tab-completion via {@link CommandManager#complete(CommandSender, String)}.
-     *
-     * <p>Trailing whitespace is preserved so that {@code "pattern "} routes to {@code
-     * PatternCommand}'s argument completer (showing sub-commands), whereas {@code "pattern"}
-     * returns command names starting with "pattern".
+     * Handle a hint frame. Uses {@link CommandRoute#getCurrentArguments} to find the expected
+     * argument at the cursor position. The trailing space (or lack thereof) tells the framework
+     * where the user's cursor is — do NOT strip it.
      */
-    public List<String> complete(String partial, String sessionToken) {
+    public String[] hint(String terminalId, String raw) {
+        if (raw == null || raw.isBlank()) return new String[] {null, null};
+
+        String input = raw.stripLeading();
+        if (input.startsWith("/")) input = input.substring(1);
+
+        String username = sessionManager != null ? sessionManager.resolve(terminalId) : null;
+        VetoCommandSender sender = new VetoCommandSender(username, terminalId, null, null);
+
+        CommandRoute route = manager.route(sender, input);
+        List<CommandArgument<?>> current = route.getCurrentArguments();
+        if (current.isEmpty()) return new String[] {null, null};
+
+        CommandArgument<?> arg = current.get(0);
+        String name = arg.getName();
+        if (name == null) return new String[] {null, null};
+
+        String placeholder = arg.isNullable() ? "[" + name + "]" : "<" + name + ">";
+        String desc = arg.getDescription();
+        return new String[] {placeholder, desc};
+    }
+
+    /**
+     * Handle a completion frame. Returns tab-separated {@code candidate[\tdescription[\tgroup]]}
+     * lines so the terminal can create rich JLine {@code Candidate} objects.
+     */
+    public List<String> complete(String terminalId, String partial) {
         if (partial == null || partial.isBlank()) return List.of();
 
-        // Strip only leading whitespace and leading "/" — trailing whitespace is
-        // semantically significant: "pattern " means "complete the first argument of pattern"
         String input = partial.stripLeading();
         if (input.startsWith("/")) input = input.substring(1);
 
-        String username = sessionManager != null ? sessionManager.resolve(sessionToken) : null;
-        VetoCommandSender sender = new VetoCommandSender(username);
+        String username = sessionManager != null ? sessionManager.resolve(terminalId) : null;
+        VetoCommandSender sender = new VetoCommandSender(username, null, null, null);
 
-        List<String> completions = manager.complete(sender, input);
+        List<CommandCompletion> completions = manager.complete(sender, input);
 
-        // Prepend "/" only when completing the command name itself (first token).
-        // Check the original input (before trim) for a space — "pattern " has one,
-        // meaning we're completing args; "log" has none → command-name completion.
-        // Use stripTrailing() to detect: if stripping trailing space changes the string,
-        // there was a trailing space → args completion.
         boolean hasTrailingSpace = !input.equals(input.stripTrailing());
         boolean hasSpaceWithin = input.stripTrailing().contains(" ");
-        if (!hasTrailingSpace && !hasSpaceWithin) {
-            return completions.stream().map(c -> "/" + c).toList();
+        boolean isSubCommand = hasTrailingSpace || hasSpaceWithin;
+
+        String group = null;
+        if (isSubCommand) {
+            String cmdName = input.stripTrailing().split("\\s+", 2)[0];
+            group =
+                    manager.getCommands().stream()
+                            .filter(c -> c.getName().equals(cmdName))
+                            .findFirst()
+                            .map(Command::getDescription)
+                            .orElse(null);
         }
-        return completions;
-    }
 
-    private TerminalResponse unknown(String cmd) {
-        return new TerminalResponse(
-                ResponseType.ERROR,
-                "Unknown: /" + cmd + " — try /help",
-                Map.of("suggestions", List.of("Try /help")));
-    }
-
-    public Collection<Command> all() {
-        return manager.getCommands();
+        final String groupLabel = group;
+        return completions.stream()
+                .map(
+                        cc -> {
+                            String candidate = cc.candidate();
+                            String desc = cc.description();
+                            if (!hasTrailingSpace && !hasSpaceWithin) {
+                                candidate = "/" + candidate;
+                            }
+                            StringBuilder sb = new StringBuilder(candidate);
+                            sb.append('\t');
+                            if (desc != null && !desc.isBlank()) {
+                                sb.append(desc);
+                            }
+                            if (groupLabel != null && !groupLabel.isBlank()) {
+                                sb.append('\t').append(groupLabel);
+                            }
+                            return sb.toString();
+                        })
+                .toList();
     }
 }

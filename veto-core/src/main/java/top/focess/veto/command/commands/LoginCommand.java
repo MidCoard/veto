@@ -3,14 +3,10 @@ package top.focess.veto.command.commands;
 import java.util.List;
 import java.util.Map;
 import javax.crypto.SecretKey;
-
 import top.focess.command.CommandSender;
-import top.focess.command.InputTimeoutException;
-import top.focess.veto.command.TerminalIO;
 import top.focess.veto.command.TerminalSessionManager;
 import top.focess.veto.command.VetoCommand;
-import top.focess.veto.contract.ResponseType;
-import top.focess.veto.contract.TerminalResponse;
+import top.focess.veto.command.VetoCommandSender;
 import top.focess.veto.vault.*;
 
 public class LoginCommand extends VetoCommand {
@@ -30,57 +26,44 @@ public class LoginCommand extends VetoCommand {
         this.keys = keys;
         this.vault = vault;
         this.sessions = sessions;
+    }
+
+    @Override
+    public void init() {
         addExecutor(
-                (sender, args, io) -> {
-                    TerminalIO tio = (TerminalIO) io;
+                (sender, args) -> {
+                    VetoCommandSender s = vetoSender(sender);
                     String u = args.get("user"), p = args.get("pass");
 
                     if (u == null) {
-                        tio.respond(
-                                new TerminalResponse(ResponseType.PROMPT, "Username:", Map.of()));
-                        try {
-                            u = tio.input(60_000);
-                        } catch (InputTimeoutException e) {
-                            u = null;
-                        }
+                        u = s.prompt("Username:", Map.of(), 60_000);
                         if (u == null || u.isBlank()) {
-                            tio.error("Login cancelled");
+                            s.error("Login cancelled");
                             return refuse();
                         }
                     }
                     if (p == null) {
-                        tio.respond(
-                                new TerminalResponse(
-                                        ResponseType.PROMPT, "Password:", Map.of("mask", true)));
-                        try {
-                            p = tio.input(60_000);
-                        } catch (InputTimeoutException e) {
-                            p = null;
-                        }
+                        p = s.prompt("Password:", Map.of("mask", true), 60_000);
                         if (p == null || p.isBlank()) {
-                            tio.error("Login cancelled");
+                            s.error("Login cancelled");
                             return refuse();
                         }
                     }
 
                     var userOpt = users.authenticate(u, p);
                     if (userOpt.isEmpty()) {
-                        tio.error("Invalid username or password");
+                        s.error("Invalid username or password");
                         return refuse();
                     }
                     SecretKey mk = keys.deriveMasterKey(u, p, userOpt.get().getPasswordSalt());
                     SecretKey vk = keys.unwrapVaultKey(mk, u);
                     if (vk == null) {
-                        tio.error("Failed to unlock");
+                        s.error("Failed to unlock");
                         return refuse();
                     }
                     vault.unlock(vk, u);
-                    String token = sessions.create(u);
-                    tio.respond(
-                            new TerminalResponse(
-                                    ResponseType.MESSAGE,
-                                    "Welcome, " + u + ".",
-                                    Map.of("username", u, "session", token)));
+                    sessions.create(s.terminalId(), u);
+                    s.done(Map.of("username", u, "session", s.terminalId()));
                     return allow();
                 },
                 opt("user"),
@@ -88,11 +71,7 @@ public class LoginCommand extends VetoCommand {
     }
 
     @Override
-    public void init() {
-    }
-
-    @Override
     public List<String> usage(CommandSender s) {
-        return List.of("/login [user] [pass]");
+        return List.of("/login [user] [pass] — Sign in to your account");
     }
 }

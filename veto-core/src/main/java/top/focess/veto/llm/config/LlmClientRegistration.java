@@ -32,9 +32,7 @@ public class LlmClientRegistration {
         this.factory = factory;
     }
 
-    /**
-     * Registers the three built-in SDK builder functions.
-     */
+    /** Registers the three built-in SDK builder functions. */
     @PostConstruct
     public void registerBuilders() {
         factory.register(

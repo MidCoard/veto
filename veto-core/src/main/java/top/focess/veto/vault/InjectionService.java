@@ -29,9 +29,7 @@ public class InjectionService {
         this.vault = vault;
     }
 
-    /**
-     * Inject credentials required by a tool execution request into the sandbox environment.
-     */
+    /** Inject credentials required by a tool execution request into the sandbox environment. */
     public synchronized Map<String, String> injectForExecution(ToolExecutionRequest request) {
         Set<String> requiredCreds = request.getRequiredCredentials();
         if (requiredCreds.isEmpty()) {

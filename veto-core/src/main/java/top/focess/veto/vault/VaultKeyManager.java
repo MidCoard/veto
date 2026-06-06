@@ -71,9 +71,7 @@ public class VaultKeyManager {
 
     // ── Vault Key lifecycle ─────────────────────────────────────────────────
 
-    /**
-     * Generates a new random AES-256 Vault Key. Called once during first-run setup.
-     */
+    /** Generates a new random AES-256 Vault Key. Called once during first-run setup. */
     public SecretKey generateVaultKey() {
         try {
             KeyGenerator kg = KeyGenerator.getInstance("AES");

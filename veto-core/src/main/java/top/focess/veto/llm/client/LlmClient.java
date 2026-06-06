@@ -30,6 +30,5 @@ public abstract class LlmClient {
      * @param requestSummary a non-sensitive summary of the request
      * @param rawResponse the raw response string from the provider
      */
-    public record RawCompletion(String requestSummary, String rawResponse) {
-    }
+    public record RawCompletion(String requestSummary, String rawResponse) {}
 }

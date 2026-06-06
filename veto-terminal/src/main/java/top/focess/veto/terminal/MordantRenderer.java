@@ -3,8 +3,13 @@ package top.focess.veto.terminal;
 import com.github.ajalt.mordant.terminal.Terminal;
 import java.util.List;
 import java.util.Map;
+import top.focess.veto.contract.IpcFrame;
 import top.focess.veto.contract.TerminalResponse;
 
+/**
+ * Renders structured backend responses via Mordant rich-text output. Handles both the legacy {@link
+ * TerminalResponse} and the new {@link IpcFrame} protocol types.
+ */
 public class MordantRenderer {
 
     private final Terminal terminal;
@@ -12,6 +17,8 @@ public class MordantRenderer {
     public MordantRenderer(Terminal terminal) {
         this.terminal = terminal;
     }
+
+    // ── Legacy TerminalResponse rendering ───────────────────────────────
 
     public void render(TerminalResponse resp) {
         switch (resp.type()) {
@@ -22,13 +29,35 @@ public class MordantRenderer {
             case LIST -> bulletList(resp.content());
             case SUGGESTION -> suggestion(resp.content());
             case PROMPT -> prompt(resp.content());
-            case PROGRESS -> {
-            }
+            case PROGRESS -> {}
         }
     }
 
+    // ── New IpcFrame rendering ──────────────────────────────────────────
+
+    /** Render a single IPC frame from the backend. */
+    public void renderFrame(IpcFrame frame) {
+        switch (frame) {
+            case IpcFrame.Delta d -> print(d.content());
+            case IpcFrame.Done d -> {
+                if (d.content() != null) println(d.content());
+            }
+            case IpcFrame.Error e -> error(e.content());
+            case IpcFrame.Progress p ->
+                    println(MordantTerminal.dim(terminal, "  ⏳ " + p.content()));
+            case IpcFrame.Prompt p -> print(MordantTerminal.bold(terminal, p.content()) + " ");
+            default -> {}
+        }
+    }
+
+    // ── low-level output ────────────────────────────────────────────────
+
     public void println(String text) {
         MordantTerminal.println(terminal, text);
+    }
+
+    public void print(String text) {
+        MordantTerminal.print(terminal, text);
     }
 
     public void error(String text) {

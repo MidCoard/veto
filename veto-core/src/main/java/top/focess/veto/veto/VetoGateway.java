@@ -256,9 +256,7 @@ public class VetoGateway {
         return totalRedactions.get();
     }
 
-    /**
-     * The result of processing a payload through the Veto Gateway.
-     */
+    /** The result of processing a payload through the Veto Gateway. */
     public record VetoResult(
             VetoDecision decision, String processedPayload, String reason, int redactionCount) {
 

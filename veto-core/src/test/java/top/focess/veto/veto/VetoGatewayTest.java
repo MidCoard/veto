@@ -12,12 +12,9 @@ import top.focess.veto.observability.AuditLogger;
 @ExtendWith(MockitoExtension.class)
 class VetoGatewayTest {
 
-    @Mock
-    private LlamaCppBridge llamaCppBridge;
-    @Mock
-    private GBNFGrammarEngine grammarEngine;
-    @Mock
-    private AuditLogger auditLogger;
+    @Mock private LlamaCppBridge llamaCppBridge;
+    @Mock private GBNFGrammarEngine grammarEngine;
+    @Mock private AuditLogger auditLogger;
 
     private VetoGatewayConfiguration config;
     private SemanticRedactor semanticRedactor;

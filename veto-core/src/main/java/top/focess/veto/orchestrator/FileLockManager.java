@@ -78,9 +78,7 @@ public class FileLockManager {
         }
     }
 
-    /**
-     * Release a previously acquired file lock.
-     */
+    /** Release a previously acquired file lock. */
     public void releaseLock(Path path) {
         FileLockHandle handle = activeLocks.remove(path);
         if (handle != null) {

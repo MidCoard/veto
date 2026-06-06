@@ -39,9 +39,7 @@ public class TrainingManager {
                         return t;
                     });
 
-    /**
-     * Callback interface for model deployment (wired to LlamaCppBridge restart).
-     */
+    /** Callback interface for model deployment (wired to LlamaCppBridge restart). */
     @FunctionalInterface
     public interface ModelDeployCallback {
         void deploy(String modelPath);
@@ -286,9 +284,9 @@ public class TrainingManager {
         if (command.contains(" ")) {
             // Split script name and args
             String[] parts = command.split(" ", 2);
-            cmd = new String[]{python, parts[0], parts[1]};
+            cmd = new String[] {python, parts[0], parts[1]};
         } else {
-            cmd = new String[]{python, command};
+            cmd = new String[] {python, command};
         }
 
         ProcessBuilder pb = new ProcessBuilder(cmd);
@@ -310,7 +308,7 @@ public class TrainingManager {
 
             // Read output line by line and log it
             try (BufferedReader reader =
-                         new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                    new BufferedReader(new InputStreamReader(process.getInputStream()))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
                     log.info("[TRAINING] {}", line);

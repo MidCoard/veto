@@ -44,6 +44,5 @@ public class SessionManager {
         return sessions.size();
     }
 
-    public record Session(String token, String username, Instant createdAt) {
-    }
+    public record Session(String token, String username, Instant createdAt) {}
 }

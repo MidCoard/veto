@@ -1,8 +1,6 @@
 package top.focess.veto.llm.exceptions;
 
-/**
- * Network/read timeout talking to the provider. Retryable with backoff.
- */
+/** Network/read timeout talking to the provider. Retryable with backoff. */
 public class LlmTimeoutException extends LlmException {
     /**
      * Constructs a new LlmTimeoutException with the specified message and cause.

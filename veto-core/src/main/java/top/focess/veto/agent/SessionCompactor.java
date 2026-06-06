@@ -19,9 +19,7 @@ public class SessionCompactor {
 
     private static final Logger log = LoggerFactory.getLogger(SessionCompactor.class);
 
-    /**
-     * Trigger compaction when estimated tokens exceed this.
-     */
+    /** Trigger compaction when estimated tokens exceed this. */
     private static final int TOKEN_THRESHOLD = 8000;
 
     /** Keep at least this many recent turns uncompacted. */

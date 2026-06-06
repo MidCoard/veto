@@ -10,9 +10,7 @@ import top.focess.veto.llm.core.ProviderType;
 import top.focess.veto.llm.core.ResolvedRequest;
 import top.focess.veto.observability.AuditLogger;
 
-/**
- * Gemini provider: delegates to {@code GeminiLlmClient} which uses native JSON mode.
- */
+/** Gemini provider: delegates to {@code GeminiLlmClient} which uses native JSON mode. */
 @Component
 public class GeminiProvider extends AbstractLlmProvider {
     private final LlmClientFactory clientFactory;

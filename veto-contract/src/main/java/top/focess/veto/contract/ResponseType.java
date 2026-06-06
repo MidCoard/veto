@@ -1,8 +1,6 @@
 package top.focess.veto.contract;
 
-/**
- * Structured response types that the terminal maps to visual rendering.
- */
+/** Structured response types that the terminal maps to visual rendering. */
 public enum ResponseType {
     /** Styled text message. */
     MESSAGE,

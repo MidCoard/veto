@@ -17,8 +17,7 @@ class SecureStoreTest {
     private CredentialVaultConfiguration config;
     private SecretKey vaultKey;
 
-    @TempDir
-    Path tempDir;
+    @TempDir Path tempDir;
 
     @BeforeEach
     void setUp() throws Exception {

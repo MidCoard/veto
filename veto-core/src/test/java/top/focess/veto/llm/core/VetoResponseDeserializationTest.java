@@ -5,9 +5,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
-/**
- * Guards the snake_case binding bug: tool_name / is_finished must populate the records.
- */
+/** Guards the snake_case binding bug: tool_name / is_finished must populate the records. */
 class VetoResponseDeserializationTest {
     private final ObjectMapper mapper = new ObjectMapper();
 

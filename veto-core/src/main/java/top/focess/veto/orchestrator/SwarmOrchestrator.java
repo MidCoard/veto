@@ -111,9 +111,7 @@ public class SwarmOrchestrator {
                         });
     }
 
-    /**
-     * Find an idle worker, or null if all are busy.
-     */
+    /** Find an idle worker, or null if all are busy. */
     private WorkerProcess findAvailableWorker() {
         // Prefer idle workers
         for (WorkerProcess w : workers) {

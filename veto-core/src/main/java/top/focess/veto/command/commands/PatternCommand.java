@@ -4,12 +4,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import top.focess.command.Command;
+import top.focess.command.CommandCompletion;
 import top.focess.command.CommandSender;
-import top.focess.veto.command.TerminalIO;
 import top.focess.veto.command.VetoCommand;
 import top.focess.veto.command.VetoCommandSender;
-import top.focess.veto.contract.ResponseType;
-import top.focess.veto.contract.TerminalResponse;
 import top.focess.veto.llm.core.ProviderType;
 import top.focess.veto.model.AgentPatternEntity;
 import top.focess.veto.model.AgentPatternRepository;
@@ -29,15 +27,17 @@ public class PatternCommand extends VetoCommand {
         this.vault = v;
         this.repo = repo;
         this.active = active;
+        setExecutorPermission(LOGGED_IN);
+    }
 
-        var nameArg = arg("name").completer(this::completePatternName);
+    @Override
+    public void init() {
+        var nameArg = arg("name").completer(this::completePatternName).description("Pattern name");
 
-        // /pattern create <name> <provider> <model> <apikey> [sysprompt]
+        // /pattern create
         addExecutor(
-                (sender, args, io) -> {
-                    TerminalIO tio = (TerminalIO) io;
-                    String u = user(sender, tio);
-                    if (u == null) return refuse();
+                (sender, args) -> {
+                    VetoCommandSender s = vetoSender(sender);
                     try {
                         String n = args.<String>get("name"),
                                 p = args.<String>get("provider").toUpperCase();
@@ -45,86 +45,79 @@ public class PatternCommand extends VetoCommand {
                         String sp =
                                 args.<String>get("sysprompt") != null
                                         ? (String) args.<String>get("sysprompt")
-                                        : "You are a helpful coding assistant. Be concise.";
+                                        : "You are a helpful coding assistant. Be" + " concise.";
                         ProviderType.valueOf(p);
                         vault.store("pattern-" + n, key);
-                        repo.save(new AgentPatternEntity(n, p, m, "pattern-" + n, sp, u));
-                        tio.message("Pattern '" + n + "' created (" + p + "/" + m + ").");
+                        repo.save(
+                                new AgentPatternEntity(
+                                        n, p, m, "pattern-" + n, sp, s.getUsername()));
+                        s.message("Pattern '" + n + "' created (" + p + "/" + m + ").");
                         return allow();
                     } catch (IllegalArgumentException e) {
-                        tio.error("Unknown provider");
+                        s.error("Unknown provider");
                         return refuse();
                     } catch (Exception e) {
-                        tio.error(e.getMessage());
+                        s.error(e.getMessage());
                         return refuse();
                     }
                 },
-                fixed("create"),
+                fixed("create").description("Create a new agent pattern"),
                 arg("name"),
-                arg("provider"),
-                arg("model"),
-                arg("apikey"),
-                opt("sysprompt"));
+                arg("provider").description("LLM provider (e.g. DEEPSEEK, OPENAI)"),
+                arg("model").description("Model name"),
+                arg("apikey").description("API key for the provider"),
+                opt("sysprompt").description("Custom system prompt"));
 
         // /pattern list
         addExecutor(
-                (sender, args, io) -> {
-                    TerminalIO tio = (TerminalIO) io;
-                    String u = user(sender, tio);
-                    if (u == null) return refuse();
-                    var pats = repo.findByOwner(u);
+                (sender, args) -> {
+                    VetoCommandSender s = vetoSender(sender);
+                    var pats = repo.findByOwner(s.getUsername());
                     if (pats.isEmpty()) {
-                        tio.message("No patterns. /pattern create ...");
+                        s.message("No patterns. /pattern create ...");
                         return allow();
                     }
-                    String act = active.get(u);
-                    tio.respond(
-                            new TerminalResponse(
-                                    ResponseType.TABLE,
-                                    "",
-                                    Map.of(
-                                            "headers",
-                                            List.of("NAME", "PROVIDER", "MODEL", "ACTIVE"),
-                                            "rows",
-                                            pats.stream()
-                                                    .map(
-                                                            p ->
-                                                                    List.of(
-                                                                            p.getName()
-                                                                                    + (p.getName()
-                                                                                    .equals(
-                                                                                            act)
+                    String act = active.get(s.getUsername());
+                    s.done(
+                            Map.of(
+                                    "headers",
+                                    List.of("NAME", "PROVIDER", "MODEL", "ACTIVE"),
+                                    "rows",
+                                    pats.stream()
+                                            .map(
+                                                    p ->
+                                                            List.of(
+                                                                    p.getName()
+                                                                            + (p.getName()
+                                                                                            .equals(
+                                                                                                    act)
                                                                                     ? " *"
                                                                                     : ""),
-                                                                            p.getProvider(),
-                                                                            p.getModel(),
-                                                                            p.getName()
-                                                                                    .equals(
-                                                                                            act)
-                                                                                    ? "✓"
-                                                                                    : ""))
-                                                    .toList())));
+                                                                    p.getProvider(),
+                                                                    p.getModel(),
+                                                                    p.getName().equals(act)
+                                                                            ? "✓"
+                                                                            : ""))
+                                            .toList()));
                     return allow();
                 },
-                fixed("list"));
+                fixed("list").description("List your patterns"));
 
-        // /pattern use <name>
+        // /pattern use
         addExecutor(
-                (sender, args, io) -> {
-                    TerminalIO tio = (TerminalIO) io;
-                    String u = user(sender, tio);
-                    if (u == null) return refuse();
+                (sender, args) -> {
+                    VetoCommandSender s = vetoSender(sender);
                     String n = args.get("name");
                     var f =
-                            repo.findByOwner(u).stream()
+                            repo.findByOwner(s.getUsername()).stream()
                                     .filter(p -> p.getName().equals(n))
                                     .findFirst();
                     if (f.isEmpty()) {
-                        tio.error("Pattern not found: " + n);
+                        s.error("Pattern not found: " + n);
                         return refuse();
                     }
-                    active.put(u, n);
-                    tio.message(
+                    active.put(s.getUsername(), n);
+                    s.message(
                             "Using '"
                                     + n
                                     + "' ("
@@ -134,102 +127,87 @@ public class PatternCommand extends VetoCommand {
                                     + ").");
                     return allow();
                 },
-                fixed("use"),
+                fixed("use").description("Activate a pattern"),
                 nameArg);
 
-        // /pattern delete <name>
+        // /pattern delete
         addExecutor(
-                (sender, args, io) -> {
-                    TerminalIO tio = (TerminalIO) io;
-                    String u = user(sender, tio);
-                    if (u == null) return refuse();
+                (sender, args) -> {
+                    VetoCommandSender s = vetoSender(sender);
                     String n = args.get("name");
-                    var pats = repo.findByOwner(u);
+                    var pats = repo.findByOwner(s.getUsername());
                     if (pats.stream().noneMatch(p -> p.getName().equals(n))) {
-                        tio.error("Pattern not found: " + n);
+                        s.error("Pattern not found: " + n);
                         return refuse();
                     }
-                    repo.deleteByNameAndOwner(n, u);
-                    if (n.equals(active.get(u))) active.remove(u);
+                    repo.deleteByNameAndOwner(n, s.getUsername());
+                    if (n.equals(active.get(s.getUsername()))) {
+                        active.remove(s.getUsername());
+                    }
                     try {
                         vault.delete("pattern-" + n);
                     } catch (Exception ign) {
                     }
-                    tio.message("Pattern '" + n + "' deleted.");
+                    s.message("Pattern '" + n + "' deleted.");
                     return allow();
                 },
-                fixed("delete"),
+                fixed("delete").description("Delete a pattern"),
                 nameArg);
 
-        // /pattern show <name>
+        // /pattern show
         addExecutor(
-                (sender, args, io) -> {
-                    TerminalIO tio = (TerminalIO) io;
-                    String u = user(sender, tio);
-                    if (u == null) return refuse();
+                (sender, args) -> {
+                    VetoCommandSender s = vetoSender(sender);
                     String n = args.get("name");
                     var f =
-                            repo.findByOwner(u).stream()
+                            repo.findByOwner(s.getUsername()).stream()
                                     .filter(p -> p.getName().equals(n))
                                     .findFirst();
                     if (f.isEmpty()) {
-                        tio.error("Pattern not found: " + n);
+                        s.error("Pattern not found: " + n);
                         return refuse();
                     }
                     var p = f.get();
-                    tio.respond(
-                            new TerminalResponse(
-                                    ResponseType.TABLE,
-                                    "",
-                                    Map.of(
-                                            "headers",
-                                            List.of("Property", "Value"),
-                                            "rows",
+                    s.done(
+                            Map.of(
+                                    "headers",
+                                    List.of("Property", "Value"),
+                                    "rows",
+                                    List.of(
+                                            List.of("Name", p.getName()),
+                                            List.of("Provider", p.getProvider()),
+                                            List.of("Model", p.getModel()),
+                                            List.of("System Prompt", p.getSystemPrompt()),
                                             List.of(
-                                                    List.of("Name", p.getName()),
-                                                    List.of("Provider", p.getProvider()),
-                                                    List.of("Model", p.getModel()),
-                                                    List.of("System Prompt", p.getSystemPrompt()),
-                                                    List.of(
-                                                            "Active",
-                                                            p.getName().equals(active.get(u))
-                                                                    ? "yes"
-                                                                    : "no")))));
+                                                    "Active",
+                                                    p.getName().equals(active.get(s.getUsername()))
+                                                            ? "yes"
+                                                            : "no"))));
                     return allow();
                 },
-                fixed("show"),
+                fixed("show").description("Show pattern details"),
                 nameArg);
-
-        // /pattern (no subcommand)
-        addExecutor(
-                (sender, args, io) -> {
-                    ((TerminalIO) io).message("/pattern create|list|use|delete|show");
-                    return allow();
-                });
     }
 
-    private List<String> completePatternName(CommandSender sender, Command cmd, String[] argv) {
-        String u = sender instanceof VetoCommandSender vs ? vs.getUsername() : null;
-        if (u == null) return List.of();
+    private List<CommandCompletion> completePatternName(
+            CommandSender sender, Command cmd, String[] argv) {
+        if (!LOGGED_IN.test(sender)) return List.of();
+        String u = ((VetoCommandSender) sender).getUsername();
         String prefix = argv.length > 0 ? argv[argv.length - 1].toLowerCase() : "";
         return repo.findByOwner(u).stream()
-                .map(AgentPatternEntity::getName)
-                .filter(n -> n.toLowerCase().startsWith(prefix))
+                .filter(p -> p.getName().toLowerCase().startsWith(prefix))
+                .map(p -> CommandCompletion.of(p.getName(), p.getProvider() + " / " + p.getModel()))
                 .toList();
-    }
-
-    private String user(CommandSender s, TerminalIO tio) {
-        if (s instanceof VetoCommandSender vs && vs.isLoggedIn()) return vs.getUsername();
-        tio.error("Not logged in");
-        return null;
-    }
-
-    @Override
-    public void init() {
     }
 
     @Override
     public List<String> usage(CommandSender s) {
-        return List.of("/pattern <create|list|use|delete|show> [args...]");
+        return List.of(
+                "/pattern create <name> <provider> <model> <apikey> [sysprompt] — Create a new"
+                        + " agent pattern",
+                "/pattern list — List your patterns",
+                "/pattern use <name> — Activate a pattern",
+                "/pattern delete <name> — Delete a pattern",
+                "/pattern show <name> — Show pattern details");
     }
 }

@@ -1,8 +1,6 @@
 package top.focess.veto.llm.exceptions;
 
-/**
- * Provider rate-limit (HTTP 429). Retryable with backoff.
- */
+/** Provider rate-limit (HTTP 429). Retryable with backoff. */
 public class LlmRateLimitException extends LlmException {
     /**
      * Constructs a new LlmRateLimitException with the specified message and cause.

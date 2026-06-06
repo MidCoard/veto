@@ -1,8 +1,6 @@
 package top.focess.veto.llm.exceptions;
 
-/**
- * Authentication/authorization failure (missing or rejected credential). Never retryable.
- */
+/** Authentication/authorization failure (missing or rejected credential). Never retryable. */
 public class LlmAuthException extends LlmException {
     /**
      * Constructs a new LlmAuthException with the specified message.

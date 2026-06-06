@@ -43,9 +43,7 @@ public class TamperProofStore {
         this.diffCalculator = diffCalculator;
     }
 
-    /**
-     * Initialize the tamper-proof store. Creates directories and loads chain tail.
-     */
+    /** Initialize the tamper-proof store. Creates directories and loads chain tail. */
     public void initialize() {
         try {
             Files.createDirectories(auditDir);
@@ -133,10 +131,10 @@ public class TamperProofStore {
                                             + recordId
                                             + ": expected prev="
                                             + previousHash.substring(
-                                            0, Math.min(8, previousHash.length()))
+                                                    0, Math.min(8, previousHash.length()))
                                             + ", got "
                                             + prevHash.substring(
-                                            0, Math.min(8, prevHash.length())));
+                                                    0, Math.min(8, prevHash.length())));
                         }
                         previousHash = recordHash;
                     }
@@ -152,8 +150,8 @@ public class TamperProofStore {
                 intact
                         ? String.format("Chain intact: %d records verified", recordsChecked)
                         : String.format(
-                        "Chain BROKEN: %d violations in %d records",
-                        violations.size(), recordsChecked);
+                                "Chain BROKEN: %d violations in %d records",
+                                violations.size(), recordsChecked);
 
         return new ChainVerificationResult(recordsChecked, intact, summary);
     }
@@ -163,8 +161,8 @@ public class TamperProofStore {
         List<String> records = new ArrayList<>();
         try {
             try (DirectoryStream<Path> stream =
-                         Files.newDirectoryStream(
-                                 auditDir, STORE_FILE_PREFIX + "*" + STORE_FILE_SUFFIX)) {
+                    Files.newDirectoryStream(
+                            auditDir, STORE_FILE_PREFIX + "*" + STORE_FILE_SUFFIX)) {
                 for (Path file : stream) {
                     String fileName = file.getFileName().toString();
                     LocalDate fileDate = extractDate(fileName);

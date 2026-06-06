@@ -25,9 +25,7 @@ public class GBNFGrammarEngine {
         this.config = config;
     }
 
-    /**
-     * Load the main veto output grammar from the configured path.
-     */
+    /** Load the main veto output grammar from the configured path. */
     public String loadVetoOutputGrammar() {
         return loadGrammar(config.getLlamaCpp().getGbnfGrammarPath());
     }

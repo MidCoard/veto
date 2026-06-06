@@ -15,10 +15,9 @@ repositories {
     mavenCentral()
 }
 
-// ZERO dependencies — not even Jackson.
-// Records and enums only. Jackson-compatible by convention.
+// Lightweight contract with Jackson for IPC frame serialization
 dependencies {
-    // intentionally empty
+    implementation("com.fasterxml.jackson.core:jackson-databind:2.18.0")
 }
 
 spotless {

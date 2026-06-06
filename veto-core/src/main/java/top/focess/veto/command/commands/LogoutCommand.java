@@ -2,14 +2,11 @@ package top.focess.veto.command.commands;
 
 import java.util.List;
 import java.util.Map;
-
 import top.focess.command.CommandSender;
 import top.focess.veto.command.PromptHandler;
-import top.focess.veto.command.TerminalIO;
 import top.focess.veto.command.TerminalSessionManager;
 import top.focess.veto.command.VetoCommand;
-import top.focess.veto.contract.ResponseType;
-import top.focess.veto.contract.TerminalResponse;
+import top.focess.veto.command.VetoCommandSender;
 import top.focess.veto.vault.CredentialVault;
 
 public class LogoutCommand extends VetoCommand {
@@ -24,29 +21,25 @@ public class LogoutCommand extends VetoCommand {
         this.vault = vault;
         this.sessions = sessions;
         this.promptHandler = promptHandler;
+        setExecutorPermission(LOGGED_IN);
+    }
+
+    @Override
+    public void init() {
         addExecutor(
-                (sender, args, io) -> {
+                (sender, args) -> {
+                    VetoCommandSender s = vetoSender(sender);
                     vault.lock();
-                    if (sender instanceof top.focess.veto.command.VetoCommandSender vs
-                            && vs.isLoggedIn()) {
-                        sessions.invalidateAll(vs.getUsername());
-                    }
-                    ((TerminalIO) io)
-                            .respond(
-                                    new TerminalResponse(
-                                            ResponseType.MESSAGE,
-                                            "Logged out.",
-                                            Map.of("clearSession", true)));
+                    sessions.invalidateAll(s.getUsername());
+                    sessions.invalidate(s.terminalId());
+                    promptHandler.removeSession(s.terminalId());
+                    s.done(Map.of("clearSession", true));
                     return allow();
                 });
     }
 
     @Override
-    public void init() {
-    }
-
-    @Override
     public List<String> usage(CommandSender s) {
-        return List.of("/logout");
+        return List.of("/logout — Sign out");
     }
 }

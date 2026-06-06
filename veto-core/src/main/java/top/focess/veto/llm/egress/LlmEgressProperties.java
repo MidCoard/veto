@@ -28,9 +28,7 @@ public class LlmEgressProperties {
      */
     private String mode = "direct";
 
-    /**
-     * Token the engine presents to the broker so the broker can authenticate the caller.
-     */
+    /** Token the engine presents to the broker so the broker can authenticate the caller. */
     private String internalToken;
 
     /** Per-provider broker base URLs used in proxy mode. */

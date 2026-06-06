@@ -17,15 +17,12 @@ import top.focess.veto.llm.core.ResolvedRequest;
 import top.focess.veto.llm.core.VetoRequest;
 import top.focess.veto.llm.core.VetoResponse;
 
-/**
- * Integration test that calls the real DeepSeek API. Requires {@code application-local.yml}.
- */
+/** Integration test that calls the real DeepSeek API. Requires {@code application-local.yml}. */
 @SpringBootTest
 @ActiveProfiles("local")
 class DeepSeekProviderIntegrationTest {
 
-    @Autowired
-    private DeepSeekProvider provider;
+    @Autowired private DeepSeekProvider provider;
 
     @Value("${veto.test.deepseek.api-key:}")
     private String apiKey;

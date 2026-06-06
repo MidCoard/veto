@@ -69,9 +69,7 @@ public class DiffCalculator {
         return new DiffResult(totalChanges, charsChanged, lineCountChange, summary, lineDiffs);
     }
 
-    /**
-     * Generate a human-readable diff summary.
-     */
+    /** Generate a human-readable diff summary. */
     public String generateSummaryReport(DiffResult diff) {
         if (diff.totalChanges == 0) {
             return "No changes detected.";

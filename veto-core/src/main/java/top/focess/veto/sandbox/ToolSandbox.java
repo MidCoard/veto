@@ -106,9 +106,7 @@ public class ToolSandbox {
                 });
     }
 
-    /**
-     * Check if a request is attempting forbidden generic execution.
-     */
+    /** Check if a request is attempting forbidden generic execution. */
     private boolean isForbiddenExecution(ToolExecutionRequest request) {
         String name = request.getCapabilityName().toLowerCase();
         return name.contains("run_bash")

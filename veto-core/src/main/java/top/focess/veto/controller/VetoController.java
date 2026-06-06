@@ -68,9 +68,7 @@ public class VetoController {
                         "timestamp", Instant.now().toString()));
     }
 
-    /**
-     * GET /api/veto/status - Return gateway statistics.
-     */
+    /** GET /api/veto/status - Return gateway statistics. */
     @GetMapping(value = "/status", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Map<String, Object>> getStatus() {
         return ResponseEntity.ok(

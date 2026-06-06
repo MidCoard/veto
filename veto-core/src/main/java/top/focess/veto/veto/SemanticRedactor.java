@@ -176,9 +176,7 @@ public class SemanticRedactor {
         return payload; // Return original if SLM processing fails
     }
 
-    /**
-     * Add a custom proprietary parameter pattern.
-     */
+    /** Add a custom proprietary parameter pattern. */
     public void addProprietaryPattern(String regex) {
         proprietaryParameterPatterns.add(Pattern.compile(regex));
         log.info("C7 Redactor: Added proprietary pattern '{}'", regex);

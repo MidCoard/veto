@@ -11,9 +11,7 @@ import org.springframework.context.annotation.Configuration;
 @ConfigurationProperties(prefix = "veto.training")
 public class TrainingConfiguration {
 
-    /**
-     * Python interpreter path (can be venv-resolved).
-     */
+    /** Python interpreter path (can be venv-resolved). */
     private String pythonPath = "python";
 
     /** Root directory of the training pipeline (relative to project root). */

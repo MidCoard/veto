@@ -172,9 +172,7 @@ public class LlamaCppBridge {
                 inferenceExecutor);
     }
 
-    /**
-     * Kill request for priority interruption.
-     */
+    /** Kill request for priority interruption. */
     public void killCurrentInference() {
         // Implementation would send SIGINT or use llama.cpp's interrupt API
         log.warn("C7 LlamaCpp: Kill current inference requested");

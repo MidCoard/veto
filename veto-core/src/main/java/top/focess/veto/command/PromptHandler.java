@@ -11,26 +11,20 @@ import top.focess.veto.agent.Agent;
 import top.focess.veto.agent.AgentState;
 import top.focess.veto.agent.SessionCompactor;
 import top.focess.veto.agent.TurnRecord;
-import top.focess.veto.contract.ResponseType;
-import top.focess.veto.contract.TerminalResponse;
 import top.focess.veto.llm.core.*;
 import top.focess.veto.vault.CredentialVault;
 
 /**
- * Handles plain-text prompts routed directly to the LLM agent. No command prefix needed — any text
- * without a leading {@code /} is an implicit prompt.
+ * Handles plain-text prompts routed directly to the LLM agent. Writes streaming deltas via {@link
+ * VetoCommandSender}.
  *
- * <p>Agent sessions are keyed by the terminal session token so that each login session maintains a
- * continuous conversation. Stale sessions (no activity for 30 minutes) are evicted on each request
- * to prevent unbounded memory growth under many terminal connections.
+ * <p>Agent sessions are keyed by terminal ID (from the IPC filename) so that turns accumulate
+ * within the same terminal session.
  */
 public class PromptHandler {
 
     private static final Logger log = LoggerFactory.getLogger(PromptHandler.class);
 
-    /**
-     * Evict sessions idle longer than this.
-     */
     private static final long SESSION_TTL_MS = Duration.ofMinutes(30).toMillis();
 
     private final CredentialVault vault;
@@ -54,22 +48,22 @@ public class PromptHandler {
     }
 
     /**
-     * Handle a plain-text prompt. Uses the terminal session token as the conversation key so that
-     * turns accumulate within the same login session instead of starting a fresh agent every
-     * prompt.
+     * Handle a plain-text prompt and stream the response via {@code io}. The I/O handler's {@code
+     * delta()} is called for each chunk of the LLM response, followed by {@code done()} on
+     * completion or {@code error()} on failure.
      */
-    public TerminalResponse handle(String prompt, String sessionToken) {
+    public void handle(String prompt, String terminalId, VetoCommandSender sender) {
         String user = vault.getCurrentUser();
         if (user == null) {
-            return TerminalResponse.error("Not logged in. Use /login.");
+            sender.error("Not logged in. Use /login.");
+            return;
         }
-        if (prompt.isBlank()) return TerminalResponse.error("Empty prompt");
+        if (prompt.isBlank()) {
+            sender.error("Empty prompt");
+            return;
+        }
 
-        // Evict stale sessions before creating/updating to bound memory
         evictStaleSessions();
-
-        // Use the session token as the conversation key; fall back to a transient key
-        String sid = sessionToken != null ? sessionToken : "anon-" + System.currentTimeMillis();
 
         ProviderType provider = ProviderType.DEEPSEEK;
         String model = "deepseek-v4-pro";
@@ -78,7 +72,7 @@ public class PromptHandler {
 
         Agent agent =
                 sessions.computeIfAbsent(
-                        sid,
+                        terminalId,
                         k ->
                                 Agent.builder()
                                         .name("agent-" + k.substring(0, Math.min(8, k.length())))
@@ -100,31 +94,32 @@ public class PromptHandler {
                                     credKey,
                                     new LlmOptions(0.0, null, 1024, Duration.ofSeconds(60))));
 
+            // Stream the thought as deltas
+            String thought = r.thought();
+            if (thought != null && !thought.isBlank()) {
+                // Split into sentence-chunks for a streaming feel
+                sender.delta(thought);
+            }
+
             agent =
                     agent.appendTurn(
                             new TurnRecord(
                                     agent.nextTurnNumber(), r.thought(), null, null, null, null));
 
             SessionCompactor compactor =
-                    compactors.computeIfAbsent(sid, k -> new SessionCompactor(caller));
+                    compactors.computeIfAbsent(terminalId, k -> new SessionCompactor(caller));
             if (compactor.shouldCompact(agent)) {
                 agent = compactor.compact(agent);
             }
-            sessions.put(sid, agent);
-            return new TerminalResponse(
-                    ResponseType.MESSAGE,
-                    r.thought(),
-                    Map.of("sessionId", sid, "turnNumber", agent.turns().size()));
+            sessions.put(terminalId, agent);
+
+            sender.done(Map.of("username", user, "turnNumber", agent.turns().size()));
         } catch (Exception e) {
-            log.error("Prompt failed for session {}", sid, e);
-            return TerminalResponse.error("LLM call failed: " + e.getMessage());
+            log.error("Prompt failed for terminal {}", terminalId, e);
+            sender.error("LLM call failed: " + e.getMessage());
         }
     }
 
-    /**
-     * Remove sessions that have been idle for longer than {@link #SESSION_TTL_MS}. An agent is
-     * considered idle if its last turn was recorded more than the TTL ago.
-     */
     private void evictStaleSessions() {
         long cutoff = System.currentTimeMillis() - SESSION_TTL_MS;
         Iterator<Map.Entry<String, Agent>> it = sessions.entrySet().iterator();
@@ -141,11 +136,8 @@ public class PromptHandler {
         }
     }
 
-    /**
-     * Drop a specific session (called on logout).
-     */
-    public void removeSession(String sessionToken) {
-        sessions.remove(sessionToken);
-        compactors.remove(sessionToken);
+    public void removeSession(String terminalId) {
+        sessions.remove(terminalId);
+        compactors.remove(terminalId);
     }
 }

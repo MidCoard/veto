@@ -8,9 +8,7 @@ import top.focess.veto.llm.config.LlmJacksonConfig;
 import top.focess.veto.llm.core.ProviderType;
 import top.focess.veto.observability.AuditLogger;
 
-/**
- * OpenAI provider: stock base URL, strict Structured Outputs (json_schema).
- */
+/** OpenAI provider: stock base URL, strict Structured Outputs (json_schema). */
 @Component
 public class OpenAIProvider extends OpenAiCompatibleProvider {
 

@@ -10,5 +10,4 @@ package top.focess.veto.llm.egress;
  * @param baseUrl the effective base URL for the call
  * @param apiKey the API key or internal token to use
  */
-public record EgressEndpoint(String baseUrl, String apiKey) {
-}
+public record EgressEndpoint(String baseUrl, String apiKey) {}

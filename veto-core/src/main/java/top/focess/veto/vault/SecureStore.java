@@ -44,9 +44,7 @@ public class SecureStore {
         this.storePath = Path.of(config.getVaultHome(), "vault", "credentials", username + ".enc");
     }
 
-    /**
-     * Returns the username this store belongs to.
-     */
+    /** Returns the username this store belongs to. */
     public String getUsername() {
         return username;
     }

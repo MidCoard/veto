@@ -49,9 +49,7 @@ public class AuditLogger {
                 totalRecordsWritten.get());
     }
 
-    /**
-     * Log a veto redaction event with pre/post data.
-     */
+    /** Log a veto redaction event with pre/post data. */
     public void logRedaction(
             String dagPayloadId,
             String requestId,
