@@ -1,6 +1,7 @@
 package top.focess.veto.terminal;
 
 import java.util.UUID;
+import java.util.concurrent.locks.ReentrantLock;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.zeromq.ZContext;
@@ -30,6 +31,11 @@ public final class ZmqTerminal implements AutoCloseable {
     private final ZmqTransport transport;
     private final String identity;
 
+    /** Serializes all socket access — JeroMQ sockets are not thread-safe. */
+    private final ReentrantLock socketLock = new ReentrantLock();
+
+    private volatile boolean closed;
+
     public ZmqTerminal(@NotNull String address) {
         this.identity = UUID.randomUUID().toString();
         this.ctx = new ZContext();
@@ -38,29 +44,51 @@ public final class ZmqTerminal implements AutoCloseable {
 
     // ── I/O ───────────────────────────────────────────────────────────────
 
-    /** Send a frame to the backend. Non-blocking. */
+    /** Send a frame to the backend. Thread-safe; serialized with reads via {@link #socketLock}. */
     public void send(@NotNull IpcFrame frame) {
+        socketLock.lock();
         try {
             transport.send(frame);
         } catch (Exception e) {
             throw new RuntimeException("ZMQ send failed", e);
+        } finally {
+            socketLock.unlock();
         }
     }
 
-    /** Block until a frame arrives from the backend, or null on interrupt. */
+    /**
+     * Block until a frame arrives, or return {@code null} on close/interrupt.
+     *
+     * <p>Implemented as a short poll loop rather than a blocking socket read so the single ZMQ
+     * socket is never held by one thread while another (heartbeat, hint reader) needs it. JeroMQ
+     * sockets are not thread-safe; {@link #socketLock} guarantees one-at-a-time access.
+     */
     @Nullable
     public IpcFrame receive() {
-        String[] parts = transport.receive();
-        if (parts == null || parts.length < 2) return null;
-        return ZmqTransport.deserialize(parts[1]);
+        while (!closed && !Thread.currentThread().isInterrupted()) {
+            IpcFrame f = tryReceive();
+            if (f != null) return f;
+            try {
+                Thread.sleep(5);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        return null;
     }
 
-    /** Try to receive without blocking. Returns null if nothing available. */
+    /** Try to receive without blocking. Returns null if nothing available. Thread-safe. */
     @Nullable
     public IpcFrame tryReceive() {
-        String[] parts = transport.tryReceive();
-        if (parts == null || parts.length < 2) return null;
-        return ZmqTransport.deserialize(parts[1]);
+        socketLock.lock();
+        try {
+            String[] parts = transport.tryReceive();
+            if (parts == null || parts.length < 2) return null;
+            return ZmqTransport.deserialize(parts[1]);
+        } finally {
+            socketLock.unlock();
+        }
     }
 
     /** Send a hint request. Returns null if the backend didn't respond. */
@@ -84,7 +112,13 @@ public final class ZmqTerminal implements AutoCloseable {
 
     @Override
     public void close() {
-        transport.close();
+        closed = true;
+        socketLock.lock();
+        try {
+            transport.close();
+        } finally {
+            socketLock.unlock();
+        }
     }
 
     @NotNull

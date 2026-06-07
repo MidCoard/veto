@@ -114,13 +114,15 @@ public class CommandRegistry {
 
         if (!choices.isEmpty()) {
             String choiceStr = "{" + String.join("|", choices) + "}";
+            String desc = null;
             if (!named.isEmpty()) {
                 CommandArgument<?> arg = named.get(0);
                 String ph =
                         arg.isNullable() ? "[" + arg.getName() + "]" : "<" + arg.getName() + ">";
                 choiceStr += " " + ph;
+                desc = arg.getDescription();
             }
-            return new HintInfo(choiceStr, null);
+            return new HintInfo(choiceStr, desc);
         }
         if (!named.isEmpty()) {
             CommandArgument<?> arg = named.get(0);

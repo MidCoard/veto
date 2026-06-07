@@ -38,7 +38,12 @@ public class VetoTerminal {
     private int turnCount;
     private volatile boolean busy;
     private volatile boolean running;
+
+    /** Visible width (columns) of the currently drawn ghost hint. Guarded by {@link #ghostLock}. */
     private int lastTipLen;
+
+    /** Serializes ghost-hint terminal writes against accept/completion clears. */
+    private final Object ghostLock = new Object();
 
     public VetoTerminal(Terminal t, LineReader reader, ZmqTerminal transport) {
         this.t = t;
@@ -69,6 +74,7 @@ public class VetoTerminal {
         heartbeat.start();
 
         registerHintWidget();
+        registerAcceptWidget();
         startHintReplyReader();
 
         try {
@@ -98,7 +104,13 @@ public class VetoTerminal {
         reader.getKeyMaps().get(LineReader.MAIN).bind(new Reference("veto-hint-sender"), " ");
     }
 
-    // ── hint reply → write ghost text, cursor back ───────────────────────
+    // ── hint reply → inline ghost text ───────────────────────────────────
+    //
+    // The backend answers a Hint frame with a Done whose content is the
+    // placeholder (e.g. "[user] [pass]"). We render it as dim "ghost" text to
+    // the right of the cursor, then move the cursor back so typing flows over
+    // it. All cursor math MUST use the *visible* width of the text — never the
+    // styled string length, which carries invisible ANSI escape bytes.
 
     private void startHintReplyReader() {
         Thread reply =
@@ -106,53 +118,119 @@ public class VetoTerminal {
                         () -> {
                             while (running) {
                                 if (busy) {
-                                    try {
-                                        Thread.sleep(100);
-                                    } catch (InterruptedException e) {
-                                        break;
-                                    }
+                                    sleepQuiet(50);
                                     continue;
                                 }
                                 IpcFrame f = transport.tryReceive();
-                                if (f instanceof IpcFrame.Done done) {
-                                    String text = done.content();
-                                    String ghost;
-                                    if (text != null && !text.isBlank()) {
-                                        String desc = (String) done.meta().get("description");
-                                        HintInfo hint = new HintInfo(text, desc);
-                                        ghost =
-                                                MordantTerminal.dim(
-                                                        VetoTerminal.this.t, hint.displayText());
-                                    } else {
-                                        ghost = "";
-                                    }
-                                    try {
-                                        var w = VetoTerminal.this.reader.getTerminal().writer();
-                                        // Erase previous ghost text
-                                        if (lastTipLen > 0) {
-                                            w.print("\033[" + lastTipLen + "X");
-                                        }
-                                        // Write new ghost text, then jump
-                                        // back
-                                        if (!ghost.isEmpty()) {
-                                            w.print(ghost);
-                                            w.print("\033[" + ghost.length() + "D");
-                                        }
-                                        w.flush();
-                                        lastTipLen = ghost.length();
-                                    } catch (Exception ignored) {
-                                    }
+                                // Re-check busy: the REPL or completer may have
+                                // claimed the socket while we were reading.
+                                if (!busy && f instanceof IpcFrame.Done done) {
+                                    drawGhost(done);
                                 }
-                                try {
-                                    Thread.sleep(50);
-                                } catch (InterruptedException e) {
-                                    break;
-                                }
+                                sleepQuiet(30);
                             }
                         },
                         "hint-reply");
         reply.setDaemon(true);
         reply.start();
+    }
+
+    /** Render (or clear) the inline ghost hint described by a backend Done frame. */
+    private void drawGhost(IpcFrame.Done done) {
+        String placeholder = done.content();
+        String plain;
+        if (placeholder != null && !placeholder.isBlank()) {
+            String desc = (String) done.meta().get("description");
+            plain = new HintInfo(placeholder, desc).displayText();
+        } else {
+            plain = "";
+        }
+        if (plain == null) plain = "";
+
+        synchronized (ghostLock) {
+            try {
+                var term = reader.getTerminal();
+                var w = term.writer();
+                boolean ansi = MordantTerminal.supportsAnsi(t);
+
+                // Clamp to the columns left on the line so the ghost never
+                // wraps — wrapping would invalidate the cursor restore below.
+                // The prompt occupies a fixed 2 columns.
+                int width = term.getWidth() > 0 ? term.getWidth() : 80;
+                int cursorCol = 2 + reader.getBuffer().cursor();
+                int avail = Math.max(0, width - cursorCol - 1);
+                if (plain.length() > avail) {
+                    plain = avail <= 1 ? "" : plain.substring(0, avail - 1) + "…";
+                }
+
+                // Erase the previously drawn ghost using its VISIBLE width.
+                if (lastTipLen > 0) {
+                    w.print("\033[" + lastTipLen + "X"); // ECH — erase in place
+                }
+                if (!plain.isEmpty() && ansi) {
+                    w.print(MordantTerminal.dim(t, plain)); // styled (variable bytes)
+                    w.print("\033[" + plain.length() + "D"); // restore by VISIBLE width
+                    lastTipLen = plain.length();
+                } else {
+                    lastTipLen = 0;
+                }
+                w.flush();
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
+    /** Erase the ghost hint just before a line is accepted (runs on the reader thread). */
+    private void clearGhostAtAccept() {
+        synchronized (ghostLock) {
+            if (lastTipLen <= 0) return;
+            try {
+                reader.callWidget(LineReader.END_OF_LINE);
+                var w = reader.getTerminal().writer();
+                w.print("\033[K"); // erase to end of line — drops trailing ghost
+                w.flush();
+            } catch (Exception ignored) {
+            } finally {
+                lastTipLen = 0;
+            }
+        }
+    }
+
+    /** Erase the ghost hint to end of line from the current cursor (e.g. before completion). */
+    private void eraseGhostToEol() {
+        synchronized (ghostLock) {
+            if (lastTipLen <= 0) return;
+            try {
+                var w = reader.getTerminal().writer();
+                w.print("\033[K");
+                w.flush();
+            } catch (Exception ignored) {
+            } finally {
+                lastTipLen = 0;
+            }
+        }
+    }
+
+    private static void sleepQuiet(long ms) {
+        try {
+            Thread.sleep(ms);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    // ── accept-line → clear ghost before submit ──────────────────────────
+
+    private void registerAcceptWidget() {
+        Widget accept =
+                () -> {
+                    clearGhostAtAccept();
+                    reader.callWidget(LineReader.ACCEPT_LINE);
+                    return true;
+                };
+        reader.getWidgets().put("veto-accept-line", accept);
+        reader.getKeyMaps().get(LineReader.MAIN).bind(new Reference("veto-accept-line"), "\r");
+        reader.getKeyMaps().get(LineReader.MAIN).bind(new Reference("veto-accept-line"), "\n");
     }
 
     // ── repl ──────────────────────────────────────────────────────────────
@@ -301,29 +379,32 @@ public class VetoTerminal {
 
     // ── tab completion ───────────────────────────────────────────────────
 
-    private static class VetoCompleter implements Completer {
-        private final ZmqTerminal transport;
-
-        VetoCompleter(ZmqTerminal transport) {
-            this.transport = transport;
-        }
+    private class VetoCompleter implements Completer {
 
         @Override
         public void complete(LineReader r, ParsedLine line, List<Candidate> out) {
             String fullLine = line.line();
             if (!fullLine.startsWith("/")) return;
-            transport.send(new IpcFrame.Complete(fullLine));
-            IpcFrame reply = transport.receive();
-            if (reply instanceof IpcFrame.Done done && done.content() != null) {
-                for (String entry : done.content().split("\n")) {
-                    String trimmed = entry.trim();
-                    if (trimmed.isEmpty()) continue;
-                    String[] parts = trimmed.split("\t", 3);
-                    String name = parts[0];
-                    String desc = parts.length > 1 && !parts[1].isBlank() ? parts[1] : null;
-                    String group = parts.length > 2 && !parts[2].isBlank() ? parts[2] : null;
-                    out.add(new Candidate(name, name, group, desc, null, null, true));
+            // Pause the hint reader and drop any ghost so the completion output
+            // neither races the socket nor collides with leftover ghost text.
+            busy = true;
+            try {
+                eraseGhostToEol();
+                transport.send(new IpcFrame.Complete(fullLine));
+                IpcFrame reply = transport.receive();
+                if (reply instanceof IpcFrame.Done done && done.content() != null) {
+                    for (String entry : done.content().split("\n")) {
+                        String trimmed = entry.trim();
+                        if (trimmed.isEmpty()) continue;
+                        String[] parts = trimmed.split("\t", 3);
+                        String name = parts[0];
+                        String desc = parts.length > 1 && !parts[1].isBlank() ? parts[1] : null;
+                        String group = parts.length > 2 && !parts[2].isBlank() ? parts[2] : null;
+                        out.add(new Candidate(name, name, group, desc, null, null, true));
+                    }
                 }
+            } finally {
+                busy = false;
             }
         }
     }
@@ -341,7 +422,7 @@ public class VetoTerminal {
             Terminal mt = MordantTerminal.create();
             ZmqTerminal transport = new ZmqTerminal(BACKEND_ADDR);
             VetoTerminal vt = new VetoTerminal(mt, null, transport);
-            VetoCompleter completer = new VetoCompleter(transport);
+            Completer completer = vt.new VetoCompleter();
             LineReader r = LineReaderBuilder.builder().terminal(jt).completer(completer).build();
             vt.reader = r;
             vt.start();
