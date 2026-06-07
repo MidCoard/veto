@@ -47,6 +47,9 @@ dependencies {
     implementation("top.focess:focess-command:2.2.0")
     implementation("top.focess:focess-scheduler:2.0.0")
 
+    // ZMQ transport (shared with veto-contract)
+    implementation("org.zeromq:jeromq:0.6.0")
+
     // Encryption
     implementation("org.bouncycastle:bcprov-jdk18on:1.78.1")
 

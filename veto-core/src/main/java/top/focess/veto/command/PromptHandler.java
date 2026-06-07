@@ -5,6 +5,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.agent.Agent;
@@ -15,16 +16,13 @@ import top.focess.veto.llm.core.*;
 import top.focess.veto.vault.CredentialVault;
 
 /**
- * Handles plain-text prompts routed directly to the LLM agent. Writes streaming deltas via {@link
- * VetoCommandSender}.
- *
- * <p>Agent sessions are keyed by terminal ID (from the IPC filename) so that turns accumulate
- * within the same terminal session.
+ * Handles plain-text prompts routed directly to the LLM agent. Uses the standard {@link
+ * top.focess.command.CommandSender#output(String)} API to stream responses, and sets {@link
+ * VetoCommandSender#doneMeta()} for session metadata.
  */
 public class PromptHandler {
 
     private static final Logger log = LoggerFactory.getLogger(PromptHandler.class);
-
     private static final long SESSION_TTL_MS = Duration.ofMinutes(30).toMillis();
 
     private final CredentialVault vault;
@@ -32,34 +30,33 @@ public class PromptHandler {
     private final ConcurrentHashMap<String, Agent> sessions = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, SessionCompactor> compactors =
             new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, String> activePatterns = new ConcurrentHashMap<>();
 
-    public PromptHandler(CredentialVault vault, UniformLLMCaller caller) {
+    public PromptHandler(@NotNull CredentialVault vault, @NotNull UniformLLMCaller caller) {
         this.vault = vault;
         this.caller = caller;
     }
 
+    @NotNull
     public Map<String, Agent> sessions() {
         return sessions;
     }
 
-    public Map<String, String> activePatterns() {
-        return activePatterns;
-    }
-
     /**
-     * Handle a plain-text prompt and stream the response via {@code io}. The I/O handler's {@code
-     * delta()} is called for each chunk of the LLM response, followed by {@code done()} on
-     * completion or {@code error()} on failure.
+     * Handle a plain-text prompt and stream the LLM response via the sender's {@code output()}
+     * method. On completion, sets metadata on the sender for the dispatch loop to include in the
+     * terminal {@code Done} frame. On failure, sets the error flag on the sender.
      */
-    public void handle(String prompt, String terminalId, VetoCommandSender sender) {
+    public void handle(
+            @NotNull String prompt, @NotNull String terminalId, @NotNull VetoCommandSender sender) {
         String user = vault.getCurrentUser();
         if (user == null) {
-            sender.error("Not logged in. Use /login.");
+            sender.output("Not logged in. Use /login.");
+            sender.setErrorFlag();
             return;
         }
         if (prompt.isBlank()) {
-            sender.error("Empty prompt");
+            sender.output("Empty prompt.");
+            sender.setErrorFlag();
             return;
         }
 
@@ -94,11 +91,9 @@ public class PromptHandler {
                                     credKey,
                                     new LlmOptions(0.0, null, 1024, Duration.ofSeconds(60))));
 
-            // Stream the thought as deltas
             String thought = r.thought();
             if (thought != null && !thought.isBlank()) {
-                // Split into sentence-chunks for a streaming feel
-                sender.delta(thought);
+                sender.output(thought);
             }
 
             agent =
@@ -113,10 +108,12 @@ public class PromptHandler {
             }
             sessions.put(terminalId, agent);
 
-            sender.done(Map.of("username", user, "turnNumber", agent.turns().size()));
+            sender.doneMeta().put("username", user);
+            sender.doneMeta().put("turnNumber", agent.turns().size());
         } catch (Exception e) {
             log.error("Prompt failed for terminal {}", terminalId, e);
-            sender.error("LLM call failed: " + e.getMessage());
+            sender.output("LLM call failed: " + e.getMessage());
+            sender.setErrorFlag();
         }
     }
 
@@ -136,7 +133,7 @@ public class PromptHandler {
         }
     }
 
-    public void removeSession(String terminalId) {
+    public void removeSession(@NotNull String terminalId) {
         sessions.remove(terminalId);
         compactors.remove(terminalId);
     }

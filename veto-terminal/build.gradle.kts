@@ -32,6 +32,9 @@ dependencies {
 
     // Jackson — declared explicitly, NOT inherited from Spring Boot BOM
     implementation("com.fasterxml.jackson.core:jackson-databind:2.18.0")
+
+    // ZMQ transport (shared with veto-contract)
+    implementation("org.zeromq:jeromq:0.6.0")
 }
 
 spotless {

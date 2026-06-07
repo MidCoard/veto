@@ -1,7 +1,8 @@
 package top.focess.veto.command.commands;
 
 import java.util.List;
-import java.util.Map;
+import org.jetbrains.annotations.NotNull;
+import top.focess.command.CommandResult;
 import top.focess.command.CommandSender;
 import top.focess.veto.command.PromptHandler;
 import top.focess.veto.command.TerminalSessionManager;
@@ -16,30 +17,35 @@ public class LogoutCommand extends VetoCommand {
     private final PromptHandler promptHandler;
 
     public LogoutCommand(
-            CredentialVault vault, TerminalSessionManager sessions, PromptHandler promptHandler) {
+            @NotNull CredentialVault vault,
+            @NotNull TerminalSessionManager sessions,
+            @NotNull PromptHandler promptHandler) {
         super("logout", "Sign out");
         this.vault = vault;
         this.sessions = sessions;
         this.promptHandler = promptHandler;
-        setExecutorPermission(LOGGED_IN);
     }
 
     @Override
     public void init() {
+        setExecutorPermission(LOGGED_IN);
         addExecutor(
                 (sender, args) -> {
                     VetoCommandSender s = vetoSender(sender);
+                    if (s == null) return CommandResult.REFUSE;
+
                     vault.lock();
-                    sessions.invalidateAll(s.getUsername());
                     sessions.invalidate(s.terminalId());
                     promptHandler.removeSession(s.terminalId());
-                    s.done(Map.of("clearSession", true));
-                    return allow();
+                    s.output("Logged out.");
+                    s.doneMeta().put("clearSession", true);
+                    return CommandResult.ALLOW;
                 });
     }
 
     @Override
-    public List<String> usage(CommandSender s) {
+    @NotNull
+    public List<String> usage(@NotNull CommandSender s) {
         return List.of("/logout — Sign out");
     }
 }

@@ -1,16 +1,22 @@
 package top.focess.veto.command.commands;
 
+import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
+import org.jetbrains.annotations.NotNull;
 import top.focess.command.Command;
+import top.focess.command.CommandResult;
 import top.focess.command.CommandSender;
+import top.focess.veto.command.CommandRegistry;
 import top.focess.veto.command.VetoCommand;
 import top.focess.veto.command.VetoCommandSender;
 
 public class HelpCommand extends VetoCommand {
 
-    public HelpCommand() {
+    private final CommandRegistry registry;
+
+    public HelpCommand(@NotNull CommandRegistry registry) {
         super("help", "Show available commands", "h");
+        this.registry = registry;
     }
 
     @Override
@@ -18,34 +24,35 @@ public class HelpCommand extends VetoCommand {
         addExecutor(
                 (sender, args) -> {
                     VetoCommandSender s = vetoSender(sender);
-                    // Get the manager this command is registered on
-                    var manager = getManager();
-                    StringBuilder sb = new StringBuilder();
-                    int max = 10;
-                    for (Command c : manager.getCommands()) {
-                        if (c.getName().equals("help")) continue;
-                        if (!sender.hasPermission(c.getPermission())) continue;
-                        int len = c.getName().length();
-                        if (len > max) max = len;
-                    }
-                    for (Command c : manager.getCommands()) {
-                        if (c.getName().equals("help")) continue;
-                        if (!sender.hasPermission(c.getPermission())) continue;
-                        sb.append(
+                    if (s == null) return CommandResult.REFUSE;
+
+                    List<Command> commands =
+                            registry.getCommands().stream()
+                                    .filter(c -> !"help".equals(c.getName()))
+                                    .filter(c -> sender.hasPermission(c.getPermission()))
+                                    .sorted(Comparator.comparing(Command::getName))
+                                    .toList();
+
+                    int maxLen =
+                            commands.stream().mapToInt(c -> c.getName().length()).max().orElse(10);
+
+                    s.output("Available Commands");
+                    for (Command c : commands) {
+                        s.output(
                                 String.format(
-                                        "  /%-" + max + "s  %s\n",
+                                        "  /%-" + maxLen + "s  %s",
                                         c.getName(),
                                         c.getDescription()));
                     }
-                    sb.append("\nType anything to chat with the agent.");
-                    s.delta(sb.toString());
-                    s.done(Map.of());
-                    return allow();
+                    s.output("");
+                    s.output("Type anything to chat with the agent.");
+                    return CommandResult.ALLOW;
                 });
     }
 
     @Override
-    public List<String> usage(CommandSender s) {
+    @NotNull
+    public List<String> usage(@NotNull CommandSender s) {
         return List.of("/help — Show available commands");
     }
 }

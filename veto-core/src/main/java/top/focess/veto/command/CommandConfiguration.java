@@ -1,6 +1,7 @@
 package top.focess.veto.command;
 
 import java.util.concurrent.ConcurrentHashMap;
+import org.jetbrains.annotations.NotNull;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import top.focess.veto.command.commands.*;
@@ -14,24 +15,28 @@ public class CommandConfiguration {
     private final ConcurrentHashMap<String, String> activePatterns = new ConcurrentHashMap<>();
 
     @Bean
+    @NotNull
     public TerminalSessionManager terminalSessionManager() {
         return new TerminalSessionManager();
     }
 
     @Bean
-    public PromptHandler promptHandler(CredentialVault vault, UniformLLMCaller caller) {
+    @NotNull
+    public PromptHandler promptHandler(
+            @NotNull CredentialVault vault, @NotNull UniformLLMCaller caller) {
         return new PromptHandler(vault, caller);
     }
 
     @Bean
+    @NotNull
     public CommandRegistry commandRegistry(
-            CredentialVault vault,
-            UserRegistry users,
-            VaultKeyManager keys,
-            UniformLLMCaller caller,
-            PromptHandler promptHandler,
-            TerminalSessionManager terminalSessionManager,
-            AgentPatternRepository patternRepo) {
+            @NotNull CredentialVault vault,
+            @NotNull UserRegistry users,
+            @NotNull VaultKeyManager keys,
+            @NotNull UniformLLMCaller caller,
+            @NotNull PromptHandler promptHandler,
+            @NotNull TerminalSessionManager terminalSessionManager,
+            @NotNull AgentPatternRepository patternRepo) {
 
         CommandRegistry registry = new CommandRegistry();
         registry.setPromptHandler(promptHandler);
@@ -43,7 +48,7 @@ public class CommandConfiguration {
         registry.register(new StatusCommand(vault, promptHandler));
         registry.register(new ExitCommand());
         registry.register(new PatternCommand(vault, patternRepo, activePatterns));
-        registry.register(new HelpCommand());
+        registry.register(new HelpCommand(registry));
         return registry;
     }
 }

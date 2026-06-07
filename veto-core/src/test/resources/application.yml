@@ -13,5 +13,7 @@ spring:
         dialect: org.hibernate.dialect.H2Dialect
 
 veto:
+  terminal:
+    enabled: false
   vault:
     vault-home: ./build/tmp/veto-test

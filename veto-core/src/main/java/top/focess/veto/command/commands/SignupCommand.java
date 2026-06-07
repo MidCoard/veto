@@ -3,6 +3,8 @@ package top.focess.veto.command.commands;
 import java.util.List;
 import java.util.Map;
 import javax.crypto.SecretKey;
+import org.jetbrains.annotations.NotNull;
+import top.focess.command.CommandResult;
 import top.focess.command.CommandSender;
 import top.focess.veto.command.TerminalSessionManager;
 import top.focess.veto.command.VetoCommand;
@@ -17,10 +19,10 @@ public class SignupCommand extends VetoCommand {
     private final TerminalSessionManager sessions;
 
     public SignupCommand(
-            UserRegistry users,
-            VaultKeyManager keys,
-            CredentialVault vault,
-            TerminalSessionManager sessions) {
+            @NotNull UserRegistry users,
+            @NotNull VaultKeyManager keys,
+            @NotNull CredentialVault vault,
+            @NotNull TerminalSessionManager sessions) {
         super("signup", "Create a new account");
         this.users = users;
         this.keys = keys;
@@ -33,24 +35,30 @@ public class SignupCommand extends VetoCommand {
         addExecutor(
                 (sender, args) -> {
                     VetoCommandSender s = vetoSender(sender);
+                    if (s == null) return CommandResult.REFUSE;
+
                     if (users.anyUserExists()) {
-                        s.error("Already set up. Use /login.");
-                        return refuse();
+                        s.output("An account already exists — use /login.");
+                        return CommandResult.REFUSE;
                     }
-                    String u = args.get("user"), p = args.get("pass");
+
+                    String u = args.get("user");
+                    String p = args.get("pass");
 
                     if (u == null) {
-                        u = s.prompt("Choose a username:", Map.of(), 60_000);
+                        s.setNextPromptMeta(Map.of("prompt", "Choose a username:"));
+                        u = s.input();
                         if (u == null || u.isBlank()) {
-                            s.error("Signup cancelled");
-                            return refuse();
+                            s.output("Signup cancelled.");
+                            return CommandResult.REFUSE;
                         }
                     }
                     if (p == null) {
-                        p = s.prompt("Choose a password:", Map.of("mask", true), 60_000);
+                        s.setNextPromptMeta(Map.of("prompt", "Choose a password:", "mask", true));
+                        p = s.input();
                         if (p == null || p.isBlank()) {
-                            s.error("Signup cancelled");
-                            return refuse();
+                            s.output("Signup cancelled.");
+                            return CommandResult.REFUSE;
                         }
                     }
 
@@ -60,15 +68,18 @@ public class SignupCommand extends VetoCommand {
                     keys.wrapVaultKey(vk, mk, u);
                     vault.unlock(vk, u);
                     sessions.create(s.terminalId(), u);
-                    s.done(Map.of("username", u, "session", s.terminalId()));
-                    return allow();
+                    s.output("Account created — welcome, " + u + ".");
+                    s.doneMeta().put("username", u);
+                    s.doneMeta().put("session", s.terminalId());
+                    return CommandResult.ALLOW;
                 },
                 opt("user"),
                 opt("pass"));
     }
 
     @Override
-    public List<String> usage(CommandSender s) {
+    @NotNull
+    public List<String> usage(@NotNull CommandSender s) {
         return List.of("/signup [user] [pass] — Create a new account");
     }
 }

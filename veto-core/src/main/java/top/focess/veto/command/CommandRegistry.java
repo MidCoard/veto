@@ -1,131 +1,145 @@
 package top.focess.veto.command;
 
-import jakarta.annotation.PostConstruct;
-import java.util.*;
+import java.util.List;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Component;
 import top.focess.command.*;
-import top.focess.veto.contract.IpcChannel;
+import top.focess.veto.contract.HintInfo;
 
 /**
- * Registry that wraps the {@link CommandManager} from {@code focess-command} and adapts it for the
- * Veto terminal IPC protocol.
+ * Registry wrapping the {@link CommandManager} from {@code focess-command}.
+ *
+ * <p>Provides command registration, dispatch, tab-completion. The {@code ZmqServer} owns the
+ * transport and calls {@link #dispatch(VetoCommandSender, String)} with a sender whose outbox has
+ * already been wired.
  */
-@Component
 public class CommandRegistry {
 
     private static final Logger log = LoggerFactory.getLogger(CommandRegistry.class);
 
     private final CommandManager manager = new CommandManager();
-    private PromptHandler promptHandler;
-    private TerminalSessionManager sessionManager;
 
-    public void setPromptHandler(PromptHandler h) {
+    @Nullable private PromptHandler promptHandler;
+
+    @Nullable private TerminalSessionManager sessionManager;
+
+    public void setPromptHandler(@Nullable PromptHandler h) {
         this.promptHandler = h;
     }
 
-    public void setTerminalSessionManager(TerminalSessionManager sm) {
+    public void setTerminalSessionManager(@Nullable TerminalSessionManager sm) {
         this.sessionManager = sm;
     }
 
-    public void register(Command c) {
+    public void register(@NotNull Command c) {
         manager.register(c);
     }
 
-    @PostConstruct
-    public void init() {
-        log.info("Registry: {} commands", manager.getCommands().size());
+    @NotNull
+    public List<Command> getCommands() {
+        return manager.getCommands();
     }
 
-    /** Dispatch a request frame. The sender owns all I/O. */
-    public void dispatch(
-            String terminalId, String raw, IpcChannel reqChannel, IpcChannel respChannel) {
-        String username = sessionManager != null ? sessionManager.resolve(terminalId) : null;
-        VetoCommandSender sender =
-                new VetoCommandSender(username, terminalId, reqChannel, respChannel);
+    @Nullable
+    public String resolveUsername(@NotNull String terminalId) {
+        return sessionManager != null ? sessionManager.resolve(terminalId) : null;
+    }
 
-        if (raw == null || raw.isBlank()) {
-            sender.error("Empty input");
-            return;
-        }
+    // ── dispatch ─────────────────────────────────────────────────────────
+
+    public void dispatch(@NotNull VetoCommandSender sender, @Nullable String raw) {
+        if (raw == null || raw.isBlank()) return;
 
         if (!raw.trim().startsWith("/")) {
             if (promptHandler == null) {
-                sender.error("Agent not available");
+                sender.output("Agent not available.");
+                sender.setErrorFlag();
                 return;
             }
-            promptHandler.handle(raw.trim(), terminalId, sender);
+            promptHandler.handle(raw.trim(), sender.terminalId(), sender);
             return;
         }
 
         String input = raw.trim().substring(1);
-
         try {
             ExecutionResult result = manager.dispatch(sender, input);
             CommandResult cr = result.result();
 
-            // Only handle the two states the framework declares EXPLICIT
-            if (CommandResult.EXPLICIT.contains(cr)) {
-                if (cr == CommandResult.COMMAND_NOT_FOUND) {
-                    String cmdName = input.split("\\s+", 2)[0].toLowerCase();
-                    sender.error("Unknown: /" + cmdName + " — try /help");
-                } else {
-                    sender.error(result.getMessage().orElse("Command failed"));
-                }
-                return;
-            }
-
-            if (!sender.hasResponded()) {
-                sender.done(Map.of());
+            if (cr == CommandResult.COMMAND_NOT_FOUND) {
+                String cmdName = input.split("\\s+", 2)[0].toLowerCase();
+                sender.output("Unknown command: /" + cmdName + " — try /help.");
+                sender.setErrorFlag();
+            } else if (cr == CommandResult.REFUSE_EXCEPTION) {
+                sender.output(result.getMessage().orElse("Command failed."));
+                sender.setErrorFlag();
+            } else if (cr == CommandResult.REFUSE) {
+                sender.setErrorFlag();
             }
         } catch (Exception e) {
-            log.error("Dispatch failed for {}", terminalId, e);
-            if (!sender.hasResponded()) {
-                sender.error(e.getMessage());
-            }
+            log.error("Dispatch failed for {}", sender.terminalId(), e);
+            sender.output(e.getMessage() != null ? e.getMessage() : "Command failed.");
+            sender.setErrorFlag();
         }
     }
 
-    /**
-     * Handle a hint frame. Uses {@link CommandRoute#getCurrentArguments} to find the expected
-     * argument at the cursor position. The trailing space (or lack thereof) tells the framework
-     * where the user's cursor is — do NOT strip it.
-     */
-    public String[] hint(String terminalId, String raw) {
-        if (raw == null || raw.isBlank()) return new String[] {null, null};
+    // ── hint ─────────────────────────────────────────────────────────────
+
+    @NotNull
+    public HintInfo hint(@NotNull String terminalId, @Nullable String raw) {
+        if (raw == null || raw.isBlank()) return HintInfo.EMPTY;
 
         String input = raw.stripLeading();
         if (input.startsWith("/")) input = input.substring(1);
 
-        String username = sessionManager != null ? sessionManager.resolve(terminalId) : null;
-        VetoCommandSender sender = new VetoCommandSender(username, terminalId, null, null);
+        VetoCommandSender sender = new VetoCommandSender(resolveUsername(terminalId), terminalId);
 
         CommandRoute route = manager.route(sender, input);
         List<CommandArgument<?>> current = route.getCurrentArguments();
-        if (current.isEmpty()) return new String[] {null, null};
+        if (current.isEmpty()) return HintInfo.EMPTY;
 
-        CommandArgument<?> arg = current.get(0);
-        String name = arg.getName();
-        if (name == null) return new String[] {null, null};
+        // For fixed args ("create","list" etc), use complete() to get the
+        // literal value since getValue() is package-private in the library.
+        List<String> choices =
+                current.stream()
+                        .filter(CommandArgument::isFixed)
+                        .flatMap(
+                                a -> a.complete(sender, route.getCommand(), new String[0]).stream())
+                        .map(CommandCompletion::candidate)
+                        .distinct()
+                        .toList();
+        List<CommandArgument<?>> named =
+                current.stream().filter(a -> !a.isFixed()).distinct().toList();
 
-        String placeholder = arg.isNullable() ? "[" + name + "]" : "<" + name + ">";
-        String desc = arg.getDescription();
-        return new String[] {placeholder, desc};
+        if (!choices.isEmpty()) {
+            String choiceStr = "{" + String.join("|", choices) + "}";
+            if (!named.isEmpty()) {
+                CommandArgument<?> arg = named.get(0);
+                String ph =
+                        arg.isNullable() ? "[" + arg.getName() + "]" : "<" + arg.getName() + ">";
+                choiceStr += " " + ph;
+            }
+            return new HintInfo(choiceStr, null);
+        }
+        if (!named.isEmpty()) {
+            CommandArgument<?> arg = named.get(0);
+            String ph = arg.isNullable() ? "[" + arg.getName() + "]" : "<" + arg.getName() + ">";
+            return new HintInfo(ph, arg.getDescription());
+        }
+        return HintInfo.EMPTY;
     }
 
-    /**
-     * Handle a completion frame. Returns tab-separated {@code candidate[\tdescription[\tgroup]]}
-     * lines so the terminal can create rich JLine {@code Candidate} objects.
-     */
-    public List<String> complete(String terminalId, String partial) {
+    // ── completion ───────────────────────────────────────────────────────
+
+    @NotNull
+    public List<String> complete(@NotNull String terminalId, @Nullable String partial) {
         if (partial == null || partial.isBlank()) return List.of();
 
         String input = partial.stripLeading();
         if (input.startsWith("/")) input = input.substring(1);
 
-        String username = sessionManager != null ? sessionManager.resolve(terminalId) : null;
-        VetoCommandSender sender = new VetoCommandSender(username, null, null, null);
+        VetoCommandSender sender = new VetoCommandSender(resolveUsername(terminalId), terminalId);
 
         List<CommandCompletion> completions = manager.complete(sender, input);
 
@@ -138,7 +152,7 @@ public class CommandRegistry {
             String cmdName = input.stripTrailing().split("\\s+", 2)[0];
             group =
                     manager.getCommands().stream()
-                            .filter(c -> c.getName().equals(cmdName))
+                            .filter(c -> c.getName().equalsIgnoreCase(cmdName))
                             .findFirst()
                             .map(Command::getDescription)
                             .orElse(null);
@@ -155,14 +169,16 @@ public class CommandRegistry {
                             }
                             StringBuilder sb = new StringBuilder(candidate);
                             sb.append('\t');
-                            if (desc != null && !desc.isBlank()) {
-                                sb.append(desc);
-                            }
-                            if (groupLabel != null && !groupLabel.isBlank()) {
+                            if (desc != null && !desc.isBlank()) sb.append(desc);
+                            if (groupLabel != null && !groupLabel.isBlank())
                                 sb.append('\t').append(groupLabel);
-                            }
                             return sb.toString();
                         })
                 .toList();
+    }
+
+    @NotNull
+    public CommandManager manager() {
+        return manager;
     }
 }

@@ -4,11 +4,16 @@ import com.github.ajalt.mordant.terminal.Terminal;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import org.jline.reader.*;
 import org.jline.terminal.TerminalBuilder;
+import top.focess.veto.contract.HintInfo;
 import top.focess.veto.contract.IpcFrame;
 
 public class VetoTerminal {
+
+    private static final Logger log = Logger.getLogger(VetoTerminal.class.getName());
 
     private static final String HEADER =
             """
@@ -20,48 +25,140 @@ public class VetoTerminal {
                       ╚═══╝  ╚══════╝   ╚═╝    ╚═════╝
                     """;
 
+    private static final String BACKEND_ADDR = "tcp://127.0.0.1:5555";
+    private static final long REQUEST_TIMEOUT_MS = 120_000;
+    private static final long HEARTBEAT_INTERVAL_MS = 30_000;
+
     private final Terminal t;
     private LineReader reader;
-    final FileChannel channel;
+    private final ZmqTerminal transport;
     private final MordantRenderer renderer;
-    private final Object lock = new Object();
 
-    private String sessionToken;
     private String displayUser;
     private int turnCount;
-    private volatile boolean cancelRequested;
+    private volatile boolean busy;
+    private volatile boolean running;
+    private int lastTipLen;
 
-    public VetoTerminal(Terminal t, LineReader reader) {
+    public VetoTerminal(Terminal t, LineReader reader, ZmqTerminal transport) {
         this.t = t;
         this.reader = reader;
-        this.channel = new FileChannel();
+        this.transport = transport;
         this.renderer = new MordantRenderer(t);
     }
 
     public void start() {
         printBanner();
-        IpcFrame health = ChannelHealth.check(channel);
-        if (!ChannelHealth.isReachable(health)) {
-            renderer.error("Backend not reachable");
-            renderer.error("Please start the Veto backend first.");
-            return;
-        }
-        if (ChannelHealth.isFatal(health)) {
-            renderer.error(((IpcFrame.Error) health).content());
-            return;
-        }
-        // Keep the connection alive — backend drops terminals that go silent
-        Thread heartbeat = channel.startHeartbeat(60_000);
+        running = true;
+
+        Thread heartbeat =
+                new Thread(
+                        () -> {
+                            while (running) {
+                                try {
+                                    Thread.sleep(HEARTBEAT_INTERVAL_MS);
+                                    transport.send(new IpcFrame.Heartbeat());
+                                } catch (InterruptedException e) {
+                                    Thread.currentThread().interrupt();
+                                    break;
+                                }
+                            }
+                        },
+                        "zmq-hb");
+        heartbeat.setDaemon(true);
+        heartbeat.start();
+
+        registerHintWidget();
+        startHintReplyReader();
+
         try {
             repl();
         } finally {
+            running = false;
             heartbeat.interrupt();
-            channel.bye();
+            transport.send(new IpcFrame.Bye());
+            transport.close();
         }
     }
 
+    // ── space → send hint ────────────────────────────────────────────────
+
+    private void registerHintWidget() {
+        Widget hintSender =
+                () -> {
+                    reader.getBuffer().write(" ");
+                    String buf = reader.getBuffer().toString();
+                    if (buf.startsWith("/") && buf.indexOf(' ') > 1) {
+                        log.fine("HINT send: " + buf);
+                        transport.send(new IpcFrame.Hint(buf));
+                    }
+                    return true;
+                };
+        reader.getWidgets().put("veto-hint-sender", hintSender);
+        reader.getKeyMaps().get(LineReader.MAIN).bind(new Reference("veto-hint-sender"), " ");
+    }
+
+    // ── hint reply → write ghost text, cursor back ───────────────────────
+
+    private void startHintReplyReader() {
+        Thread reply =
+                new Thread(
+                        () -> {
+                            while (running) {
+                                if (busy) {
+                                    try {
+                                        Thread.sleep(100);
+                                    } catch (InterruptedException e) {
+                                        break;
+                                    }
+                                    continue;
+                                }
+                                IpcFrame f = transport.tryReceive();
+                                if (f instanceof IpcFrame.Done done) {
+                                    String text = done.content();
+                                    String ghost;
+                                    if (text != null && !text.isBlank()) {
+                                        String desc = (String) done.meta().get("description");
+                                        HintInfo hint = new HintInfo(text, desc);
+                                        ghost =
+                                                MordantTerminal.dim(
+                                                        VetoTerminal.this.t, hint.displayText());
+                                    } else {
+                                        ghost = "";
+                                    }
+                                    try {
+                                        var w = VetoTerminal.this.reader.getTerminal().writer();
+                                        // Erase previous ghost text
+                                        if (lastTipLen > 0) {
+                                            w.print("\033[" + lastTipLen + "X");
+                                        }
+                                        // Write new ghost text, then jump
+                                        // back
+                                        if (!ghost.isEmpty()) {
+                                            w.print(ghost);
+                                            w.print("\033[" + ghost.length() + "D");
+                                        }
+                                        w.flush();
+                                        lastTipLen = ghost.length();
+                                    } catch (Exception ignored) {
+                                    }
+                                }
+                                try {
+                                    Thread.sleep(50);
+                                } catch (InterruptedException e) {
+                                    break;
+                                }
+                            }
+                        },
+                        "hint-reply");
+        reply.setDaemon(true);
+        reply.start();
+    }
+
+    // ── repl ──────────────────────────────────────────────────────────────
+
     private void repl() {
-        while (true) {
+        while (running) {
             printHint();
             String line = reader.readLine(prompt());
             if (line == null) break;
@@ -72,15 +169,12 @@ public class VetoTerminal {
                 break;
             }
 
-            boolean isCommand = line.startsWith("/");
-
-            if (!isCommand) {
+            if (!line.startsWith("/")) {
                 echoInput(line);
                 MordantTerminal.println(t, MordantTerminal.dim(t, "  thinking…"));
             }
 
-            cancelRequested = false;
-            IpcFrame result = handleExchange(new IpcFrame.Request(line));
+            IpcFrame result = exchange(line);
 
             if (result instanceof IpcFrame.Done done) {
                 applySessionMeta(done.meta());
@@ -93,85 +187,86 @@ public class VetoTerminal {
         MordantTerminal.println(t, "  Goodbye.");
     }
 
-    /**
-     * Execute a single request→response exchange with streaming. Handles deltas, progress, prompts,
-     * and cancellation.
-     */
-    private IpcFrame handleExchange(IpcFrame.Request request) {
-        StringBuilder contentBuf = new StringBuilder();
-        boolean[] firstDelta = {true};
-
+    private IpcFrame exchange(String line) {
+        busy = true;
         try {
-            return channel.sendAndReceive(
-                    request,
-                    120_000,
-                    new FileChannel.FrameHandler() {
-                        @Override
-                        public void onFrame(IpcFrame frame) {
-                            switch (frame) {
-                                case IpcFrame.Delta d -> {
-                                    if (firstDelta[0]) {
-                                        // Clear the "thinking..." line
-                                        MordantTerminal.println(t, "");
-                                        firstDelta[0] = false;
-                                    }
-                                    contentBuf.append(d.content());
-                                    MordantTerminal.print(t, d.content());
-                                }
-                                case IpcFrame.Progress p -> {
-                                    MordantTerminal.println(
-                                            t, MordantTerminal.dim(t, "  ⏳ " + p.content()));
-                                }
-                                case IpcFrame.Done d -> {
-                                    if (!firstDelta[0]) {
-                                        MordantTerminal.println(t, "");
-                                    }
-                                }
-                                case IpcFrame.Error e -> {
-                                    if (!firstDelta[0]) {
-                                        MordantTerminal.println(t, "");
-                                    }
-                                }
-                                default -> {}
-                            }
-                        }
+            transport.send(new IpcFrame.Request(line));
 
-                        @Override
-                        public IpcFrame.Input onPrompt(IpcFrame.Prompt prompt) {
+            long deadline = System.currentTimeMillis() + REQUEST_TIMEOUT_MS;
+            boolean firstDelta = true;
+
+            while (System.currentTimeMillis() < deadline) {
+                IpcFrame frame = transport.receive();
+                if (frame == null) {
+                    return new IpcFrame.Error("No response from backend.");
+                }
+
+                switch (frame) {
+                    case IpcFrame.Delta d -> {
+                        if (firstDelta) {
                             MordantTerminal.println(t, "");
-                            boolean mask = Boolean.TRUE.equals(prompt.meta().get("mask"));
-                            // Pass prompt to JLine so it knows where the prompt ends,
-                            // preventing backspace from erasing the prompt text.
-                            String promptText = "  " + prompt.content() + " ";
-                            String reply;
-                            try {
-                                reply =
-                                        mask
-                                                ? reader.readLine(promptText, '*')
-                                                : reader.readLine(promptText);
-                            } catch (Exception e) {
-                                return null;
-                            }
-                            if (reply == null || reply.trim().isEmpty()) return null;
-                            return new IpcFrame.Input(reply.trim());
+                            firstDelta = false;
                         }
-                    });
-        } catch (IOException e) {
-            return new IpcFrame.Error("IPC error: " + e.getMessage());
+                        MordantTerminal.print(t, d.content());
+                    }
+
+                    case IpcFrame.Progress p ->
+                            MordantTerminal.println(
+                                    t, MordantTerminal.dim(t, "  ⏳ " + p.content()));
+
+                    case IpcFrame.Prompt prompt -> {
+                        MordantTerminal.println(t, "");
+                        boolean mask = Boolean.TRUE.equals(prompt.meta().get("mask"));
+                        String promptText = "  " + prompt.content() + " ";
+                        String reply;
+                        try {
+                            reply =
+                                    mask
+                                            ? reader.readLine(promptText, '*')
+                                            : reader.readLine(promptText);
+                        } catch (Exception e) {
+                            return new IpcFrame.Error("Input cancelled.");
+                        }
+                        if (reply == null || reply.trim().isEmpty()) {
+                            transport.send(new IpcFrame.Input(""));
+                        } else {
+                            transport.send(new IpcFrame.Input(reply.trim()));
+                        }
+                        deadline = System.currentTimeMillis() + REQUEST_TIMEOUT_MS;
+                    }
+
+                    case IpcFrame.Done d -> {
+                        if (!firstDelta) MordantTerminal.println(t, "");
+                        return d;
+                    }
+
+                    case IpcFrame.Error e -> {
+                        if (!firstDelta) MordantTerminal.println(t, "");
+                        return e;
+                    }
+
+                    default -> {}
+                }
+            }
+            return new IpcFrame.Error("Request timed out.");
+        } finally {
+            busy = false;
         }
     }
 
+    // ── session metadata ──────────────────────────────────────────────────
+
     private void applySessionMeta(Map<String, Object> meta) {
-        if (meta.containsKey("session")) sessionToken = (String) meta.get("session");
         if (meta.containsKey("username")) displayUser = (String) meta.get("username");
         if (Boolean.TRUE.equals(meta.get("clearSession"))) {
-            sessionToken = null;
             displayUser = null;
             turnCount = 0;
         }
         if (meta.containsKey("turnNumber"))
             turnCount = ((Number) meta.get("turnNumber")).intValue();
     }
+
+    // ── UI helpers ────────────────────────────────────────────────────────
 
     private void echoInput(String line) {
         MordantTerminal.println(t, "");
@@ -204,126 +299,54 @@ public class VetoTerminal {
         MordantTerminal.println(t, "");
     }
 
-    // ── Tab completion ──────────────────────────────────────────────────
+    // ── tab completion ───────────────────────────────────────────────────
 
-    /** Completer that delegates everything to the backend via a {@code complete} frame. */
     private static class VetoCompleter implements Completer {
-        private final FileChannel channel;
+        private final ZmqTerminal transport;
 
-        VetoCompleter(FileChannel channel) {
-            this.channel = channel;
+        VetoCompleter(ZmqTerminal transport) {
+            this.transport = transport;
         }
 
         @Override
         public void complete(LineReader r, ParsedLine line, List<Candidate> out) {
             String fullLine = line.line();
             if (!fullLine.startsWith("/")) return;
-            out.addAll(channel.complete(fullLine, 2_000));
+            transport.send(new IpcFrame.Complete(fullLine));
+            IpcFrame reply = transport.receive();
+            if (reply instanceof IpcFrame.Done done && done.content() != null) {
+                for (String entry : done.content().split("\n")) {
+                    String trimmed = entry.trim();
+                    if (trimmed.isEmpty()) continue;
+                    String[] parts = trimmed.split("\t", 3);
+                    String name = parts[0];
+                    String desc = parts.length > 1 && !parts[1].isBlank() ? parts[1] : null;
+                    String group = parts.length > 2 && !parts[2].isBlank() ? parts[2] : null;
+                    out.add(new Candidate(name, name, group, desc, null, null, true));
+                }
+            }
         }
     }
 
-    // ── main ────────────────────────────────────────────────────────────
+    // ── main ──────────────────────────────────────────────────────────────
 
     public static void main(String[] args) {
         System.setProperty("file.encoding", "UTF-8");
-        java.util.logging.Logger.getLogger("org.jline").setLevel(java.util.logging.Level.OFF);
+        java.util.logging.Logger.getLogger("org.jline").setLevel(Level.OFF);
+        java.util.logging.Logger.getLogger("top.focess.veto.terminal").setLevel(Level.FINE);
+
         try {
             org.jline.terminal.Terminal jt =
                     TerminalBuilder.builder().system(true).jna(true).encoding("UTF-8").build();
             Terminal mt = MordantTerminal.create();
-            VetoTerminal vt = new VetoTerminal(mt, null);
-            VetoCompleter completer = new VetoCompleter(vt.channel);
+            ZmqTerminal transport = new ZmqTerminal(BACKEND_ADDR);
+            VetoTerminal vt = new VetoTerminal(mt, null, transport);
+            VetoCompleter completer = new VetoCompleter(transport);
             LineReader r = LineReaderBuilder.builder().terminal(jt).completer(completer).build();
             vt.reader = r;
             vt.start();
         } catch (IOException e) {
             System.err.println("Terminal failed: " + e.getMessage());
-            fallback();
         }
-    }
-
-    private static void fallbackExchange(FileChannel ch, String line) {
-        StringBuilder buf = new StringBuilder();
-        try {
-            IpcFrame result =
-                    ch.sendAndReceive(
-                            new IpcFrame.Request(line),
-                            120_000,
-                            new FileChannel.FrameHandler() {
-                                @Override
-                                public void onFrame(IpcFrame frame) {
-                                    if (frame instanceof IpcFrame.Delta d) {
-                                        buf.append(d.content());
-                                        System.out.print(d.content());
-                                    } else if (frame instanceof IpcFrame.Progress p) {
-                                        System.out.print("  ⏳ " + p.content());
-                                    } else if (frame instanceof IpcFrame.Error e) {
-                                        System.out.println();
-                                    }
-                                }
-
-                                @Override
-                                public IpcFrame.Input onPrompt(IpcFrame.Prompt prompt) {
-                                    if (Boolean.TRUE.equals(prompt.meta().get("mask"))) {
-                                        return new IpcFrame.Input(
-                                                new String(
-                                                        System.console()
-                                                                .readPassword(
-                                                                        "  "
-                                                                                + prompt.content()
-                                                                                + " ")));
-                                    }
-                                    System.out.print("  " + prompt.content() + " ");
-                                    System.out.flush();
-                                    String reply = new java.util.Scanner(System.in).nextLine();
-                                    return new IpcFrame.Input(reply.trim());
-                                }
-                            });
-            if (result instanceof IpcFrame.Done done
-                    && Boolean.TRUE.equals(done.meta().get("exit"))) {
-                System.out.println("Goodbye.");
-                System.exit(0);
-            }
-            if (result instanceof IpcFrame.Error err) {
-                System.out.println("[!] " + err.content());
-            }
-        } catch (IOException e) {
-            System.out.println("[!] IPC error: " + e.getMessage());
-        }
-    }
-
-    private static void fallback() {
-        System.out.println("Veto Terminal v3.0");
-        FileChannel ch = new FileChannel();
-        IpcFrame health = ChannelHealth.check(ch);
-        if (!ChannelHealth.isReachable(health)) {
-            System.out.println("Backend not reachable.");
-            return;
-        }
-        if (ChannelHealth.isFatal(health)) {
-            System.out.println("[!] " + ((IpcFrame.Error) health).content());
-            return;
-        }
-        Thread heartbeat = ch.startHeartbeat(60_000);
-        try {
-            java.util.Scanner sc = new java.util.Scanner(System.in);
-            String displayUser = null;
-            while (true) {
-                System.out.print(displayUser != null ? "> " : "guest> ");
-                System.out.flush();
-                if (!sc.hasNextLine()) break;
-                String line = sc.nextLine().trim();
-                if (line.isEmpty()) continue;
-                if (line.equals("/exit")) break;
-
-                System.out.println("  thinking…");
-                fallbackExchange(ch, line);
-                System.out.println();
-            }
-        } finally {
-            heartbeat.interrupt();
-            ch.bye();
-        }
-        System.out.println("Goodbye.");
     }
 }

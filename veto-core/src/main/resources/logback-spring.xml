@@ -35,7 +35,10 @@
         <appender-ref ref="CONSOLE"/>
     </logger>
 
-    <root level="INFO">
+    <logger name="top.focess.veto.terminal" level="DEBUG"/>
+    <logger name="top.focess.veto.command" level="DEBUG"/>
+
+    <root level="DEBUG">
         <appender-ref ref="CONSOLE"/>
         <appender-ref ref="VETO"/>
     </root>

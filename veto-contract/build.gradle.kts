@@ -15,9 +15,9 @@ repositories {
     mavenCentral()
 }
 
-// Lightweight contract with Jackson for IPC frame serialization
 dependencies {
     implementation("com.fasterxml.jackson.core:jackson-databind:2.18.0")
+    implementation("org.zeromq:jeromq:0.6.0")
 }
 
 spotless {

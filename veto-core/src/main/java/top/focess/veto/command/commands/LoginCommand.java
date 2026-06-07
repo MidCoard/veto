@@ -3,6 +3,8 @@ package top.focess.veto.command.commands;
 import java.util.List;
 import java.util.Map;
 import javax.crypto.SecretKey;
+import org.jetbrains.annotations.NotNull;
+import top.focess.command.CommandResult;
 import top.focess.command.CommandSender;
 import top.focess.veto.command.TerminalSessionManager;
 import top.focess.veto.command.VetoCommand;
@@ -17,10 +19,10 @@ public class LoginCommand extends VetoCommand {
     private final TerminalSessionManager sessions;
 
     public LoginCommand(
-            UserRegistry users,
-            VaultKeyManager keys,
-            CredentialVault vault,
-            TerminalSessionManager sessions) {
+            @NotNull UserRegistry users,
+            @NotNull VaultKeyManager keys,
+            @NotNull CredentialVault vault,
+            @NotNull TerminalSessionManager sessions) {
         super("login", "Sign in to your account");
         this.users = users;
         this.keys = keys;
@@ -33,45 +35,55 @@ public class LoginCommand extends VetoCommand {
         addExecutor(
                 (sender, args) -> {
                     VetoCommandSender s = vetoSender(sender);
-                    String u = args.get("user"), p = args.get("pass");
+                    if (s == null) return CommandResult.REFUSE;
+
+                    String u = args.get("user");
+                    String p = args.get("pass");
 
                     if (u == null) {
-                        u = s.prompt("Username:", Map.of(), 60_000);
+                        s.setNextPromptMeta(Map.of("prompt", "Username:"));
+                        u = s.input();
                         if (u == null || u.isBlank()) {
-                            s.error("Login cancelled");
-                            return refuse();
+                            s.output("Login cancelled.");
+                            return CommandResult.REFUSE;
                         }
                     }
                     if (p == null) {
-                        p = s.prompt("Password:", Map.of("mask", true), 60_000);
+                        s.setNextPromptMeta(Map.of("prompt", "Password:", "mask", true));
+                        p = s.input();
                         if (p == null || p.isBlank()) {
-                            s.error("Login cancelled");
-                            return refuse();
+                            s.output("Login cancelled.");
+                            return CommandResult.REFUSE;
                         }
                     }
 
                     var userOpt = users.authenticate(u, p);
                     if (userOpt.isEmpty()) {
-                        s.error("Invalid username or password");
-                        return refuse();
+                        s.output("Invalid username or password.");
+                        return CommandResult.REFUSE;
                     }
+
                     SecretKey mk = keys.deriveMasterKey(u, p, userOpt.get().getPasswordSalt());
                     SecretKey vk = keys.unwrapVaultKey(mk, u);
                     if (vk == null) {
-                        s.error("Failed to unlock");
-                        return refuse();
+                        s.output("Failed to unlock vault.");
+                        return CommandResult.REFUSE;
                     }
+
                     vault.unlock(vk, u);
                     sessions.create(s.terminalId(), u);
-                    s.done(Map.of("username", u, "session", s.terminalId()));
-                    return allow();
+                    s.output("Logged in as " + u + ".");
+                    s.doneMeta().put("username", u);
+                    s.doneMeta().put("session", s.terminalId());
+                    return CommandResult.ALLOW;
                 },
                 opt("user"),
                 opt("pass"));
     }
 
     @Override
-    public List<String> usage(CommandSender s) {
+    @NotNull
+    public List<String> usage(@NotNull CommandSender s) {
         return List.of("/login [user] [pass] — Sign in to your account");
     }
 }
