@@ -146,13 +146,6 @@ public class VetoTerminal {
                                             // Buffer now ends with space → send the real hint
                                             log.fine("HINT send: " + currentBuffer);
                                             transport.send(new IpcFrame.Hint(currentBuffer));
-                                        } else if (lastHadHint) {
-                                            // Buffer no longer ends with space, but it used to
-                                            // → send empty hint to clear the ghost text
-                                            log.fine(
-                                                    "HINT clear (buffer changed): "
-                                                            + currentBuffer);
-                                            transport.send(new IpcFrame.Hint(currentBuffer));
                                         }
                                         lastBufferForHint = currentBuffer;
                                     }
@@ -160,10 +153,8 @@ public class VetoTerminal {
                                     // Buffer may be accessed from reader thread, ignore errors
                                 }
 
-                                IpcFrame f = transport.tryReceive();
-                                // Re-check busy: the REPL or completer may have
-                                // claimed the socket while we were reading.
-                                if (!busy && f instanceof IpcFrame.Done done) {
+                                IpcFrame.Done done = transport.tryReceiveHint();
+                                if (done != null) {
                                     if (shouldSendHint(reader.getBuffer().toString())) {
                                         drawGhost(done);
                                     }

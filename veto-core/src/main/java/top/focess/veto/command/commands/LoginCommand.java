@@ -37,8 +37,8 @@ public class LoginCommand extends VetoCommand {
                     VetoCommandSender s = vetoSender(sender);
                     if (s == null) return CommandResult.REFUSE;
 
-                    String u = args.get("user");
-                    String p = args.get("pass");
+                    String u = (String) args.get("user");
+                    String p = (String) args.get("pass");
 
                     if (u == null) {
                         s.setNextPromptMeta(Map.of("prompt", "Username:"));

@@ -1,6 +1,9 @@
 package top.focess.veto.terminal;
 
 import java.util.UUID;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -34,17 +37,55 @@ public final class ZmqTerminal implements AutoCloseable {
     /** Serializes all socket access — JeroMQ sockets are not thread-safe. */
     private final ReentrantLock socketLock = new ReentrantLock();
 
+    private final BlockingQueue<IpcFrame> replQueue = new LinkedBlockingQueue<>();
+    private final BlockingQueue<IpcFrame.Done> hintQueue = new LinkedBlockingQueue<>();
+    private final Thread readerThread;
+
     private volatile boolean closed;
 
     public ZmqTerminal(@NotNull String address) {
         this.identity = UUID.randomUUID().toString();
         this.ctx = new ZContext();
         this.transport = ZmqTransport.connectDealer(ctx, address, identity);
+        this.readerThread = new Thread(this::readerLoop, "zmq-reader");
+        this.readerThread.setDaemon(true);
+        this.readerThread.start();
+    }
+
+    private void readerLoop() {
+        while (!closed && !Thread.currentThread().isInterrupted()) {
+            IpcFrame f = internalReceive();
+            if (f != null) {
+                if (f instanceof IpcFrame.Done done && Boolean.TRUE.equals(done.meta().get("isHint"))) {
+                    hintQueue.offer(done);
+                } else {
+                    replQueue.offer(f);
+                }
+            } else {
+                try {
+                    Thread.sleep(10);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        }
+    }
+
+    @Nullable
+    private IpcFrame internalReceive() {
+        socketLock.lock();
+        try {
+            String[] parts = transport.tryReceive();
+            if (parts == null || parts.length < 2) return null;
+            return ZmqTransport.deserialize(parts[1]);
+        } finally {
+            socketLock.unlock();
+        }
     }
 
     // ── I/O ───────────────────────────────────────────────────────────────
 
-    /** Send a frame to the backend. Thread-safe; serialized with reads via {@link #socketLock}. */
+    /** Send a frame to the backend. Thread-safe. */
     public void send(@NotNull IpcFrame frame) {
         socketLock.lock();
         try {
@@ -56,51 +97,34 @@ public final class ZmqTerminal implements AutoCloseable {
         }
     }
 
-    /**
-     * Block until a frame arrives, or return {@code null} on close/interrupt.
-     *
-     * <p>Implemented as a short poll loop rather than a blocking socket read so the single ZMQ
-     * socket is never held by one thread while another (heartbeat, hint reader) needs it. JeroMQ
-     * sockets are not thread-safe; {@link #socketLock} guarantees one-at-a-time access.
-     */
+    /** Block until a REPL frame arrives. */
     @Nullable
     public IpcFrame receive() {
-        while (!closed && !Thread.currentThread().isInterrupted()) {
-            IpcFrame f = tryReceive();
-            if (f != null) return f;
-            try {
-                Thread.sleep(5);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
-            }
-        }
-        return null;
-    }
-
-    /** Try to receive without blocking. Returns null if nothing available. Thread-safe. */
-    @Nullable
-    public IpcFrame tryReceive() {
-        socketLock.lock();
         try {
-            String[] parts = transport.tryReceive();
-            if (parts == null || parts.length < 2) return null;
-            return ZmqTransport.deserialize(parts[1]);
-        } finally {
-            socketLock.unlock();
+            return replQueue.poll(120, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
         }
     }
 
-    /** Send a hint request. Returns null if the backend didn't respond. */
+    /** Try to receive a hint response without blocking. */
+    @Nullable
+    public IpcFrame.Done tryReceiveHint() {
+        return hintQueue.poll();
+    }
+
+    /** Send a hint request and wait for the specific response. */
     @Nullable
     public HintInfo hint(@NotNull String input) {
         try {
+            hintQueue.clear(); // Clear any stale hint responses
             send(new IpcFrame.Hint(input));
-            IpcFrame reply = receive();
-            if (reply instanceof IpcFrame.Done done) {
-                String text = done.content();
+            IpcFrame.Done reply = hintQueue.poll(2, TimeUnit.SECONDS);
+            if (reply != null) {
+                String text = reply.content();
                 if (text == null || text.isBlank()) return null;
-                String desc = (String) done.meta().get("description");
+                String desc = (String) reply.meta().get("description");
                 return new HintInfo(text, desc);
             }
         } catch (Exception ignored) {

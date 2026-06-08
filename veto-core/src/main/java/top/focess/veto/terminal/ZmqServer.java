@@ -2,6 +2,7 @@ package top.focess.veto.terminal;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.*;
@@ -165,20 +166,14 @@ public class ZmqServer {
                 log.debug("HINT {}: {}", identity.substring(0, 8), h.raw());
                 session.lastActivityNanos = System.nanoTime();
                 HintInfo hint = registry.hint(identity, h.raw());
-                if (!hint.isEmpty()) {
-                    log.debug("HINT {}: -> {}", identity.substring(0, 8), hint);
-                    outbox.add(
-                            new OutboxEntry(
-                                    identity,
-                                    new IpcFrame.Done(
-                                            hint.description() != null
-                                                    ? Map.of("description", hint.description())
-                                                    : Map.of(),
-                                            hint.placeholder())));
-                } else {
-                    log.debug("HINT {}: -> empty", identity.substring(0, 8));
-                    outbox.add(new OutboxEntry(identity, new IpcFrame.Done(Map.of(), "")));
-                }
+                Map<String, Object> meta = new HashMap<>();
+                meta.put("isHint", true);
+                if (hint.description() != null) meta.put("description", hint.description());
+                
+                outbox.add(
+                        new OutboxEntry(
+                                identity,
+                                new IpcFrame.Done(meta, hint.placeholder() != null ? hint.placeholder() : "")));
             }
 
             case IpcFrame.Cancel c -> {
