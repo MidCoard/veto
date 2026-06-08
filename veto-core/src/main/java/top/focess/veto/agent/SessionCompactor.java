@@ -54,8 +54,12 @@ public class SessionCompactor {
     /**
      * Compacts the agent's turn history. Old turns are summarized into one turn. Recent turns are
      * kept intact. Accumulated memory from previous compactions is included.
+     *
+     * @param provider the LLM provider for the summarization call
+     * @param model the model name for summarization
+     * @param credKey the credential key for the summarization call
      */
-    public Agent compact(Agent agent) {
+    public Agent compact(Agent agent, ProviderType provider, String model, String credKey) {
         List<TurnRecord> turns = agent.turns();
         int splitAt = Math.max(0, turns.size() - KEEP_RECENT);
         if (splitAt == 0) return agent;
@@ -63,7 +67,7 @@ public class SessionCompactor {
         List<TurnRecord> oldTurns = turns.subList(0, splitAt);
         List<TurnRecord> recentTurns = turns.subList(splitAt, turns.size());
 
-        String summary = buildSummary(oldTurns);
+        String summary = buildSummary(oldTurns, provider, model, credKey);
         memory = extractMemory(summary);
 
         List<TurnRecord> compacted = new ArrayList<>();
@@ -111,7 +115,8 @@ public class SessionCompactor {
 
     // ── Internal ────────────────────────────────────────────────────────────
 
-    private String buildSummary(List<TurnRecord> turns) {
+    private String buildSummary(
+            List<TurnRecord> turns, ProviderType provider, String model, String credKey) {
         StringBuilder sb = new StringBuilder();
         for (var t : turns) {
             sb.append("Turn #")
@@ -123,9 +128,10 @@ public class SessionCompactor {
         String history = sb.toString();
 
         String prompt =
-                "You are a conversation summarizer. Summarize the following agent conversation turns. "
-                        + "Focus on: decisions made, code written/changed, files modified, errors encountered, "
-                        + "and unresolved questions. Be concise but thorough.\n\n"
+                "You are a conversation summarizer. Summarize the following agent conversation"
+                        + " turns. Focus on: decisions made, code written/changed, files modified,"
+                        + " errors encountered, and unresolved questions. Be concise but"
+                        + " thorough.\n\n"
                         + history;
 
         try {
@@ -135,9 +141,9 @@ public class SessionCompactor {
                                     "Summarize conversations accurately and concisely.",
                                     prompt,
                                     List.of(),
-                                    ProviderType.DEEPSEEK,
-                                    "deepseek-v4-pro",
-                                    "deepseek-key",
+                                    provider,
+                                    model,
+                                    credKey,
                                     new LlmOptions(0.0, null, 1024, Duration.ofSeconds(60))));
             return r.thought();
         } catch (Exception e) {

@@ -9,6 +9,7 @@ import top.focess.command.CommandResult;
 import top.focess.command.CommandSender;
 import top.focess.veto.command.VetoCommand;
 import top.focess.veto.command.VetoCommandSender;
+import top.focess.veto.contract.PromptMeta;
 import top.focess.veto.llm.core.ProviderType;
 import top.focess.veto.model.AgentPatternEntity;
 import top.focess.veto.model.AgentPatternRepository;
@@ -35,7 +36,8 @@ public class PatternCommand extends VetoCommand {
         setExecutorPermission(LOGGED_IN);
         var nameArg = arg("name").completer(this::completePatternName).description("Pattern name");
 
-        // /pattern create <name> <provider> <model> <apikey> [sysprompt]
+        // /pattern create <name> <provider> <model> [sysprompt]
+        // API key is prompted interactively with masked input — never in the clear.
         addExecutor(
                 (sender, args) -> {
                     VetoCommandSender s = vetoSender(sender);
@@ -44,16 +46,29 @@ public class PatternCommand extends VetoCommand {
                         String n = args.<String>get("name");
                         String provider = args.<String>get("provider").toUpperCase();
                         String model = args.<String>get("model");
-                        String key = args.<String>get("apikey");
                         String sp =
                                 args.<String>getOrDefault(
                                         "sysprompt",
                                         "You are a helpful coding assistant. Be concise.");
                         ProviderType.valueOf(provider);
-                        vault.store("pattern-" + n, key);
-                        repo.save(
+
+                        s.setNextPromptMeta(PromptMeta.masked("API Key for " + provider + ":"));
+                        String key = s.input();
+                        if (key == null || key.isBlank()) {
+                            s.output("Pattern creation cancelled.");
+                            return CommandResult.REFUSE;
+                        }
+
+                        AgentPatternEntity entity =
                                 new AgentPatternEntity(
-                                        n, provider, model, "pattern-" + n, sp, s.username()));
+                                        n, provider, model, "pattern-" + n, sp, s.username());
+                        repo.save(entity);
+                        try {
+                            vault.store("pattern-" + n, key);
+                        } catch (Exception e) {
+                            repo.delete(entity);
+                            throw e;
+                        }
                         s.output("Pattern '" + n + "' created (" + provider + "/" + model + ").");
                         return CommandResult.ALLOW;
                     } catch (IllegalArgumentException e) {
@@ -68,7 +83,6 @@ public class PatternCommand extends VetoCommand {
                 arg("name"),
                 arg("provider").description("LLM provider (e.g. DEEPSEEK, OPENAI)"),
                 arg("model").description("Model name"),
-                arg("apikey").description("API key for the provider"),
                 opt("sysprompt").description("Custom system prompt"));
 
         // /pattern list

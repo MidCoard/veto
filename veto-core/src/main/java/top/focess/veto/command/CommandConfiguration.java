@@ -23,8 +23,10 @@ public class CommandConfiguration {
     @Bean
     @NotNull
     public PromptHandler promptHandler(
-            @NotNull CredentialVault vault, @NotNull UniformLLMCaller caller) {
-        return new PromptHandler(vault, caller);
+            @NotNull CredentialVault vault,
+            @NotNull UniformLLMCaller caller,
+            @NotNull AgentPatternRepository patternRepo) {
+        return new PromptHandler(vault, caller, activePatterns, patternRepo);
     }
 
     @Bean

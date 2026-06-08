@@ -62,6 +62,12 @@ public class CommandRegistry {
             return;
         }
 
+        // Guard bare "/" — substring(1) would produce empty input
+        if (raw.trim().length() < 2) {
+            sender.output("Type /help for available commands.");
+            return;
+        }
+
         String input = raw.trim().substring(1).replaceAll("\\s+", " ");
         String[] tokens = input.split(" ");
         sender.output("Tokens: [" + String.join(", ", tokens) + "]");

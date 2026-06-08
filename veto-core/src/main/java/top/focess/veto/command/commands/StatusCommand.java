@@ -34,7 +34,7 @@ public class StatusCommand extends VetoCommand {
                         return CommandResult.REFUSE;
                     }
 
-                    int sessionCount = promptHandler.sessions().size();
+                    int totalSessions = promptHandler.sessions().size();
                     int turns =
                             promptHandler.sessions().values().stream()
                                     .mapToInt(a -> a.turns().size())
@@ -42,7 +42,7 @@ public class StatusCommand extends VetoCommand {
 
                     s.output("Session Status");
                     s.output(String.format("  User:            %s", user));
-                    s.output(String.format("  Active sessions: %d", sessionCount));
+                    s.output(String.format("  Total sessions:  %d", totalSessions));
                     s.output(String.format("  Total turns:     %d", turns));
                     return CommandResult.ALLOW;
                 });

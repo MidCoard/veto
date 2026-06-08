@@ -1,9 +1,7 @@
 package top.focess.veto.command;
 
 import java.time.Duration;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
@@ -14,6 +12,8 @@ import top.focess.veto.agent.SessionCompactor;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.contract.IpcMeta;
 import top.focess.veto.llm.core.*;
+import top.focess.veto.model.AgentPatternEntity;
+import top.focess.veto.model.AgentPatternRepository;
 import top.focess.veto.vault.CredentialVault;
 
 /**
@@ -25,16 +25,25 @@ public class PromptHandler {
 
     private static final Logger log = LoggerFactory.getLogger(PromptHandler.class);
     private static final long SESSION_TTL_MS = Duration.ofMinutes(30).toMillis();
+    private static final int MAX_TOOL_LOOP_ITERATIONS = 10;
 
     private final CredentialVault vault;
     private final UniformLLMCaller caller;
     private final ConcurrentHashMap<String, Agent> sessions = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, SessionCompactor> compactors =
             new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, String> activePatterns;
+    private final AgentPatternRepository patternRepo;
 
-    public PromptHandler(@NotNull CredentialVault vault, @NotNull UniformLLMCaller caller) {
+    public PromptHandler(
+            @NotNull CredentialVault vault,
+            @NotNull UniformLLMCaller caller,
+            @NotNull ConcurrentHashMap<String, String> activePatterns,
+            @NotNull AgentPatternRepository patternRepo) {
         this.vault = vault;
         this.caller = caller;
+        this.activePatterns = activePatterns;
+        this.patternRepo = patternRepo;
     }
 
     @NotNull
@@ -63,60 +72,150 @@ public class PromptHandler {
 
         evictStaleSessions();
 
-        ProviderType provider = ProviderType.DEEPSEEK;
-        String model = "deepseek-v4-pro";
-        String credKey = "deepseek-key";
-        String sysPrompt = "You are a helpful coding assistant. Be concise.";
+        LlmConfig config = resolveLlmConfig(user);
 
-        Agent agent =
-                sessions.computeIfAbsent(
-                        terminalId,
-                        k ->
+        // Atomic read-modify-write — serializes concurrent prompts for the
+        // same terminal while leaving other terminals unaffected.
+        sessions.compute(
+                terminalId,
+                (k, agent) -> {
+                    if (agent == null) {
+                        agent =
                                 Agent.builder()
                                         .name("agent-" + k.substring(0, Math.min(8, k.length())))
-                                        .systemPrompt(sysPrompt)
+                                        .systemPrompt(config.systemPrompt)
                                         .sessionId(k)
                                         .build()
-                                        .withState(AgentState.RUNNING));
-        try {
-            VetoResponse r =
-                    caller.call(
-                            new VetoRequest(
-                                    agent.systemPrompt()
-                                            + "\n\nRespond in JSON: {\"thought\":\"...\","
-                                            + " \"call\":null, \"is_finished\":true}",
-                                    prompt,
-                                    List.of(),
-                                    provider,
-                                    model,
-                                    credKey,
-                                    new LlmOptions(0.0, null, 1024, Duration.ofSeconds(60))));
+                                        .withState(AgentState.RUNNING);
+                    }
+                    try {
+                        List<ToolDefinition> tools = resolveTools(agent);
+                        List<TurnRecord> newTurns = new ArrayList<>();
+                        String nextPrompt = prompt;
 
-            String thought = r.thought();
-            if (thought != null && !thought.isBlank()) {
-                sender.output(thought);
-            }
+                        // ReAct loop: call LLM → process tool call → feed
+                        // observation → repeat until finished or max iters
+                        for (int iter = 0; iter < MAX_TOOL_LOOP_ITERATIONS; iter++) {
+                            VetoResponse r =
+                                    caller.call(
+                                            new VetoRequest(
+                                                    config.systemPrompt,
+                                                    nextPrompt,
+                                                    tools,
+                                                    config.provider,
+                                                    config.model,
+                                                    config.credKey,
+                                                    new LlmOptions(
+                                                            0.0,
+                                                            null,
+                                                            1024,
+                                                            Duration.ofSeconds(60))));
 
-            agent =
-                    agent.appendTurn(
-                            new TurnRecord(
-                                    agent.nextTurnNumber(), r.thought(), null, null, null, null));
+                            if (r.thought() != null && !r.thought().isBlank()) {
+                                sender.output(r.thought());
+                            }
 
-            SessionCompactor compactor =
-                    compactors.computeIfAbsent(terminalId, k -> new SessionCompactor(caller));
-            if (compactor.shouldCompact(agent)) {
-                agent = compactor.compact(agent);
-            }
-            sessions.put(terminalId, agent);
+                            String observation = null;
+                            if (r.call() != null) {
+                                observation = executeToolCall(r.call());
+                                if (observation != null) {
+                                    sender.output(
+                                            "\n[tool:" + r.call().toolName() + "] " + observation);
+                                }
+                            }
 
-            sender.doneMeta().put(IpcMeta.USERNAME, user);
-            sender.doneMeta().put(IpcMeta.TURN_NUMBER, agent.turns().size());
-        } catch (Exception e) {
-            log.error("Prompt failed for terminal {}", terminalId, e);
-            sender.output("LLM call failed: " + e.getMessage());
-            sender.setErrorFlag();
-        }
+                            newTurns.add(
+                                    new TurnRecord(
+                                            agent.nextTurnNumber() + newTurns.size(),
+                                            r.thought(),
+                                            r.call() != null ? r.call().toolName() : null,
+                                            r.call() != null ? r.call().args() : null,
+                                            observation,
+                                            null));
+
+                            if (r.isFinished() || r.call() == null) break;
+
+                            nextPrompt =
+                                    "Observation: "
+                                            + (observation != null
+                                                    ? observation
+                                                    : "(tool executed)");
+                        }
+
+                        for (TurnRecord t : newTurns) {
+                            agent = agent.appendTurn(t);
+                        }
+
+                        SessionCompactor compactor =
+                                compactors.computeIfAbsent(
+                                        terminalId, key -> new SessionCompactor(caller));
+                        if (compactor.shouldCompact(agent)) {
+                            agent =
+                                    compactor.compact(
+                                            agent, config.provider, config.model, config.credKey);
+                        }
+                        sender.doneMeta().put(IpcMeta.USERNAME, user);
+                        sender.doneMeta().put(IpcMeta.TURN_NUMBER, agent.turns().size());
+                    } catch (Exception e) {
+                        log.error("Prompt failed for terminal {}", terminalId, e);
+                        sender.output("LLM call failed: " + e.getMessage());
+                        sender.setErrorFlag();
+                    }
+                    return agent;
+                });
     }
+
+    // ── LLM config resolution ─────────────────────────────────────────────
+
+    /** Resolved LLM configuration — either the active pattern or defaults. */
+    private record LlmConfig(
+            ProviderType provider, String model, String credKey, String systemPrompt) {}
+
+    /** Looks up the active pattern for the user, falling back to built-in defaults. */
+    private LlmConfig resolveLlmConfig(@NotNull String user) {
+        String patternName = activePatterns.get(user);
+        if (patternName != null) {
+            List<AgentPatternEntity> patterns = patternRepo.findByOwner(user);
+            for (AgentPatternEntity p : patterns) {
+                if (p.getName().equals(patternName)) {
+                    try {
+                        return new LlmConfig(
+                                ProviderType.valueOf(p.getProvider()),
+                                p.getModel(),
+                                p.getCredentialKey(),
+                                p.getSystemPrompt());
+                    } catch (IllegalArgumentException e) {
+                        log.warn(
+                                "Unknown provider '{}' in pattern '{}', falling back",
+                                p.getProvider(),
+                                patternName);
+                    }
+                }
+            }
+        }
+        return new LlmConfig(
+                ProviderType.DEEPSEEK,
+                "deepseek-v4-pro",
+                "deepseek-key",
+                "You are a helpful coding assistant. Be concise.");
+    }
+
+    // ── tool loop ─────────────────────────────────────────────────────────
+
+    /** Resolve tools available to the agent. Currently returns an empty list — extend here. */
+    private List<ToolDefinition> resolveTools(Agent agent) {
+        return List.of();
+    }
+
+    /**
+     * Execute a tool call and return the observation. Override or inject a {@code ToolExecutor}
+     * bean to enable actual tool execution. Returns {@code null} when no executor is configured.
+     */
+    private String executeToolCall(ToolCall call) {
+        return null;
+    }
+
+    // ── session eviction ──────────────────────────────────────────────────
 
     private void evictStaleSessions() {
         long cutoff = System.currentTimeMillis() - SESSION_TTL_MS;

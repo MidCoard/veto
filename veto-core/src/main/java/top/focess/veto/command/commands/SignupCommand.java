@@ -1,7 +1,6 @@
 package top.focess.veto.command.commands;
 
 import java.util.List;
-import java.util.Map;
 import javax.crypto.SecretKey;
 import org.jetbrains.annotations.NotNull;
 import top.focess.command.CommandResult;
@@ -10,6 +9,7 @@ import top.focess.veto.command.TerminalSessionManager;
 import top.focess.veto.command.VetoCommand;
 import top.focess.veto.command.VetoCommandSender;
 import top.focess.veto.contract.IpcMeta;
+import top.focess.veto.contract.PromptMeta;
 import top.focess.veto.vault.*;
 
 public class SignupCommand extends VetoCommand {
@@ -47,7 +47,7 @@ public class SignupCommand extends VetoCommand {
                     String p = (String) args.get("pass");
 
                     if (u == null) {
-                        s.setNextPromptMeta(Map.of(IpcMeta.PROMPT, "Choose a username:"));
+                        s.setNextPromptMeta(PromptMeta.simple("Choose a username:"));
                         u = s.input();
                         if (u == null || u.isBlank()) {
                             s.output("Signup cancelled.");
@@ -55,8 +55,7 @@ public class SignupCommand extends VetoCommand {
                         }
                     }
                     if (p == null) {
-                        s.setNextPromptMeta(
-                                Map.of(IpcMeta.PROMPT, "Choose a password:", IpcMeta.MASK, true));
+                        s.setNextPromptMeta(PromptMeta.masked("Choose a password:"));
                         p = s.input();
                         if (p == null || p.isBlank()) {
                             s.output("Signup cancelled.");

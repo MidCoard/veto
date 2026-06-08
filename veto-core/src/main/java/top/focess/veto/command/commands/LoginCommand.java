@@ -1,7 +1,6 @@
 package top.focess.veto.command.commands;
 
 import java.util.List;
-import java.util.Map;
 import javax.crypto.SecretKey;
 import org.jetbrains.annotations.NotNull;
 import top.focess.command.CommandResult;
@@ -10,6 +9,7 @@ import top.focess.veto.command.TerminalSessionManager;
 import top.focess.veto.command.VetoCommand;
 import top.focess.veto.command.VetoCommandSender;
 import top.focess.veto.contract.IpcMeta;
+import top.focess.veto.contract.PromptMeta;
 import top.focess.veto.vault.*;
 
 public class LoginCommand extends VetoCommand {
@@ -39,24 +39,22 @@ public class LoginCommand extends VetoCommand {
                     if (s == null) return CommandResult.REFUSE;
 
                     String u = (String) args.get("user");
-                    String p = (String) args.get("pass");
 
                     if (u == null) {
-                        s.setNextPromptMeta(Map.of(IpcMeta.PROMPT, "Username:"));
+                        s.setNextPromptMeta(PromptMeta.simple("Username:"));
                         u = s.input();
                         if (u == null || u.isBlank()) {
                             s.output("Login cancelled.");
                             return CommandResult.REFUSE;
                         }
                     }
-                    if (p == null) {
-                        s.setNextPromptMeta(
-                                Map.of(IpcMeta.PROMPT, "Password:", IpcMeta.MASK, true));
-                        p = s.input();
-                        if (p == null || p.isBlank()) {
-                            s.output("Login cancelled.");
-                            return CommandResult.REFUSE;
-                        }
+                    // Password is always prompted interactively with masking — never
+                    // accepted as a command-line argument.
+                    s.setNextPromptMeta(PromptMeta.masked("Password:"));
+                    String p = s.input();
+                    if (p == null || p.isBlank()) {
+                        s.output("Login cancelled.");
+                        return CommandResult.REFUSE;
                     }
 
                     var userOpt = users.authenticate(u, p);
@@ -79,13 +77,12 @@ public class LoginCommand extends VetoCommand {
                     s.doneMeta().put(IpcMeta.SESSION, s.terminalId());
                     return CommandResult.ALLOW;
                 },
-                opt("user"),
-                opt("pass"));
+                opt("user"));
     }
 
     @Override
     @NotNull
     public List<String> usage(@NotNull CommandSender s) {
-        return List.of("/login [user] [pass] — Sign in to your account");
+        return List.of("/login [user] — Sign in to your account (password is prompted)");
     }
 }

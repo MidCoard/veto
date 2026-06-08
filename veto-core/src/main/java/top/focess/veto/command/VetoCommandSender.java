@@ -12,6 +12,7 @@ import top.focess.command.AbstractCommandSender;
 import top.focess.command.CommandPermission;
 import top.focess.veto.contract.IpcFrame;
 import top.focess.veto.contract.IpcMeta;
+import top.focess.veto.contract.PromptMeta;
 import top.focess.veto.terminal.ZmqServer;
 
 /**
@@ -45,9 +46,15 @@ public final class VetoCommandSender extends AbstractCommandSender {
     @NotNull private volatile Map<String, Object> promptMeta = Map.of();
 
     public VetoCommandSender(@Nullable String username, @NotNull String terminalId) {
-        super(CommandPermission.ADMINISTRATOR);
+        super(CommandPermission.EVERYONE);
         this.username = username;
         this.terminalId = terminalId;
+    }
+
+    @Override
+    public boolean hasPermission(@NotNull CommandPermission permission) {
+        if (permission == CommandPermission.EVERYONE) return true;
+        return isLoggedIn();
     }
 
     // ── identity ──────────────────────────────────────────────────────────
@@ -107,6 +114,12 @@ public final class VetoCommandSender extends AbstractCommandSender {
             this.promptText = "Input:";
             this.promptMeta = Map.of();
         }
+    }
+
+    /** Typed overload — prefer this over the raw {@code Map} variant. */
+    public void setNextPromptMeta(@NotNull PromptMeta meta) {
+        this.promptText = meta.text();
+        this.promptMeta = meta.toMeta();
     }
 
     @Override
