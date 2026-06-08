@@ -6,6 +6,7 @@ import top.focess.command.CommandResult;
 import top.focess.command.CommandSender;
 import top.focess.veto.command.VetoCommand;
 import top.focess.veto.command.VetoCommandSender;
+import top.focess.veto.contract.IpcMeta;
 
 public class ExitCommand extends VetoCommand {
 
@@ -20,7 +21,7 @@ public class ExitCommand extends VetoCommand {
                     VetoCommandSender s = vetoSender(sender);
                     if (s == null) return CommandResult.REFUSE;
                     s.output("Goodbye.");
-                    s.doneMeta().put("exit", true);
+                    s.doneMeta().put(IpcMeta.EXIT, true);
                     return CommandResult.ALLOW;
                 });
     }

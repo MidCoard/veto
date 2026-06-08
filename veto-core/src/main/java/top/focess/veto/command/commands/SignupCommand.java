@@ -9,6 +9,7 @@ import top.focess.command.CommandSender;
 import top.focess.veto.command.TerminalSessionManager;
 import top.focess.veto.command.VetoCommand;
 import top.focess.veto.command.VetoCommandSender;
+import top.focess.veto.contract.IpcMeta;
 import top.focess.veto.vault.*;
 
 public class SignupCommand extends VetoCommand {
@@ -46,7 +47,7 @@ public class SignupCommand extends VetoCommand {
                     String p = (String) args.get("pass");
 
                     if (u == null) {
-                        s.setNextPromptMeta(Map.of("prompt", "Choose a username:"));
+                        s.setNextPromptMeta(Map.of(IpcMeta.PROMPT, "Choose a username:"));
                         u = s.input();
                         if (u == null || u.isBlank()) {
                             s.output("Signup cancelled.");
@@ -54,7 +55,8 @@ public class SignupCommand extends VetoCommand {
                         }
                     }
                     if (p == null) {
-                        s.setNextPromptMeta(Map.of("prompt", "Choose a password:", "mask", true));
+                        s.setNextPromptMeta(
+                                Map.of(IpcMeta.PROMPT, "Choose a password:", IpcMeta.MASK, true));
                         p = s.input();
                         if (p == null || p.isBlank()) {
                             s.output("Signup cancelled.");
@@ -69,8 +71,8 @@ public class SignupCommand extends VetoCommand {
                     vault.unlock(vk, u);
                     sessions.create(s.terminalId(), u);
                     s.output("Account created — welcome, " + u + ".");
-                    s.doneMeta().put("username", u);
-                    s.doneMeta().put("session", s.terminalId());
+                    s.doneMeta().put(IpcMeta.USERNAME, u);
+                    s.doneMeta().put(IpcMeta.SESSION, s.terminalId());
                     return CommandResult.ALLOW;
                 },
                 opt("user"),

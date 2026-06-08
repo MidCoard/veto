@@ -10,6 +10,7 @@ import org.jline.reader.*;
 import org.jline.terminal.TerminalBuilder;
 import top.focess.veto.contract.HintInfo;
 import top.focess.veto.contract.IpcFrame;
+import top.focess.veto.contract.IpcMeta;
 
 public class VetoTerminal {
 
@@ -47,6 +48,9 @@ public class VetoTerminal {
 
     /** Last buffer content we sent a hint for. Used to detect state changes. */
     private String lastBufferForHint = "";
+
+    /** Monotonic sequence number for correlating requests with responses. */
+    private long nextSeq = 1;
 
     public VetoTerminal(Terminal t, LineReader reader, ZmqTerminal transport) {
         this.t = t;
@@ -136,6 +140,7 @@ public class VetoTerminal {
                                 }
 
                                 // Check if the buffer changed to a state that needs a hint
+                                long hintSeq = nextSeq;
                                 try {
                                     String currentBuffer = reader.getBuffer().toString();
                                     boolean currentNeedsHint = shouldSendHint(currentBuffer);
@@ -146,7 +151,9 @@ public class VetoTerminal {
                                         if (currentNeedsHint) {
                                             // Buffer now ends with space → send the real hint
                                             log.fine("HINT send: " + currentBuffer);
-                                            transport.send(new IpcFrame.Hint(currentBuffer));
+                                            transport.send(
+                                                    new IpcFrame.Hint(currentBuffer, hintSeq));
+                                            nextSeq++;
                                         }
                                         lastBufferForHint = currentBuffer;
                                     }
@@ -156,6 +163,8 @@ public class VetoTerminal {
 
                                 IpcFrame.Done done = transport.tryReceiveHint();
                                 if (done != null) {
+                                    // Hint responses are advisory — the shouldSendHint check
+                                    // below already validates whether the ghost is still relevant.
                                     if (shouldSendHint(reader.getBuffer().toString())) {
                                         drawGhost(done);
                                     }
@@ -173,7 +182,7 @@ public class VetoTerminal {
         String placeholder = done.content();
         String plain;
         if (placeholder != null && !placeholder.isBlank()) {
-            String desc = (String) done.meta().get("description");
+            String desc = (String) done.meta().get(IpcMeta.DESCRIPTION);
             plain = new HintInfo(placeholder, desc).displayText();
         } else {
             plain = "";
@@ -289,7 +298,7 @@ public class VetoTerminal {
 
             if (result instanceof IpcFrame.Done done) {
                 applySessionMeta(done.meta());
-                if (Boolean.TRUE.equals(done.meta().get("exit"))) break;
+                if (Boolean.TRUE.equals(done.meta().get(IpcMeta.EXIT))) break;
                 MordantTerminal.println(t, "");
             } else if (result instanceof IpcFrame.Error err) {
                 renderer.error(err.content());
@@ -300,8 +309,9 @@ public class VetoTerminal {
 
     private IpcFrame exchange(String line) {
         busy = true;
+        long seq = nextSeq++;
         try {
-            transport.send(new IpcFrame.Request(line));
+            transport.send(new IpcFrame.Request(line, seq));
 
             long deadline = System.currentTimeMillis() + REQUEST_TIMEOUT_MS;
             boolean firstDelta = true;
@@ -327,7 +337,7 @@ public class VetoTerminal {
 
                     case IpcFrame.Prompt prompt -> {
                         MordantTerminal.println(t, "");
-                        boolean mask = Boolean.TRUE.equals(prompt.meta().get("mask"));
+                        boolean mask = Boolean.TRUE.equals(prompt.meta().get(IpcMeta.MASK));
                         String promptText = "  " + prompt.content() + " ";
                         String reply;
                         try {
@@ -347,11 +357,15 @@ public class VetoTerminal {
                     }
 
                     case IpcFrame.Done d -> {
+                        // Skip stale responses from a previous request
+                        if (d.seq() != 0 && d.seq() != seq) continue;
                         if (!firstDelta) MordantTerminal.println(t, "");
                         return d;
                     }
 
                     case IpcFrame.Error e -> {
+                        // Skip stale errors from a previous request
+                        if (e.seq() != 0 && e.seq() != seq) continue;
                         if (!firstDelta) MordantTerminal.println(t, "");
                         return e;
                     }
@@ -368,13 +382,13 @@ public class VetoTerminal {
     // ── session metadata ──────────────────────────────────────────────────
 
     private void applySessionMeta(Map<String, Object> meta) {
-        if (meta.containsKey("username")) displayUser = (String) meta.get("username");
-        if (Boolean.TRUE.equals(meta.get("clearSession"))) {
+        if (meta.containsKey(IpcMeta.USERNAME)) displayUser = (String) meta.get(IpcMeta.USERNAME);
+        if (Boolean.TRUE.equals(meta.get(IpcMeta.CLEAR_SESSION))) {
             displayUser = null;
             turnCount = 0;
         }
-        if (meta.containsKey("turnNumber"))
-            turnCount = ((Number) meta.get("turnNumber")).intValue();
+        if (meta.containsKey(IpcMeta.TURN_NUMBER))
+            turnCount = ((Number) meta.get(IpcMeta.TURN_NUMBER)).intValue();
     }
 
     // ── UI helpers ────────────────────────────────────────────────────────
@@ -421,11 +435,14 @@ public class VetoTerminal {
             // Pause the hint reader and drop any ghost so the completion output
             // neither races the socket nor collides with leftover ghost text.
             busy = true;
+            long seq = nextSeq++;
             try {
                 eraseGhostToEol();
-                transport.send(new IpcFrame.Complete(fullLine));
+                transport.send(new IpcFrame.Complete(fullLine, seq));
                 IpcFrame reply = transport.receive();
-                if (reply instanceof IpcFrame.Done done && done.content() != null) {
+                if (reply instanceof IpcFrame.Done done
+                        && done.content() != null
+                        && (done.seq() == 0 || done.seq() == seq)) {
                     for (String entry : done.content().split("\n")) {
                         String trimmed = entry.trim();
                         if (trimmed.isEmpty()) continue;

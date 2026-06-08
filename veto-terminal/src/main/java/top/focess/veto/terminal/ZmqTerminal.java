@@ -10,6 +10,7 @@ import org.jetbrains.annotations.Nullable;
 import org.zeromq.ZContext;
 import top.focess.veto.contract.HintInfo;
 import top.focess.veto.contract.IpcFrame;
+import top.focess.veto.contract.IpcMeta;
 import top.focess.veto.contract.ZmqTransport;
 
 /**
@@ -47,16 +48,61 @@ public final class ZmqTerminal implements AutoCloseable {
         this.identity = UUID.randomUUID().toString();
         this.ctx = new ZContext();
         this.transport = ZmqTransport.connectDealer(ctx, address, identity);
+        handshake();
         this.readerThread = new Thread(this::readerLoop, "zmq-reader");
         this.readerThread.setDaemon(true);
         this.readerThread.start();
+    }
+
+    /**
+     * Send a protocol {@link IpcFrame.Hello} and block until the backend responds with a {@link
+     * IpcFrame.Welcome}. Throws if the handshake times out or the backend rejects the version.
+     */
+    private void handshake() {
+        try {
+            send(new IpcFrame.Hello(IpcFrame.PROTOCOL_VERSION));
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to send handshake Hello", e);
+        }
+
+        // Block until we receive Welcome or Error (with timeout)
+        long deadline = System.currentTimeMillis() + 10_000;
+        while (System.currentTimeMillis() < deadline) {
+            socketLock.lock();
+            try {
+                String[] parts = transport.tryReceive();
+                if (parts != null && parts.length >= 2) {
+                    IpcFrame frame = ZmqTransport.deserialize(parts[1]);
+                    if (frame instanceof IpcFrame.Welcome w) {
+                        return; // handshake complete
+                    }
+                    if (frame instanceof IpcFrame.Error e) {
+                        throw new RuntimeException("Backend rejected handshake: " + e.content());
+                    }
+                }
+            } catch (RuntimeException re) {
+                throw re;
+            } catch (Exception ignored) {
+                // deserialization failure — keep waiting
+            } finally {
+                socketLock.unlock();
+            }
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException("Handshake interrupted", e);
+            }
+        }
+        throw new RuntimeException("Handshake timed out — backend may be incompatible");
     }
 
     private void readerLoop() {
         while (!closed && !Thread.currentThread().isInterrupted()) {
             IpcFrame f = internalReceive();
             if (f != null) {
-                if (f instanceof IpcFrame.Done done && Boolean.TRUE.equals(done.meta().get("isHint"))) {
+                if (f instanceof IpcFrame.Done done
+                        && Boolean.TRUE.equals(done.meta().get(IpcMeta.IS_HINT))) {
                     hintQueue.offer(done);
                 } else {
                     replQueue.offer(f);
@@ -140,6 +186,7 @@ public final class ZmqTerminal implements AutoCloseable {
         socketLock.lock();
         try {
             transport.close();
+            ctx.close();
         } finally {
             socketLock.unlock();
         }

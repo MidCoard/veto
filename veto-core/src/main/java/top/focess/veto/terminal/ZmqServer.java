@@ -17,6 +17,7 @@ import top.focess.veto.command.CommandRegistry;
 import top.focess.veto.command.VetoCommandSender;
 import top.focess.veto.contract.HintInfo;
 import top.focess.veto.contract.IpcFrame;
+import top.focess.veto.contract.IpcMeta;
 import top.focess.veto.contract.ZmqTransport;
 
 /**
@@ -76,8 +77,14 @@ public class ZmqServer {
     @PreDestroy
     public void stop() {
         running = false;
-        workers.shutdownNow();
+        workers.shutdown();
+        try {
+            workers.awaitTermination(5, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
         transport.close();
+        ctx.close();
         log.info("ZmqServer stopped");
     }
 
@@ -132,8 +139,8 @@ public class ZmqServer {
                 session.lastActivityNanos = System.nanoTime();
                 IpcFrame terminal =
                         session.sender.hasError()
-                                ? new IpcFrame.Error("Command failed.")
-                                : new IpcFrame.Done(session.sender.doneMeta());
+                                ? new IpcFrame.Error("Command failed.", req.seq())
+                                : new IpcFrame.Done(session.sender.doneMeta(), null, req.seq());
                 outbox.add(new OutboxEntry(identity, terminal));
                 log.debug(
                         "DONE {}: {} {}",
@@ -159,7 +166,8 @@ public class ZmqServer {
                         "COMP {}: -> {} candidates", identity.substring(0, 8), completions.size());
                 outbox.add(
                         new OutboxEntry(
-                                identity, IpcFrame.doneContent(String.join("\n", completions))));
+                                identity,
+                                IpcFrame.doneContent(String.join("\n", completions), comp.seq())));
             }
 
             case IpcFrame.Hint h -> {
@@ -167,26 +175,42 @@ public class ZmqServer {
                 session.lastActivityNanos = System.nanoTime();
                 HintInfo hint = registry.hint(identity, h.raw());
                 Map<String, Object> meta = new HashMap<>();
-                meta.put("isHint", true);
-                if (hint.description() != null) meta.put("description", hint.description());
-                
+                meta.put(IpcMeta.IS_HINT, true);
+                if (hint.description() != null) meta.put(IpcMeta.DESCRIPTION, hint.description());
+
                 outbox.add(
                         new OutboxEntry(
                                 identity,
-                                new IpcFrame.Done(meta, hint.placeholder() != null ? hint.placeholder() : "")));
+                                new IpcFrame.Done(
+                                        meta,
+                                        hint.placeholder() != null ? hint.placeholder() : "",
+                                        h.seq())));
             }
 
             case IpcFrame.Cancel c -> {
                 log.debug("CANC {}: request cancelled", identity.substring(0, 8));
                 session.lastActivityNanos = System.nanoTime();
                 session.sender.cancelPendingInput();
-                outbox.add(new OutboxEntry(identity, new IpcFrame.Done(Map.of("cancelled", true))));
+                outbox.add(
+                        new OutboxEntry(
+                                identity, new IpcFrame.Done(Map.of(IpcMeta.CANCELLED, true))));
             }
 
             case IpcFrame.Bye b -> {
                 log.debug("BYE  {}: terminal disconnecting", identity.substring(0, 8));
-                outbox.add(new OutboxEntry(identity, new IpcFrame.Done(Map.of("exit", true))));
+                outbox.add(
+                        new OutboxEntry(identity, new IpcFrame.Done(Map.of(IpcMeta.EXIT, true))));
                 sessions.remove(identity);
+            }
+
+            case IpcFrame.Hello hello -> {
+                int negotiated = Math.min(hello.version(), IpcFrame.PROTOCOL_VERSION);
+                log.debug(
+                        "HELLO {}: v{} → negotiated v{}",
+                        identity.substring(0, 8),
+                        hello.version(),
+                        negotiated);
+                outbox.add(new OutboxEntry(identity, new IpcFrame.Welcome(negotiated)));
             }
 
             case IpcFrame.Heartbeat h -> {

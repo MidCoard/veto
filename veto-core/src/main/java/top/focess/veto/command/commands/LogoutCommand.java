@@ -8,6 +8,7 @@ import top.focess.veto.command.PromptHandler;
 import top.focess.veto.command.TerminalSessionManager;
 import top.focess.veto.command.VetoCommand;
 import top.focess.veto.command.VetoCommandSender;
+import top.focess.veto.contract.IpcMeta;
 import top.focess.veto.vault.CredentialVault;
 
 public class LogoutCommand extends VetoCommand {
@@ -38,7 +39,7 @@ public class LogoutCommand extends VetoCommand {
                     sessions.invalidate(s.terminalId());
                     promptHandler.removeSession(s.terminalId());
                     s.output("Logged out.");
-                    s.doneMeta().put("clearSession", true);
+                    s.doneMeta().put(IpcMeta.CLEAR_SESSION, true);
                     return CommandResult.ALLOW;
                 });
     }

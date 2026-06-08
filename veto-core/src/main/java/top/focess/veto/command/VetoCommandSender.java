@@ -11,6 +11,7 @@ import org.jetbrains.annotations.Nullable;
 import top.focess.command.AbstractCommandSender;
 import top.focess.command.CommandPermission;
 import top.focess.veto.contract.IpcFrame;
+import top.focess.veto.contract.IpcMeta;
 import top.focess.veto.terminal.ZmqServer;
 
 /**
@@ -100,7 +101,7 @@ public final class VetoCommandSender extends AbstractCommandSender {
      */
     public void setNextPromptMeta(@Nullable Map<String, Object> meta) {
         if (meta != null) {
-            this.promptText = (String) meta.getOrDefault("prompt", "Input:");
+            this.promptText = (String) meta.getOrDefault(IpcMeta.PROMPT, "Input:");
             this.promptMeta = meta;
         } else {
             this.promptText = "Input:";

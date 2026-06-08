@@ -12,6 +12,7 @@ import top.focess.veto.agent.Agent;
 import top.focess.veto.agent.AgentState;
 import top.focess.veto.agent.SessionCompactor;
 import top.focess.veto.agent.TurnRecord;
+import top.focess.veto.contract.IpcMeta;
 import top.focess.veto.llm.core.*;
 import top.focess.veto.vault.CredentialVault;
 
@@ -108,8 +109,8 @@ public class PromptHandler {
             }
             sessions.put(terminalId, agent);
 
-            sender.doneMeta().put("username", user);
-            sender.doneMeta().put("turnNumber", agent.turns().size());
+            sender.doneMeta().put(IpcMeta.USERNAME, user);
+            sender.doneMeta().put(IpcMeta.TURN_NUMBER, agent.turns().size());
         } catch (Exception e) {
             log.error("Prompt failed for terminal {}", terminalId, e);
             sender.output("LLM call failed: " + e.getMessage());

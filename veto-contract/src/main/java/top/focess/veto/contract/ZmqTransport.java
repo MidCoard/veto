@@ -90,13 +90,10 @@ public final class ZmqTransport implements AutoCloseable {
             msg.destroy();
             return new String[] {identity, payload};
         } else {
-            // DEALER: join all frames
-            StringBuilder sb = new StringBuilder();
-            while (!msg.isEmpty()) {
-                sb.append(msg.popString());
-            }
+            // DEALER: single frame — DEALER sockets receive one frame per message
+            String payload = msg.popString();
             msg.destroy();
-            return new String[] {"", sb.toString()};
+            return new String[] {"", payload};
         }
     }
 
@@ -126,22 +123,31 @@ public final class ZmqTransport implements AutoCloseable {
         return JSON.writeValueAsBytes(frame);
     }
 
-    /** Deserialize a payload string back to an IpcFrame. */
+    /**
+     * Deserialize a payload string back to an IpcFrame.
+     *
+     * <p>Returns {@code null} on deserialization failure so callers can distinguish transport-level
+     * corruption (skip / reconnect) from application-level {@link IpcFrame.Error} frames (display
+     * to user). All existing callers already handle {@code null} as "no usable frame received."
+     */
     public static IpcFrame deserialize(String payload) {
         if (payload == null) return null;
         try {
             return JSON.readValue(payload, IpcFrame.class);
         } catch (Exception e) {
-            return new IpcFrame.Error("Deserialization failed: " + e.getMessage());
+            return null;
         }
     }
 
     // ── lifecycle ────────────────────────────────────────────────────────
 
+    /**
+     * Close the transport socket. The {@link ZContext} lifecycle is managed by the owning component
+     * — callers must close the context themselves after all transports are closed.
+     */
     @Override
     public void close() {
         socket.close();
-        ctx.close();
     }
 
     public ZMQ.Socket socket() {

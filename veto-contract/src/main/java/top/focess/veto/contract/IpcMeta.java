@@ -1,0 +1,48 @@
+package top.focess.veto.contract;
+
+/**
+ * Standard metadata keys used in {@link IpcFrame.Done#meta()} and {@link IpcFrame.Prompt#meta()}.
+ *
+ * <p>Use these constants instead of raw strings to prevent typos and make metadata usage
+ * discoverable across the codebase.
+ */
+public final class IpcMeta {
+
+    private IpcMeta() {}
+
+    // ── Done meta ───────────────────────────────────────────────────────────
+
+    /** {@code boolean} — the current request was cancelled. */
+    public static final String CANCELLED = "cancelled";
+
+    /** {@code boolean} — the terminal should exit its REPL loop. */
+    public static final String EXIT = "exit";
+
+    /** {@code boolean} — this {@code Done} is a response to a {@link IpcFrame.Hint}. */
+    public static final String IS_HINT = "isHint";
+
+    /** {@code String} — human-readable description (used with hint responses). */
+    public static final String DESCRIPTION = "description";
+
+    /**
+     * {@code boolean} — the terminal should clear cached session metadata (username, turn count).
+     */
+    public static final String CLEAR_SESSION = "clearSession";
+
+    /** {@code String} — the username associated with the current session. */
+    public static final String USERNAME = "username";
+
+    /** {@code String} — the terminal / session identifier. */
+    public static final String SESSION = "session";
+
+    /** {@code int} — the current agent turn number. */
+    public static final String TURN_NUMBER = "turnNumber";
+
+    // ── Prompt meta ─────────────────────────────────────────────────────────
+
+    /** {@code boolean} — the terminal should mask input characters (e.g. for passwords). */
+    public static final String MASK = "mask";
+
+    /** {@code String} — the prompt text to display above the input field. */
+    public static final String PROMPT = "prompt";
+}
