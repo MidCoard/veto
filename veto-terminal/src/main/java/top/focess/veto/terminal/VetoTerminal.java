@@ -45,6 +45,9 @@ public class VetoTerminal {
     /** Serializes ghost-hint terminal writes against accept/completion clears. */
     private final Object ghostLock = new Object();
 
+    /** Last buffer content we sent a hint for. Used to detect state changes. */
+    private String lastBufferForHint = "";
+
     public VetoTerminal(Terminal t, LineReader reader, ZmqTerminal transport) {
         this.t = t;
         this.reader = reader;
@@ -73,7 +76,7 @@ public class VetoTerminal {
         heartbeat.setDaemon(true);
         heartbeat.start();
 
-        registerHintWidget();
+        registerBufferWatcher();
         registerAcceptWidget();
         startHintReplyReader();
 
@@ -87,21 +90,29 @@ public class VetoTerminal {
         }
     }
 
-    // ── space → send hint ────────────────────────────────────────────────
+    // ── buffer watcher → send hint when needed ──────────────────────────
+    //
+    // Monitor buffer state and send hints when:
+    // - User types space after a command (e.g. "/login ")
+    // - User backspaces back to space state (e.g. "/login arg" → "/login ")
+    //
+    // This is simpler than intercepting keystrokes: we just poll the buffer
+    // state in the hint reply reader and send a hint when it changes to
+    // "command + space(s)" form.
 
-    private void registerHintWidget() {
-        Widget hintSender =
-                () -> {
-                    reader.getBuffer().write(" ");
-                    String buf = reader.getBuffer().toString();
-                    if (buf.startsWith("/") && buf.indexOf(' ') > 1) {
-                        log.fine("HINT send: " + buf);
-                        transport.send(new IpcFrame.Hint(buf));
-                    }
-                    return true;
-                };
-        reader.getWidgets().put("veto-hint-sender", hintSender);
-        reader.getKeyMaps().get(LineReader.MAIN).bind(new Reference("veto-hint-sender"), " ");
+    private void registerBufferWatcher() {}
+
+    /**
+     * Check if buffer warrants a hint. Returns true if: - Starts with "/" - Has at least one space
+     * after command (e.g. "/login " or "/cmd arg ") - Ends with whitespace (user just finished
+     * typing an arg)
+     */
+    private boolean shouldSendHint(String buf) {
+        if (buf == null || buf.isBlank()) return false;
+        if (!buf.startsWith("/")) return false;
+        int spaceIdx = buf.indexOf(' ');
+        if (spaceIdx <= 1) return false;
+        return !buf.equals(buf.stripTrailing());
     }
 
     // ── hint reply → inline ghost text ───────────────────────────────────
@@ -121,6 +132,33 @@ public class VetoTerminal {
                                     sleepQuiet(50);
                                     continue;
                                 }
+
+                                // Check if the buffer changed to a state that needs a hint
+                                try {
+                                    String currentBuffer = reader.getBuffer().toString();
+                                    boolean currentNeedsHint = shouldSendHint(currentBuffer);
+                                    boolean lastHadHint = shouldSendHint(lastBufferForHint);
+
+                                    // Send hint if buffer changed
+                                    if (!currentBuffer.equals(lastBufferForHint)) {
+                                        if (currentNeedsHint) {
+                                            // Buffer now ends with space → send the real hint
+                                            log.fine("HINT send: " + currentBuffer);
+                                            transport.send(new IpcFrame.Hint(currentBuffer));
+                                        } else if (lastHadHint) {
+                                            // Buffer no longer ends with space, but it used to
+                                            // → send empty hint to clear the ghost text
+                                            log.fine(
+                                                    "HINT clear (buffer changed): "
+                                                            + currentBuffer);
+                                            transport.send(new IpcFrame.Hint(currentBuffer));
+                                        }
+                                        lastBufferForHint = currentBuffer;
+                                    }
+                                } catch (Exception ignored) {
+                                    // Buffer may be accessed from reader thread, ignore errors
+                                }
+
                                 IpcFrame f = transport.tryReceive();
                                 // Re-check busy: the REPL or completer may have
                                 // claimed the socket while we were reading.
