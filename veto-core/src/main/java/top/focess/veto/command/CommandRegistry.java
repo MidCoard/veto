@@ -63,6 +63,8 @@ public class CommandRegistry {
         }
 
         String input = raw.trim().substring(1);
+        String[] tokens = input.split("\\s+");
+        sender.output("Tokens: [" + String.join(", ", tokens) + "]");
         try {
             ExecutionResult result = manager.dispatch(sender, input);
             CommandResult cr = result.result();

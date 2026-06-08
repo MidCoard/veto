@@ -141,6 +141,7 @@ public class VetoTerminal {
 
                                     // Send hint if buffer changed
                                     if (!currentBuffer.equals(lastBufferForHint)) {
+                                        eraseGhostToEol();
                                         if (currentNeedsHint) {
                                             // Buffer now ends with space → send the real hint
                                             log.fine("HINT send: " + currentBuffer);
@@ -163,7 +164,9 @@ public class VetoTerminal {
                                 // Re-check busy: the REPL or completer may have
                                 // claimed the socket while we were reading.
                                 if (!busy && f instanceof IpcFrame.Done done) {
-                                    drawGhost(done);
+                                    if (shouldSendHint(reader.getBuffer().toString())) {
+                                        drawGhost(done);
+                                    }
                                 }
                                 sleepQuiet(30);
                             }
@@ -201,9 +204,9 @@ public class VetoTerminal {
                     plain = avail <= 1 ? "" : plain.substring(0, avail - 1) + "…";
                 }
 
-                // Erase the previously drawn ghost using its VISIBLE width.
+                // Erase the previously drawn ghost.
                 if (lastTipLen > 0) {
-                    w.print("\033[" + lastTipLen + "X"); // ECH — erase in place
+                    w.print("\033[K"); // EL — erase to end of line
                 }
                 if (!plain.isEmpty() && ansi) {
                     w.print(MordantTerminal.dim(t, plain)); // styled (variable bytes)
