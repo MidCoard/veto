@@ -108,11 +108,13 @@ public class VetoTerminal {
      * typing an arg)
      */
     private boolean shouldSendHint(String buf) {
-        if (buf == null || buf.isBlank()) return false;
+        if (buf == null || buf.length() < 3) return false;
         if (!buf.startsWith("/")) return false;
+        // Only send hint if the last character is whitespace
+        if (!Character.isWhitespace(buf.charAt(buf.length() - 1))) return false;
+        // Ensure there is at least one space separating command from possible arguments
         int spaceIdx = buf.indexOf(' ');
-        if (spaceIdx <= 1) return false;
-        return !buf.equals(buf.stripTrailing());
+        return spaceIdx > 1;
     }
 
     // ── hint reply → inline ghost text ───────────────────────────────────
@@ -137,7 +139,6 @@ public class VetoTerminal {
                                 try {
                                     String currentBuffer = reader.getBuffer().toString();
                                     boolean currentNeedsHint = shouldSendHint(currentBuffer);
-                                    boolean lastHadHint = shouldSendHint(lastBufferForHint);
 
                                     // Send hint if buffer changed
                                     if (!currentBuffer.equals(lastBufferForHint)) {
