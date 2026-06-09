@@ -32,13 +32,6 @@ object MordantTerminal {
         term.print(text)
     }
 
-    /** Flush any buffered output. Call after a series of {@link #print} calls. */
-    @JvmStatic
-    fun flush(term: Terminal) {
-        @Suppress(" SwallowedException")
-        runCatching { term.println() }
-    }
-
     // ── Colors (passthrough when ANSI unsupported) ────────────────────────────
 
     @JvmStatic

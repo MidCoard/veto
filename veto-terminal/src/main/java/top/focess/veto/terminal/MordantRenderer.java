@@ -1,12 +1,15 @@
 package top.focess.veto.terminal;
 
 import com.github.ajalt.mordant.terminal.Terminal;
+import java.util.logging.Logger;
 import top.focess.veto.contract.IpcFrame;
 
 /**
  * Renders structured backend responses via Mordant rich-text output using {@link IpcFrame} types.
  */
 public class MordantRenderer {
+
+    private static final Logger log = Logger.getLogger(MordantRenderer.class.getName());
 
     private final Terminal terminal;
 
@@ -27,7 +30,11 @@ public class MordantRenderer {
             case IpcFrame.Progress p ->
                     println(MordantTerminal.dim(terminal, "  ⏳ " + p.content()));
             case IpcFrame.Prompt p -> print(MordantTerminal.bold(terminal, p.content()) + " ");
-            default -> {}
+            default -> {
+                if (frame instanceof IpcFrame.Unknown u) {
+                    log.warning("Unknown frame type: " + u.type());
+                }
+            }
         }
     }
 

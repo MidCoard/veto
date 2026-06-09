@@ -2,8 +2,10 @@ package top.focess.veto.terminal;
 
 import com.github.ajalt.mordant.terminal.Terminal;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.jline.reader.*;
@@ -27,7 +29,7 @@ public class VetoTerminal {
                     """;
 
     private static final String BACKEND_ADDR = "tcp://127.0.0.1:5555";
-    private static final long REQUEST_TIMEOUT_MS = 120_000;
+    private static final long REQUEST_TIMEOUT_MS = 85_000;
     private static final long HEARTBEAT_INTERVAL_MS = 30_000;
 
     private final Terminal t;
@@ -43,6 +45,9 @@ public class VetoTerminal {
     /** Visible width (columns) of the currently drawn ghost hint. Guarded by {@link #ghostLock}. */
     private int lastTipLen;
 
+    /** Cached ANSI capability — ghost hints are disabled when false. */
+    private final boolean supportsAnsi;
+
     /** Serializes ghost-hint terminal writes against accept/completion clears. */
     private final Object ghostLock = new Object();
 
@@ -50,16 +55,17 @@ public class VetoTerminal {
     private String lastBufferForHint = "";
 
     /** Monotonic sequence number for correlating requests with responses. */
-    private long nextSeq = 1;
+    private final AtomicLong nextSeq = new AtomicLong(1);
 
-    public VetoTerminal(Terminal t, LineReader reader, ZmqTerminal transport) {
+    public VetoTerminal(Terminal t, ZmqTerminal transport) {
         this.t = t;
-        this.reader = reader;
         this.transport = transport;
         this.renderer = new MordantRenderer(t);
+        this.supportsAnsi = MordantTerminal.supportsAnsi(t);
     }
 
-    public void start() {
+    public void start(LineReader reader) {
+        this.reader = reader;
         printBanner();
         running = true;
 
@@ -80,9 +86,11 @@ public class VetoTerminal {
         heartbeat.setDaemon(true);
         heartbeat.start();
 
-        registerBufferWatcher();
         registerAcceptWidget();
-        startHintReplyReader();
+        if (supportsAnsi) {
+            registerRedrawWidget();
+            startHintReplyReader();
+        }
 
         try {
             repl();
@@ -94,31 +102,20 @@ public class VetoTerminal {
         }
     }
 
-    // ── buffer watcher → send hint when needed ──────────────────────────
-    //
-    // Monitor buffer state and send hints when:
-    // - User types space after a command (e.g. "/login ")
-    // - User backspaces back to space state (e.g. "/login arg" → "/login ")
-    //
-    // This is simpler than intercepting keystrokes: we just poll the buffer
-    // state in the hint reply reader and send a hint when it changes to
-    // "command + space(s)" form.
-
-    private void registerBufferWatcher() {}
-
     /**
-     * Check if buffer warrants a hint. Returns true if: - Starts with "/" - Has at least one space
-     * after command (e.g. "/login " or "/cmd arg ") - Ends with whitespace (user just finished
-     * typing an arg)
+     * Returns true if the buffer looks like a command that could benefit from argument hints. Fires
+     * as soon as a recognizable command name is typed (e.g. "/login" triggers immediately). If the
+     * buffer contains a space, the backend narrows hints by the current arguments.
      */
     private boolean shouldSendHint(String buf) {
         if (buf == null || buf.length() < 3) return false;
         if (!buf.startsWith("/")) return false;
-        // Only send hint if the last character is whitespace
-        if (!Character.isWhitespace(buf.charAt(buf.length() - 1))) return false;
-        // Ensure there is at least one space separating command from possible arguments
+        // Send hints once the command name is recognizable — no trailing
+        // whitespace required. If there is a space, the backend uses the
+        // current arguments to narrow the hint; otherwise it returns the
+        // first expected argument.
         int spaceIdx = buf.indexOf(' ');
-        return spaceIdx > 1;
+        return spaceIdx > 1 || spaceIdx < 0;
     }
 
     // ── hint reply → inline ghost text ───────────────────────────────────
@@ -140,7 +137,7 @@ public class VetoTerminal {
                                 }
 
                                 // Check if the buffer changed to a state that needs a hint
-                                long hintSeq = nextSeq;
+                                long hintSeq = nextSeq.get();
                                 try {
                                     String currentBuffer = reader.getBuffer().toString();
                                     boolean currentNeedsHint = shouldSendHint(currentBuffer);
@@ -149,24 +146,33 @@ public class VetoTerminal {
                                     if (!currentBuffer.equals(lastBufferForHint)) {
                                         eraseGhostToEol();
                                         if (currentNeedsHint) {
-                                            // Buffer now ends with space → send the real hint
+                                            // Buffer changed to command that warrants hints
                                             log.fine("HINT send: " + currentBuffer);
                                             transport.send(
                                                     new IpcFrame.Hint(currentBuffer, hintSeq));
-                                            nextSeq++;
+                                            nextSeq.getAndIncrement();
                                         }
                                         lastBufferForHint = currentBuffer;
                                     }
                                 } catch (Exception ignored) {
-                                    // Buffer may be accessed from reader thread, ignore errors
+                                    // JLine's Buffer is not thread-safe — accessing
+                                    // getBuffer() from the hint-reply thread may produce a
+                                    // stale snapshot or throw on concurrent modification.
+                                    // Hints are advisory so a missed update is harmless;
+                                    // the next poll cycle (~30 ms) will retry.
                                 }
 
                                 IpcFrame.Done done = transport.tryReceiveHint();
                                 if (done != null) {
                                     // Hint responses are advisory — the shouldSendHint check
                                     // below already validates whether the ghost is still relevant.
-                                    if (shouldSendHint(reader.getBuffer().toString())) {
-                                        drawGhost(done);
+                                    try {
+                                        if (shouldSendHint(reader.getBuffer().toString())) {
+                                            drawGhost(done);
+                                        }
+                                    } catch (Exception ignored) {
+                                        // Same thread-safety concern as above — buffer access
+                                        // from hint-reply thread may throw. Retry next cycle.
                                     }
                                 }
                                 sleepQuiet(30);
@@ -179,6 +185,10 @@ public class VetoTerminal {
 
     /** Render (or clear) the inline ghost hint described by a backend Done frame. */
     private void drawGhost(IpcFrame.Done done) {
+        // Ghost hints rely on raw ANSI escapes — skip entirely on dumb terminals
+        // to avoid rendering styled text as indistinguishable plain text.
+        if (!supportsAnsi) return;
+
         String placeholder = done.content();
         String plain;
         if (placeholder != null && !placeholder.isBlank()) {
@@ -193,12 +203,12 @@ public class VetoTerminal {
             try {
                 var term = reader.getTerminal();
                 var w = term.writer();
-                boolean ansi = MordantTerminal.supportsAnsi(t);
 
                 // Clamp to the columns left on the line so the ghost never
                 // wraps — wrapping would invalidate the cursor restore below.
                 // The prompt occupies a fixed 2 columns.
                 int width = term.getWidth() > 0 ? term.getWidth() : 80;
+
                 int cursorCol = 2 + reader.getBuffer().cursor();
                 int avail = Math.max(0, width - cursorCol - 1);
                 if (plain.length() > avail) {
@@ -209,7 +219,7 @@ public class VetoTerminal {
                 if (lastTipLen > 0) {
                     w.print("\033[K"); // EL — erase to end of line
                 }
-                if (!plain.isEmpty() && ansi) {
+                if (!plain.isEmpty()) {
                     w.print(MordantTerminal.dim(t, plain)); // styled (variable bytes)
                     w.print("\033[" + plain.length() + "D"); // restore by VISIBLE width
                     lastTipLen = plain.length();
@@ -275,6 +285,29 @@ public class VetoTerminal {
         reader.getKeyMaps().get(LineReader.MAIN).bind(new Reference("veto-accept-line"), "\n");
     }
 
+    // ── redraw-line → clear ghost before JLine repaint ───────────────────
+    //
+    // JLine repaints the line for many reasons (resize, fast typing, buffer
+    // overflow, explicit redraw). When it repaints, our raw-ANSI ghost
+    // cursor position becomes stale. By hooking REDRAW_LINE we clear ghost
+    // state BEFORE JLine redraws, so the ghost never appears at a wrong
+    // column.
+
+    private void registerRedrawWidget() {
+        Widget redraw =
+                () -> {
+                    synchronized (ghostLock) {
+                        lastTipLen = 0;
+                    }
+                    reader.callWidget(LineReader.REDRAW_LINE);
+                    return true;
+                };
+        reader.getWidgets().put("veto-redraw-line", redraw);
+        reader.getKeyMaps()
+                .get(LineReader.MAIN)
+                .bind(new Reference("veto-redraw-line"), LineReader.REDRAW_LINE);
+    }
+
     // ── repl ──────────────────────────────────────────────────────────────
 
     private void repl() {
@@ -309,7 +342,7 @@ public class VetoTerminal {
 
     private IpcFrame exchange(String line) {
         busy = true;
-        long seq = nextSeq++;
+        long seq = nextSeq.getAndIncrement();
         try {
             transport.send(new IpcFrame.Request(line, seq));
 
@@ -324,8 +357,7 @@ public class VetoTerminal {
 
                 switch (frame) {
                     case IpcFrame.Delta d -> {
-                        System.err.println(
-                                "[DELTA] len=" + d.content().length() + " seq=" + d.index());
+                        log.fine("[DELTA] len=" + d.content().length());
                         if (firstDelta) {
                             MordantTerminal.println(t, "");
                             firstDelta = false;
@@ -345,7 +377,7 @@ public class VetoTerminal {
                         try {
                             reply =
                                     mask
-                                            ? reader.readLine(promptText, '*')
+                                            ? reader.readLine(promptText, '\0')
                                             : reader.readLine(promptText);
                         } catch (Exception e) {
                             return new IpcFrame.Error("Input cancelled.");
@@ -360,18 +392,8 @@ public class VetoTerminal {
 
                     case IpcFrame.Done d -> {
                         // Skip stale responses from a previous request
-                        if (d.seq() != 0 && d.seq() != seq) {
-                            System.err.println(
-                                    "[DONE] stale seq="
-                                            + d.seq()
-                                            + " expected="
-                                            + seq
-                                            + " — skipping");
-                            continue;
-                        }
-                        System.err.println("[DONE] seq=" + d.seq() + " firstDelta=" + firstDelta);
+                        if (d.seq() != 0 && d.seq() != seq) continue;
                         if (!firstDelta) {
-                            MordantTerminal.flush(t);
                             MordantTerminal.println(t, "");
                         }
                         return d;
@@ -381,7 +403,6 @@ public class VetoTerminal {
                         // Skip stale errors from a previous request
                         if (e.seq() != 0 && e.seq() != seq) continue;
                         if (!firstDelta) {
-                            MordantTerminal.flush(t);
                             MordantTerminal.println(t, "");
                         }
                         return e;
@@ -411,13 +432,14 @@ public class VetoTerminal {
     // ── UI helpers ────────────────────────────────────────────────────────
 
     private void echoInput(String line) {
+        int termWidth = reader.getTerminal().getWidth();
+        int maxWidth = termWidth > 0 ? termWidth - 4 : 76;
+        int borderLen = Math.max(0, Math.min(maxWidth, line.length() + 4));
         MordantTerminal.println(t, "");
-        MordantTerminal.println(
-                t,
-                MordantTerminal.dim(
-                        t, "  ╭─ you " + "─".repeat(Math.max(0, Math.min(line.length(), 58)))));
+        MordantTerminal.println(t, MordantTerminal.dim(t, "  ╭─ you " + "─".repeat(borderLen)));
         MordantTerminal.println(t, "  │ " + line);
-        MordantTerminal.println(t, MordantTerminal.dim(t, "  ╰" + "─".repeat(62)));
+        MordantTerminal.println(
+                t, MordantTerminal.dim(t, "  ╰" + "─".repeat(Math.min(maxWidth, borderLen + 4))));
         MordantTerminal.println(t, "");
     }
 
@@ -452,11 +474,11 @@ public class VetoTerminal {
             // Pause the hint reader and drop any ghost so the completion output
             // neither races the socket nor collides with leftover ghost text.
             busy = true;
-            long seq = nextSeq++;
+            long seq = nextSeq.getAndIncrement();
             try {
                 eraseGhostToEol();
                 transport.send(new IpcFrame.Complete(fullLine, seq));
-                IpcFrame reply = transport.receive();
+                IpcFrame reply = transport.receive(3, java.util.concurrent.TimeUnit.SECONDS);
                 if (reply instanceof IpcFrame.Done done
                         && done.content() != null
                         && (done.seq() == 0 || done.seq() == seq)) {
@@ -488,11 +510,11 @@ public class VetoTerminal {
                     TerminalBuilder.builder().system(true).jna(true).encoding("UTF-8").build();
             Terminal mt = MordantTerminal.create();
             ZmqTerminal transport = new ZmqTerminal(BACKEND_ADDR);
-            VetoTerminal vt = new VetoTerminal(mt, null, transport);
+            VetoTerminal vt = new VetoTerminal(mt, transport);
             Completer completer = vt.new VetoCompleter();
             LineReader r = LineReaderBuilder.builder().terminal(jt).completer(completer).build();
-            vt.reader = r;
-            vt.start();
+            r.setVariable(LineReader.HISTORY_FILE, Path.of(".veto_history"));
+            vt.start(r);
         } catch (IOException e) {
             System.err.println("Terminal failed: " + e.getMessage());
         }

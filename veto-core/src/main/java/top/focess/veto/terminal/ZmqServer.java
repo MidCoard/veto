@@ -99,20 +99,20 @@ public class ZmqServer {
 
     private void ioLoop() {
         ZMQ.Poller poller = ctx.createPoller(1);
-        poller.register(transport.socket(), ZMQ.Poller.POLLIN);
+        poller.register(transport.socket, ZMQ.Poller.POLLIN);
 
         while (running) {
             // 1. Block until data arrives or 50 ms elapses
             poller.poll(50);
 
             // 2. Read incoming
-            String[] parts = null;
+            ZmqTransport.ZmqMessage msg = null;
             if (poller.pollin(0)) {
-                parts = transport.tryReceive();
+                msg = transport.tryReceive();
             }
-            if (parts != null) {
-                String identity = parts[0];
-                String payload = parts[1];
+            if (msg != null) {
+                String identity = msg.identity();
+                String payload = msg.payload();
                 IpcFrame frame = ZmqTransport.deserialize(payload);
                 if (frame == null) {
                     log.warn(
@@ -149,7 +149,7 @@ public class ZmqServer {
                             "IO drain: {} → {}",
                             entry.frame.getClass().getSimpleName(),
                             entry.identity);
-                    transport.send(entry.identity, entry.frame);
+                    transport.route(entry.identity, entry.frame);
                 } catch (Exception e) {
                     log.warn("Failed to send to {}", entry.identity, e);
                 }

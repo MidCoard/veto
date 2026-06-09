@@ -4,11 +4,9 @@ import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.ReentrantLock;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.zeromq.ZContext;
-import top.focess.veto.contract.HintInfo;
 import top.focess.veto.contract.IpcFrame;
 import top.focess.veto.contract.IpcMeta;
 import top.focess.veto.contract.ZmqTransport;
@@ -22,12 +20,22 @@ import top.focess.veto.contract.ZmqTransport;
  * <h3>Thread model</h3>
  *
  * <ul>
- *   <li><b>Read thread</b> — blocks on {@link #receive()} for incoming frames from the backend. The
- *       REPL thread feeds these to the renderer.
- *   <li><b>Write calls</b> — {@link #send(IpcFrame)} is called from the REPL or heartbeat thread.
- *       Non-blocking (ZMQ buffers).
+ *   <li><b>Read thread</b> — blocks on the socket with a 500 ms receive timeout,
+ *       routing frames to {@link #replQueue} or {@link #hintQueue}. The timeout is
+ *       set under {@code synchronized (this)} but {@code receive()} itself runs
+ *       outside the lock so that {@link #close()} and {@link #send} are never
+ *       blocked by a parked reader. Exits when {@link #closed} is set.
+ *   <li><b>Write calls</b> — {@link #send(IpcFrame)} is called from the REPL or
+ *       heartbeat thread. Non-blocking (ZMQ buffers).
  *   <li><b>Heartbeat thread</b> — periodically sends keep-alive frames.
  * </ul>
+ *
+ * <h3>Thread safety</h3>
+ *
+ * {@link #send} and {@link #close} are {@code synchronized} on {@code this} so they
+ * serialize with each other. The reader loop sets the receive timeout under the same
+ * lock but calls {@code receive()} outside it — ZMQ internally serializes socket
+ * operations so the reader and writer threads do not corrupt each other.
  */
 public final class ZmqTerminal implements AutoCloseable {
 
@@ -35,12 +43,8 @@ public final class ZmqTerminal implements AutoCloseable {
     private final ZmqTransport transport;
     private final String identity;
 
-    /** Serializes all socket access — JeroMQ sockets are not thread-safe. */
-    private final ReentrantLock socketLock = new ReentrantLock();
-
     private final BlockingQueue<IpcFrame> replQueue = new LinkedBlockingQueue<>();
     private final BlockingQueue<IpcFrame.Done> hintQueue = new LinkedBlockingQueue<>();
-    private final Thread readerThread;
 
     private volatile boolean closed;
 
@@ -48,106 +52,102 @@ public final class ZmqTerminal implements AutoCloseable {
         this.identity = UUID.randomUUID().toString();
         this.ctx = new ZContext();
         this.transport = ZmqTransport.connectDealer(ctx, address, identity);
+        System.err.println("Connecting to backend at " + address + " ...");
         handshake();
-        this.readerThread = new Thread(this::readerLoop, "zmq-reader");
-        this.readerThread.setDaemon(true);
-        this.readerThread.start();
+        System.err.println("Connected.");
+        Thread readerThread = new Thread(this::readerLoop, "zmq-reader");
+        readerThread.setDaemon(true);
+        readerThread.start();
     }
 
     /**
      * Send a protocol {@link IpcFrame.Hello} and block until the backend responds with a {@link
      * IpcFrame.Welcome}. Throws if the handshake times out or the backend rejects the version.
+     *
+     * <p>Called from the constructor before the reader thread starts, so we can safely use the
+     * blocking {@code receive()} with a socket timeout instead of busy-polling.
      */
-    private void handshake() {
+    private synchronized void handshake() {
         try {
             send(new IpcFrame.Hello(IpcFrame.PROTOCOL_VERSION));
         } catch (Exception e) {
             throw new RuntimeException("Failed to send handshake Hello", e);
         }
 
-        // Block until we receive Welcome or Error (with timeout)
-        long deadline = System.currentTimeMillis() + 10_000;
-        while (System.currentTimeMillis() < deadline) {
-            socketLock.lock();
-            try {
-                String[] parts = transport.tryReceive();
-                if (parts != null && parts.length >= 2) {
-                    IpcFrame frame = ZmqTransport.deserialize(parts[1]);
-                    if (frame instanceof IpcFrame.Welcome w) {
-                        return; // handshake complete
-                    }
-                    if (frame instanceof IpcFrame.Error e) {
-                        throw new RuntimeException("Backend rejected handshake: " + e.content());
-                    }
+        // Temporary timeout — the backend may not be running, so we
+        // can't block indefinitely in the constructor.
+        transport.socket.setReceiveTimeOut(10_000);
+
+        try {
+            while (true) {
+                ZmqTransport.ZmqMessage msg = transport.receive();
+                if (msg == null) {
+                    throw new RuntimeException("Handshake timed out — backend may be incompatible");
                 }
-            } catch (RuntimeException re) {
-                throw re;
-            } catch (Exception ignored) {
-                // deserialization failure — keep waiting
-            } finally {
-                socketLock.unlock();
+                IpcFrame frame = ZmqTransport.deserialize(msg.payload());
+                if (frame instanceof IpcFrame.Welcome w) {
+                    return;
+                }
+                if (frame instanceof IpcFrame.Error e) {
+                    throw new RuntimeException("Backend rejected handshake: " + e.content());
+                }
+                // Unknown frame — keep waiting
             }
-            try {
-                Thread.sleep(50);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new RuntimeException("Handshake interrupted", e);
-            }
+        } finally {
+            // Reset to infinite — the reader loop will be unblocked by
+            // close() shutting down the socket, not by a timeout.
+            transport.socket.setReceiveTimeOut(-1);
         }
-        throw new RuntimeException("Handshake timed out — backend may be incompatible");
     }
 
     private void readerLoop() {
-        while (!closed && !Thread.currentThread().isInterrupted()) {
-            IpcFrame f = internalReceive();
-            if (f != null) {
-                if (f instanceof IpcFrame.Done done
-                        && Boolean.TRUE.equals(done.meta().get(IpcMeta.IS_HINT))) {
-                    hintQueue.offer(done);
-                } else {
-                    replQueue.offer(f);
-                }
-            } else {
-                try {
-                    Thread.sleep(10);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
-            }
+        // Set a receive timeout under the lock so the reader thread wakes
+        // periodically to check the closed flag. The actual receive() call
+        // is outside the lock — otherwise close() could never acquire it
+        // and the thread would be unkillable.
+        synchronized (this) {
+            transport.socket.setReceiveTimeOut(500);
         }
-    }
 
-    @Nullable
-    private IpcFrame internalReceive() {
-        socketLock.lock();
-        try {
-            String[] parts = transport.tryReceive();
-            if (parts == null || parts.length < 2) return null;
-            return ZmqTransport.deserialize(parts[1]);
-        } finally {
-            socketLock.unlock();
+        while (!closed) {
+            ZmqTransport.ZmqMessage msg = transport.receive();
+            if (msg == null) {
+                // Timeout or socket closed — loop back to check closed
+                continue;
+            }
+            IpcFrame f = ZmqTransport.deserialize(msg.payload());
+            if (f == null) continue;
+            if (f instanceof IpcFrame.Done done
+                    && Boolean.TRUE.equals(done.meta().get(IpcMeta.IS_HINT))) {
+                hintQueue.offer(done);
+            } else {
+                replQueue.offer(f);
+            }
         }
     }
 
     // ── I/O ───────────────────────────────────────────────────────────────
 
     /** Send a frame to the backend. Thread-safe. */
-    public void send(@NotNull IpcFrame frame) {
-        socketLock.lock();
+    public synchronized void send(@NotNull IpcFrame frame) {
         try {
             transport.send(frame);
         } catch (Exception e) {
             throw new RuntimeException("ZMQ send failed", e);
-        } finally {
-            socketLock.unlock();
         }
     }
 
-    /** Block until a REPL frame arrives. */
+    /** Block until a REPL frame arrives (120s timeout). */
     @Nullable
     public IpcFrame receive() {
+        return receive(120, TimeUnit.SECONDS);
+    }
+
+    /** Block until a REPL frame arrives or the timeout expires. */
+    @Nullable
+    public IpcFrame receive(long timeout, @NotNull TimeUnit unit) {
         try {
-            return replQueue.poll(120, TimeUnit.SECONDS);
+            return replQueue.poll(timeout, unit);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return null;
@@ -160,36 +160,16 @@ public final class ZmqTerminal implements AutoCloseable {
         return hintQueue.poll();
     }
 
-    /** Send a hint request and wait for the specific response. */
-    @Nullable
-    public HintInfo hint(@NotNull String input) {
-        try {
-            hintQueue.clear(); // Clear any stale hint responses
-            send(new IpcFrame.Hint(input));
-            IpcFrame.Done reply = hintQueue.poll(2, TimeUnit.SECONDS);
-            if (reply != null) {
-                String text = reply.content();
-                if (text == null || text.isBlank()) return null;
-                String desc = (String) reply.meta().get("description");
-                return new HintInfo(text, desc);
-            }
-        } catch (Exception ignored) {
-        }
-        return null;
-    }
-
     // ── lifecycle ────────────────────────────────────────────────────────
 
     @Override
-    public void close() {
+    public synchronized void close() {
         closed = true;
-        socketLock.lock();
-        try {
-            transport.close();
-            ctx.close();
-        } finally {
-            socketLock.unlock();
-        }
+        // Close the socket first — this unblocks the reader thread which is
+        // parked in transport.receive(). ZContext.close() comes after so the
+        // context stays alive until the socket is done.
+        transport.close();
+        ctx.close();
     }
 
     @NotNull

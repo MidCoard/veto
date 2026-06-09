@@ -11,23 +11,30 @@ import org.zeromq.ZMsg;
 /**
  * ZeroMQ transport for Veto terminal ↔ backend communication.
  *
- * <h3>Socket pattern</h3>
+ * <h2>Socket pattern</h2>
  *
  * The backend binds a {@link SocketType#ROUTER} socket. Each terminal connects with a {@link
  * SocketType#DEALER} socket carrying a unique identity. ZMQ handles routing, framing, and
  * connection lifecycle — no hand-rolled file locking or state polling.
  *
- * <h3>Wire format</h3>
+ * <h2>Wire format</h2>
  *
  * Each ZMQ message is a single JSON-serialized {@link IpcFrame}. ROUTER sockets receive an identity
  * frame followed by the payload frame; DEALER sockets send and receive bare payloads.
+ *
+ * <h2>Thread safety</h2>
+ *
+ * <b>This class is not thread-safe.</b> JeroMQ sockets are not safe for concurrent use. Callers
+ * must serialize all socket access externally — see {@code ZmqTerminal#socketLock} (reentrant lock
+ * around every send/receive) and {@code ZmqServer#ioLoop} (single-threaded event loop) for the two
+ * supported patterns.
  */
 public final class ZmqTransport implements AutoCloseable {
 
     static final ObjectMapper JSON = new ObjectMapper();
 
     private final ZContext ctx;
-    private final ZMQ.Socket socket;
+    public final ZMQ.Socket socket;
     private final SocketType type;
 
     ZmqTransport(ZContext ctx, ZMQ.Socket socket, SocketType type) {
@@ -35,6 +42,14 @@ public final class ZmqTransport implements AutoCloseable {
         this.socket = socket;
         this.type = type;
     }
+
+    // ── types ────────────────────────────────────────────────────────────
+
+    /**
+     * A received ZeroMQ message. On ROUTER sockets {@link #identity} carries the sender's routing
+     * identity; on DEALER sockets it is empty.
+     */
+    public record ZmqMessage(String identity, String payload) {}
 
     // ── factory ──────────────────────────────────────────────────────────
 
@@ -55,55 +70,44 @@ public final class ZmqTransport implements AutoCloseable {
 
     // ── send ─────────────────────────────────────────────────────────────
 
-    /** Send a frame. On ROUTER, identity must be set. On DEALER, it's ignored. */
-    public void send(String identity, IpcFrame frame) throws JsonProcessingException {
-        byte[] payload = JSON.writeValueAsBytes(frame);
-        if (type == SocketType.ROUTER) {
-            socket.sendMore(identity.getBytes(ZMQ.CHARSET));
-            socket.send(payload);
-        } else {
-            socket.send(payload);
-        }
+    /** Send a frame to a specific peer identity (ROUTER only). */
+    public void route(String identity, IpcFrame frame) throws JsonProcessingException {
+        byte[] payload = serialize(frame);
+        socket.sendMore(identity.getBytes(ZMQ.CHARSET));
+        socket.send(payload);
     }
 
-    /** DEALER convenience: send without identity. */
+    /** Send a frame (DEALER). */
     public void send(IpcFrame frame) throws JsonProcessingException {
-        send("", frame);
+        byte[] payload = serialize(frame);
+        socket.send(payload);
     }
 
     // ── receive ──────────────────────────────────────────────────────────
 
     /**
-     * Try to receive a frame. Returns {@code null} if nothing is available. On ROUTER, returns the
-     * identity in the first element and the payload in the second.
+     * Try to receive a message without blocking. Returns {@code null} if nothing is available.
+     *
+     * <p>On ROUTER sockets the returned {@link ZmqMessage#identity} carries the sender's routing
+     * identity. On DEALER sockets {@code identity} is empty.
      *
      * <p>Explicitly decodes ZMQ frame bytes as UTF-8 rather than relying on {@link
      * ZMsg#popString()}, which hex-encodes the data on some platforms (JeroMQ 0.6.0 / GBK locale).
      */
-    public String[] tryReceive() {
-        ZMsg msg = ZMsg.recvMsg(socket, ZMQ.DONTWAIT);
-        if (msg == null || msg.isEmpty()) return null;
-
-        if (type == SocketType.ROUTER) {
-            if (msg.size() < 2) {
-                msg.destroy();
-                return null;
-            }
-            String identity = new String(msg.pop().getData(), StandardCharsets.UTF_8);
-            String payload = new String(msg.pop().getData(), StandardCharsets.UTF_8);
-            msg.destroy();
-            return new String[] {identity, payload};
-        } else {
-            // DEALER: single frame — DEALER sockets receive one frame per message
-            String payload = new String(msg.pop().getData(), StandardCharsets.UTF_8);
-            msg.destroy();
-            return new String[] {"", payload};
-        }
+    public ZmqMessage tryReceive() {
+        return decodeMsg(ZMsg.recvMsg(socket, ZMQ.DONTWAIT));
     }
 
-    /** Block until a frame arrives, or null on interrupt. */
-    public String[] receive() {
-        ZMsg msg = ZMsg.recvMsg(socket);
+    /** Block until a message arrives, or {@code null} on interrupt. */
+    public ZmqMessage receive() {
+        return decodeMsg(ZMsg.recvMsg(socket));
+    }
+
+    /**
+     * Decode a raw ZMsg into a {@link ZmqMessage}. On ROUTER sockets the first frame is the sender
+     * identity; on DEALER sockets there is a single payload frame.
+     */
+    private ZmqMessage decodeMsg(ZMsg msg) {
         if (msg == null || msg.isEmpty()) return null;
 
         if (type == SocketType.ROUTER) {
@@ -114,11 +118,12 @@ public final class ZmqTransport implements AutoCloseable {
             String identity = new String(msg.pop().getData(), StandardCharsets.UTF_8);
             String payload = new String(msg.pop().getData(), StandardCharsets.UTF_8);
             msg.destroy();
-            return new String[] {identity, payload};
+            return new ZmqMessage(identity, payload);
         } else {
+            // DEALER: single frame per message
             String payload = new String(msg.pop().getData(), StandardCharsets.UTF_8);
             msg.destroy();
-            return new String[] {"", payload};
+            return new ZmqMessage("", payload);
         }
     }
 
@@ -152,10 +157,6 @@ public final class ZmqTransport implements AutoCloseable {
     @Override
     public void close() {
         socket.close();
-    }
-
-    public ZMQ.Socket socket() {
-        return socket;
     }
 
     public boolean isRouter() {
