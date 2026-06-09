@@ -145,6 +145,10 @@ public class ZmqServer {
             OutboxEntry entry;
             while ((entry = outbox.poll()) != null) {
                 try {
+                    log.info(
+                            "IO drain: {} → {}",
+                            entry.frame.getClass().getSimpleName(),
+                            entry.identity);
                     transport.send(entry.identity, entry.frame);
                 } catch (Exception e) {
                     log.warn("Failed to send to {}", entry.identity, e);

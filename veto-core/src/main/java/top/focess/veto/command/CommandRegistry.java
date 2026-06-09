@@ -69,11 +69,10 @@ public class CommandRegistry {
         }
 
         String input = raw.trim().substring(1).replaceAll("\\s+", " ");
-        String[] tokens = input.split(" ");
-        sender.output("Tokens: [" + String.join(", ", tokens) + "]");
         try {
             ExecutionResult result = manager.dispatch(sender, input);
             CommandResult cr = result.result();
+            log.info("Dispatch result for '{}': {}", input, cr);
 
             if (cr == CommandResult.COMMAND_NOT_FOUND) {
                 String cmdName = input.split("\\s+", 2)[0].toLowerCase();
@@ -84,6 +83,9 @@ public class CommandRegistry {
                 sender.setErrorFlag();
             } else if (cr == CommandResult.REFUSE) {
                 sender.setErrorFlag();
+            } else if (cr == CommandResult.ARGS_NOT_EXECUTED) {
+                // Library already called command.infoUsage(sender) — usage
+                // lines were pushed as Delta frames. Nothing more to do.
             }
         } catch (Exception e) {
             log.error("Dispatch failed for {}", sender.terminalId(), e);
@@ -107,13 +109,16 @@ public class CommandRegistry {
         List<CommandArgument<?>> current = route.getCurrentArguments();
         if (current.isEmpty()) return HintInfo.EMPTY;
 
+        // Use the library's own tokenizer — tokenizeToCommandArgs is
+        // specifically designed for use with CommandArgument.complete().
+        String[] args = CommandManager.tokenizeToCommandArgs(input);
+
         // For fixed args ("create","list" etc), use complete() to get the
         // literal value since getValue() is package-private in the library.
         List<String> choices =
                 current.stream()
                         .filter(CommandArgument::isFixed)
-                        .flatMap(
-                                a -> a.complete(sender, route.getCommand(), new String[0]).stream())
+                        .flatMap(a -> a.complete(sender, route.getCommand(), args).stream())
                         .map(CommandCompletion::candidate)
                         .distinct()
                         .toList();

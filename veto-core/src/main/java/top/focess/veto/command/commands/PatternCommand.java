@@ -3,6 +3,8 @@ package top.focess.veto.command.commands;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jetbrains.annotations.NotNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import top.focess.command.Command;
 import top.focess.command.CommandCompletion;
 import top.focess.command.CommandResult;
@@ -16,6 +18,8 @@ import top.focess.veto.model.AgentPatternRepository;
 import top.focess.veto.vault.CredentialVault;
 
 public class PatternCommand extends VetoCommand {
+
+    private static final Logger log = LoggerFactory.getLogger(PatternCommand.class);
 
     private final CredentialVault vault;
     private final AgentPatternRepository repo;
@@ -209,9 +213,10 @@ public class PatternCommand extends VetoCommand {
     @Override
     @NotNull
     public List<String> usage(@NotNull CommandSender s) {
+        log.info("PatternCommand.usage() called");
         return List.of(
-                "/pattern create <name> <provider> <model> <apikey> [sysprompt] — Create a"
-                        + " pattern",
+                "/pattern create <name> <provider> <model> [sysprompt] — Create a pattern (API key"
+                        + " is prompted)",
                 "/pattern list — List your patterns",
                 "/pattern use <name> — Activate a pattern",
                 "/pattern delete <name> — Delete a pattern",

@@ -18,6 +18,8 @@ repositories {
 dependencies {
     implementation("com.fasterxml.jackson.core:jackson-databind:2.18.0")
     implementation("org.zeromq:jeromq:0.6.0")
+
+    testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
 }
 
 spotless {
@@ -32,4 +34,8 @@ spotless {
 
 tasks.withType<JavaCompile> {
     options.encoding = "UTF-8"
+}
+
+tasks.withType<Test> {
+    useJUnitPlatform()
 }

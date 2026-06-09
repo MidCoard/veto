@@ -8,6 +8,8 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.function.Function;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import top.focess.command.AbstractCommandSender;
 import top.focess.command.CommandPermission;
 import top.focess.veto.contract.IpcFrame;
@@ -32,6 +34,8 @@ import top.focess.veto.terminal.ZmqServer;
  * completing the future and unblocking the dispatch worker. No extra threads are spawned.
  */
 public final class VetoCommandSender extends AbstractCommandSender {
+
+    private static final Logger log = LoggerFactory.getLogger(VetoCommandSender.class);
 
     @Nullable private final String username;
     @NotNull private final String terminalId;
@@ -96,7 +100,10 @@ public final class VetoCommandSender extends AbstractCommandSender {
         Queue<ZmqServer.OutboxEntry> q = this.outbox;
         String id = this.outboxIdentity;
         if (q != null && id != null) {
+            log.info("output → outbox: {}", message.replace("\n", "\\n"));
             q.add(new ZmqServer.OutboxEntry(id, new IpcFrame.Delta(message, 0)));
+        } else {
+            log.warn("output dropped — outbox not wired (outbox={}, identity={})", q, id);
         }
     }
 

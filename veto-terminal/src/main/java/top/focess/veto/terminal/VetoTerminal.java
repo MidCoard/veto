@@ -324,6 +324,8 @@ public class VetoTerminal {
 
                 switch (frame) {
                     case IpcFrame.Delta d -> {
+                        System.err.println(
+                                "[DELTA] len=" + d.content().length() + " seq=" + d.index());
                         if (firstDelta) {
                             MordantTerminal.println(t, "");
                             firstDelta = false;
@@ -358,15 +360,30 @@ public class VetoTerminal {
 
                     case IpcFrame.Done d -> {
                         // Skip stale responses from a previous request
-                        if (d.seq() != 0 && d.seq() != seq) continue;
-                        if (!firstDelta) MordantTerminal.println(t, "");
+                        if (d.seq() != 0 && d.seq() != seq) {
+                            System.err.println(
+                                    "[DONE] stale seq="
+                                            + d.seq()
+                                            + " expected="
+                                            + seq
+                                            + " — skipping");
+                            continue;
+                        }
+                        System.err.println("[DONE] seq=" + d.seq() + " firstDelta=" + firstDelta);
+                        if (!firstDelta) {
+                            MordantTerminal.flush(t);
+                            MordantTerminal.println(t, "");
+                        }
                         return d;
                     }
 
                     case IpcFrame.Error e -> {
                         // Skip stale errors from a previous request
                         if (e.seq() != 0 && e.seq() != seq) continue;
-                        if (!firstDelta) MordantTerminal.println(t, "");
+                        if (!firstDelta) {
+                            MordantTerminal.flush(t);
+                            MordantTerminal.println(t, "");
+                        }
                         return e;
                     }
 

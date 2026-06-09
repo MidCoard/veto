@@ -2,6 +2,7 @@ package top.focess.veto.contract;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.charset.StandardCharsets;
 import org.zeromq.SocketType;
 import org.zeromq.ZContext;
 import org.zeromq.ZMQ;
@@ -75,6 +76,9 @@ public final class ZmqTransport implements AutoCloseable {
     /**
      * Try to receive a frame. Returns {@code null} if nothing is available. On ROUTER, returns the
      * identity in the first element and the payload in the second.
+     *
+     * <p>Explicitly decodes ZMQ frame bytes as UTF-8 rather than relying on {@link
+     * ZMsg#popString()}, which hex-encodes the data on some platforms (JeroMQ 0.6.0 / GBK locale).
      */
     public String[] tryReceive() {
         ZMsg msg = ZMsg.recvMsg(socket, ZMQ.DONTWAIT);
@@ -85,13 +89,13 @@ public final class ZmqTransport implements AutoCloseable {
                 msg.destroy();
                 return null;
             }
-            String identity = msg.popString();
-            String payload = msg.popString();
+            String identity = new String(msg.pop().getData(), StandardCharsets.UTF_8);
+            String payload = new String(msg.pop().getData(), StandardCharsets.UTF_8);
             msg.destroy();
             return new String[] {identity, payload};
         } else {
             // DEALER: single frame — DEALER sockets receive one frame per message
-            String payload = msg.popString();
+            String payload = new String(msg.pop().getData(), StandardCharsets.UTF_8);
             msg.destroy();
             return new String[] {"", payload};
         }
@@ -107,12 +111,12 @@ public final class ZmqTransport implements AutoCloseable {
                 msg.destroy();
                 return null;
             }
-            String identity = msg.popString();
-            String payload = msg.popString();
+            String identity = new String(msg.pop().getData(), StandardCharsets.UTF_8);
+            String payload = new String(msg.pop().getData(), StandardCharsets.UTF_8);
             msg.destroy();
             return new String[] {identity, payload};
         } else {
-            String payload = msg.popString();
+            String payload = new String(msg.pop().getData(), StandardCharsets.UTF_8);
             msg.destroy();
             return new String[] {"", payload};
         }
