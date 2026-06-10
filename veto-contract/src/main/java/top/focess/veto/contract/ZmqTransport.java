@@ -33,12 +33,10 @@ public final class ZmqTransport implements AutoCloseable {
 
     static final ObjectMapper JSON = new ObjectMapper();
 
-    private final ZContext ctx;
     public final ZMQ.Socket socket;
     private final SocketType type;
 
-    ZmqTransport(ZContext ctx, ZMQ.Socket socket, SocketType type) {
-        this.ctx = ctx;
+    ZmqTransport(ZMQ.Socket socket, SocketType type) {
         this.socket = socket;
         this.type = type;
     }
@@ -49,7 +47,7 @@ public final class ZmqTransport implements AutoCloseable {
      * A received ZeroMQ message. On ROUTER sockets {@link #identity} carries the sender's routing
      * identity; on DEALER sockets it is empty.
      */
-    public record ZmqMessage(String identity, String payload) {}
+    public record ZmqMessage(String identity, IpcFrame frame) {}
 
     // ── factory ──────────────────────────────────────────────────────────
 
@@ -57,7 +55,7 @@ public final class ZmqTransport implements AutoCloseable {
     public static ZmqTransport bindRouter(ZContext ctx, String addr) {
         ZMQ.Socket sock = ctx.createSocket(SocketType.ROUTER);
         sock.bind(addr);
-        return new ZmqTransport(ctx, sock, SocketType.ROUTER);
+        return new ZmqTransport(sock, SocketType.ROUTER);
     }
 
     /** Terminal: create a DEALER connected to the backend. */
@@ -65,21 +63,23 @@ public final class ZmqTransport implements AutoCloseable {
         ZMQ.Socket sock = ctx.createSocket(SocketType.DEALER);
         sock.setIdentity(identity.getBytes(ZMQ.CHARSET));
         sock.connect(addr);
-        return new ZmqTransport(ctx, sock, SocketType.DEALER);
+        return new ZmqTransport(sock, SocketType.DEALER);
     }
 
     // ── send ─────────────────────────────────────────────────────────────
 
     /** Send a frame to a specific peer identity (ROUTER only). */
-    public void route(String identity, IpcFrame frame) throws JsonProcessingException {
+    public void send(String identity, IpcFrame frame) {
         byte[] payload = serialize(frame);
+        if (payload == null) return;
         socket.sendMore(identity.getBytes(ZMQ.CHARSET));
         socket.send(payload);
     }
 
     /** Send a frame (DEALER). */
-    public void send(IpcFrame frame) throws JsonProcessingException {
+    public void send(IpcFrame frame) {
         byte[] payload = serialize(frame);
+        if (payload == null) return;
         socket.send(payload);
     }
 
@@ -90,9 +90,6 @@ public final class ZmqTransport implements AutoCloseable {
      *
      * <p>On ROUTER sockets the returned {@link ZmqMessage#identity} carries the sender's routing
      * identity. On DEALER sockets {@code identity} is empty.
-     *
-     * <p>Explicitly decodes ZMQ frame bytes as UTF-8 rather than relying on {@link
-     * ZMsg#popString()}, which hex-encodes the data on some platforms (JeroMQ 0.6.0 / GBK locale).
      */
     public ZmqMessage tryReceive() {
         return decodeMsg(ZMsg.recvMsg(socket, ZMQ.DONTWAIT));
@@ -105,42 +102,43 @@ public final class ZmqTransport implements AutoCloseable {
 
     /**
      * Decode a raw ZMsg into a {@link ZmqMessage}. On ROUTER sockets the first frame is the sender
-     * identity; on DEALER sockets there is a single payload frame.
+     * identity; on DEALER sockets there is a single payload frame. The payload is deserialized to
+     * an {@link IpcFrame}.
      */
     private ZmqMessage decodeMsg(ZMsg msg) {
         if (msg == null || msg.isEmpty()) return null;
+
+        String identity = "";
+        String payload;
 
         if (type == SocketType.ROUTER) {
             if (msg.size() < 2) {
                 msg.destroy();
                 return null;
             }
-            String identity = new String(msg.pop().getData(), StandardCharsets.UTF_8);
-            String payload = new String(msg.pop().getData(), StandardCharsets.UTF_8);
-            msg.destroy();
-            return new ZmqMessage(identity, payload);
+            identity = new String(msg.pop().getData(), StandardCharsets.UTF_8);
+            payload = new String(msg.pop().getData(), StandardCharsets.UTF_8);
         } else {
-            // DEALER: single frame per message
-            String payload = new String(msg.pop().getData(), StandardCharsets.UTF_8);
-            msg.destroy();
-            return new ZmqMessage("", payload);
+            payload = new String(msg.pop().getData(), StandardCharsets.UTF_8);
+        }
+        msg.destroy();
+
+        IpcFrame frame = deserialize(payload);
+        if (frame == null) return null;
+        return new ZmqMessage(identity, frame);
+    }
+
+    /** Serialize a frame to JSON bytes, or {@code null} on failure. */
+    public static byte[] serialize(IpcFrame frame) {
+        try {
+            return JSON.writeValueAsBytes(frame);
+        } catch (JsonProcessingException e) {
+            return null;
         }
     }
 
-    /** Serialize a frame to JSON bytes. */
-    public static byte[] serialize(IpcFrame frame) throws JsonProcessingException {
-        return JSON.writeValueAsBytes(frame);
-    }
-
-    /**
-     * Deserialize a payload string back to an IpcFrame.
-     *
-     * <p>Returns {@code null} on deserialization failure so callers can distinguish transport-level
-     * corruption (skip / reconnect) from application-level {@link IpcFrame.Error} frames (display
-     * to user). All existing callers already handle {@code null} as "no usable frame received."
-     */
+    /** Deserialize a payload string back to an IpcFrame, or {@code null} on failure. */
     public static IpcFrame deserialize(String payload) {
-        if (payload == null) return null;
         try {
             return JSON.readValue(payload, IpcFrame.class);
         } catch (Exception e) {
@@ -150,10 +148,7 @@ public final class ZmqTransport implements AutoCloseable {
 
     // ── lifecycle ────────────────────────────────────────────────────────
 
-    /**
-     * Close the transport socket. The {@link ZContext} lifecycle is managed by the owning component
-     * — callers must close the context themselves after all transports are closed.
-     */
+    /** Close the transport socket. */
     @Override
     public void close() {
         socket.close();

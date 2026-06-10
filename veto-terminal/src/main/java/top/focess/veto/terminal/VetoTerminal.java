@@ -60,15 +60,15 @@ public class VetoTerminal {
         Thread heartbeat =
                 new Thread(
                         () -> {
-                            while (running) {
+                            while (running && !Thread.currentThread().isInterrupted()) {
                                 try {
                                     Thread.sleep(HEARTBEAT_INTERVAL_MS);
+                                    if (!running) break;
+                                    transport.send(new IpcFrame.Heartbeat());
                                 } catch (InterruptedException e) {
                                     Thread.currentThread().interrupt();
                                     break;
                                 }
-                                if (!running) break;
-                                transport.send(new IpcFrame.Heartbeat());
                             }
                         },
                         "zmq-hb");
@@ -77,6 +77,7 @@ public class VetoTerminal {
 
         // --- hint widgets ---
         hintWidgets = new VetoHintWidgets(reader, transport);
+        hintWidgets.enable();
 
         try {
             repl();

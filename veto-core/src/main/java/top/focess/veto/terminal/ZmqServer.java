@@ -112,13 +112,9 @@ public class ZmqServer {
             }
             if (msg != null) {
                 String identity = msg.identity();
-                String payload = msg.payload();
-                IpcFrame frame = ZmqTransport.deserialize(payload);
+                IpcFrame frame = msg.frame();
                 if (frame == null) {
-                    log.warn(
-                            "Corrupt frame from {}: {}",
-                            identity,
-                            payload.length() > 200 ? payload.substring(0, 200) + "..." : payload);
+                    log.warn("Corrupt frame from {}", identity);
                 } else {
                     Future<?> task =
                             workers.submit(
@@ -149,7 +145,7 @@ public class ZmqServer {
                             "IO drain: {} → {}",
                             entry.frame.getClass().getSimpleName(),
                             entry.identity);
-                    transport.route(entry.identity, entry.frame);
+                    transport.send(entry.identity, entry.frame);
                 } catch (Exception e) {
                     log.warn("Failed to send to {}", entry.identity, e);
                 }

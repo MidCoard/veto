@@ -84,7 +84,7 @@ public final class ZmqTerminal implements AutoCloseable {
                 if (msg == null) {
                     throw new RuntimeException("Handshake timed out — backend may be incompatible");
                 }
-                IpcFrame frame = ZmqTransport.deserialize(msg.payload());
+                IpcFrame frame = msg.frame();
                 if (frame instanceof IpcFrame.Welcome w) {
                     return;
                 }
@@ -115,7 +115,7 @@ public final class ZmqTerminal implements AutoCloseable {
                 // Timeout or socket closed — loop back to check closed
                 continue;
             }
-            IpcFrame f = ZmqTransport.deserialize(msg.payload());
+            IpcFrame f = msg.frame();
             if (f == null) continue;
             if (f instanceof IpcFrame.Done done
                     && Boolean.TRUE.equals(done.meta().get(IpcMeta.IS_HINT))) {
@@ -130,6 +130,7 @@ public final class ZmqTerminal implements AutoCloseable {
 
     /** Send a frame to the backend. Thread-safe. */
     public synchronized void send(@NotNull IpcFrame frame) {
+        if (closed) return;
         try {
             transport.send(frame);
         } catch (Exception e) {
@@ -165,7 +166,7 @@ public final class ZmqTerminal implements AutoCloseable {
      * @return the hint response, or {@code null} on timeout / error
      */
     @Nullable
-    public IpcFrame.Done hintSync(@NotNull String line, long timeout, @NotNull TimeUnit unit) {
+    public IpcFrame.Done hint(@NotNull String line, long timeout, @NotNull TimeUnit unit) {
         synchronized (this) {
             send(new IpcFrame.Hint(line, nextHintSeq++));
         }

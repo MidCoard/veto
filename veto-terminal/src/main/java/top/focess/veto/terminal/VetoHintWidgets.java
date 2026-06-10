@@ -3,6 +3,7 @@ package top.focess.veto.terminal;
 import java.util.concurrent.TimeUnit;
 import org.jline.reader.LineReader;
 import org.jline.reader.LineReader.SuggestionType;
+import org.jline.widget.Widgets;
 import top.focess.veto.contract.HintInfo;
 import top.focess.veto.contract.IpcFrame;
 import top.focess.veto.contract.IpcMeta;
@@ -24,14 +25,13 @@ import top.focess.veto.contract.IpcMeta;
  * kill-whole-line clear the hint because the user is editing the command, not accepting the
  * suggestion.
  */
-public final class VetoHintWidgets extends org.jline.widget.Widgets {
+public final class VetoHintWidgets extends Widgets {
 
     private static final long HINT_TIMEOUT_MS = 500;
 
     private final ZmqTerminal transport;
     private boolean enabled;
 
-    @SuppressWarnings("this-escape")
     public VetoHintWidgets(LineReader reader, ZmqTerminal transport) {
         super(reader);
         this.transport = transport;
@@ -41,8 +41,6 @@ public final class VetoHintWidgets extends org.jline.widget.Widgets {
         addWidget("_veto-delete-char", this::vetoDelete);
         addWidget("_veto-accept-line", this::vetoAcceptLine);
         addWidget("_veto-kill-whole-line", this::vetoKillWholeLine);
-
-        enable();
     }
 
     // ── enable / disable ──────────────────────────────────────────────────
@@ -120,7 +118,7 @@ public final class VetoHintWidgets extends org.jline.widget.Widgets {
 
         // Starts with "/" and ends with a space — trigger a new hint fetch.
         if (line.endsWith(" ")) {
-            IpcFrame.Done done = transport.hintSync(line, HINT_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+            IpcFrame.Done done = transport.hint(line, HINT_TIMEOUT_MS, TimeUnit.MILLISECONDS);
             if (done != null) {
                 String placeholder = done.content();
                 if (placeholder != null && !placeholder.isBlank()) {
