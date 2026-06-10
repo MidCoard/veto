@@ -20,22 +20,21 @@ import top.focess.veto.contract.ZmqTransport;
  * <h3>Thread model</h3>
  *
  * <ul>
- *   <li><b>Read thread</b> — blocks on the socket with a 500 ms receive timeout,
- *       routing frames to {@link #replQueue} or {@link #hintQueue}. The timeout is
- *       set under {@code synchronized (this)} but {@code receive()} itself runs
- *       outside the lock so that {@link #close()} and {@link #send} are never
- *       blocked by a parked reader. Exits when {@link #closed} is set.
- *   <li><b>Write calls</b> — {@link #send(IpcFrame)} is called from the REPL or
- *       heartbeat thread. Non-blocking (ZMQ buffers).
+ *   <li><b>Read thread</b> — blocks on the socket with a 500 ms receive timeout, routing frames to
+ *       {@link #replQueue} or {@link #hintQueue}. The timeout is set under {@code synchronized
+ *       (this)} but {@code receive()} itself runs outside the lock so that {@link #close()} and
+ *       {@link #send} are never blocked by a parked reader. Exits when {@link #closed} is set.
+ *   <li><b>Write calls</b> — {@link #send(IpcFrame)} is called from the REPL or heartbeat thread.
+ *       Non-blocking (ZMQ buffers).
  *   <li><b>Heartbeat thread</b> — periodically sends keep-alive frames.
  * </ul>
  *
  * <h3>Thread safety</h3>
  *
- * {@link #send} and {@link #close} are {@code synchronized} on {@code this} so they
- * serialize with each other. The reader loop sets the receive timeout under the same
- * lock but calls {@code receive()} outside it — ZMQ internally serializes socket
- * operations so the reader and writer threads do not corrupt each other.
+ * {@link #send} and {@link #close} are {@code synchronized} on {@code this} so they serialize with
+ * each other. The reader loop sets the receive timeout under the same lock but calls {@code
+ * receive()} outside it — ZMQ internally serializes socket operations so the reader and writer
+ * threads do not corrupt each other.
  */
 public final class ZmqTerminal implements AutoCloseable {
 
@@ -46,6 +45,7 @@ public final class ZmqTerminal implements AutoCloseable {
     private final BlockingQueue<IpcFrame> replQueue = new LinkedBlockingQueue<>();
     private final BlockingQueue<IpcFrame.Done> hintQueue = new LinkedBlockingQueue<>();
 
+    private long nextHintSeq = 1;
     private volatile boolean closed;
 
     public ZmqTerminal(@NotNull String address) {
@@ -154,10 +154,27 @@ public final class ZmqTerminal implements AutoCloseable {
         }
     }
 
-    /** Try to receive a hint response without blocking. */
+    /**
+     * Send a Hint frame and synchronously wait for the response. Used by the tail-tip widget, which
+     * runs on the reader thread — blocking here blocks keystroke processing, so the timeout is
+     * short.
+     *
+     * @param line current command line buffer content
+     * @param timeout max time to wait
+     * @param unit time unit
+     * @return the hint response, or {@code null} on timeout / error
+     */
     @Nullable
-    public IpcFrame.Done tryReceiveHint() {
-        return hintQueue.poll();
+    public IpcFrame.Done hintSync(@NotNull String line, long timeout, @NotNull TimeUnit unit) {
+        synchronized (this) {
+            send(new IpcFrame.Hint(line, nextHintSeq++));
+        }
+        try {
+            return hintQueue.poll(timeout, unit);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
+        }
     }
 
     // ── lifecycle ────────────────────────────────────────────────────────

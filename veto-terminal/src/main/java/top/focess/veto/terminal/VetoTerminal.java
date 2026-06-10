@@ -10,7 +10,6 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.jline.reader.*;
 import org.jline.terminal.TerminalBuilder;
-import top.focess.veto.contract.HintInfo;
 import top.focess.veto.contract.IpcFrame;
 import top.focess.veto.contract.IpcMeta;
 
@@ -36,23 +35,12 @@ public class VetoTerminal {
     private LineReader reader;
     private final ZmqTerminal transport;
     private final MordantRenderer renderer;
+    private VetoHintWidgets hintWidgets;
 
     private String displayUser;
     private int turnCount;
     private volatile boolean busy;
     private volatile boolean running;
-
-    /** Visible width (columns) of the currently drawn ghost hint. Guarded by {@link #ghostLock}. */
-    private int lastTipLen;
-
-    /** Cached ANSI capability — ghost hints are disabled when false. */
-    private final boolean supportsAnsi;
-
-    /** Serializes ghost-hint terminal writes against accept/completion clears. */
-    private final Object ghostLock = new Object();
-
-    /** Last buffer content we sent a hint for. Used to detect state changes. */
-    private String lastBufferForHint = "";
 
     /** Monotonic sequence number for correlating requests with responses. */
     private final AtomicLong nextSeq = new AtomicLong(1);
@@ -61,7 +49,6 @@ public class VetoTerminal {
         this.t = t;
         this.transport = transport;
         this.renderer = new MordantRenderer(t);
-        this.supportsAnsi = MordantTerminal.supportsAnsi(t);
     }
 
     public void start(LineReader reader) {
@@ -69,243 +56,37 @@ public class VetoTerminal {
         printBanner();
         running = true;
 
+        // --- heartbeat ---
         Thread heartbeat =
                 new Thread(
                         () -> {
                             while (running) {
                                 try {
                                     Thread.sleep(HEARTBEAT_INTERVAL_MS);
-                                    transport.send(new IpcFrame.Heartbeat());
                                 } catch (InterruptedException e) {
                                     Thread.currentThread().interrupt();
                                     break;
                                 }
+                                if (!running) break;
+                                transport.send(new IpcFrame.Heartbeat());
                             }
                         },
                         "zmq-hb");
         heartbeat.setDaemon(true);
         heartbeat.start();
 
-        registerAcceptWidget();
-        if (supportsAnsi) {
-            registerRedrawWidget();
-            startHintReplyReader();
-        }
+        // --- hint widgets ---
+        hintWidgets = new VetoHintWidgets(reader, transport);
 
         try {
             repl();
         } finally {
             running = false;
+            hintWidgets.disable();
             heartbeat.interrupt();
             transport.send(new IpcFrame.Bye());
             transport.close();
         }
-    }
-
-    /**
-     * Returns true if the buffer looks like a command that could benefit from argument hints. Fires
-     * as soon as a recognizable command name is typed (e.g. "/login" triggers immediately). If the
-     * buffer contains a space, the backend narrows hints by the current arguments.
-     */
-    private boolean shouldSendHint(String buf) {
-        if (buf == null || buf.length() < 3) return false;
-        if (!buf.startsWith("/")) return false;
-        // Send hints once the command name is recognizable — no trailing
-        // whitespace required. If there is a space, the backend uses the
-        // current arguments to narrow the hint; otherwise it returns the
-        // first expected argument.
-        int spaceIdx = buf.indexOf(' ');
-        return spaceIdx > 1 || spaceIdx < 0;
-    }
-
-    // ── hint reply → inline ghost text ───────────────────────────────────
-    //
-    // The backend answers a Hint frame with a Done whose content is the
-    // placeholder (e.g. "[user] [pass]"). We render it as dim "ghost" text to
-    // the right of the cursor, then move the cursor back so typing flows over
-    // it. All cursor math MUST use the *visible* width of the text — never the
-    // styled string length, which carries invisible ANSI escape bytes.
-
-    private void startHintReplyReader() {
-        Thread reply =
-                new Thread(
-                        () -> {
-                            while (running) {
-                                if (busy) {
-                                    sleepQuiet(50);
-                                    continue;
-                                }
-
-                                // Check if the buffer changed to a state that needs a hint
-                                long hintSeq = nextSeq.get();
-                                try {
-                                    String currentBuffer = reader.getBuffer().toString();
-                                    boolean currentNeedsHint = shouldSendHint(currentBuffer);
-
-                                    // Send hint if buffer changed
-                                    if (!currentBuffer.equals(lastBufferForHint)) {
-                                        eraseGhostToEol();
-                                        if (currentNeedsHint) {
-                                            // Buffer changed to command that warrants hints
-                                            log.fine("HINT send: " + currentBuffer);
-                                            transport.send(
-                                                    new IpcFrame.Hint(currentBuffer, hintSeq));
-                                            nextSeq.getAndIncrement();
-                                        }
-                                        lastBufferForHint = currentBuffer;
-                                    }
-                                } catch (Exception ignored) {
-                                    // JLine's Buffer is not thread-safe — accessing
-                                    // getBuffer() from the hint-reply thread may produce a
-                                    // stale snapshot or throw on concurrent modification.
-                                    // Hints are advisory so a missed update is harmless;
-                                    // the next poll cycle (~30 ms) will retry.
-                                }
-
-                                IpcFrame.Done done = transport.tryReceiveHint();
-                                if (done != null) {
-                                    // Hint responses are advisory — the shouldSendHint check
-                                    // below already validates whether the ghost is still relevant.
-                                    try {
-                                        if (shouldSendHint(reader.getBuffer().toString())) {
-                                            drawGhost(done);
-                                        }
-                                    } catch (Exception ignored) {
-                                        // Same thread-safety concern as above — buffer access
-                                        // from hint-reply thread may throw. Retry next cycle.
-                                    }
-                                }
-                                sleepQuiet(30);
-                            }
-                        },
-                        "hint-reply");
-        reply.setDaemon(true);
-        reply.start();
-    }
-
-    /** Render (or clear) the inline ghost hint described by a backend Done frame. */
-    private void drawGhost(IpcFrame.Done done) {
-        // Ghost hints rely on raw ANSI escapes — skip entirely on dumb terminals
-        // to avoid rendering styled text as indistinguishable plain text.
-        if (!supportsAnsi) return;
-
-        String placeholder = done.content();
-        String plain;
-        if (placeholder != null && !placeholder.isBlank()) {
-            String desc = (String) done.meta().get(IpcMeta.DESCRIPTION);
-            plain = new HintInfo(placeholder, desc).displayText();
-        } else {
-            plain = "";
-        }
-        if (plain == null) plain = "";
-
-        synchronized (ghostLock) {
-            try {
-                var term = reader.getTerminal();
-                var w = term.writer();
-
-                // Clamp to the columns left on the line so the ghost never
-                // wraps — wrapping would invalidate the cursor restore below.
-                // The prompt occupies a fixed 2 columns.
-                int width = term.getWidth() > 0 ? term.getWidth() : 80;
-
-                int cursorCol = 2 + reader.getBuffer().cursor();
-                int avail = Math.max(0, width - cursorCol - 1);
-                if (plain.length() > avail) {
-                    plain = avail <= 1 ? "" : plain.substring(0, avail - 1) + "…";
-                }
-
-                // Erase the previously drawn ghost.
-                if (lastTipLen > 0) {
-                    w.print("\033[K"); // EL — erase to end of line
-                }
-                if (!plain.isEmpty()) {
-                    w.print(MordantTerminal.dim(t, plain)); // styled (variable bytes)
-                    w.print("\033[" + plain.length() + "D"); // restore by VISIBLE width
-                    lastTipLen = plain.length();
-                } else {
-                    lastTipLen = 0;
-                }
-                w.flush();
-            } catch (Exception ignored) {
-            }
-        }
-    }
-
-    /** Erase the ghost hint just before a line is accepted (runs on the reader thread). */
-    private void clearGhostAtAccept() {
-        synchronized (ghostLock) {
-            if (lastTipLen <= 0) return;
-            try {
-                reader.callWidget(LineReader.END_OF_LINE);
-                var w = reader.getTerminal().writer();
-                w.print("\033[K"); // erase to end of line — drops trailing ghost
-                w.flush();
-            } catch (Exception ignored) {
-            } finally {
-                lastTipLen = 0;
-            }
-        }
-    }
-
-    /** Erase the ghost hint to end of line from the current cursor (e.g. before completion). */
-    private void eraseGhostToEol() {
-        synchronized (ghostLock) {
-            if (lastTipLen <= 0) return;
-            try {
-                var w = reader.getTerminal().writer();
-                w.print("\033[K");
-                w.flush();
-            } catch (Exception ignored) {
-            } finally {
-                lastTipLen = 0;
-            }
-        }
-    }
-
-    private static void sleepQuiet(long ms) {
-        try {
-            Thread.sleep(ms);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-    }
-
-    // ── accept-line → clear ghost before submit ──────────────────────────
-
-    private void registerAcceptWidget() {
-        Widget accept =
-                () -> {
-                    clearGhostAtAccept();
-                    reader.callWidget(LineReader.ACCEPT_LINE);
-                    return true;
-                };
-        reader.getWidgets().put("veto-accept-line", accept);
-        reader.getKeyMaps().get(LineReader.MAIN).bind(new Reference("veto-accept-line"), "\r");
-        reader.getKeyMaps().get(LineReader.MAIN).bind(new Reference("veto-accept-line"), "\n");
-    }
-
-    // ── redraw-line → clear ghost before JLine repaint ───────────────────
-    //
-    // JLine repaints the line for many reasons (resize, fast typing, buffer
-    // overflow, explicit redraw). When it repaints, our raw-ANSI ghost
-    // cursor position becomes stale. By hooking REDRAW_LINE we clear ghost
-    // state BEFORE JLine redraws, so the ghost never appears at a wrong
-    // column.
-
-    private void registerRedrawWidget() {
-        Widget redraw =
-                () -> {
-                    synchronized (ghostLock) {
-                        lastTipLen = 0;
-                    }
-                    reader.callWidget(LineReader.REDRAW_LINE);
-                    return true;
-                };
-        reader.getWidgets().put("veto-redraw-line", redraw);
-        reader.getKeyMaps()
-                .get(LineReader.MAIN)
-                .bind(new Reference("veto-redraw-line"), LineReader.REDRAW_LINE);
     }
 
     // ── repl ──────────────────────────────────────────────────────────────
@@ -317,10 +98,6 @@ public class VetoTerminal {
             if (line == null) break;
             line = line.trim();
             if (line.isEmpty()) continue;
-            if (line.equals("/exit") || line.equals("/quit")) {
-                MordantTerminal.println(t, "  Goodbye.");
-                break;
-            }
 
             if (!line.startsWith("/")) {
                 echoInput(line);
@@ -471,12 +248,9 @@ public class VetoTerminal {
         public void complete(LineReader r, ParsedLine line, List<Candidate> out) {
             String fullLine = line.line();
             if (!fullLine.startsWith("/")) return;
-            // Pause the hint reader and drop any ghost so the completion output
-            // neither races the socket nor collides with leftover ghost text.
             busy = true;
             long seq = nextSeq.getAndIncrement();
             try {
-                eraseGhostToEol();
                 transport.send(new IpcFrame.Complete(fullLine, seq));
                 IpcFrame reply = transport.receive(3, java.util.concurrent.TimeUnit.SECONDS);
                 if (reply instanceof IpcFrame.Done done
