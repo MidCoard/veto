@@ -13,13 +13,13 @@ import top.focess.veto.contract.IpcMeta;
  */
 public class TerminalStatus {
 
-    private final com.github.ajalt.mordant.terminal.Terminal mordant;
+    private final MordantRenderer renderer;
     private final Status status;
     private String displayUser;
     private int turnCount;
 
-    public TerminalStatus(Terminal terminal, com.github.ajalt.mordant.terminal.Terminal mordant) {
-        this.mordant = mordant;
+    public TerminalStatus(Terminal terminal, MordantRenderer renderer) {
+        this.renderer = renderer;
         this.status = Status.getStatus(terminal);
         if (this.status == null) {
             throw new IllegalStateException("Terminal does not support JLine Status bar");
@@ -51,7 +51,7 @@ public class TerminalStatus {
         } else {
             text = "  " + displayUser + " | turns: " + turnCount;
         }
-        String styled = MordantTerminal.dim(mordant, text);
+        String styled = renderer.dim(text);
         status.update(List.of(AttributedString.fromAnsi(styled)));
     }
 

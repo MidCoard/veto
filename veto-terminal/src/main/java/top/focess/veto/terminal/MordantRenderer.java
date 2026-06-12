@@ -3,76 +3,61 @@ package top.focess.veto.terminal;
 import com.github.ajalt.mordant.terminal.Terminal;
 import java.util.logging.Logger;
 import org.jline.reader.LineReader;
-import top.focess.veto.contract.IpcFrame;
 
 /**
- * Renders structured backend responses via Mordant rich-text output using {@link IpcFrame} types.
+ * Unified rendering layer. All output goes through {@link LineReader#printAbove} to avoid
+ * corrupting the input line during the REPL. Styled-text wrappers delegate to {@link
+ * MordantTerminal} for ANSI formatting.
  */
 public class MordantRenderer {
 
     private static final Logger log = Logger.getLogger(MordantRenderer.class.getName());
 
     private final Terminal terminal;
-    private LineReader reader;
+    private final LineReader reader;
 
-    public MordantRenderer(Terminal terminal) {
+    public MordantRenderer(Terminal terminal, LineReader reader) {
         this.terminal = terminal;
-    }
-
-    public void setReader(LineReader reader) {
         this.reader = reader;
     }
 
-    // ── IpcFrame rendering ──────────────────────────────────────────────
+    // ── styled text ───────────────────────────────────────────────────────
 
-    /** Render a single IPC frame from the backend. */
-    public void renderFrame(IpcFrame frame) {
-        switch (frame) {
-            case IpcFrame.Delta d -> print(d.content());
-            case IpcFrame.Done d -> {
-                if (d.content() != null) println(d.content());
-            }
-            case IpcFrame.Error e -> error(e.content());
-            case IpcFrame.Progress p ->
-                    println(MordantTerminal.dim(terminal, "  ⏳ " + p.content()));
-            case IpcFrame.Prompt p -> print(MordantTerminal.bold(terminal, p.content()) + " ");
-            default -> {
-                if (frame instanceof IpcFrame.Unknown u) {
-                    log.warning("Unknown frame type: " + u.type());
-                }
-            }
-        }
+    public String dim(String text) {
+        return MordantTerminal.dim(terminal, text);
     }
 
-    // ── low-level output ────────────────────────────────────────────────
+    public String bold(String text) {
+        return MordantTerminal.bold(terminal, text);
+    }
+
+    public String cyan(String text) {
+        return MordantTerminal.cyan(terminal, text);
+    }
+
+    public String red(String text) {
+        return MordantTerminal.red(terminal, text);
+    }
+
+    public String green(String text) {
+        return MordantTerminal.green(terminal, text);
+    }
+
+    public String yellow(String text) {
+        return MordantTerminal.yellow(terminal, text);
+    }
+
+    // ── output ────────────────────────────────────────────────────────────
 
     public void println(String text) {
-        if (reader != null) {
-            reader.printAbove(text);
-        } else {
-            MordantTerminal.println(terminal, text);
-        }
-    }
-
-    public void print(String text) {
-        MordantTerminal.print(terminal, text);
+        reader.printAbove(text);
     }
 
     public void error(String text) {
-        String err = MordantTerminal.red(terminal, "✗ " + text);
-        if (reader != null) {
-            reader.printAbove(err);
-        } else {
-            MordantTerminal.println(terminal, err);
-        }
+        println(red("✗ " + text));
     }
 
     public void separator() {
-        String sep = MordantTerminal.dim(terminal, "─".repeat(50));
-        if (reader != null) {
-            reader.printAbove(sep);
-        } else {
-            MordantTerminal.println(terminal, sep);
-        }
+        println(dim("─".repeat(50)));
     }
 }

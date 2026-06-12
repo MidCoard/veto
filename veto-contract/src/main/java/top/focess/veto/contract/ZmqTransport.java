@@ -25,9 +25,8 @@ import org.zeromq.ZMsg;
  * <h2>Thread safety</h2>
  *
  * <b>This class is not thread-safe.</b> JeroMQ sockets are not safe for concurrent use. Callers
- * must serialize all socket access externally — see {@code ZmqTerminal#socketLock} (reentrant lock
- * around every send/receive) and {@code ZmqServer#ioLoop} (single-threaded event loop) for the two
- * supported patterns.
+ * must serialize all socket access externally — see {@code ZmqClient#ioLoop} and {@code
+ * ZmqServer#ioLoop} (single-threaded event loop owning the socket) for the supported pattern.
  */
 public final class ZmqTransport implements AutoCloseable {
 

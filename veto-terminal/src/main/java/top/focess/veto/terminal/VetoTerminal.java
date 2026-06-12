@@ -33,9 +33,9 @@ public class VetoTerminal {
     private static final long HEARTBEAT_INTERVAL_MS = 30_000;
 
     private final Terminal t;
-    private LineReader reader;
     private final ZmqClient client;
-    private final MordantRenderer renderer;
+    private LineReader reader;
+    private MordantRenderer renderer;
 
     private TerminalStatus status;
     private volatile boolean running;
@@ -47,14 +47,13 @@ public class VetoTerminal {
     public VetoTerminal(Terminal t, ZmqClient client) {
         this.t = t;
         this.client = client;
-        this.renderer = new MordantRenderer(t);
     }
 
     public void start(LineReader reader) {
         this.reader = reader;
-        this.renderer.setReader(reader);
+        this.renderer = new MordantRenderer(t, reader);
         this.mainThread = Thread.currentThread();
-        this.status = new TerminalStatus(reader.getTerminal(), t);
+        this.status = new TerminalStatus(reader.getTerminal(), renderer);
         this.status.refresh();
 
         printBanner();
@@ -126,9 +125,7 @@ public class VetoTerminal {
 
     private void repl() {
         while (running && !Thread.currentThread().isInterrupted()) {
-            if (status != null) {
-                status.refresh();
-            }
+            status.refresh();
             String line;
             try {
                 line = reader.readLine(prompt());
@@ -161,12 +158,12 @@ public class VetoTerminal {
 
             if (!line.startsWith("/")) {
                 echoInput(line);
-                reader.printAbove(MordantTerminal.dim(t, "  thinking…"));
+                renderer.println(renderer.dim("  thinking…"));
             }
 
             executeRequest(line);
         }
-        MordantTerminal.println(t, "  Goodbye.");
+        renderer.println("  Goodbye.");
     }
 
     private void executeRequest(String line) {
@@ -175,7 +172,7 @@ public class VetoTerminal {
 
     private void flushDeltaBuffer() {
         if (!deltaBuffer.isEmpty()) {
-            reader.printAbove(deltaBuffer.toString());
+            renderer.println(deltaBuffer.toString());
             deltaBuffer.setLength(0);
         }
     }
@@ -188,44 +185,30 @@ public class VetoTerminal {
             while ((newlineIndex = deltaBuffer.indexOf("\n")) != -1) {
                 String line = deltaBuffer.substring(0, newlineIndex);
                 deltaBuffer.delete(0, newlineIndex + 1);
-                reader.printAbove(line);
+                renderer.println(line);
             }
         } else if (frame instanceof IpcFrame.Progress p) {
             flushDeltaBuffer();
-            String styled = MordantTerminal.dim(t, "  ⏳ " + p.content());
-            reader.printAbove(styled);
+            String styled = renderer.dim("  ⏳ " + p.content());
+            renderer.println(styled);
         } else if (frame instanceof IpcFrame.Prompt prompt) {
             flushDeltaBuffer();
             activePrompt.set(prompt);
-            if (mainThread != null) {
-                mainThread.interrupt();
-            }
+            mainThread.interrupt();
         } else if (frame instanceof IpcFrame.Done(Map<String, Object> meta, String content)) {
             flushDeltaBuffer();
             if (content != null && !content.isBlank()) {
-                reader.printAbove(content);
+                renderer.println(content);
             }
-            applySessionMeta(meta);
+            status.apply(meta);
             if (Boolean.TRUE.equals(meta.get(IpcMeta.EXIT))) {
                 running = false;
             }
-            if (mainThread != null) {
-                mainThread.interrupt();
-            }
+            mainThread.interrupt();
         } else if (frame instanceof IpcFrame.Error e) {
             flushDeltaBuffer();
             renderer.error(e.content());
-            if (mainThread != null) {
-                mainThread.interrupt();
-            }
-        }
-    }
-
-    // ── session metadata ──────────────────────────────────────────────────
-
-    private void applySessionMeta(Map<String, Object> meta) {
-        if (status != null) {
-            status.apply(meta);
+            mainThread.interrupt();
         }
     }
 
@@ -235,12 +218,11 @@ public class VetoTerminal {
         int termWidth = reader.getTerminal().getWidth();
         int maxWidth = termWidth > 0 ? termWidth - 4 : 76;
         int borderLen = Math.max(0, Math.min(maxWidth, line.length() + 4));
-        MordantTerminal.println(t, "");
-        MordantTerminal.println(t, MordantTerminal.dim(t, "  ╭─ you " + "─".repeat(borderLen)));
-        MordantTerminal.println(t, "  │ " + line);
-        MordantTerminal.println(
-                t, MordantTerminal.dim(t, "  ╰" + "─".repeat(Math.min(maxWidth, borderLen + 4))));
-        MordantTerminal.println(t, "");
+        renderer.println("");
+        renderer.println(renderer.dim("  ╭─ you " + "─".repeat(borderLen)));
+        renderer.println("  │ " + line);
+        renderer.println(renderer.dim("  ╰" + "─".repeat(Math.min(maxWidth, borderLen + 4))));
+        renderer.println("");
     }
 
     private String prompt() {
@@ -248,14 +230,13 @@ public class VetoTerminal {
         if (active != null) {
             return "  " + active.content() + " ▸ ";
         }
-        return (status != null && status.getDisplayUser() != null) ? "▸ " : "◇ ";
+        return status.getDisplayUser() != null ? "▸ " : "◇ ";
     }
 
     private void printBanner() {
-        for (String line : HEADER.split("\n"))
-            MordantTerminal.println(t, MordantTerminal.bold(t, MordantTerminal.cyan(t, line)));
-        MordantTerminal.println(t, MordantTerminal.dim(t, "  terminal v3.0"));
-        MordantTerminal.println(t, "");
+        for (String line : HEADER.split("\n")) renderer.println(renderer.bold(renderer.cyan(line)));
+        renderer.println(renderer.dim("  terminal v3.0"));
+        renderer.println("");
     }
 
     // ── tab completion ───────────────────────────────────────────────────
