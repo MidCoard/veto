@@ -58,7 +58,7 @@ public class PatternCommand extends VetoCommand {
 
                         s.setNextPromptMeta(PromptMeta.masked("API Key for " + provider + ":"));
                         String key = s.input();
-                        if (key == null || key.isBlank()) {
+                        if (key == null || key.isEmpty()) {
                             s.output("Pattern creation cancelled.");
                             return CommandResult.REFUSE;
                         }

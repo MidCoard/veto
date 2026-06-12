@@ -5,7 +5,6 @@ import javax.crypto.SecretKey;
 import org.jetbrains.annotations.NotNull;
 import top.focess.command.CommandResult;
 import top.focess.command.CommandSender;
-import top.focess.veto.command.TerminalSessionManager;
 import top.focess.veto.command.VetoCommand;
 import top.focess.veto.command.VetoCommandSender;
 import top.focess.veto.contract.IpcMeta;
@@ -17,18 +16,15 @@ public class SignupCommand extends VetoCommand {
     private final UserRegistry users;
     private final VaultKeyManager keys;
     private final CredentialVault vault;
-    private final TerminalSessionManager sessions;
 
     public SignupCommand(
             @NotNull UserRegistry users,
             @NotNull VaultKeyManager keys,
-            @NotNull CredentialVault vault,
-            @NotNull TerminalSessionManager sessions) {
+            @NotNull CredentialVault vault) {
         super("signup", "Create a new account");
         this.users = users;
         this.keys = keys;
         this.vault = vault;
-        this.sessions = sessions;
     }
 
     @Override
@@ -43,13 +39,13 @@ public class SignupCommand extends VetoCommand {
                         return CommandResult.REFUSE;
                     }
 
-                    String u = (String) args.get("user");
-                    String p = (String) args.get("pass");
+                    String u = args.get("user");
+                    String p = args.get("pass");
 
                     if (u == null) {
                         s.setNextPromptMeta(PromptMeta.simple("Choose a username:"));
                         u = s.input();
-                        if (u == null || u.isBlank()) {
+                        if (u.isEmpty()) {
                             s.output("Signup cancelled.");
                             return CommandResult.REFUSE;
                         }
@@ -57,7 +53,7 @@ public class SignupCommand extends VetoCommand {
                     if (p == null) {
                         s.setNextPromptMeta(PromptMeta.masked("Choose a password:"));
                         p = s.input();
-                        if (p == null || p.isBlank()) {
+                        if (p.isEmpty()) {
                             s.output("Signup cancelled.");
                             return CommandResult.REFUSE;
                         }
@@ -68,7 +64,7 @@ public class SignupCommand extends VetoCommand {
                     SecretKey vk = keys.generateVaultKey();
                     keys.wrapVaultKey(vk, mk, u);
                     vault.unlock(vk, u);
-                    sessions.create(s.terminalId(), u);
+                    s.setUsername(u);
                     s.output("Account created — welcome, " + u + ".");
                     s.doneMeta().put(IpcMeta.USERNAME, u);
                     s.doneMeta().put(IpcMeta.SESSION, s.terminalId());

@@ -125,7 +125,7 @@ public class TrainingController {
     public ResponseEntity<Map<String, Object>> deployModel(
             @RequestBody Map<String, String> request) {
         String modelPath = request.get("modelPath");
-        if (modelPath == null || modelPath.isBlank()) {
+        if (modelPath == null || modelPath.isEmpty()) {
             // Default to the most recent trained model
             modelPath = config.getModelOutputDir() + "/" + config.getDefaultGgufName();
         }

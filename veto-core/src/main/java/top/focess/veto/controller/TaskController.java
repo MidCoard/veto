@@ -36,7 +36,7 @@ public class TaskController {
     public ResponseEntity<Map<String, Object>> createTask(
             @RequestBody Map<String, Object> request) {
         String taskType = (String) request.get("taskType");
-        if (taskType == null || taskType.isBlank()) {
+        if (taskType == null || taskType.isEmpty()) {
             return ResponseEntity.badRequest()
                     .body(
                             Map.of(

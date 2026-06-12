@@ -53,7 +53,7 @@ public class CompileCppTargetCapability implements AtomicCapability {
     @Override
     public void validate(ToolExecutionRequest request) throws SecurityException {
         String sourcePath = getStringArg(request, "sourcePath");
-        if (sourcePath == null || sourcePath.isBlank()) {
+        if (sourcePath == null || sourcePath.isEmpty()) {
             throw new IllegalArgumentException("'sourcePath' argument is required");
         }
 
@@ -81,7 +81,7 @@ public class CompileCppTargetCapability implements AtomicCapability {
 
         String sourcePath = getStringArg(request, "sourcePath");
         String outputName = getStringArg(request, "outputName");
-        if (outputName == null || outputName.isBlank()) {
+        if (outputName == null || outputName.isEmpty()) {
             outputName = "a.out";
         }
 
@@ -108,13 +108,13 @@ public class CompileCppTargetCapability implements AtomicCapability {
         command.add("-o");
         command.add(outputFile.toString());
 
-        if (extraFlags != null && !extraFlags.isBlank()) {
+        if (extraFlags != null && !extraFlags.isEmpty()) {
             // Strict validation: only allow known safe flags
             validateCompilerFlags(extraFlags);
             command.addAll(List.of(extraFlags.split("\\s+")));
         }
 
-        if (includePaths != null && !includePaths.isBlank()) {
+        if (includePaths != null && !includePaths.isEmpty()) {
             for (String incPath : includePaths.split(":")) {
                 Path incResolved = resolveSafePath(incPath.trim());
                 command.add("-I" + incResolved.toString());

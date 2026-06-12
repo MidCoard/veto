@@ -64,7 +64,7 @@ public class PromptHandler {
             sender.setErrorFlag();
             return;
         }
-        if (prompt.isBlank()) {
+        if (prompt.isEmpty()) {
             sender.output("Empty prompt.");
             sender.setErrorFlag();
             return;

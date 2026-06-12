@@ -281,7 +281,7 @@ public class TamperProofStore {
                     lastLine = line;
                 }
             }
-            if (!lastLine.isBlank()) {
+            if (!lastLine.isEmpty()) {
                 String[] parts = lastLine.split("\\|");
                 if (parts.length >= 2) {
                     chainTailHash = parts[1];

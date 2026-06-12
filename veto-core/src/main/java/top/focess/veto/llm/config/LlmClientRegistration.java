@@ -40,7 +40,7 @@ public class LlmClientRegistration {
                 (baseUrl, apiKey) -> {
                     OpenAIOkHttpClient.Builder builder =
                             OpenAIOkHttpClient.builder().apiKey(apiKey);
-                    if (baseUrl != null && !baseUrl.isBlank()) {
+                    if (baseUrl != null && !baseUrl.isEmpty()) {
                         builder.baseUrl(baseUrl);
                     }
                     return builder.build();
@@ -51,7 +51,7 @@ public class LlmClientRegistration {
                 (baseUrl, apiKey) -> {
                     AnthropicOkHttpClient.Builder builder =
                             AnthropicOkHttpClient.builder().apiKey(apiKey);
-                    if (baseUrl != null && !baseUrl.isBlank()) {
+                    if (baseUrl != null && !baseUrl.isEmpty()) {
                         builder.baseUrl(baseUrl);
                     }
                     return builder.build();
@@ -61,7 +61,7 @@ public class LlmClientRegistration {
                 Client.class,
                 (baseUrl, apiKey) -> {
                     Client.Builder builder = Client.builder().apiKey(apiKey);
-                    if (baseUrl != null && !baseUrl.isBlank()) {
+                    if (baseUrl != null && !baseUrl.isEmpty()) {
                         builder.httpOptions(HttpOptions.builder().baseUrl(baseUrl).build());
                     }
                     return builder.build();

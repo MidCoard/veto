@@ -32,7 +32,7 @@ public class ProxyEgress implements LlmEgress {
     public EgressEndpoint resolve(
             ProviderType providerType, String defaultBaseUrl, String credentialKey) {
         String brokerBaseUrl = properties.baseUrlFor(providerType);
-        if (brokerBaseUrl == null || brokerBaseUrl.isBlank()) {
+        if (brokerBaseUrl == null || brokerBaseUrl.isEmpty()) {
             throw new ModelCapabilityException(
                     "Egress proxy mode is enabled but no broker base URL is configured for "
                             + providerType);

@@ -52,7 +52,7 @@ public class AuthController {
         String username = request.get("username");
         String password = request.get("password");
 
-        if (username == null || username.isBlank() || password == null || password.isBlank()) {
+        if (username == null || username.isEmpty() || password == null || password.isEmpty()) {
             return ResponseEntity.badRequest()
                     .body(
                             Map.of(
@@ -126,7 +126,7 @@ public class AuthController {
         String username = request.get("username");
         String password = request.get("password");
 
-        if (username == null || username.isBlank() || password == null || password.isBlank()) {
+        if (username == null || username.isEmpty() || password == null || password.isEmpty()) {
             return ResponseEntity.badRequest()
                     .body(
                             Map.of(
@@ -259,7 +259,7 @@ public class AuthController {
         String password = request.get("password");
         String role = request.getOrDefault("role", "USER");
 
-        if (username == null || username.isBlank() || password == null || password.isBlank()) {
+        if (username == null || username.isEmpty() || password == null || password.isEmpty()) {
             return ResponseEntity.badRequest()
                     .body(
                             Map.of(

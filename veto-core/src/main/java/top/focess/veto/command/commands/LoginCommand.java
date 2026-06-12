@@ -5,7 +5,6 @@ import javax.crypto.SecretKey;
 import org.jetbrains.annotations.NotNull;
 import top.focess.command.CommandResult;
 import top.focess.command.CommandSender;
-import top.focess.veto.command.TerminalSessionManager;
 import top.focess.veto.command.VetoCommand;
 import top.focess.veto.command.VetoCommandSender;
 import top.focess.veto.contract.IpcMeta;
@@ -17,18 +16,15 @@ public class LoginCommand extends VetoCommand {
     private final UserRegistry users;
     private final VaultKeyManager keys;
     private final CredentialVault vault;
-    private final TerminalSessionManager sessions;
 
     public LoginCommand(
             @NotNull UserRegistry users,
             @NotNull VaultKeyManager keys,
-            @NotNull CredentialVault vault,
-            @NotNull TerminalSessionManager sessions) {
+            @NotNull CredentialVault vault) {
         super("login", "Sign in to your account");
         this.users = users;
         this.keys = keys;
         this.vault = vault;
-        this.sessions = sessions;
     }
 
     @Override
@@ -43,7 +39,7 @@ public class LoginCommand extends VetoCommand {
                     if (u == null) {
                         s.setNextPromptMeta(PromptMeta.simple("Username:"));
                         u = s.input();
-                        if (u == null || u.isBlank()) {
+                        if (u == null || u.isEmpty()) {
                             s.output("Login cancelled.");
                             return CommandResult.REFUSE;
                         }
@@ -52,7 +48,7 @@ public class LoginCommand extends VetoCommand {
                     // accepted as a command-line argument.
                     s.setNextPromptMeta(PromptMeta.masked("Password:"));
                     String p = s.input();
-                    if (p == null || p.isBlank()) {
+                    if (p == null || p.isEmpty()) {
                         s.output("Login cancelled.");
                         return CommandResult.REFUSE;
                     }
@@ -71,7 +67,7 @@ public class LoginCommand extends VetoCommand {
                     }
 
                     vault.unlock(vk, u);
-                    sessions.create(s.terminalId(), u);
+                    s.setUsername(u);
                     s.output("Logged in as " + u + ".");
                     s.doneMeta().put(IpcMeta.USERNAME, u);
                     s.doneMeta().put(IpcMeta.SESSION, s.terminalId());

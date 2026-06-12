@@ -5,7 +5,6 @@ import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.function.Function;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -37,21 +36,21 @@ public final class VetoCommandSender extends AbstractCommandSender {
 
     private static final Logger log = LoggerFactory.getLogger(VetoCommandSender.class);
 
-    @Nullable private final String username;
+    @Nullable private final ZmqServer zmqServer;
+    @Nullable private volatile String username;
     @NotNull private final String terminalId;
     private final Map<String, Object> doneMeta = new HashMap<>();
     private final Queue<String> inputBuffer = new ConcurrentLinkedQueue<>();
-    @NotNull private volatile Function<String, String> sessionResolver = id -> null;
 
     private volatile boolean errorFlag;
     @Nullable private volatile String terminateReason;
-    @Nullable private volatile Queue<ZmqServer.OutboxEntry> outbox;
-    @Nullable private volatile String outboxIdentity;
     @NotNull private volatile String promptText = "Input:";
     @NotNull private volatile Map<String, Object> promptMeta = Map.of();
 
-    public VetoCommandSender(@Nullable String username, @NotNull String terminalId) {
+    public VetoCommandSender(
+            @Nullable ZmqServer zmqServer, @Nullable String username, @NotNull String terminalId) {
         super(CommandPermission.EVERYONE);
+        this.zmqServer = zmqServer;
         this.username = username;
         this.terminalId = terminalId;
     }
@@ -66,8 +65,11 @@ public final class VetoCommandSender extends AbstractCommandSender {
 
     @Nullable
     public String username() {
-        String resolved = sessionResolver.apply(terminalId);
-        return resolved != null ? resolved : username;
+        return username;
+    }
+
+    public void setUsername(@Nullable String username) {
+        this.username = username;
     }
 
     @NotNull
@@ -79,16 +81,9 @@ public final class VetoCommandSender extends AbstractCommandSender {
         return username() != null;
     }
 
-    /** Wire the session resolver so isLoggedIn() checks live session state. */
-    public void setSessionResolver(@NotNull Function<String, String> resolver) {
-        this.sessionResolver = resolver;
-    }
+    // ── dispatch state lifecycle ──────────────────
 
-    // ── outbox wiring (called by ZmqServer per dispatch) ──────────────────
-
-    public void setOutbox(@NotNull Queue<ZmqServer.OutboxEntry> outbox, @NotNull String identity) {
-        this.outbox = outbox;
-        this.outboxIdentity = identity;
+    public void resetForDispatch() {
         this.doneMeta.clear();
         this.errorFlag = false;
         this.terminateReason = null;
@@ -108,13 +103,11 @@ public final class VetoCommandSender extends AbstractCommandSender {
     @Override
     public void output(@Nullable String message) {
         if (message == null || message.isEmpty()) return;
-        Queue<ZmqServer.OutboxEntry> q = this.outbox;
-        String id = this.outboxIdentity;
-        if (q != null && id != null) {
+        if (zmqServer != null) {
             log.info("output → outbox: {}", message.replace("\n", "\\n"));
-            q.add(new ZmqServer.OutboxEntry(id, new IpcFrame.Delta(message, 0)));
+            zmqServer.send(terminalId, new IpcFrame.Delta(message, 0));
         } else {
-            log.warn("output dropped — outbox not wired (outbox={}, identity={})", q, id);
+            log.warn("output dropped — zmqServer not wired (message={})", message);
         }
     }
 
@@ -150,10 +143,8 @@ public final class VetoCommandSender extends AbstractCommandSender {
         }
 
         // 2. Push a Prompt frame so the terminal collects input
-        Queue<ZmqServer.OutboxEntry> q = this.outbox;
-        String id = this.outboxIdentity;
-        if (q != null && id != null) {
-            q.add(new ZmqServer.OutboxEntry(id, new IpcFrame.Prompt(promptText, promptMeta)));
+        if (zmqServer != null) {
+            zmqServer.send(terminalId, new IpcFrame.Prompt(promptText, promptMeta));
         }
 
         // 3. Delegate — AbstractCommandSender creates future, queues it,

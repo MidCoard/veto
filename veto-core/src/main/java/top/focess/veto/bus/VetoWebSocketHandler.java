@@ -156,7 +156,7 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
 
     private void handleVetoProcess(WebSocketSession session, Map<String, Object> msg, long seq) {
         String rawPayload = (String) msg.getOrDefault("payload", "");
-        if (rawPayload.isBlank()) {
+        if (rawPayload.isEmpty()) {
             sendJson(
                     session,
                     Map.of(

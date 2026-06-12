@@ -39,7 +39,7 @@ public class WASMSandbox {
 
                     // Validate resource bounds
                     if (server.getWasmModulePath() == null
-                            || server.getWasmModulePath().isBlank()) {
+                            || server.getWasmModulePath().isEmpty()) {
                         return "{\"error\":\"No WASM module path configured for server: "
                                 + server.getId()
                                 + "\"}";

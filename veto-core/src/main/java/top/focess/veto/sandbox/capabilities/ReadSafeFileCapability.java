@@ -67,7 +67,7 @@ public class ReadSafeFileCapability implements AtomicCapability {
     @Override
     public void validate(ToolExecutionRequest request) throws SecurityException {
         String filePath = getStringArg(request, "filePath");
-        if (filePath == null || filePath.isBlank()) {
+        if (filePath == null || filePath.isEmpty()) {
             throw new IllegalArgumentException("'filePath' argument is required");
         }
 

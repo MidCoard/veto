@@ -32,7 +32,7 @@ public class ListDirectoryCapability implements AtomicCapability {
     @Override
     public void validate(ToolExecutionRequest request) throws SecurityException {
         String dirPath = getStringArg(request, "dirPath");
-        if (dirPath == null || dirPath.isBlank()) {
+        if (dirPath == null || dirPath.isEmpty()) {
             throw new IllegalArgumentException("'dirPath' argument is required");
         }
 

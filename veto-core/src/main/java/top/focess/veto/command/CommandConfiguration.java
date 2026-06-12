@@ -16,12 +16,6 @@ public class CommandConfiguration {
 
     @Bean
     @NotNull
-    public TerminalSessionManager terminalSessionManager() {
-        return new TerminalSessionManager();
-    }
-
-    @Bean
-    @NotNull
     public PromptHandler promptHandler(
             @NotNull CredentialVault vault,
             @NotNull UniformLLMCaller caller,
@@ -37,16 +31,14 @@ public class CommandConfiguration {
             @NotNull VaultKeyManager keys,
             @NotNull UniformLLMCaller caller,
             @NotNull PromptHandler promptHandler,
-            @NotNull TerminalSessionManager terminalSessionManager,
             @NotNull AgentPatternRepository patternRepo) {
 
         CommandRegistry registry = new CommandRegistry();
         registry.setPromptHandler(promptHandler);
-        registry.setTerminalSessionManager(terminalSessionManager);
 
-        registry.register(new LoginCommand(users, keys, vault, terminalSessionManager));
-        registry.register(new LogoutCommand(vault, terminalSessionManager, promptHandler));
-        registry.register(new SignupCommand(users, keys, vault, terminalSessionManager));
+        registry.register(new LoginCommand(users, keys, vault));
+        registry.register(new LogoutCommand(vault, promptHandler));
+        registry.register(new SignupCommand(users, keys, vault));
         registry.register(new StatusCommand(vault, promptHandler));
         registry.register(new ExitCommand());
         registry.register(new PatternCommand(vault, patternRepo, activePatterns));

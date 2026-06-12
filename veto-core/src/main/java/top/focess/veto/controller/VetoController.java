@@ -36,7 +36,7 @@ public class VetoController {
     public ResponseEntity<Map<String, Object>> processPayload(
             @RequestBody Map<String, Object> request) {
         String payload = (String) request.getOrDefault("payload", "");
-        if (payload.isBlank()) {
+        if (payload.isEmpty()) {
             return ResponseEntity.badRequest()
                     .body(
                             Map.of(
@@ -89,7 +89,7 @@ public class VetoController {
     public ResponseEntity<Map<String, Object>> checkPayload(
             @RequestBody Map<String, Object> request) {
         String payload = (String) request.getOrDefault("payload", "");
-        if (payload.isBlank()) {
+        if (payload.isEmpty()) {
             return ResponseEntity.badRequest()
                     .body(
                             Map.of(

@@ -37,7 +37,7 @@ public class SearchInFilesCapability implements AtomicCapability {
     @Override
     public void validate(ToolExecutionRequest request) throws SecurityException {
         String pattern = getStringArg(request, "pattern");
-        if (pattern == null || pattern.isBlank()) {
+        if (pattern == null || pattern.isEmpty()) {
             throw new IllegalArgumentException("'pattern' argument is required");
         }
 
@@ -56,7 +56,7 @@ public class SearchInFilesCapability implements AtomicCapability {
         String fileGlob = getStringArg(request, "fileGlob");
 
         Path searchDir =
-                dirPath != null && !dirPath.isBlank() ? resolveSafePath(dirPath) : sandboxRoot;
+                dirPath != null && !dirPath.isEmpty() ? resolveSafePath(dirPath) : sandboxRoot;
 
         log.info("C6 Sandbox: Searching for '{}' in {}", pattern, searchDir);
 
@@ -64,7 +64,7 @@ public class SearchInFilesCapability implements AtomicCapability {
 
         try {
             PathMatcher matcher =
-                    fileGlob != null && !fileGlob.isBlank()
+                    fileGlob != null && !fileGlob.isEmpty()
                             ? FileSystems.getDefault().getPathMatcher("glob:" + fileGlob)
                             : null;
 

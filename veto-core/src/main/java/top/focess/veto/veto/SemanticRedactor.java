@@ -153,7 +153,7 @@ public class SemanticRedactor {
         String redacted = deterministicReport.redactedPayload();
 
         // Apply SLM suggestions if the LLM found additional redactions
-        if (llmSuggestion != null && !llmSuggestion.isBlank()) {
+        if (llmSuggestion != null && !llmSuggestion.isEmpty()) {
             redacted = applySLMRedactions(redacted, llmSuggestion);
         }
 

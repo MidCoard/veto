@@ -39,7 +39,7 @@ final class DeepSeekLlmClient extends LlmClient {
             String providerName,
             ObjectMapper objectMapper,
             SchemaNormalizerService schemaNormalizer) {
-        this.baseUrl = baseUrl != null && !baseUrl.isBlank() ? baseUrl : "https://api.deepseek.com";
+        this.baseUrl = baseUrl != null && !baseUrl.isEmpty() ? baseUrl : "https://api.deepseek.com";
         this.apiKey = apiKey;
         this.providerName = providerName;
         this.objectMapper = objectMapper;
@@ -132,10 +132,10 @@ final class DeepSeekLlmClient extends LlmClient {
 
             String content = (String) message.get("content");
             // DeepSeek v4 reasoning models may return reasoning_content instead of content
-            if (content == null || content.isBlank()) {
+            if (content == null || content.isEmpty()) {
                 content = (String) message.get("reasoning_content");
             }
-            if (content == null || content.isBlank()) {
+            if (content == null || content.isEmpty()) {
                 throw new ModelCapabilityException(
                         providerName
                                 + " returned empty content. Full response: "

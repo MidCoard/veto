@@ -43,7 +43,7 @@ public class ToolController {
     public ResponseEntity<Map<String, Object>> executeTool(
             @RequestBody Map<String, Object> request) {
         String capabilityName = (String) request.get("capabilityName");
-        if (capabilityName == null || capabilityName.isBlank()) {
+        if (capabilityName == null || capabilityName.isEmpty()) {
             return ResponseEntity.badRequest()
                     .body(
                             Map.of(

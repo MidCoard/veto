@@ -14,7 +14,6 @@ import org.springframework.stereotype.Component;
 import org.zeromq.ZContext;
 import org.zeromq.ZMQ;
 import top.focess.veto.command.CommandRegistry;
-import top.focess.veto.command.TerminalSessionManager;
 import top.focess.veto.command.VetoCommandSender;
 import top.focess.veto.contract.IpcFrame;
 import top.focess.veto.contract.IpcFrame.HintInfo;
@@ -51,7 +50,6 @@ public class ZmqServer {
     private static final int MAX_OUTBOX_SIZE = 10_000;
 
     private final CommandRegistry registry;
-    private final TerminalSessionManager sessionManager;
     private final ConcurrentLinkedQueue<OutboxEntry> outbox = new ConcurrentLinkedQueue<>();
     private final ConcurrentHashMap<String, Session> sessions = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Future<?>> activeTasks = new ConcurrentHashMap<>();
@@ -64,10 +62,8 @@ public class ZmqServer {
     @Value("${veto.terminal.bind-address:tcp://127.0.0.1:5555}")
     private String bindAddress;
 
-    public ZmqServer(
-            @NotNull CommandRegistry registry, @NotNull TerminalSessionManager sessionManager) {
+    public ZmqServer(@NotNull CommandRegistry registry) {
         this.registry = registry;
-        this.sessionManager = sessionManager;
     }
 
     @PostConstruct
@@ -83,8 +79,7 @@ public class ZmqServer {
     @PreDestroy
     public void stop() {
         for (String identity : sessions.keySet()) {
-            offerToOutbox(
-                    new OutboxEntry(identity, new IpcFrame.Terminate("Server shutting down.")));
+            send(identity, new IpcFrame.Terminate("Server shutting down."));
         }
         try {
             Thread.sleep(100);
@@ -131,12 +126,10 @@ public class ZmqServer {
                                             handleFrame(identity, frame);
                                         } catch (Throwable t) {
                                             log.error("Unhandled exception for {}", identity, t);
-                                            offerToOutbox(
-                                                    new OutboxEntry(
-                                                            identity,
-                                                            IpcFrame.Error.ofError(
-                                                                    "Internal error: "
-                                                                            + t.getMessage())));
+                                            send(
+                                                    identity,
+                                                    IpcFrame.Error.ofError(
+                                                            "Internal error: " + t.getMessage()));
                                         }
                                     });
                     if (frame instanceof IpcFrame.Request) {
@@ -173,7 +166,7 @@ public class ZmqServer {
                 try {
                     log.trace("REQ  {}: {}", identity.substring(0, 8), req.raw());
                     session.lastActivityNanos = System.nanoTime();
-                    session.sender.setOutbox(outbox, identity);
+                    session.sender.resetForDispatch();
                     registry.dispatch(session.sender, req.raw());
                     session.lastActivityNanos = System.nanoTime();
                     IpcFrame terminal;
@@ -184,7 +177,7 @@ public class ZmqServer {
                     } else {
                         terminal = new IpcFrame.Done(session.sender.doneMeta(), null);
                     }
-                    offerToOutbox(new OutboxEntry(identity, terminal));
+                    send(identity, terminal);
                     log.trace(
                             "DONE {}: {} {}",
                             identity.substring(0, 8),
@@ -201,31 +194,27 @@ public class ZmqServer {
                 boolean accepted = session.sender.receiveInput(in.raw());
                 if (!accepted) {
                     log.trace("Stale input from {}: no future waiting", identity);
-                    offerToOutbox(
-                            new OutboxEntry(
-                                    identity,
-                                    IpcFrame.Error.ofError(
-                                            "Input no longer expected"
-                                                    + " — request may have timed out.")));
+                    send(
+                            identity,
+                            IpcFrame.Error.ofError(
+                                    "Input no longer expected — request may have timed out."));
                 }
             }
 
             case IpcFrame.Complete comp -> {
                 log.trace("COMP {}: {}", identity.substring(0, 8), comp.raw());
                 session.lastActivityNanos = System.nanoTime();
-                var completions = registry.complete(identity, comp.raw());
+                var completions = registry.complete(session.sender, comp.raw());
                 log.trace(
                         "COMP {}: -> {} candidates", identity.substring(0, 8), completions.size());
-                offerToOutbox(
-                        new OutboxEntry(
-                                identity, new IpcFrame.CompleteResult(completions, comp.seq())));
+                send(identity, new IpcFrame.CompleteResult(completions, comp.seq()));
             }
 
             case IpcFrame.Hint h -> {
                 log.trace("HINT {}: {}", identity.substring(0, 8), h.raw());
                 session.lastActivityNanos = System.nanoTime();
-                HintInfo hint = registry.hint(identity, h.raw());
-                offerToOutbox(new OutboxEntry(identity, new IpcFrame.HintResult(hint, h.seq())));
+                HintInfo hint = registry.hint(session.sender, h.raw());
+                send(identity, new IpcFrame.HintResult(hint, h.seq()));
             }
 
             case IpcFrame.Cancel c -> {
@@ -237,21 +226,17 @@ public class ZmqServer {
                     task.cancel(true);
                 }
                 session.sender.cancelPendingInput();
-                offerToOutbox(
-                        new OutboxEntry(
-                                identity,
-                                new IpcFrame.Done(Map.of(IpcMeta.CANCELLED, true), null)));
+                send(identity, new IpcFrame.Done(Map.of(IpcMeta.CANCELLED, true), null));
             }
 
             case IpcFrame.Bye b -> {
                 log.trace("BYE  {}: terminal disconnecting", identity.substring(0, 8));
-                offerToOutbox(new OutboxEntry(identity, new IpcFrame.Done(Map.of(), null)));
+                send(identity, new IpcFrame.Done(Map.of(), null));
                 Future<?> task = activeTasks.remove(identity);
                 if (task != null) {
                     task.cancel(true);
                 }
                 sessions.remove(identity);
-                sessionManager.invalidate(identity);
             }
 
             case IpcFrame.Hello hello -> {
@@ -259,11 +244,9 @@ public class ZmqServer {
                     log.warn(
                             "Duplicate identity {} — rejecting new connection",
                             identity.substring(0, 8));
-                    offerToOutbox(
-                            new OutboxEntry(
-                                    identity,
-                                    new IpcFrame.Error(
-                                            "Duplicate identity connected.", hello.seq())));
+                    send(
+                            identity,
+                            new IpcFrame.Error("Duplicate identity connected.", hello.seq()));
                 } else {
                     int negotiated = Math.min(hello.version(), IpcFrame.PROTOCOL_VERSION);
                     log.trace(
@@ -271,9 +254,7 @@ public class ZmqServer {
                             identity.substring(0, 8),
                             hello.version(),
                             negotiated);
-                    offerToOutbox(
-                            new OutboxEntry(
-                                    identity, new IpcFrame.Welcome(negotiated, hello.seq())));
+                    send(identity, new IpcFrame.Welcome(negotiated, hello.seq()));
                 }
             }
 
@@ -313,7 +294,6 @@ public class ZmqServer {
                     if (task != null) {
                         task.cancel(true);
                     }
-                    sessionManager.invalidate(id);
                     it.remove();
                 }
             }
@@ -324,25 +304,19 @@ public class ZmqServer {
 
     @NotNull
     private VetoCommandSender createSender(@NotNull String identity) {
-        VetoCommandSender sender =
-                new VetoCommandSender(registry.resolveUsername(identity), identity);
-        sender.setSessionResolver(registry::resolveUsername);
-        return sender;
+        return new VetoCommandSender(this, null, identity);
     }
 
-    // ── outbox ────────────────────────────────────────────────────────────
-
-    /** Offers an entry to the outbox, dropping it with a warning if the queue is congested. */
-    private void offerToOutbox(@NotNull OutboxEntry entry) {
+    public void send(@NotNull String identity, @NotNull IpcFrame frame) {
         if (outbox.size() > MAX_OUTBOX_SIZE) {
             log.warn(
                     "Outbox congested ({} entries), dropping frame {} for {}",
                     outbox.size(),
-                    entry.frame().getClass().getSimpleName(),
-                    entry.identity());
+                    frame.getClass().getSimpleName(),
+                    identity);
             return;
         }
-        outbox.add(entry);
+        outbox.add(new OutboxEntry(identity, frame));
     }
 
     // ── types ────────────────────────────────────────────────────────────

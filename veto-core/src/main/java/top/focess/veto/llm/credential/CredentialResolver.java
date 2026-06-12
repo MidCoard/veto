@@ -33,7 +33,7 @@ public class CredentialResolver {
      * @throws LlmAuthException if the credential key is missing or no credential is found
      */
     public String resolve(ProviderType providerType, String credentialKey) {
-        if (credentialKey == null || credentialKey.isBlank()) {
+        if (credentialKey == null || credentialKey.isEmpty()) {
             throw new LlmAuthException("Credential key is missing for provider " + providerType);
         }
         try {

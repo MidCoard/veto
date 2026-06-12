@@ -24,14 +24,8 @@ public class CommandRegistry {
 
     @Nullable private PromptHandler promptHandler;
 
-    @Nullable private TerminalSessionManager sessionManager;
-
     public void setPromptHandler(@Nullable PromptHandler h) {
         this.promptHandler = h;
-    }
-
-    public void setTerminalSessionManager(@Nullable TerminalSessionManager sm) {
-        this.sessionManager = sm;
     }
 
     public void register(@NotNull Command c) {
@@ -43,15 +37,10 @@ public class CommandRegistry {
         return manager.getCommands();
     }
 
-    @Nullable
-    public String resolveUsername(@NotNull String terminalId) {
-        return sessionManager != null ? sessionManager.resolve(terminalId) : null;
-    }
-
     // ── dispatch ─────────────────────────────────────────────────────────
 
     public void dispatch(@NotNull VetoCommandSender sender, @Nullable String raw) {
-        if (raw == null || raw.isBlank()) return;
+        if (raw == null || raw.isEmpty()) return;
 
         if (!raw.trim().startsWith("/")) {
             if (promptHandler == null) {
@@ -84,9 +73,6 @@ public class CommandRegistry {
                 sender.setErrorFlag();
             } else if (cr == CommandResult.REFUSE) {
                 sender.setErrorFlag();
-            } else if (cr == CommandResult.ARGS_NOT_EXECUTED) {
-                // Library already called command.infoUsage(sender) — usage
-                // lines were pushed as Delta frames. Nothing more to do.
             }
         } catch (Exception e) {
             log.error("Dispatch failed for {}", sender.terminalId(), e);
@@ -98,15 +84,14 @@ public class CommandRegistry {
     // ── hint ─────────────────────────────────────────────────────────────
 
     @NotNull
-    public HintInfo hint(@NotNull String terminalId, @Nullable String raw) {
-        if (raw == null || raw.isBlank()) return HintInfo.EMPTY;
+    public HintInfo hint(@NotNull VetoCommandSender sender, @Nullable String raw) {
+        if (raw == null || raw.isEmpty()) return HintInfo.EMPTY;
 
         String input = raw.stripLeading();
         if (input.startsWith("/")) input = input.substring(1);
 
-        VetoCommandSender sender = new VetoCommandSender(resolveUsername(terminalId), terminalId);
-
         CommandRoute route = manager.route(sender, input);
+        if (route.getCommand() == null) return HintInfo.EMPTY;
         List<CommandArgument<?>> current = route.getCurrentArguments();
         if (current.isEmpty()) return HintInfo.EMPTY;
 
@@ -130,7 +115,7 @@ public class CommandRegistry {
             String choiceStr = "{" + String.join("|", choices) + "}";
             String desc = null;
             if (!named.isEmpty()) {
-                CommandArgument<?> arg = named.get(0);
+                CommandArgument<?> arg = named.getFirst();
                 String ph =
                         arg.isNullable() ? "[" + arg.getName() + "]" : "<" + arg.getName() + ">";
                 choiceStr += " " + ph;
@@ -150,13 +135,11 @@ public class CommandRegistry {
 
     @NotNull
     public List<IpcFrame.Completion> complete(
-            @NotNull String terminalId, @Nullable String partial) {
-        if (partial == null || partial.isBlank()) return List.of();
+            @NotNull VetoCommandSender sender, @Nullable String partial) {
+        if (partial == null || partial.isEmpty()) return List.of();
 
         String input = partial.stripLeading();
         if (input.startsWith("/")) input = input.substring(1);
-
-        VetoCommandSender sender = new VetoCommandSender(resolveUsername(terminalId), terminalId);
 
         List<CommandCompletion> completions = manager.complete(sender, input);
 
