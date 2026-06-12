@@ -11,7 +11,6 @@ import top.focess.command.CommandResult;
 import top.focess.command.CommandSender;
 import top.focess.veto.command.VetoCommand;
 import top.focess.veto.command.VetoCommandSender;
-import top.focess.veto.contract.PromptMeta;
 import top.focess.veto.llm.core.ProviderType;
 import top.focess.veto.model.AgentPatternEntity;
 import top.focess.veto.model.AgentPatternRepository;
@@ -56,8 +55,7 @@ public class PatternCommand extends VetoCommand {
                                         "You are a helpful coding assistant. Be concise.");
                         ProviderType.valueOf(provider);
 
-                        s.setNextPromptMeta(PromptMeta.masked("API Key for " + provider + ":"));
-                        String key = s.input();
+                        String key = s.input("API Key for " + provider + ":", true);
                         if (key == null || key.isEmpty()) {
                             s.output("Pattern creation cancelled.");
                             return CommandResult.REFUSE;

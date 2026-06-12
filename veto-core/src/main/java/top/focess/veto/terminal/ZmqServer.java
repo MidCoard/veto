@@ -45,7 +45,6 @@ public class ZmqServer {
 
     private static final Logger log = LoggerFactory.getLogger(ZmqServer.class);
 
-    private static final long HEARTBEAT_INTERVAL_MS = 40_000;
     private static final long SESSION_TIMEOUT_MS = 90_000;
     private static final int MAX_OUTBOX_SIZE = 10_000;
 
@@ -160,29 +159,27 @@ public class ZmqServer {
     private void handleFrame(@NotNull String identity, @NotNull IpcFrame frame) {
         Session session =
                 sessions.computeIfAbsent(identity, id -> new Session(id, createSender(id)));
+        session.lastActivityMillis = System.currentTimeMillis();
 
         switch (frame) {
             case IpcFrame.Request req -> {
                 try {
                     log.trace("REQ  {}: {}", identity.substring(0, 8), req.raw());
-                    session.lastActivityNanos = System.nanoTime();
-                    session.sender.resetForDispatch();
-                    registry.dispatch(session.sender, req.raw());
-                    session.lastActivityNanos = System.nanoTime();
-                    IpcFrame terminal;
-                    if (session.sender.terminateReason() != null) {
-                        terminal = new IpcFrame.Terminate(session.sender.terminateReason());
-                    } else if (session.sender.hasError()) {
-                        terminal = IpcFrame.Error.ofError("Command failed.");
-                    } else {
-                        terminal = new IpcFrame.Done(session.sender.doneMeta(), null);
+                    IpcFrame.TerminalResponse terminal =
+                            registry.dispatch(session.sender, req.raw());
+                    session.lastActivityMillis = System.currentTimeMillis();
+                    if (terminal != null) {
+                        send(identity, terminal);
+                        log.trace(
+                                "DONE {}: {} {}",
+                                identity.substring(0, 8),
+                                terminal instanceof IpcFrame.Error
+                                        ? "Error"
+                                        : terminal instanceof IpcFrame.Terminate
+                                                ? "Terminate"
+                                                : "Done",
+                                terminal instanceof IpcFrame.Done d ? d.meta() : "");
                     }
-                    send(identity, terminal);
-                    log.trace(
-                            "DONE {}: {} {}",
-                            identity.substring(0, 8),
-                            terminal instanceof IpcFrame.Error ? "Error" : "Done",
-                            session.sender.doneMeta());
                 } finally {
                     activeTasks.remove(identity);
                 }
@@ -190,7 +187,6 @@ public class ZmqServer {
 
             case IpcFrame.Input in -> {
                 log.trace("IN   {}", identity.substring(0, 8));
-                session.lastActivityNanos = System.nanoTime();
                 boolean accepted = session.sender.receiveInput(in.raw());
                 if (!accepted) {
                     log.trace("Stale input from {}: no future waiting", identity);
@@ -203,7 +199,6 @@ public class ZmqServer {
 
             case IpcFrame.Complete comp -> {
                 log.trace("COMP {}: {}", identity.substring(0, 8), comp.raw());
-                session.lastActivityNanos = System.nanoTime();
                 var completions = registry.complete(session.sender, comp.raw());
                 log.trace(
                         "COMP {}: -> {} candidates", identity.substring(0, 8), completions.size());
@@ -212,20 +207,17 @@ public class ZmqServer {
 
             case IpcFrame.Hint h -> {
                 log.trace("HINT {}: {}", identity.substring(0, 8), h.raw());
-                session.lastActivityNanos = System.nanoTime();
                 HintInfo hint = registry.hint(session.sender, h.raw());
                 send(identity, new IpcFrame.HintResult(hint, h.seq()));
             }
 
             case IpcFrame.Cancel c -> {
                 log.trace("CANC {}: request cancelled", identity.substring(0, 8));
-                session.lastActivityNanos = System.nanoTime();
                 // Interrupt the in-flight Request task
                 Future<?> task = activeTasks.remove(identity);
                 if (task != null) {
                     task.cancel(true);
                 }
-                session.sender.cancelPendingInput();
                 send(identity, new IpcFrame.Done(Map.of(IpcMeta.CANCELLED, true), null));
             }
 
@@ -258,9 +250,7 @@ public class ZmqServer {
                 }
             }
 
-            case IpcFrame.Heartbeat h -> {
-                session.lastActivityNanos = System.nanoTime();
-            }
+            case IpcFrame.Heartbeat h -> session.lastActivityMillis = System.currentTimeMillis();
 
             default -> {
                 if (frame instanceof IpcFrame.Unknown u) {
@@ -278,16 +268,16 @@ public class ZmqServer {
     private void heartbeatLoop() {
         while (running) {
             try {
-                Thread.sleep(HEARTBEAT_INTERVAL_MS);
+                Thread.sleep(SESSION_TIMEOUT_MS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;
             }
-            long cutoff = System.nanoTime() - TimeUnit.MILLISECONDS.toNanos(SESSION_TIMEOUT_MS);
+            long cutoff = System.currentTimeMillis() - SESSION_TIMEOUT_MS;
             Iterator<Map.Entry<String, Session>> it = sessions.entrySet().iterator();
             while (it.hasNext()) {
                 Map.Entry<String, Session> e = it.next();
-                if (e.getValue().lastActivityNanos < cutoff) {
+                if (e.getValue().lastActivityMillis < cutoff) {
                     String id = e.getKey();
                     log.debug("Removing stale session {}", id);
                     Future<?> task = activeTasks.remove(id);
@@ -326,7 +316,7 @@ public class ZmqServer {
     static class Session {
         @NotNull final String identity;
         @NotNull final VetoCommandSender sender;
-        volatile long lastActivityNanos = System.nanoTime();
+        volatile long lastActivityMillis = System.currentTimeMillis();
 
         Session(@NotNull String identity, @NotNull VetoCommandSender sender) {
             this.identity = identity;

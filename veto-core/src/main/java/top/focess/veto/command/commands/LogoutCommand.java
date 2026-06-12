@@ -4,10 +4,10 @@ import java.util.List;
 import org.jetbrains.annotations.NotNull;
 import top.focess.command.CommandResult;
 import top.focess.command.CommandSender;
+import top.focess.veto.command.LogoutException;
 import top.focess.veto.command.PromptHandler;
 import top.focess.veto.command.VetoCommand;
 import top.focess.veto.command.VetoCommandSender;
-import top.focess.veto.contract.IpcMeta;
 import top.focess.veto.vault.CredentialVault;
 
 public class LogoutCommand extends VetoCommand {
@@ -33,8 +33,7 @@ public class LogoutCommand extends VetoCommand {
                     s.setUsername(null);
                     promptHandler.removeSession(s.terminalId());
                     s.output("Logged out.");
-                    s.doneMeta().put(IpcMeta.CLEAR_SESSION, true);
-                    return CommandResult.ALLOW;
+                    throw new LogoutException();
                 });
     }
 

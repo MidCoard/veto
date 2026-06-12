@@ -139,13 +139,16 @@ public sealed interface IpcFrame
      * {@link Prompt}, {@link Done}) do not carry a {@code seq}.
      */
     sealed interface ServerFrame extends IpcFrame
-            permits SeqResponse, Done, Delta, Progress, Prompt, Terminate {}
+            permits SeqResponse, TerminalResponse, Delta, Progress, Prompt {}
 
     /** Marker interface for all seq-based server response frames. */
     sealed interface SeqResponse extends ServerFrame
             permits Welcome, CompleteResult, HintResult, Error {
         long seq();
     }
+
+    /** Sealed interface for all terminal/final responses to request frames. */
+    sealed interface TerminalResponse extends ServerFrame permits Done, Error, Terminate {}
 
     /**
      * Backend handshake response. Carries the negotiated protocol version and echoes the {@code
@@ -199,7 +202,7 @@ public sealed interface IpcFrame
      * @param meta session metadata (username, turn number, flags, etc.)
      * @param content optional content string
      */
-    record Done(Map<String, Object> meta, String content) implements ServerFrame {}
+    record Done(Map<String, Object> meta, String content) implements TerminalResponse {}
 
     /**
      * Fatal — terminates the exchange with an error message.
@@ -210,14 +213,14 @@ public sealed interface IpcFrame
      * @param content error description
      * @param seq echoed from the initiating frame; 0 when not correlated to a sequenced request
      */
-    record Error(String content, long seq) implements SeqResponse {
+    record Error(String content, long seq) implements SeqResponse, TerminalResponse {
         public static Error ofError(String content) {
             return new Error(content, 0);
         }
     }
 
     /** Streaming content chunk — not terminal; more frames follow. */
-    record Delta(String content, int index) implements ServerFrame {}
+    record Delta(String content) implements ServerFrame {}
 
     /**
      * Optional progress hint between deltas.
@@ -240,7 +243,7 @@ public sealed interface IpcFrame
      */
     record Prompt(String content, Map<String, Object> meta) implements ServerFrame {}
 
-    record Terminate(String reason) implements ServerFrame {}
+    record Terminate(String reason) implements TerminalResponse {}
 
     // ══════════════════════════════════════════════════════════════════════
     //  Fallback

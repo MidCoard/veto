@@ -7,8 +7,6 @@ import top.focess.command.CommandResult;
 import top.focess.command.CommandSender;
 import top.focess.veto.command.VetoCommand;
 import top.focess.veto.command.VetoCommandSender;
-import top.focess.veto.contract.IpcMeta;
-import top.focess.veto.contract.PromptMeta;
 import top.focess.veto.vault.*;
 
 public class SignupCommand extends VetoCommand {
@@ -43,16 +41,14 @@ public class SignupCommand extends VetoCommand {
                     String p = args.get("pass");
 
                     if (u == null) {
-                        s.setNextPromptMeta(PromptMeta.simple("Choose a username:"));
-                        u = s.input();
+                        u = s.input("Choose a username:", false);
                         if (u.isEmpty()) {
                             s.output("Signup cancelled.");
                             return CommandResult.REFUSE;
                         }
                     }
                     if (p == null) {
-                        s.setNextPromptMeta(PromptMeta.masked("Choose a password:"));
-                        p = s.input();
+                        p = s.input("Choose a password:", true);
                         if (p.isEmpty()) {
                             s.output("Signup cancelled.");
                             return CommandResult.REFUSE;
@@ -66,8 +62,6 @@ public class SignupCommand extends VetoCommand {
                     vault.unlock(vk, u);
                     s.setUsername(u);
                     s.output("Account created — welcome, " + u + ".");
-                    s.doneMeta().put(IpcMeta.USERNAME, u);
-                    s.doneMeta().put(IpcMeta.SESSION, s.terminalId());
                     return CommandResult.ALLOW;
                 },
                 opt("user"),

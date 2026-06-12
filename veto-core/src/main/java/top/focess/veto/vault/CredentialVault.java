@@ -107,9 +107,10 @@ public class CredentialVault {
     // ── Helpers ─────────────────────────────────────────────────────────────
 
     private SecureStore requireStore() {
-        if (currentStore == null || !unlocked) {
+        SecureStore store = this.currentStore;
+        if (store == null || !unlocked) {
             throw new SecureStore.VaultLockedException("Vault is locked — authenticate first");
         }
-        return currentStore;
+        return store;
     }
 }

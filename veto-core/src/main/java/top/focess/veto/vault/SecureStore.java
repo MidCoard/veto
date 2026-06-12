@@ -130,13 +130,13 @@ public class SecureStore {
     }
 
     /** List all stored credential keys (not the values). */
-    public Set<String> listKeys() {
+    public synchronized Set<String> listKeys() {
         requireUnlocked();
         return Collections.unmodifiableSet(credentialCache.keySet());
     }
 
     /** Check if a credential exists in the secure store. */
-    public boolean exists(String key) {
+    public synchronized boolean exists(String key) {
         requireUnlocked();
         return credentialCache.containsKey(key);
     }

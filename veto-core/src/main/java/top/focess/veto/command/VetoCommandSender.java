@@ -1,10 +1,7 @@
 package top.focess.veto.command;
 
-import java.util.HashMap;
 import java.util.Map;
-import java.util.Queue;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -13,7 +10,6 @@ import top.focess.command.AbstractCommandSender;
 import top.focess.command.CommandPermission;
 import top.focess.veto.contract.IpcFrame;
 import top.focess.veto.contract.IpcMeta;
-import top.focess.veto.contract.PromptMeta;
 import top.focess.veto.terminal.ZmqServer;
 
 /**
@@ -36,29 +32,16 @@ public final class VetoCommandSender extends AbstractCommandSender {
 
     private static final Logger log = LoggerFactory.getLogger(VetoCommandSender.class);
 
-    @Nullable private final ZmqServer zmqServer;
+    @NotNull private final ZmqServer zmqServer;
     @Nullable private volatile String username;
     @NotNull private final String terminalId;
-    private final Map<String, Object> doneMeta = new HashMap<>();
-    private final Queue<String> inputBuffer = new ConcurrentLinkedQueue<>();
-
-    private volatile boolean errorFlag;
-    @Nullable private volatile String terminateReason;
-    @NotNull private volatile String promptText = "Input:";
-    @NotNull private volatile Map<String, Object> promptMeta = Map.of();
 
     public VetoCommandSender(
-            @Nullable ZmqServer zmqServer, @Nullable String username, @NotNull String terminalId) {
+            @NotNull ZmqServer zmqServer, @Nullable String username, @NotNull String terminalId) {
         super(CommandPermission.EVERYONE);
         this.zmqServer = zmqServer;
         this.username = username;
         this.terminalId = terminalId;
-    }
-
-    @Override
-    public boolean hasPermission(@NotNull CommandPermission permission) {
-        if (permission == CommandPermission.EVERYONE) return true;
-        return isLoggedIn();
     }
 
     // ── identity ──────────────────────────────────────────────────────────
@@ -81,101 +64,38 @@ public final class VetoCommandSender extends AbstractCommandSender {
         return username() != null;
     }
 
-    // ── dispatch state lifecycle ──────────────────
-
-    public void resetForDispatch() {
-        this.doneMeta.clear();
-        this.errorFlag = false;
-        this.terminateReason = null;
-    }
-
-    public void terminate(@Nullable String reason) {
-        this.terminateReason = reason;
-    }
-
-    @Nullable
-    public String terminateReason() {
-        return terminateReason;
-    }
-
     // ── output (CommandSender contract) ───────────────────────────────────
 
     @Override
     public void output(@Nullable String message) {
         if (message == null || message.isEmpty()) return;
-        if (zmqServer != null) {
-            log.info("output → outbox: {}", message.replace("\n", "\\n"));
-            zmqServer.send(terminalId, new IpcFrame.Delta(message, 0));
-        } else {
-            log.warn("output dropped — zmqServer not wired (message={})", message);
-        }
+        log.info("output → outbox: {}", message.replace("\n", "\\n"));
+        zmqServer.send(terminalId, new IpcFrame.Delta(message));
     }
 
-    // ── async input (CommandSender contract) ──────────────────────────────
+    // ── input (CommandSender contract overrides & overloads) ──────────────────────────────
 
-    /**
-     * Sets the prompt text and metadata for the next {@link #input()} call. Use {@code
-     * Map.of("prompt", "Password:", "mask", true)} for masked input.
-     */
-    public void setNextPromptMeta(@Nullable Map<String, Object> meta) {
-        if (meta != null) {
-            this.promptText = (String) meta.getOrDefault(IpcMeta.PROMPT, "Input:");
-            this.promptMeta = meta;
-        } else {
-            this.promptText = "Input:";
-            this.promptMeta = Map.of();
-        }
+    @Override
+    public @NotNull String input() {
+        return input("", false);
     }
 
-    /** Typed overload — prefer this over the raw {@code Map} variant. */
-    public void setNextPromptMeta(@NotNull PromptMeta meta) {
-        this.promptText = meta.text();
-        this.promptMeta = meta.toMeta();
+    public String input(@NotNull String text, boolean mask) {
+        return inputAsync(text, mask, 90000).join();
     }
 
     @Override
     @NotNull
     public CompletableFuture<String> inputAsync(long timeoutMillis) {
-        // 1. Type-ahead buffer
-        String buffered = inputBuffer.poll();
-        if (buffered != null) {
-            return CompletableFuture.completedFuture(buffered);
-        }
-
-        // 2. Push a Prompt frame so the terminal collects input
-        if (zmqServer != null) {
-            zmqServer.send(terminalId, new IpcFrame.Prompt(promptText, promptMeta));
-        }
-
-        // 3. Delegate — AbstractCommandSender creates future, queues it,
-        //    schedules timeout. The IO thread delivers via receiveInput().
-        return super.inputAsync(timeoutMillis);
+        return inputAsync("", false, timeoutMillis);
     }
-
-    // ── input buffer (type-ahead) ─────────────────────────────────────────
-
-    public void bufferInput(@Nullable String input) {
-        if (input != null && !input.isEmpty()) {
-            inputBuffer.add(input);
-        }
-    }
-
-    public void cancelPendingInput() {
-        inputBuffer.clear();
-    }
-
-    // ── lifecycle state ───────────────────────────────────────────────────
 
     @NotNull
-    public Map<String, Object> doneMeta() {
-        return doneMeta;
-    }
-
-    public boolean hasError() {
-        return errorFlag;
-    }
-
-    public void setErrorFlag() {
-        this.errorFlag = true;
+    public CompletableFuture<String> inputAsync(
+            @NotNull String text, boolean mask, long timeoutMillis) {
+        zmqServer.send(
+                terminalId,
+                new IpcFrame.Prompt(text, Map.of(IpcMeta.PROMPT, text, IpcMeta.MASK, mask)));
+        return super.inputAsync(timeoutMillis);
     }
 }

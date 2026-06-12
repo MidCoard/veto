@@ -19,8 +19,7 @@ public class ExitCommand extends VetoCommand {
                 (sender, args) -> {
                     VetoCommandSender s = vetoSender(sender);
                     if (s == null) return CommandResult.REFUSE;
-                    s.terminate("Goodbye.");
-                    return CommandResult.ALLOW;
+                    throw new top.focess.veto.command.TerminateException("Goodbye.");
                 });
     }
 

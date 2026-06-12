@@ -106,6 +106,7 @@ class LiveTestRunner {
             // 5. /logout
             r = exchange("/logout");
             System.out.println("[LOGOUT] -> " + r);
+            assert r instanceof IpcFrame.Done : "/logout failed: " + r;
 
             // 6. /exit
             r = exchange("/exit");

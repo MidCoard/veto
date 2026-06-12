@@ -7,8 +7,6 @@ import top.focess.command.CommandResult;
 import top.focess.command.CommandSender;
 import top.focess.veto.command.VetoCommand;
 import top.focess.veto.command.VetoCommandSender;
-import top.focess.veto.contract.IpcMeta;
-import top.focess.veto.contract.PromptMeta;
 import top.focess.veto.vault.*;
 
 public class LoginCommand extends VetoCommand {
@@ -34,11 +32,10 @@ public class LoginCommand extends VetoCommand {
                     VetoCommandSender s = vetoSender(sender);
                     if (s == null) return CommandResult.REFUSE;
 
-                    String u = (String) args.get("user");
+                    String u = args.get("user");
 
                     if (u == null) {
-                        s.setNextPromptMeta(PromptMeta.simple("Username:"));
-                        u = s.input();
+                        u = s.input("Username:", false);
                         if (u == null || u.isEmpty()) {
                             s.output("Login cancelled.");
                             return CommandResult.REFUSE;
@@ -46,8 +43,7 @@ public class LoginCommand extends VetoCommand {
                     }
                     // Password is always prompted interactively with masking — never
                     // accepted as a command-line argument.
-                    s.setNextPromptMeta(PromptMeta.masked("Password:"));
-                    String p = s.input();
+                    String p = s.input("Password:", true);
                     if (p == null || p.isEmpty()) {
                         s.output("Login cancelled.");
                         return CommandResult.REFUSE;
@@ -69,8 +65,6 @@ public class LoginCommand extends VetoCommand {
                     vault.unlock(vk, u);
                     s.setUsername(u);
                     s.output("Logged in as " + u + ".");
-                    s.doneMeta().put(IpcMeta.USERNAME, u);
-                    s.doneMeta().put(IpcMeta.SESSION, s.terminalId());
                     return CommandResult.ALLOW;
                 },
                 opt("user"));

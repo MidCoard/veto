@@ -22,7 +22,7 @@ class IpcFrameSerializationTest {
                         + "/pattern delete <name> — Delete a pattern\n"
                         + "/pattern show <name> — Show pattern details";
 
-        IpcFrame delta = new IpcFrame.Delta(usage, 0);
+        IpcFrame delta = new IpcFrame.Delta(usage);
 
         // Serialize (same as backend), decode as UTF-8 (same as ZMQ.CHARSET)
         byte[] bytes = JSON.writeValueAsBytes(delta);
@@ -38,7 +38,6 @@ class IpcFrameSerializationTest {
         assertInstanceOf(IpcFrame.Delta.class, result);
         IpcFrame.Delta d = (IpcFrame.Delta) result;
         assertEquals(usage, d.content());
-        assertEquals(0, d.index());
     }
 
     @Test
@@ -46,7 +45,7 @@ class IpcFrameSerializationTest {
         // Simulate the exact sequence: Delta then Done
         String usage = "/pattern create <name> — test\n/pattern list — test";
 
-        IpcFrame delta = new IpcFrame.Delta(usage, 0);
+        IpcFrame delta = new IpcFrame.Delta(usage);
         IpcFrame done = new IpcFrame.Done(Map.of(), null);
 
         String deltaJson = new String(JSON.writeValueAsBytes(delta), StandardCharsets.UTF_8);
@@ -69,7 +68,7 @@ class IpcFrameSerializationTest {
         for (IpcFrame f :
                 new IpcFrame[] {
                     new IpcFrame.Request("test"),
-                    new IpcFrame.Delta("hello world", 0),
+                    new IpcFrame.Delta("hello world"),
                     new IpcFrame.Done(Map.of("exit", true), "ok"),
                     new IpcFrame.CompleteResult(
                             List.of(

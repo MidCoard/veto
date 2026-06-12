@@ -33,8 +33,7 @@ public class CommandConfiguration {
             @NotNull PromptHandler promptHandler,
             @NotNull AgentPatternRepository patternRepo) {
 
-        CommandRegistry registry = new CommandRegistry();
-        registry.setPromptHandler(promptHandler);
+        CommandRegistry registry = new CommandRegistry(promptHandler);
 
         registry.register(new LoginCommand(users, keys, vault));
         registry.register(new LogoutCommand(vault, promptHandler));

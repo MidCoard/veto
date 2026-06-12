@@ -47,7 +47,7 @@ class ZmqTransportRoundTripTest {
         String dealerId = routerRecv.identity();
 
         // 3. ROUTER sends Delta then Done
-        IpcFrame delta = new IpcFrame.Delta(usage, 0);
+        IpcFrame delta = new IpcFrame.Delta(usage);
         IpcFrame done = new IpcFrame.Done(Map.of(), null);
         router.send(dealerId, delta);
         router.send(dealerId, done);
