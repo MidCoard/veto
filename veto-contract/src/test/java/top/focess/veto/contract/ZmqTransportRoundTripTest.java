@@ -39,30 +39,30 @@ class ZmqTransportRoundTripTest {
                         + "/pattern use <name> — Activate a pattern";
 
         // 1. DEALER sends Hello so ROUTER learns its identity
-        dealer.send(new IpcFrame.Hello(1));
+        dealer.send(new IpcFrame.Hello(1, 1));
 
         // 2. ROUTER receives Hello, gets DEALER identity
-        ZmqTransport.ZmqMessage routerRecv = router.tryReceive();
+        ZmqTransport.ZmqMessage routerRecv = router.receive();
         assertNotNull(routerRecv, "ROUTER should receive Hello");
         String dealerId = routerRecv.identity();
 
         // 3. ROUTER sends Delta then Done
         IpcFrame delta = new IpcFrame.Delta(usage, 0);
-        IpcFrame done = new IpcFrame.Done(Map.of(), null, 1);
+        IpcFrame done = new IpcFrame.Done(Map.of(), null);
         router.send(dealerId, delta);
         router.send(dealerId, done);
         Thread.sleep(100);
 
         // 4. DEALER receives via ZmqTransport (uses explicit UTF-8 decode)
-        ZmqTransport.ZmqMessage parts1 = dealer.tryReceive();
-        assertNotNull(parts1, "dealer.tryReceive() returned null for Delta");
+        ZmqTransport.ZmqMessage parts1 = dealer.receive();
+        assertNotNull(parts1, "dealer.receive() returned null for Delta");
         IpcFrame received1 = parts1.frame();
         assertNotNull(received1, "Delta deserialization returned null");
         assertInstanceOf(IpcFrame.Delta.class, received1);
         assertEquals(usage, ((IpcFrame.Delta) received1).content());
 
-        ZmqTransport.ZmqMessage parts2 = dealer.tryReceive();
-        assertNotNull(parts2, "dealer.tryReceive() returned null for Done");
+        ZmqTransport.ZmqMessage parts2 = dealer.receive();
+        assertNotNull(parts2, "dealer.receive() returned null for Done");
         IpcFrame received2 = parts2.frame();
         assertNotNull(received2, "Done deserialization returned null");
         assertInstanceOf(IpcFrame.Done.class, received2);

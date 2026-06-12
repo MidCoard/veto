@@ -46,7 +46,7 @@ class IpcFrameSerializationTest {
         String usage = "/pattern create <name> — test\n/pattern list — test";
 
         IpcFrame delta = new IpcFrame.Delta(usage, 0);
-        IpcFrame done = new IpcFrame.Done();
+        IpcFrame done = new IpcFrame.Done(Map.of(), null);
 
         String deltaJson = new String(JSON.writeValueAsBytes(delta), StandardCharsets.UTF_8);
         String doneJson = new String(JSON.writeValueAsBytes(done), StandardCharsets.UTF_8);
@@ -67,9 +67,11 @@ class IpcFrameSerializationTest {
     void serializeDeserializeAllFrameTypes() throws Exception {
         for (IpcFrame f :
                 new IpcFrame[] {
-                    new IpcFrame.Request("test", 1),
+                    new IpcFrame.Request("test"),
                     new IpcFrame.Delta("hello world", 0),
-                    new IpcFrame.Done(Map.of("exit", true), "ok", 1),
+                    new IpcFrame.Done(Map.of("exit", true), "ok"),
+                    new IpcFrame.CompleteResult("c1\nc2", 2),
+                    new IpcFrame.HintResult("[user]", "enter username", 3),
                     new IpcFrame.Error("fail", 1),
                     new IpcFrame.Prompt("enter:", Map.of("mask", true)),
                 }) {

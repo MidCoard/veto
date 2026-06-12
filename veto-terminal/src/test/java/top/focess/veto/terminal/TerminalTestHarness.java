@@ -1,6 +1,7 @@
 package top.focess.veto.terminal;
 
 import java.util.Scanner;
+import java.util.concurrent.TimeUnit;
 import top.focess.veto.contract.IpcFrame;
 
 /**
@@ -15,7 +16,7 @@ public class TerminalTestHarness {
         System.out.println("Veto Terminal Test Harness");
         System.out.println("Connecting to " + ADDR + " ...");
 
-        ZmqTerminal transport = new ZmqTerminal(ADDR);
+        ZmqClient transport = new ZmqClient(ADDR);
         System.out.println("Connected! Type commands (/help, /login, /exit).");
 
         Scanner scanner = new Scanner(System.in);
@@ -45,13 +46,15 @@ public class TerminalTestHarness {
             if (line.isEmpty()) continue;
             if (line.equals("/exit") || line.equals("/quit")) break;
 
-            // Send request
+            // Send request with per-seq routing
             transport.send(new IpcFrame.Request(line));
 
             // Print all response frames
             long deadline = System.currentTimeMillis() + 120_000;
             while (System.currentTimeMillis() < deadline) {
-                IpcFrame frame = transport.receive();
+                long remaining = deadline - System.currentTimeMillis();
+                if (remaining <= 0) break;
+                IpcFrame.ServerFrame frame = transport.receive(remaining, TimeUnit.MILLISECONDS);
                 if (frame == null) continue;
 
                 switch (frame) {

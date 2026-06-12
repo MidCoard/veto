@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -33,19 +34,18 @@ public class VetoTerminal {
 
     private final Terminal t;
     private LineReader reader;
-    private final ZmqTerminal transport;
+    private final ZmqClient transport;
     private final MordantRenderer renderer;
     private VetoHintWidgets hintWidgets;
 
     private String displayUser;
     private int turnCount;
-    private volatile boolean busy;
     private volatile boolean running;
 
-    /** Monotonic sequence number for correlating requests with responses. */
+    /** Monotonic sequence number for correlating determined-response exchanges (Complete, Hint). */
     private final AtomicLong nextSeq = new AtomicLong(1);
 
-    public VetoTerminal(Terminal t, ZmqTerminal transport) {
+    public VetoTerminal(Terminal t, ZmqClient transport) {
         this.t = t;
         this.transport = transport;
         this.renderer = new MordantRenderer(t);
@@ -119,80 +119,71 @@ public class VetoTerminal {
     }
 
     private IpcFrame exchange(String line) {
-        busy = true;
-        long seq = nextSeq.getAndIncrement();
-        try {
-            transport.send(new IpcFrame.Request(line, seq));
+        transport.send(new IpcFrame.Request(line));
 
-            long deadline = System.currentTimeMillis() + REQUEST_TIMEOUT_MS;
-            boolean firstDelta = true;
+        long deadline = System.currentTimeMillis() + REQUEST_TIMEOUT_MS;
+        boolean firstDelta = true;
 
-            while (System.currentTimeMillis() < deadline) {
-                IpcFrame frame = transport.receive();
-                if (frame == null) {
-                    return new IpcFrame.Error("No response from backend.");
-                }
-
-                switch (frame) {
-                    case IpcFrame.Delta d -> {
-                        log.fine("[DELTA] len=" + d.content().length());
-                        if (firstDelta) {
-                            MordantTerminal.println(t, "");
-                            firstDelta = false;
-                        }
-                        MordantTerminal.print(t, d.content());
-                    }
-
-                    case IpcFrame.Progress p ->
-                            MordantTerminal.println(
-                                    t, MordantTerminal.dim(t, "  ⏳ " + p.content()));
-
-                    case IpcFrame.Prompt prompt -> {
-                        MordantTerminal.println(t, "");
-                        boolean mask = Boolean.TRUE.equals(prompt.meta().get(IpcMeta.MASK));
-                        String promptText = "  " + prompt.content() + " ";
-                        String reply;
-                        try {
-                            reply =
-                                    mask
-                                            ? reader.readLine(promptText, '\0')
-                                            : reader.readLine(promptText);
-                        } catch (Exception e) {
-                            return new IpcFrame.Error("Input cancelled.");
-                        }
-                        if (reply == null || reply.trim().isEmpty()) {
-                            transport.send(new IpcFrame.Input(""));
-                        } else {
-                            transport.send(new IpcFrame.Input(reply.trim()));
-                        }
-                        deadline = System.currentTimeMillis() + REQUEST_TIMEOUT_MS;
-                    }
-
-                    case IpcFrame.Done d -> {
-                        // Skip stale responses from a previous request
-                        if (d.seq() != 0 && d.seq() != seq) continue;
-                        if (!firstDelta) {
-                            MordantTerminal.println(t, "");
-                        }
-                        return d;
-                    }
-
-                    case IpcFrame.Error e -> {
-                        // Skip stale errors from a previous request
-                        if (e.seq() != 0 && e.seq() != seq) continue;
-                        if (!firstDelta) {
-                            MordantTerminal.println(t, "");
-                        }
-                        return e;
-                    }
-
-                    default -> {}
-                }
+        while (System.currentTimeMillis() < deadline) {
+            long remaining = deadline - System.currentTimeMillis();
+            if (remaining <= 0) break;
+            IpcFrame.ServerFrame frame = transport.receive(remaining, TimeUnit.MILLISECONDS);
+            if (frame == null) {
+                return new IpcFrame.Error("No response from backend.", 0);
             }
-            return new IpcFrame.Error("Request timed out.");
-        } finally {
-            busy = false;
+
+            switch (frame) {
+                case IpcFrame.Delta d -> {
+                    log.fine("[DELTA] len=" + d.content().length());
+                    if (firstDelta) {
+                        MordantTerminal.println(t, "");
+                        firstDelta = false;
+                    }
+                    MordantTerminal.print(t, d.content());
+                }
+
+                case IpcFrame.Progress p ->
+                        MordantTerminal.println(t, MordantTerminal.dim(t, "  ⏳ " + p.content()));
+
+                case IpcFrame.Prompt prompt -> {
+                    MordantTerminal.println(t, "");
+                    boolean mask = Boolean.TRUE.equals(prompt.meta().get(IpcMeta.MASK));
+                    String promptText = "  " + prompt.content() + " ";
+                    String reply;
+                    try {
+                        reply =
+                                mask
+                                        ? reader.readLine(promptText, '\0')
+                                        : reader.readLine(promptText);
+                    } catch (Exception e) {
+                        return new IpcFrame.Error("Input cancelled.", 0);
+                    }
+                    if (reply == null || reply.trim().isEmpty()) {
+                        transport.send(new IpcFrame.Input(""));
+                    } else {
+                        transport.send(new IpcFrame.Input(reply.trim()));
+                    }
+                    deadline = System.currentTimeMillis() + REQUEST_TIMEOUT_MS;
+                }
+
+                case IpcFrame.Done d -> {
+                    if (!firstDelta) {
+                        MordantTerminal.println(t, "");
+                    }
+                    return d;
+                }
+
+                case IpcFrame.Error e -> {
+                    if (!firstDelta) {
+                        MordantTerminal.println(t, "");
+                    }
+                    return e;
+                }
+
+                default -> {}
+            }
         }
+        return new IpcFrame.Error("Request timed out.", 0);
     }
 
     // ── session metadata ──────────────────────────────────────────────────
@@ -249,26 +240,20 @@ public class VetoTerminal {
         public void complete(LineReader r, ParsedLine line, List<Candidate> out) {
             String fullLine = line.line();
             if (!fullLine.startsWith("/")) return;
-            busy = true;
             long seq = nextSeq.getAndIncrement();
-            try {
-                transport.send(new IpcFrame.Complete(fullLine, seq));
-                IpcFrame reply = transport.receive(3, java.util.concurrent.TimeUnit.SECONDS);
-                if (reply instanceof IpcFrame.Done done
-                        && done.content() != null
-                        && (done.seq() == 0 || done.seq() == seq)) {
-                    for (String entry : done.content().split("\n")) {
-                        String trimmed = entry.trim();
-                        if (trimmed.isEmpty()) continue;
-                        String[] parts = trimmed.split("\t", 3);
-                        String name = parts[0];
-                        String desc = parts.length > 1 && !parts[1].isBlank() ? parts[1] : null;
-                        String group = parts.length > 2 && !parts[2].isBlank() ? parts[2] : null;
-                        out.add(new Candidate(name, name, group, desc, null, null, true));
-                    }
+            transport.send(new IpcFrame.Complete(fullLine, seq));
+            IpcFrame.ServerFrame reply = transport.receive(seq, 3, TimeUnit.SECONDS);
+            if (reply instanceof IpcFrame.CompleteResult compResult
+                    && compResult.content() != null) {
+                for (String entry : compResult.content().split("\n")) {
+                    String trimmed = entry.trim();
+                    if (trimmed.isEmpty()) continue;
+                    String[] parts = trimmed.split("\t", 3);
+                    String name = parts[0];
+                    String desc = parts.length > 1 && !parts[1].isBlank() ? parts[1] : null;
+                    String group = parts.length > 2 && !parts[2].isBlank() ? parts[2] : null;
+                    out.add(new Candidate(name, name, group, desc, null, null, true));
                 }
-            } finally {
-                busy = false;
             }
         }
     }
@@ -284,7 +269,7 @@ public class VetoTerminal {
             org.jline.terminal.Terminal jt =
                     TerminalBuilder.builder().system(true).jna(true).encoding("UTF-8").build();
             Terminal mt = MordantTerminal.create();
-            ZmqTerminal transport = new ZmqTerminal(BACKEND_ADDR);
+            ZmqClient transport = new ZmqClient(BACKEND_ADDR);
             VetoTerminal vt = new VetoTerminal(mt, transport);
             Completer completer = vt.new VetoCompleter();
             LineReader r = LineReaderBuilder.builder().terminal(jt).completer(completer).build();

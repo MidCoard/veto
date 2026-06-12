@@ -6,7 +6,6 @@ import org.jline.reader.LineReader.SuggestionType;
 import org.jline.widget.Widgets;
 import top.focess.veto.contract.HintInfo;
 import top.focess.veto.contract.IpcFrame;
-import top.focess.veto.contract.IpcMeta;
 
 /**
  * JLine {@link org.jline.widget.Widgets} subclass that hooks buffer-change widgets to fetch and
@@ -29,10 +28,10 @@ public final class VetoHintWidgets extends Widgets {
 
     private static final long HINT_TIMEOUT_MS = 500;
 
-    private final ZmqTerminal transport;
+    private final ZmqClient transport;
     private boolean enabled;
 
-    public VetoHintWidgets(LineReader reader, ZmqTerminal transport) {
+    public VetoHintWidgets(LineReader reader, ZmqClient transport) {
         super(reader);
         this.transport = transport;
 
@@ -118,11 +117,11 @@ public final class VetoHintWidgets extends Widgets {
 
         // Starts with "/" and ends with a space — trigger a new hint fetch.
         if (line.endsWith(" ")) {
-            IpcFrame.Done done = transport.hint(line, HINT_TIMEOUT_MS, TimeUnit.MILLISECONDS);
-            if (done != null) {
-                String placeholder = done.content();
+            IpcFrame.HintResult hint = transport.hint(line, HINT_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+            if (hint != null) {
+                String placeholder = hint.placeholder();
                 if (placeholder != null && !placeholder.isBlank()) {
-                    String desc = (String) done.meta().get(IpcMeta.DESCRIPTION);
+                    String desc = hint.description();
                     setTailTip(new HintInfo(placeholder, desc).displayText());
                     return;
                 }

@@ -5,151 +5,196 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.util.Map;
 
 /**
- * Sealed hierarchy for all IPC protocol frames. Each terminal ↔ backend exchange uses one of these
- * frame types. The terminal-to-backend frames carry raw user input; the backend-to-terminal frames
- * carry structured responses.
+ * Sealed hierarchy for all IPC protocol frames exchanged between the terminal (client) and the
+ * backend (server).
+ *
+ * <h3>Directional safety</h3>
+ *
+ * <ul>
+ *   <li>{@link ClientFrame} — frames sent <b>from the terminal to the backend</b>.
+ *   <li>{@link ServerFrame} — frames sent <b>from the backend to the terminal</b>.
+ *   <li>{@link Unknown} — deserialization fallback for unrecognized frame types (either direction).
+ * </ul>
+ *
+ * <h3>Sequence number convention</h3>
+ *
+ * Only frames that initiate a <b>determined single-response exchange</b> carry a {@code seq}
+ * number. The server echoes the same {@code seq} in its response so the client can correlate
+ * request/response pairs synchronously.
+ *
+ * <p>Frames with indeterminate output (e.g. {@link Request} which may produce 0, 1, or many
+ * streaming frames) do <b>not</b> carry a {@code seq}. Fire-and-forget frames ({@link Cancel},
+ * {@link Bye}, {@link Heartbeat}, {@link Input}) also omit it.
  *
  * <p>Discriminated by the {@code type} field in JSON.
  */
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type", defaultImpl = IpcFrame.Unknown.class)
 @JsonSubTypes({
+    @JsonSubTypes.Type(value = IpcFrame.Hello.class, name = "hello"),
     @JsonSubTypes.Type(value = IpcFrame.Request.class, name = "request"),
-    @JsonSubTypes.Type(value = IpcFrame.Input.class, name = "input"),
     @JsonSubTypes.Type(value = IpcFrame.Complete.class, name = "complete"),
+    @JsonSubTypes.Type(value = IpcFrame.Hint.class, name = "hint"),
+    @JsonSubTypes.Type(value = IpcFrame.Input.class, name = "input"),
     @JsonSubTypes.Type(value = IpcFrame.Cancel.class, name = "cancel"),
     @JsonSubTypes.Type(value = IpcFrame.Bye.class, name = "bye"),
     @JsonSubTypes.Type(value = IpcFrame.Heartbeat.class, name = "heartbeat"),
-    @JsonSubTypes.Type(value = IpcFrame.Hint.class, name = "hint"),
-    @JsonSubTypes.Type(value = IpcFrame.Delta.class, name = "delta"),
+    @JsonSubTypes.Type(value = IpcFrame.Welcome.class, name = "welcome"),
+    @JsonSubTypes.Type(value = IpcFrame.CompleteResult.class, name = "complete_result"),
+    @JsonSubTypes.Type(value = IpcFrame.HintResult.class, name = "hint_result"),
     @JsonSubTypes.Type(value = IpcFrame.Done.class, name = "done"),
     @JsonSubTypes.Type(value = IpcFrame.Error.class, name = "error"),
-    @JsonSubTypes.Type(value = IpcFrame.Prompt.class, name = "prompt"),
+    @JsonSubTypes.Type(value = IpcFrame.Delta.class, name = "delta"),
     @JsonSubTypes.Type(value = IpcFrame.Progress.class, name = "progress"),
-    @JsonSubTypes.Type(value = IpcFrame.Hello.class, name = "hello"),
-    @JsonSubTypes.Type(value = IpcFrame.Welcome.class, name = "welcome"),
+    @JsonSubTypes.Type(value = IpcFrame.Prompt.class, name = "prompt"),
 })
-public sealed interface IpcFrame {
+public sealed interface IpcFrame
+        permits IpcFrame.ClientFrame, IpcFrame.ServerFrame, IpcFrame.Unknown {
 
     /** Current protocol version. Increment when frame types or semantics change incompatibly. */
     int PROTOCOL_VERSION = 1;
 
-    /**
-     * User typed a command or plain-text prompt.
-     *
-     * @param seq monotonic sequence number for correlating with the terminal {@link Done} or {@link
-     *     Error} response
-     */
-    record Request(String raw, long seq) implements IpcFrame {
-        public Request(String raw) {
-            this(raw, 0);
-        }
-    }
-
-    /** User replied to a backend-issued prompt. */
-    record Input(String raw) implements IpcFrame {}
+    // ══════════════════════════════════════════════════════════════════════
+    //  Client → Server
+    // ══════════════════════════════════════════════════════════════════════
 
     /**
-     * Tab-completion query. Backend responds with a {@link Done} carrying newline-separated
-     * suggestions.
+     * Frames sent from the terminal (client) to the backend (server).
      *
-     * @param seq monotonic sequence number for correlating with the response
+     * <p>Only frames that expect a <b>determined single response</b> carry a {@code seq}: these
+     * implement {@link SeqRequest}. All others are fire-and-forget or have indeterminate output.
      */
-    record Complete(String raw, long seq) implements IpcFrame {
-        public Complete(String raw) {
-            this(raw, 0);
-        }
+    sealed interface ClientFrame extends IpcFrame
+            permits SeqRequest, Request, Input, Cancel, Bye, Heartbeat {}
+
+    /** Marker interface for all seq-based client requests. */
+    sealed interface SeqRequest extends ClientFrame permits Hello, Complete, Hint {
+        long seq();
     }
-
-    /** User interrupted the current request (Ctrl+C). */
-    record Cancel() implements IpcFrame {}
-
-    /** Terminal is shutting down cleanly — backend should release resources. */
-    record Bye() implements IpcFrame {}
-
-    /** Periodic keep-alive from the terminal. Backend treats silence as a dead terminal. */
-    record Heartbeat() implements IpcFrame {}
 
     /**
      * Protocol handshake sent by the terminal on connect. The backend responds with a {@link
-     * Welcome} at the highest version it supports that is ≤ this version.
+     * Welcome} echoing the same {@code seq}.
+     *
+     * @param version the highest protocol version the client supports
+     * @param seq monotonic sequence number for correlating with the {@link Welcome} response
      */
-    record Hello(int version) implements IpcFrame {}
+    record Hello(int version, long seq) implements SeqRequest {}
 
     /**
-     * Backend handshake response. Carries the negotiated protocol version. If no compatible version
-     * exists the backend sends an {@link Error} instead.
+     * User typed a command or plain-text prompt.
+     *
+     * <p>The response is <b>indeterminate</b> — the backend may emit zero or more {@link Delta},
+     * {@link Prompt}, {@link Progress} frames before a terminal {@link Done} or {@link Error}.
+     * Because there is no single determined response, this frame does <b>not</b> carry a {@code
+     * seq}.
      */
-    record Welcome(int version) implements IpcFrame {}
+    record Request(String raw) implements ClientFrame {}
 
     /**
-     * Requests a placeholder hint for the next expected argument. The backend responds with a
-     * {@link Done} whose {@code content} is the placeholder text (e.g. {@code <name>}) and optional
-     * {@code meta.description} giving context.
+     * Tab-completion query. Backend responds with exactly one {@link CompleteResult} carrying
+     * newline-separated suggestions, echoing the same {@code seq}.
+     *
+     * @param seq monotonic sequence number for correlating with the response
+     */
+    record Complete(String raw, long seq) implements SeqRequest {}
+
+    /**
+     * Requests a placeholder hint for the next expected argument. The backend responds with exactly
+     * one {@link HintResult} carrying the placeholder and optional description, echoing the same
+     * {@code seq}.
      *
      * @param seq monotonic sequence number for correlating with the hint response
      */
-    record Hint(String raw, long seq) implements IpcFrame {
-        public Hint(String raw) {
-            this(raw, 0);
-        }
-    }
+    record Hint(String raw, long seq) implements SeqRequest {}
 
-    /** Streaming content chunk — not terminal; more frames follow. */
-    record Delta(String content, int index) implements IpcFrame {}
+    /** User replied to a backend-issued {@link Prompt}. Fire-and-forget. */
+    record Input(String raw) implements ClientFrame {}
+
+    /** User interrupted the current request (Ctrl+C). Fire-and-forget. */
+    record Cancel() implements ClientFrame {}
+
+    /** Terminal is shutting down cleanly — backend should release resources. Fire-and-forget. */
+    record Bye() implements ClientFrame {}
+
+    /** Periodic keep-alive from the terminal. Fire-and-forget. */
+    record Heartbeat() implements ClientFrame {}
+
+    // ══════════════════════════════════════════════════════════════════════
+    //  Server → Client
+    // ══════════════════════════════════════════════════════════════════════
 
     /**
-     * Terminal frame — response complete. The session state lives in {@code meta}.
+     * Frames sent from the backend (server) to the terminal (client).
      *
-     * @param seq echoed from the initiating {@link Request}, {@link Hint}, or {@link Complete}; 0
-     *     when not correlated to a specific request
+     * <p>Only frames that are <b>direct responses</b> to a sequenced client frame carry a {@code
+     * seq}: these implement {@link SeqResponse}. Streaming frames ({@link Delta}, {@link Progress},
+     * {@link Prompt}, {@link Done}) do not carry a {@code seq}.
      */
-    record Done(java.util.Map<String, Object> meta, String content, long seq) implements IpcFrame {
-        public Done(Map<String, Object> meta, String content) {
-            this(meta, content, 0);
-        }
+    sealed interface ServerFrame extends IpcFrame
+            permits SeqResponse, Done, Delta, Progress, Prompt {}
 
-        public Done(Map<String, Object> meta) {
-            this(meta, null, 0);
-        }
-
-        public Done() {
-            this(Map.of(), null, 0);
-        }
+    /** Marker interface for all seq-based server response frames. */
+    sealed interface SeqResponse extends ServerFrame
+            permits Welcome, CompleteResult, HintResult, Error {
+        long seq();
     }
+
+    /**
+     * Backend handshake response. Carries the negotiated protocol version and echoes the {@code
+     * seq} from the initiating {@link Hello}.
+     */
+    record Welcome(int version, long seq) implements SeqResponse {}
+
+    /**
+     * Response containing autocomplete candidates.
+     *
+     * @param content newline-separated completion candidates
+     * @param seq echoed from the initiating {@link Complete} request
+     */
+    record CompleteResult(String content, long seq) implements SeqResponse {}
+
+    /**
+     * Response containing next argument placeholder and description.
+     *
+     * @param placeholder placeholder text (e.g. {@code <user>})
+     * @param description optional helpful description or context
+     * @param seq echoed from the initiating {@link Hint} request
+     */
+    record HintResult(String placeholder, String description, long seq) implements SeqResponse {}
+
+    /**
+     * Terminal frame — response complete.
+     *
+     * <p>Done is at the end of a sequence of Delta and Progress frames. It does not carry a
+     * sequence number.
+     *
+     * @param meta session metadata (username, turn number, flags, etc.)
+     * @param content optional content string
+     */
+    record Done(Map<String, Object> meta, String content) implements ServerFrame {}
 
     /**
      * Fatal — terminates the exchange with an error message.
      *
-     * @param seq echoed from the initiating {@link Request}; 0 when not correlated
+     * <p>Echoes the {@code seq} from the initiating frame. When emitted in response to a {@link
+     * Request} (which has no seq), use {@code seq = 0}.
+     *
+     * @param content error description
+     * @param seq echoed from the initiating frame; 0 when not correlated to a sequenced request
      */
-    record Error(String content, long seq) implements IpcFrame {
-        public Error(String content) {
-            this(content, 0);
-        }
-    }
+    record Error(String content, long seq) implements SeqResponse {}
 
-    /**
-     * Backend requests user input — pauses the stream; terminal writes an {@link Input} frame in
-     * reply.
-     */
-    record Prompt(String content, Map<String, Object> meta) implements IpcFrame {
-        public Prompt(String content) {
-            this(content, Map.of());
-        }
-    }
+    /** Streaming content chunk — not terminal; more frames follow. */
+    record Delta(String content, int index) implements ServerFrame {}
 
     /**
      * Optional progress hint between deltas.
      *
      * @param percent completion percentage 0–100, or {@link #INDETERMINATE} when unknown
      */
-    record Progress(String content, int percent) implements IpcFrame {
+    record Progress(String content, int percent) implements ServerFrame {
         /** Value for {@link #percent} when progress cannot be expressed as a percentage. */
         public static final int INDETERMINATE = -1;
-
-        public Progress(String content) {
-            this(content, INDETERMINATE);
-        }
 
         /** True when this progress indicator has no known completion percentage. */
         public boolean isIndeterminate() {
@@ -158,30 +203,20 @@ public sealed interface IpcFrame {
     }
 
     /**
+     * Backend requests user input — pauses the stream; terminal writes an {@link Input} frame in
+     * reply.
+     */
+    record Prompt(String content, Map<String, Object> meta) implements ServerFrame {}
+
+    // ══════════════════════════════════════════════════════════════════════
+    //  Fallback
+    // ══════════════════════════════════════════════════════════════════════
+
+    /**
      * Fallback for unrecognized frame types — used when the remote peer speaks a newer protocol
      * version with frame types this side does not understand. Carries the raw {@code type}
      * discriminator and any deserialized fields so handlers can log-and-skip gracefully instead of
      * crashing on deserialization.
      */
     record Unknown(String type, Map<String, Object> fields) implements IpcFrame {}
-
-    /** Convenience: create a terminal-frame done with a string content (for completion results). */
-    static Done doneContent(String content) {
-        return new Done(Map.of(), content, 0);
-    }
-
-    /** Convenience: create a terminal-frame done with content and sequence number. */
-    static Done doneContent(String content, long seq) {
-        return new Done(Map.of(), content, seq);
-    }
-
-    /** Convenience: create a simple error. */
-    static Error ofError(String msg) {
-        return new Error(msg, 0);
-    }
-
-    /** Convenience: create an error with a sequence number. */
-    static Error ofError(String msg, long seq) {
-        return new Error(msg, seq);
-    }
 }

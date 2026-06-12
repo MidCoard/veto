@@ -111,16 +111,16 @@ class LiveTestRunner {
             assert r instanceof IpcFrame.Done : "/exit failed: " + r;
 
             // 7. Tab completion
-            send(new IpcFrame.Complete("/log"));
+            send(new IpcFrame.Complete("/log", 1));
             IpcFrame comp = recv();
             System.out.println("[COMPLETE /log] -> " + comp);
-            assert comp instanceof IpcFrame.Done;
+            assert comp instanceof IpcFrame.CompleteResult;
 
             // 8. Hint
-            send(new IpcFrame.Hint("/login "));
+            send(new IpcFrame.Hint("/login ", 2));
             IpcFrame hint = recv();
             System.out.println("[HINT /login ] -> " + hint);
-            assert hint instanceof IpcFrame.Done;
+            assert hint instanceof IpcFrame.HintResult;
 
             // 9. Heartbeat
             send(new IpcFrame.Heartbeat());
