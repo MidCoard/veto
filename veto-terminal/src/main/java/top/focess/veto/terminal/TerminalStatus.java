@@ -55,9 +55,8 @@ public class TerminalStatus {
         status.update(List.of(AttributedString.fromAnsi(styled)));
     }
 
-    /** Clears the status line. */
     public void clear() {
-        status.update(null);
+        status.update(List.of());
     }
 
     public String getDisplayUser() {

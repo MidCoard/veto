@@ -39,6 +39,8 @@ public class VetoTerminal {
 
     private TerminalStatus status;
     private volatile boolean running;
+    private volatile boolean programmaticInterrupt = false;
+    private volatile boolean waitingForResponse = false;
 
     private final StringBuilder deltaBuffer = new StringBuilder();
     private final AtomicReference<IpcFrame.Prompt> activePrompt = new AtomicReference<>(null);
@@ -63,18 +65,18 @@ public class VetoTerminal {
         Thread heartbeat =
                 new Thread(
                         () -> {
-                            while (running && !Thread.currentThread().isInterrupted()) {
+                            while (running) {
                                 try {
                                     Thread.sleep(HEARTBEAT_INTERVAL_MS);
-                                    if (!running) break;
                                     client.send(new IpcFrame.Heartbeat());
-                                } catch (InterruptedException e) {
-                                    Thread.currentThread().interrupt();
-                                    break;
                                 } catch (Exception e) {
                                     if (running) {
-                                        log.log(Level.WARNING, "Error in heartbeat loop", e);
+                                        log.log(
+                                                Level.WARNING,
+                                                "Error in heartbeat loop, terminating thread",
+                                                e);
                                     }
+                                    break;
                                 }
                             }
                         },
@@ -90,7 +92,7 @@ public class VetoTerminal {
         Thread consumerThread =
                 new Thread(
                         () -> {
-                            while (running && !Thread.currentThread().isInterrupted()) {
+                            while (running) {
                                 try {
                                     IpcFrame.ServerFrame frame = client.receive();
                                     if (frame == null) {
@@ -99,8 +101,12 @@ public class VetoTerminal {
                                     handleIncomingFrame(frame);
                                 } catch (Exception e) {
                                     if (running) {
-                                        log.log(Level.WARNING, "Error in incoming loop", e);
+                                        log.log(
+                                                Level.WARNING,
+                                                "Error in incoming loop, terminating thread",
+                                                e);
                                     }
+                                    break;
                                 }
                             }
                         },
@@ -124,22 +130,32 @@ public class VetoTerminal {
     // ── repl ──────────────────────────────────────────────────────────────
 
     private void repl() {
-        while (running && !Thread.currentThread().isInterrupted()) {
+        while (running) {
             status.refresh();
             String line;
             try {
-                line = reader.readLine(prompt());
+                IpcFrame.Prompt active = activePrompt.get();
+                Character mask = null;
+                if (active != null && Boolean.TRUE.equals(active.meta().get("mask"))) {
+                    mask = '*';
+                }
+                line = reader.readLine(prompt(), mask);
             } catch (UserInterruptException e) {
-                if (Thread.currentThread().isInterrupted()) {
-                    Thread.interrupted(); // Clear interrupted status
+                if (programmaticInterrupt) {
+                    programmaticInterrupt = false;
                     if (!running) {
                         break;
                     }
                     continue;
                 }
-                client.send(new IpcFrame.Cancel());
-                activePrompt.set(null);
-                continue;
+                if (waitingForResponse || activePrompt.get() != null) {
+                    client.send(new IpcFrame.Cancel());
+                    activePrompt.set(null);
+                    waitingForResponse = false;
+                    continue;
+                } else {
+                    break;
+                }
             } catch (EndOfFileException e) {
                 break;
             }
@@ -167,6 +183,7 @@ public class VetoTerminal {
     }
 
     private void executeRequest(String line) {
+        waitingForResponse = true;
         client.send(new IpcFrame.Request(line));
     }
 
@@ -194,8 +211,10 @@ public class VetoTerminal {
         } else if (frame instanceof IpcFrame.Prompt prompt) {
             flushDeltaBuffer();
             activePrompt.set(prompt);
+            programmaticInterrupt = true;
             mainThread.interrupt();
         } else if (frame instanceof IpcFrame.Done(Map<String, Object> meta, String content)) {
+            waitingForResponse = false;
             flushDeltaBuffer();
             if (content != null && !content.isBlank()) {
                 renderer.println(content);
@@ -204,10 +223,13 @@ public class VetoTerminal {
             if (Boolean.TRUE.equals(meta.get(IpcMeta.EXIT))) {
                 running = false;
             }
+            programmaticInterrupt = true;
             mainThread.interrupt();
         } else if (frame instanceof IpcFrame.Error e) {
+            waitingForResponse = false;
             flushDeltaBuffer();
             renderer.error(e.content());
+            programmaticInterrupt = true;
             mainThread.interrupt();
         }
     }
@@ -222,15 +244,14 @@ public class VetoTerminal {
         renderer.println(renderer.dim("  ╭─ you " + "─".repeat(borderLen)));
         renderer.println("  │ " + line);
         renderer.println(renderer.dim("  ╰" + "─".repeat(Math.min(maxWidth, borderLen + 4))));
-        renderer.println("");
     }
 
     private String prompt() {
         IpcFrame.Prompt active = activePrompt.get();
         if (active != null) {
-            return "  " + active.content() + " ▸ ";
+            return "  " + renderer.cyan(active.content()) + " " + renderer.yellow("▸") + " ";
         }
-        return status.getDisplayUser() != null ? "▸ " : "◇ ";
+        return status.getDisplayUser() != null ? renderer.green("▸ ") : renderer.red("◇ ");
     }
 
     private void printBanner() {
@@ -267,8 +288,8 @@ public class VetoTerminal {
 
     public static void main(String[] args) {
         System.setProperty("file.encoding", "UTF-8");
-        java.util.logging.Logger.getLogger("org.jline").setLevel(Level.OFF);
-        java.util.logging.Logger.getLogger("top.focess.veto.terminal").setLevel(Level.FINE);
+        Logger.getLogger("org.jline").setLevel(Level.OFF);
+        Logger.getLogger("top.focess.veto.terminal").setLevel(Level.FINE);
 
         try {
             org.jline.terminal.Terminal jt =

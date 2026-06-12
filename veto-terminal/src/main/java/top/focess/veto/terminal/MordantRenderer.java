@@ -1,7 +1,6 @@
 package top.focess.veto.terminal;
 
 import com.github.ajalt.mordant.terminal.Terminal;
-import java.util.logging.Logger;
 import org.jline.reader.LineReader;
 
 /**
@@ -10,8 +9,6 @@ import org.jline.reader.LineReader;
  * MordantTerminal} for ANSI formatting.
  */
 public class MordantRenderer {
-
-    private static final Logger log = Logger.getLogger(MordantRenderer.class.getName());
 
     private final Terminal terminal;
     private final LineReader reader;

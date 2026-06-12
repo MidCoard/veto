@@ -88,9 +88,9 @@ public final class ZmqClient implements AutoCloseable {
         this.identity = UUID.randomUUID().toString();
         this.ctx = new ZContext();
         this.transport = ZmqTransport.connectDealer(ctx, address, identity);
-        log.info("Connecting to backend at " + address + " ...");
+        System.out.println("Connecting to backend at " + address + " ...");
         handshake();
-        log.info("Connected.");
+        System.out.println("Connected.");
         this.ioThread = new Thread(this::ioLoop, "zmq-io");
         this.ioThread.setDaemon(true);
         this.ioThread.start();
@@ -230,10 +230,11 @@ public final class ZmqClient implements AutoCloseable {
     /**
      * Block until a frame arrives on the general incoming queue, or 120 seconds elapse.
      *
-     * @return the next server frame, or {@code null} on timeout / interrupt
+     * @return the next server frame, or {@code null} on timeout
+     * @throws InterruptedException if the thread is interrupted
      */
     @Nullable
-    public IpcFrame.ServerFrame receive() {
+    public IpcFrame.ServerFrame receive() throws InterruptedException {
         return receive(0);
     }
 
@@ -241,10 +242,11 @@ public final class ZmqClient implements AutoCloseable {
      * Block until a frame arrives on the queue registered for {@code seq}, or 120 seconds elapse.
      *
      * @param seq the sequence number from a prior sequenced request call
-     * @return the next server frame, or {@code null} on timeout / interrupt
+     * @return the next server frame, or {@code null} on timeout
+     * @throws InterruptedException if the thread is interrupted
      */
     @Nullable
-    public IpcFrame.ServerFrame receive(long seq) {
+    public IpcFrame.ServerFrame receive(long seq) throws InterruptedException {
         return receive(seq, 120, TimeUnit.SECONDS);
     }
 
@@ -253,10 +255,12 @@ public final class ZmqClient implements AutoCloseable {
      *
      * @param timeout max time to wait
      * @param unit time unit
-     * @return the next server frame, or {@code null} on timeout / interrupt
+     * @return the next server frame, or {@code null} on timeout
+     * @throws InterruptedException if the thread is interrupted
      */
     @Nullable
-    public IpcFrame.ServerFrame receive(long timeout, @NotNull TimeUnit unit) {
+    public IpcFrame.ServerFrame receive(long timeout, @NotNull TimeUnit unit)
+            throws InterruptedException {
         return receive(0, timeout, unit);
     }
 
@@ -266,10 +270,12 @@ public final class ZmqClient implements AutoCloseable {
      * @param seq the sequence number from a prior sequenced request call
      * @param timeout max time to wait
      * @param unit time unit
-     * @return the next server frame, or {@code null} on timeout / interrupt
+     * @return the next server frame, or {@code null} on timeout
+     * @throws InterruptedException if the thread is interrupted
      */
     @Nullable
-    public IpcFrame.ServerFrame receive(long seq, long timeout, @NotNull TimeUnit unit) {
+    public IpcFrame.ServerFrame receive(long seq, long timeout, @NotNull TimeUnit unit)
+            throws InterruptedException {
         if (seq != 0) {
             BlockingQueue<IpcFrame.SeqResponse> queue = seqHandlers.get(seq);
             if (queue == null) {
@@ -277,19 +283,11 @@ public final class ZmqClient implements AutoCloseable {
             }
             try {
                 return queue.poll(timeout, unit);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return null;
             } finally {
                 seqHandlers.remove(seq);
             }
         } else {
-            try {
-                return incomingQueue.poll(timeout, unit);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return null;
-            }
+            return incomingQueue.poll(timeout, unit);
         }
     }
 
@@ -309,9 +307,13 @@ public final class ZmqClient implements AutoCloseable {
         if (closed) return null;
         long seq = nextSeq.getAndIncrement();
         send(new IpcFrame.Complete(line, seq));
-        IpcFrame.ServerFrame reply = receive(seq, timeout, unit);
-        if (reply instanceof IpcFrame.CompleteResult cr) {
-            return cr;
+        try {
+            IpcFrame.ServerFrame reply = receive(seq, timeout, unit);
+            if (reply instanceof IpcFrame.CompleteResult cr) {
+                return cr;
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
         return null;
     }
@@ -334,9 +336,13 @@ public final class ZmqClient implements AutoCloseable {
         if (closed) return null;
         long seq = nextSeq.getAndIncrement();
         send(new IpcFrame.Hint(line, seq));
-        IpcFrame.ServerFrame reply = receive(seq, timeout, unit);
-        if (reply instanceof IpcFrame.HintResult hr) {
-            return hr;
+        try {
+            IpcFrame.ServerFrame reply = receive(seq, timeout, unit);
+            if (reply instanceof IpcFrame.HintResult hr) {
+                return hr;
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
         return null;
     }
