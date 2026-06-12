@@ -165,22 +165,14 @@ public sealed interface IpcFrame
     record CompleteResult(List<Completion> candidates, long seq) implements SeqResponse {}
 
     record HintInfo(String placeholder, String description) {
-        public static final HintInfo EMPTY = new HintInfo("", null);
-
-        @JsonIgnore
-        public boolean isEmpty() {
-            return placeholder == null || placeholder.isEmpty();
-        }
+        public static final HintInfo EMPTY = new HintInfo(null, null);
 
         @JsonIgnore
         public String displayText() {
-            if (isEmpty()) {
+            if (placeholder == null) {
                 return "";
             }
-            if (description != null) {
-                return placeholder + " — " + description;
-            }
-            return placeholder;
+            return description != null ? placeholder + " — " + description : placeholder;
         }
     }
 

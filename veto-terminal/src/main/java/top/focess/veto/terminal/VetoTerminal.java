@@ -147,7 +147,7 @@ public class VetoTerminal {
                 break;
             }
 
-            if (line == null || Thread.currentThread().isInterrupted()) break;
+            if (line == null) break;
             line = line.trim();
 
             IpcFrame.Prompt active = activePrompt.get();
