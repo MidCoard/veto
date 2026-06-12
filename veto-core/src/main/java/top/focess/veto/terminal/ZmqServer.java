@@ -4,6 +4,7 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.*;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
@@ -51,7 +52,7 @@ public class ZmqServer {
     private final CommandRegistry registry;
     private final ConcurrentLinkedQueue<OutboxEntry> outbox = new ConcurrentLinkedQueue<>();
     private final ConcurrentHashMap<String, Session> sessions = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, Future<?>> activeTasks = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Set<Future<?>>> activeTasks = new ConcurrentHashMap<>();
     private final ExecutorService workers = Executors.newVirtualThreadPerTaskExecutor();
 
     private ZContext ctx;
@@ -118,6 +119,7 @@ public class ZmqServer {
                 if (frame == null) {
                     log.warn("Corrupt frame from {}", identity);
                 } else {
+                    Future<?>[] taskHolder = new Future<?>[1];
                     Future<?> task =
                             workers.submit(
                                     () -> {
@@ -129,10 +131,20 @@ public class ZmqServer {
                                                     identity,
                                                     IpcFrame.Error.ofError(
                                                             "Internal error: " + t.getMessage()));
+                                        } finally {
+                                            if (frame instanceof IpcFrame.Request) {
+                                                Set<Future<?>> tasks = activeTasks.get(identity);
+                                                if (tasks != null && taskHolder[0] != null) {
+                                                    tasks.remove(taskHolder[0]);
+                                                }
+                                            }
                                         }
                                     });
+                    taskHolder[0] = task;
                     if (frame instanceof IpcFrame.Request) {
-                        activeTasks.put(identity, task);
+                        activeTasks
+                                .computeIfAbsent(identity, k -> ConcurrentHashMap.newKeySet())
+                                .add(task);
                     }
                 }
             }
@@ -163,25 +175,18 @@ public class ZmqServer {
 
         switch (frame) {
             case IpcFrame.Request req -> {
-                try {
-                    log.trace("REQ  {}: {}", identity.substring(0, 8), req.raw());
-                    IpcFrame.TerminalResponse terminal =
-                            registry.dispatch(session.sender, req.raw());
-                    session.lastActivityMillis = System.currentTimeMillis();
-                    if (terminal != null) {
-                        send(identity, terminal);
-                        log.trace(
-                                "DONE {}: {} {}",
-                                identity.substring(0, 8),
-                                terminal instanceof IpcFrame.Error
-                                        ? "Error"
-                                        : terminal instanceof IpcFrame.Terminate
-                                                ? "Terminate"
-                                                : "Done",
-                                terminal instanceof IpcFrame.Done d ? d.meta() : "");
-                    }
-                } finally {
-                    activeTasks.remove(identity);
+                log.trace("REQ  {}: {}", identity.substring(0, 8), req.raw());
+                IpcFrame.TerminalResponse terminal = registry.dispatch(session.sender, req.raw());
+                session.lastActivityMillis = System.currentTimeMillis();
+                if (terminal != null) {
+                    send(identity, terminal);
+                    log.trace(
+                            "DONE {}: {} {}",
+                            identity.substring(0, 8),
+                            terminal instanceof IpcFrame.Error
+                                    ? "Error"
+                                    : terminal instanceof IpcFrame.Terminate ? "Terminate" : "Done",
+                            terminal instanceof IpcFrame.Done d ? d.meta() : "");
                 }
             }
 
@@ -213,10 +218,12 @@ public class ZmqServer {
 
             case IpcFrame.Cancel c -> {
                 log.trace("CANC {}: request cancelled", identity.substring(0, 8));
-                // Interrupt the in-flight Request task
-                Future<?> task = activeTasks.remove(identity);
-                if (task != null) {
-                    task.cancel(true);
+                // Interrupt all in-flight Request tasks for this identity
+                Set<Future<?>> tasks = activeTasks.remove(identity);
+                if (tasks != null) {
+                    for (Future<?> task : tasks) {
+                        task.cancel(true);
+                    }
                 }
                 send(identity, new IpcFrame.Done(Map.of(IpcMeta.CANCELLED, true), null));
             }
@@ -224,9 +231,11 @@ public class ZmqServer {
             case IpcFrame.Bye b -> {
                 log.trace("BYE  {}: terminal disconnecting", identity.substring(0, 8));
                 send(identity, new IpcFrame.Done(Map.of(), null));
-                Future<?> task = activeTasks.remove(identity);
-                if (task != null) {
-                    task.cancel(true);
+                Set<Future<?>> tasks = activeTasks.remove(identity);
+                if (tasks != null) {
+                    for (Future<?> task : tasks) {
+                        task.cancel(true);
+                    }
                 }
                 sessions.remove(identity);
             }
@@ -280,9 +289,11 @@ public class ZmqServer {
                 if (e.getValue().lastActivityMillis < cutoff) {
                     String id = e.getKey();
                     log.debug("Removing stale session {}", id);
-                    Future<?> task = activeTasks.remove(id);
-                    if (task != null) {
-                        task.cancel(true);
+                    Set<Future<?>> tasks = activeTasks.remove(id);
+                    if (tasks != null) {
+                        for (Future<?> task : tasks) {
+                            task.cancel(true);
+                        }
                     }
                     it.remove();
                 }

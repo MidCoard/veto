@@ -11,6 +11,7 @@ import top.focess.veto.agent.Agent;
 import top.focess.veto.agent.AgentState;
 import top.focess.veto.agent.SessionCompactor;
 import top.focess.veto.agent.TurnRecord;
+import top.focess.veto.contract.IpcFrame;
 import top.focess.veto.contract.IpcMeta;
 import top.focess.veto.llm.core.*;
 import top.focess.veto.model.AgentPatternEntity;
@@ -57,23 +58,23 @@ public class PromptHandler {
      * method. On completion, returns a Done or Error response.
      */
     @Nullable
-    public top.focess.veto.contract.IpcFrame.TerminalResponse handle(
+    public IpcFrame.TerminalResponse handle(
             @NotNull String prompt, @NotNull String terminalId, @NotNull VetoCommandSender sender) {
         String user = vault.getCurrentUser();
         if (user == null) {
             sender.output("Not logged in. Use /login.");
-            return top.focess.veto.contract.IpcFrame.Error.ofError("Not logged in. Use /login.");
+            return IpcFrame.Error.ofError("Not logged in. Use /login.");
         }
         if (prompt.isEmpty()) {
             sender.output("Empty prompt.");
-            return top.focess.veto.contract.IpcFrame.Error.ofError("Empty prompt.");
+            return IpcFrame.Error.ofError("Empty prompt.");
         }
 
         evictStaleSessions();
 
         LlmConfig config = resolveLlmConfig(user);
 
-        var resultHolder = new top.focess.veto.contract.IpcFrame.TerminalResponse[1];
+        var resultHolder = new IpcFrame.TerminalResponse[1];
 
         // Atomic read-modify-write — serializes concurrent prompts for the
         // same terminal while leaving other terminals unaffected.
@@ -158,14 +159,12 @@ public class PromptHandler {
                         Map<String, Object> doneMeta = new HashMap<>();
                         doneMeta.put(IpcMeta.USERNAME, user);
                         doneMeta.put(IpcMeta.TURN_NUMBER, agent.turns().size());
-                        resultHolder[0] =
-                                new top.focess.veto.contract.IpcFrame.Done(doneMeta, null);
+                        resultHolder[0] = new IpcFrame.Done(doneMeta, null);
                     } catch (Exception e) {
                         log.error("Prompt failed for terminal {}", terminalId, e);
                         sender.output("LLM call failed: " + e.getMessage());
                         resultHolder[0] =
-                                top.focess.veto.contract.IpcFrame.Error.ofError(
-                                        "LLM call failed: " + e.getMessage());
+                                IpcFrame.Error.ofError("LLM call failed: " + e.getMessage());
                     }
                     return agent;
                 });

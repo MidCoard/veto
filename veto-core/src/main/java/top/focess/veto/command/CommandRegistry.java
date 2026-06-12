@@ -40,7 +40,7 @@ public class CommandRegistry {
 
     // ── dispatch ─────────────────────────────────────────────────────────
 
-    @NotNull
+    @Nullable
     public IpcFrame.TerminalResponse dispatch(
             @NotNull VetoCommandSender sender, @Nullable String raw) {
         if (raw == null || raw.isEmpty()) {
@@ -59,7 +59,7 @@ public class CommandRegistry {
         }
     }
 
-    @NotNull
+    @Nullable
     private IpcFrame.TerminalResponse dispatchAgentPrompt(
             @NotNull VetoCommandSender sender, @NotNull String prompt) {
         if (promptHandler == null) {
@@ -173,35 +173,26 @@ public class CommandRegistry {
         if (partial == null || partial.isEmpty()) return List.of();
 
         String input = partial.stripLeading();
-        if (input.startsWith("/")) input = input.substring(1);
-
-        List<CommandCompletion> completions = manager.complete(sender, input);
-
-        boolean hasTrailingSpace = !input.equals(input.stripTrailing());
-        boolean hasSpaceWithin = input.stripTrailing().contains(" ");
-        boolean isSubCommand = hasTrailingSpace || hasSpaceWithin;
-
-        String group = null;
-        if (isSubCommand) {
-            String cmdName = input.stripTrailing().split("\\s+", 2)[0];
-            group =
-                    manager.getCommands().stream()
-                            .filter(c -> c.getName().equalsIgnoreCase(cmdName))
-                            .findFirst()
-                            .map(Command::getDescription)
-                            .orElse(null);
+        boolean startsWithSlash = input.startsWith("/");
+        if (startsWithSlash) {
+            input = input.substring(1);
         }
 
-        final String groupLabel = group;
+        CommandRoute route = manager.route(sender, input);
+        List<CommandCompletion> completions = route.getCompletions();
+        Command cmd = route.getCommand();
+        String groupLabel = cmd != null ? cmd.getDescription() : null;
+
+        boolean hasSpace = input.contains(" ");
+
         return completions.stream()
                 .map(
                         cc -> {
                             String candidate = cc.candidate();
-                            String desc = cc.description();
-                            if (!hasTrailingSpace && !hasSpaceWithin) {
+                            if (startsWithSlash && !hasSpace) {
                                 candidate = "/" + candidate;
                             }
-                            return new IpcFrame.Completion(candidate, desc, groupLabel);
+                            return new IpcFrame.Completion(candidate, cc.description(), groupLabel);
                         })
                 .toList();
     }
