@@ -2,6 +2,7 @@ package top.focess.veto.contract;
 
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -146,12 +147,21 @@ public sealed interface IpcFrame
     record Welcome(int version, long seq) implements SeqResponse {}
 
     /**
+     * An autocomplete candidate returned in a {@link CompleteResult}.
+     *
+     * @param value the completion suggestion text (e.g. {@code /login})
+     * @param description optional helpful description or context
+     * @param group optional category/group name for JLine rendering grouping
+     */
+    record Completion(String value, String description, String group) {}
+
+    /**
      * Response containing autocomplete candidates.
      *
-     * @param content newline-separated completion candidates
+     * @param candidates structured list of completion candidates
      * @param seq echoed from the initiating {@link Complete} request
      */
-    record CompleteResult(String content, long seq) implements SeqResponse {}
+    record CompleteResult(List<Completion> candidates, long seq) implements SeqResponse {}
 
     /**
      * Response containing next argument placeholder and description.

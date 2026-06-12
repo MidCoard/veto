@@ -27,8 +27,8 @@ import top.focess.veto.contract.ZmqTransport;
  * <ul>
  *   <li><b>IO thread</b> — owns the ZMQ socket exclusively. Polls with a 50 ms timeout, drains the
  *       {@link #outbox} and writes to the socket, reads incoming frames and routes them to the
- *       correct per-sequence {@link BlockingQueue} or the {@link #hintQueue}. This is the same
- *       single-IO-thread pattern used by {@code ZmqServer}.
+ *       correct per-sequence queue in {@link #seqHandlers} or the general {@link #incomingQueue}.
+ *       This is the same single-IO-thread pattern used by {@code ZmqServer}.
  *   <li><b>Caller threads</b> — {@link #send(IpcFrame.ClientFrame)} is non-blocking (just enqueues
  *       to the outbox). It automatically registers a per-sequence response queue if the frame is a
  *       sequenced request, so the caller can drain response frames.
@@ -55,7 +55,6 @@ public final class ZmqClient implements AutoCloseable {
     private static final Logger log = Logger.getLogger(ZmqClient.class.getName());
 
     private static final int POLL_TIMEOUT_MS = 50;
-    private static final int MAX_OUTBOX_SIZE = 10_000;
 
     private final ZContext ctx;
     private final ZmqTransport transport;
@@ -222,17 +221,6 @@ public final class ZmqClient implements AutoCloseable {
         if (closed) throw new IllegalStateException("Client is closed");
         if (frame instanceof IpcFrame.SeqRequest sr) {
             seqHandlers.put(sr.seq(), new LinkedBlockingQueue<>(1));
-        } else {
-            // Clear any stale incoming messages before starting a new request exchange
-            incomingQueue.clear();
-        }
-        if (outbox.size() > MAX_OUTBOX_SIZE) {
-            log.warning(
-                    "Outbox congested ("
-                            + outbox.size()
-                            + "), dropping "
-                            + frame.getClass().getSimpleName());
-            return;
         }
         outbox.offer(frame);
     }
@@ -303,6 +291,29 @@ public final class ZmqClient implements AutoCloseable {
                 return null;
             }
         }
+    }
+
+    // ── complete ────────────────────────────────────────────────────────────
+
+    /**
+     * Send a Complete frame and synchronously wait for the response.
+     *
+     * @param line current command line buffer content
+     * @param timeout max time to wait
+     * @param unit time unit
+     * @return the complete response, or {@code null} on timeout / error
+     */
+    @Nullable
+    public IpcFrame.CompleteResult complete(
+            @NotNull String line, long timeout, @NotNull TimeUnit unit) {
+        if (closed) return null;
+        long seq = nextSeq.getAndIncrement();
+        send(new IpcFrame.Complete(line, seq));
+        IpcFrame.ServerFrame reply = receive(seq, timeout, unit);
+        if (reply instanceof IpcFrame.CompleteResult cr) {
+            return cr;
+        }
+        return null;
     }
 
     // ── hint ────────────────────────────────────────────────────────────────

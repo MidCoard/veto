@@ -70,7 +70,11 @@ class IpcFrameSerializationTest {
                     new IpcFrame.Request("test"),
                     new IpcFrame.Delta("hello world", 0),
                     new IpcFrame.Done(Map.of("exit", true), "ok"),
-                    new IpcFrame.CompleteResult("c1\nc2", 2),
+                    new IpcFrame.CompleteResult(
+                            java.util.List.of(
+                                    new IpcFrame.Completion("c1", "desc1", "group1"),
+                                    new IpcFrame.Completion("c2", null, null)),
+                            2),
                     new IpcFrame.HintResult("[user]", "enter username", 3),
                     new IpcFrame.Error("fail", 1),
                     new IpcFrame.Prompt("enter:", Map.of("mask", true)),

@@ -207,9 +207,7 @@ public class ZmqServer {
                         "COMP {}: -> {} candidates", identity.substring(0, 8), completions.size());
                 offerToOutbox(
                         new OutboxEntry(
-                                identity,
-                                new IpcFrame.CompleteResult(
-                                        String.join("\n", completions), comp.seq())));
+                                identity, new IpcFrame.CompleteResult(completions, comp.seq())));
             }
 
             case IpcFrame.Hint h -> {

@@ -7,6 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.command.*;
 import top.focess.veto.contract.HintInfo;
+import top.focess.veto.contract.IpcFrame;
 
 /**
  * Registry wrapping the {@link CommandManager} from {@code focess-command}.
@@ -148,7 +149,8 @@ public class CommandRegistry {
     // ── completion ───────────────────────────────────────────────────────
 
     @NotNull
-    public List<String> complete(@NotNull String terminalId, @Nullable String partial) {
+    public List<IpcFrame.Completion> complete(
+            @NotNull String terminalId, @Nullable String partial) {
         if (partial == null || partial.isBlank()) return List.of();
 
         String input = partial.stripLeading();
@@ -182,12 +184,7 @@ public class CommandRegistry {
                             if (!hasTrailingSpace && !hasSpaceWithin) {
                                 candidate = "/" + candidate;
                             }
-                            StringBuilder sb = new StringBuilder(candidate);
-                            sb.append('\t');
-                            if (desc != null && !desc.isBlank()) sb.append(desc);
-                            if (groupLabel != null && !groupLabel.isBlank())
-                                sb.append('\t').append(groupLabel);
-                            return sb.toString();
+                            return new IpcFrame.Completion(candidate, desc, groupLabel);
                         })
                 .toList();
     }

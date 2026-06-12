@@ -6,7 +6,6 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.jline.reader.*;
@@ -34,20 +33,21 @@ public class VetoTerminal {
 
     private final Terminal t;
     private LineReader reader;
-    private final ZmqClient transport;
+    private final ZmqClient client;
     private final MordantRenderer renderer;
-    private VetoHintWidgets hintWidgets;
 
     private String displayUser;
     private int turnCount;
     private volatile boolean running;
 
-    /** Monotonic sequence number for correlating determined-response exchanges (Complete, Hint). */
-    private final AtomicLong nextSeq = new AtomicLong(1);
+    private final Object requestLock = new Object();
+    private volatile boolean requestInProgress = false;
+    private volatile boolean firstDelta = true;
+    private volatile IpcFrame.ServerFrame terminalFrame = null;
 
-    public VetoTerminal(Terminal t, ZmqClient transport) {
+    public VetoTerminal(Terminal t, ZmqClient client) {
         this.t = t;
-        this.transport = transport;
+        this.client = client;
         this.renderer = new MordantRenderer(t);
     }
 
@@ -64,7 +64,7 @@ public class VetoTerminal {
                                 try {
                                     Thread.sleep(HEARTBEAT_INTERVAL_MS);
                                     if (!running) break;
-                                    transport.send(new IpcFrame.Heartbeat());
+                                    client.send(new IpcFrame.Heartbeat());
                                 } catch (InterruptedException e) {
                                     Thread.currentThread().interrupt();
                                     break;
@@ -76,8 +76,13 @@ public class VetoTerminal {
         heartbeat.start();
 
         // --- hint widgets ---
-        hintWidgets = new VetoHintWidgets(reader, transport);
+        VetoHintWidgets hintWidgets = new VetoHintWidgets(reader, client);
         hintWidgets.enable();
+
+        // --- incoming consumer thread ---
+        Thread consumerThread = new Thread(this::incomingLoop, "veto-incoming");
+        consumerThread.setDaemon(true);
+        consumerThread.start();
 
         try {
             repl();
@@ -85,8 +90,9 @@ public class VetoTerminal {
             running = false;
             hintWidgets.disable();
             heartbeat.interrupt();
-            transport.send(new IpcFrame.Bye());
-            transport.close();
+            consumerThread.interrupt();
+            client.send(new IpcFrame.Bye());
+            client.close();
         }
     }
 
@@ -105,85 +111,103 @@ public class VetoTerminal {
                 MordantTerminal.println(t, MordantTerminal.dim(t, "  thinking…"));
             }
 
-            IpcFrame result = exchange(line);
-
-            if (result instanceof IpcFrame.Done done) {
-                applySessionMeta(done.meta());
-                if (Boolean.TRUE.equals(done.meta().get(IpcMeta.EXIT))) break;
-                MordantTerminal.println(t, "");
-            } else if (result instanceof IpcFrame.Error err) {
-                renderer.error(err.content());
-            }
+            executeRequest(line);
         }
         MordantTerminal.println(t, "  Goodbye.");
     }
 
-    private IpcFrame exchange(String line) {
-        transport.send(new IpcFrame.Request(line));
-
-        long deadline = System.currentTimeMillis() + REQUEST_TIMEOUT_MS;
-        boolean firstDelta = true;
-
-        while (System.currentTimeMillis() < deadline) {
-            long remaining = deadline - System.currentTimeMillis();
-            if (remaining <= 0) break;
-            IpcFrame.ServerFrame frame = transport.receive(remaining, TimeUnit.MILLISECONDS);
-            if (frame == null) {
-                return new IpcFrame.Error("No response from backend.", 0);
-            }
-
-            switch (frame) {
-                case IpcFrame.Delta d -> {
-                    log.fine("[DELTA] len=" + d.content().length());
-                    if (firstDelta) {
-                        MordantTerminal.println(t, "");
-                        firstDelta = false;
-                    }
-                    MordantTerminal.print(t, d.content());
+    private void executeRequest(String line) {
+        synchronized (requestLock) {
+            firstDelta = true;
+            terminalFrame = null;
+            requestInProgress = true;
+            client.send(new IpcFrame.Request(line));
+            long deadline = System.currentTimeMillis() + REQUEST_TIMEOUT_MS;
+            while (requestInProgress) {
+                long remaining = deadline - System.currentTimeMillis();
+                if (remaining <= 0) {
+                    renderer.error("Request timed out.");
+                    requestInProgress = false;
+                    break;
                 }
-
-                case IpcFrame.Progress p ->
-                        MordantTerminal.println(t, MordantTerminal.dim(t, "  ⏳ " + p.content()));
-
-                case IpcFrame.Prompt prompt -> {
-                    MordantTerminal.println(t, "");
-                    boolean mask = Boolean.TRUE.equals(prompt.meta().get(IpcMeta.MASK));
-                    String promptText = "  " + prompt.content() + " ";
-                    String reply;
-                    try {
-                        reply =
-                                mask
-                                        ? reader.readLine(promptText, '\0')
-                                        : reader.readLine(promptText);
-                    } catch (Exception e) {
-                        return new IpcFrame.Error("Input cancelled.", 0);
-                    }
-                    if (reply == null || reply.trim().isEmpty()) {
-                        transport.send(new IpcFrame.Input(""));
-                    } else {
-                        transport.send(new IpcFrame.Input(reply.trim()));
-                    }
-                    deadline = System.currentTimeMillis() + REQUEST_TIMEOUT_MS;
+                try {
+                    requestLock.wait(remaining);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
                 }
-
-                case IpcFrame.Done d -> {
-                    if (!firstDelta) {
-                        MordantTerminal.println(t, "");
-                    }
-                    return d;
-                }
-
-                case IpcFrame.Error e -> {
-                    if (!firstDelta) {
-                        MordantTerminal.println(t, "");
-                    }
-                    return e;
-                }
-
-                default -> {}
             }
         }
-        return new IpcFrame.Error("Request timed out.", 0);
+    }
+
+    private void incomingLoop() {
+        while (running && !Thread.currentThread().isInterrupted()) {
+            try {
+                IpcFrame.ServerFrame frame = client.receive();
+                if (frame == null) {
+                    continue;
+                }
+                handleIncomingFrame(frame);
+            } catch (Exception e) {
+                if (running) {
+                    log.log(Level.WARNING, "Error in incoming loop", e);
+                }
+            }
+        }
+    }
+
+    private void handleIncomingFrame(IpcFrame.ServerFrame frame) {
+        if (frame instanceof IpcFrame.Delta d) {
+            log.fine("[DELTA] len=" + d.content().length());
+            if (firstDelta) {
+                MordantTerminal.println(t, "");
+                firstDelta = false;
+            }
+            MordantTerminal.print(t, d.content());
+        } else if (frame instanceof IpcFrame.Progress p) {
+            MordantTerminal.println(t, MordantTerminal.dim(t, "  ⏳ " + p.content()));
+        } else if (frame instanceof IpcFrame.Prompt prompt) {
+            MordantTerminal.println(t, "");
+            boolean mask = Boolean.TRUE.equals(prompt.meta().get(IpcMeta.MASK));
+            String promptText = "  " + prompt.content() + " ";
+            String reply;
+            try {
+                reply = mask ? reader.readLine(promptText, '\0') : reader.readLine(promptText);
+            } catch (Exception e) {
+                client.send(new IpcFrame.Cancel());
+                reply = null;
+            }
+            if (reply != null) {
+                if (reply.trim().isEmpty()) {
+                    client.send(new IpcFrame.Input(""));
+                } else {
+                    client.send(new IpcFrame.Input(reply.trim()));
+                }
+            }
+        } else if (frame instanceof IpcFrame.Done d) {
+            if (!firstDelta) {
+                MordantTerminal.println(t, "");
+            }
+            applySessionMeta(d.meta());
+            if (Boolean.TRUE.equals(d.meta().get(IpcMeta.EXIT))) {
+                running = false;
+            }
+            signalDone(d);
+        } else if (frame instanceof IpcFrame.Error e) {
+            if (!firstDelta) {
+                MordantTerminal.println(t, "");
+            }
+            renderer.error(e.content());
+            signalDone(e);
+        }
+    }
+
+    private void signalDone(IpcFrame.ServerFrame frame) {
+        synchronized (requestLock) {
+            terminalFrame = frame;
+            requestInProgress = false;
+            requestLock.notifyAll();
+        }
     }
 
     // ── session metadata ──────────────────────────────────────────────────
@@ -240,18 +264,16 @@ public class VetoTerminal {
         public void complete(LineReader r, ParsedLine line, List<Candidate> out) {
             String fullLine = line.line();
             if (!fullLine.startsWith("/")) return;
-            long seq = nextSeq.getAndIncrement();
-            transport.send(new IpcFrame.Complete(fullLine, seq));
-            IpcFrame.ServerFrame reply = transport.receive(seq, 3, TimeUnit.SECONDS);
-            if (reply instanceof IpcFrame.CompleteResult compResult
-                    && compResult.content() != null) {
-                for (String entry : compResult.content().split("\n")) {
-                    String trimmed = entry.trim();
-                    if (trimmed.isEmpty()) continue;
-                    String[] parts = trimmed.split("\t", 3);
-                    String name = parts[0];
-                    String desc = parts.length > 1 && !parts[1].isBlank() ? parts[1] : null;
-                    String group = parts.length > 2 && !parts[2].isBlank() ? parts[2] : null;
+            IpcFrame.CompleteResult compResult = client.complete(fullLine, 3, TimeUnit.SECONDS);
+            if (compResult != null && compResult.candidates() != null) {
+                for (IpcFrame.Completion comp : compResult.candidates()) {
+                    String name = comp.value();
+                    String desc =
+                            comp.description() != null && !comp.description().isBlank()
+                                    ? comp.description()
+                                    : null;
+                    String group =
+                            comp.group() != null && !comp.group().isBlank() ? comp.group() : null;
                     out.add(new Candidate(name, name, group, desc, null, null, true));
                 }
             }

@@ -28,12 +28,12 @@ public final class VetoHintWidgets extends Widgets {
 
     private static final long HINT_TIMEOUT_MS = 500;
 
-    private final ZmqClient transport;
+    private final ZmqClient client;
     private boolean enabled;
 
-    public VetoHintWidgets(LineReader reader, ZmqClient transport) {
+    public VetoHintWidgets(LineReader reader, ZmqClient client) {
         super(reader);
-        this.transport = transport;
+        this.client = client;
 
         addWidget("_veto-self-insert", this::vetoInsert);
         addWidget("_veto-backward-delete-char", this::vetoBackwardDelete);
@@ -117,7 +117,7 @@ public final class VetoHintWidgets extends Widgets {
 
         // Starts with "/" and ends with a space — trigger a new hint fetch.
         if (line.endsWith(" ")) {
-            IpcFrame.HintResult hint = transport.hint(line, HINT_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+            IpcFrame.HintResult hint = client.hint(line, HINT_TIMEOUT_MS, TimeUnit.MILLISECONDS);
             if (hint != null) {
                 String placeholder = hint.placeholder();
                 if (placeholder != null && !placeholder.isBlank()) {
