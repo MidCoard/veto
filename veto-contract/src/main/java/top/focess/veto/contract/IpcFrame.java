@@ -1,5 +1,6 @@
 package top.focess.veto.contract;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.util.List;
@@ -163,14 +164,33 @@ public sealed interface IpcFrame
      */
     record CompleteResult(List<Completion> candidates, long seq) implements SeqResponse {}
 
+    record HintInfo(String placeholder, String description) {
+        public static final HintInfo EMPTY = new HintInfo("", null);
+
+        @JsonIgnore
+        public boolean isEmpty() {
+            return placeholder == null || placeholder.isEmpty();
+        }
+
+        @JsonIgnore
+        public String displayText() {
+            if (isEmpty()) {
+                return "";
+            }
+            if (description != null) {
+                return placeholder + " — " + description;
+            }
+            return placeholder;
+        }
+    }
+
     /**
      * Response containing next argument placeholder and description.
      *
-     * @param placeholder placeholder text (e.g. {@code <user>})
-     * @param description optional helpful description or context
+     * @param hint next argument details (placeholder and description)
      * @param seq echoed from the initiating {@link Hint} request
      */
-    record HintResult(String placeholder, String description, long seq) implements SeqResponse {}
+    record HintResult(HintInfo hint, long seq) implements SeqResponse {}
 
     /**
      * Terminal frame — response complete.

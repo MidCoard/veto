@@ -2,6 +2,7 @@ package top.focess.veto.terminal;
 
 import com.github.ajalt.mordant.terminal.Terminal;
 import java.util.logging.Logger;
+import org.jline.reader.LineReader;
 import top.focess.veto.contract.IpcFrame;
 
 /**
@@ -12,9 +13,14 @@ public class MordantRenderer {
     private static final Logger log = Logger.getLogger(MordantRenderer.class.getName());
 
     private final Terminal terminal;
+    private LineReader reader;
 
     public MordantRenderer(Terminal terminal) {
         this.terminal = terminal;
+    }
+
+    public void setReader(LineReader reader) {
+        this.reader = reader;
     }
 
     // ── IpcFrame rendering ──────────────────────────────────────────────
@@ -41,7 +47,11 @@ public class MordantRenderer {
     // ── low-level output ────────────────────────────────────────────────
 
     public void println(String text) {
-        MordantTerminal.println(terminal, text);
+        if (reader != null) {
+            reader.printAbove(text);
+        } else {
+            MordantTerminal.println(terminal, text);
+        }
     }
 
     public void print(String text) {
@@ -49,10 +59,20 @@ public class MordantRenderer {
     }
 
     public void error(String text) {
-        MordantTerminal.println(terminal, MordantTerminal.red(terminal, "✗ " + text));
+        String err = MordantTerminal.red(terminal, "✗ " + text);
+        if (reader != null) {
+            reader.printAbove(err);
+        } else {
+            MordantTerminal.println(terminal, err);
+        }
     }
 
     public void separator() {
-        MordantTerminal.println(terminal, MordantTerminal.dim(terminal, "─".repeat(50)));
+        String sep = MordantTerminal.dim(terminal, "─".repeat(50));
+        if (reader != null) {
+            reader.printAbove(sep);
+        } else {
+            MordantTerminal.println(terminal, sep);
+        }
     }
 }

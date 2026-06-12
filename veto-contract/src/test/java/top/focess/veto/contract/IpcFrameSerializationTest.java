@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
@@ -71,11 +72,11 @@ class IpcFrameSerializationTest {
                     new IpcFrame.Delta("hello world", 0),
                     new IpcFrame.Done(Map.of("exit", true), "ok"),
                     new IpcFrame.CompleteResult(
-                            java.util.List.of(
+                            List.of(
                                     new IpcFrame.Completion("c1", "desc1", "group1"),
                                     new IpcFrame.Completion("c2", null, null)),
                             2),
-                    new IpcFrame.HintResult("[user]", "enter username", 3),
+                    new IpcFrame.HintResult(new IpcFrame.HintInfo("[user]", "enter username"), 3),
                     new IpcFrame.Error("fail", 1),
                     new IpcFrame.Prompt("enter:", Map.of("mask", true)),
                 }) {

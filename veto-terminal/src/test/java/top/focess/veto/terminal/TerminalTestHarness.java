@@ -14,6 +14,25 @@ public class TerminalTestHarness {
 
     public static void main(String[] args) throws Exception {
         System.out.println("Veto Terminal Test Harness");
+        try {
+            Class<?> cls = Class.forName("org.jline.terminal.impl.Status");
+            System.out.println("FOUND: " + cls.getName());
+        } catch (Exception e) {
+            System.out.println("NOT FOUND in impl: " + e);
+        }
+        try {
+            Class<?> cls = Class.forName("org.jline.terminal.Status");
+            System.out.println("FOUND: " + cls.getName());
+        } catch (Exception e) {
+            System.out.println("NOT FOUND in terminal: " + e);
+        }
+        try {
+            Class<?> cls = Class.forName("org.jline.reader.impl.DefaultParser");
+            System.out.println("FOUND: " + cls.getName());
+        } catch (Exception e) {
+            System.out.println("NOT FOUND DefaultParser: " + e);
+        }
+        System.exit(0);
         System.out.println("Connecting to " + ADDR + " ...");
 
         ZmqClient transport = new ZmqClient(ADDR);

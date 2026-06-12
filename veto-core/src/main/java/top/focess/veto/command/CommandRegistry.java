@@ -6,8 +6,8 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.command.*;
-import top.focess.veto.contract.HintInfo;
 import top.focess.veto.contract.IpcFrame;
+import top.focess.veto.contract.IpcFrame.HintInfo;
 
 /**
  * Registry wrapping the {@link CommandManager} from {@code focess-command}.

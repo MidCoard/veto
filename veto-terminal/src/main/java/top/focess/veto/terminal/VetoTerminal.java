@@ -6,6 +6,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.jline.reader.*;
@@ -36,14 +37,12 @@ public class VetoTerminal {
     private final ZmqClient client;
     private final MordantRenderer renderer;
 
-    private String displayUser;
-    private int turnCount;
+    private TerminalStatus status;
     private volatile boolean running;
 
-    private final Object requestLock = new Object();
-    private volatile boolean requestInProgress = false;
-    private volatile boolean firstDelta = true;
-    private volatile IpcFrame.ServerFrame terminalFrame = null;
+    private final StringBuilder deltaBuffer = new StringBuilder();
+    private final AtomicReference<IpcFrame.Prompt> activePrompt = new AtomicReference<>(null);
+    private Thread mainThread;
 
     public VetoTerminal(Terminal t, ZmqClient client) {
         this.t = t;
@@ -53,6 +52,11 @@ public class VetoTerminal {
 
     public void start(LineReader reader) {
         this.reader = reader;
+        this.renderer.setReader(reader);
+        this.mainThread = Thread.currentThread();
+        this.status = new TerminalStatus(reader.getTerminal(), t);
+        this.status.refresh();
+
         printBanner();
         running = true;
 
@@ -68,6 +72,10 @@ public class VetoTerminal {
                                 } catch (InterruptedException e) {
                                     Thread.currentThread().interrupt();
                                     break;
+                                } catch (Exception e) {
+                                    if (running) {
+                                        log.log(Level.WARNING, "Error in heartbeat loop", e);
+                                    }
                                 }
                             }
                         },
@@ -80,7 +88,24 @@ public class VetoTerminal {
         hintWidgets.enable();
 
         // --- incoming consumer thread ---
-        Thread consumerThread = new Thread(this::incomingLoop, "veto-incoming");
+        Thread consumerThread =
+                new Thread(
+                        () -> {
+                            while (running && !Thread.currentThread().isInterrupted()) {
+                                try {
+                                    IpcFrame.ServerFrame frame = client.receive();
+                                    if (frame == null) {
+                                        continue;
+                                    }
+                                    handleIncomingFrame(frame);
+                                } catch (Exception e) {
+                                    if (running) {
+                                        log.log(Level.WARNING, "Error in incoming loop", e);
+                                    }
+                                }
+                            }
+                        },
+                        "veto-incoming");
         consumerThread.setDaemon(true);
         consumerThread.start();
 
@@ -91,6 +116,7 @@ public class VetoTerminal {
             hintWidgets.disable();
             heartbeat.interrupt();
             consumerThread.interrupt();
+            status.clear();
             client.send(new IpcFrame.Bye());
             client.close();
         }
@@ -99,16 +125,43 @@ public class VetoTerminal {
     // ── repl ──────────────────────────────────────────────────────────────
 
     private void repl() {
-        while (running) {
-            printHint();
-            String line = reader.readLine(prompt());
-            if (line == null) break;
+        while (running && !Thread.currentThread().isInterrupted()) {
+            if (status != null) {
+                status.refresh();
+            }
+            String line;
+            try {
+                line = reader.readLine(prompt());
+            } catch (UserInterruptException e) {
+                if (Thread.currentThread().isInterrupted()) {
+                    Thread.interrupted(); // Clear interrupted status
+                    if (!running) {
+                        break;
+                    }
+                    continue;
+                }
+                client.send(new IpcFrame.Cancel());
+                activePrompt.set(null);
+                continue;
+            } catch (EndOfFileException e) {
+                break;
+            }
+
+            if (line == null || Thread.currentThread().isInterrupted()) break;
             line = line.trim();
+
+            IpcFrame.Prompt active = activePrompt.get();
+            if (active != null) {
+                client.send(new IpcFrame.Input(line));
+                activePrompt.set(null);
+                continue;
+            }
+
             if (line.isEmpty()) continue;
 
             if (!line.startsWith("/")) {
                 echoInput(line);
-                MordantTerminal.println(t, MordantTerminal.dim(t, "  thinking…"));
+                reader.printAbove(MordantTerminal.dim(t, "  thinking…"));
             }
 
             executeRequest(line);
@@ -117,109 +170,63 @@ public class VetoTerminal {
     }
 
     private void executeRequest(String line) {
-        synchronized (requestLock) {
-            firstDelta = true;
-            terminalFrame = null;
-            requestInProgress = true;
-            client.send(new IpcFrame.Request(line));
-            long deadline = System.currentTimeMillis() + REQUEST_TIMEOUT_MS;
-            while (requestInProgress) {
-                long remaining = deadline - System.currentTimeMillis();
-                if (remaining <= 0) {
-                    renderer.error("Request timed out.");
-                    requestInProgress = false;
-                    break;
-                }
-                try {
-                    requestLock.wait(remaining);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
-                }
-            }
-        }
+        client.send(new IpcFrame.Request(line));
     }
 
-    private void incomingLoop() {
-        while (running && !Thread.currentThread().isInterrupted()) {
-            try {
-                IpcFrame.ServerFrame frame = client.receive();
-                if (frame == null) {
-                    continue;
-                }
-                handleIncomingFrame(frame);
-            } catch (Exception e) {
-                if (running) {
-                    log.log(Level.WARNING, "Error in incoming loop", e);
-                }
-            }
+    private void flushDeltaBuffer() {
+        if (!deltaBuffer.isEmpty()) {
+            reader.printAbove(deltaBuffer.toString());
+            deltaBuffer.setLength(0);
         }
     }
 
     private void handleIncomingFrame(IpcFrame.ServerFrame frame) {
         if (frame instanceof IpcFrame.Delta d) {
             log.fine("[DELTA] len=" + d.content().length());
-            if (firstDelta) {
-                MordantTerminal.println(t, "");
-                firstDelta = false;
+            deltaBuffer.append(d.content());
+            int newlineIndex;
+            while ((newlineIndex = deltaBuffer.indexOf("\n")) != -1) {
+                String line = deltaBuffer.substring(0, newlineIndex);
+                deltaBuffer.delete(0, newlineIndex + 1);
+                reader.printAbove(line);
             }
-            MordantTerminal.print(t, d.content());
         } else if (frame instanceof IpcFrame.Progress p) {
-            MordantTerminal.println(t, MordantTerminal.dim(t, "  ⏳ " + p.content()));
+            flushDeltaBuffer();
+            String styled = MordantTerminal.dim(t, "  ⏳ " + p.content());
+            reader.printAbove(styled);
         } else if (frame instanceof IpcFrame.Prompt prompt) {
-            MordantTerminal.println(t, "");
-            boolean mask = Boolean.TRUE.equals(prompt.meta().get(IpcMeta.MASK));
-            String promptText = "  " + prompt.content() + " ";
-            String reply;
-            try {
-                reply = mask ? reader.readLine(promptText, '\0') : reader.readLine(promptText);
-            } catch (Exception e) {
-                client.send(new IpcFrame.Cancel());
-                reply = null;
+            flushDeltaBuffer();
+            activePrompt.set(prompt);
+            if (mainThread != null) {
+                mainThread.interrupt();
             }
-            if (reply != null) {
-                if (reply.trim().isEmpty()) {
-                    client.send(new IpcFrame.Input(""));
-                } else {
-                    client.send(new IpcFrame.Input(reply.trim()));
-                }
+        } else if (frame instanceof IpcFrame.Done(Map<String, Object> meta, String content)) {
+            flushDeltaBuffer();
+            if (content != null && !content.isBlank()) {
+                reader.printAbove(content);
             }
-        } else if (frame instanceof IpcFrame.Done d) {
-            if (!firstDelta) {
-                MordantTerminal.println(t, "");
-            }
-            applySessionMeta(d.meta());
-            if (Boolean.TRUE.equals(d.meta().get(IpcMeta.EXIT))) {
+            applySessionMeta(meta);
+            if (Boolean.TRUE.equals(meta.get(IpcMeta.EXIT))) {
                 running = false;
             }
-            signalDone(d);
-        } else if (frame instanceof IpcFrame.Error e) {
-            if (!firstDelta) {
-                MordantTerminal.println(t, "");
+            if (mainThread != null) {
+                mainThread.interrupt();
             }
+        } else if (frame instanceof IpcFrame.Error e) {
+            flushDeltaBuffer();
             renderer.error(e.content());
-            signalDone(e);
-        }
-    }
-
-    private void signalDone(IpcFrame.ServerFrame frame) {
-        synchronized (requestLock) {
-            terminalFrame = frame;
-            requestInProgress = false;
-            requestLock.notifyAll();
+            if (mainThread != null) {
+                mainThread.interrupt();
+            }
         }
     }
 
     // ── session metadata ──────────────────────────────────────────────────
 
     private void applySessionMeta(Map<String, Object> meta) {
-        if (meta.containsKey(IpcMeta.USERNAME)) displayUser = (String) meta.get(IpcMeta.USERNAME);
-        if (Boolean.TRUE.equals(meta.get(IpcMeta.CLEAR_SESSION))) {
-            displayUser = null;
-            turnCount = 0;
+        if (status != null) {
+            status.apply(meta);
         }
-        if (meta.containsKey(IpcMeta.TURN_NUMBER))
-            turnCount = ((Number) meta.get(IpcMeta.TURN_NUMBER)).intValue();
     }
 
     // ── UI helpers ────────────────────────────────────────────────────────
@@ -236,17 +243,12 @@ public class VetoTerminal {
         MordantTerminal.println(t, "");
     }
 
-    private void printHint() {
-        if (displayUser == null) {
-            MordantTerminal.println(t, MordantTerminal.dim(t, "  /login to start | /help"));
-        } else {
-            MordantTerminal.println(
-                    t, MordantTerminal.dim(t, "  " + displayUser + " | turns: " + turnCount));
-        }
-    }
-
     private String prompt() {
-        return displayUser != null ? "▸ " : "◇ ";
+        IpcFrame.Prompt active = activePrompt.get();
+        if (active != null) {
+            return "  " + active.content() + " ▸ ";
+        }
+        return (status != null && status.getDisplayUser() != null) ? "▸ " : "◇ ";
     }
 
     private void printBanner() {

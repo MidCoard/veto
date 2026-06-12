@@ -16,8 +16,8 @@ import org.zeromq.ZMQ;
 import top.focess.veto.command.CommandRegistry;
 import top.focess.veto.command.TerminalSessionManager;
 import top.focess.veto.command.VetoCommandSender;
-import top.focess.veto.contract.HintInfo;
 import top.focess.veto.contract.IpcFrame;
+import top.focess.veto.contract.IpcFrame.HintInfo;
 import top.focess.veto.contract.IpcMeta;
 import top.focess.veto.contract.ZmqTransport;
 
@@ -214,13 +214,7 @@ public class ZmqServer {
                 log.debug("HINT {}: {}", identity.substring(0, 8), h.raw());
                 session.lastActivityNanos = System.nanoTime();
                 HintInfo hint = registry.hint(identity, h.raw());
-                offerToOutbox(
-                        new OutboxEntry(
-                                identity,
-                                new IpcFrame.HintResult(
-                                        hint.placeholder() != null ? hint.placeholder() : "",
-                                        hint.description(),
-                                        h.seq())));
+                offerToOutbox(new OutboxEntry(identity, new IpcFrame.HintResult(hint, h.seq())));
             }
 
             case IpcFrame.Cancel c -> {

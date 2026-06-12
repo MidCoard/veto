@@ -4,7 +4,6 @@ import java.util.concurrent.TimeUnit;
 import org.jline.reader.LineReader;
 import org.jline.reader.LineReader.SuggestionType;
 import org.jline.widget.Widgets;
-import top.focess.veto.contract.HintInfo;
 import top.focess.veto.contract.IpcFrame;
 
 /**
@@ -117,12 +116,12 @@ public final class VetoHintWidgets extends Widgets {
 
         // Starts with "/" and ends with a space — trigger a new hint fetch.
         if (line.endsWith(" ")) {
-            IpcFrame.HintResult hint = client.hint(line, HINT_TIMEOUT_MS, TimeUnit.MILLISECONDS);
-            if (hint != null) {
-                String placeholder = hint.placeholder();
-                if (placeholder != null && !placeholder.isBlank()) {
-                    String desc = hint.description();
-                    setTailTip(new HintInfo(placeholder, desc).displayText());
+            IpcFrame.HintResult hintResult =
+                    client.hint(line, HINT_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+            if (hintResult != null && hintResult.hint() != null) {
+                String display = hintResult.hint().displayText();
+                if (display != null && !display.isEmpty()) {
+                    setTailTip(display);
                     return;
                 }
             }

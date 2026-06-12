@@ -18,12 +18,6 @@ public final class IpcMeta {
     /** {@code boolean} — the terminal should exit its REPL loop. */
     public static final String EXIT = "exit";
 
-    /** {@code boolean} — this {@code Done} is a response to a {@link IpcFrame.Hint}. */
-    public static final String IS_HINT = "isHint";
-
-    /** {@code String} — human-readable description (used with hint responses). */
-    public static final String DESCRIPTION = "description";
-
     /**
      * {@code boolean} — the terminal should clear cached session metadata (username, turn count).
      */
