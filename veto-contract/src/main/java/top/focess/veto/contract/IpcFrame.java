@@ -110,7 +110,12 @@ public sealed interface IpcFrame
     record Hint(String raw, long seq) implements SeqRequest {}
 
     /** User replied to a backend-issued {@link Prompt}. Fire-and-forget. */
-    record Input(String raw) implements ClientFrame {}
+    record Input(String raw) implements ClientFrame {
+        @Override
+        public String toString() {
+            return "Input[raw=********]";
+        }
+    }
 
     /** User interrupted the current request (Ctrl+C). Fire-and-forget. */
     record Cancel() implements ClientFrame {}

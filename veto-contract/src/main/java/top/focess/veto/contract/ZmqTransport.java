@@ -3,6 +3,8 @@ package top.focess.veto.contract;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import org.zeromq.SocketType;
 import org.zeromq.ZContext;
 import org.zeromq.ZMQ;
@@ -29,6 +31,8 @@ import org.zeromq.ZMsg;
  * ZmqServer#ioLoop} (single-threaded event loop owning the socket) for the supported pattern.
  */
 public final class ZmqTransport implements AutoCloseable {
+
+    private static final Logger log = Logger.getLogger(ZmqTransport.class.getName());
 
     static final ObjectMapper JSON = new ObjectMapper();
 
@@ -69,6 +73,7 @@ public final class ZmqTransport implements AutoCloseable {
 
     /** Send a frame to a specific peer identity (ROUTER only). */
     public void send(String identity, IpcFrame frame) {
+        log.fine("Router sending to [" + identity + "]: " + frame);
         byte[] payload = serialize(frame);
         if (payload == null) return;
         socket.sendMore(identity.getBytes(ZMQ.CHARSET));
@@ -77,6 +82,7 @@ public final class ZmqTransport implements AutoCloseable {
 
     /** Send a frame (DEALER). */
     public void send(IpcFrame frame) {
+        log.fine("Dealer sending: " + frame);
         byte[] payload = serialize(frame);
         if (payload == null) return;
         socket.send(payload);
@@ -107,8 +113,8 @@ public final class ZmqTransport implements AutoCloseable {
     private ZmqMessage decodeMsg(ZMsg msg) {
         if (msg == null || msg.isEmpty()) return null;
 
-        String identity = "";
-        String payload;
+        final String identity;
+        final String payload;
 
         if (type == SocketType.ROUTER) {
             if (msg.size() < 2) {
@@ -118,12 +124,21 @@ public final class ZmqTransport implements AutoCloseable {
             identity = new String(msg.pop().getData(), StandardCharsets.UTF_8);
             payload = new String(msg.pop().getData(), StandardCharsets.UTF_8);
         } else {
+            identity = "";
             payload = new String(msg.pop().getData(), StandardCharsets.UTF_8);
         }
         msg.destroy();
 
         IpcFrame frame = deserialize(payload);
-        if (frame == null) return null;
+        if (frame == null) {
+            log.warning("Failed to deserialize payload: " + payload);
+            return null;
+        }
+        if (type == SocketType.ROUTER) {
+            log.fine("Router received from [" + identity + "]: " + frame);
+        } else {
+            log.fine("Dealer received: " + frame);
+        }
         return new ZmqMessage(identity, frame);
     }
 
@@ -132,6 +147,7 @@ public final class ZmqTransport implements AutoCloseable {
         try {
             return JSON.writeValueAsBytes(frame);
         } catch (JsonProcessingException e) {
+            log.log(Level.WARNING, "Failed to serialize frame: " + frame, e);
             return null;
         }
     }
@@ -141,6 +157,7 @@ public final class ZmqTransport implements AutoCloseable {
         try {
             return JSON.readValue(payload, IpcFrame.class);
         } catch (Exception e) {
+            log.log(Level.WARNING, "Failed to deserialize payload: " + payload, e);
             return null;
         }
     }

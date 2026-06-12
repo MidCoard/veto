@@ -67,4 +67,12 @@ class ZmqTransportRoundTripTest {
         assertNotNull(received2, "Done deserialization returned null");
         assertInstanceOf(IpcFrame.Done.class, received2);
     }
+
+    @Test
+    void inputFrameToStringIsMasked() {
+        IpcFrame.Input input = new IpcFrame.Input("my-secret-key-123");
+        String str = input.toString();
+        assertFalse(str.contains("my-secret-key-123"));
+        assertTrue(str.contains("********"));
+    }
 }

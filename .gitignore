@@ -64,3 +64,4 @@ gradle.properties
 ## Claude Code
 .claude/
 .veto_history
+*.lck

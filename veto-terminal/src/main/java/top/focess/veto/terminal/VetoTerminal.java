@@ -7,8 +7,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.logging.FileHandler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.logging.SimpleFormatter;
 import org.jline.reader.*;
 import org.jline.terminal.TerminalBuilder;
 import top.focess.veto.contract.IpcFrame;
@@ -249,7 +251,7 @@ public class VetoTerminal {
     private String prompt() {
         IpcFrame.Prompt active = activePrompt.get();
         if (active != null) {
-            return "  " + renderer.cyan(active.content()) + " " + renderer.yellow("▸") + " ";
+            return renderer.yellow("▸") + " " + renderer.cyan(active.content()) + " ";
         }
         return status.getDisplayUser() != null ? renderer.green("▸ ") : renderer.red("◇ ");
     }
@@ -285,11 +287,32 @@ public class VetoTerminal {
     }
 
     // ── main ──────────────────────────────────────────────────────────────
-
     public static void main(String[] args) {
         System.setProperty("file.encoding", "UTF-8");
+
+        boolean debug = false;
+        for (String arg : args) {
+            if ("--debug".equals(arg) || "-d".equals(arg)) {
+                debug = true;
+                break;
+            }
+        }
+
+        if (debug) {
+            try {
+                FileHandler fileHandler = new FileHandler("veto_debug.log", true);
+                fileHandler.setFormatter(new SimpleFormatter());
+                fileHandler.setLevel(Level.FINE);
+
+                Logger myLogger = Logger.getLogger("top.focess.veto");
+                myLogger.addHandler(fileHandler);
+                myLogger.setLevel(Level.FINE);
+                myLogger.setUseParentHandlers(false); // Do not print to console
+            } catch (Exception ignored) {
+            }
+        }
+
         Logger.getLogger("org.jline").setLevel(Level.OFF);
-        Logger.getLogger("top.focess.veto.terminal").setLevel(Level.FINE);
 
         try {
             org.jline.terminal.Terminal jt =

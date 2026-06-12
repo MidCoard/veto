@@ -57,3 +57,13 @@ tasks.named<JavaExec>("run") {
     standardInput = System.`in`
     jvmArgs = listOf("-Dfile.encoding=UTF-8")
 }
+
+tasks.register<JavaExec>("runDebug") {
+    group = "application"
+    description = "Runs the terminal in debug mode with fine-grained logging to veto_debug.log"
+    mainClass = "top.focess.veto.terminal.VetoTerminal"
+    classpath = sourceSets["main"].runtimeClasspath
+    standardInput = System.`in`
+    args = listOf("--debug")
+    jvmArgs = listOf("-Dfile.encoding=UTF-8")
+}
