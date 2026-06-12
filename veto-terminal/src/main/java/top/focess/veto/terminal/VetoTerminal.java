@@ -3,6 +3,7 @@ package top.focess.veto.terminal;
 import com.github.ajalt.mordant.terminal.Terminal;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -49,7 +50,7 @@ public class VetoTerminal {
     private State state = State.IDLE;
     private State targetState = State.IDLE;
     private final Object stateLock = new Object();
-    private final List<String> requestQueue = new java.util.ArrayList<>();
+    private final List<String> requestQueue = new ArrayList<>();
 
     private IpcFrame.Prompt activePrompt = null;
     private Thread mainThread;
@@ -184,9 +185,11 @@ public class VetoTerminal {
                         requestQueue.clear();
                         state = State.IDLE;
                         continue;
-                    } else {
+                    }
+                    if (state == State.IDLE) {
                         break;
                     }
+                    throw new RuntimeException("Unexpected interrupt in state " + state, e);
                 }
             } catch (EndOfFileException e) {
                 break;
@@ -247,13 +250,7 @@ public class VetoTerminal {
                         renderer.println(content);
                     }
                     status.apply(meta);
-                    if (!requestQueue.isEmpty()) {
-                        String nextReq = requestQueue.removeFirst();
-                        client.send(new IpcFrame.Request(nextReq));
-                        targetState = State.AWAITING_RESPONSE;
-                    } else {
-                        targetState = State.IDLE;
-                    }
+                    dispatchNextOrIdle();
                     state = State.PROGRAMMATIC_INTERRUPT;
                     mainThread.interrupt();
                 } else if (frame instanceof IpcFrame.Terminate(String reason)) {
@@ -268,17 +265,27 @@ public class VetoTerminal {
                     if (e.content() != null) {
                         renderer.error(e.content());
                     }
-                    if (!requestQueue.isEmpty()) {
-                        String nextReq = requestQueue.removeFirst();
-                        client.send(new IpcFrame.Request(nextReq));
-                        targetState = State.AWAITING_RESPONSE;
-                    } else {
-                        targetState = State.IDLE;
-                    }
+                    dispatchNextOrIdle();
                     state = State.PROGRAMMATIC_INTERRUPT;
                     mainThread.interrupt();
                 }
             }
+        }
+    }
+
+    /**
+     * Dequeues and dispatches the next request if one is queued, transitioning state to
+     * AWAITING_RESPONSE. Otherwise, sets targetState to IDLE.
+     *
+     * <p>Note: Must be called while holding {@code stateLock}.
+     */
+    private void dispatchNextOrIdle() {
+        if (!requestQueue.isEmpty()) {
+            String nextReq = requestQueue.removeFirst();
+            client.send(new IpcFrame.Request(nextReq));
+            targetState = State.AWAITING_RESPONSE;
+        } else {
+            targetState = State.IDLE;
         }
     }
 
@@ -345,7 +352,7 @@ public class VetoTerminal {
                 Logger myLogger = Logger.getLogger("top.focess.veto");
                 myLogger.addHandler(fileHandler);
                 myLogger.setLevel(Level.FINE);
-                myLogger.setUseParentHandlers(false); // Do not print to console
+                myLogger.setUseParentHandlers(false);
             } catch (Exception ignored) {
             }
         }
