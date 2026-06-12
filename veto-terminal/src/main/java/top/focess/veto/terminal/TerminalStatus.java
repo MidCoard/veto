@@ -18,6 +18,7 @@ public class TerminalStatus {
 
     private final MordantRenderer renderer;
     private final Status status;
+    private final List<String> requestQueue = new java.util.ArrayList<>();
     private String displayUser;
     private int turnCount;
 
@@ -30,7 +31,8 @@ public class TerminalStatus {
      */
     public TerminalStatus(Terminal terminal, MordantRenderer renderer) {
         this.renderer = renderer;
-        // JLine status bar utility retrieves or creates the status bar instance for the given terminal.
+        // JLine status bar utility retrieves or creates the status bar instance for the given
+        // terminal.
         this.status = Status.getStatus(terminal);
         if (this.status == null) {
             throw new IllegalStateException("Terminal does not support JLine Status bar");
@@ -38,8 +40,8 @@ public class TerminalStatus {
     }
 
     /**
-     * Applies new session metadata received from the server.
-     * Extracts fields like USERNAME, TURN_NUMBER, or CLEAR_SESSION from the map.
+     * Applies new session metadata received from the server. Extracts fields like USERNAME,
+     * TURN_NUMBER, or CLEAR_SESSION from the map.
      *
      * @param meta a map containing session metadata fields
      */
@@ -62,8 +64,8 @@ public class TerminalStatus {
     }
 
     /**
-     * Redraws the status line with the current session state.
-     * Formats the username and turn count and writes the result to JLine's status bar.
+     * Redraws the status line with the current session state. Formats the username and turn count
+     * and writes the result to JLine's status bar.
      */
     public void refresh() {
         String text;
@@ -73,13 +75,31 @@ public class TerminalStatus {
             text = "  " + displayUser + " | turns: " + turnCount;
         }
         String styled = renderer.dim(text);
-        // We use AttributedString.fromAnsi to parse Mordant dim/color styles properly for JLine status bar.
+
+        // Visualize the request queue if there are pending requests.
+        if (requestQueue != null && !requestQueue.isEmpty()) {
+            StringBuilder queueText = new StringBuilder();
+            queueText.append(" | ⏳ next: ");
+            for (int i = 0; i < requestQueue.size(); i++) {
+                if (i > 0) {
+                    queueText.append(" ➔ ");
+                }
+                String req = requestQueue.get(i);
+                // Truncate long commands to keep the status bar layout clean.
+                if (req.length() > 15) {
+                    req = req.substring(0, 12) + "...";
+                }
+                queueText.append("\"").append(req).append("\"");
+            }
+            styled += " " + renderer.yellow(queueText.toString());
+        }
+
+        // We use AttributedString.fromAnsi to parse Mordant dim/color styles properly for JLine
+        // status bar.
         status.update(List.of(AttributedString.fromAnsi(styled)));
     }
 
-    /**
-     * Clears the status bar by removing any currently displayed text.
-     */
+    /** Clears the status bar by removing any currently displayed text. */
     public void clear() {
         status.update(List.of());
     }

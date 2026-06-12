@@ -8,15 +8,17 @@ package top.focess.veto.contract;
  */
 public final class IpcMeta {
 
+    /** Private constructor to prevent instantiation of utility class. */
     private IpcMeta() {}
 
     // ── Done meta ───────────────────────────────────────────────────────────
 
-    /** {@code boolean} — the current request was cancelled. */
+    /** {@code boolean} — indicates whether the current request was cancelled by the user. */
     public static final String CANCELLED = "cancelled";
 
     /**
-     * {@code boolean} — the terminal should clear cached session metadata (username, turn count).
+     * {@code boolean} — instructs the terminal to clear cached session metadata (such as username
+     * and turn count).
      */
     public static final String CLEAR_SESSION = "clearSession";
 
@@ -26,12 +28,14 @@ public final class IpcMeta {
     /** {@code String} — the terminal / session identifier. */
     public static final String SESSION = "session";
 
-    /** {@code int} — the current agent turn number. */
+    /** {@code int} — the current agent turn number in the session. */
     public static final String TURN_NUMBER = "turnNumber";
 
     // ── Prompt meta ─────────────────────────────────────────────────────────
 
-    /** {@code boolean} — the terminal should mask input characters (e.g. for passwords). */
+    /**
+     * {@code boolean} — instructs the terminal to mask input characters (e.g. for password fields).
+     */
     public static final String MASK = "mask";
 
     /** {@code String} — the prompt text to display above the input field. */

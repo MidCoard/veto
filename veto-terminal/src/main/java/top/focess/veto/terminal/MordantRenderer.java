@@ -17,7 +17,8 @@ public class MordantRenderer {
      * Constructs a new MordantRenderer instance.
      *
      * @param terminal the Mordant Terminal instance used for color/style formatting
-     * @param reader the JLine LineReader instance used to output text above the active command prompt
+     * @param reader the JLine LineReader instance used to output text above the active command
+     *     prompt
      */
     public MordantRenderer(Terminal terminal, LineReader reader) {
         this.terminal = terminal;
@@ -89,17 +90,20 @@ public class MordantRenderer {
     // ── output ────────────────────────────────────────────────────────────
 
     /**
-     * Prints the specified text to the terminal above the active prompt, automatically ensuring a trailing newline.
+     * Prints the specified text to the terminal above the active prompt, automatically ensuring a
+     * trailing newline.
      *
      * @param text the text to print
      */
     public void println(String text) {
-        // LineReader.printAbove prints the text and repositions/redraws the command line input prompt.
+        // LineReader.printAbove prints the text and repositions/redraws the command line input
+        // prompt.
         reader.printAbove(text);
     }
 
     /**
-     * Prints the specified text chunk to the terminal above the active prompt without automatically forcing a newline.
+     * Prints the specified text chunk to the terminal above the active prompt without automatically
+     * forcing a newline.
      *
      * @param text the text to print
      */
@@ -117,9 +121,7 @@ public class MordantRenderer {
         println(red("✗ " + text));
     }
 
-    /**
-     * Prints a stylized visual horizontal separator line to the terminal.
-     */
+    /** Prints a stylized visual horizontal separator line to the terminal. */
     public void separator() {
         println(dim("─".repeat(50)));
     }

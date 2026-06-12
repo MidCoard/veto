@@ -36,9 +36,18 @@ public final class ZmqTransport implements AutoCloseable {
 
     static final ObjectMapper JSON = new ObjectMapper();
 
+    /** The underlying ZeroMQ socket instance. */
     public final ZMQ.Socket socket;
+
+    /** The SocketType (e.g. ROUTER or DEALER) of the transport socket. */
     private final SocketType type;
 
+    /**
+     * package-private constructor used by binding and connecting factory methods.
+     *
+     * @param socket the initialized ZMQ socket
+     * @param type the socket type (ROUTER / DEALER)
+     */
     ZmqTransport(ZMQ.Socket socket, SocketType type) {
         this.socket = socket;
         this.type = type;
@@ -47,21 +56,38 @@ public final class ZmqTransport implements AutoCloseable {
     // ── types ────────────────────────────────────────────────────────────
 
     /**
-     * A received ZeroMQ message. On ROUTER sockets {@link #identity} carries the sender's routing
-     * identity; on DEALER sockets it is empty.
+     * Represents a received transport message wrapper.
+     *
+     * @param identity the sender's ZMQ routing identity (populated for ROUTER socket types, empty
+     *     for DEALERs)
+     * @param frame the deserialized IPC frame payload
      */
     public record ZmqMessage(String identity, IpcFrame frame) {}
 
     // ── factory ──────────────────────────────────────────────────────────
 
-    /** Backend: create a ROUTER bound to the given endpoint. */
+    /**
+     * Backend factory method: binds a ZMQ ROUTER socket to the specified TCP/IPC address endpoint.
+     *
+     * @param ctx the shared ZeroMQ context
+     * @param addr the socket bind address (e.g., {@code tcp://*:5555})
+     * @return the configured ZmqTransport instance
+     */
     public static ZmqTransport bindRouter(ZContext ctx, String addr) {
         ZMQ.Socket sock = ctx.createSocket(SocketType.ROUTER);
         sock.bind(addr);
         return new ZmqTransport(sock, SocketType.ROUTER);
     }
 
-    /** Terminal: create a DEALER connected to the backend. */
+    /**
+     * Client factory method: connects a ZMQ DEALER socket with the specified identity to the
+     * backend ROUTER.
+     *
+     * @param ctx the shared ZeroMQ context
+     * @param addr the backend connection address (e.g., {@code tcp://127.0.0.1:5555})
+     * @param identity the unique client identity used for ZMQ message routing
+     * @return the configured ZmqTransport instance
+     */
     public static ZmqTransport connectDealer(ZContext ctx, String addr, String identity) {
         ZMQ.Socket sock = ctx.createSocket(SocketType.DEALER);
         sock.setIdentity(identity.getBytes(ZMQ.CHARSET));
@@ -71,44 +97,62 @@ public final class ZmqTransport implements AutoCloseable {
 
     // ── send ─────────────────────────────────────────────────────────────
 
-    /** Send a frame to a specific peer identity (ROUTER only). */
+    /**
+     * Sends a frame to a specific peer identity. Only valid for ROUTER sockets.
+     *
+     * @param identity the destination peer identity
+     * @param frame the frame payload to send
+     */
     public void send(String identity, IpcFrame frame) {
         log.fine("Router sending to [" + identity + "]: " + frame);
         byte[] payload = serialize(frame);
         if (payload == null) return;
+        // ROUTER sockets expect two frames: the destination routing identity frame followed by the
+        // payload.
         socket.sendMore(identity.getBytes(ZMQ.CHARSET));
         socket.send(payload);
     }
 
-    /** Send a frame (DEALER). */
+    /**
+     * Sends a frame directly to the backend. Only valid for DEALER sockets.
+     *
+     * @param frame the frame payload to send
+     */
     public void send(IpcFrame frame) {
         log.fine("Dealer sending: " + frame);
         byte[] payload = serialize(frame);
         if (payload == null) return;
+        // DEALER sockets automatically prepend the identity frame and send the bare payload frame.
         socket.send(payload);
     }
 
     // ── receive ──────────────────────────────────────────────────────────
 
     /**
-     * Try to receive a message without blocking. Returns {@code null} if nothing is available.
+     * Attempts to read a message from the socket without blocking.
      *
-     * <p>On ROUTER sockets the returned {@link ZmqMessage#identity} carries the sender's routing
-     * identity. On DEALER sockets {@code identity} is empty.
+     * @return the received message, or null if no messages are currently available
      */
     public ZmqMessage tryReceive() {
         return decodeMsg(ZMsg.recvMsg(socket, ZMQ.DONTWAIT));
     }
 
-    /** Block until a message arrives, or {@code null} on interrupt. */
+    /**
+     * Blocks until a message is received from the socket.
+     *
+     * @return the received message, or null if interrupted
+     */
     public ZmqMessage receive() {
         return decodeMsg(ZMsg.recvMsg(socket));
     }
 
     /**
-     * Decode a raw ZMsg into a {@link ZmqMessage}. On ROUTER sockets the first frame is the sender
-     * identity; on DEALER sockets there is a single payload frame. The payload is deserialized to
-     * an {@link IpcFrame}.
+     * Decodes a raw multipart ZMsg. For ROUTER sockets, populates the identity frame. For DEALER
+     * sockets, decodes the single frame. Deserializes the JSON frame data back into an IpcFrame
+     * instance.
+     *
+     * @param msg the raw ZMsg to parse
+     * @return the decoded ZmqMessage, or null on format error
      */
     private ZmqMessage decodeMsg(ZMsg msg) {
         if (msg == null || msg.isEmpty()) return null;
@@ -117,6 +161,7 @@ public final class ZmqTransport implements AutoCloseable {
         final String payload;
 
         if (type == SocketType.ROUTER) {
+            // ROUTER envelopes carry at least: 1. Identity frame, 2. Payload frame.
             if (msg.size() < 2) {
                 msg.destroy();
                 return null;
@@ -142,7 +187,12 @@ public final class ZmqTransport implements AutoCloseable {
         return new ZmqMessage(identity, frame);
     }
 
-    /** Serialize a frame to JSON bytes, or {@code null} on failure. */
+    /**
+     * Serializes an IpcFrame instance to JSON bytes.
+     *
+     * @param frame the frame instance to serialize
+     * @return the serialized JSON byte array, or null on exception
+     */
     public static byte[] serialize(IpcFrame frame) {
         try {
             return JSON.writeValueAsBytes(frame);
@@ -152,7 +202,12 @@ public final class ZmqTransport implements AutoCloseable {
         }
     }
 
-    /** Deserialize a payload string back to an IpcFrame, or {@code null} on failure. */
+    /**
+     * Deserializes a raw JSON string back into an IpcFrame instance.
+     *
+     * @param payload the JSON string data
+     * @return the deserialized IpcFrame instance, or null on format error
+     */
     public static IpcFrame deserialize(String payload) {
         try {
             return JSON.readValue(payload, IpcFrame.class);
@@ -164,12 +219,17 @@ public final class ZmqTransport implements AutoCloseable {
 
     // ── lifecycle ────────────────────────────────────────────────────────
 
-    /** Close the transport socket. */
+    /** Closes the underlying ZeroMQ transport socket. */
     @Override
     public void close() {
         socket.close();
     }
 
+    /**
+     * Checks whether this transport represents a ROUTER socket type.
+     *
+     * @return true if ROUTER, false if DEALER
+     */
     public boolean isRouter() {
         return type == SocketType.ROUTER;
     }

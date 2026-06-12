@@ -23,10 +23,11 @@ import top.focess.veto.contract.IpcFrame;
  * and updates the bottom status bar dynamically.
  *
  * <h3>Concurrency &amp; Synchronization model</h3>
- * All mutable REPL state variables (such as {@link #state}, {@link #targetState}, {@link #activePrompt},
- * and the {@link #requestQueue}) are protected by {@link #stateLock}. Since status bar updates and prompt
- * configuration occur across different threads (main REPL thread, background heartbeat/consumer threads),
- * synchronization ensures consistency and thread safety.
+ *
+ * All mutable REPL state variables (such as {@link #state}, {@link #targetState}, {@link
+ * #activePrompt}, and the {@link #requestQueue}) are protected by {@link #stateLock}. Since status
+ * bar updates and prompt configuration occur across different threads (main REPL thread, background
+ * heartbeat/consumer threads), synchronization ensures consistency and thread safety.
  */
 public class VetoTerminal {
 
@@ -52,9 +53,7 @@ public class VetoTerminal {
     private LineReader reader;
     private MordantRenderer renderer;
 
-    /**
-     * States representing the interactive status of the terminal REPL.
-     */
+    /** States representing the interactive status of the terminal REPL. */
     public enum State {
         /** Terminal is idle and ready for a new user command. */
         IDLE,
@@ -62,7 +61,9 @@ public class VetoTerminal {
         AWAITING_RESPONSE,
         /** Terminal has been prompted by the server to provide additional input. */
         PROMPTED,
-        /** Terminal is undergoing a state transition triggered by an asynchronous background frame. */
+        /**
+         * Terminal is undergoing a state transition triggered by an asynchronous background frame.
+         */
         PROGRAMMATIC_INTERRUPT
     }
 
@@ -88,8 +89,8 @@ public class VetoTerminal {
     }
 
     /**
-     * Initializes the terminal components, starts background threads, enables UI widgets,
-     * and enters the interactive REPL loop. Ensures clean resource teardown on shutdown.
+     * Initializes the terminal components, starts background threads, enables UI widgets, and
+     * enters the interactive REPL loop. Ensures clean resource teardown on shutdown.
      *
      * @param reader the JLine LineReader instance to read inputs from
      */
@@ -97,7 +98,7 @@ public class VetoTerminal {
         this.reader = reader;
         this.renderer = new MordantRenderer(t, reader);
         this.mainThread = Thread.currentThread();
-        this.status = new TerminalStatus(reader.getTerminal(), renderer);
+        this.status = new TerminalStatus(reader.getTerminal(), renderer, requestQueue);
         synchronized (stateLock) {
             this.status.refresh();
         }
@@ -106,7 +107,8 @@ public class VetoTerminal {
         running = true;
 
         // --- heartbeat thread ---
-        // Periodically sends heartbeat messages to backend to maintain connection and session presence.
+        // Periodically sends heartbeat messages to backend to maintain connection and session
+        // presence.
         Thread heartbeat =
                 new Thread(
                         () -> {
@@ -165,7 +167,8 @@ public class VetoTerminal {
             // Enter the main interactive loop.
             repl();
         } finally {
-            // Teardown sequence: stop loops, disable widgets, interrupt threads, clear status bar, and close client.
+            // Teardown sequence: stop loops, disable widgets, interrupt threads, clear status bar,
+            // and close client.
             running = false;
             hintWidgets.disable();
             heartbeat.interrupt();
@@ -186,9 +189,8 @@ public class VetoTerminal {
     // ── repl ──────────────────────────────────────────────────────────────
 
     /**
-     * The main interactive REPL read-eval-print loop.
-     * Continually displays the prompt, reads user input, handles cancellation signals (Ctrl+C),
-     * and submits commands for execution.
+     * The main interactive REPL read-eval-print loop. Continually displays the prompt, reads user
+     * input, handles cancellation signals (Ctrl+C), and submits commands for execution.
      */
     private void repl() {
         while (running) {
@@ -264,7 +266,8 @@ public class VetoTerminal {
 
             if (line.isEmpty()) continue;
 
-            // Echo input inside a styled visual frame if it's a regular command (not a slash command).
+            // Echo input inside a styled visual frame if it's a regular command (not a slash
+            // command).
             if (!line.startsWith("/")) {
                 echoInput(line);
                 renderer.println(renderer.dim("  thinking…"));
@@ -276,8 +279,8 @@ public class VetoTerminal {
     }
 
     /**
-     * Enqueues a command for execution. If the terminal is currently idle,
-     * immediately dispatches the request to the ZMQ client.
+     * Enqueues a command for execution. If the terminal is currently idle, immediately dispatches
+     * the request to the ZMQ client.
      *
      * @param line the command string to execute
      */
@@ -377,9 +380,7 @@ public class VetoTerminal {
         renderer.println(renderer.dim("  ╰" + "─".repeat(Math.min(maxWidth, borderLen + 4))));
     }
 
-    /**
-     * Prints the startup ASCII banner header.
-     */
+    /** Prints the startup ASCII banner header. */
     private void printBanner() {
         for (String line : HEADER.split("\n")) renderer.println(renderer.bold(renderer.cyan(line)));
         renderer.println(renderer.dim("  terminal v3.0"));
@@ -388,9 +389,7 @@ public class VetoTerminal {
 
     // ── tab completion ───────────────────────────────────────────────────
 
-    /**
-     * Tab completer implementation that retrieves completion candidates from the backend.
-     */
+    /** Tab completer implementation that retrieves completion candidates from the backend. */
     private class VetoCompleter implements Completer {
 
         @Override

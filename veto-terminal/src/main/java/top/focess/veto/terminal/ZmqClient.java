@@ -79,8 +79,8 @@ public final class ZmqClient implements AutoCloseable {
     // ── construction ────────────────────────────────────────────────────────
 
     /**
-     * Connects to the backend ROUTER socket, executes the connection handshake synchronously,
-     * and spawns the daemon background IO loop thread.
+     * Connects to the backend ROUTER socket, executes the connection handshake synchronously, and
+     * spawns the daemon background IO loop thread.
      *
      * @param address ZMQ connect address (e.g. {@code tcp://127.0.0.1:5555})
      * @throws RuntimeException if the handshake times out or is rejected by the server
@@ -100,8 +100,8 @@ public final class ZmqClient implements AutoCloseable {
     }
 
     /**
-     * Performs connection protocol validation by sending a Hello frame and awaiting a Welcome frame.
-     * Runs in the caller thread during construction before the socket loop begins.
+     * Performs connection protocol validation by sending a Hello frame and awaiting a Welcome
+     * frame. Runs in the caller thread during construction before the socket loop begins.
      *
      * @throws RuntimeException if the connection is rejected or timed out
      */
@@ -139,8 +139,8 @@ public final class ZmqClient implements AutoCloseable {
     // ── IO loop ─────────────────────────────────────────────────────────────
 
     /**
-     * dedicated background event loop running in the "zmq-io" thread.
-     * Handles polling the ZMQ socket for inbound messages, drafting and executing sends from the outbox.
+     * dedicated background event loop running in the "zmq-io" thread. Handles polling the ZMQ
+     * socket for inbound messages, drafting and executing sends from the outbox.
      */
     private void ioLoop() {
         ZMQ.Poller poller = null;
@@ -158,7 +158,10 @@ public final class ZmqClient implements AutoCloseable {
                     try {
                         transport.send(frame);
                     } catch (Exception e) {
-                        log.log(Level.WARNING, "Send failed for " + frame.getClass().getSimpleName(), e);
+                        log.log(
+                                Level.WARNING,
+                                "Send failed for " + frame.getClass().getSimpleName(),
+                                e);
                     }
                 }
 
@@ -190,9 +193,9 @@ public final class ZmqClient implements AutoCloseable {
         }
     }
 
-
     /**
-     * Routes an incoming server frame either to a sequence-specific waiting queue or the main REPL input queue.
+     * Routes an incoming server frame either to a sequence-specific waiting queue or the main REPL
+     * input queue.
      *
      * @param frame the incoming server frame
      */
@@ -270,8 +273,8 @@ public final class ZmqClient implements AutoCloseable {
     }
 
     /**
-     * Blocks for a sequence-specific or general server frame with a custom timeout.
-     * Removes the sequence handler mapping once the wait is finished.
+     * Blocks for a sequence-specific or general server frame with a custom timeout. Removes the
+     * sequence handler mapping once the wait is finished.
      *
      * @param seq the sequence number, or 0 for general queue
      * @param timeout the timeout duration
@@ -328,7 +331,8 @@ public final class ZmqClient implements AutoCloseable {
     // ── hint ────────────────────────────────────────────────────────────────
 
     /**
-     * Sends a parameter autocomplete hint request and blocks synchronously waiting for the display text.
+     * Sends a parameter autocomplete hint request and blocks synchronously waiting for the display
+     * text.
      *
      * @param line the current command line input
      * @param timeout the maximum time to wait
@@ -354,8 +358,8 @@ public final class ZmqClient implements AutoCloseable {
     // ── lifecycle ───────────────────────────────────────────────────────────
 
     /**
-     * Gracefully shuts down the ZeroMQ client. Shuts down the background I/O thread,
-     * closes the transport connections, and releases ZContext resources.
+     * Gracefully shuts down the ZeroMQ client. Shuts down the background I/O thread, closes the
+     * transport connections, and releases ZContext resources.
      */
     @Override
     public void close() {

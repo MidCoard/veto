@@ -31,8 +31,8 @@ public final class VetoHintWidgets extends Widgets {
     private boolean enabled;
 
     /**
-     * Constructs a new VetoHintWidgets instance associated with the specified LineReader.
-     * Registers key widget implementations for intercepting user editing actions.
+     * Constructs a new VetoHintWidgets instance associated with the specified LineReader. Registers
+     * key widget implementations for intercepting user editing actions.
      *
      * @param reader the JLine LineReader instance
      * @param client the ZmqClient used to fetch autocomplete/tail-tip hints from the backend
@@ -52,8 +52,8 @@ public final class VetoHintWidgets extends Widgets {
     // ── enable / disable ──────────────────────────────────────────────────
 
     /**
-     * Activates the tail-tip widgets by aliasing the standard widgets to our intercepted ones
-     * and enabling TAIL_TIP suggestions in the reader.
+     * Activates the tail-tip widgets by aliasing the standard widgets to our intercepted ones and
+     * enabling TAIL_TIP suggestions in the reader.
      */
     public void enable() {
         if (enabled) return;
@@ -67,8 +67,8 @@ public final class VetoHintWidgets extends Widgets {
     }
 
     /**
-     * Deactivates the tail-tip widgets by restoring JLine's original key bindings
-     * and disabling autosuggestions.
+     * Deactivates the tail-tip widgets by restoring JLine's original key bindings and disabling
+     * autosuggestions.
      */
     public void disable() {
         if (!enabled) return;
@@ -94,8 +94,8 @@ public final class VetoHintWidgets extends Widgets {
     // ── widget callbacks ──────────────────────────────────────────────────
 
     /**
-     * Intercepts standard character insertion.
-     * Triggers or clears the suggestion depending on the new buffer contents.
+     * Intercepts standard character insertion. Triggers or clears the suggestion depending on the
+     * new buffer contents.
      *
      * @return true to indicate the action was handled
      */
@@ -105,8 +105,8 @@ public final class VetoHintWidgets extends Widgets {
     }
 
     /**
-     * Intercepts backspace (backward character deletion).
-     * Triggers or clears the suggestion depending on the new buffer contents.
+     * Intercepts backspace (backward character deletion). Triggers or clears the suggestion
+     * depending on the new buffer contents.
      *
      * @return true to indicate the action was handled
      */
@@ -116,8 +116,8 @@ public final class VetoHintWidgets extends Widgets {
     }
 
     /**
-     * Intercepts forward character deletion.
-     * Triggers or clears the suggestion depending on the new buffer contents.
+     * Intercepts forward character deletion. Triggers or clears the suggestion depending on the new
+     * buffer contents.
      *
      * @return true to indicate the action was handled
      */
@@ -127,8 +127,8 @@ public final class VetoHintWidgets extends Widgets {
     }
 
     /**
-     * Intercepts standard line killing (e.g. Ctrl+U).
-     * Clears any active tail-tip suggestion before delegating.
+     * Intercepts standard line killing (e.g. Ctrl+U). Clears any active tail-tip suggestion before
+     * delegating.
      *
      * @return true to indicate the action was handled
      */
@@ -139,8 +139,8 @@ public final class VetoHintWidgets extends Widgets {
     }
 
     /**
-     * Intercepts line acceptance (pressing Enter).
-     * Clears any active tail-tip suggestion to prevent visual artifacts on submit.
+     * Intercepts line acceptance (pressing Enter). Clears any active tail-tip suggestion to prevent
+     * visual artifacts on submit.
      *
      * @return true to indicate the action was handled
      */
@@ -151,8 +151,8 @@ public final class VetoHintWidgets extends Widgets {
     }
 
     /**
-     * Executes the underlying JLine widget action and dynamically evaluates
-     * whether to display or clear the tail-tip hints based on the resulting buffer state.
+     * Executes the underlying JLine widget action and dynamically evaluates whether to display or
+     * clear the tail-tip hints based on the resulting buffer state.
      *
      * @param widget the name of the delegate widget to execute first
      */

@@ -71,6 +71,11 @@ public sealed interface IpcFrame
 
     /** Marker interface for all seq-based client requests. */
     sealed interface SeqRequest extends ClientFrame permits Hello, Complete, Hint {
+        /**
+         * Returns the sequence number associated with this request.
+         *
+         * @return the sequence number
+         */
         long seq();
     }
 
@@ -153,6 +158,9 @@ public sealed interface IpcFrame
     /**
      * Backend handshake response. Carries the negotiated protocol version and echoes the {@code
      * seq} from the initiating {@link Hello}.
+     *
+     * @param version the negotiated protocol version
+     * @param seq the sequence number echoed from the handshake request
      */
     record Welcome(int version, long seq) implements SeqResponse {}
 
@@ -173,9 +181,21 @@ public sealed interface IpcFrame
      */
     record CompleteResult(List<Completion> candidates, long seq) implements SeqResponse {}
 
+    /**
+     * Information about the autocomplete hint for the next expected argument.
+     *
+     * @param placeholder the template or placeholder representing the expected argument
+     * @param description a helpful description explaining the argument
+     */
     record HintInfo(String placeholder, String description) {
+        /** Empty placeholder instance. */
         public static final HintInfo EMPTY = new HintInfo(null, null);
 
+        /**
+         * Returns the display text to render.
+         *
+         * @return the formatted hint display text
+         */
         @JsonIgnore
         public String displayText() {
             if (placeholder == null) {
@@ -219,7 +239,11 @@ public sealed interface IpcFrame
         }
     }
 
-    /** Streaming content chunk — not terminal; more frames follow. */
+    /**
+     * Streaming content chunk — not terminal; more frames follow.
+     *
+     * @param content the text chunk content
+     */
     record Delta(String content) implements ServerFrame {}
 
     /**
@@ -240,9 +264,17 @@ public sealed interface IpcFrame
     /**
      * Backend requests user input — pauses the stream; terminal writes an {@link Input} frame in
      * reply.
+     *
+     * @param content the prompt message content to display
+     * @param meta prompt-related metadata options (such as masking input characters)
      */
     record Prompt(String content, Map<String, Object> meta) implements ServerFrame {}
 
+    /**
+     * Sent by the server to forcefully terminate the terminal connection session.
+     *
+     * @param reason the reason for termination
+     */
     record Terminate(String reason) implements TerminalResponse {}
 
     // ══════════════════════════════════════════════════════════════════════
