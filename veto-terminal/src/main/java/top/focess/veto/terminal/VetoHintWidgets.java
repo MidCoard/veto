@@ -120,14 +120,11 @@ public final class VetoHintWidgets extends Widgets {
                     client.hint(line, HINT_TIMEOUT_MS, TimeUnit.MILLISECONDS);
             if (hintResult != null && hintResult.hint() != null) {
                 String display = hintResult.hint().displayText();
-                if (display != null && !display.isEmpty()) {
+                if (display != null) {
                     setTailTip(display);
                     return;
                 }
             }
-            // Backend returned nothing — clear.
-            clearTailTip();
-            return;
         }
 
         clearTailTip();

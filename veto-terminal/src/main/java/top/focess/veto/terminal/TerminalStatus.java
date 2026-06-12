@@ -10,6 +10,9 @@ import top.focess.veto.contract.IpcMeta;
 /**
  * Manages the CLI session status display on JLine's bottom status line. Stores status info directly
  * and updates the Status bar when changes occur.
+ *
+ * <p><strong>Note:</strong> This class is not thread-safe. Callers must synchronize all accesses on
+ * the external state lock.
  */
 public class TerminalStatus {
 
@@ -26,7 +29,7 @@ public class TerminalStatus {
         }
     }
 
-    /** Applies new session metadata and updates the JLine status bar if the state changed. */
+    /** Applies new session metadata */
     public void apply(Map<String, Object> meta) {
         if (meta.containsKey(IpcMeta.USERNAME)) {
             String newUser = (String) meta.get(IpcMeta.USERNAME);

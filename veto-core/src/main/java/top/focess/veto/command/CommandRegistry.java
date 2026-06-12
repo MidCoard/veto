@@ -173,8 +173,7 @@ public class CommandRegistry {
         if (partial == null || partial.isEmpty()) return List.of();
 
         String input = partial.stripLeading();
-        boolean startsWithSlash = input.startsWith("/");
-        if (startsWithSlash) {
+        if (input.startsWith("/")) {
             input = input.substring(1);
         }
 
@@ -189,7 +188,7 @@ public class CommandRegistry {
                 .map(
                         cc -> {
                             String candidate = cc.candidate();
-                            if (startsWithSlash && !hasSpace) {
+                            if (!hasSpace) {
                                 candidate = "/" + candidate;
                             }
                             return new IpcFrame.Completion(candidate, cc.description(), groupLabel);

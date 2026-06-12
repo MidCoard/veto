@@ -6,7 +6,6 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.FileHandler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -38,13 +37,21 @@ public class VetoTerminal {
     private LineReader reader;
     private MordantRenderer renderer;
 
+    public enum State {
+        IDLE,
+        AWAITING_RESPONSE,
+        PROMPTED,
+        PROGRAMMATIC_INTERRUPT
+    }
+
     private TerminalStatus status;
     private volatile boolean running;
-    private volatile boolean programmaticInterrupt = false;
-    private volatile boolean waitingForResponse = false;
+    private State state = State.IDLE;
+    private State targetState = State.IDLE;
+    private final Object stateLock = new Object();
+    private final List<String> requestQueue = new java.util.ArrayList<>();
 
-    private final StringBuilder deltaBuffer = new StringBuilder();
-    private final AtomicReference<IpcFrame.Prompt> activePrompt = new AtomicReference<>(null);
+    private IpcFrame.Prompt activePrompt = null;
     private Thread mainThread;
 
     public VetoTerminal(Terminal t, ZmqClient client) {
@@ -57,7 +64,9 @@ public class VetoTerminal {
         this.renderer = new MordantRenderer(t, reader);
         this.mainThread = Thread.currentThread();
         this.status = new TerminalStatus(reader.getTerminal(), renderer);
-        this.status.refresh();
+        synchronized (stateLock) {
+            this.status.refresh();
+        }
 
         printBanner();
         running = true;
@@ -99,7 +108,7 @@ public class VetoTerminal {
                                     if (frame == null) {
                                         continue;
                                     }
-                                    handleIncomingFrame(frame);
+                                    handleFrame(frame);
                                 } catch (Exception e) {
                                     if (running) {
                                         log.log(
@@ -122,7 +131,9 @@ public class VetoTerminal {
             hintWidgets.disable();
             heartbeat.interrupt();
             consumerThread.interrupt();
-            status.clear();
+            synchronized (stateLock) {
+                status.clear();
+            }
             client.send(new IpcFrame.Bye());
             try {
                 Thread.sleep(100);
@@ -136,30 +147,46 @@ public class VetoTerminal {
 
     private void repl() {
         while (running) {
-            status.refresh();
             String line;
-            try {
-                IpcFrame.Prompt active = activePrompt.get();
-                Character mask = null;
-                if (active != null && Boolean.TRUE.equals(active.meta().get("mask"))) {
-                    mask = '*';
+            String promptText;
+            Character mask;
+            synchronized (stateLock) {
+                status.refresh();
+                if (state == State.PROMPTED && activePrompt != null) {
+                    promptText =
+                            renderer.yellow("▸")
+                                    + " "
+                                    + renderer.cyan(activePrompt.content())
+                                    + " ";
+                    mask = Boolean.TRUE.equals(activePrompt.meta().get("mask")) ? '*' : null;
+                } else {
+                    promptText =
+                            status.getDisplayUser() != null
+                                    ? renderer.green("▸ ")
+                                    : renderer.red("◇ ");
+                    mask = null;
                 }
-                line = reader.readLine(prompt(), mask);
+            }
+            try {
+                line = reader.readLine(promptText, mask);
             } catch (UserInterruptException e) {
-                if (programmaticInterrupt) {
-                    programmaticInterrupt = false;
-                    if (!running) {
+                synchronized (stateLock) {
+                    if (state == State.PROGRAMMATIC_INTERRUPT) {
+                        state = targetState;
+                        if (!running) {
+                            break;
+                        }
+                        continue;
+                    }
+                    if (state == State.AWAITING_RESPONSE || state == State.PROMPTED) {
+                        client.send(new IpcFrame.Cancel());
+                        activePrompt = null;
+                        requestQueue.clear();
+                        state = State.IDLE;
+                        continue;
+                    } else {
                         break;
                     }
-                    continue;
-                }
-                if (waitingForResponse || activePrompt.get() != null) {
-                    client.send(new IpcFrame.Cancel());
-                    activePrompt.set(null);
-                    waitingForResponse = false;
-                    continue;
-                } else {
-                    break;
                 }
             } catch (EndOfFileException e) {
                 break;
@@ -168,11 +195,13 @@ public class VetoTerminal {
             if (line == null) break;
             line = line.trim();
 
-            IpcFrame.Prompt active = activePrompt.get();
-            if (active != null) {
-                client.send(new IpcFrame.Input(line));
-                activePrompt.set(null);
-                continue;
+            synchronized (stateLock) {
+                if (state == State.PROMPTED) {
+                    state = State.AWAITING_RESPONSE;
+                    client.send(new IpcFrame.Input(line));
+                    activePrompt = null;
+                    continue;
+                }
             }
 
             if (line.isEmpty()) continue;
@@ -188,60 +217,68 @@ public class VetoTerminal {
     }
 
     private void executeRequest(String line) {
-        waitingForResponse = true;
-        client.send(new IpcFrame.Request(line));
-    }
-
-    private void flushDeltaBuffer() {
-        if (!deltaBuffer.isEmpty()) {
-            renderer.println(deltaBuffer.toString());
-            deltaBuffer.setLength(0);
+        synchronized (stateLock) {
+            requestQueue.add(line);
+            if (state == State.IDLE) {
+                String nextReq = requestQueue.removeFirst();
+                state = State.AWAITING_RESPONSE;
+                client.send(new IpcFrame.Request(nextReq));
+            }
         }
     }
 
-    private void handleIncomingFrame(IpcFrame.ServerFrame frame) {
-        if (frame instanceof IpcFrame.Delta d) {
-            log.fine("[DELTA] len=" + d.content().length());
-            deltaBuffer.append(d.content());
-            int newlineIndex;
-            while ((newlineIndex = deltaBuffer.indexOf("\n")) != -1) {
-                String line = deltaBuffer.substring(0, newlineIndex);
-                deltaBuffer.delete(0, newlineIndex + 1);
-                renderer.println(line);
-            }
+    private void handleFrame(IpcFrame.ServerFrame frame) {
+        if (frame instanceof IpcFrame.Delta(String content)) {
+            log.fine("[DELTA] len=" + content.length());
+            renderer.println(content);
         } else if (frame instanceof IpcFrame.Progress p) {
-            flushDeltaBuffer();
             String styled = renderer.dim("  ⏳ " + p.content());
             renderer.println(styled);
-        } else if (frame instanceof IpcFrame.Prompt prompt) {
-            flushDeltaBuffer();
-            activePrompt.set(prompt);
-            programmaticInterrupt = true;
-            mainThread.interrupt();
-        } else if (frame instanceof IpcFrame.Done(Map<String, Object> meta, String content)) {
-            waitingForResponse = false;
-            flushDeltaBuffer();
-            if (content != null && !content.isEmpty()) {
-                renderer.println(content);
+        } else {
+            synchronized (stateLock) {
+                if (frame instanceof IpcFrame.Prompt prompt) {
+                    activePrompt = prompt;
+                    targetState = State.PROMPTED;
+                    state = State.PROGRAMMATIC_INTERRUPT;
+                    mainThread.interrupt();
+                } else if (frame
+                        instanceof IpcFrame.Done(Map<String, Object> meta, String content)) {
+                    if (content != null) {
+                        renderer.println(content);
+                    }
+                    status.apply(meta);
+                    if (!requestQueue.isEmpty()) {
+                        String nextReq = requestQueue.removeFirst();
+                        client.send(new IpcFrame.Request(nextReq));
+                        targetState = State.AWAITING_RESPONSE;
+                    } else {
+                        targetState = State.IDLE;
+                    }
+                    state = State.PROGRAMMATIC_INTERRUPT;
+                    mainThread.interrupt();
+                } else if (frame instanceof IpcFrame.Terminate(String reason)) {
+                    if (reason != null) {
+                        renderer.println(reason);
+                    }
+                    running = false;
+                    targetState = State.IDLE;
+                    state = State.PROGRAMMATIC_INTERRUPT;
+                    mainThread.interrupt();
+                } else if (frame instanceof IpcFrame.Error e) {
+                    if (e.content() != null) {
+                        renderer.error(e.content());
+                    }
+                    if (!requestQueue.isEmpty()) {
+                        String nextReq = requestQueue.removeFirst();
+                        client.send(new IpcFrame.Request(nextReq));
+                        targetState = State.AWAITING_RESPONSE;
+                    } else {
+                        targetState = State.IDLE;
+                    }
+                    state = State.PROGRAMMATIC_INTERRUPT;
+                    mainThread.interrupt();
+                }
             }
-            status.apply(meta);
-            programmaticInterrupt = true;
-            mainThread.interrupt();
-        } else if (frame instanceof IpcFrame.Terminate(String reason)) {
-            waitingForResponse = false;
-            flushDeltaBuffer();
-            if (reason != null && !reason.isEmpty()) {
-                renderer.println(reason);
-            }
-            running = false;
-            programmaticInterrupt = true;
-            mainThread.interrupt();
-        } else if (frame instanceof IpcFrame.Error e) {
-            waitingForResponse = false;
-            flushDeltaBuffer();
-            renderer.error(e.content());
-            programmaticInterrupt = true;
-            mainThread.interrupt();
         }
     }
 
@@ -255,14 +292,6 @@ public class VetoTerminal {
         renderer.println(renderer.dim("  ╭─ you " + "─".repeat(borderLen)));
         renderer.println("  │ " + line);
         renderer.println(renderer.dim("  ╰" + "─".repeat(Math.min(maxWidth, borderLen + 4))));
-    }
-
-    private String prompt() {
-        IpcFrame.Prompt active = activePrompt.get();
-        if (active != null) {
-            return renderer.yellow("▸") + " " + renderer.cyan(active.content()) + " ";
-        }
-        return status.getDisplayUser() != null ? renderer.green("▸ ") : renderer.red("◇ ");
     }
 
     private void printBanner() {
