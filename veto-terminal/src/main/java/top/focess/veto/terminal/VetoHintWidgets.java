@@ -30,10 +30,18 @@ public final class VetoHintWidgets extends Widgets {
     private final ZmqClient client;
     private boolean enabled;
 
+    /**
+     * Constructs a new VetoHintWidgets instance associated with the specified LineReader.
+     * Registers key widget implementations for intercepting user editing actions.
+     *
+     * @param reader the JLine LineReader instance
+     * @param client the ZmqClient used to fetch autocomplete/tail-tip hints from the backend
+     */
     public VetoHintWidgets(LineReader reader, ZmqClient client) {
         super(reader);
         this.client = client;
 
+        // Custom JLine widgets that wrap the standard keybindings to intercept buffer changes.
         addWidget("_veto-self-insert", this::vetoInsert);
         addWidget("_veto-backward-delete-char", this::vetoBackwardDelete);
         addWidget("_veto-delete-char", this::vetoDelete);
@@ -43,6 +51,10 @@ public final class VetoHintWidgets extends Widgets {
 
     // ── enable / disable ──────────────────────────────────────────────────
 
+    /**
+     * Activates the tail-tip widgets by aliasing the standard widgets to our intercepted ones
+     * and enabling TAIL_TIP suggestions in the reader.
+     */
     public void enable() {
         if (enabled) return;
         aliasWidget("_veto-self-insert", LineReader.SELF_INSERT);
@@ -54,8 +66,13 @@ public final class VetoHintWidgets extends Widgets {
         enabled = true;
     }
 
+    /**
+     * Deactivates the tail-tip widgets by restoring JLine's original key bindings
+     * and disabling autosuggestions.
+     */
     public void disable() {
         if (!enabled) return;
+        // Prefixing with '.' retrieves the original JLine built-in widget implementations.
         aliasWidget("." + LineReader.SELF_INSERT, LineReader.SELF_INSERT);
         aliasWidget("." + LineReader.BACKWARD_DELETE_CHAR, LineReader.BACKWARD_DELETE_CHAR);
         aliasWidget("." + LineReader.DELETE_CHAR, LineReader.DELETE_CHAR);
@@ -65,45 +82,82 @@ public final class VetoHintWidgets extends Widgets {
         enabled = false;
     }
 
+    /**
+     * Checks whether the tail-tip hints widget layer is currently enabled.
+     *
+     * @return true if enabled, false otherwise
+     */
     public boolean isEnabled() {
         return enabled;
     }
 
     // ── widget callbacks ──────────────────────────────────────────────────
 
-    /** User typed a character — may extend the command or trigger a new hint. */
+    /**
+     * Intercepts standard character insertion.
+     * Triggers or clears the suggestion depending on the new buffer contents.
+     *
+     * @return true to indicate the action was handled
+     */
     public boolean vetoInsert() {
         doHint(LineReader.SELF_INSERT);
         return true;
     }
 
-    /** User pressed backspace — always re-evaluate, clear if trigger is gone. */
+    /**
+     * Intercepts backspace (backward character deletion).
+     * Triggers or clears the suggestion depending on the new buffer contents.
+     *
+     * @return true to indicate the action was handled
+     */
     public boolean vetoBackwardDelete() {
         doHint(LineReader.BACKWARD_DELETE_CHAR);
         return true;
     }
 
-    /** User pressed delete — same as backspace, re-evaluate. */
+    /**
+     * Intercepts forward character deletion.
+     * Triggers or clears the suggestion depending on the new buffer contents.
+     *
+     * @return true to indicate the action was handled
+     */
     public boolean vetoDelete() {
         doHint(LineReader.DELETE_CHAR);
         return true;
     }
 
-    /** User killed the whole line — clear everything. */
+    /**
+     * Intercepts standard line killing (e.g. Ctrl+U).
+     * Clears any active tail-tip suggestion before delegating.
+     *
+     * @return true to indicate the action was handled
+     */
     public boolean vetoKillWholeLine() {
         clearTailTip();
         callWidget(LineReader.KILL_WHOLE_LINE);
         return true;
     }
 
-    /** User pressed enter — clear the hint before submitting. */
+    /**
+     * Intercepts line acceptance (pressing Enter).
+     * Clears any active tail-tip suggestion to prevent visual artifacts on submit.
+     *
+     * @return true to indicate the action was handled
+     */
     public boolean vetoAcceptLine() {
         clearTailTip();
         callWidget(LineReader.ACCEPT_LINE);
         return true;
     }
 
+    /**
+     * Executes the underlying JLine widget action and dynamically evaluates
+     * whether to display or clear the tail-tip hints based on the resulting buffer state.
+     *
+     * @param widget the name of the delegate widget to execute first
+     */
     private void doHint(String widget) {
+        // Execute JLine's original widget action first to update the buffer contents.
         callWidget(widget);
 
         String line = buffer().toString();
@@ -127,6 +181,7 @@ public final class VetoHintWidgets extends Widgets {
             }
         }
 
+        // Default: clear the active tail tip if the new state does not warrant a suggestion.
         clearTailTip();
     }
 }

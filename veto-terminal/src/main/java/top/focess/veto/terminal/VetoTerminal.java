@@ -15,10 +15,24 @@ import org.jline.reader.*;
 import org.jline.terminal.TerminalBuilder;
 import top.focess.veto.contract.IpcFrame;
 
+/**
+ * Main interactive REPL terminal controller for Veto Core.
+ *
+ * <p>Handles user keystrokes, input reading via JLine {@link LineReader}, and coordinates with the
+ * backend using ZeroMQ via {@link ZmqClient}. Manages prompt state changes, input/request queuing,
+ * and updates the bottom status bar dynamically.
+ *
+ * <h3>Concurrency &amp; Synchronization model</h3>
+ * All mutable REPL state variables (such as {@link #state}, {@link #targetState}, {@link #activePrompt},
+ * and the {@link #requestQueue}) are protected by {@link #stateLock}. Since status bar updates and prompt
+ * configuration occur across different threads (main REPL thread, background heartbeat/consumer threads),
+ * synchronization ensures consistency and thread safety.
+ */
 public class VetoTerminal {
 
     private static final Logger log = Logger.getLogger(VetoTerminal.class.getName());
 
+    /** ASCII Banner displayed on startup. */
     private static final String HEADER =
             """
                     ██╗   ██╗███████╗████████╗ ██████╗
@@ -38,10 +52,17 @@ public class VetoTerminal {
     private LineReader reader;
     private MordantRenderer renderer;
 
+    /**
+     * States representing the interactive status of the terminal REPL.
+     */
     public enum State {
+        /** Terminal is idle and ready for a new user command. */
         IDLE,
+        /** Terminal has dispatched a request and is awaiting a response from the backend. */
         AWAITING_RESPONSE,
+        /** Terminal has been prompted by the server to provide additional input. */
         PROMPTED,
+        /** Terminal is undergoing a state transition triggered by an asynchronous background frame. */
         PROGRAMMATIC_INTERRUPT
     }
 
@@ -55,11 +76,23 @@ public class VetoTerminal {
     private IpcFrame.Prompt activePrompt = null;
     private Thread mainThread;
 
+    /**
+     * Constructs a new VetoTerminal instance.
+     *
+     * @param t the Mordant Terminal instance used for styled outputs
+     * @param client the ZmqClient used for network IPC communications with the backend
+     */
     public VetoTerminal(Terminal t, ZmqClient client) {
         this.t = t;
         this.client = client;
     }
 
+    /**
+     * Initializes the terminal components, starts background threads, enables UI widgets,
+     * and enters the interactive REPL loop. Ensures clean resource teardown on shutdown.
+     *
+     * @param reader the JLine LineReader instance to read inputs from
+     */
     public void start(LineReader reader) {
         this.reader = reader;
         this.renderer = new MordantRenderer(t, reader);
@@ -72,7 +105,8 @@ public class VetoTerminal {
         printBanner();
         running = true;
 
-        // --- heartbeat ---
+        // --- heartbeat thread ---
+        // Periodically sends heartbeat messages to backend to maintain connection and session presence.
         Thread heartbeat =
                 new Thread(
                         () -> {
@@ -96,10 +130,12 @@ public class VetoTerminal {
         heartbeat.start();
 
         // --- hint widgets ---
+        // Binds custom parameter autocomplete / tail-tip widgets to JLine reader.
         VetoHintWidgets hintWidgets = new VetoHintWidgets(reader, client);
         hintWidgets.enable();
 
         // --- incoming consumer thread ---
+        // Reads frames from ZMQ connection and processes them asynchronously via handleFrame.
         Thread consumerThread =
                 new Thread(
                         () -> {
@@ -126,8 +162,10 @@ public class VetoTerminal {
         consumerThread.start();
 
         try {
+            // Enter the main interactive loop.
             repl();
         } finally {
+            // Teardown sequence: stop loops, disable widgets, interrupt threads, clear status bar, and close client.
             running = false;
             hintWidgets.disable();
             heartbeat.interrupt();
@@ -137,6 +175,7 @@ public class VetoTerminal {
             }
             client.send(new IpcFrame.Bye());
             try {
+                // Sleep briefly to allow Bye packet to be flushed before socket close.
                 Thread.sleep(100);
             } catch (InterruptedException ignored) {
             }
@@ -146,14 +185,21 @@ public class VetoTerminal {
 
     // ── repl ──────────────────────────────────────────────────────────────
 
+    /**
+     * The main interactive REPL read-eval-print loop.
+     * Continually displays the prompt, reads user input, handles cancellation signals (Ctrl+C),
+     * and submits commands for execution.
+     */
     private void repl() {
         while (running) {
             String line;
             String promptText;
             Character mask;
             synchronized (stateLock) {
+                // Refresh bottom status bar session information.
                 status.refresh();
                 if (state == State.PROMPTED && activePrompt != null) {
+                    // Display server-prompted input request with yellow indicator.
                     promptText =
                             renderer.yellow("▸")
                                     + " "
@@ -161,6 +207,7 @@ public class VetoTerminal {
                                     + " ";
                     mask = Boolean.TRUE.equals(activePrompt.meta().get("mask")) ? '*' : null;
                 } else {
+                    // Standard prompt: green when logged in, red when logged out.
                     promptText =
                             status.getDisplayUser() != null
                                     ? renderer.green("▸ ")
@@ -169,10 +216,14 @@ public class VetoTerminal {
                 }
             }
             try {
+                // Read a line of user input, blocking the thread.
                 line = reader.readLine(promptText, mask);
             } catch (UserInterruptException e) {
+                // Triggered when user presses Ctrl+C in JLine.
                 synchronized (stateLock) {
                     if (state == State.PROGRAMMATIC_INTERRUPT) {
+                        // The user interrupt was actually simulated by the background thread
+                        // to break the blocking readLine call for a state transition.
                         state = targetState;
                         if (!running) {
                             break;
@@ -180,6 +231,7 @@ public class VetoTerminal {
                         continue;
                     }
                     if (state == State.AWAITING_RESPONSE || state == State.PROMPTED) {
+                        // True user Ctrl+C cancels the active request or prompt.
                         client.send(new IpcFrame.Cancel());
                         activePrompt = null;
                         requestQueue.clear();
@@ -187,11 +239,13 @@ public class VetoTerminal {
                         continue;
                     }
                     if (state == State.IDLE) {
+                        // Pressing Ctrl+C when idle exits the REPL.
                         break;
                     }
                     throw new RuntimeException("Unexpected interrupt in state " + state, e);
                 }
             } catch (EndOfFileException e) {
+                // Triggered when user sends EOF (e.g., Ctrl+D).
                 break;
             }
 
@@ -200,6 +254,7 @@ public class VetoTerminal {
 
             synchronized (stateLock) {
                 if (state == State.PROMPTED) {
+                    // Submit prompt reply directly to backend as Input.
                     state = State.AWAITING_RESPONSE;
                     client.send(new IpcFrame.Input(line));
                     activePrompt = null;
@@ -209,6 +264,7 @@ public class VetoTerminal {
 
             if (line.isEmpty()) continue;
 
+            // Echo input inside a styled visual frame if it's a regular command (not a slash command).
             if (!line.startsWith("/")) {
                 echoInput(line);
                 renderer.println(renderer.dim("  thinking…"));
@@ -219,6 +275,12 @@ public class VetoTerminal {
         renderer.println("  Goodbye.");
     }
 
+    /**
+     * Enqueues a command for execution. If the terminal is currently idle,
+     * immediately dispatches the request to the ZMQ client.
+     *
+     * @param line the command string to execute
+     */
     private void executeRequest(String line) {
         synchronized (stateLock) {
             requestQueue.add(line);
@@ -230,16 +292,24 @@ public class VetoTerminal {
         }
     }
 
+    /**
+     * Handles an incoming ServerFrame received asynchronously from the backend.
+     *
+     * @param frame the incoming frame
+     */
     private void handleFrame(IpcFrame.ServerFrame frame) {
         if (frame instanceof IpcFrame.Delta(String content)) {
+            // Immediate print for stream response chunks.
             log.fine("[DELTA] len=" + content.length());
             renderer.println(content);
         } else if (frame instanceof IpcFrame.Progress p) {
+            // Display background progress messages.
             String styled = renderer.dim("  ⏳ " + p.content());
             renderer.println(styled);
         } else {
             synchronized (stateLock) {
                 if (frame instanceof IpcFrame.Prompt prompt) {
+                    // Server requests additional input. Interrupt readLine to show the new prompt.
                     activePrompt = prompt;
                     targetState = State.PROMPTED;
                     state = State.PROGRAMMATIC_INTERRUPT;
@@ -251,6 +321,7 @@ public class VetoTerminal {
                     }
                     status.apply(meta);
                     dispatchNextOrIdle();
+                    // Interrupt active readLine to transition state to the targetState.
                     state = State.PROGRAMMATIC_INTERRUPT;
                     mainThread.interrupt();
                 } else if (frame instanceof IpcFrame.Terminate(String reason)) {
@@ -291,6 +362,11 @@ public class VetoTerminal {
 
     // ── UI helpers ────────────────────────────────────────────────────────
 
+    /**
+     * Echoes the user's input wrapped in a clean, framed box for visual clarity.
+     *
+     * @param line the input text
+     */
     private void echoInput(String line) {
         int termWidth = reader.getTerminal().getWidth();
         int maxWidth = termWidth > 0 ? termWidth - 4 : 76;
@@ -301,6 +377,9 @@ public class VetoTerminal {
         renderer.println(renderer.dim("  ╰" + "─".repeat(Math.min(maxWidth, borderLen + 4))));
     }
 
+    /**
+     * Prints the startup ASCII banner header.
+     */
     private void printBanner() {
         for (String line : HEADER.split("\n")) renderer.println(renderer.bold(renderer.cyan(line)));
         renderer.println(renderer.dim("  terminal v3.0"));
@@ -309,11 +388,15 @@ public class VetoTerminal {
 
     // ── tab completion ───────────────────────────────────────────────────
 
+    /**
+     * Tab completer implementation that retrieves completion candidates from the backend.
+     */
     private class VetoCompleter implements Completer {
 
         @Override
         public void complete(LineReader r, ParsedLine line, List<Candidate> out) {
             String fullLine = line.line();
+            // Completion is only requested for slash commands.
             if (!fullLine.startsWith("/")) return;
             IpcFrame.CompleteResult compResult = client.complete(fullLine, 3, TimeUnit.SECONDS);
             if (compResult != null && compResult.candidates() != null) {
@@ -332,6 +415,12 @@ public class VetoTerminal {
     }
 
     // ── main ──────────────────────────────────────────────────────────────
+
+    /**
+     * Main entry point for starting the VetoTerminal client.
+     *
+     * @param args command line arguments, supports --debug or -d to enable log file output
+     */
     public static void main(String[] args) {
         System.setProperty("file.encoding", "UTF-8");
 
@@ -343,6 +432,7 @@ public class VetoTerminal {
             }
         }
 
+        // Setup log file handler if debugging is enabled.
         if (debug) {
             try {
                 FileHandler fileHandler = new FileHandler("veto_debug.log", true);
@@ -357,9 +447,11 @@ public class VetoTerminal {
             }
         }
 
+        // Mute JLine internal logger to prevent console clutter.
         Logger.getLogger("org.jline").setLevel(Level.OFF);
 
         try {
+            // Build the system JLine Terminal and the Mordant Terminal.
             org.jline.terminal.Terminal jt =
                     TerminalBuilder.builder().system(true).jna(true).encoding("UTF-8").build();
             Terminal mt = MordantTerminal.create();

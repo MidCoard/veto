@@ -79,29 +79,31 @@ public final class ZmqClient implements AutoCloseable {
     // ── construction ────────────────────────────────────────────────────────
 
     /**
-     * Connect to the backend, perform the protocol handshake, and start the IO thread.
+     * Connects to the backend ROUTER socket, executes the connection handshake synchronously,
+     * and spawns the daemon background IO loop thread.
      *
      * @param address ZMQ connect address (e.g. {@code tcp://127.0.0.1:5555})
-     * @throws RuntimeException if the handshake times out or is rejected
+     * @throws RuntimeException if the handshake times out or is rejected by the server
      */
     public ZmqClient(@NotNull String address) {
         this.identity = UUID.randomUUID().toString();
         this.ctx = new ZContext();
+        // Setup DEALER socket connection using our unique identity.
         this.transport = ZmqTransport.connectDealer(ctx, address, identity);
         System.out.println("Connecting to backend at " + address + " ...");
         handshake();
         System.out.println("Connected.");
+        // We run ZMQ socket I/O in a dedicated thread to ensure thread-safety of ZeroMQ resources.
         this.ioThread = new Thread(this::ioLoop, "zmq-io");
         this.ioThread.setDaemon(true);
         this.ioThread.start();
     }
 
     /**
-     * Send a {@link IpcFrame.Hello} and block until the backend responds with a {@link
-     * IpcFrame.Welcome}.
+     * Performs connection protocol validation by sending a Hello frame and awaiting a Welcome frame.
+     * Runs in the caller thread during construction before the socket loop begins.
      *
-     * <p>Called from the constructor before the IO thread starts, so we can safely use the blocking
-     * {@code receive()} with a socket timeout.
+     * @throws RuntimeException if the connection is rejected or timed out
      */
     private void handshake() {
         try {
@@ -110,6 +112,7 @@ public final class ZmqClient implements AutoCloseable {
             throw new RuntimeException("Failed to send handshake Hello", e);
         }
 
+        // Temporarily set a 10-second timeout on receive for the handshake phase.
         transport.socket.setReceiveTimeOut(10_000);
 
         try {
@@ -125,9 +128,10 @@ public final class ZmqClient implements AutoCloseable {
                 if (frame instanceof IpcFrame.Error e) {
                     throw new RuntimeException("Backend rejected handshake: " + e.content());
                 }
-                // Unknown frame — keep waiting
+                // Keep waiting if we receive unrelated handshake frames.
             }
         } finally {
+            // Restore socket to standard non-blocking mode.
             transport.socket.setReceiveTimeOut(-1);
         }
     }
@@ -135,8 +139,8 @@ public final class ZmqClient implements AutoCloseable {
     // ── IO loop ─────────────────────────────────────────────────────────────
 
     /**
-     * Single-threaded event loop that owns the ZMQ socket. Polls for incoming data, drains the
-     * outbox, and routes responses to the correct per-sequence queue.
+     * dedicated background event loop running in the "zmq-io" thread.
+     * Handles polling the ZMQ socket for inbound messages, drafting and executing sends from the outbox.
      */
     private void ioLoop() {
         ZMQ.Poller poller = null;
@@ -145,12 +149,20 @@ public final class ZmqClient implements AutoCloseable {
             poller.register(transport.socket, ZMQ.Poller.POLLIN);
 
             while (!closed) {
+                // Poll with 50ms timeout to avoid busy-waiting.
                 int active = poller.poll(POLL_TIMEOUT_MS);
 
-                // 1. Drain outbox — send all pending frames
-                drainOutbox();
+                // 1. Send all queued outbound messages.
+                IpcFrame.ClientFrame frame;
+                while ((frame = outbox.poll()) != null) {
+                    try {
+                        transport.send(frame);
+                    } catch (Exception e) {
+                        log.log(Level.WARNING, "Send failed for " + frame.getClass().getSimpleName(), e);
+                    }
+                }
 
-                // 2. Read incoming if any events are pending on our socket
+                // 2. Read incoming frames if data is ready.
                 if (active > 0 && poller.pollin(0)) {
                     ZmqTransport.ZmqMessage msg = transport.tryReceive();
                     if (msg != null && msg.frame() instanceof IpcFrame.ServerFrame sf) {
@@ -164,6 +176,7 @@ public final class ZmqClient implements AutoCloseable {
                 closed = true;
             }
         } finally {
+            // Clean up sockets/poller on shutdown.
             if (poller != null) {
                 try {
                     poller.close();
@@ -177,19 +190,12 @@ public final class ZmqClient implements AutoCloseable {
         }
     }
 
-    /** Send all pending outbound frames. Called exclusively by the IO thread. */
-    private void drainOutbox() {
-        IpcFrame.ClientFrame frame;
-        while ((frame = outbox.poll()) != null) {
-            try {
-                transport.send(frame);
-            } catch (Exception e) {
-                log.log(Level.WARNING, "Send failed for " + frame.getClass().getSimpleName(), e);
-            }
-        }
-    }
 
-    /** Route an incoming frame to the correct response queue. */
+    /**
+     * Routes an incoming server frame either to a sequence-specific waiting queue or the main REPL input queue.
+     *
+     * @param frame the incoming server frame
+     */
     private void route(@NotNull IpcFrame.ServerFrame frame) {
         if (frame instanceof IpcFrame.SeqResponse sr) {
             if (sr.seq() != 0) {
@@ -203,23 +209,22 @@ public final class ZmqClient implements AutoCloseable {
             }
         }
 
-        // All other responses go to the incoming queue
+        // All general frames (Deltas, Done, etc.) go to the general incoming queue.
         incomingQueue.offer(frame);
     }
 
     // ── send ────────────────────────────────────────────────────────────────
 
     /**
-     * Enqueue a frame for sending. Non-blocking — the IO thread will pick it up on the next poll
-     * cycle. If the frame is a {@link IpcFrame.SeqRequest}, its response queue is automatically
-     * registered.
+     * Enqueues a client frame to the outbox queue to be sent asynchronously by the IO thread.
      *
      * @param frame the client frame to send
-     * @throws IllegalStateException if the IO thread has failed
+     * @throws IllegalStateException if the ZmqClient is closed
      */
     public void send(@NotNull IpcFrame.ClientFrame frame) {
         if (closed) throw new IllegalStateException("Client is closed");
         if (frame instanceof IpcFrame.SeqRequest sr) {
+            // Pre-register response queue to catch responses before the packet is sent.
             seqHandlers.put(sr.seq(), new LinkedBlockingQueue<>(1));
         }
         outbox.offer(frame);
@@ -228,10 +233,10 @@ public final class ZmqClient implements AutoCloseable {
     // ── receive ─────────────────────────────────────────────────────────────
 
     /**
-     * Block until a frame arrives on the general incoming queue, or 120 seconds elapse.
+     * Blocks up to 120 seconds for the next server frame on the general incoming queue.
      *
-     * @return the next server frame, or {@code null} on timeout
-     * @throws InterruptedException if the thread is interrupted
+     * @return the next server frame, or null if timed out
+     * @throws InterruptedException if the calling thread is interrupted
      */
     @Nullable
     public IpcFrame.ServerFrame receive() throws InterruptedException {
@@ -239,11 +244,11 @@ public final class ZmqClient implements AutoCloseable {
     }
 
     /**
-     * Block until a frame arrives on the queue registered for {@code seq}, or 120 seconds elapse.
+     * Blocks up to 120 seconds for a specific response matching the given sequence number.
      *
-     * @param seq the sequence number from a prior sequenced request call
-     * @return the next server frame, or {@code null} on timeout
-     * @throws InterruptedException if the thread is interrupted
+     * @param seq the sequence number of the expected response
+     * @return the sequence response, or null if timed out
+     * @throws InterruptedException if the calling thread is interrupted
      */
     @Nullable
     public IpcFrame.ServerFrame receive(long seq) throws InterruptedException {
@@ -251,12 +256,12 @@ public final class ZmqClient implements AutoCloseable {
     }
 
     /**
-     * Block until a frame arrives on the general incoming queue, or the timeout expires.
+     * Blocks for a general server frame with a custom timeout.
      *
-     * @param timeout max time to wait
-     * @param unit time unit
-     * @return the next server frame, or {@code null} on timeout
-     * @throws InterruptedException if the thread is interrupted
+     * @param timeout the timeout duration
+     * @param unit the time unit
+     * @return the next server frame, or null if timed out
+     * @throws InterruptedException if the calling thread is interrupted
      */
     @Nullable
     public IpcFrame.ServerFrame receive(long timeout, @NotNull TimeUnit unit)
@@ -265,13 +270,14 @@ public final class ZmqClient implements AutoCloseable {
     }
 
     /**
-     * Block until a frame arrives for the expected sequence number, or the timeout expires.
+     * Blocks for a sequence-specific or general server frame with a custom timeout.
+     * Removes the sequence handler mapping once the wait is finished.
      *
-     * @param seq the sequence number from a prior sequenced request call
-     * @param timeout max time to wait
-     * @param unit time unit
-     * @return the next server frame, or {@code null} on timeout
-     * @throws InterruptedException if the thread is interrupted
+     * @param seq the sequence number, or 0 for general queue
+     * @param timeout the timeout duration
+     * @param unit the time unit
+     * @return the server frame, or null if timed out
+     * @throws InterruptedException if the calling thread is interrupted
      */
     @Nullable
     public IpcFrame.ServerFrame receive(long seq, long timeout, @NotNull TimeUnit unit)
@@ -284,6 +290,7 @@ public final class ZmqClient implements AutoCloseable {
             try {
                 return queue.poll(timeout, unit);
             } finally {
+                // Ensure handler registry is cleaned up to prevent memory leaks.
                 seqHandlers.remove(seq);
             }
         } else {
@@ -294,12 +301,12 @@ public final class ZmqClient implements AutoCloseable {
     // ── complete ────────────────────────────────────────────────────────────
 
     /**
-     * Send a Complete frame and synchronously wait for the response.
+     * Sends a command completion request and blocks synchronously waiting for the candidates.
      *
-     * @param line current command line buffer content
-     * @param timeout max time to wait
-     * @param unit time unit
-     * @return the complete response, or {@code null} on timeout / error
+     * @param line the command line prefix input
+     * @param timeout the maximum time to wait
+     * @param unit the time unit
+     * @return the result candidates, or null on timeout/interruption
      */
     @Nullable
     public IpcFrame.CompleteResult complete(
@@ -321,15 +328,12 @@ public final class ZmqClient implements AutoCloseable {
     // ── hint ────────────────────────────────────────────────────────────────
 
     /**
-     * Send a Hint frame and synchronously wait for the response.
+     * Sends a parameter autocomplete hint request and blocks synchronously waiting for the display text.
      *
-     * <p>Used by the tail-tip widget, which runs on the reader thread — blocking here blocks
-     * keystroke processing, so the timeout should be short.
-     *
-     * @param line current command line buffer content
-     * @param timeout max time to wait
-     * @param unit time unit
-     * @return the hint response, or {@code null} on timeout / error
+     * @param line the current command line input
+     * @param timeout the maximum time to wait
+     * @param unit the time unit
+     * @return the hint result containing suggested arguments, or null on timeout/interruption
      */
     @Nullable
     public IpcFrame.HintResult hint(@NotNull String line, long timeout, @NotNull TimeUnit unit) {
@@ -349,15 +353,16 @@ public final class ZmqClient implements AutoCloseable {
 
     // ── lifecycle ───────────────────────────────────────────────────────────
 
-    /** Shut down the IO thread and release resources. */
+    /**
+     * Gracefully shuts down the ZeroMQ client. Shuts down the background I/O thread,
+     * closes the transport connections, and releases ZContext resources.
+     */
     @Override
     public void close() {
         if (closed) return;
         closed = true;
 
-        // Gracefully wait for the background IO thread to exit.
-        // The IO thread's finally block will close the transport socket inside its own thread
-        // context.
+        // Wait for the background IO thread to exit to prevent thread leaks.
         if (Thread.currentThread() != ioThread) {
             try {
                 ioThread.join(2000);
@@ -366,10 +371,14 @@ public final class ZmqClient implements AutoCloseable {
             }
         }
 
-        // The socket has been closed in the IO thread. Now close the context.
         ctx.close();
     }
 
+    /**
+     * Returns the unique UUID identity generated for this terminal instance.
+     *
+     * @return the UUID string
+     */
     @NotNull
     public String identity() {
         return identity;
