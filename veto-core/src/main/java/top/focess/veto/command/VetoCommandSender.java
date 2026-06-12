@@ -44,6 +44,7 @@ public final class VetoCommandSender extends AbstractCommandSender {
     @NotNull private volatile Function<String, String> sessionResolver = id -> null;
 
     private volatile boolean errorFlag;
+    @Nullable private volatile String terminateReason;
     @Nullable private volatile Queue<ZmqServer.OutboxEntry> outbox;
     @Nullable private volatile String outboxIdentity;
     @NotNull private volatile String promptText = "Input:";
@@ -90,6 +91,16 @@ public final class VetoCommandSender extends AbstractCommandSender {
         this.outboxIdentity = identity;
         this.doneMeta.clear();
         this.errorFlag = false;
+        this.terminateReason = null;
+    }
+
+    public void terminate(@Nullable String reason) {
+        this.terminateReason = reason;
+    }
+
+    @Nullable
+    public String terminateReason() {
+        return terminateReason;
     }
 
     // ── output (CommandSender contract) ───────────────────────────────────
@@ -153,7 +164,7 @@ public final class VetoCommandSender extends AbstractCommandSender {
     // ── input buffer (type-ahead) ─────────────────────────────────────────
 
     public void bufferInput(@Nullable String input) {
-        if (input != null && !input.isBlank()) {
+        if (input != null && !input.isEmpty()) {
             inputBuffer.add(input);
         }
     }

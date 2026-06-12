@@ -14,7 +14,6 @@ import java.util.logging.SimpleFormatter;
 import org.jline.reader.*;
 import org.jline.terminal.TerminalBuilder;
 import top.focess.veto.contract.IpcFrame;
-import top.focess.veto.contract.IpcMeta;
 
 public class VetoTerminal {
 
@@ -125,6 +124,10 @@ public class VetoTerminal {
             consumerThread.interrupt();
             status.clear();
             client.send(new IpcFrame.Bye());
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException ignored) {
+            }
             client.close();
         }
     }
@@ -218,13 +221,19 @@ public class VetoTerminal {
         } else if (frame instanceof IpcFrame.Done(Map<String, Object> meta, String content)) {
             waitingForResponse = false;
             flushDeltaBuffer();
-            if (content != null && !content.isBlank()) {
+            if (content != null && !content.isEmpty()) {
                 renderer.println(content);
             }
             status.apply(meta);
-            if (Boolean.TRUE.equals(meta.get(IpcMeta.EXIT))) {
-                running = false;
+            programmaticInterrupt = true;
+            mainThread.interrupt();
+        } else if (frame instanceof IpcFrame.Terminate(String reason)) {
+            waitingForResponse = false;
+            flushDeltaBuffer();
+            if (reason != null && !reason.isEmpty()) {
+                renderer.println(reason);
             }
+            running = false;
             programmaticInterrupt = true;
             mainThread.interrupt();
         } else if (frame instanceof IpcFrame.Error e) {
@@ -275,11 +284,11 @@ public class VetoTerminal {
                 for (IpcFrame.Completion comp : compResult.candidates()) {
                     String name = comp.value();
                     String desc =
-                            comp.description() != null && !comp.description().isBlank()
+                            comp.description() != null && !comp.description().isEmpty()
                                     ? comp.description()
                                     : null;
                     String group =
-                            comp.group() != null && !comp.group().isBlank() ? comp.group() : null;
+                            comp.group() != null && !comp.group().isEmpty() ? comp.group() : null;
                     out.add(new Candidate(name, name, group, desc, null, null, true));
                 }
             }

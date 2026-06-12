@@ -66,7 +66,9 @@ class LiveTestRunner {
         while (true) {
             IpcFrame f = recv();
             if (f == null) continue;
-            if (f instanceof IpcFrame.Done || f instanceof IpcFrame.Error) return f;
+            if (f instanceof IpcFrame.Done
+                    || f instanceof IpcFrame.Error
+                    || f instanceof IpcFrame.Terminate) return f;
             if (f instanceof IpcFrame.Prompt) {
                 String reply = prompts == 0 ? "liveuser" : "livepass";
                 send(new IpcFrame.Input(reply));
@@ -108,7 +110,7 @@ class LiveTestRunner {
             // 6. /exit
             r = exchange("/exit");
             System.out.println("[EXIT] -> " + r);
-            assert r instanceof IpcFrame.Done : "/exit failed: " + r;
+            assert r instanceof IpcFrame.Terminate : "/exit failed: " + r;
 
             // 7. Tab completion
             send(new IpcFrame.Complete("/log", 1));

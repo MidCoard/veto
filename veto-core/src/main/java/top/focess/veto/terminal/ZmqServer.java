@@ -46,7 +46,7 @@ public class ZmqServer {
 
     private static final Logger log = LoggerFactory.getLogger(ZmqServer.class);
 
-    private static final long HEARTBEAT_INTERVAL_MS = 30_000;
+    private static final long HEARTBEAT_INTERVAL_MS = 40_000;
     private static final long SESSION_TIMEOUT_MS = 90_000;
     private static final int MAX_OUTBOX_SIZE = 10_000;
 
@@ -82,6 +82,14 @@ public class ZmqServer {
 
     @PreDestroy
     public void stop() {
+        for (String identity : sessions.keySet()) {
+            offerToOutbox(
+                    new OutboxEntry(identity, new IpcFrame.Terminate("Server shutting down.")));
+        }
+        try {
+            Thread.sleep(100);
+        } catch (InterruptedException ignored) {
+        }
         running = false;
         workers.shutdown();
         try {
@@ -102,7 +110,8 @@ public class ZmqServer {
 
         while (running) {
             // 1. Block until data arrives or 50 ms elapses
-            poller.poll(50);
+            long timeout = outbox.isEmpty() ? 50 : 0;
+            poller.poll(timeout);
 
             // 2. Read incoming
             ZmqTransport.ZmqMessage msg = null;
@@ -125,10 +134,9 @@ public class ZmqServer {
                                             offerToOutbox(
                                                     new OutboxEntry(
                                                             identity,
-                                                            new IpcFrame.Error(
+                                                            IpcFrame.Error.ofError(
                                                                     "Internal error: "
-                                                                            + t.getMessage(),
-                                                                    0)));
+                                                                            + t.getMessage())));
                                         }
                                     });
                     if (frame instanceof IpcFrame.Request) {
@@ -163,17 +171,21 @@ public class ZmqServer {
         switch (frame) {
             case IpcFrame.Request req -> {
                 try {
-                    log.debug("REQ  {}: {}", identity.substring(0, 8), req.raw());
+                    log.trace("REQ  {}: {}", identity.substring(0, 8), req.raw());
                     session.lastActivityNanos = System.nanoTime();
                     session.sender.setOutbox(outbox, identity);
                     registry.dispatch(session.sender, req.raw());
                     session.lastActivityNanos = System.nanoTime();
-                    IpcFrame terminal =
-                            session.sender.hasError()
-                                    ? new IpcFrame.Error("Command failed.", 0)
-                                    : new IpcFrame.Done(session.sender.doneMeta(), null);
+                    IpcFrame terminal;
+                    if (session.sender.terminateReason() != null) {
+                        terminal = new IpcFrame.Terminate(session.sender.terminateReason());
+                    } else if (session.sender.hasError()) {
+                        terminal = IpcFrame.Error.ofError("Command failed.");
+                    } else {
+                        terminal = new IpcFrame.Done(session.sender.doneMeta(), null);
+                    }
                     offerToOutbox(new OutboxEntry(identity, terminal));
-                    log.debug(
+                    log.trace(
                             "DONE {}: {} {}",
                             identity.substring(0, 8),
                             terminal instanceof IpcFrame.Error ? "Error" : "Done",
@@ -184,26 +196,25 @@ public class ZmqServer {
             }
 
             case IpcFrame.Input in -> {
-                log.debug("IN   {}: {}", identity.substring(0, 8), in.raw());
+                log.trace("IN   {}", identity.substring(0, 8));
                 session.lastActivityNanos = System.nanoTime();
                 boolean accepted = session.sender.receiveInput(in.raw());
                 if (!accepted) {
-                    log.debug("Stale input from {}: no future waiting", identity);
+                    log.trace("Stale input from {}: no future waiting", identity);
                     offerToOutbox(
                             new OutboxEntry(
                                     identity,
-                                    new IpcFrame.Error(
+                                    IpcFrame.Error.ofError(
                                             "Input no longer expected"
-                                                    + " — request may have timed out.",
-                                            0)));
+                                                    + " — request may have timed out.")));
                 }
             }
 
             case IpcFrame.Complete comp -> {
-                log.debug("COMP {}: {}", identity.substring(0, 8), comp.raw());
+                log.trace("COMP {}: {}", identity.substring(0, 8), comp.raw());
                 session.lastActivityNanos = System.nanoTime();
                 var completions = registry.complete(identity, comp.raw());
-                log.debug(
+                log.trace(
                         "COMP {}: -> {} candidates", identity.substring(0, 8), completions.size());
                 offerToOutbox(
                         new OutboxEntry(
@@ -211,14 +222,14 @@ public class ZmqServer {
             }
 
             case IpcFrame.Hint h -> {
-                log.debug("HINT {}: {}", identity.substring(0, 8), h.raw());
+                log.trace("HINT {}: {}", identity.substring(0, 8), h.raw());
                 session.lastActivityNanos = System.nanoTime();
                 HintInfo hint = registry.hint(identity, h.raw());
                 offerToOutbox(new OutboxEntry(identity, new IpcFrame.HintResult(hint, h.seq())));
             }
 
             case IpcFrame.Cancel c -> {
-                log.debug("CANC {}: request cancelled", identity.substring(0, 8));
+                log.trace("CANC {}: request cancelled", identity.substring(0, 8));
                 session.lastActivityNanos = System.nanoTime();
                 // Interrupt the in-flight Request task
                 Future<?> task = activeTasks.remove(identity);
@@ -233,33 +244,37 @@ public class ZmqServer {
             }
 
             case IpcFrame.Bye b -> {
-                log.debug("BYE  {}: terminal disconnecting", identity.substring(0, 8));
-                offerToOutbox(
-                        new OutboxEntry(
-                                identity, new IpcFrame.Done(Map.of(IpcMeta.EXIT, true), null)));
-                activeTasks.remove(identity);
+                log.trace("BYE  {}: terminal disconnecting", identity.substring(0, 8));
+                offerToOutbox(new OutboxEntry(identity, new IpcFrame.Done(Map.of(), null)));
+                Future<?> task = activeTasks.remove(identity);
+                if (task != null) {
+                    task.cancel(true);
+                }
                 sessions.remove(identity);
                 sessionManager.invalidate(identity);
             }
 
             case IpcFrame.Hello hello -> {
-                // Evict old session if this identity is reconnecting
                 if (sessions.containsKey(identity)) {
                     log.warn(
-                            "Duplicate identity {} — evicting old session",
+                            "Duplicate identity {} — rejecting new connection",
                             identity.substring(0, 8));
-                    activeTasks.remove(identity);
-                    sessionManager.invalidate(identity);
-                    sessions.remove(identity);
+                    offerToOutbox(
+                            new OutboxEntry(
+                                    identity,
+                                    new IpcFrame.Error(
+                                            "Duplicate identity connected.", hello.seq())));
+                } else {
+                    int negotiated = Math.min(hello.version(), IpcFrame.PROTOCOL_VERSION);
+                    log.trace(
+                            "HELLO {}: v{} → negotiated v{}",
+                            identity.substring(0, 8),
+                            hello.version(),
+                            negotiated);
+                    offerToOutbox(
+                            new OutboxEntry(
+                                    identity, new IpcFrame.Welcome(negotiated, hello.seq())));
                 }
-                int negotiated = Math.min(hello.version(), IpcFrame.PROTOCOL_VERSION);
-                log.debug(
-                        "HELLO {}: v{} → negotiated v{}",
-                        identity.substring(0, 8),
-                        hello.version(),
-                        negotiated);
-                offerToOutbox(
-                        new OutboxEntry(identity, new IpcFrame.Welcome(negotiated, hello.seq())));
             }
 
             case IpcFrame.Heartbeat h -> {
@@ -294,7 +309,10 @@ public class ZmqServer {
                 if (e.getValue().lastActivityNanos < cutoff) {
                     String id = e.getKey();
                     log.debug("Removing stale session {}", id);
-                    activeTasks.remove(id);
+                    Future<?> task = activeTasks.remove(id);
+                    if (task != null) {
+                        task.cancel(true);
+                    }
                     sessionManager.invalidate(id);
                     it.remove();
                 }

@@ -15,9 +15,6 @@ public final class IpcMeta {
     /** {@code boolean} — the current request was cancelled. */
     public static final String CANCELLED = "cancelled";
 
-    /** {@code boolean} — the terminal should exit its REPL loop. */
-    public static final String EXIT = "exit";
-
     /**
      * {@code boolean} — the terminal should clear cached session metadata (username, turn count).
      */

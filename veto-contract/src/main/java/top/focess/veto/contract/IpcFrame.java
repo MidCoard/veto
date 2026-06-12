@@ -48,6 +48,7 @@ import java.util.Map;
     @JsonSubTypes.Type(value = IpcFrame.Delta.class, name = "delta"),
     @JsonSubTypes.Type(value = IpcFrame.Progress.class, name = "progress"),
     @JsonSubTypes.Type(value = IpcFrame.Prompt.class, name = "prompt"),
+    @JsonSubTypes.Type(value = IpcFrame.Terminate.class, name = "terminate"),
 })
 public sealed interface IpcFrame
         permits IpcFrame.ClientFrame, IpcFrame.ServerFrame, IpcFrame.Unknown {
@@ -138,7 +139,7 @@ public sealed interface IpcFrame
      * {@link Prompt}, {@link Done}) do not carry a {@code seq}.
      */
     sealed interface ServerFrame extends IpcFrame
-            permits SeqResponse, Done, Delta, Progress, Prompt {}
+            permits SeqResponse, Done, Delta, Progress, Prompt, Terminate {}
 
     /** Marker interface for all seq-based server response frames. */
     sealed interface SeqResponse extends ServerFrame
@@ -209,7 +210,11 @@ public sealed interface IpcFrame
      * @param content error description
      * @param seq echoed from the initiating frame; 0 when not correlated to a sequenced request
      */
-    record Error(String content, long seq) implements SeqResponse {}
+    record Error(String content, long seq) implements SeqResponse {
+        public static Error ofError(String content) {
+            return new Error(content, 0);
+        }
+    }
 
     /** Streaming content chunk — not terminal; more frames follow. */
     record Delta(String content, int index) implements ServerFrame {}
@@ -234,6 +239,8 @@ public sealed interface IpcFrame
      * reply.
      */
     record Prompt(String content, Map<String, Object> meta) implements ServerFrame {}
+
+    record Terminate(String reason) implements ServerFrame {}
 
     // ══════════════════════════════════════════════════════════════════════
     //  Fallback
