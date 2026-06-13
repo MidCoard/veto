@@ -118,7 +118,7 @@ public class MordantRenderer {
      * @param text the error message
      */
     public void error(String text) {
-        println(red("✗ " + text));
+        println(red("Error: " + text));
     }
 
     /** Prints a stylized visual horizontal separator line to the terminal. */

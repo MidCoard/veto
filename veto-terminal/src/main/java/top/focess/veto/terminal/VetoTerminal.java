@@ -244,6 +244,7 @@ public class VetoTerminal {
                                     + renderer.cyan(activePrompt.content())
                                     + " ";
                     mask = Boolean.TRUE.equals(activePrompt.meta().get("mask")) ? '*' : null;
+                    reader.setVariable(LineReader.DISABLE_HISTORY, Boolean.TRUE);
                 } else {
                     // Standard prompt: green when logged in, red when logged out.
                     promptText =
@@ -251,6 +252,7 @@ public class VetoTerminal {
                                     ? renderer.green("▸ ")
                                     : renderer.red("◇ ");
                     mask = null;
+                    reader.setVariable(LineReader.DISABLE_HISTORY, Boolean.FALSE);
                 }
             }
             try {
