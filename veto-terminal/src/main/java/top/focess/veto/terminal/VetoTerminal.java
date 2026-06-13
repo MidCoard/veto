@@ -112,6 +112,9 @@ public class VetoTerminal {
      */
     private Thread mainThread;
 
+    /** Flag indicating a Terminate frame with a non-null reason was already printed. */
+    private boolean terminateReceived = false;
+
     /**
      * Constructs a new VetoTerminal instance.
      *
@@ -305,8 +308,9 @@ public class VetoTerminal {
             }
 
             executeRequest(line);
+        if (!terminateReceived) {
+            renderer.println("  Goodbye.");
         }
-        renderer.println("  Goodbye.");
     }
 
     /**
@@ -362,6 +366,7 @@ public class VetoTerminal {
                 } else if (frame instanceof IpcFrame.Terminate(String reason)) {
                     if (reason != null) {
                         renderer.println(reason);
+                        terminateReceived = true;
                     }
                     running = false;
                     targetState = State.IDLE;
@@ -469,7 +474,9 @@ public class VetoTerminal {
             org.jline.terminal.Terminal jt =
                     TerminalBuilder.builder().system(true).jna(true).encoding("UTF-8").build();
             Terminal mt = MordantTerminal.create();
-            ZmqClient transport = new ZmqClient(options.getAddress());
+            System.out.println("Connecting to backend at " + options.address() + " ...");
+            ZmqClient transport = new ZmqClient(options.address());
+            System.out.println("Connected.");
             VetoTerminal vt = new VetoTerminal(mt, transport);
             Completer completer = vt.new VetoCompleter();
             LineReader r = LineReaderBuilder.builder().terminal(jt).completer(completer).build();

@@ -70,7 +70,7 @@ public class VetoTui {
         options.configureLogging();
 
         try {
-            VetoTui tui = new VetoTui(options.getAddress());
+            VetoTui tui = new VetoTui(options.address());
             tui.start();
         } catch (Exception e) {
             System.err.println("Fatal: TUI initialization failed: " + e.getMessage());

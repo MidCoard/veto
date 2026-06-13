@@ -88,9 +88,7 @@ public final class ZmqClient implements AutoCloseable {
         this.ctx = new ZContext();
         // Setup DEALER socket connection using our unique identity.
         this.transport = ZmqTransport.connectDealer(ctx, address, identity);
-        System.out.println("Connecting to backend at " + address + " ...");
         handshake();
-        System.out.println("Connected.");
         // We run ZMQ socket I/O in a dedicated thread to ensure thread-safety of ZeroMQ resources.
         this.ioThread = new Thread(this::ioLoop, "zmq-io");
         this.ioThread.setDaemon(true);

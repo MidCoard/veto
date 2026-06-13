@@ -5,28 +5,15 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.LoggerContext;
 import org.slf4j.ILoggerFactory;
 import org.slf4j.LoggerFactory;
+import org.slf4j.bridge.SLF4JBridgeHandler;
+
+import java.util.logging.LogManager;
 
 /**
  * Common configuration options parsed from client command line arguments. Shared between the
  * terminal and TUI modules via veto-contract.
  */
-public final class ClientOptions {
-
-    private final boolean debug;
-    private final String address;
-
-    private ClientOptions(boolean debug, String address) {
-        this.debug = debug;
-        this.address = address;
-    }
-
-    public boolean isDebug() {
-        return debug;
-    }
-
-    public String getAddress() {
-        return address;
-    }
+public record ClientOptions(boolean debug, String address) {
 
     /**
      * Parses the command line arguments array into a ClientOptions instance.
@@ -51,7 +38,9 @@ public final class ClientOptions {
         return new ClientOptions(debug, address);
     }
 
-    /** Configures the Logback logging framework level depending on the parsed options. */
+    /**
+     * Configures the Logback logging framework level depending on the parsed options.
+     */
     public void configureLogging() {
         ILoggerFactory factory = LoggerFactory.getILoggerFactory();
         if (factory instanceof LoggerContext context) {
@@ -61,6 +50,20 @@ public final class ClientOptions {
             } else {
                 rootLogger.setLevel(Level.OFF);
             }
+        }
+
+        // Route java.util.logging (JUL) through SLF4J to silence standard console errors (like
+        // JLine fallback warnings)
+        try {
+            SLF4JBridgeHandler.removeHandlersForRootLogger();
+            SLF4JBridgeHandler.install();
+            java.util.logging.Logger julRoot =
+                    LogManager.getLogManager().getLogger("");
+            if (julRoot != null) {
+                julRoot.setLevel(
+                        this.debug ? java.util.logging.Level.FINEST : java.util.logging.Level.OFF);
+            }
+        } catch (Throwable ignored) {
         }
     }
 }
