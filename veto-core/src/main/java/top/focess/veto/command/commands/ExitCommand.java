@@ -4,6 +4,7 @@ import java.util.List;
 import org.jetbrains.annotations.NotNull;
 import top.focess.command.CommandResult;
 import top.focess.command.CommandSender;
+import top.focess.veto.command.TerminateException;
 import top.focess.veto.command.VetoCommand;
 import top.focess.veto.command.VetoCommandSender;
 
@@ -19,7 +20,7 @@ public class ExitCommand extends VetoCommand {
                 (sender, args) -> {
                     VetoCommandSender s = vetoSender(sender);
                     if (s == null) return CommandResult.REFUSE;
-                    throw new top.focess.veto.command.TerminateException("Goodbye.");
+                    throw new TerminateException("Goodbye.");
                 });
     }
 

@@ -45,13 +45,28 @@ public class VetoTerminal {
                       ╚═══╝  ╚══════╝   ╚═╝    ╚═════╝
                     """;
 
+    /** ZeroMQ endpoint of the backend ROUTER socket this terminal connects to. */
     private static final String BACKEND_ADDR = "tcp://127.0.0.1:5555";
+
+    /**
+     * Maximum time in milliseconds the terminal waits for a response before considering the
+     * backend unresponsive. Currently unused in the polling path but retained for future use.
+     */
     private static final long REQUEST_TIMEOUT_MS = 85_000;
+
+    /** Interval in milliseconds between periodic {@link IpcFrame.Heartbeat} frames. */
     private static final long HEARTBEAT_INTERVAL_MS = 30_000;
 
+    /** The Mordant terminal used for styled (ANSI) console output. */
     private final Terminal t;
+
+    /** ZMQ DEALER client connected to the backend ROUTER. */
     private final ZmqClient client;
+
+    /** JLine reader driving the interactive REPL; set in {@link #start(LineReader)}. */
     private LineReader reader;
+
+    /** ANSI renderer delegating to Mordant for colour/style formatting. */
     private MordantRenderer renderer;
 
     /** States representing the interactive status of the terminal REPL. */
@@ -68,13 +83,34 @@ public class VetoTerminal {
         PROGRAMMATIC_INTERRUPT
     }
 
+    /** Current session status bar manager; updated on each REPL iteration. */
     private TerminalStatus status;
+
+    /** Set to {@code false} to signal all background threads to stop. */
     private volatile boolean running;
+
+    /** Current REPL interaction state. Guarded by {@link #stateLock}. */
     private State state = State.IDLE;
+
+    /**
+     * Target state to transition into after the current programmatic interrupt is acknowledged.
+     * Guarded by {@link #stateLock}.
+     */
     private State targetState = State.IDLE;
+
+    /** Lock object protecting {@link #state}, {@link #targetState}, and {@link #activePrompt}. */
     private final Object stateLock = new Object();
 
+    /**
+     * The {@link IpcFrame.Prompt} currently being presented to the user, or {@code null} when
+     * the terminal is not in the {@link State#PROMPTED} state.
+     */
     private IpcFrame.Prompt activePrompt = null;
+
+    /**
+     * Reference to the main REPL thread ({@link #repl()}) so that background threads can
+     * interrupt its blocking {@link LineReader#readLine} call for state transitions.
+     */
     private Thread mainThread;
 
     /**
@@ -390,7 +426,13 @@ public class VetoTerminal {
 
     // ── tab completion ───────────────────────────────────────────────────
 
-    /** Tab completer implementation that retrieves completion candidates from the backend. */
+    /**
+     * JLine {@link Completer} that fetches tab-completion candidates from the backend.
+     *
+     * <p>Completion is triggered only when the buffer starts with {@code /} (slash-commands).
+     * Candidates are retrieved synchronously via {@link ZmqClient#complete} with a 3-second
+     * timeout; if the backend does not respond in time, no candidates are offered.
+     */
     private class VetoCompleter implements Completer {
 
         @Override

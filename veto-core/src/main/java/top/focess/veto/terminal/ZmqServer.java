@@ -109,12 +109,26 @@ public class ZmqServer {
     @Value("${veto.terminal.bind-address:tcp://127.0.0.1:5555}")
     private String bindAddress;
 
+    /**
+     * Constructs a new {@code ZmqServer}. Spring calls this constructor with the
+     * {@link CommandRegistry} bean wired from the application context.
+     *
+     * @param registry the command registry used to dispatch requests and produce completions
+     */
     public ZmqServer(@NotNull CommandRegistry registry) {
         this.registry = registry;
     }
 
     // ── Lifecycle ────────────────────────────────────────────────────────
 
+    /**
+     * Initializes the ZeroMQ context, binds the ROUTER socket, and starts the IO and heartbeat
+     * infrastructure threads.
+     *
+     * <p>Invoked automatically by Spring after the bean is constructed ({@link PostConstruct}).
+     * The bind address is read from the {@code veto.terminal.bind-address} property, defaulting
+     * to {@code tcp://127.0.0.1:5555}.
+     */
     @PostConstruct
     public void start() {
         ctx = new ZContext();
@@ -125,6 +139,20 @@ public class ZmqServer {
         log.info("ZmqServer bound to {}", bindAddress);
     }
 
+    /**
+     * Gracefully shuts down the server.
+     *
+     * <p>Invoked automatically by Spring before the bean is destroyed ({@link PreDestroy}).
+     * The shutdown sequence is:
+     * <ol>
+     *   <li>Sets {@link #running} to {@code false} so loops exit after their current iteration.</li>
+     *   <li>Sends a {@link IpcFrame.Terminate} frame to every connected terminal.</li>
+     *   <li>Waits 100 ms to allow the IO thread to flush outgoing terminate frames.</li>
+     *   <li>Shuts down session and request pools ({@code shutdownNow()}).</li>
+     *   <li>Awaits infrastructure pool termination (up to 3 seconds).</li>
+     *   <li>Closes the transport socket and ZMQ context.</li>
+     * </ol>
+     */
     @PreDestroy
     public void stop() {
         running = false;
@@ -491,6 +519,15 @@ public class ZmqServer {
         outbox.add(new OutboxEntry(identity, frame));
     }
 
+    /**
+     * Factory method that creates a new {@link VetoCommandSender} for a freshly connected session.
+     *
+     * <p>The sender starts in the logged-out state ({@code username = null}); it is updated to the
+     * authenticated user after a successful {@code /login} command.
+     *
+     * @param identity the ZMQ DEALER identity of the connecting terminal
+     * @return a new, unauthenticated {@link VetoCommandSender}; never {@code null}
+     */
     @NotNull
     private VetoCommandSender createSender(@NotNull String identity) {
         return new VetoCommandSender(this, null, identity);

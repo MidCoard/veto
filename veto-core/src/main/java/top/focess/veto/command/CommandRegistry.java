@@ -9,30 +9,60 @@ import org.slf4j.LoggerFactory;
 import top.focess.command.*;
 import top.focess.veto.contract.IpcFrame;
 import top.focess.veto.contract.IpcFrame.HintInfo;
+import top.focess.veto.contract.IpcMeta;
+import top.focess.veto.terminal.ZmqServer;
 
 /**
  * Registry wrapping the {@link CommandManager} from {@code focess-command}.
  *
- * <p>Provides command registration, dispatch, tab-completion. The {@code ZmqServer} owns the
- * transport and calls {@link #dispatch(VetoCommandSender, String)} with a sender whose outbox has
- * already been wired.
+ * <p>Provides command registration, dispatch, tab-completion, and hint generation for all Veto
+ * slash-commands and plain-text LLM prompts. The {@link ZmqServer} owns
+ * the transport layer and calls {@link #dispatch(VetoCommandSender, String)} with a sender whose
+ * outbox has already been wired to the ROUTER socket.
+ *
+ * <h3>Thread safety</h3>
+ *
+ * <p>The underlying {@code CommandManager} is accessed from request-pool virtual threads (one per
+ * active command execution). Callers must ensure that individual {@link top.focess.command.Command}
+ * implementations are themselves thread-safe if concurrent invocations are possible.
  */
 public class CommandRegistry {
 
     private static final Logger log = LoggerFactory.getLogger(CommandRegistry.class);
 
+    /** Underlying command manager that handles routing, parsing, and dispatch. */
     private final CommandManager manager = new CommandManager();
 
+    /**
+     * Optional handler for plain-text (non-slash) LLM prompts.
+     * When {@code null}, plain-text input returns an "Agent not available" error.
+     */
     private final @Nullable PromptHandler promptHandler;
 
+    /**
+     * Constructs a new {@code CommandRegistry}.
+     *
+     * @param promptHandler the handler for plain-text LLM prompts, or {@code null} if agent
+     *                      functionality is not available in this deployment
+     */
     public CommandRegistry(@Nullable PromptHandler promptHandler) {
         this.promptHandler = promptHandler;
     }
 
+    /**
+     * Registers a command with the underlying {@link CommandManager}.
+     *
+     * @param c the command to register; must not be {@code null}
+     */
     public void register(@NotNull Command c) {
         manager.register(c);
     }
 
+    /**
+     * Returns all commands currently registered with this registry.
+     *
+     * @return an unmodifiable list of registered commands; never {@code null}
+     */
     @NotNull
     public List<Command> getCommands() {
         return manager.getCommands();
@@ -40,7 +70,19 @@ public class CommandRegistry {
 
     // ── dispatch ─────────────────────────────────────────────────────────
 
-    @Nullable
+    /**
+     * Dispatches the raw input string as either a slash-command or a plain-text LLM prompt.
+     *
+     * <p>If the trimmed input is empty, returns a {@link IpcFrame.Done} with empty metadata.
+     * If it starts with {@code /}, it is dispatched as a slash-command via {@link CommandManager};
+     * otherwise it is forwarded to the {@link PromptHandler} as an LLM prompt.
+     *
+     * @param sender the command sender for the active terminal session
+     * @param raw    the raw input string; may be {@code null} or empty
+     * @return a {@link IpcFrame.TerminalResponse} ({@link IpcFrame.Done}, {@link IpcFrame.Error},
+     *         or {@link IpcFrame.Terminate}); never {@code null}
+     */
+    @NotNull
     public IpcFrame.TerminalResponse dispatch(
             @NotNull VetoCommandSender sender, @Nullable String raw) {
         if (raw == null || raw.isEmpty()) {
@@ -105,14 +147,14 @@ public class CommandRegistry {
             @NotNull VetoCommandSender sender, boolean wasLogout) {
         Map<String, Object> meta = new java.util.HashMap<>();
         if (wasLogout) {
-            meta.put(top.focess.veto.contract.IpcMeta.CLEAR_SESSION, true);
+            meta.put(IpcMeta.CLEAR_SESSION, true);
         } else if (sender.isLoggedIn()) {
-            meta.put(top.focess.veto.contract.IpcMeta.USERNAME, sender.username());
-            meta.put(top.focess.veto.contract.IpcMeta.SESSION, sender.terminalId());
+            meta.put(IpcMeta.USERNAME, sender.username());
+            meta.put(IpcMeta.SESSION, sender.terminalId());
             if (promptHandler != null) {
                 var agent = promptHandler.sessions().get(sender.terminalId());
                 if (agent != null) {
-                    meta.put(top.focess.veto.contract.IpcMeta.TURN_NUMBER, agent.turns().size());
+                    meta.put(IpcMeta.TURN_NUMBER, agent.turns().size());
                 }
             }
         }
@@ -121,6 +163,18 @@ public class CommandRegistry {
 
     // ── hint ─────────────────────────────────────────────────────────────
 
+    /**
+     * Resolves the inline tail-tip hint for the next expected command argument.
+     *
+     * <p>Routes the current buffer contents through the {@link CommandManager} to determine which
+     * arguments come next, then constructs a {@link HintInfo} whose
+     * {@link HintInfo#displayText()} can be rendered as a JLine tail-tip suggestion.
+     *
+     * @param sender the command sender for the active terminal session
+     * @param raw    the current command-line buffer; may be {@code null} or empty
+     * @return a {@link HintInfo} describing the next argument, or {@link HintInfo#EMPTY} if no
+     *         hint is available; never {@code null}
+     */
     @NotNull
     public HintInfo hint(@NotNull VetoCommandSender sender, @Nullable String raw) {
         if (raw == null || raw.isEmpty()) return HintInfo.EMPTY;
@@ -167,6 +221,18 @@ public class CommandRegistry {
 
     // ── completion ───────────────────────────────────────────────────────
 
+    /**
+     * Returns tab-completion candidates for the given partial command-line input.
+     *
+     * <p>Strips the leading {@code /} (if present) and delegates to
+     * {@link CommandManager#route(top.focess.command.CommandSender, String)} to compute candidates.
+     * Non-slash input returns an empty list — only slash-commands support tab-completion.
+     *
+     * @param sender  the command sender for the active terminal session
+     * @param partial the partial command string, including the leading {@code /}; may be
+     *                {@code null} or empty
+     * @return a list of {@link IpcFrame.Completion} candidates; never {@code null}, may be empty
+     */
     @NotNull
     public List<IpcFrame.Completion> complete(
             @NotNull VetoCommandSender sender, @Nullable String partial) {
@@ -196,6 +262,15 @@ public class CommandRegistry {
                 .toList();
     }
 
+    /**
+     * Returns the underlying {@link CommandManager} instance.
+     *
+     * <p>Exposed for callers that need direct access to the manager (e.g. for metrics or
+     * introspection). Prefer the higher-level {@link #dispatch}, {@link #complete}, and
+     * {@link #hint} methods for normal command processing.
+     *
+     * @return the {@link CommandManager}; never {@code null}
+     */
     @NotNull
     public CommandManager manager() {
         return manager;

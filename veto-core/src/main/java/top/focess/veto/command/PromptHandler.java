@@ -19,24 +19,67 @@ import top.focess.veto.model.AgentPatternRepository;
 import top.focess.veto.vault.CredentialVault;
 
 /**
- * Handles plain-text prompts routed directly to the LLM agent. Uses the standard {@link
- * top.focess.command.CommandSender#output(String)} API to stream responses, and sets {@link
- * VetoCommandSender#doneMeta()} for session metadata.
+ * Handles plain-text (non-slash) prompts by routing them through the LLM ReAct loop.
+ *
+ * <p>Each call to {@link #handle(String, String, VetoCommandSender)} runs the following pipeline:
+ * <ol>
+ *   <li>Authenticates the caller via {@link top.focess.veto.vault.CredentialVault}.</li>
+ *   <li>Evicts stale agent sessions older than {@code SESSION_TTL_MS}.</li>
+ *   <li>Resolves the active LLM configuration (provider, model, system prompt) for the user.</li>
+ *   <li>Executes a ReAct (Reason + Act) loop: calls the LLM, processes any tool calls, feeds
+ *       the observation back, and repeats until the model signals completion or the maximum
+ *       iteration count is reached.</li>
+ *   <li>Appends the new turns to the in-memory {@link top.focess.veto.agent.Agent} and optionally
+ *       compacts the session via {@link top.focess.veto.agent.SessionCompactor}.</li>
+ *   <li>Streams output deltas back to the terminal via
+ *       {@link top.focess.command.CommandSender#output(String)}.</li>
+ * </ol>
+ *
+ * <h3>Thread safety</h3>
+ *
+ * <p>The {@link #sessions} and {@link #compactors} maps are {@link java.util.concurrent.ConcurrentHashMap}.
+ * Per-session state is protected by {@link ConcurrentHashMap#compute}, which serializes concurrent
+ * prompts for the same terminal while leaving other terminals unaffected.
  */
 public class PromptHandler {
 
     private static final Logger log = LoggerFactory.getLogger(PromptHandler.class);
+    /** Idle sessions older than this threshold are removed by {@link #evictStaleSessions()}. */
     private static final long SESSION_TTL_MS = Duration.ofMinutes(30).toMillis();
+
+    /** Maximum number of LLM–tool-call iterations per prompt to prevent infinite loops. */
     private static final int MAX_TOOL_LOOP_ITERATIONS = 10;
 
+    /** Vault used to look up the currently authenticated user for each terminal. */
     private final CredentialVault vault;
+
+    /** Unified LLM caller that abstracts over multiple AI providers. */
     private final UniformLLMCaller caller;
+
+    /** Live agent sessions keyed by terminal ID. Protected by {@link ConcurrentHashMap#compute}. */
     private final ConcurrentHashMap<String, Agent> sessions = new ConcurrentHashMap<>();
+
+    /** Session compactors keyed by terminal ID; lazily created per terminal. */
     private final ConcurrentHashMap<String, SessionCompactor> compactors =
             new ConcurrentHashMap<>();
+
+    /**
+     * Per-user active LLM pattern name (key = username, value = pattern name).
+     * Shared with {@code PatternCommand} via {@link CommandConfiguration}.
+     */
     private final ConcurrentHashMap<String, String> activePatterns;
+
+    /** Repository used to look up user-defined agent patterns by owner and name. */
     private final AgentPatternRepository patternRepo;
 
+    /**
+     * Constructs a new {@code PromptHandler}.
+     *
+     * @param vault          the credential vault used to resolve the current logged-in user
+     * @param caller         the unified LLM caller used to invoke the AI model
+     * @param activePatterns the shared map of per-user active pattern names
+     * @param patternRepo    the repository for user-defined agent patterns
+     */
     public PromptHandler(
             @NotNull CredentialVault vault,
             @NotNull UniformLLMCaller caller,
@@ -48,6 +91,14 @@ public class PromptHandler {
         this.patternRepo = patternRepo;
     }
 
+    /**
+     * Returns the live agent session map.
+     *
+     * <p>Exposed for read-only inspection (e.g. building {@link IpcMeta#TURN_NUMBER}
+     * metadata in {@link CommandRegistry}). Callers must not mutate the returned map directly.
+     *
+     * @return the live sessions map keyed by terminal ID; never {@code null}
+     */
     @NotNull
     public Map<String, Agent> sessions() {
         return sessions;
@@ -225,6 +276,12 @@ public class PromptHandler {
 
     // ── session eviction ──────────────────────────────────────────────────
 
+    /**
+     * Removes agent sessions whose most-recent turn is older than {@link #SESSION_TTL_MS}.
+     *
+     * <p>Called at the start of each {@link #handle} invocation to bound memory growth. Sessions
+     * with no turns are never evicted (the session has not yet produced any output).
+     */
     private void evictStaleSessions() {
         long cutoff = System.currentTimeMillis() - SESSION_TTL_MS;
         Iterator<Map.Entry<String, Agent>> it = sessions.entrySet().iterator();
@@ -241,6 +298,14 @@ public class PromptHandler {
         }
     }
 
+    /**
+     * Removes the agent session and compactor for the given terminal ID.
+     *
+     * <p>Called by logout or cleanup paths (e.g. {@code LogoutCommand}) to free in-memory
+     * state when a terminal disconnects or the user explicitly logs out.
+     *
+     * @param terminalId the ZMQ identity of the terminal whose session should be removed
+     */
     public void removeSession(@NotNull String terminalId) {
         sessions.remove(terminalId);
         compactors.remove(terminalId);
