@@ -20,13 +20,13 @@ repositories {
     mavenCentral()
 }
 
+val jlineVersion: String by rootProject.extra
+
 dependencies {
     implementation(project(":veto-contract"))
 
     // JLine 3 core and dependencies
-    implementation("org.jline:jline:3.26.1")
-    implementation("com.fasterxml.jackson.core:jackson-databind:2.18.0")
-    implementation("org.zeromq:jeromq:0.6.0")
+    implementation("org.jline:jline:$jlineVersion")
 }
 
 spotless {

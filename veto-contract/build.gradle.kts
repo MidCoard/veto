@@ -15,14 +15,19 @@ repositories {
     mavenCentral()
 }
 
+val jacksonVersion: String by rootProject.extra
+val jeromqVersion: String by rootProject.extra
+val slf4jVersion: String by rootProject.extra
+val logbackVersion: String by rootProject.extra
+
 dependencies {
     compileOnly("org.jetbrains:annotations:24.1.0")
-    implementation("com.fasterxml.jackson.core:jackson-databind:2.18.0")
-    implementation("org.zeromq:jeromq:0.6.0")
+    api("com.fasterxml.jackson.core:jackson-databind:$jacksonVersion")
+    api("org.zeromq:jeromq:$jeromqVersion")
 
-    api("org.slf4j:slf4j-api:2.0.13")
-    api("ch.qos.logback:logback-classic:1.5.6")
-    api("org.slf4j:jul-to-slf4j:2.0.13")
+    api("org.slf4j:slf4j-api:$slf4jVersion")
+    api("ch.qos.logback:logback-classic:$logbackVersion")
+    api("org.slf4j:jul-to-slf4j:$slf4jVersion")
 
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
 }

@@ -31,13 +31,13 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
 
     // gRPC
-    implementation("io.grpc:grpc-netty-shaded:1.62.2")
-    implementation("io.grpc:grpc-protobuf:1.62.2")
-    implementation("io.grpc:grpc-stub:1.62.2")
+    implementation("io.grpc:grpc-netty-shaded:1.75.0")
+    implementation("io.grpc:grpc-protobuf:1.75.0")
+    implementation("io.grpc:grpc-stub:1.75.0")
     implementation("javax.annotation:javax.annotation-api:1.3.2")
 
     // Protobuf
-    implementation("com.google.protobuf:protobuf-java:3.25.3")
+    implementation("com.google.protobuf:protobuf-java:4.28.2")
 
     // JSON Processing (from Spring Boot BOM)
     implementation("com.fasterxml.jackson.core:jackson-databind")
@@ -51,10 +51,10 @@ dependencies {
     implementation("org.zeromq:jeromq:0.6.0")
 
     // Encryption
-    implementation("org.bouncycastle:bcprov-jdk18on:1.78.1")
+    implementation("org.bouncycastle:bcprov-jdk18on:1.84")
 
     // WebSocket Client
-    implementation("org.java-websocket:Java-WebSocket:1.5.6")
+    implementation("org.java-websocket:Java-WebSocket:1.6.0")
 
     // Official LLM SDKs
     implementation("com.openai:openai-java:4.38.0")
@@ -75,11 +75,11 @@ dependencies {
 
 protobuf {
     protoc {
-        artifact = "com.google.protobuf:protoc:3.25.3"
+        artifact = "com.google.protobuf:protoc:4.28.2"
     }
     plugins {
         create("grpc") {
-            artifact = "io.grpc:protoc-gen-grpc-java:1.62.2"
+            artifact = "io.grpc:protoc-gen-grpc-java:1.75.0"
         }
     }
     generateProtoTasks {

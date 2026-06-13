@@ -3,11 +3,10 @@ package top.focess.veto.contract;
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.LoggerContext;
+import java.util.logging.LogManager;
 import org.slf4j.ILoggerFactory;
 import org.slf4j.LoggerFactory;
 import org.slf4j.bridge.SLF4JBridgeHandler;
-
-import java.util.logging.LogManager;
 
 /**
  * Common configuration options parsed from client command line arguments. Shared between the
@@ -38,9 +37,7 @@ public record ClientOptions(boolean debug, String address) {
         return new ClientOptions(debug, address);
     }
 
-    /**
-     * Configures the Logback logging framework level depending on the parsed options.
-     */
+    /** Configures the Logback logging framework level depending on the parsed options. */
     public void configureLogging() {
         ILoggerFactory factory = LoggerFactory.getILoggerFactory();
         if (factory instanceof LoggerContext context) {
@@ -57,8 +54,7 @@ public record ClientOptions(boolean debug, String address) {
         try {
             SLF4JBridgeHandler.removeHandlersForRootLogger();
             SLF4JBridgeHandler.install();
-            java.util.logging.Logger julRoot =
-                    LogManager.getLogManager().getLogger("");
+            java.util.logging.Logger julRoot = LogManager.getLogManager().getLogger("");
             if (julRoot != null) {
                 julRoot.setLevel(
                         this.debug ? java.util.logging.Level.FINEST : java.util.logging.Level.OFF);

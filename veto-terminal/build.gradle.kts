@@ -20,21 +20,17 @@ repositories {
     mavenCentral()
 }
 
+val jlineVersion: String by rootProject.extra
+
 dependencies {
     // ONLY veto-contract — deliberately NOT veto-core (no Spring)
     implementation(project(":veto-contract"))
 
     // JLine 3 for terminal I/O, line editing, ANSI, Display
-    implementation("org.jline:jline:3.26.1")
+    implementation("org.jline:jline:$jlineVersion")
 
     // Mordant — rich terminal output (tables, spinners, panels, ANSI detection)
     implementation("com.github.ajalt.mordant:mordant:3.0.2")
-
-    // Jackson — declared explicitly, NOT inherited from Spring Boot BOM
-    implementation("com.fasterxml.jackson.core:jackson-databind:2.18.0")
-
-    // ZMQ transport (shared with veto-contract)
-    implementation("org.zeromq:jeromq:0.6.0")
 }
 
 spotless {

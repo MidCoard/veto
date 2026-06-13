@@ -112,9 +112,6 @@ public class VetoTerminal {
      */
     private Thread mainThread;
 
-    /** Flag indicating a Terminate frame with a non-null reason was already printed. */
-    private boolean terminateReceived = false;
-
     /**
      * Constructs a new VetoTerminal instance.
      *
@@ -308,8 +305,6 @@ public class VetoTerminal {
             }
 
             executeRequest(line);
-        if (!terminateReceived) {
-            renderer.println("  Goodbye.");
         }
     }
 
@@ -366,7 +361,6 @@ public class VetoTerminal {
                 } else if (frame instanceof IpcFrame.Terminate(String reason)) {
                     if (reason != null) {
                         renderer.println(reason);
-                        terminateReceived = true;
                     }
                     running = false;
                     targetState = State.IDLE;
