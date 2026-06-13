@@ -1,5 +1,6 @@
 package top.focess.veto.terminal;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.jline.terminal.Terminal;
@@ -18,7 +19,7 @@ public class TerminalStatus {
 
     private final MordantRenderer renderer;
     private final Status status;
-    private final List<String> requestQueue = new java.util.ArrayList<>();
+    private final List<String> requestQueue = new ArrayList<>();
     private String displayUser;
     private int turnCount;
 
@@ -77,7 +78,7 @@ public class TerminalStatus {
         String styled = renderer.dim(text);
 
         // Visualize the request queue if there are pending requests.
-        if (requestQueue != null && !requestQueue.isEmpty()) {
+        if (!requestQueue.isEmpty()) {
             StringBuilder queueText = new StringBuilder();
             queueText.append(" | ⏳ next: ");
             for (int i = 0; i < requestQueue.size(); i++) {
@@ -120,5 +121,14 @@ public class TerminalStatus {
      */
     public int getTurnCount() {
         return turnCount;
+    }
+
+    /**
+     * Returns the shared queue of pending requests.
+     *
+     * @return the request queue
+     */
+    public List<String> getRequestQueue() {
+        return requestQueue;
     }
 }

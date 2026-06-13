@@ -24,10 +24,11 @@ import top.focess.veto.contract.IpcFrame;
  *
  * <h3>Concurrency &amp; Synchronization model</h3>
  *
- * All mutable REPL state variables (such as {@link #state}, {@link #targetState}, {@link
- * #activePrompt}, and the {@link #requestQueue}) are protected by {@link #stateLock}. Since status
- * bar updates and prompt configuration occur across different threads (main REPL thread, background
- * heartbeat/consumer threads), synchronization ensures consistency and thread safety.
+ * All mutable REPL state variables (such as {@link #state}, {@link #targetState}, and {@link
+ * #activePrompt}) are protected by {@link #stateLock}. The pending-request queue lives inside
+ * {@link TerminalStatus} but is likewise accessed only while holding {@code stateLock}. Since
+ * status bar updates and prompt configuration occur across different threads (main REPL thread,
+ * background heartbeat/consumer threads), synchronization ensures consistency and thread safety.
  */
 public class VetoTerminal {
 
@@ -72,7 +73,6 @@ public class VetoTerminal {
     private State state = State.IDLE;
     private State targetState = State.IDLE;
     private final Object stateLock = new Object();
-    private final List<String> requestQueue = new ArrayList<>();
 
     private IpcFrame.Prompt activePrompt = null;
     private Thread mainThread;
@@ -98,7 +98,7 @@ public class VetoTerminal {
         this.reader = reader;
         this.renderer = new MordantRenderer(t, reader);
         this.mainThread = Thread.currentThread();
-        this.status = new TerminalStatus(reader.getTerminal(), renderer, requestQueue);
+        this.status = new TerminalStatus(reader.getTerminal(), renderer);
         synchronized (stateLock) {
             this.status.refresh();
         }
@@ -236,7 +236,7 @@ public class VetoTerminal {
                         // True user Ctrl+C cancels the active request or prompt.
                         client.send(new IpcFrame.Cancel());
                         activePrompt = null;
-                        requestQueue.clear();
+                        status.getRequestQueue().clear();
                         state = State.IDLE;
                         continue;
                     }
@@ -286,9 +286,10 @@ public class VetoTerminal {
      */
     private void executeRequest(String line) {
         synchronized (stateLock) {
-            requestQueue.add(line);
+            status.getRequestQueue().add(line);
             if (state == State.IDLE) {
-                String nextReq = requestQueue.removeFirst();
+                // Immediately dispatch if idle rather than waiting for the next REPL iteration.
+                String nextReq = status.getRequestQueue().removeFirst();
                 state = State.AWAITING_RESPONSE;
                 client.send(new IpcFrame.Request(nextReq));
             }
@@ -354,8 +355,8 @@ public class VetoTerminal {
      * <p>Note: Must be called while holding {@code stateLock}.
      */
     private void dispatchNextOrIdle() {
-        if (!requestQueue.isEmpty()) {
-            String nextReq = requestQueue.removeFirst();
+        if (!status.getRequestQueue().isEmpty()) {
+            String nextReq = status.getRequestQueue().removeFirst();
             client.send(new IpcFrame.Request(nextReq));
             targetState = State.AWAITING_RESPONSE;
         } else {
