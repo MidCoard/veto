@@ -4,6 +4,7 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import javax.crypto.SecretKey;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,7 +16,7 @@ import org.springframework.stereotype.Service;
  * credentials.
  *
  * <p>The vault starts LOCKED. A user must authenticate to unwrap their Vault Key and call {@link
- * #unlock(SecretKey, String)}. Only one user is active at a time per vault instance.
+ * #unlock(SecretKey, String)}. Supports multiple concurrent active users.
  */
 @Service
 public class CredentialVault {
@@ -25,9 +26,7 @@ public class CredentialVault {
     private final CredentialVaultConfiguration config;
     private final InjectionService injectionService;
 
-    private volatile boolean unlocked = false;
-    private volatile String currentUser;
-    private volatile SecureStore currentStore;
+    private final ConcurrentHashMap<String, SecureStore> activeStores = new ConcurrentHashMap<>();
 
     public CredentialVault(CredentialVaultConfiguration config, InjectionService injectionService) {
         this.config = config;
@@ -52,34 +51,59 @@ public class CredentialVault {
 
     /** Unlocks the vault for a specific user with their Vault Key. */
     public synchronized void unlock(SecretKey vaultKey, String username) {
-        currentStore = new SecureStore(config, username);
-        currentStore.initialize();
-        currentStore.unlock(vaultKey);
-        currentUser = username;
-        unlocked = true;
+        SecureStore store = new SecureStore(config, username);
+        store.initialize();
+        store.unlock(vaultKey);
+        activeStores.put(username, store);
         log.info(
                 "C8 CredentialVault: Unlocked for user '{}'. {} credentials available.",
                 username,
-                currentStore.listKeys().size());
+                store.listKeys().size());
     }
 
-    /** Locks the vault and wipes the current user's decrypted credentials from memory. */
+    /** Locks the vault for the user in the current context, or all users if no context exists. */
     public synchronized void lock() {
-        if (currentStore != null) {
-            currentStore.lock();
+        String user = UserContext.get();
+        if (user != null) {
+            lock(user);
+        } else {
+            activeStores.values().forEach(SecureStore::lock);
+            activeStores.clear();
+            log.info("C8 CredentialVault: Locked all stores.");
         }
-        currentStore = null;
-        currentUser = null;
-        unlocked = false;
-        log.info("C8 CredentialVault: Locked.");
+    }
+
+    /** Locks the vault for a specific user. */
+    public synchronized void lock(String username) {
+        SecureStore store = activeStores.remove(username);
+        if (store != null) {
+            store.lock();
+        }
+        log.info("C8 CredentialVault: Locked for user '{}'.", username);
     }
 
     public boolean isUnlocked() {
-        return unlocked;
+        String user = UserContext.get();
+        if (user != null) {
+            return isUnlocked(user);
+        }
+        return !activeStores.isEmpty();
+    }
+
+    public boolean isUnlocked(String username) {
+        SecureStore store = activeStores.get(username);
+        return store != null && store.isUnlocked();
     }
 
     public String getCurrentUser() {
-        return currentUser;
+        String user = UserContext.get();
+        if (user != null && activeStores.containsKey(user)) {
+            return user;
+        }
+        if (activeStores.size() == 1) {
+            return activeStores.keySet().iterator().next();
+        }
+        return null;
     }
 
     // ── Credential operations ───────────────────────────────────────────────
@@ -107,9 +131,16 @@ public class CredentialVault {
     // ── Helpers ─────────────────────────────────────────────────────────────
 
     private SecureStore requireStore() {
-        SecureStore store = this.currentStore;
-        if (store == null || !unlocked) {
+        String user = UserContext.get();
+        if (user == null) {
+            if (activeStores.size() == 1) {
+                return activeStores.values().iterator().next();
+            }
             throw new SecureStore.VaultLockedException("Vault is locked — authenticate first");
+        }
+        SecureStore store = activeStores.get(user);
+        if (store == null || !store.isUnlocked()) {
+            throw new SecureStore.VaultLockedException("Vault is locked for user: " + user);
         }
         return store;
     }

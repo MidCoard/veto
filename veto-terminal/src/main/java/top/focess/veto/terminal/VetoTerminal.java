@@ -6,12 +6,11 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
-import java.util.logging.FileHandler;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-import java.util.logging.SimpleFormatter;
 import org.jline.reader.*;
 import org.jline.terminal.TerminalBuilder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import top.focess.veto.contract.ClientOptions;
 import top.focess.veto.contract.IpcFrame;
 import top.focess.veto.contract.ZmqClient;
 
@@ -32,7 +31,7 @@ import top.focess.veto.contract.ZmqClient;
  */
 public class VetoTerminal {
 
-    private static final Logger log = Logger.getLogger(VetoTerminal.class.getName());
+    private static final Logger log = LoggerFactory.getLogger(VetoTerminal.class);
 
     /** ASCII Banner displayed on startup. */
     private static final String HEADER =
@@ -154,10 +153,7 @@ public class VetoTerminal {
                                     client.send(new IpcFrame.Heartbeat());
                                 } catch (Exception e) {
                                     if (running) {
-                                        log.log(
-                                                Level.WARNING,
-                                                "Error in heartbeat loop, terminating thread",
-                                                e);
+                                        log.warn("Error in heartbeat loop, terminating thread", e);
                                     }
                                     break;
                                 }
@@ -186,10 +182,7 @@ public class VetoTerminal {
                                     handleFrame(frame);
                                 } catch (Exception e) {
                                     if (running) {
-                                        log.log(
-                                                Level.WARNING,
-                                                "Error in incoming loop, terminating thread",
-                                                e);
+                                        log.warn("Error in incoming loop, terminating thread", e);
                                     }
                                     break;
                                 }
@@ -342,7 +335,7 @@ public class VetoTerminal {
     private void handleFrame(IpcFrame.ServerFrame frame) {
         if (frame instanceof IpcFrame.Delta(String content)) {
             // Immediate print for stream response chunks.
-            log.fine("[DELTA] len=" + content.length());
+            log.debug("[DELTA] len={}", content.length());
             renderer.println(content);
         } else if (frame instanceof IpcFrame.Progress p) {
             // Display background progress messages.
@@ -468,38 +461,15 @@ public class VetoTerminal {
     public static void main(String[] args) {
         System.setProperty("file.encoding", "UTF-8");
 
-        boolean debug = false;
-        for (String arg : args) {
-            if ("--debug".equals(arg) || "-d".equals(arg)) {
-                debug = true;
-                break;
-            }
-        }
-
-        // Setup log file handler if debugging is enabled.
-        if (debug) {
-            try {
-                FileHandler fileHandler = new FileHandler("veto_debug.log", true);
-                fileHandler.setFormatter(new SimpleFormatter());
-                fileHandler.setLevel(Level.FINE);
-
-                Logger myLogger = Logger.getLogger("top.focess.veto");
-                myLogger.addHandler(fileHandler);
-                myLogger.setLevel(Level.FINE);
-                myLogger.setUseParentHandlers(false);
-            } catch (Exception ignored) {
-            }
-        }
-
-        // Mute JLine internal logger to prevent console clutter.
-        Logger.getLogger("org.jline").setLevel(Level.OFF);
+        ClientOptions options = ClientOptions.parse(args);
+        options.configureLogging();
 
         try {
             // Build the system JLine Terminal and the Mordant Terminal.
             org.jline.terminal.Terminal jt =
                     TerminalBuilder.builder().system(true).jna(true).encoding("UTF-8").build();
             Terminal mt = MordantTerminal.create();
-            ZmqClient transport = new ZmqClient(BACKEND_ADDR);
+            ZmqClient transport = new ZmqClient(options.getAddress());
             VetoTerminal vt = new VetoTerminal(mt, transport);
             Completer completer = vt.new VetoCompleter();
             LineReader r = LineReaderBuilder.builder().terminal(jt).completer(completer).build();

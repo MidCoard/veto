@@ -21,6 +21,7 @@ import top.focess.veto.contract.IpcFrame;
 import top.focess.veto.contract.IpcFrame.HintInfo;
 import top.focess.veto.contract.IpcMeta;
 import top.focess.veto.contract.ZmqTransport;
+import top.focess.veto.vault.UserContext;
 
 /**
  * ZeroMQ-based IPC server that multiplexes multiple terminal sessions over a single ROUTER socket.
@@ -331,106 +332,130 @@ public class ZmqServer {
      */
     private void handleSessionFrame(@NotNull Session session, @NotNull IpcFrame frame) {
         String identity = session.identity;
-        switch (frame) {
-            case IpcFrame.Request req -> {
-                // Off-load to the request pool so long-running commands never stall this loop.
-                // CompletableFuture.whenComplete self-removes from the tracking set once the
-                // task finishes (normally or exceptionally), eliminating the holder[] trick.
-                //
-                // Note: CompletableFuture.cancel(true) marks the future cancelled but does NOT
-                // interrupt the running thread (unlike Future from ExecutorService.submit).
-                // Command handlers should therefore also check
-                // Thread.currentThread().isInterrupted()
-                // to be responsive to cancellation.
-                CompletableFuture<Void> task =
-                        CompletableFuture.runAsync(
-                                () -> {
-                                    log.trace("REQ  {}: {}", identity.substring(0, 8), req.raw());
-                                    try {
-                                        IpcFrame.TerminalResponse result =
-                                                registry.dispatch(session.sender, req.raw());
-                                        session.lastActivityMillis = System.currentTimeMillis();
-                                        if (result != null) {
-                                            send(identity, result);
-                                            log.trace(
-                                                    "DONE {}: {}",
-                                                    identity.substring(0, 8),
-                                                    result.getClass().getSimpleName());
+        String user = session.sender.username();
+        if (user != null) {
+            UserContext.set(user);
+        }
+        try {
+            switch (frame) {
+                case IpcFrame.Request req -> {
+                    // Off-load to the request pool so long-running commands never stall this loop.
+                    // CompletableFuture.whenComplete self-removes from the tracking set once the
+                    // task finishes (normally or exceptionally), eliminating the holder[] trick.
+                    //
+                    // Note: CompletableFuture.cancel(true) marks the future cancelled but does NOT
+                    // interrupt the running thread (unlike Future from ExecutorService.submit).
+                    // Command handlers should therefore also check
+                    // Thread.currentThread().isInterrupted()
+                    // to be responsive to cancellation.
+                    CompletableFuture<Void> task =
+                            CompletableFuture.runAsync(
+                                    () -> {
+                                        if (user != null) {
+                                            UserContext.set(user);
                                         }
-                                    } catch (Throwable t) {
-                                        log.error(
-                                                "Unhandled error executing request for {}",
-                                                identity,
-                                                t);
-                                        send(
-                                                identity,
-                                                IpcFrame.Error.ofError(
-                                                        "Internal error: " + t.getMessage()));
-                                    }
-                                },
-                                requestPool);
-                session.activeRequests.add(task);
-                // Self-removal: runs on the CompletableFuture's completion thread after the
-                // task finishes, regardless of whether it completed normally or exceptionally.
-                task.whenComplete((ignored, ex) -> session.activeRequests.remove(task));
-            }
+                                        try {
+                                            log.trace(
+                                                    "REQ  {}: {}",
+                                                    identity.substring(0, 8),
+                                                    req.raw());
+                                            try {
+                                                IpcFrame.TerminalResponse result =
+                                                        registry.dispatch(
+                                                                session.sender, req.raw());
+                                                session.lastActivityMillis =
+                                                        System.currentTimeMillis();
+                                                if (result != null) {
+                                                    send(identity, result);
+                                                    log.trace(
+                                                            "DONE {}: {}",
+                                                            identity.substring(0, 8),
+                                                            result.getClass().getSimpleName());
+                                                }
+                                            } catch (Throwable t) {
+                                                log.error(
+                                                        "Unhandled error executing request for {}",
+                                                        identity,
+                                                        t);
+                                                send(
+                                                        identity,
+                                                        IpcFrame.Error.ofError(
+                                                                "Internal error: "
+                                                                        + t.getMessage()));
+                                            }
+                                        } finally {
+                                            UserContext.clear();
+                                        }
+                                    },
+                                    requestPool);
+                    session.activeRequests.add(task);
+                    // Self-removal: runs on the CompletableFuture's completion thread after the
+                    // task finishes, regardless of whether it completed normally or exceptionally.
+                    task.whenComplete((ignored, ex) -> session.activeRequests.remove(task));
+                }
 
-            case IpcFrame.Input in -> {
-                log.trace("IN   {}", identity.substring(0, 8));
-                boolean accepted = session.sender.receiveInput(in.raw());
-                if (!accepted) {
-                    // The request that was waiting for input must have already timed out.
-                    log.trace("Stale input from {}: no waiting future", identity);
-                    send(
-                            identity,
-                            IpcFrame.Error.ofError(
-                                    "Input no longer expected — request may have timed out."));
+                case IpcFrame.Input in -> {
+                    log.trace("IN   {}", identity.substring(0, 8));
+                    boolean accepted = session.sender.receiveInput(in.raw());
+                    if (!accepted) {
+                        // The request that was waiting for input must have already timed out.
+                        log.trace("Stale input from {}: no waiting future", identity);
+                        send(
+                                identity,
+                                IpcFrame.Error.ofError(
+                                        "Input no longer expected — request may have timed out."));
+                    }
+                }
+
+                case IpcFrame.Complete comp -> {
+                    log.trace("COMP {}: {}", identity.substring(0, 8), comp.raw());
+                    var completions = registry.complete(session.sender, comp.raw());
+                    log.trace(
+                            "COMP {}: → {} candidates",
+                            identity.substring(0, 8),
+                            completions.size());
+                    send(identity, new IpcFrame.CompleteResult(completions, comp.seq()));
+                }
+
+                case IpcFrame.Hint h -> {
+                    log.trace("HINT {}: {}", identity.substring(0, 8), h.raw());
+                    HintInfo hint = registry.hint(session.sender, h.raw());
+                    send(identity, new IpcFrame.HintResult(hint, h.seq()));
+                }
+
+                case IpcFrame.Cancel c -> {
+                    log.trace(
+                            "CANC {}: cancelling {} in-flight request(s)",
+                            identity.substring(0, 8),
+                            session.activeRequests.size());
+                    // Cancel all in-flight requests for this session, then acknowledge.
+                    cancelAllRequests(session);
+                    send(identity, new IpcFrame.Done(Map.of(IpcMeta.CANCELLED, true), null));
+                }
+
+                case IpcFrame.Bye b -> {
+                    log.trace("BYE  {}: terminal disconnecting", identity.substring(0, 8));
+                    // Acknowledge the Bye before closing, so the terminal receives the Done frame.
+                    send(identity, new IpcFrame.Done(Map.of(), null));
+                    closeSession(session);
+                    // Return immediately; closeSession sets closed=true so the loop will exit.
+                }
+
+                case IpcFrame.Heartbeat h ->
+                        // Heartbeat updates the timestamp; the heartbeat loop checks this value.
+                        session.lastActivityMillis = System.currentTimeMillis();
+
+                default -> {
+                    if (frame instanceof IpcFrame.Unknown u) {
+                        log.warn(
+                                "Unknown frame type '{}' from {} — protocol version mismatch?",
+                                u.type(),
+                                identity.substring(0, 8));
+                    }
                 }
             }
-
-            case IpcFrame.Complete comp -> {
-                log.trace("COMP {}: {}", identity.substring(0, 8), comp.raw());
-                var completions = registry.complete(session.sender, comp.raw());
-                log.trace("COMP {}: → {} candidates", identity.substring(0, 8), completions.size());
-                send(identity, new IpcFrame.CompleteResult(completions, comp.seq()));
-            }
-
-            case IpcFrame.Hint h -> {
-                log.trace("HINT {}: {}", identity.substring(0, 8), h.raw());
-                HintInfo hint = registry.hint(session.sender, h.raw());
-                send(identity, new IpcFrame.HintResult(hint, h.seq()));
-            }
-
-            case IpcFrame.Cancel c -> {
-                log.trace(
-                        "CANC {}: cancelling {} in-flight request(s)",
-                        identity.substring(0, 8),
-                        session.activeRequests.size());
-                // Cancel all in-flight requests for this session, then acknowledge.
-                cancelAllRequests(session);
-                send(identity, new IpcFrame.Done(Map.of(IpcMeta.CANCELLED, true), null));
-            }
-
-            case IpcFrame.Bye b -> {
-                log.trace("BYE  {}: terminal disconnecting", identity.substring(0, 8));
-                // Acknowledge the Bye before closing, so the terminal receives the Done frame.
-                send(identity, new IpcFrame.Done(Map.of(), null));
-                closeSession(session);
-                // Return immediately; closeSession sets closed=true so the loop will exit.
-            }
-
-            case IpcFrame.Heartbeat h ->
-                    // Heartbeat updates the timestamp; the heartbeat loop checks this value.
-                    session.lastActivityMillis = System.currentTimeMillis();
-
-            default -> {
-                if (frame instanceof IpcFrame.Unknown u) {
-                    log.warn(
-                            "Unknown frame type '{}' from {} — protocol version mismatch?",
-                            u.type(),
-                            identity.substring(0, 8));
-                }
-            }
+        } finally {
+            UserContext.clear();
         }
     }
 

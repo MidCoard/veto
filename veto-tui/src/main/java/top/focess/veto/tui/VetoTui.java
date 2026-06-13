@@ -5,11 +5,6 @@ import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
-import java.util.logging.FileHandler;
-import java.util.logging.Handler;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-import java.util.logging.SimpleFormatter;
 import org.jline.keymap.BindingReader;
 import org.jline.keymap.KeyMap;
 import org.jline.terminal.Attributes;
@@ -17,6 +12,9 @@ import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
 import org.jline.utils.Display;
 import org.jline.utils.InfoCmp.Capability;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import top.focess.veto.contract.ClientOptions;
 import top.focess.veto.contract.IpcFrame;
 import top.focess.veto.contract.ZmqClient;
 
@@ -26,7 +24,7 @@ import top.focess.veto.contract.ZmqClient;
  */
 public class VetoTui {
 
-    private static final Logger log = Logger.getLogger(VetoTui.class.getName());
+    private static final Logger log = LoggerFactory.getLogger(VetoTui.class);
     private static final String DEFAULT_ADDR = "tcp://127.0.0.1:5555";
 
     private final BlockingQueue<TuiEvent> eventQueue = new LinkedBlockingQueue<>();
@@ -56,8 +54,11 @@ public class VetoTui {
         // Create Display
         this.display = new Display(this.terminal, true);
 
-        // Set initial terminal size
-        this.state.handleResize(this.terminal.getWidth(), this.terminal.getHeight());
+        // Set initial terminal size (clamp to safe fallback size like 80x24 if columns/rows are 0)
+        int cols = Math.max(80, this.terminal.getWidth());
+        int rows = Math.max(24, this.terminal.getHeight());
+        this.display.resize(rows, cols);
+        this.state.handleResize(cols, rows);
 
         this.renderer = new TuiRenderer();
     }
@@ -65,46 +66,15 @@ public class VetoTui {
     public static void main(String[] args) {
         System.setProperty("file.encoding", "UTF-8");
 
-        boolean debug = false;
-        String address = DEFAULT_ADDR;
-
-        for (int i = 0; i < args.length; i++) {
-            if ("--debug".equals(args[i]) || "-d".equals(args[i])) {
-                debug = true;
-            } else if ("--address".equals(args[i]) && i + 1 < args.length) {
-                address = args[i + 1];
-                i++;
-            }
-        }
-
-        setupDebugLogging(debug);
+        ClientOptions options = ClientOptions.parse(args);
+        options.configureLogging();
 
         try {
-            VetoTui tui = new VetoTui(address);
+            VetoTui tui = new VetoTui(options.getAddress());
             tui.start();
         } catch (Exception e) {
             System.err.println("Fatal: TUI initialization failed: " + e.getMessage());
             e.printStackTrace();
-        }
-    }
-
-    private static void setupDebugLogging(boolean debug) {
-        Logger root = Logger.getLogger("");
-        // Remove default console handlers
-        for (Handler handler : root.getHandlers()) {
-            root.removeHandler(handler);
-        }
-        if (debug) {
-            try {
-                FileHandler fileHandler = new FileHandler("veto_tui_debug.log", false);
-                fileHandler.setFormatter(new SimpleFormatter());
-                root.addHandler(fileHandler);
-                root.setLevel(Level.FINE);
-            } catch (IOException e) {
-                System.err.println("Failed to initialize debug logging: " + e.getMessage());
-            }
-        } else {
-            root.setLevel(Level.OFF);
         }
     }
 
@@ -123,7 +93,7 @@ public class VetoTui {
                                     Thread.currentThread().interrupt();
                                     break;
                                 } catch (Exception e) {
-                                    log.log(Level.WARNING, "ZMQ read error", e);
+                                    log.warn("ZMQ read error", e);
                                     break;
                                 }
                             }
@@ -184,7 +154,7 @@ public class VetoTui {
                                     Thread.currentThread().interrupt();
                                     break;
                                 } catch (Exception e) {
-                                    log.log(Level.WARNING, "Error reading keystrokes", e);
+                                    log.warn("Error reading keystrokes", e);
                                     break;
                                 }
                             }
@@ -240,7 +210,10 @@ public class VetoTui {
 
     private void processEvent(TuiEvent event) {
         if (event instanceof TuiEvent.Resize resize) {
-            state.handleResize(resize.size().getColumns(), resize.size().getRows());
+            int cols = Math.max(20, resize.size().getColumns());
+            int rows = Math.max(10, resize.size().getRows());
+            state.handleResize(cols, rows);
+            display.resize(rows, cols);
         } else if (event instanceof TuiEvent.ZmqMessage zmq) {
             if (zmq.frame() instanceof IpcFrame.Terminate) {
                 state.processServerFrame(zmq.frame());

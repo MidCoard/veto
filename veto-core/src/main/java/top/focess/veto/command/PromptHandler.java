@@ -71,6 +71,8 @@ public class PromptHandler {
      */
     private final ConcurrentHashMap<String, String> activePatterns;
 
+    private final ConcurrentHashMap<String, LlmConfig> adhocConfigs = new ConcurrentHashMap<>();
+
     /** Repository used to look up user-defined agent patterns by owner and name. */
     private final AgentPatternRepository patternRepo;
 
@@ -106,6 +108,56 @@ public class PromptHandler {
         return sessions;
     }
 
+    public void usePattern(String username, String patternName) {
+        activePatterns.put(username, patternName);
+        LlmConfig removed = adhocConfigs.remove(username);
+        if (removed != null) {
+            try {
+                vault.delete(removed.credKey());
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
+    public void setAdhocConfig(
+            String username,
+            ProviderType provider,
+            String model,
+            String systemPrompt,
+            String apiKey) {
+        String credKey = "agent-adhoc-" + username;
+        try {
+            vault.store(credKey, apiKey);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to store ad-hoc API key: " + e.getMessage(), e);
+        }
+        adhocConfigs.put(username, new LlmConfig(provider, model, credKey, systemPrompt));
+        activePatterns.remove(username);
+    }
+
+    public void deactivateAgent(String username) {
+        activePatterns.remove(username);
+        LlmConfig removed = adhocConfigs.remove(username);
+        if (removed != null) {
+            try {
+                vault.delete(removed.credKey());
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
+    public String getActiveAgentString(String username) {
+        LlmConfig adhoc = adhocConfigs.get(username);
+        if (adhoc != null) {
+            return "Ad-hoc agent (" + adhoc.provider() + "/" + adhoc.model() + ")";
+        }
+        String pat = activePatterns.get(username);
+        if (pat != null) {
+            return "Pattern '" + pat + "'";
+        }
+        return "None";
+    }
+
     /**
      * Handle a plain-text prompt and stream the LLM response via the sender's {@code output()}
      * method. On completion, returns a Done or Error response.
@@ -129,6 +181,10 @@ public class PromptHandler {
         evictStaleSessions();
 
         LlmConfig config = resolveLlmConfig(user);
+        if (config == null) {
+            return IpcFrame.Error.ofError(
+                    "No agent is currently active. Use /agent use <patternName> to select an agent.");
+        }
 
         var resultHolder = new IpcFrame.TerminalResponse[1];
 
@@ -229,11 +285,20 @@ public class PromptHandler {
     // ── LLM config resolution ─────────────────────────────────────────────
 
     /** Resolved LLM configuration — either the active pattern or defaults. */
-    private record LlmConfig(
+    public record LlmConfig(
             ProviderType provider, String model, String credKey, String systemPrompt) {}
 
+    public String getActivePatternName(String username) {
+        return activePatterns.get(username);
+    }
+
     /** Looks up the active pattern for the user, falling back to built-in defaults. */
-    private LlmConfig resolveLlmConfig(@NotNull String user) {
+    public LlmConfig resolveLlmConfig(@NotNull String user) {
+        LlmConfig adhoc = adhocConfigs.get(user);
+        if (adhoc != null) {
+            return adhoc;
+        }
+
         String patternName = activePatterns.get(user);
         if (patternName != null) {
             List<AgentPatternEntity> patterns = patternRepo.findByOwner(user);
@@ -254,11 +319,7 @@ public class PromptHandler {
                 }
             }
         }
-        return new LlmConfig(
-                ProviderType.DEEPSEEK,
-                "deepseek-v4-pro",
-                "deepseek-key",
-                "You are a helpful coding assistant. Be concise.");
+        return null;
     }
 
     // ── tool loop ─────────────────────────────────────────────────────────

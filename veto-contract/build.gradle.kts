@@ -20,6 +20,9 @@ dependencies {
     implementation("com.fasterxml.jackson.core:jackson-databind:2.18.0")
     implementation("org.zeromq:jeromq:0.6.0")
 
+    api("org.slf4j:slf4j-api:2.0.13")
+    api("ch.qos.logback:logback-classic:1.5.6")
+
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
 }
 

@@ -29,16 +29,19 @@ public class AuthController {
     private final UserRegistry userRegistry;
     private final SessionManager sessionManager;
     private final CredentialVault credentialVault;
+    private final AuthLifecycleManager authLifecycleManager;
 
     public AuthController(
             VaultKeyManager vaultKeyManager,
             UserRegistry userRegistry,
             SessionManager sessionManager,
-            CredentialVault credentialVault) {
+            CredentialVault credentialVault,
+            AuthLifecycleManager authLifecycleManager) {
         this.vaultKeyManager = vaultKeyManager;
         this.userRegistry = userRegistry;
         this.sessionManager = sessionManager;
         this.credentialVault = credentialVault;
+        this.authLifecycleManager = authLifecycleManager;
     }
 
     // ── Setup (first-run) ───────────────────────────────────────────────────
@@ -92,7 +95,7 @@ public class AuthController {
             vaultKeyManager.wrapVaultKey(vaultKey, masterKey, username);
 
             // Unlock the vault for admin
-            credentialVault.unlock(vaultKey, username);
+            authLifecycleManager.login(username, vaultKey);
             String token = sessionManager.createSession(username);
 
             log.info("Vault setup complete — admin user '{}' created", username);
@@ -157,7 +160,7 @@ public class AuthController {
                                         "Failed to unwrap vault key — vault may be corrupted"));
             }
 
-            credentialVault.unlock(vaultKey, username);
+            authLifecycleManager.login(username, vaultKey);
             String token = sessionManager.createSession(username);
 
             log.info("User '{}' logged in", username);
@@ -192,7 +195,7 @@ public class AuthController {
         sessionManager.invalidate(token);
 
         if (sessionManager.activeSessionCount() == 0) {
-            credentialVault.lock();
+            authLifecycleManager.logout(session.get().username());
         }
 
         return ResponseEntity.ok(

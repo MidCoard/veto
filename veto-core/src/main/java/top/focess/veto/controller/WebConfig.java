@@ -1,0 +1,24 @@
+package top.focess.veto.controller;
+
+import org.jetbrains.annotations.NotNull;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+
+/**
+ * Web MVC configuration to register the {@link SecurityContextInterceptor} for all API endpoints.
+ */
+@Configuration
+public class WebConfig implements WebMvcConfigurer {
+
+    private final SecurityContextInterceptor interceptor;
+
+    public WebConfig(SecurityContextInterceptor interceptor) {
+        this.interceptor = interceptor;
+    }
+
+    @Override
+    public void addInterceptors(@NotNull InterceptorRegistry registry) {
+        registry.addInterceptor(interceptor).addPathPatterns("/api/**");
+    }
+}

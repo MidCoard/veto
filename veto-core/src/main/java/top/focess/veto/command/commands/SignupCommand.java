@@ -13,16 +13,16 @@ public class SignupCommand extends VetoCommand {
 
     private final UserRegistry users;
     private final VaultKeyManager keys;
-    private final CredentialVault vault;
+    private final AuthLifecycleManager authLifecycleManager;
 
     public SignupCommand(
             @NotNull UserRegistry users,
             @NotNull VaultKeyManager keys,
-            @NotNull CredentialVault vault) {
+            @NotNull AuthLifecycleManager authLifecycleManager) {
         super("signup", "Create a new account");
         this.users = users;
         this.keys = keys;
-        this.vault = vault;
+        this.authLifecycleManager = authLifecycleManager;
     }
 
     @Override
@@ -59,7 +59,7 @@ public class SignupCommand extends VetoCommand {
                     SecretKey mk = keys.deriveMasterKey(u, p, entity.getPasswordSalt());
                     SecretKey vk = keys.generateVaultKey();
                     keys.wrapVaultKey(vk, mk, u);
-                    vault.unlock(vk, u);
+                    authLifecycleManager.login(u, vk);
                     s.setUsername(u);
                     s.output("Account created — welcome, " + u + ".");
                     return CommandResult.ALLOW;

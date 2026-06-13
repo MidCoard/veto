@@ -16,16 +16,17 @@ public final class TuiRenderer {
     public record RenderResult(List<AttributedString> lines, int cursorOffset) {}
 
     public RenderResult render(TuiState state) {
-        int width = state.getTerminalWidth();
-        int height = state.getTerminalHeight();
+        int width = Math.max(20, state.getTerminalWidth());
+        int height = Math.max(10, state.getTerminalHeight());
+        int renderWidth = width - 1;
 
         List<AttributedString> lines = new ArrayList<>(height);
 
         // 1. Line 0: Header Panel
-        lines.add(renderHeader(state, width));
+        lines.add(renderHeader(state, renderWidth));
 
         // 2. Line 1: Top Divider
-        lines.add(renderHorizontalBorder(width, "┌", "─", "┐"));
+        lines.add(renderHorizontalBorder(renderWidth, "┌", "─", "┐"));
 
         // 3. Lines 2 to H+1 (Output Logs)
         int outputHeight = Math.max(1, height - 7);
@@ -44,35 +45,37 @@ public final class TuiRenderer {
         }
 
         for (int i = startIdx; i < endIdx; i++) {
-            lines.add(renderLogLine(wrappedLogs.get(i), width));
+            lines.add(renderLogLine(wrappedLogs.get(i), renderWidth));
         }
 
         // Fill remaining viewport space with empty lines if log size is smaller than OutputHeight
         int actualLogCount = endIdx - startIdx;
         for (int i = actualLogCount; i < outputHeight; i++) {
-            lines.add(renderLogLine(AttributedString.EMPTY, width));
+            lines.add(renderLogLine(AttributedString.EMPTY, renderWidth));
         }
 
         // 4. Line H+2: Scroll Status or Autocomplete Suggestions
         if (!state.getAutocompleteCandidates().isEmpty()) {
-            lines.add(renderSuggestions(state, width));
+            lines.add(renderSuggestions(state, renderWidth));
         } else {
-            lines.add(renderScrollStatus(state, width, wrappedSize, scrollOffset, outputHeight));
+            lines.add(
+                    renderScrollStatus(
+                            state, renderWidth, wrappedSize, scrollOffset, outputHeight));
         }
 
         // 5. Line H+3: Divider between Scroll Status and Input
-        lines.add(renderHorizontalBorder(width, "├", "─", "┤"));
+        lines.add(renderHorizontalBorder(renderWidth, "├", "─", "┤"));
 
         // 6. Line H+4: Input Panel
         int inputLineIndex = height - 3;
-        RenderInputResult inputResult = renderInputLine(state, width);
+        RenderInputResult inputResult = renderInputLine(state, renderWidth);
         lines.add(inputResult.line());
 
         // 7. Line H+5: Divider between Input and Footer
-        lines.add(renderHorizontalBorder(width, "└", "─", "┘"));
+        lines.add(renderHorizontalBorder(renderWidth, "└", "─", "┘"));
 
         // 8. Line H+6: Shortcut Footer
-        lines.add(renderFooter(width));
+        lines.add(renderFooter(renderWidth));
 
         // Ensure we returned exactly `height` lines
         while (lines.size() < height) {

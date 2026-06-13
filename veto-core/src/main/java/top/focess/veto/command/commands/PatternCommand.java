@@ -1,7 +1,6 @@
 package top.focess.veto.command.commands;
 
 import java.util.List;
-import java.util.concurrent.ConcurrentHashMap;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,16 +21,11 @@ public class PatternCommand extends VetoCommand {
 
     private final CredentialVault vault;
     private final AgentPatternRepository repo;
-    private final ConcurrentHashMap<String, String> active;
 
-    public PatternCommand(
-            @NotNull CredentialVault v,
-            @NotNull AgentPatternRepository repo,
-            @NotNull ConcurrentHashMap<String, String> active) {
+    public PatternCommand(@NotNull CredentialVault v, @NotNull AgentPatternRepository repo) {
         super("pattern", "Manage agent patterns", "ap");
         this.vault = v;
         this.repo = repo;
-        this.active = active;
     }
 
     @Override
@@ -46,11 +40,12 @@ public class PatternCommand extends VetoCommand {
                     VetoCommandSender s = vetoSender(sender);
                     if (s == null) return CommandResult.REFUSE;
                     try {
-                        String n = args.<String>get("name");
-                        String provider = args.<String>get("provider").toUpperCase();
-                        String model = args.<String>get("model");
+                        String n = args.get("name");
+                        String provider = args.get("provider");
+                        provider = provider.toUpperCase();
+                        String model = args.get("model");
                         String sp =
-                                args.<String>getOrDefault(
+                                args.getOrDefault(
                                         "sysprompt",
                                         "You are a helpful coding assistant. Be concise.");
                         ProviderType.valueOf(provider);
@@ -97,49 +92,16 @@ public class PatternCommand extends VetoCommand {
                         s.output("No patterns configured. Use /pattern create ...");
                         return CommandResult.ALLOW;
                     }
-                    String activeName = active.get(s.username());
                     s.output("Patterns:");
                     for (var p : pats) {
-                        boolean isActive = p.getName().equals(activeName);
                         s.output(
                                 String.format(
-                                        "  %-16s %-12s %-20s %s",
-                                        p.getName() + (isActive ? " *" : ""),
-                                        p.getProvider(),
-                                        p.getModel(),
-                                        isActive ? "(active)" : ""));
+                                        "  %-16s %-12s %s",
+                                        p.getName(), p.getProvider(), p.getModel()));
                     }
                     return CommandResult.ALLOW;
                 },
                 fixed("list").description("List your patterns"));
-
-        // /pattern use <name>
-        addExecutor(
-                (sender, args) -> {
-                    VetoCommandSender s = vetoSender(sender);
-                    if (s == null) return CommandResult.REFUSE;
-                    String n = args.get("name");
-                    var found =
-                            repo.findByOwner(s.username()).stream()
-                                    .filter(p -> p.getName().equals(n))
-                                    .findFirst();
-                    if (found.isEmpty()) {
-                        s.output("Pattern not found: " + n);
-                        return CommandResult.REFUSE;
-                    }
-                    active.put(s.username(), n);
-                    s.output(
-                            "Using '"
-                                    + n
-                                    + "' ("
-                                    + found.get().getProvider()
-                                    + "/"
-                                    + found.get().getModel()
-                                    + ").");
-                    return CommandResult.ALLOW;
-                },
-                fixed("use").description("Activate a pattern"),
-                nameArg);
 
         // /pattern delete <name>
         addExecutor(
@@ -153,9 +115,6 @@ public class PatternCommand extends VetoCommand {
                         return CommandResult.REFUSE;
                     }
                     repo.deleteByNameAndOwner(n, s.username());
-                    if (n.equals(active.get(s.username()))) {
-                        active.remove(s.username());
-                    }
                     try {
                         vault.delete("pattern-" + n);
                     } catch (Exception ignored) {
@@ -185,11 +144,6 @@ public class PatternCommand extends VetoCommand {
                     s.output("  Provider:      " + p.getProvider());
                     s.output("  Model:         " + p.getModel());
                     s.output("  System Prompt: " + p.getSystemPrompt());
-                    s.output(
-                            "  Active:        "
-                                    + (p.getName().equals(active.get(s.username()))
-                                            ? "yes"
-                                            : "no"));
                     return CommandResult.ALLOW;
                 },
                 fixed("show").description("Show pattern details"),
@@ -216,7 +170,6 @@ public class PatternCommand extends VetoCommand {
                 "/pattern create <name> <provider> <model> [sysprompt] — Create a pattern (API key"
                         + " is prompted)",
                 "/pattern list — List your patterns",
-                "/pattern use <name> — Activate a pattern",
                 "/pattern delete <name> — Delete a pattern",
                 "/pattern show <name> — Show pattern details");
     }

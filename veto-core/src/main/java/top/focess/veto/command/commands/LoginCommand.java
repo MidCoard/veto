@@ -13,16 +13,16 @@ public class LoginCommand extends VetoCommand {
 
     private final UserRegistry users;
     private final VaultKeyManager keys;
-    private final CredentialVault vault;
+    private final AuthLifecycleManager authLifecycleManager;
 
     public LoginCommand(
             @NotNull UserRegistry users,
             @NotNull VaultKeyManager keys,
-            @NotNull CredentialVault vault) {
+            @NotNull AuthLifecycleManager authLifecycleManager) {
         super("login", "Sign in to your account");
         this.users = users;
         this.keys = keys;
-        this.vault = vault;
+        this.authLifecycleManager = authLifecycleManager;
     }
 
     @Override
@@ -62,7 +62,7 @@ public class LoginCommand extends VetoCommand {
                         return CommandResult.REFUSE;
                     }
 
-                    vault.unlock(vk, u);
+                    authLifecycleManager.login(u, vk);
                     s.setUsername(u);
                     s.output("Logged in as " + u + ".");
                     return CommandResult.ALLOW;

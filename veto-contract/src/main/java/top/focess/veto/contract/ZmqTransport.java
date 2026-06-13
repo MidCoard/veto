@@ -3,8 +3,8 @@ package top.focess.veto.contract;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
-import java.util.logging.Level;
-import java.util.logging.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.zeromq.SocketType;
 import org.zeromq.ZContext;
 import org.zeromq.ZMQ;
@@ -32,7 +32,7 @@ import org.zeromq.ZMsg;
  */
 public final class ZmqTransport implements AutoCloseable {
 
-    private static final Logger log = Logger.getLogger(ZmqTransport.class.getName());
+    private static final Logger log = LoggerFactory.getLogger(ZmqTransport.class);
 
     static final ObjectMapper JSON = new ObjectMapper();
 
@@ -104,7 +104,7 @@ public final class ZmqTransport implements AutoCloseable {
      * @param frame the frame payload to send
      */
     public void send(String identity, IpcFrame frame) {
-        log.fine("Router sending to [" + identity + "]: " + frame);
+        log.debug("Router sending to [{}]: {}", identity, frame);
         byte[] payload = serialize(frame);
         if (payload == null) return;
         // ROUTER sockets expect two frames: the destination routing identity frame followed by the
@@ -119,7 +119,7 @@ public final class ZmqTransport implements AutoCloseable {
      * @param frame the frame payload to send
      */
     public void send(IpcFrame frame) {
-        log.fine("Dealer sending: " + frame);
+        log.debug("Dealer sending: {}", frame);
         byte[] payload = serialize(frame);
         if (payload == null) return;
         // DEALER sockets automatically prepend the identity frame and send the bare payload frame.
@@ -176,13 +176,13 @@ public final class ZmqTransport implements AutoCloseable {
 
         IpcFrame frame = deserialize(payload);
         if (frame == null) {
-            log.warning("Failed to deserialize payload: " + payload);
+            log.warn("Failed to deserialize payload: {}", payload);
             return null;
         }
         if (type == SocketType.ROUTER) {
-            log.fine("Router received from [" + identity + "]: " + frame);
+            log.debug("Router received from [{}]: {}", identity, frame);
         } else {
-            log.fine("Dealer received: " + frame);
+            log.debug("Dealer received: {}", frame);
         }
         return new ZmqMessage(identity, frame);
     }
@@ -197,7 +197,7 @@ public final class ZmqTransport implements AutoCloseable {
         try {
             return JSON.writeValueAsBytes(frame);
         } catch (JsonProcessingException e) {
-            log.log(Level.WARNING, "Failed to serialize frame: " + frame, e);
+            log.warn("Failed to serialize frame: {}", frame, e);
             return null;
         }
     }
@@ -212,7 +212,7 @@ public final class ZmqTransport implements AutoCloseable {
         try {
             return JSON.readValue(payload, IpcFrame.class);
         } catch (Exception e) {
-            log.log(Level.WARNING, "Failed to deserialize payload: " + payload, e);
+            log.warn("Failed to deserialize payload: {}", payload, e);
             return null;
         }
     }

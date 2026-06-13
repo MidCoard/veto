@@ -34,12 +34,15 @@ class LiveTestRunner {
     private ZContext ctx;
     private ZMQ.Socket dealer;
 
-    private void connect() throws InterruptedException {
+    private void connect() throws Exception {
         ctx = new ZContext();
         dealer = ctx.createSocket(SocketType.DEALER);
         dealer.setIdentity(UUID.randomUUID().toString().getBytes(StandardCharsets.UTF_8));
         dealer.connect(ADDR);
         Thread.sleep(500);
+        send(new IpcFrame.Hello(IpcFrame.PROTOCOL_VERSION, 1));
+        IpcFrame welcome = recv();
+        assert welcome instanceof IpcFrame.Welcome && ((IpcFrame.Welcome) welcome).seq() == 1;
     }
 
     private void disconnect() {

@@ -8,16 +8,18 @@ import top.focess.veto.command.LogoutException;
 import top.focess.veto.command.PromptHandler;
 import top.focess.veto.command.VetoCommand;
 import top.focess.veto.command.VetoCommandSender;
-import top.focess.veto.vault.CredentialVault;
+import top.focess.veto.vault.AuthLifecycleManager;
 
 public class LogoutCommand extends VetoCommand {
 
-    private final CredentialVault vault;
+    private final AuthLifecycleManager authLifecycleManager;
     private final PromptHandler promptHandler;
 
-    public LogoutCommand(@NotNull CredentialVault vault, @NotNull PromptHandler promptHandler) {
+    public LogoutCommand(
+            @NotNull AuthLifecycleManager authLifecycleManager,
+            @NotNull PromptHandler promptHandler) {
         super("logout", "Sign out");
-        this.vault = vault;
+        this.authLifecycleManager = authLifecycleManager;
         this.promptHandler = promptHandler;
     }
 
@@ -29,7 +31,10 @@ public class LogoutCommand extends VetoCommand {
                     VetoCommandSender s = vetoSender(sender);
                     if (s == null) return CommandResult.REFUSE;
 
-                    vault.lock();
+                    String user = s.username();
+                    if (user != null) {
+                        authLifecycleManager.logout(user);
+                    }
                     s.setUsername(null);
                     promptHandler.removeSession(s.terminalId());
                     s.output("Logged out.");

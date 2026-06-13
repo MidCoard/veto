@@ -190,8 +190,8 @@ public final class TuiState {
     public List<AttributedString> getWrappedLogs() {
         if (!cacheValid) {
             wrappedLogsCache.clear();
-            // content width is terminalWidth minus left/right margins/borders
-            int wrapWidth = Math.max(10, terminalWidth - 4);
+            // content width is terminalWidth minus margins, borders, and right-hand safety column
+            int wrapWidth = Math.max(10, terminalWidth - 5);
             for (AttributedString line : outputLogs) {
                 if (line.length() <= wrapWidth) {
                     wrappedLogsCache.add(line);
@@ -213,8 +213,8 @@ public final class TuiState {
     // ── Scrolling & Size Changes ──────────────────────────────────────────
 
     public void handleResize(int width, int height) {
-        this.terminalWidth = width;
-        this.terminalHeight = height;
+        this.terminalWidth = Math.max(20, width);
+        this.terminalHeight = Math.max(10, height);
         this.cacheValid = false;
     }
 

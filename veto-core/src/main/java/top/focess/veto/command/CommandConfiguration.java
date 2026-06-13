@@ -82,16 +82,18 @@ public class CommandConfiguration {
             @NotNull VaultKeyManager keys,
             @NotNull UniformLLMCaller caller,
             @NotNull PromptHandler promptHandler,
-            @NotNull AgentPatternRepository patternRepo) {
+            @NotNull AgentPatternRepository patternRepo,
+            @NotNull AuthLifecycleManager authLifecycleManager) {
 
         CommandRegistry registry = new CommandRegistry(promptHandler);
 
-        registry.register(new LoginCommand(users, keys, vault));
-        registry.register(new LogoutCommand(vault, promptHandler));
-        registry.register(new SignupCommand(users, keys, vault));
+        registry.register(new LoginCommand(users, keys, authLifecycleManager));
+        registry.register(new LogoutCommand(authLifecycleManager, promptHandler));
+        registry.register(new SignupCommand(users, keys, authLifecycleManager));
         registry.register(new StatusCommand(vault, promptHandler));
         registry.register(new ExitCommand());
-        registry.register(new PatternCommand(vault, patternRepo, activePatterns));
+        registry.register(new PatternCommand(vault, patternRepo));
+        registry.register(new AgentCommand(patternRepo, promptHandler));
         registry.register(new HelpCommand(registry));
         return registry;
     }

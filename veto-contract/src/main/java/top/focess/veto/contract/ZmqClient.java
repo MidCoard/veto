@@ -7,10 +7,10 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.zeromq.ZContext;
 import org.zeromq.ZMQ;
 
@@ -50,7 +50,7 @@ import org.zeromq.ZMQ;
  */
 public final class ZmqClient implements AutoCloseable {
 
-    private static final Logger log = Logger.getLogger(ZmqClient.class.getName());
+    private static final Logger log = LoggerFactory.getLogger(ZmqClient.class);
 
     private static final int POLL_TIMEOUT_MS = 50;
 
@@ -156,10 +156,7 @@ public final class ZmqClient implements AutoCloseable {
                     try {
                         transport.send(frame);
                     } catch (Exception e) {
-                        log.log(
-                                Level.WARNING,
-                                "Send failed for " + frame.getClass().getSimpleName(),
-                                e);
+                        log.warn("Send failed for {}", frame.getClass().getSimpleName(), e);
                     }
                 }
 
@@ -173,7 +170,7 @@ public final class ZmqClient implements AutoCloseable {
             }
         } catch (Exception e) {
             if (!closed) {
-                log.log(Level.SEVERE, "IO thread error", e);
+                log.error("IO thread error", e);
                 closed = true;
             }
         } finally {
@@ -204,7 +201,7 @@ public final class ZmqClient implements AutoCloseable {
                 if (handler != null) {
                     handler.offer(sr);
                 } else {
-                    log.fine("No handler registered for seq=" + sr.seq());
+                    log.debug("No handler registered for seq={}", sr.seq());
                 }
                 return;
             }
