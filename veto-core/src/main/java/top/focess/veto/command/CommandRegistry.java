@@ -59,7 +59,7 @@ public class CommandRegistry {
         }
     }
 
-    @Nullable
+    @NotNull
     private IpcFrame.TerminalResponse dispatchAgentPrompt(
             @NotNull VetoCommandSender sender, @NotNull String prompt) {
         if (promptHandler == null) {

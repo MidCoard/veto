@@ -2,7 +2,7 @@ package top.focess.veto.terminal;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
-import java.util.HashSet;
+import java.util.concurrent.CompletableFuture;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.*;
@@ -300,12 +300,16 @@ public class ZmqServer {
         String identity = session.identity;
         switch (frame) {
             case IpcFrame.Request req -> {
-                // Off-load to the request pool. Track the future so Cancel can interrupt it.
-                // The holder pattern ensures the future reference is available inside the lambda
-                // for self-removal without a data race.
-                Future<?>[] holder = new Future<?>[1];
-                Future<?> task =
-                        requestPool.submit(
+                // Off-load to the request pool so long-running commands never stall this loop.
+                // CompletableFuture.whenComplete self-removes from the tracking set once the
+                // task finishes (normally or exceptionally), eliminating the holder[] trick.
+                //
+                // Note: CompletableFuture.cancel(true) marks the future cancelled but does NOT
+                // interrupt the running thread (unlike Future from ExecutorService.submit).
+                // Command handlers should therefore also check Thread.currentThread().isInterrupted()
+                // to be responsive to cancellation.
+                CompletableFuture<Void> task =
+                        CompletableFuture.runAsync(
                                 () -> {
                                     log.trace(
                                             "REQ  {}: {}",
@@ -331,13 +335,13 @@ public class ZmqServer {
                                                 identity,
                                                 IpcFrame.Error.ofError(
                                                         "Internal error: " + t.getMessage()));
-                                    } finally {
-                                        // Remove self from tracking set when the task finishes.
-                                        session.activeRequests.remove(holder[0]);
                                     }
-                                });
-                holder[0] = task;
+                                },
+                                requestPool);
                 session.activeRequests.add(task);
+                // Self-removal: runs on the CompletableFuture's completion thread after the
+                // task finishes, regardless of whether it completed normally or exceptionally.
+                task.whenComplete((ignored, ex) -> session.activeRequests.remove(task));
             }
 
             case IpcFrame.Input in -> {
@@ -449,13 +453,18 @@ public class ZmqServer {
      * Cancels all futures in {@link Session#activeRequests} and clears the tracking set.
      *
      * <p>{@link Session#activeRequests} is a {@link ConcurrentHashMap}-backed set, so it is safe
-     * to call this from any thread while request workers concurrently call {@code remove}.
+     * to call this from any thread while request workers concurrently call {@code remove} via
+     * the {@code whenComplete} self-removal callback.
+     *
+     * <p>Note: {@link CompletableFuture#cancel(boolean)} marks the future as cancelled but does
+     * not interrupt the underlying thread. Commands that support cooperative cancellation should
+     * periodically check {@link Thread#isInterrupted()} and exit early.
      */
     private void cancelAllRequests(@NotNull Session session) {
-        // Snapshot to avoid ConcurrentModificationException on the backing set.
-        Set<Future<?>> snapshot = new HashSet<>(session.activeRequests);
+        // Drain the set atomically so concurrent whenComplete callbacks don't re-add entries.
+        Set<CompletableFuture<Void>> snapshot = Set.copyOf(session.activeRequests);
         session.activeRequests.removeAll(snapshot);
-        for (Future<?> task : snapshot) {
+        for (CompletableFuture<Void> task : snapshot) {
             task.cancel(true);
         }
     }
@@ -514,11 +523,12 @@ public class ZmqServer {
         final BlockingQueue<IpcFrame> mailbox = new LinkedBlockingQueue<>();
 
         /**
-         * Futures of all in-flight {@link IpcFrame.Request} tasks for this session. Uses a
-         * {@link ConcurrentHashMap}-backed set so concurrent add (session worker) and remove
-         * (request worker on completion) are safe without explicit locking.
+         * Active request futures — added by the session worker, removed via the
+         * {@code whenComplete} self-removal callback that runs on the request worker thread.
+         * Uses a {@link ConcurrentHashMap}-backed set so concurrent add and remove are safe
+         * without explicit locking.
          */
-        final Set<Future<?>> activeRequests = ConcurrentHashMap.newKeySet();
+        final Set<CompletableFuture<Void>> activeRequests = ConcurrentHashMap.newKeySet();
 
         /**
          * Closed flag. Set via {@link AtomicBoolean#compareAndSet} to guarantee exactly-once

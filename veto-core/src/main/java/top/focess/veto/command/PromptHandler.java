@@ -56,17 +56,20 @@ public class PromptHandler {
     /**
      * Handle a plain-text prompt and stream the LLM response via the sender's {@code output()}
      * method. On completion, returns a Done or Error response.
+     *
+     * <p>Never returns {@code null} — always returns either {@link IpcFrame.Done} on success or
+     * {@link IpcFrame.Error} on failure. Error frames carry the message themselves and are rendered
+     * by the terminal, so {@code sender.output()} must not be called redundantly before returning
+     * an error.
      */
-    @Nullable
+    @NotNull
     public IpcFrame.TerminalResponse handle(
             @NotNull String prompt, @NotNull String terminalId, @NotNull VetoCommandSender sender) {
         String user = vault.getCurrentUser();
         if (user == null) {
-            sender.output("Not logged in. Use /login.");
             return IpcFrame.Error.ofError("Not logged in. Use /login.");
         }
         if (prompt.isEmpty()) {
-            sender.output("Empty prompt.");
             return IpcFrame.Error.ofError("Empty prompt.");
         }
 
@@ -162,7 +165,6 @@ public class PromptHandler {
                         resultHolder[0] = new IpcFrame.Done(doneMeta, null);
                     } catch (Exception e) {
                         log.error("Prompt failed for terminal {}", terminalId, e);
-                        sender.output("LLM call failed: " + e.getMessage());
                         resultHolder[0] =
                                 IpcFrame.Error.ofError("LLM call failed: " + e.getMessage());
                     }
