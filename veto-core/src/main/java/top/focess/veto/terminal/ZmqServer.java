@@ -2,10 +2,10 @@ package top.focess.veto.terminal;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
-import java.util.concurrent.CompletableFuture;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
@@ -29,8 +29,8 @@ import top.focess.veto.contract.ZmqTransport;
  *
  * <ul>
  *   <li><b>Pool 1 — Infrastructure</b> (2 fixed platform threads): runs {@link #ioLoop()} and
- *       {@link #heartbeatLoop()}. The IO thread is the <em>sole</em> owner of the ZMQ socket;
- *       no other thread ever calls {@link ZmqTransport#tryReceive()} or {@link
+ *       {@link #heartbeatLoop()}. The IO thread is the <em>sole</em> owner of the ZMQ socket; no
+ *       other thread ever calls {@link ZmqTransport#tryReceive()} or {@link
  *       ZmqTransport#send(String, IpcFrame)}.
  *   <li><b>Pool 2 — Session workers</b> (one virtual thread per connected terminal): each session
  *       has a dedicated {@link BlockingQueue} mailbox. The session worker drains that mailbox and
@@ -55,8 +55,8 @@ import top.focess.veto.contract.ZmqTransport;
  *
  * <ul>
  *   <li>Created on {@link IpcFrame.Hello} (IO thread).
- *   <li>Closed on {@link IpcFrame.Bye} (session worker), heartbeat timeout (heartbeat thread),
- *       or server shutdown. Closing is idempotent via {@link Session#closed} ({@link AtomicBoolean}).
+ *   <li>Closed on {@link IpcFrame.Bye} (session worker), heartbeat timeout (heartbeat thread), or
+ *       server shutdown. Closing is idempotent via {@link Session#closed} ({@link AtomicBoolean}).
  * </ul>
  */
 @Component
@@ -66,15 +66,17 @@ public class ZmqServer {
     private static final Logger log = LoggerFactory.getLogger(ZmqServer.class);
 
     private static final long SESSION_TIMEOUT_MS = 90_000;
+
     /** Check for stale sessions 3× per timeout window to bound the worst-case eviction lag. */
     private static final long HEARTBEAT_CHECK_MS = SESSION_TIMEOUT_MS / 3;
+
     private static final int MAX_OUTBOX_SIZE = 10_000;
 
     private final CommandRegistry registry;
 
     /**
-     * Outbox queue: any thread may enqueue; only the IO thread dequeues and sends.
-     * Using {@link ConcurrentLinkedQueue} here avoids blocking the IO thread on backpressure.
+     * Outbox queue: any thread may enqueue; only the IO thread dequeues and sends. Using {@link
+     * ConcurrentLinkedQueue} here avoids blocking the IO thread on backpressure.
      */
     private final ConcurrentLinkedQueue<OutboxEntry> outbox = new ConcurrentLinkedQueue<>();
 
@@ -82,13 +84,12 @@ public class ZmqServer {
     private final ConcurrentHashMap<String, Session> sessions = new ConcurrentHashMap<>();
 
     /**
-     * Pool 1 — fixed platform threads for the IO loop and heartbeat loop.
-     * Platform threads are preferred here because these are long-lived, CPU-aware tight loops
-     * that should not be subject to virtual-thread pinning or carrier-thread scheduling delays.
+     * Pool 1 — fixed platform threads for the IO loop and heartbeat loop. Platform threads are
+     * preferred here because these are long-lived, CPU-aware tight loops that should not be subject
+     * to virtual-thread pinning or carrier-thread scheduling delays.
      */
     private final ExecutorService infraPool =
-            Executors.newFixedThreadPool(
-                    2, Thread.ofPlatform().name("veto-infra-", 0).factory());
+            Executors.newFixedThreadPool(2, Thread.ofPlatform().name("veto-infra-", 0).factory());
 
     /**
      * Pool 2 — one virtual thread per session. Each session worker blocks on its mailbox queue;
@@ -97,8 +98,8 @@ public class ZmqServer {
     private final ExecutorService sessionPool = Executors.newVirtualThreadPerTaskExecutor();
 
     /**
-     * Pool 3 — one virtual thread per Request task. Commands may block on I/O (AI streaming,
-     * DB calls, etc.) for seconds to minutes; virtual threads scale well for this workload.
+     * Pool 3 — one virtual thread per Request task. Commands may block on I/O (AI streaming, DB
+     * calls, etc.) for seconds to minutes; virtual threads scale well for this workload.
      */
     private final ExecutorService requestPool = Executors.newVirtualThreadPerTaskExecutor();
 
@@ -110,8 +111,8 @@ public class ZmqServer {
     private String bindAddress;
 
     /**
-     * Constructs a new {@code ZmqServer}. Spring calls this constructor with the
-     * {@link CommandRegistry} bean wired from the application context.
+     * Constructs a new {@code ZmqServer}. Spring calls this constructor with the {@link
+     * CommandRegistry} bean wired from the application context.
      *
      * @param registry the command registry used to dispatch requests and produce completions
      */
@@ -125,9 +126,9 @@ public class ZmqServer {
      * Initializes the ZeroMQ context, binds the ROUTER socket, and starts the IO and heartbeat
      * infrastructure threads.
      *
-     * <p>Invoked automatically by Spring after the bean is constructed ({@link PostConstruct}).
-     * The bind address is read from the {@code veto.terminal.bind-address} property, defaulting
-     * to {@code tcp://127.0.0.1:5555}.
+     * <p>Invoked automatically by Spring after the bean is constructed ({@link PostConstruct}). The
+     * bind address is read from the {@code veto.terminal.bind-address} property, defaulting to
+     * {@code tcp://127.0.0.1:5555}.
      */
     @PostConstruct
     public void start() {
@@ -142,15 +143,16 @@ public class ZmqServer {
     /**
      * Gracefully shuts down the server.
      *
-     * <p>Invoked automatically by Spring before the bean is destroyed ({@link PreDestroy}).
-     * The shutdown sequence is:
+     * <p>Invoked automatically by Spring before the bean is destroyed ({@link PreDestroy}). The
+     * shutdown sequence is:
+     *
      * <ol>
-     *   <li>Sets {@link #running} to {@code false} so loops exit after their current iteration.</li>
-     *   <li>Sends a {@link IpcFrame.Terminate} frame to every connected terminal.</li>
-     *   <li>Waits 100 ms to allow the IO thread to flush outgoing terminate frames.</li>
-     *   <li>Shuts down session and request pools ({@code shutdownNow()}).</li>
-     *   <li>Awaits infrastructure pool termination (up to 3 seconds).</li>
-     *   <li>Closes the transport socket and ZMQ context.</li>
+     *   <li>Sets {@link #running} to {@code false} so loops exit after their current iteration.
+     *   <li>Sends a {@link IpcFrame.Terminate} frame to every connected terminal.
+     *   <li>Waits 100 ms to allow the IO thread to flush outgoing terminate frames.
+     *   <li>Shuts down session and request pools ({@code shutdownNow()}).
+     *   <li>Awaits infrastructure pool termination (up to 3 seconds).
+     *   <li>Closes the transport socket and ZMQ context.
      * </ol>
      */
     @PreDestroy
@@ -221,8 +223,11 @@ public class ZmqServer {
                 try {
                     transport.send(entry.identity, entry.frame);
                 } catch (Exception e) {
-                    log.warn("Failed to send {} to {}", entry.frame.getClass().getSimpleName(),
-                            entry.identity, e);
+                    log.warn(
+                            "Failed to send {} to {}",
+                            entry.frame.getClass().getSimpleName(),
+                            entry.identity,
+                            e);
                 }
             }
         }
@@ -320,9 +325,9 @@ public class ZmqServer {
      *
      * <p>All frames except {@link IpcFrame.Request} are handled inline — they are fast, stateful
      * operations that must run in order relative to each other (e.g. {@link IpcFrame.Cancel} must
-     * see the futures that were registered by previous {@link IpcFrame.Request} dispatches).
-     * {@link IpcFrame.Request} is the only frame type that may block for a significant duration and
-     * is therefore off-loaded to {@link #requestPool}.
+     * see the futures that were registered by previous {@link IpcFrame.Request} dispatches). {@link
+     * IpcFrame.Request} is the only frame type that may block for a significant duration and is
+     * therefore off-loaded to {@link #requestPool}.
      */
     private void handleSessionFrame(@NotNull Session session, @NotNull IpcFrame frame) {
         String identity = session.identity;
@@ -334,15 +339,13 @@ public class ZmqServer {
                 //
                 // Note: CompletableFuture.cancel(true) marks the future cancelled but does NOT
                 // interrupt the running thread (unlike Future from ExecutorService.submit).
-                // Command handlers should therefore also check Thread.currentThread().isInterrupted()
+                // Command handlers should therefore also check
+                // Thread.currentThread().isInterrupted()
                 // to be responsive to cancellation.
                 CompletableFuture<Void> task =
                         CompletableFuture.runAsync(
                                 () -> {
-                                    log.trace(
-                                            "REQ  {}: {}",
-                                            identity.substring(0, 8),
-                                            req.raw());
+                                    log.trace("REQ  {}: {}", identity.substring(0, 8), req.raw());
                                     try {
                                         IpcFrame.TerminalResponse result =
                                                 registry.dispatch(session.sender, req.raw());
@@ -388,10 +391,7 @@ public class ZmqServer {
             case IpcFrame.Complete comp -> {
                 log.trace("COMP {}: {}", identity.substring(0, 8), comp.raw());
                 var completions = registry.complete(session.sender, comp.raw());
-                log.trace(
-                        "COMP {}: → {} candidates",
-                        identity.substring(0, 8),
-                        completions.size());
+                log.trace("COMP {}: → {} candidates", identity.substring(0, 8), completions.size());
                 send(identity, new IpcFrame.CompleteResult(completions, comp.seq()));
             }
 
@@ -440,8 +440,8 @@ public class ZmqServer {
      * Periodically scans all active sessions and evicts any that have been silent for longer than
      * {@link #SESSION_TIMEOUT_MS}. Runs on a dedicated infrastructure platform thread.
      *
-     * <p>Checking at {@link #HEARTBEAT_CHECK_MS} intervals (⅓ of the timeout) bounds the
-     * worst-case eviction lag to {@code SESSION_TIMEOUT_MS + HEARTBEAT_CHECK_MS}.
+     * <p>Checking at {@link #HEARTBEAT_CHECK_MS} intervals (⅓ of the timeout) bounds the worst-case
+     * eviction lag to {@code SESSION_TIMEOUT_MS + HEARTBEAT_CHECK_MS}.
      */
     private void heartbeatLoop() {
         while (running) {
@@ -480,12 +480,12 @@ public class ZmqServer {
     /**
      * Cancels all futures in {@link Session#activeRequests} and clears the tracking set.
      *
-     * <p>{@link Session#activeRequests} is a {@link ConcurrentHashMap}-backed set, so it is safe
-     * to call this from any thread while request workers concurrently call {@code remove} via
-     * the {@code whenComplete} self-removal callback.
+     * <p>{@link Session#activeRequests} is a {@link ConcurrentHashMap}-backed set, so it is safe to
+     * call this from any thread while request workers concurrently call {@code remove} via the
+     * {@code whenComplete} self-removal callback.
      *
-     * <p>Note: {@link CompletableFuture#cancel(boolean)} marks the future as cancelled but does
-     * not interrupt the underlying thread. Commands that support cooperative cancellation should
+     * <p>Note: {@link CompletableFuture#cancel(boolean)} marks the future as cancelled but does not
+     * interrupt the underlying thread. Commands that support cooperative cancellation should
      * periodically check {@link Thread#isInterrupted()} and exit early.
      */
     private void cancelAllRequests(@NotNull Session session) {
@@ -554,16 +554,16 @@ public class ZmqServer {
         volatile long lastActivityMillis = System.currentTimeMillis();
 
         /**
-         * Incoming frame mailbox. Written by the IO thread via {@link #routeFrame}; consumed
-         * in FIFO order by the session worker.
+         * Incoming frame mailbox. Written by the IO thread via {@link #routeFrame}; consumed in
+         * FIFO order by the session worker.
          */
         final BlockingQueue<IpcFrame> mailbox = new LinkedBlockingQueue<>();
 
         /**
-         * Active request futures — added by the session worker, removed via the
-         * {@code whenComplete} self-removal callback that runs on the request worker thread.
-         * Uses a {@link ConcurrentHashMap}-backed set so concurrent add and remove are safe
-         * without explicit locking.
+         * Active request futures — added by the session worker, removed via the {@code
+         * whenComplete} self-removal callback that runs on the request worker thread. Uses a {@link
+         * ConcurrentHashMap}-backed set so concurrent add and remove are safe without explicit
+         * locking.
          */
         final Set<CompletableFuture<Void>> activeRequests = ConcurrentHashMap.newKeySet();
 

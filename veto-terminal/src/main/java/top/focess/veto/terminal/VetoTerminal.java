@@ -3,7 +3,6 @@ package top.focess.veto.terminal;
 import com.github.ajalt.mordant.terminal.Terminal;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -14,6 +13,7 @@ import java.util.logging.SimpleFormatter;
 import org.jline.reader.*;
 import org.jline.terminal.TerminalBuilder;
 import top.focess.veto.contract.IpcFrame;
+import top.focess.veto.contract.ZmqClient;
 
 /**
  * Main interactive REPL terminal controller for Veto Core.
@@ -49,8 +49,8 @@ public class VetoTerminal {
     private static final String BACKEND_ADDR = "tcp://127.0.0.1:5555";
 
     /**
-     * Maximum time in milliseconds the terminal waits for a response before considering the
-     * backend unresponsive. Currently unused in the polling path but retained for future use.
+     * Maximum time in milliseconds the terminal waits for a response before considering the backend
+     * unresponsive. Currently unused in the polling path but retained for future use.
      */
     private static final long REQUEST_TIMEOUT_MS = 85_000;
 
@@ -102,14 +102,14 @@ public class VetoTerminal {
     private final Object stateLock = new Object();
 
     /**
-     * The {@link IpcFrame.Prompt} currently being presented to the user, or {@code null} when
-     * the terminal is not in the {@link State#PROMPTED} state.
+     * The {@link IpcFrame.Prompt} currently being presented to the user, or {@code null} when the
+     * terminal is not in the {@link State#PROMPTED} state.
      */
     private IpcFrame.Prompt activePrompt = null;
 
     /**
-     * Reference to the main REPL thread ({@link #repl()}) so that background threads can
-     * interrupt its blocking {@link LineReader#readLine} call for state transitions.
+     * Reference to the main REPL thread ({@link #repl()}) so that background threads can interrupt
+     * its blocking {@link LineReader#readLine} call for state transitions.
      */
     private Thread mainThread;
 

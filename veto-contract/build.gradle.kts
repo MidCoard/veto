@@ -16,6 +16,7 @@ repositories {
 }
 
 dependencies {
+    compileOnly("org.jetbrains:annotations:24.1.0")
     implementation("com.fasterxml.jackson.core:jackson-databind:2.18.0")
     implementation("org.zeromq:jeromq:0.6.0")
 

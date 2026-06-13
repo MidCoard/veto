@@ -2,6 +2,7 @@ package top.focess.veto.terminal;
 
 import java.util.concurrent.TimeUnit;
 import top.focess.veto.contract.IpcFrame;
+import top.focess.veto.contract.ZmqClient;
 
 /** Standalone hint protocol test — connects to a running backend and tests live hints. */
 public class HintTest {

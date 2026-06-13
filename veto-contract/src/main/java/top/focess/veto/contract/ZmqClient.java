@@ -1,4 +1,4 @@
-package top.focess.veto.terminal;
+package top.focess.veto.contract;
 
 import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
@@ -13,8 +13,6 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.zeromq.ZContext;
 import org.zeromq.ZMQ;
-import top.focess.veto.contract.IpcFrame;
-import top.focess.veto.contract.ZmqTransport;
 
 /**
  * Terminal-side ZeroMQ transport — a DEALER socket connected to the backend ROUTER.

@@ -3,6 +3,7 @@ package top.focess.veto.terminal;
 import java.util.Scanner;
 import java.util.concurrent.TimeUnit;
 import top.focess.veto.contract.IpcFrame;
+import top.focess.veto.contract.ZmqClient;
 
 /**
  * Minimal terminal test harness — connects via ZMQ and runs commands from stdin. Usage: {@code

@@ -6,9 +6,9 @@ import top.focess.veto.contract.IpcFrame;
  * Signals that the current terminal session must be forcefully terminated.
  *
  * <p>Thrown by command handlers (e.g. {@code /exit}) when the backend decides the session should
- * end. {@link CommandRegistry} catches this exception during dispatch and
- * converts it into an {@link IpcFrame.Terminate} frame, which is sent to
- * the terminal so it can display the reason and shut down cleanly.
+ * end. {@link CommandRegistry} catches this exception during dispatch and converts it into an
+ * {@link IpcFrame.Terminate} frame, which is sent to the terminal so it can display the reason and
+ * shut down cleanly.
  *
  * <p>This is a control-flow exception, not an error condition.
  */

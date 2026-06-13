@@ -39,8 +39,8 @@ public final class VetoCommandSender extends AbstractCommandSender {
     /**
      * Constructs a new {@code VetoCommandSender} for the given terminal session.
      *
-     * @param zmqServer  the ZMQ server used to enqueue outbound frames
-     * @param username   the initially authenticated username, or {@code null} if not yet logged in
+     * @param zmqServer the ZMQ server used to enqueue outbound frames
+     * @param username the initially authenticated username, or {@code null} if not yet logged in
      * @param terminalId the ZMQ DEALER identity of the owning terminal
      */
     public VetoCommandSender(
@@ -98,8 +98,8 @@ public final class VetoCommandSender extends AbstractCommandSender {
     /**
      * Sends a streaming content chunk to the terminal as a {@link IpcFrame.Delta} frame.
      *
-     * <p>Null or empty messages are silently ignored. The frame is enqueued to the outbox of
-     * the owning {@link ZmqServer} and delivered by the IO thread.
+     * <p>Null or empty messages are silently ignored. The frame is enqueued to the outbox of the
+     * owning {@link ZmqServer} and delivered by the IO thread.
      *
      * @param message the text chunk to stream; {@code null} or empty strings are silently dropped
      */
@@ -115,8 +115,8 @@ public final class VetoCommandSender extends AbstractCommandSender {
     /**
      * Blocks until the terminal user provides input, with no prompt text and no masking.
      *
-     * <p>Convenience override that delegates to {@link #input(String, boolean)} with a
-     * 90-second timeout.
+     * <p>Convenience override that delegates to {@link #input(String, boolean)} with a 90-second
+     * timeout.
      *
      * @return the user's input string; never {@code null}
      */
@@ -152,14 +152,14 @@ public final class VetoCommandSender extends AbstractCommandSender {
     }
 
     /**
-     * Sends a {@link IpcFrame.Prompt} frame to the terminal and asynchronously waits for the
-     * user's reply.
+     * Sends a {@link IpcFrame.Prompt} frame to the terminal and asynchronously waits for the user's
+     * reply.
      *
      * <p>The future is completed by {@link #receiveInput(String)} when the session worker receives
      * the corresponding {@link IpcFrame.Input} frame from the terminal.
      *
-     * @param text          the prompt message displayed above the input field
-     * @param mask          {@code true} to mask input characters (e.g. for passwords)
+     * @param text the prompt message displayed above the input field
+     * @param mask {@code true} to mask input characters (e.g. for passwords)
      * @param timeoutMillis maximum time to wait in milliseconds before the future times out
      * @return a {@link CompletableFuture} that completes with the user's reply
      */

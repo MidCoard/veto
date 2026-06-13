@@ -5,6 +5,7 @@ import org.jline.reader.LineReader;
 import org.jline.reader.LineReader.SuggestionType;
 import org.jline.widget.Widgets;
 import top.focess.veto.contract.IpcFrame;
+import top.focess.veto.contract.ZmqClient;
 
 /**
  * JLine {@link org.jline.widget.Widgets} subclass that hooks buffer-change widgets to fetch and
