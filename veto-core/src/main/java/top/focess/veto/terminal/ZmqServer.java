@@ -2,10 +2,11 @@ package top.focess.veto.terminal;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
-import java.util.Iterator;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,23 +23,41 @@ import top.focess.veto.contract.IpcMeta;
 import top.focess.veto.contract.ZmqTransport;
 
 /**
- * ZeroMQ-based IPC server replacing the old file-based {@code TerminalChannel}.
+ * ZeroMQ-based IPC server that multiplexes multiple terminal sessions over a single ROUTER socket.
  *
- * <h3>Thread model</h3>
+ * <h3>Three-pool threading model</h3>
  *
  * <ul>
- *   <li><b>One IO thread</b> — runs {@link #ioLoop()}, the single thread that touches the ROUTER
- *       socket. Drains the outbox queue and sends responses.
- *   <li><b>Dispatch worker pool</b> — virtual threads. Each incoming {@code Request} or {@code
- *       Input} frame is dispatched to a worker for execution.
- *   <li><b>Heartbeat monitor</b> — one periodic thread that expires silent terminals.
+ *   <li><b>Pool 1 — Infrastructure</b> (2 fixed platform threads): runs {@link #ioLoop()} and
+ *       {@link #heartbeatLoop()}. The IO thread is the <em>sole</em> owner of the ZMQ socket;
+ *       no other thread ever calls {@link ZmqTransport#tryReceive()} or {@link
+ *       ZmqTransport#send(String, IpcFrame)}.
+ *   <li><b>Pool 2 — Session workers</b> (one virtual thread per connected terminal): each session
+ *       has a dedicated {@link BlockingQueue} mailbox. The session worker drains that mailbox and
+ *       processes non-Request frames <em>synchronously</em>, preserving per-session ordering
+ *       without any explicit locking. {@link IpcFrame.Request} frames are submitted to Pool 3.
+ *   <li><b>Pool 3 — Request pool</b> (virtual thread per task): executes {@code
+ *       registry.dispatch()}, which may block for an extended period (AI inference, tool calls,
+ *       etc.). Multiple concurrent requests per session are supported; each future is tracked so it
+ *       can be cancelled by a subsequent {@link IpcFrame.Cancel}.
  * </ul>
  *
- * <h3>Per-terminal sender</h3>
+ * <h3>Frame routing</h3>
  *
- * Each connected terminal gets exactly one {@link VetoCommandSender} scoped to its identity. The
- * sender's {@link VetoCommandSender#output(String)} pushes responses onto the shared outbox; the IO
- * thread drains and sends them.
+ * <ul>
+ *   <li>{@link IpcFrame.Hello} — handled directly on the IO thread (fast path; session doesn't
+ *       exist yet). On success the session is created and its worker virtual thread is spawned.
+ *   <li>All other frames — enqueued to the session's mailbox via {@link Session#mailbox} and
+ *       processed in arrival order by the session worker.
+ * </ul>
+ *
+ * <h3>Session lifecycle</h3>
+ *
+ * <ul>
+ *   <li>Created on {@link IpcFrame.Hello} (IO thread).
+ *   <li>Closed on {@link IpcFrame.Bye} (session worker), heartbeat timeout (heartbeat thread),
+ *       or server shutdown. Closing is idempotent via {@link Session#closed} ({@link AtomicBoolean}).
+ * </ul>
  */
 @Component
 @ConditionalOnProperty(name = "veto.terminal.enabled", havingValue = "true", matchIfMissing = true)
@@ -47,13 +66,41 @@ public class ZmqServer {
     private static final Logger log = LoggerFactory.getLogger(ZmqServer.class);
 
     private static final long SESSION_TIMEOUT_MS = 90_000;
+    /** Check for stale sessions 3× per timeout window to bound the worst-case eviction lag. */
+    private static final long HEARTBEAT_CHECK_MS = SESSION_TIMEOUT_MS / 3;
     private static final int MAX_OUTBOX_SIZE = 10_000;
 
     private final CommandRegistry registry;
+
+    /**
+     * Outbox queue: any thread may enqueue; only the IO thread dequeues and sends.
+     * Using {@link ConcurrentLinkedQueue} here avoids blocking the IO thread on backpressure.
+     */
     private final ConcurrentLinkedQueue<OutboxEntry> outbox = new ConcurrentLinkedQueue<>();
+
+    /** Active sessions keyed by ZMQ identity string. */
     private final ConcurrentHashMap<String, Session> sessions = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, Set<Future<?>>> activeTasks = new ConcurrentHashMap<>();
-    private final ExecutorService workers = Executors.newVirtualThreadPerTaskExecutor();
+
+    /**
+     * Pool 1 — fixed platform threads for the IO loop and heartbeat loop.
+     * Platform threads are preferred here because these are long-lived, CPU-aware tight loops
+     * that should not be subject to virtual-thread pinning or carrier-thread scheduling delays.
+     */
+    private final ExecutorService infraPool =
+            Executors.newFixedThreadPool(
+                    2, Thread.ofPlatform().name("veto-infra-", 0).factory());
+
+    /**
+     * Pool 2 — one virtual thread per session. Each session worker blocks on its mailbox queue;
+     * virtual threads are ideal here since they park cheaply while waiting for frames.
+     */
+    private final ExecutorService sessionPool = Executors.newVirtualThreadPerTaskExecutor();
+
+    /**
+     * Pool 3 — one virtual thread per Request task. Commands may block on I/O (AI streaming,
+     * DB calls, etc.) for seconds to minutes; virtual threads scale well for this workload.
+     */
+    private final ExecutorService requestPool = Executors.newVirtualThreadPerTaskExecutor();
 
     private ZContext ctx;
     private ZmqTransport transport;
@@ -66,29 +113,37 @@ public class ZmqServer {
         this.registry = registry;
     }
 
+    // ── Lifecycle ────────────────────────────────────────────────────────
+
     @PostConstruct
     public void start() {
         ctx = new ZContext();
         transport = ZmqTransport.bindRouter(ctx, bindAddress);
         running = true;
-        workers.submit(this::ioLoop);
-        workers.submit(this::heartbeatLoop);
+        infraPool.submit(this::ioLoop);
+        infraPool.submit(this::heartbeatLoop);
         log.info("ZmqServer bound to {}", bindAddress);
     }
 
     @PreDestroy
     public void stop() {
-        for (String identity : sessions.keySet()) {
-            send(identity, new IpcFrame.Terminate("Server shutting down."));
+        running = false;
+        // Notify all connected terminals before closing the socket.
+        for (Session session : sessions.values()) {
+            send(session.identity, new IpcFrame.Terminate("Server shutting down."));
         }
+        // Brief pause to allow Terminate frames to be flushed by the IO thread.
         try {
             Thread.sleep(100);
         } catch (InterruptedException ignored) {
         }
-        running = false;
-        workers.shutdown();
+        // Shut down pools in dependency order: sessions first (they enqueue to requestPool),
+        // then requests, then infrastructure (IO thread drains outbox).
+        sessionPool.shutdownNow();
+        requestPool.shutdownNow();
+        infraPool.shutdownNow();
         try {
-            workers.awaitTermination(5, TimeUnit.SECONDS);
+            infraPool.awaitTermination(3, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
@@ -97,104 +152,200 @@ public class ZmqServer {
         log.info("ZmqServer stopped");
     }
 
-    // ── IO loop (single thread touching the socket) ──────────────────────
+    // ── Pool 1 — IO loop ─────────────────────────────────────────────────
 
+    /**
+     * The main IO event loop. Runs on a dedicated platform thread and is the <em>only</em> thread
+     * allowed to read from or write to the ZMQ ROUTER socket.
+     *
+     * <p>On each iteration it:
+     *
+     * <ol>
+     *   <li>Polls the socket (with a short timeout so outbox draining is still responsive).
+     *   <li>Routes any incoming frame via {@link #routeFrame}.
+     *   <li>Drains the outbox and sends all queued response frames.
+     * </ol>
+     */
     private void ioLoop() {
         ZMQ.Poller poller = ctx.createPoller(1);
         poller.register(transport.socket, ZMQ.Poller.POLLIN);
 
         while (running) {
-            // 1. Block until data arrives or 50 ms elapses
+            // Use 0 ms timeout when there is pending outgoing work to minimise latency.
             long timeout = outbox.isEmpty() ? 50 : 0;
             poller.poll(timeout);
 
-            // 2. Read incoming
-            ZmqTransport.ZmqMessage msg = null;
+            // Step 1 — receive one incoming frame and route it.
             if (poller.pollin(0)) {
-                msg = transport.tryReceive();
-            }
-            if (msg != null) {
-                String identity = msg.identity();
-                IpcFrame frame = msg.frame();
-                if (frame == null) {
-                    log.warn("Corrupt frame from {}", identity);
+                ZmqTransport.ZmqMessage msg = transport.tryReceive();
+                if (msg == null) {
+                    // tryReceive returned null despite pollin; treat as transient error.
+                } else if (msg.frame() == null) {
+                    log.warn("Corrupt/unknown frame from {}", msg.identity());
                 } else {
-                    Future<?>[] taskHolder = new Future<?>[1];
-                    Future<?> task =
-                            workers.submit(
-                                    () -> {
-                                        try {
-                                            handleFrame(identity, frame);
-                                        } catch (Throwable t) {
-                                            log.error("Unhandled exception for {}", identity, t);
-                                            send(
-                                                    identity,
-                                                    IpcFrame.Error.ofError(
-                                                            "Internal error: " + t.getMessage()));
-                                        } finally {
-                                            if (frame instanceof IpcFrame.Request) {
-                                                Set<Future<?>> tasks = activeTasks.get(identity);
-                                                if (tasks != null && taskHolder[0] != null) {
-                                                    tasks.remove(taskHolder[0]);
-                                                }
-                                            }
-                                        }
-                                    });
-                    taskHolder[0] = task;
-                    if (frame instanceof IpcFrame.Request) {
-                        activeTasks
-                                .computeIfAbsent(identity, k -> ConcurrentHashMap.newKeySet())
-                                .add(task);
-                    }
+                    routeFrame(msg.identity(), msg.frame());
                 }
             }
 
-            // 3. Drain outbox
+            // Step 2 — drain the outbox so responses reach terminals promptly.
             OutboxEntry entry;
             while ((entry = outbox.poll()) != null) {
                 try {
-                    log.info(
-                            "IO drain: {} → {}",
-                            entry.frame.getClass().getSimpleName(),
-                            entry.identity);
                     transport.send(entry.identity, entry.frame);
                 } catch (Exception e) {
-                    log.warn("Failed to send to {}", entry.identity, e);
+                    log.warn("Failed to send {} to {}", entry.frame.getClass().getSimpleName(),
+                            entry.identity, e);
                 }
             }
         }
         poller.close();
     }
 
-    // ── frame dispatch ───────────────────────────────────────────────────
+    /**
+     * Routes a frame that just arrived from the ZMQ socket.
+     *
+     * <p>{@link IpcFrame.Hello} is handled synchronously here on the IO thread: the session does
+     * not exist yet, so there is no mailbox to enqueue into. Every other frame is enqueued to the
+     * session's mailbox for ordered processing by the session worker.
+     *
+     * <p>Must only be called from the IO thread.
+     */
+    private void routeFrame(@NotNull String identity, @NotNull IpcFrame frame) {
+        if (frame instanceof IpcFrame.Hello hello) {
+            // Hello is a special bootstrapping frame — handle inline before the session exists.
+            handleHello(identity, hello);
+            return;
+        }
 
-    private void handleFrame(@NotNull String identity, @NotNull IpcFrame frame) {
-        Session session =
-                sessions.computeIfAbsent(identity, id -> new Session(id, createSender(id)));
-        session.lastActivityMillis = System.currentTimeMillis();
+        Session session = sessions.get(identity);
+        if (session == null || session.closed.get()) {
+            log.warn(
+                    "Received {} from unknown or closed session {} — ignoring",
+                    frame.getClass().getSimpleName(),
+                    identity.substring(0, 8));
+            return;
+        }
+        // Enqueue to the session mailbox; the session worker consumes frames in order.
+        session.mailbox.offer(frame);
+    }
 
+    /**
+     * Handles a {@link IpcFrame.Hello} handshake directly on the IO thread.
+     *
+     * <p>Rejects the connection if an active session already exists for the given identity.
+     * Otherwise creates the session, starts its worker virtual thread, and sends {@link
+     * IpcFrame.Welcome} back.
+     */
+    private void handleHello(@NotNull String identity, @NotNull IpcFrame.Hello hello) {
+        if (sessions.containsKey(identity)) {
+            // The IO thread is the only writer to `sessions`, so containsKey + put is safe here.
+            log.warn("Duplicate identity {} — rejecting handshake", identity.substring(0, 8));
+            send(identity, new IpcFrame.Error("Duplicate identity connected.", hello.seq()));
+            return;
+        }
+        Session session = new Session(identity, createSender(identity));
+        sessions.put(identity, session);
+        // Spawn the session worker — virtual thread parks on mailbox.take() between frames.
+        sessionPool.submit(() -> sessionLoop(session));
+
+        int negotiated = Math.min(hello.version(), IpcFrame.PROTOCOL_VERSION);
+        log.debug(
+                "HELLO {}: v{} → negotiated v{}",
+                identity.substring(0, 8),
+                hello.version(),
+                negotiated);
+        send(identity, new IpcFrame.Welcome(negotiated, hello.seq()));
+    }
+
+    // ── Pool 2 — Session worker loop ─────────────────────────────────────
+
+    /**
+     * The per-session event loop. Runs on a virtual thread from {@link #sessionPool}.
+     *
+     * <p>Blocks on {@link Session#mailbox} and processes each frame sequentially. This guarantees
+     * per-session ordering with no synchronization overhead — only one thread ever processes a
+     * given session's frames at a time. {@link IpcFrame.Request} frames are the single exception:
+     * they are submitted to {@link #requestPool} so long-running commands never stall this loop.
+     */
+    private void sessionLoop(@NotNull Session session) {
+        log.debug("Session worker started for {}", session.identity.substring(0, 8));
+        while (!session.closed.get() && running) {
+            IpcFrame frame;
+            try {
+                // Poll with a 1-second timeout so we re-check `running` and `closed` periodically.
+                frame = session.mailbox.poll(1, TimeUnit.SECONDS);
+                if (frame == null) continue;
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+            session.lastActivityMillis = System.currentTimeMillis();
+            handleSessionFrame(session, frame);
+        }
+        // Ensure any in-flight request tasks are cancelled when this session's loop exits.
+        cancelAllRequests(session);
+        log.debug("Session worker stopped for {}", session.identity.substring(0, 8));
+    }
+
+    /**
+     * Dispatches a single frame on the session worker thread.
+     *
+     * <p>All frames except {@link IpcFrame.Request} are handled inline — they are fast, stateful
+     * operations that must run in order relative to each other (e.g. {@link IpcFrame.Cancel} must
+     * see the futures that were registered by previous {@link IpcFrame.Request} dispatches).
+     * {@link IpcFrame.Request} is the only frame type that may block for a significant duration and
+     * is therefore off-loaded to {@link #requestPool}.
+     */
+    private void handleSessionFrame(@NotNull Session session, @NotNull IpcFrame frame) {
+        String identity = session.identity;
         switch (frame) {
             case IpcFrame.Request req -> {
-                log.trace("REQ  {}: {}", identity.substring(0, 8), req.raw());
-                IpcFrame.TerminalResponse terminal = registry.dispatch(session.sender, req.raw());
-                session.lastActivityMillis = System.currentTimeMillis();
-                if (terminal != null) {
-                    send(identity, terminal);
-                    log.trace(
-                            "DONE {}: {} {}",
-                            identity.substring(0, 8),
-                            terminal instanceof IpcFrame.Error
-                                    ? "Error"
-                                    : terminal instanceof IpcFrame.Terminate ? "Terminate" : "Done",
-                            terminal instanceof IpcFrame.Done d ? d.meta() : "");
-                }
+                // Off-load to the request pool. Track the future so Cancel can interrupt it.
+                // The holder pattern ensures the future reference is available inside the lambda
+                // for self-removal without a data race.
+                Future<?>[] holder = new Future<?>[1];
+                Future<?> task =
+                        requestPool.submit(
+                                () -> {
+                                    log.trace(
+                                            "REQ  {}: {}",
+                                            identity.substring(0, 8),
+                                            req.raw());
+                                    try {
+                                        IpcFrame.TerminalResponse result =
+                                                registry.dispatch(session.sender, req.raw());
+                                        session.lastActivityMillis = System.currentTimeMillis();
+                                        if (result != null) {
+                                            send(identity, result);
+                                            log.trace(
+                                                    "DONE {}: {}",
+                                                    identity.substring(0, 8),
+                                                    result.getClass().getSimpleName());
+                                        }
+                                    } catch (Throwable t) {
+                                        log.error(
+                                                "Unhandled error executing request for {}",
+                                                identity,
+                                                t);
+                                        send(
+                                                identity,
+                                                IpcFrame.Error.ofError(
+                                                        "Internal error: " + t.getMessage()));
+                                    } finally {
+                                        // Remove self from tracking set when the task finishes.
+                                        session.activeRequests.remove(holder[0]);
+                                    }
+                                });
+                holder[0] = task;
+                session.activeRequests.add(task);
             }
 
             case IpcFrame.Input in -> {
                 log.trace("IN   {}", identity.substring(0, 8));
                 boolean accepted = session.sender.receiveInput(in.raw());
                 if (!accepted) {
-                    log.trace("Stale input from {}: no future waiting", identity);
+                    // The request that was waiting for input must have already timed out.
+                    log.trace("Stale input from {}: no waiting future", identity);
                     send(
                             identity,
                             IpcFrame.Error.ofError(
@@ -206,7 +357,9 @@ public class ZmqServer {
                 log.trace("COMP {}: {}", identity.substring(0, 8), comp.raw());
                 var completions = registry.complete(session.sender, comp.raw());
                 log.trace(
-                        "COMP {}: -> {} candidates", identity.substring(0, 8), completions.size());
+                        "COMP {}: → {} candidates",
+                        identity.substring(0, 8),
+                        completions.size());
                 send(identity, new IpcFrame.CompleteResult(completions, comp.seq()));
             }
 
@@ -217,49 +370,26 @@ public class ZmqServer {
             }
 
             case IpcFrame.Cancel c -> {
-                log.trace("CANC {}: request cancelled", identity.substring(0, 8));
-                // Interrupt all in-flight Request tasks for this identity
-                Set<Future<?>> tasks = activeTasks.remove(identity);
-                if (tasks != null) {
-                    for (Future<?> task : tasks) {
-                        task.cancel(true);
-                    }
-                }
+                log.trace(
+                        "CANC {}: cancelling {} in-flight request(s)",
+                        identity.substring(0, 8),
+                        session.activeRequests.size());
+                // Cancel all in-flight requests for this session, then acknowledge.
+                cancelAllRequests(session);
                 send(identity, new IpcFrame.Done(Map.of(IpcMeta.CANCELLED, true), null));
             }
 
             case IpcFrame.Bye b -> {
                 log.trace("BYE  {}: terminal disconnecting", identity.substring(0, 8));
+                // Acknowledge the Bye before closing, so the terminal receives the Done frame.
                 send(identity, new IpcFrame.Done(Map.of(), null));
-                Set<Future<?>> tasks = activeTasks.remove(identity);
-                if (tasks != null) {
-                    for (Future<?> task : tasks) {
-                        task.cancel(true);
-                    }
-                }
-                sessions.remove(identity);
+                closeSession(session);
+                // Return immediately; closeSession sets closed=true so the loop will exit.
             }
 
-            case IpcFrame.Hello hello -> {
-                if (sessions.containsKey(identity)) {
-                    log.warn(
-                            "Duplicate identity {} — rejecting new connection",
-                            identity.substring(0, 8));
-                    send(
-                            identity,
-                            new IpcFrame.Error("Duplicate identity connected.", hello.seq()));
-                } else {
-                    int negotiated = Math.min(hello.version(), IpcFrame.PROTOCOL_VERSION);
-                    log.trace(
-                            "HELLO {}: v{} → negotiated v{}",
-                            identity.substring(0, 8),
-                            hello.version(),
-                            negotiated);
-                    send(identity, new IpcFrame.Welcome(negotiated, hello.seq()));
-                }
-            }
-
-            case IpcFrame.Heartbeat h -> session.lastActivityMillis = System.currentTimeMillis();
+            case IpcFrame.Heartbeat h ->
+                    // Heartbeat updates the timestamp; the heartbeat loop checks this value.
+                    session.lastActivityMillis = System.currentTimeMillis();
 
             default -> {
                 if (frame instanceof IpcFrame.Unknown u) {
@@ -272,46 +402,78 @@ public class ZmqServer {
         }
     }
 
-    // ── heartbeat monitor ────────────────────────────────────────────────
+    // ── Pool 1 — Heartbeat loop ───────────────────────────────────────────
 
+    /**
+     * Periodically scans all active sessions and evicts any that have been silent for longer than
+     * {@link #SESSION_TIMEOUT_MS}. Runs on a dedicated infrastructure platform thread.
+     *
+     * <p>Checking at {@link #HEARTBEAT_CHECK_MS} intervals (⅓ of the timeout) bounds the
+     * worst-case eviction lag to {@code SESSION_TIMEOUT_MS + HEARTBEAT_CHECK_MS}.
+     */
     private void heartbeatLoop() {
         while (running) {
             try {
-                Thread.sleep(SESSION_TIMEOUT_MS);
+                Thread.sleep(HEARTBEAT_CHECK_MS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;
             }
             long cutoff = System.currentTimeMillis() - SESSION_TIMEOUT_MS;
-            Iterator<Map.Entry<String, Session>> it = sessions.entrySet().iterator();
-            while (it.hasNext()) {
-                Map.Entry<String, Session> e = it.next();
-                if (e.getValue().lastActivityMillis < cutoff) {
-                    String id = e.getKey();
-                    log.debug("Removing stale session {}", id);
-                    Set<Future<?>> tasks = activeTasks.remove(id);
-                    if (tasks != null) {
-                        for (Future<?> task : tasks) {
-                            task.cancel(true);
-                        }
-                    }
-                    it.remove();
+            for (Session session : sessions.values()) {
+                if (session.lastActivityMillis < cutoff && !session.closed.get()) {
+                    log.info("Evicting timed-out session {}", session.identity.substring(0, 8));
+                    // Notify the terminal before closing so it can display a message.
+                    send(session.identity, new IpcFrame.Terminate("Session timed out."));
+                    closeSession(session);
                 }
             }
         }
     }
 
-    // ── sender factory ────────────────────────────────────────────────────
+    // ── Session lifecycle helpers ─────────────────────────────────────────
 
-    @NotNull
-    private VetoCommandSender createSender(@NotNull String identity) {
-        return new VetoCommandSender(this, null, identity);
+    /**
+     * Idempotently closes a session. Uses {@link AtomicBoolean#compareAndSet} so concurrent calls
+     * from the session worker, heartbeat thread, or server shutdown are all safe.
+     */
+    private void closeSession(@NotNull Session session) {
+        if (session.closed.compareAndSet(false, true)) {
+            cancelAllRequests(session);
+            sessions.remove(session.identity);
+            log.debug("Session closed for {}", session.identity.substring(0, 8));
+        }
     }
 
+    /**
+     * Cancels all futures in {@link Session#activeRequests} and clears the tracking set.
+     *
+     * <p>{@link Session#activeRequests} is a {@link ConcurrentHashMap}-backed set, so it is safe
+     * to call this from any thread while request workers concurrently call {@code remove}.
+     */
+    private void cancelAllRequests(@NotNull Session session) {
+        // Snapshot to avoid ConcurrentModificationException on the backing set.
+        Set<Future<?>> snapshot = new HashSet<>(session.activeRequests);
+        session.activeRequests.removeAll(snapshot);
+        for (Future<?> task : snapshot) {
+            task.cancel(true);
+        }
+    }
+
+    // ── Outbox helper ─────────────────────────────────────────────────────
+
+    /**
+     * Enqueues a frame to be sent to the specified terminal by the IO thread.
+     *
+     * <p>Thread-safe: may be called from any thread. The IO thread is the sole dequeuer.
+     *
+     * @param identity the ZMQ DEALER identity of the target terminal
+     * @param frame the frame to send
+     */
     public void send(@NotNull String identity, @NotNull IpcFrame frame) {
         if (outbox.size() > MAX_OUTBOX_SIZE) {
             log.warn(
-                    "Outbox congested ({} entries), dropping frame {} for {}",
+                    "Outbox congested ({} entries) — dropping {} for {}",
                     outbox.size(),
                     frame.getClass().getSimpleName(),
                     identity);
@@ -320,14 +482,49 @@ public class ZmqServer {
         outbox.add(new OutboxEntry(identity, frame));
     }
 
-    // ── types ────────────────────────────────────────────────────────────
+    @NotNull
+    private VetoCommandSender createSender(@NotNull String identity) {
+        return new VetoCommandSender(this, null, identity);
+    }
 
+    // ── Types ─────────────────────────────────────────────────────────────
+
+    /** A frame that has been queued for sending by the IO thread. */
     public record OutboxEntry(@NotNull String identity, @NotNull IpcFrame frame) {}
 
+    /**
+     * All mutable state for a single connected terminal session.
+     *
+     * <p>The {@link #mailbox} is written by the IO thread and read by the session worker. The
+     * {@link #activeRequests} set is written by the session worker (add) and read/mutated by
+     * request workers (remove on completion) and the session worker or heartbeat thread (cancel).
+     * Both structures are thread-safe by design.
+     */
     static class Session {
         @NotNull final String identity;
         @NotNull final VetoCommandSender sender;
+
+        /** Timestamp of the last received frame; read by the heartbeat thread. */
         volatile long lastActivityMillis = System.currentTimeMillis();
+
+        /**
+         * Incoming frame mailbox. Written by the IO thread via {@link #routeFrame}; consumed
+         * in FIFO order by the session worker.
+         */
+        final BlockingQueue<IpcFrame> mailbox = new LinkedBlockingQueue<>();
+
+        /**
+         * Futures of all in-flight {@link IpcFrame.Request} tasks for this session. Uses a
+         * {@link ConcurrentHashMap}-backed set so concurrent add (session worker) and remove
+         * (request worker on completion) are safe without explicit locking.
+         */
+        final Set<Future<?>> activeRequests = ConcurrentHashMap.newKeySet();
+
+        /**
+         * Closed flag. Set via {@link AtomicBoolean#compareAndSet} to guarantee exactly-once
+         * session teardown even when multiple threads race to close the same session.
+         */
+        final AtomicBoolean closed = new AtomicBoolean(false);
 
         Session(@NotNull String identity, @NotNull VetoCommandSender sender) {
             this.identity = identity;

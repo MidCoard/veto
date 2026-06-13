@@ -237,7 +237,7 @@ public class VetoTerminal {
                         client.send(new IpcFrame.Cancel());
                         activePrompt = null;
                         status.getRequestQueue().clear();
-                        state = State.IDLE;
+                        state = State.AWAITING_RESPONSE;
                         continue;
                     }
                     if (state == State.IDLE) {
