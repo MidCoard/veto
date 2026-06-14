@@ -4,6 +4,7 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.LoggerContext;
 import java.util.logging.LogManager;
+import org.jetbrains.annotations.NotNull;
 import org.slf4j.ILoggerFactory;
 import org.slf4j.LoggerFactory;
 import org.slf4j.bridge.SLF4JBridgeHandler;
@@ -12,7 +13,24 @@ import org.slf4j.bridge.SLF4JBridgeHandler;
  * Common configuration options parsed from client command line arguments. Shared between the
  * terminal and TUI modules via veto-contract.
  */
-public record ClientOptions(boolean debug, String address) {
+public final class ClientOptions {
+
+    private final boolean debug;
+    private final String address;
+
+    private ClientOptions(boolean debug, @NotNull String address) {
+        this.debug = debug;
+        this.address = address;
+    }
+
+    public boolean isDebug() {
+        return debug;
+    }
+
+    @NotNull
+    public String address() {
+        return address;
+    }
 
     /**
      * Parses the command line arguments array into a ClientOptions instance.
@@ -20,7 +38,8 @@ public record ClientOptions(boolean debug, String address) {
      * @param args the command line arguments
      * @return the parsed options
      */
-    public static ClientOptions parse(String[] args) {
+    @NotNull
+    public static ClientOptions parse(@NotNull String[] args) {
         boolean debug = false;
         String address = "tcp://127.0.0.1:5555";
 

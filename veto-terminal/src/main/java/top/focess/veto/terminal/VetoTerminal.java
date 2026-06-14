@@ -6,6 +6,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import org.jetbrains.annotations.NotNull;
 import org.jline.reader.*;
 import org.jline.terminal.TerminalBuilder;
 import org.slf4j.Logger;
@@ -118,7 +119,7 @@ public class VetoTerminal {
      * @param t the Mordant Terminal instance used for styled outputs
      * @param client the ZmqClient used for network IPC communications with the backend
      */
-    public VetoTerminal(Terminal t, ZmqClient client) {
+    public VetoTerminal(@NotNull Terminal t, @NotNull ZmqClient client) {
         this.t = t;
         this.client = client;
     }
@@ -129,7 +130,7 @@ public class VetoTerminal {
      *
      * @param reader the JLine LineReader instance to read inputs from
      */
-    public void start(LineReader reader) {
+    public void start(@NotNull LineReader reader) {
         this.reader = reader;
         this.renderer = new MordantRenderer(t, reader);
         this.mainThread = Thread.currentThread();
@@ -314,7 +315,7 @@ public class VetoTerminal {
      *
      * @param line the command string to execute
      */
-    private void executeRequest(String line) {
+    private void executeRequest(@NotNull String line) {
         synchronized (stateLock) {
             status.getRequestQueue().add(line);
             if (state == State.IDLE) {
@@ -331,7 +332,7 @@ public class VetoTerminal {
      *
      * @param frame the incoming frame
      */
-    private void handleFrame(IpcFrame.ServerFrame frame) {
+    private void handleFrame(@NotNull IpcFrame.ServerFrame frame) {
         if (frame instanceof IpcFrame.Delta(String content)) {
             // Immediate print for stream response chunks.
             log.debug("[DELTA] len={}", content.length());
@@ -401,7 +402,7 @@ public class VetoTerminal {
      *
      * @param line the input text
      */
-    private void echoInput(String line) {
+    private void echoInput(@NotNull String line) {
         int termWidth = reader.getTerminal().getWidth();
         int maxWidth = termWidth > 0 ? termWidth - 4 : 76;
         int borderLen = Math.max(0, Math.min(maxWidth, line.length() + 4));
@@ -430,7 +431,8 @@ public class VetoTerminal {
     private class VetoCompleter implements Completer {
 
         @Override
-        public void complete(LineReader r, ParsedLine line, List<Candidate> out) {
+        public void complete(
+                @NotNull LineReader r, @NotNull ParsedLine line, @NotNull List<Candidate> out) {
             String fullLine = line.line();
             // Completion is only requested for slash commands.
             if (!fullLine.startsWith("/")) return;
@@ -457,7 +459,7 @@ public class VetoTerminal {
      *
      * @param args command line arguments, supports --debug or -d to enable log file output
      */
-    public static void main(String[] args) {
+    public static void main(@NotNull String[] args) {
         System.setProperty("file.encoding", "UTF-8");
 
         ClientOptions options = ClientOptions.parse(args);

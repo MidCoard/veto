@@ -3,6 +3,8 @@ package top.focess.veto.tui;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.jline.utils.AttributedString;
 import org.jline.utils.AttributedStringBuilder;
 import top.focess.veto.contract.IpcFrame;
@@ -58,26 +60,30 @@ public final class TuiState {
 
     // ── Getters & Setters ──────────────────────────────────────────────────
 
+    @NotNull
     public ConnectionState getConnection() {
         return connection;
     }
 
-    public void setConnection(ConnectionState connection) {
+    public void setConnection(@NotNull ConnectionState connection) {
         this.connection = connection;
     }
 
+    @NotNull
     public String getServerAddress() {
         return serverAddress;
     }
 
-    public void setServerAddress(String serverAddress) {
+    public void setServerAddress(@NotNull String serverAddress) {
         this.serverAddress = serverAddress;
     }
 
+    @Nullable
     public String getUsername() {
         return username;
     }
 
+    @NotNull
     public List<String> getAutocompleteCandidates() {
         return autocompleteCandidates;
     }
@@ -90,11 +96,13 @@ public final class TuiState {
         this.selectedAutocompleteIndex = selectedAutocompleteIndex;
     }
 
+    @NotNull
     public String getOriginalInputBeforeAutocomplete() {
         return originalInputBeforeAutocomplete;
     }
 
-    public void setOriginalInputBeforeAutocomplete(String originalInputBeforeAutocomplete) {
+    public void setOriginalInputBeforeAutocomplete(
+            @NotNull String originalInputBeforeAutocomplete) {
         this.originalInputBeforeAutocomplete = originalInputBeforeAutocomplete;
     }
 
@@ -104,7 +112,7 @@ public final class TuiState {
         this.originalInputBeforeAutocomplete = "";
     }
 
-    public void applyAutocompleteSelection(String val) {
+    public void applyAutocompleteSelection(@NotNull String val) {
         this.commandBuffer.setLength(0);
         this.commandBuffer.append(val);
         this.cursorIndex = val.length();
@@ -114,10 +122,12 @@ public final class TuiState {
         return turnCount;
     }
 
+    @Nullable
     public String getSessionId() {
         return sessionId;
     }
 
+    @NotNull
     public StringBuilder getCommandBuffer() {
         return commandBuffer;
     }
@@ -126,10 +136,12 @@ public final class TuiState {
         return cursorIndex;
     }
 
+    @Nullable
     public IpcFrame.Prompt getActivePrompt() {
         return activePrompt;
     }
 
+    @NotNull
     public List<String> getPendingRequests() {
         return pendingRequests;
     }
@@ -156,7 +168,7 @@ public final class TuiState {
 
     // ── Log Appending and Wrapping ────────────────────────────────────────
 
-    public void appendAnsiText(String text) {
+    public void appendAnsiText(@Nullable String text) {
         if (text == null || text.isEmpty()) {
             return;
         }
@@ -187,6 +199,7 @@ public final class TuiState {
         }
     }
 
+    @NotNull
     public List<AttributedString> getWrappedLogs() {
         if (!cacheValid) {
             wrappedLogsCache.clear();
@@ -248,7 +261,7 @@ public final class TuiState {
         cursorIndex++;
     }
 
-    public void insertString(String str) {
+    public void insertString(@Nullable String str) {
         if (str == null) return;
         clearAutocomplete();
         commandBuffer.insert(cursorIndex, str);
@@ -283,6 +296,7 @@ public final class TuiState {
 
     // ── Actions Handlers ──────────────────────────────────────────────────
 
+    @Nullable
     public IpcFrame.ClientFrame handleSubmit() {
         String cmd = commandBuffer.toString().trim();
         clearAutocomplete();
@@ -317,6 +331,7 @@ public final class TuiState {
         }
     }
 
+    @Nullable
     public IpcFrame.Cancel handleCancel() {
         clearAutocomplete();
         if (awaitingResponse || activePrompt != null) {
@@ -338,7 +353,8 @@ public final class TuiState {
      * @return a client frame that needs to be sent immediately as a result of this state update, or
      *     null.
      */
-    public IpcFrame.ClientFrame processServerFrame(IpcFrame.ServerFrame frame) {
+    @Nullable
+    public IpcFrame.ClientFrame processServerFrame(@NotNull IpcFrame.ServerFrame frame) {
         if (frame instanceof IpcFrame.Welcome) {
             connection = ConnectionState.CONNECTED;
             appendAnsiText("\u001B[92mConnected to backend.\u001B[0m\n");
@@ -383,7 +399,7 @@ public final class TuiState {
         return null;
     }
 
-    public void applyMeta(Map<String, Object> meta) {
+    public void applyMeta(@Nullable Map<String, Object> meta) {
         if (meta == null) return;
         if (meta.containsKey(IpcMeta.USERNAME)) {
             username = (String) meta.get(IpcMeta.USERNAME);

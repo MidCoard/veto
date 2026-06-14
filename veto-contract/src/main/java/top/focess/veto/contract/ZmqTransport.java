@@ -3,6 +3,8 @@ package top.focess.veto.contract;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.zeromq.SocketType;
@@ -73,7 +75,8 @@ public final class ZmqTransport implements AutoCloseable {
      * @param addr the socket bind address (e.g., {@code tcp://*:5555})
      * @return the configured ZmqTransport instance
      */
-    public static ZmqTransport bindRouter(ZContext ctx, String addr) {
+    @NotNull
+    public static ZmqTransport bindRouter(@NotNull ZContext ctx, @NotNull String addr) {
         ZMQ.Socket sock = ctx.createSocket(SocketType.ROUTER);
         sock.bind(addr);
         return new ZmqTransport(sock, SocketType.ROUTER);
@@ -88,7 +91,9 @@ public final class ZmqTransport implements AutoCloseable {
      * @param identity the unique client identity used for ZMQ message routing
      * @return the configured ZmqTransport instance
      */
-    public static ZmqTransport connectDealer(ZContext ctx, String addr, String identity) {
+    @NotNull
+    public static ZmqTransport connectDealer(
+            @NotNull ZContext ctx, @NotNull String addr, @NotNull String identity) {
         ZMQ.Socket sock = ctx.createSocket(SocketType.DEALER);
         sock.setIdentity(identity.getBytes(ZMQ.CHARSET));
         sock.connect(addr);
@@ -103,7 +108,7 @@ public final class ZmqTransport implements AutoCloseable {
      * @param identity the destination peer identity
      * @param frame the frame payload to send
      */
-    public void send(String identity, IpcFrame frame) {
+    public void send(@NotNull String identity, @NotNull IpcFrame frame) {
         log.debug("Router sending to [{}]: {}", identity, frame);
         byte[] payload = serialize(frame);
         if (payload == null) return;
@@ -118,7 +123,7 @@ public final class ZmqTransport implements AutoCloseable {
      *
      * @param frame the frame payload to send
      */
-    public void send(IpcFrame frame) {
+    public void send(@NotNull IpcFrame frame) {
         log.debug("Dealer sending: {}", frame);
         byte[] payload = serialize(frame);
         if (payload == null) return;
@@ -133,6 +138,7 @@ public final class ZmqTransport implements AutoCloseable {
      *
      * @return the received message, or null if no messages are currently available
      */
+    @Nullable
     public ZmqMessage tryReceive() {
         return decodeMsg(ZMsg.recvMsg(socket, ZMQ.DONTWAIT));
     }
@@ -142,6 +148,7 @@ public final class ZmqTransport implements AutoCloseable {
      *
      * @return the received message, or null if interrupted
      */
+    @Nullable
     public ZmqMessage receive() {
         return decodeMsg(ZMsg.recvMsg(socket));
     }
@@ -154,7 +161,8 @@ public final class ZmqTransport implements AutoCloseable {
      * @param msg the raw ZMsg to parse
      * @return the decoded ZmqMessage, or null on format error
      */
-    private ZmqMessage decodeMsg(ZMsg msg) {
+    @Nullable
+    private ZmqMessage decodeMsg(@Nullable ZMsg msg) {
         if (msg == null || msg.isEmpty()) return null;
 
         final String identity;
@@ -193,7 +201,7 @@ public final class ZmqTransport implements AutoCloseable {
      * @param frame the frame instance to serialize
      * @return the serialized JSON byte array, or null on exception
      */
-    public static byte[] serialize(IpcFrame frame) {
+    public static byte @Nullable [] serialize(@NotNull IpcFrame frame) {
         try {
             return JSON.writeValueAsBytes(frame);
         } catch (JsonProcessingException e) {
@@ -208,7 +216,8 @@ public final class ZmqTransport implements AutoCloseable {
      * @param payload the JSON string data
      * @return the deserialized IpcFrame instance, or null on format error
      */
-    public static IpcFrame deserialize(String payload) {
+    @Nullable
+    public static IpcFrame deserialize(@NotNull String payload) {
         try {
             return JSON.readValue(payload, IpcFrame.class);
         } catch (Exception e) {

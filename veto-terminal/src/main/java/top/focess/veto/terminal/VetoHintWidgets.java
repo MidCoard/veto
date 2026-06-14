@@ -1,6 +1,7 @@
 package top.focess.veto.terminal;
 
 import java.util.concurrent.TimeUnit;
+import org.jetbrains.annotations.NotNull;
 import org.jline.reader.LineReader;
 import org.jline.reader.LineReader.SuggestionType;
 import org.jline.widget.Widgets;
@@ -38,7 +39,7 @@ public final class VetoHintWidgets extends Widgets {
      * @param reader the JLine LineReader instance
      * @param client the ZmqClient used to fetch autocomplete/tail-tip hints from the backend
      */
-    public VetoHintWidgets(LineReader reader, ZmqClient client) {
+    public VetoHintWidgets(@NotNull LineReader reader, @NotNull ZmqClient client) {
         super(reader);
         this.client = client;
 
@@ -157,7 +158,7 @@ public final class VetoHintWidgets extends Widgets {
      *
      * @param widget the name of the delegate widget to execute first
      */
-    private void doHint(String widget) {
+    private void doHint(@NotNull String widget) {
         // Execute JLine's original widget action first to update the buffer contents.
         callWidget(widget);
 

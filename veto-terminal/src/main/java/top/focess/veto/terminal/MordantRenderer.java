@@ -1,6 +1,7 @@
 package top.focess.veto.terminal;
 
 import com.github.ajalt.mordant.terminal.Terminal;
+import org.jetbrains.annotations.NotNull;
 import org.jline.reader.LineReader;
 
 /**
@@ -20,7 +21,7 @@ public class MordantRenderer {
      * @param reader the JLine LineReader instance used to output text above the active command
      *     prompt
      */
-    public MordantRenderer(Terminal terminal, LineReader reader) {
+    public MordantRenderer(@NotNull Terminal terminal, @NotNull LineReader reader) {
         this.terminal = terminal;
         this.reader = reader;
     }
@@ -33,7 +34,8 @@ public class MordantRenderer {
      * @param text the plain text
      * @return the styled ANSI string
      */
-    public String dim(String text) {
+    @NotNull
+    public String dim(@NotNull String text) {
         return MordantTerminal.dim(terminal, text);
     }
 
@@ -43,7 +45,8 @@ public class MordantRenderer {
      * @param text the plain text
      * @return the styled ANSI string
      */
-    public String bold(String text) {
+    @NotNull
+    public String bold(@NotNull String text) {
         return MordantTerminal.bold(terminal, text);
     }
 
@@ -53,7 +56,8 @@ public class MordantRenderer {
      * @param text the plain text
      * @return the styled ANSI string
      */
-    public String cyan(String text) {
+    @NotNull
+    public String cyan(@NotNull String text) {
         return MordantTerminal.cyan(terminal, text);
     }
 
@@ -63,7 +67,8 @@ public class MordantRenderer {
      * @param text the plain text
      * @return the styled ANSI string
      */
-    public String red(String text) {
+    @NotNull
+    public String red(@NotNull String text) {
         return MordantTerminal.red(terminal, text);
     }
 
@@ -73,7 +78,8 @@ public class MordantRenderer {
      * @param text the plain text
      * @return the styled ANSI string
      */
-    public String green(String text) {
+    @NotNull
+    public String green(@NotNull String text) {
         return MordantTerminal.green(terminal, text);
     }
 
@@ -83,7 +89,8 @@ public class MordantRenderer {
      * @param text the plain text
      * @return the styled ANSI string
      */
-    public String yellow(String text) {
+    @NotNull
+    public String yellow(@NotNull String text) {
         return MordantTerminal.yellow(terminal, text);
     }
 
@@ -95,7 +102,7 @@ public class MordantRenderer {
      *
      * @param text the text to print
      */
-    public void println(String text) {
+    public void println(@NotNull String text) {
         // LineReader.printAbove prints the text and repositions/redraws the command line input
         // prompt.
         reader.printAbove(text);
@@ -107,7 +114,7 @@ public class MordantRenderer {
      *
      * @param text the text to print
      */
-    public void print(String text) {
+    public void print(@NotNull String text) {
         // Since JLine's printAbove is line-oriented, it redraws the prompt immediately.
         reader.printAbove(text);
     }
@@ -117,7 +124,7 @@ public class MordantRenderer {
      *
      * @param text the error message
      */
-    public void error(String text) {
+    public void error(@NotNull String text) {
         println(red("Error: " + text));
     }
 

@@ -2,6 +2,7 @@ package top.focess.veto.tui;
 
 import java.util.ArrayList;
 import java.util.List;
+import org.jetbrains.annotations.NotNull;
 import org.jline.utils.AttributedString;
 import org.jline.utils.AttributedStringBuilder;
 import org.jline.utils.AttributedStyle;
@@ -13,9 +14,10 @@ import top.focess.veto.contract.IpcFrame;
  */
 public final class TuiRenderer {
 
-    public record RenderResult(List<AttributedString> lines, int cursorOffset) {}
+    public record RenderResult(@NotNull List<AttributedString> lines, int cursorOffset) {}
 
-    public RenderResult render(TuiState state) {
+    @NotNull
+    public RenderResult render(@NotNull TuiState state) {
         int width = Math.max(20, state.getTerminalWidth());
         int height = Math.max(10, state.getTerminalHeight());
         int renderWidth = width - 1;
@@ -91,7 +93,8 @@ public final class TuiRenderer {
         return new RenderResult(lines, cursorOffset);
     }
 
-    private AttributedString renderHeader(TuiState state, int width) {
+    @NotNull
+    private AttributedString renderHeader(@NotNull TuiState state, int width) {
         AttributedStringBuilder header = new AttributedStringBuilder();
         header.style(
                 AttributedStyle.DEFAULT
@@ -197,8 +200,9 @@ public final class TuiRenderer {
         return header.toAttributedString();
     }
 
+    @NotNull
     private AttributedString renderHorizontalBorder(
-            int width, String left, String middle, String right) {
+            int width, @NotNull String left, @NotNull String middle, @NotNull String right) {
         int midWidth = Math.max(0, width - 2);
         AttributedStringBuilder sb = new AttributedStringBuilder();
         sb.style(AttributedStyle.DEFAULT.foreground(AttributedStyle.WHITE + 8));
@@ -208,7 +212,8 @@ public final class TuiRenderer {
         return sb.toAttributedString();
     }
 
-    private AttributedString renderSuggestions(TuiState state, int width) {
+    @NotNull
+    private AttributedString renderSuggestions(@NotNull TuiState state, int width) {
         List<String> candidates = state.getAutocompleteCandidates();
         int selected = state.getSelectedAutocompleteIndex();
 
@@ -264,7 +269,8 @@ public final class TuiRenderer {
         return sb.toAttributedString();
     }
 
-    private AttributedString renderLogLine(AttributedString content, int width) {
+    @NotNull
+    private AttributedString renderLogLine(@NotNull AttributedString content, int width) {
         AttributedStringBuilder sb = new AttributedStringBuilder();
         sb.style(AttributedStyle.DEFAULT.foreground(AttributedStyle.WHITE + 8));
         sb.append("│ ");
@@ -282,8 +288,13 @@ public final class TuiRenderer {
         return sb.toAttributedString();
     }
 
+    @NotNull
     private AttributedString renderScrollStatus(
-            TuiState state, int width, int totalLines, int scrollOffset, int outputHeight) {
+            @NotNull TuiState state,
+            int width,
+            int totalLines,
+            int scrollOffset,
+            int outputHeight) {
         int maxScroll = Math.max(0, totalLines - outputHeight);
         String pctStr;
         if (maxScroll == 0 || scrollOffset <= 0) {
@@ -313,9 +324,10 @@ public final class TuiRenderer {
         return sb.toAttributedString();
     }
 
-    private record RenderInputResult(AttributedString line, int cursorCol) {}
+    private record RenderInputResult(@NotNull AttributedString line, int cursorCol) {}
 
-    private RenderInputResult renderInputLine(TuiState state, int width) {
+    @NotNull
+    private RenderInputResult renderInputLine(@NotNull TuiState state, int width) {
         AttributedStringBuilder prefix = new AttributedStringBuilder();
         IpcFrame.Prompt activePrompt = state.getActivePrompt();
 
@@ -382,6 +394,7 @@ public final class TuiRenderer {
         return new RenderInputResult(sb.toAttributedString(), cursorCol);
     }
 
+    @NotNull
     private AttributedString renderFooter(int width) {
         AttributedStringBuilder footer = new AttributedStringBuilder();
         footer.style(

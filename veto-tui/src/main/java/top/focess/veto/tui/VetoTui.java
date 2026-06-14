@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import org.jetbrains.annotations.NotNull;
 import org.jline.keymap.BindingReader;
 import org.jline.keymap.KeyMap;
 import org.jline.terminal.Attributes;
@@ -36,7 +37,7 @@ public class VetoTui {
     private final Attributes originalAttributes;
     private volatile boolean running = true;
 
-    public VetoTui(String address) throws IOException {
+    public VetoTui(@NotNull String address) throws IOException {
         this.state = new TuiState();
         this.state.setServerAddress(address);
 
@@ -63,7 +64,7 @@ public class VetoTui {
         this.renderer = new TuiRenderer();
     }
 
-    public static void main(String[] args) {
+    public static void main(@NotNull String[] args) {
         System.setProperty("file.encoding", "UTF-8");
 
         ClientOptions options = ClientOptions.parse(args);
@@ -208,7 +209,7 @@ public class VetoTui {
         }
     }
 
-    private void processEvent(TuiEvent event) {
+    private void processEvent(@NotNull TuiEvent event) {
         if (event instanceof TuiEvent.Resize resize) {
             int cols = Math.max(20, resize.size().getColumns());
             int rows = Math.max(10, resize.size().getRows());

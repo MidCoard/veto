@@ -3,6 +3,8 @@ package top.focess.veto.terminal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.jline.terminal.Terminal;
 import org.jline.utils.AttributedString;
 import org.jline.utils.Status;
@@ -30,7 +32,7 @@ public class TerminalStatus {
      * @param renderer the MordantRenderer used to format/dim the status line text
      * @throws IllegalStateException if the terminal does not support a JLine Status bar
      */
-    public TerminalStatus(Terminal terminal, MordantRenderer renderer) {
+    public TerminalStatus(@NotNull Terminal terminal, @NotNull MordantRenderer renderer) {
         this.renderer = renderer;
         // JLine status bar utility retrieves or creates the status bar instance for the given
         // terminal.
@@ -46,7 +48,7 @@ public class TerminalStatus {
      *
      * @param meta a map containing session metadata fields
      */
-    public void apply(Map<String, Object> meta) {
+    public void apply(@NotNull Map<String, Object> meta) {
         if (meta.containsKey(IpcMeta.USERNAME)) {
             String newUser = (String) meta.get(IpcMeta.USERNAME);
             // Only update the display username if it has actually changed to avoid redraw flicker.
@@ -110,6 +112,7 @@ public class TerminalStatus {
      *
      * @return the display username, or null if not logged in
      */
+    @Nullable
     public String getDisplayUser() {
         return displayUser;
     }
@@ -128,6 +131,7 @@ public class TerminalStatus {
      *
      * @return the request queue
      */
+    @NotNull
     public List<String> getRequestQueue() {
         return requestQueue;
     }

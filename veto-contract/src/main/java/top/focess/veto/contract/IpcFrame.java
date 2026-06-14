@@ -5,6 +5,8 @@ import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.util.List;
 import java.util.Map;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Sealed hierarchy for all IPC protocol frames exchanged between the terminal (client) and the
@@ -96,7 +98,7 @@ public sealed interface IpcFrame
      * Because there is no single determined response, this frame does <b>not</b> carry a {@code
      * seq}.
      */
-    record Request(String raw) implements ClientFrame {}
+    record Request(@NotNull String raw) implements ClientFrame {}
 
     /**
      * Tab-completion query. Backend responds with exactly one {@link CompleteResult} carrying
@@ -104,7 +106,7 @@ public sealed interface IpcFrame
      *
      * @param seq monotonic sequence number for correlating with the response
      */
-    record Complete(String raw, long seq) implements SeqRequest {}
+    record Complete(@NotNull String raw, long seq) implements SeqRequest {}
 
     /**
      * Requests a placeholder hint for the next expected argument. The backend responds with exactly
@@ -113,10 +115,11 @@ public sealed interface IpcFrame
      *
      * @param seq monotonic sequence number for correlating with the hint response
      */
-    record Hint(String raw, long seq) implements SeqRequest {}
+    record Hint(@NotNull String raw, long seq) implements SeqRequest {}
 
     /** User replied to a backend-issued {@link Prompt}. Fire-and-forget. */
-    record Input(String raw) implements ClientFrame {
+    record Input(@NotNull String raw) implements ClientFrame {
+        @NotNull
         @Override
         public String toString() {
             return "Input[raw=********]";
@@ -171,7 +174,8 @@ public sealed interface IpcFrame
      * @param description optional helpful description or context
      * @param group optional category/group name for JLine rendering grouping
      */
-    record Completion(String value, String description, String group) {}
+    record Completion(
+            @NotNull String value, @Nullable String description, @Nullable String group) {}
 
     /**
      * Response containing autocomplete candidates.
@@ -179,7 +183,7 @@ public sealed interface IpcFrame
      * @param candidates structured list of completion candidates
      * @param seq echoed from the initiating {@link Complete} request
      */
-    record CompleteResult(List<Completion> candidates, long seq) implements SeqResponse {}
+    record CompleteResult(@NotNull List<Completion> candidates, long seq) implements SeqResponse {}
 
     /**
      * Information about the autocomplete hint for the next expected argument.
@@ -187,7 +191,7 @@ public sealed interface IpcFrame
      * @param placeholder the template or placeholder representing the expected argument
      * @param description a helpful description explaining the argument
      */
-    record HintInfo(String placeholder, String description) {
+    record HintInfo(@Nullable String placeholder, @Nullable String description) {
         /** Empty placeholder instance. */
         public static final HintInfo EMPTY = new HintInfo(null, null);
 
@@ -196,6 +200,7 @@ public sealed interface IpcFrame
          *
          * @return the formatted hint display text
          */
+        @NotNull
         @JsonIgnore
         public String displayText() {
             if (placeholder == null) {
@@ -211,7 +216,7 @@ public sealed interface IpcFrame
      * @param hint next argument details (placeholder and description)
      * @param seq echoed from the initiating {@link Hint} request
      */
-    record HintResult(HintInfo hint, long seq) implements SeqResponse {}
+    record HintResult(@NotNull HintInfo hint, long seq) implements SeqResponse {}
 
     /**
      * Terminal frame — response complete.
@@ -222,7 +227,8 @@ public sealed interface IpcFrame
      * @param meta session metadata (username, turn number, flags, etc.)
      * @param content optional content string
      */
-    record Done(Map<String, Object> meta, String content) implements TerminalResponse {}
+    record Done(@NotNull Map<String, Object> meta, @Nullable String content)
+            implements TerminalResponse {}
 
     /**
      * Fatal — terminates the exchange with an error message.
@@ -233,8 +239,9 @@ public sealed interface IpcFrame
      * @param content error description
      * @param seq echoed from the initiating frame; 0 when not correlated to a sequenced request
      */
-    record Error(String content, long seq) implements SeqResponse, TerminalResponse {
-        public static Error ofError(String content) {
+    record Error(@NotNull String content, long seq) implements SeqResponse, TerminalResponse {
+        @NotNull
+        public static Error ofError(@NotNull String content) {
             return new Error(content, 0);
         }
     }
@@ -244,14 +251,14 @@ public sealed interface IpcFrame
      *
      * @param content the text chunk content
      */
-    record Delta(String content) implements ServerFrame {}
+    record Delta(@NotNull String content) implements ServerFrame {}
 
     /**
      * Optional progress hint between deltas.
      *
      * @param percent completion percentage 0–100, or {@link #INDETERMINATE} when unknown
      */
-    record Progress(String content, int percent) implements ServerFrame {
+    record Progress(@NotNull String content, int percent) implements ServerFrame {
         /** Value for {@link #percent} when progress cannot be expressed as a percentage. */
         public static final int INDETERMINATE = -1;
 
@@ -268,14 +275,15 @@ public sealed interface IpcFrame
      * @param content the prompt message content to display
      * @param meta prompt-related metadata options (such as masking input characters)
      */
-    record Prompt(String content, Map<String, Object> meta) implements ServerFrame {}
+    record Prompt(@NotNull String content, @NotNull Map<String, Object> meta)
+            implements ServerFrame {}
 
     /**
      * Sent by the server to forcefully terminate the terminal connection session.
      *
      * @param reason the reason for termination
      */
-    record Terminate(String reason) implements TerminalResponse {}
+    record Terminate(@Nullable String reason) implements TerminalResponse {}
 
     // ══════════════════════════════════════════════════════════════════════
     //  Fallback
@@ -287,5 +295,5 @@ public sealed interface IpcFrame
      * discriminator and any deserialized fields so handlers can log-and-skip gracefully instead of
      * crashing on deserialization.
      */
-    record Unknown(String type, Map<String, Object> fields) implements IpcFrame {}
+    record Unknown(@NotNull String type, @NotNull Map<String, Object> fields) implements IpcFrame {}
 }
