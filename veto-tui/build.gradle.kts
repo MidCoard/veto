@@ -21,12 +21,18 @@ repositories {
 }
 
 val jlineVersion: String by rootProject.extra
+val slf4jVersion: String by rootProject.extra
+val logbackVersion: String by rootProject.extra
 
 dependencies {
     implementation(project(":veto-contract"))
 
     // JLine 3 core and dependencies
     implementation("org.jline:jline:$jlineVersion")
+
+    // Logging backend — the application owns this (veto-contract depends on the SLF4J facade only).
+    implementation("ch.qos.logback:logback-classic:$logbackVersion")
+    implementation("org.slf4j:jul-to-slf4j:$slf4jVersion")
 }
 
 spotless {

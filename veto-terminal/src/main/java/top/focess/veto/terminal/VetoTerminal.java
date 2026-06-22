@@ -428,7 +428,7 @@ public class VetoTerminal {
         System.setProperty("file.encoding", "UTF-8");
 
         ClientOptions options = ClientOptions.parse(args);
-        options.configureLogging();
+        Logging.configure(options.debug());
 
         try {
             // Build the system JLine Terminal and the Mordant Terminal.

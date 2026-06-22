@@ -331,6 +331,13 @@ public final class IpcClient implements AutoCloseable {
     /**
      * Gracefully shuts down: enqueues a {@link IpcFrame.Bye}, signals the loops to stop, and waits
      * for the IO thread to flush the outbox and close the transport before releasing the context.
+     *
+     * <p>Called from the owning (application) thread, never the IO thread — the IO loop's {@code
+     * finally} closes the transport, not this. If that invariant is ever broken and the IO thread
+     * does reach here, the {@code ioThread.join} self-joins (times out after 2 s), {@code
+     * ctx.close()} runs, and the resumed loop's final drain logs a send failure — surfaced, not
+     * silent. No guard for it: it guards an unreachable path, and a guard here would be the same
+     * speculative defense we removed elsewhere.
      */
     @Override
     public void close() {
@@ -339,12 +346,10 @@ public final class IpcClient implements AutoCloseable {
         outbox.offer(new IpcFrame.Bye());
         closed = true;
         heartbeatThread.interrupt();
-        if (Thread.currentThread() != ioThread) {
-            try {
-                ioThread.join(2_000);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
+        try {
+            ioThread.join(2_000);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
         if (ownsContext && ctx != null) {
             ctx.close();

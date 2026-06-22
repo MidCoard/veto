@@ -21,6 +21,8 @@ repositories {
 }
 
 val jlineVersion: String by rootProject.extra
+val slf4jVersion: String by rootProject.extra
+val logbackVersion: String by rootProject.extra
 
 dependencies {
     // ONLY veto-contract — deliberately NOT veto-core (no Spring)
@@ -31,6 +33,10 @@ dependencies {
 
     // Mordant — rich terminal output (tables, spinners, panels, ANSI detection)
     implementation("com.github.ajalt.mordant:mordant:3.0.2")
+
+    // Logging backend — the application owns this (veto-contract depends on the SLF4J facade only).
+    implementation("ch.qos.logback:logback-classic:$logbackVersion")
+    implementation("org.slf4j:jul-to-slf4j:$slf4jVersion")
 }
 
 spotless {

@@ -26,7 +26,6 @@ import top.focess.veto.contract.IpcFrame;
 public class VetoTui {
 
     private static final Logger log = LoggerFactory.getLogger(VetoTui.class);
-    private static final String DEFAULT_ADDR = "tcp://127.0.0.1:5555";
 
     private final BlockingQueue<TuiEvent> eventQueue = new LinkedBlockingQueue<>();
     private final Terminal terminal;
@@ -68,7 +67,7 @@ public class VetoTui {
         System.setProperty("file.encoding", "UTF-8");
 
         ClientOptions options = ClientOptions.parse(args);
-        options.configureLogging();
+        Logging.configure(options.debug());
 
         try {
             VetoTui tui = new VetoTui(options.address());
