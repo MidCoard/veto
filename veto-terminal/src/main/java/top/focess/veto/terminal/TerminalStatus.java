@@ -50,16 +50,16 @@ public class TerminalStatus {
      */
     public void apply(@NotNull Map<String, Object> meta) {
         if (meta.containsKey(IpcMeta.USERNAME)) {
-            String newUser = (String) meta.get(IpcMeta.USERNAME);
+            String newUser = IpcMeta.username(meta);
             // Only update the display username if it has actually changed to avoid redraw flicker.
             if (newUser == null || !newUser.equals(displayUser)) {
                 displayUser = newUser;
             }
         }
         if (meta.containsKey(IpcMeta.TURN_NUMBER)) {
-            turnCount = ((Number) meta.get(IpcMeta.TURN_NUMBER)).intValue();
+            turnCount = IpcMeta.turnNumber(meta, turnCount);
         }
-        if (Boolean.TRUE.equals(meta.get(IpcMeta.CLEAR_SESSION))) {
+        if (IpcMeta.clearSession(meta)) {
             // When a session is cleared (e.g., logout), we reset the username and turn count.
             displayUser = null;
             turnCount = 0;

@@ -65,3 +65,4 @@ gradle.properties
 .claude/
 .veto_history
 *.lck
+plans.zip

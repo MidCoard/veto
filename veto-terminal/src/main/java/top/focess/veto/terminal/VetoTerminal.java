@@ -12,15 +12,15 @@ import org.jline.terminal.TerminalBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.contract.ClientOptions;
+import top.focess.veto.contract.IpcClient;
 import top.focess.veto.contract.IpcFrame;
-import top.focess.veto.contract.ZmqClient;
 
 /**
  * Main interactive REPL terminal controller for Veto Core.
  *
  * <p>Handles user keystrokes, input reading via JLine {@link LineReader}, and coordinates with the
- * backend using ZeroMQ via {@link ZmqClient}. Manages prompt state changes, input/request queuing,
- * and updates the bottom status bar dynamically.
+ * backend via {@link IpcClient}. Manages prompt state changes, input/request queuing, and updates
+ * the bottom status bar dynamically.
  *
  * <h3>Concurrency &amp; Synchronization model</h3>
  *
@@ -45,23 +45,11 @@ public class VetoTerminal {
                       ╚═══╝  ╚══════╝   ╚═╝    ╚═════╝
                     """;
 
-    /** ZeroMQ endpoint of the backend ROUTER socket this terminal connects to. */
-    private static final String BACKEND_ADDR = "tcp://127.0.0.1:5555";
-
-    /**
-     * Maximum time in milliseconds the terminal waits for a response before considering the backend
-     * unresponsive. Currently unused in the polling path but retained for future use.
-     */
-    private static final long REQUEST_TIMEOUT_MS = 85_000;
-
-    /** Interval in milliseconds between periodic {@link IpcFrame.Heartbeat} frames. */
-    private static final long HEARTBEAT_INTERVAL_MS = 30_000;
-
     /** The Mordant terminal used for styled (ANSI) console output. */
     private final Terminal t;
 
-    /** ZMQ DEALER client connected to the backend ROUTER. */
-    private final ZmqClient client;
+    /** IPC connection to the backend (transport-agnostic; ZMQ locally). */
+    private final IpcClient client;
 
     /** JLine reader driving the interactive REPL; set in {@link #start(LineReader)}. */
     private LineReader reader;
@@ -117,9 +105,9 @@ public class VetoTerminal {
      * Constructs a new VetoTerminal instance.
      *
      * @param t the Mordant Terminal instance used for styled outputs
-     * @param client the ZmqClient used for network IPC communications with the backend
+     * @param client the IpcClient used for IPC communications with the backend
      */
-    public VetoTerminal(@NotNull Terminal t, @NotNull ZmqClient client) {
+    public VetoTerminal(@NotNull Terminal t, @NotNull IpcClient client) {
         this.t = t;
         this.client = client;
     }
@@ -142,27 +130,7 @@ public class VetoTerminal {
         printBanner();
         running = true;
 
-        // --- heartbeat thread ---
-        // Periodically sends heartbeat messages to backend to maintain connection and session
-        // presence.
-        Thread heartbeat =
-                new Thread(
-                        () -> {
-                            while (running) {
-                                try {
-                                    Thread.sleep(HEARTBEAT_INTERVAL_MS);
-                                    client.send(new IpcFrame.Heartbeat());
-                                } catch (Exception e) {
-                                    if (running) {
-                                        log.warn("Error in heartbeat loop, terminating thread", e);
-                                    }
-                                    break;
-                                }
-                            }
-                        },
-                        "zmq-hb");
-        heartbeat.setDaemon(true);
-        heartbeat.start();
+        // Heartbeats are sent by the IpcClient itself (its ipc-hb thread).
 
         // --- hint widgets ---
         // Binds custom parameter autocomplete / tail-tip widgets to JLine reader.
@@ -197,20 +165,13 @@ public class VetoTerminal {
             // Enter the main interactive loop.
             repl();
         } finally {
-            // Teardown sequence: stop loops, disable widgets, interrupt threads, clear status bar,
-            // and close client.
+            // Teardown: stop loops, disable widgets, interrupt the consumer, clear the status bar,
+            // and close the connection (close() flushes the Bye frame before teardown).
             running = false;
             hintWidgets.disable();
-            heartbeat.interrupt();
             consumerThread.interrupt();
             synchronized (stateLock) {
                 status.clear();
-            }
-            client.send(new IpcFrame.Bye());
-            try {
-                // Sleep briefly to allow Bye packet to be flushed before socket close.
-                Thread.sleep(100);
-            } catch (InterruptedException ignored) {
             }
             client.close();
         }
@@ -237,7 +198,7 @@ public class VetoTerminal {
                                     + " "
                                     + renderer.cyan(activePrompt.content())
                                     + " ";
-                    mask = Boolean.TRUE.equals(activePrompt.meta().get("mask")) ? '*' : null;
+                    mask = activePrompt.mask() ? '*' : null;
                     reader.setVariable(LineReader.DISABLE_HISTORY, Boolean.TRUE);
                 } else {
                     // Standard prompt: green when logged in, red when logged out.
@@ -343,37 +304,41 @@ public class VetoTerminal {
             renderer.println(styled);
         } else {
             synchronized (stateLock) {
-                if (frame instanceof IpcFrame.Prompt prompt) {
-                    // Server requests additional input. Interrupt readLine to show the new prompt.
-                    activePrompt = prompt;
-                    targetState = State.PROMPTED;
-                    state = State.PROGRAMMATIC_INTERRUPT;
-                    mainThread.interrupt();
-                } else if (frame
-                        instanceof IpcFrame.Done(Map<String, Object> meta, String content)) {
-                    if (content != null) {
-                        renderer.println(content);
+                switch (frame) {
+                    case IpcFrame.Prompt prompt -> {
+                        // Server requests additional input. Interrupt readLine to show the new
+                        // prompt.
+                        activePrompt = prompt;
+                        targetState = State.PROMPTED;
+                        state = State.PROGRAMMATIC_INTERRUPT;
+                        mainThread.interrupt();
                     }
-                    status.apply(meta);
-                    dispatchNextOrIdle();
-                    // Interrupt active readLine to transition state to the targetState.
-                    state = State.PROGRAMMATIC_INTERRUPT;
-                    mainThread.interrupt();
-                } else if (frame instanceof IpcFrame.Terminate(String reason)) {
-                    if (reason != null) {
-                        renderer.println(reason);
+                    case IpcFrame.Done(Map<String, Object> meta, String content) -> {
+                        if (content != null) {
+                            renderer.println(content);
+                        }
+                        status.apply(meta);
+                        dispatchNextOrIdle();
+                        // Interrupt active readLine to transition state to the targetState.
+                        state = State.PROGRAMMATIC_INTERRUPT;
+                        mainThread.interrupt();
                     }
-                    running = false;
-                    targetState = State.IDLE;
-                    state = State.PROGRAMMATIC_INTERRUPT;
-                    mainThread.interrupt();
-                } else if (frame instanceof IpcFrame.Error e) {
-                    if (e.content() != null) {
+                    case IpcFrame.Terminate(String reason) -> {
+                        if (reason != null) {
+                            renderer.println(reason);
+                        }
+                        running = false;
+                        targetState = State.IDLE;
+                        state = State.PROGRAMMATIC_INTERRUPT;
+                        mainThread.interrupt();
+                    }
+                    case IpcFrame.Error e -> {
                         renderer.error(e.content());
+                        dispatchNextOrIdle();
+                        state = State.PROGRAMMATIC_INTERRUPT;
+                        mainThread.interrupt();
                     }
-                    dispatchNextOrIdle();
-                    state = State.PROGRAMMATIC_INTERRUPT;
-                    mainThread.interrupt();
+                    default -> {}
                 }
             }
         }
@@ -425,7 +390,7 @@ public class VetoTerminal {
      * JLine {@link Completer} that fetches tab-completion candidates from the backend.
      *
      * <p>Completion is triggered only when the buffer starts with {@code /} (slash-commands).
-     * Candidates are retrieved synchronously via {@link ZmqClient#complete} with a 3-second
+     * Candidates are retrieved synchronously via {@link IpcClient#complete} with a 3-second
      * timeout; if the backend does not respond in time, no candidates are offered.
      */
     private class VetoCompleter implements Completer {
@@ -437,7 +402,7 @@ public class VetoTerminal {
             // Completion is only requested for slash commands.
             if (!fullLine.startsWith("/")) return;
             IpcFrame.CompleteResult compResult = client.complete(fullLine, 3, TimeUnit.SECONDS);
-            if (compResult != null && compResult.candidates() != null) {
+            if (compResult != null) {
                 for (IpcFrame.Completion comp : compResult.candidates()) {
                     String name = comp.value();
                     String desc =
@@ -471,7 +436,7 @@ public class VetoTerminal {
                     TerminalBuilder.builder().system(true).jna(true).encoding("UTF-8").build();
             Terminal mt = MordantTerminal.create();
             System.out.println("Connecting to backend at " + options.address() + " ...");
-            ZmqClient transport = new ZmqClient(options.address());
+            IpcClient transport = new IpcClient(options.address());
             System.out.println("Connected.");
             VetoTerminal vt = new VetoTerminal(mt, transport);
             Completer completer = vt.new VetoCompleter();

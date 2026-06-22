@@ -8,11 +8,11 @@ import org.zeromq.SocketType;
 import org.zeromq.ZContext;
 import org.zeromq.ZMQ;
 import org.zeromq.ZMsg;
+import top.focess.veto.contract.IpcCodec;
 import top.focess.veto.contract.IpcFrame;
-import top.focess.veto.contract.ZmqTransport;
 
 /**
- * Live production-path test: boots the full backend with ZmqServer on a real TCP port, connects a
+ * Live production-path test: boots the full backend with IpcServer on a real TCP port, connects a
  * raw ZMQ DEALER, and exercises every command just like the real terminal does.
  */
 @SpringBootTest(
@@ -51,7 +51,7 @@ class LiveTestRunner {
     }
 
     private void send(IpcFrame f) throws Exception {
-        dealer.send(ZmqTransport.serialize(f));
+        dealer.send(IpcCodec.encode(f));
     }
 
     private IpcFrame recv() {
@@ -60,7 +60,7 @@ class LiveTestRunner {
         byte[] data = msg.getFirst().getData();
         String json = new String(data, StandardCharsets.UTF_8);
         msg.destroy();
-        return ZmqTransport.deserialize(json);
+        return IpcCodec.decode(json);
     }
 
     private IpcFrame exchange(String cmd) throws Exception {

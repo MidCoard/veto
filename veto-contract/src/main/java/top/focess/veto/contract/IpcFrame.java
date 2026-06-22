@@ -1,5 +1,6 @@
 package top.focess.veto.contract;
 
+import com.fasterxml.jackson.annotation.JsonAnySetter;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
@@ -32,7 +33,11 @@ import org.jetbrains.annotations.Nullable;
  *
  * <p>Discriminated by the {@code type} field in JSON.
  */
-@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type", defaultImpl = IpcFrame.Unknown.class)
+@JsonTypeInfo(
+        use = JsonTypeInfo.Id.NAME,
+        property = "type",
+        visible = true,
+        defaultImpl = IpcFrame.Unknown.class)
 @JsonSubTypes({
     @JsonSubTypes.Type(value = IpcFrame.Hello.class, name = "hello"),
     @JsonSubTypes.Type(value = IpcFrame.Request.class, name = "request"),
@@ -84,6 +89,10 @@ public sealed interface IpcFrame
     /**
      * Protocol handshake sent by the terminal on connect. The backend responds with a {@link
      * Welcome} echoing the same {@code seq}.
+     *
+     * <p>Authentication is <b>not</b> a frame concern: locally the loopback socket is trusted (the
+     * OS-local-user is the boundary), and remotely the connection is tunneled over WSS/gRPC whose
+     * TLS/JWT handshake authenticates — the application frame stays pure.
      *
      * @param version the highest protocol version the client supports
      * @param seq monotonic sequence number for correlating with the {@link Welcome} response
@@ -228,7 +237,27 @@ public sealed interface IpcFrame
      * @param content optional content string
      */
     record Done(@NotNull Map<String, Object> meta, @Nullable String content)
-            implements TerminalResponse {}
+            implements TerminalResponse {
+        /** Typed, null-safe accessor for {@link IpcMeta#USERNAME}. */
+        public @Nullable String username() {
+            return IpcMeta.username(meta);
+        }
+
+        /** Typed accessor for {@link IpcMeta#TURN_NUMBER}; {@code -1} when absent. */
+        public int turnNumber() {
+            return IpcMeta.turnNumber(meta, -1);
+        }
+
+        /** Typed accessor for {@link IpcMeta#CANCELLED}. */
+        public boolean cancelled() {
+            return IpcMeta.cancelled(meta);
+        }
+
+        /** Typed accessor for {@link IpcMeta#CLEAR_SESSION}. */
+        public boolean clearSession() {
+            return IpcMeta.clearSession(meta);
+        }
+    }
 
     /**
      * Fatal — terminates the exchange with an error message.
@@ -276,7 +305,17 @@ public sealed interface IpcFrame
      * @param meta prompt-related metadata options (such as masking input characters)
      */
     record Prompt(@NotNull String content, @NotNull Map<String, Object> meta)
-            implements ServerFrame {}
+            implements ServerFrame {
+        /** Typed accessor for {@link IpcMeta#MASK} (whether to mask the user's input). */
+        public boolean mask() {
+            return IpcMeta.mask(meta);
+        }
+
+        /** Typed, null-safe accessor for {@link IpcMeta#PROMPT}. */
+        public @Nullable String promptText() {
+            return IpcMeta.promptText(meta);
+        }
+    }
 
     /**
      * Sent by the server to forcefully terminate the terminal connection session.
@@ -292,8 +331,15 @@ public sealed interface IpcFrame
     /**
      * Fallback for unrecognized frame types — used when the remote peer speaks a newer protocol
      * version with frame types this side does not understand. Carries the raw {@code type}
-     * discriminator and any deserialized fields so handlers can log-and-skip gracefully instead of
-     * crashing on deserialization.
+     * discriminator so handlers can log-and-skip gracefully instead of crashing on deserialization.
+     *
+     * <p>The {@code type} id is bound via the {@code visible} {@link JsonTypeInfo} option. The
+     * unrecognized body is intentionally <b>not</b> captured: nothing inspects it (handlers only
+     * log the discriminator), and capturing it would force this to be a mutable class with {@link
+     * JsonAnySetter} rather than a plain record. Extra keys are silently ignored (the codec sets
+     * {@code FAIL_ON_UNKNOWN_PROPERTIES=false}).
+     *
+     * @param type the raw {@code type} discriminator from the unrecognized frame, or {@code null}
      */
-    record Unknown(@NotNull String type, @NotNull Map<String, Object> fields) implements IpcFrame {}
+    record Unknown(@Nullable String type) implements IpcFrame {}
 }

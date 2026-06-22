@@ -2,8 +2,8 @@ package top.focess.veto.terminal;
 
 import java.util.Scanner;
 import java.util.concurrent.TimeUnit;
+import top.focess.veto.contract.IpcClient;
 import top.focess.veto.contract.IpcFrame;
-import top.focess.veto.contract.ZmqClient;
 
 /**
  * Minimal terminal test harness — connects via ZMQ and runs commands from stdin. Usage: {@code
@@ -36,7 +36,7 @@ public class TerminalTestHarness {
         System.exit(0);
         System.out.println("Connecting to " + ADDR + " ...");
 
-        ZmqClient transport = new ZmqClient(ADDR);
+        IpcClient transport = new IpcClient(ADDR);
         System.out.println("Connected! Type commands (/help, /login, /exit).");
 
         Scanner scanner = new Scanner(System.in);

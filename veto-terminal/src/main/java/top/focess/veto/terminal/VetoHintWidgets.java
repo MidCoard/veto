@@ -5,8 +5,8 @@ import org.jetbrains.annotations.NotNull;
 import org.jline.reader.LineReader;
 import org.jline.reader.LineReader.SuggestionType;
 import org.jline.widget.Widgets;
+import top.focess.veto.contract.IpcClient;
 import top.focess.veto.contract.IpcFrame;
-import top.focess.veto.contract.ZmqClient;
 
 /**
  * JLine {@link org.jline.widget.Widgets} subclass that hooks buffer-change widgets to fetch and
@@ -29,7 +29,7 @@ public final class VetoHintWidgets extends Widgets {
 
     private static final long HINT_TIMEOUT_MS = 500;
 
-    private final ZmqClient client;
+    private final IpcClient client;
     private boolean enabled;
 
     /**
@@ -37,9 +37,9 @@ public final class VetoHintWidgets extends Widgets {
      * key widget implementations for intercepting user editing actions.
      *
      * @param reader the JLine LineReader instance
-     * @param client the ZmqClient used to fetch autocomplete/tail-tip hints from the backend
+     * @param client the IpcClient used to fetch autocomplete/tail-tip hints from the backend
      */
-    public VetoHintWidgets(@NotNull LineReader reader, @NotNull ZmqClient client) {
+    public VetoHintWidgets(@NotNull LineReader reader, @NotNull IpcClient client) {
         super(reader);
         this.client = client;
 

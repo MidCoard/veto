@@ -14,25 +14,28 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import org.zeromq.ZContext;
-import org.zeromq.ZMQ;
 import top.focess.veto.command.CommandRegistry;
 import top.focess.veto.command.VetoCommandSender;
 import top.focess.veto.contract.IpcFrame;
 import top.focess.veto.contract.IpcFrame.HintInfo;
 import top.focess.veto.contract.IpcMeta;
-import top.focess.veto.contract.ZmqTransport;
+import top.focess.veto.contract.ServerTransport;
+import top.focess.veto.contract.Transport;
+import top.focess.veto.contract.ZmqChannel;
 import top.focess.veto.vault.UserContext;
 
 /**
- * ZeroMQ-based IPC server that multiplexes multiple terminal sessions over a single ROUTER socket.
+ * Backend IPC server — the {@link IpcClient} counterpart. Multiplexes many terminal sessions over a
+ * single ZMQ ROUTER socket. (The asymmetry with {@link IpcClient}'s single-DEALER, single-socket
+ * shape is by design: the server is 1:N, the client is 1:1 — they are not mirror images.)
  *
  * <h3>Three-pool threading model</h3>
  *
  * <ul>
  *   <li><b>Pool 1 — Infrastructure</b> (2 fixed platform threads): runs {@link #ioLoop()} and
- *       {@link #heartbeatLoop()}. The IO thread is the <em>sole</em> owner of the ZMQ socket; no
- *       other thread ever calls {@link ZmqTransport#tryReceive()} or {@link
- *       ZmqTransport#send(String, IpcFrame)}.
+ *       {@link #heartbeatLoop()}. The IO thread is the <em>sole</em> owner of the transport; no
+ *       other thread ever calls {@link ServerTransport#recv(long)} or {@link
+ *       ServerTransport#send(String, IpcFrame)}.
  *   <li><b>Pool 2 — Session workers</b> (one virtual thread per connected terminal): each session
  *       has a dedicated {@link BlockingQueue} mailbox. The session worker drains that mailbox and
  *       processes non-Request frames <em>synchronously</em>, preserving per-session ordering
@@ -62,9 +65,9 @@ import top.focess.veto.vault.UserContext;
  */
 @Component
 @ConditionalOnProperty(name = "veto.terminal.enabled", havingValue = "true", matchIfMissing = true)
-public class ZmqServer {
+public class IpcServer {
 
-    private static final Logger log = LoggerFactory.getLogger(ZmqServer.class);
+    private static final Logger log = LoggerFactory.getLogger(IpcServer.class);
 
     private static final long SESSION_TIMEOUT_MS = 90_000;
 
@@ -105,19 +108,19 @@ public class ZmqServer {
     private final ExecutorService requestPool = Executors.newVirtualThreadPerTaskExecutor();
 
     private ZContext ctx;
-    private ZmqTransport transport;
+    private ServerTransport transport;
     private volatile boolean running;
 
     @Value("${veto.terminal.bind-address:tcp://127.0.0.1:5555}")
     private String bindAddress;
 
     /**
-     * Constructs a new {@code ZmqServer}. Spring calls this constructor with the {@link
+     * Constructs a new {@code IpcServer}. Spring calls this constructor with the {@link
      * CommandRegistry} bean wired from the application context.
      *
      * @param registry the command registry used to dispatch requests and produce completions
      */
-    public ZmqServer(@NotNull CommandRegistry registry) {
+    public IpcServer(@NotNull CommandRegistry registry) {
         this.registry = registry;
     }
 
@@ -134,11 +137,11 @@ public class ZmqServer {
     @PostConstruct
     public void start() {
         ctx = new ZContext();
-        transport = ZmqTransport.bindRouter(ctx, bindAddress);
+        transport = ZmqChannel.Server.bindRouter(ctx, bindAddress);
         running = true;
         infraPool.submit(this::ioLoop);
         infraPool.submit(this::heartbeatLoop);
-        log.info("ZmqServer bound to {}", bindAddress);
+        log.info("IpcServer bound to {}", bindAddress);
     }
 
     /**
@@ -180,42 +183,33 @@ public class ZmqServer {
         }
         transport.close();
         ctx.close();
-        log.info("ZmqServer stopped");
+        log.info("IpcServer stopped");
     }
 
     // ── Pool 1 — IO loop ─────────────────────────────────────────────────
 
     /**
      * The main IO event loop. Runs on a dedicated platform thread and is the <em>only</em> thread
-     * allowed to read from or write to the ZMQ ROUTER socket.
+     * allowed to read from or write to the transport.
      *
      * <p>On each iteration it:
      *
      * <ol>
-     *   <li>Polls the socket (with a short timeout so outbox draining is still responsive).
-     *   <li>Routes any incoming frame via {@link #routeFrame}.
+     *   <li>Receives one frame from the transport (with a short timeout so outbox draining is still
+     *       responsive) and routes it via {@link #routeFrame}.
      *   <li>Drains the outbox and sends all queued response frames.
      * </ol>
      */
     private void ioLoop() {
-        ZMQ.Poller poller = ctx.createPoller(1);
-        poller.register(transport.socket, ZMQ.Poller.POLLIN);
-
         while (running) {
             // Use 0 ms timeout when there is pending outgoing work to minimise latency.
             long timeout = outbox.isEmpty() ? 50 : 0;
-            poller.poll(timeout);
 
-            // Step 1 — receive one incoming frame and route it.
-            if (poller.pollin(0)) {
-                ZmqTransport.ZmqMessage msg = transport.tryReceive();
-                if (msg == null) {
-                    // tryReceive returned null despite pollin; treat as transient error.
-                } else if (msg.frame() == null) {
-                    log.warn("Corrupt/unknown frame from {}", msg.identity());
-                } else {
-                    routeFrame(msg.identity(), msg.frame());
-                }
+            // Step 1 — receive one incoming frame and route it. The transport polls internally;
+            // malformed payloads are dropped (and logged) by the transport, never surfaced.
+            Transport.FramedMsg msg = transport.recv(timeout);
+            if (msg != null) {
+                routeFrame(msg.identity(), msg.frame());
             }
 
             // Step 2 — drain the outbox so responses reach terminals promptly.
@@ -232,7 +226,6 @@ public class ZmqServer {
                 }
             }
         }
-        poller.close();
     }
 
     /**
@@ -365,13 +358,20 @@ public class ZmqServer {
                                                                 session.sender, req.raw());
                                                 session.lastActivityMillis =
                                                         System.currentTimeMillis();
-                                                if (result != null) {
-                                                    send(identity, result);
-                                                    log.trace(
-                                                            "DONE {}: {}",
-                                                            identity.substring(0, 8),
-                                                            result.getClass().getSimpleName());
+                                                if (result == null) {
+                                                    // A Request must always be answered with
+                                                    // exactly
+                                                    // one terminal frame; a null dispatch becomes
+                                                    // an
+                                                    // empty Done so the terminal never hangs
+                                                    // waiting.
+                                                    result = new IpcFrame.Done(Map.of(), null);
                                                 }
+                                                send(identity, result);
+                                                log.trace(
+                                                        "DONE {}: {}",
+                                                        identity.substring(0, 8),
+                                                        result.getClass().getSimpleName());
                                             } catch (Throwable t) {
                                                 log.error(
                                                         "Unhandled error executing request for {}",

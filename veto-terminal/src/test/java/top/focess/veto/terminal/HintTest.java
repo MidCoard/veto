@@ -1,15 +1,15 @@
 package top.focess.veto.terminal;
 
 import java.util.concurrent.TimeUnit;
+import top.focess.veto.contract.IpcClient;
 import top.focess.veto.contract.IpcFrame;
-import top.focess.veto.contract.ZmqClient;
 
 /** Standalone hint protocol test — connects to a running backend and tests live hints. */
 public class HintTest {
     public static void main(String[] args) throws Exception {
         String addr = args.length > 0 ? args[0] : "tcp://127.0.0.1:5555";
         System.out.println("Connecting to " + addr + " ...");
-        ZmqClient t = new ZmqClient(addr);
+        IpcClient t = new IpcClient(addr);
 
         // Test hint for /login (should return [user] [pass])
         IpcFrame.HintResult r = t.hint("/login ", 5, TimeUnit.SECONDS);
@@ -28,14 +28,12 @@ public class HintTest {
         System.out.println("Hint '/login'       -> " + r);
 
         // Test completion
-        long seq = 1;
-        t.send(new IpcFrame.Complete("/log", seq));
-        IpcFrame reply = t.receive(seq, 5, TimeUnit.SECONDS);
-        System.out.println("Complete '/log'    -> " + reply);
+        IpcFrame.CompleteResult comp = t.complete("/log", 5, TimeUnit.SECONDS);
+        System.out.println("Complete '/log'    -> " + comp);
 
         // Test /help
         t.send(new IpcFrame.Request("/help"));
-        reply = t.receive();
+        IpcFrame reply = t.receive();
         while (!(reply instanceof IpcFrame.Done) && !(reply instanceof IpcFrame.Error)) {
             reply = t.receive();
         }

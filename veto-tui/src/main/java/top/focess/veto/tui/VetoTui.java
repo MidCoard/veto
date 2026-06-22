@@ -16,8 +16,8 @@ import org.jline.utils.InfoCmp.Capability;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.contract.ClientOptions;
+import top.focess.veto.contract.IpcClient;
 import top.focess.veto.contract.IpcFrame;
-import top.focess.veto.contract.ZmqClient;
 
 /**
  * Main application entry point for Veto TUI. Implements a single-threaded event loop architecture
@@ -31,7 +31,7 @@ public class VetoTui {
     private final BlockingQueue<TuiEvent> eventQueue = new LinkedBlockingQueue<>();
     private final Terminal terminal;
     private final Display display;
-    private final ZmqClient client;
+    private final IpcClient client;
     private final TuiState state;
     private final TuiRenderer renderer;
     private final Attributes originalAttributes;
@@ -42,7 +42,7 @@ public class VetoTui {
         this.state.setServerAddress(address);
 
         // Synchronously initialize the client and handshake with backend
-        this.client = new ZmqClient(address);
+        this.client = new IpcClient(address);
         this.state.setConnection(TuiState.ConnectionState.CONNECTED);
         this.state.appendAnsiText("\u001B[92mConnected to backend at " + address + "\u001B[0m\n");
 
@@ -171,23 +171,7 @@ public class VetoTui {
                     eventQueue.offer(new TuiEvent.Resize(terminal.getSize()));
                 });
 
-        // --- Heartbeat thread ---
-        Thread heartbeat =
-                new Thread(
-                        () -> {
-                            while (running) {
-                                try {
-                                    Thread.sleep(30_000);
-                                    eventQueue.offer(new TuiEvent.HeartbeatTick());
-                                } catch (InterruptedException e) {
-                                    Thread.currentThread().interrupt();
-                                    break;
-                                }
-                            }
-                        },
-                        "tui-heartbeat");
-        heartbeat.setDaemon(true);
-        heartbeat.start();
+        // Heartbeats are sent by the IpcClient itself (its ipc-hb thread).
 
         // Initial Redraw
         redraw();
@@ -226,7 +210,7 @@ public class VetoTui {
                 }
             }
         } else if (event instanceof TuiEvent.HeartbeatTick) {
-            client.send(new IpcFrame.Heartbeat());
+            // Heartbeats are owned by IpcClient; no-op here (kept for event-type completeness).
         } else if (event instanceof TuiEvent.KeyInput key) {
             if (key.keyChar() != -1) {
                 state.insertChar((char) key.keyChar());
@@ -307,12 +291,7 @@ public class VetoTui {
 
     private void cleanup() {
         running = false;
-        try {
-            client.send(new IpcFrame.Bye());
-            // Small sleep to flush Bye packet
-            Thread.sleep(100);
-        } catch (Exception ignored) {
-        }
+        // close() flushes the Bye frame before teardown.
         client.close();
         if (originalAttributes != null) {
             terminal.setAttributes(originalAttributes);

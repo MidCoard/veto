@@ -33,7 +33,7 @@ class IpcFrameSerializationTest {
         System.out.println();
 
         // Deserialize (same as terminal)
-        IpcFrame result = ZmqTransport.deserialize(json);
+        IpcFrame result = IpcCodec.decode(json);
         assertNotNull(result, "deserialize returned null");
         assertInstanceOf(IpcFrame.Delta.class, result);
         IpcFrame.Delta d = (IpcFrame.Delta) result;
@@ -54,8 +54,8 @@ class IpcFrameSerializationTest {
         System.out.println("Delta JSON: " + deltaJson);
         System.out.println("Done JSON:  " + doneJson);
 
-        IpcFrame deltaResult = ZmqTransport.deserialize(deltaJson);
-        IpcFrame doneResult = ZmqTransport.deserialize(doneJson);
+        IpcFrame deltaResult = IpcCodec.decode(deltaJson);
+        IpcFrame doneResult = IpcCodec.decode(doneJson);
 
         assertNotNull(deltaResult, "Delta deserialization returned null");
         assertInstanceOf(IpcFrame.Delta.class, deltaResult);
@@ -81,7 +81,7 @@ class IpcFrameSerializationTest {
                     new IpcFrame.Terminate("goodbye"),
                 }) {
             String json = new String(JSON.writeValueAsBytes(f), StandardCharsets.UTF_8);
-            IpcFrame result = ZmqTransport.deserialize(json);
+            IpcFrame result = IpcCodec.decode(json);
             assertNotNull(result, "null for " + f.getClass().getSimpleName() + " json=" + json);
             assertEquals(f.getClass(), result.getClass(), "wrong type for " + json);
         }

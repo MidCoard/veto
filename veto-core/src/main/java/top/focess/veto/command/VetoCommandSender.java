@@ -10,7 +10,7 @@ import top.focess.command.AbstractCommandSender;
 import top.focess.command.CommandPermission;
 import top.focess.veto.contract.IpcFrame;
 import top.focess.veto.contract.IpcMeta;
-import top.focess.veto.terminal.ZmqServer;
+import top.focess.veto.terminal.IpcServer;
 
 /**
  * A pure {@link top.focess.command.CommandSender} for a single terminal session.
@@ -18,7 +18,7 @@ import top.focess.veto.terminal.ZmqServer;
  * <h3>Output</h3>
  *
  * {@link #output(String)} pushes {@code IpcFrame.Delta} entries onto the shared outbox queue. The
- * IO thread in {@link ZmqServer} drains the queue and sends frames on the ZMQ ROUTER socket.
+ * IO thread in {@link IpcServer} drains the queue and sends frames on the ZMQ ROUTER socket.
  *
  * <h3>Input</h3>
  *
@@ -32,21 +32,21 @@ public final class VetoCommandSender extends AbstractCommandSender {
 
     private static final Logger log = LoggerFactory.getLogger(VetoCommandSender.class);
 
-    @NotNull private final ZmqServer zmqServer;
+    @NotNull private final IpcServer ipcServer;
     @Nullable private volatile String username;
     @NotNull private final String terminalId;
 
     /**
      * Constructs a new {@code VetoCommandSender} for the given terminal session.
      *
-     * @param zmqServer the ZMQ server used to enqueue outbound frames
+     * @param ipcServer the IPC server used to enqueue outbound frames
      * @param username the initially authenticated username, or {@code null} if not yet logged in
      * @param terminalId the ZMQ DEALER identity of the owning terminal
      */
     public VetoCommandSender(
-            @NotNull ZmqServer zmqServer, @Nullable String username, @NotNull String terminalId) {
+            @NotNull IpcServer ipcServer, @Nullable String username, @NotNull String terminalId) {
         super(CommandPermission.EVERYONE);
-        this.zmqServer = zmqServer;
+        this.ipcServer = ipcServer;
         this.username = username;
         this.terminalId = terminalId;
     }
@@ -99,7 +99,7 @@ public final class VetoCommandSender extends AbstractCommandSender {
      * Sends a streaming content chunk to the terminal as a {@link IpcFrame.Delta} frame.
      *
      * <p>Null or empty messages are silently ignored. The frame is enqueued to the outbox of the
-     * owning {@link ZmqServer} and delivered by the IO thread.
+     * owning {@link IpcServer} and delivered by the IO thread.
      *
      * @param message the text chunk to stream; {@code null} or empty strings are silently dropped
      */
@@ -107,7 +107,7 @@ public final class VetoCommandSender extends AbstractCommandSender {
     public void output(@Nullable String message) {
         if (message == null || message.isEmpty()) return;
         log.info("output → outbox: {}", message.replace("\n", "\\n"));
-        zmqServer.send(terminalId, new IpcFrame.Delta(message));
+        ipcServer.send(terminalId, new IpcFrame.Delta(message));
     }
 
     // ── input (CommandSender contract overrides & overloads) ──────────────────────────────
@@ -166,7 +166,7 @@ public final class VetoCommandSender extends AbstractCommandSender {
     @NotNull
     public CompletableFuture<String> inputAsync(
             @NotNull String text, boolean mask, long timeoutMillis) {
-        zmqServer.send(
+        ipcServer.send(
                 terminalId,
                 new IpcFrame.Prompt(text, Map.of(IpcMeta.PROMPT, text, IpcMeta.MASK, mask)));
         return super.inputAsync(timeoutMillis);
