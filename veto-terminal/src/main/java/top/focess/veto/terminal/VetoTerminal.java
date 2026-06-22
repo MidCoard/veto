@@ -4,13 +4,17 @@ import com.github.ajalt.mordant.terminal.Terminal;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import org.jetbrains.annotations.NotNull;
 import org.jline.reader.*;
 import org.jline.terminal.TerminalBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import top.focess.veto.client.core.ClientSession;
+import top.focess.veto.client.core.ClientView;
+import top.focess.veto.client.core.Logging;
+import top.focess.veto.client.core.StyleToken;
+import top.focess.veto.client.core.StyledText;
 import top.focess.veto.contract.ClientOptions;
 import top.focess.veto.contract.IpcClient;
 import top.focess.veto.contract.IpcFrame;
@@ -18,17 +22,30 @@ import top.focess.veto.contract.IpcFrame;
 /**
  * Main interactive REPL terminal controller for Veto Core.
  *
- * <p>Handles user keystrokes, input reading via JLine {@link LineReader}, and coordinates with the
- * backend via {@link IpcClient}. Manages prompt state changes, input/request queuing, and updates
- * the bottom status bar dynamically.
+ * <p>Reads user input via JLine {@link LineReader} and coordinates with the backend via {@link
+ * IpcClient}. The interaction protocol (session state, request pipeline, frame dispatch) lives in a
+ * shared {@link ClientSession}; this class owns only the REPL presentation — the prompt, the
+ * inline-above-prompt rendering, and the one retained interrupt for the mid-line prompt swap.
  *
- * <h3>Concurrency &amp; Synchronization model</h3>
+ * <h3>Threading</h3>
  *
- * All mutable REPL state variables (such as {@link #state}, {@link #targetState}, and {@link
- * #activePrompt}) are protected by {@link #stateLock}. The pending-request queue lives inside
- * {@link TerminalStatus} but is likewise accessed only while holding {@code stateLock}. Since
- * status bar updates and prompt configuration occur across different threads (main REPL thread,
- * background heartbeat/consumer threads), synchronization ensures consistency and thread safety.
+ * <ul>
+ *   <li><b>Main thread</b> — blocks in {@link LineReader#readLine}; on each return it asks the
+ *       session for the current state to render the prompt, then submits the line.
+ *   <li><b>Consumer thread ({@code veto-incoming})</b> — drains {@link IpcClient#receive()} into
+ *       {@link ClientSession#onFrame}, which drives rendering back through {@link TerminalView} and
+ *       returns the next frame to dispatch (sent here).
+ * </ul>
+ *
+ * <h3>The one retained interrupt</h3>
+ *
+ * <p>When a {@link IpcFrame.Prompt} arrives mid-{@code readLine}, the consumer thread (via {@link
+ * TerminalView#onPrompt}) sets {@link #promptSwapPending} and interrupts the main thread to break
+ * the blocking read. The main thread's {@code UserInterruptException} catch uses {@code
+ * promptSwapPending} to distinguish that simulated swap from a genuine Ctrl+C — so a real Ctrl+C
+ * while prompted still cancels (rather than being misread as a re-render). A stale interrupt flag
+ * from a swap that landed during {@code submit} (not {@code readLine}) is cleared before the next
+ * read so it doesn't spuriously throw.
  */
 public class VetoTerminal {
 
@@ -54,52 +71,30 @@ public class VetoTerminal {
     /** JLine reader driving the interactive REPL; set in {@link #start(LineReader)}. */
     private LineReader reader;
 
-    /** ANSI renderer delegating to Mordant for colour/style formatting. */
+    /** Output seam — prints above the active prompt via {@link LineReader#printAbove}. */
     private MordantRenderer renderer;
 
-    /** States representing the interactive status of the terminal REPL. */
-    public enum State {
-        /** Terminal is idle and ready for a new user command. */
-        IDLE,
-        /** Terminal has dispatched a request and is awaiting a response from the backend. */
-        AWAITING_RESPONSE,
-        /** Terminal has been prompted by the server to provide additional input. */
-        PROMPTED,
-        /**
-         * Terminal is undergoing a state transition triggered by an asynchronous background frame.
-         */
-        PROGRAMMATIC_INTERRUPT
-    }
+    /** Maps {@link StyleToken}s to Mordant ANSI strings. */
+    private MordantTheme theme;
 
-    /** Current session status bar manager; updated on each REPL iteration. */
+    /** Bottom status bar view over the session. */
     private TerminalStatus status;
+
+    /** The shared interaction protocol (session state, request pipeline, frame dispatch). */
+    private ClientSession session;
+
+    /** Reference to the main REPL thread so the consumer can interrupt its blocking readLine. */
+    private Thread mainThread;
 
     /** Set to {@code false} to signal all background threads to stop. */
     private volatile boolean running;
 
-    /** Current REPL interaction state. Guarded by {@link #stateLock}. */
-    private State state = State.IDLE;
-
     /**
-     * Target state to transition into after the current programmatic interrupt is acknowledged.
-     * Guarded by {@link #stateLock}.
+     * Set by the consumer thread (via {@link TerminalView#onPrompt}) to break the main thread's
+     * blocking {@code readLine} for the genuine mid-line Prompt swap. Read and cleared by the main
+     * thread to distinguish the swap from a genuine Ctrl+C.
      */
-    private State targetState = State.IDLE;
-
-    /** Lock object protecting {@link #state}, {@link #targetState}, and {@link #activePrompt}. */
-    private final Object stateLock = new Object();
-
-    /**
-     * The {@link IpcFrame.Prompt} currently being presented to the user, or {@code null} when the
-     * terminal is not in the {@link State#PROMPTED} state.
-     */
-    private IpcFrame.Prompt activePrompt = null;
-
-    /**
-     * Reference to the main REPL thread ({@link #repl()}) so that background threads can interrupt
-     * its blocking {@link LineReader#readLine} call for state transitions.
-     */
-    private Thread mainThread;
+    private volatile boolean promptSwapPending;
 
     /**
      * Constructs a new VetoTerminal instance.
@@ -113,19 +108,19 @@ public class VetoTerminal {
     }
 
     /**
-     * Initializes the terminal components, starts background threads, enables UI widgets, and
-     * enters the interactive REPL loop. Ensures clean resource teardown on shutdown.
+     * Initializes the terminal components, starts the consumer thread, and enters the interactive
+     * REPL loop. Ensures clean resource teardown on shutdown.
      *
      * @param reader the JLine LineReader instance to read inputs from
      */
     public void start(@NotNull LineReader reader) {
         this.reader = reader;
-        this.renderer = new MordantRenderer(t, reader);
         this.mainThread = Thread.currentThread();
-        this.status = new TerminalStatus(reader.getTerminal(), renderer);
-        synchronized (stateLock) {
-            this.status.refresh();
-        }
+        this.theme = new MordantTheme(t);
+        this.renderer = new MordantRenderer(reader);
+        this.session = new ClientSession(new TerminalView());
+        this.status = new TerminalStatus(reader.getTerminal(), session, theme);
+        status.refresh();
 
         printBanner();
         running = true;
@@ -138,7 +133,8 @@ public class VetoTerminal {
         hintWidgets.enable();
 
         // --- incoming consumer thread ---
-        // Reads frames from ZMQ connection and processes them asynchronously via handleFrame.
+        // Drains frames from the connection through the session, which drives rendering back via
+        // TerminalView and returns the next frame to dispatch (if any).
         Thread consumerThread =
                 new Thread(
                         () -> {
@@ -148,7 +144,10 @@ public class VetoTerminal {
                                     if (frame == null) {
                                         continue;
                                     }
-                                    handleFrame(frame);
+                                    IpcFrame.ClientFrame reply = session.onFrame(frame);
+                                    if (reply != null) {
+                                        client.send(reply);
+                                    }
                                 } catch (Exception e) {
                                     if (running) {
                                         log.warn("Error in incoming loop, terminating thread", e);
@@ -170,9 +169,7 @@ public class VetoTerminal {
             running = false;
             hintWidgets.disable();
             consumerThread.interrupt();
-            synchronized (stateLock) {
-                status.clear();
-            }
+            status.clear();
             client.close();
         }
     }
@@ -180,183 +177,91 @@ public class VetoTerminal {
     // ── repl ──────────────────────────────────────────────────────────────
 
     /**
-     * The main interactive REPL read-eval-print loop. Continually displays the prompt, reads user
-     * input, handles cancellation signals (Ctrl+C), and submits commands for execution.
+     * The main interactive REPL read-eval-print loop. Renders the prompt from the current session
+     * state, reads a line, and submits it (a command, a prompt reply, or a cancel).
      */
     private void repl() {
         while (running) {
-            String line;
+            ClientSession.State state = session.state();
+            IpcFrame.Prompt activePrompt = session.activePrompt();
+
             String promptText;
             Character mask;
-            synchronized (stateLock) {
-                // Refresh bottom status bar session information.
-                status.refresh();
-                if (state == State.PROMPTED && activePrompt != null) {
-                    // Display server-prompted input request with yellow indicator.
-                    promptText =
-                            renderer.yellow("▸")
-                                    + " "
-                                    + renderer.cyan(activePrompt.content())
-                                    + " ";
-                    mask = activePrompt.mask() ? '*' : null;
-                    reader.setVariable(LineReader.DISABLE_HISTORY, Boolean.TRUE);
-                } else {
-                    // Standard prompt: green when logged in, red when logged out.
-                    promptText =
-                            status.getDisplayUser() != null
-                                    ? renderer.green("▸ ")
-                                    : renderer.red("◇ ");
-                    mask = null;
-                    reader.setVariable(LineReader.DISABLE_HISTORY, Boolean.FALSE);
-                }
+            if (state == ClientSession.State.PROMPTED && activePrompt != null) {
+                // Server-prompted input request.
+                promptText =
+                        theme.style(StyleToken.PROMPT, "▸")
+                                + " "
+                                + theme.style(StyleToken.ACCENT, activePrompt.content())
+                                + " ";
+                mask = activePrompt.mask() ? '*' : null;
+                reader.setVariable(LineReader.DISABLE_HISTORY, Boolean.TRUE);
+            } else {
+                // Standard prompt: green when logged in, red when logged out.
+                boolean loggedIn = session.snapshot().username() != null;
+                promptText =
+                        loggedIn
+                                ? theme.style(StyleToken.SUCCESS, "▸ ")
+                                : theme.style(StyleToken.ERROR, "◇ ");
+                mask = null;
+                reader.setVariable(LineReader.DISABLE_HISTORY, Boolean.FALSE);
             }
+
+            // A Prompt-swap interrupt may have been requested by the consumer thread since the
+            // last readLine landed outside readLine (during submit). Clear the stale flag so this
+            // readLine blocks cleanly; a genuine Ctrl+C is raised by JLine during readLine, never
+            // queued between calls.
+            if (promptSwapPending) {
+                promptSwapPending = false;
+                Thread.interrupted();
+            }
+
+            String line;
             try {
-                // Read a line of user input, blocking the thread.
                 line = reader.readLine(promptText, mask);
             } catch (UserInterruptException e) {
-                // Triggered when user presses Ctrl+C in JLine.
-                synchronized (stateLock) {
-                    if (state == State.PROGRAMMATIC_INTERRUPT) {
-                        // The user interrupt was actually simulated by the background thread
-                        // to break the blocking readLine call for a state transition.
-                        state = targetState;
-                        if (!running) {
-                            break;
-                        }
-                        continue;
-                    }
-                    if (state == State.AWAITING_RESPONSE || state == State.PROMPTED) {
-                        // True user Ctrl+C cancels the active request or prompt.
-                        client.send(new IpcFrame.Cancel());
-                        activePrompt = null;
-                        status.getRequestQueue().clear();
-                        state = State.AWAITING_RESPONSE;
-                        continue;
-                    }
-                    if (state == State.IDLE) {
-                        // Pressing Ctrl+C when idle exits the REPL.
-                        break;
-                    }
-                    throw new RuntimeException("Unexpected interrupt in state " + state, e);
+                if (promptSwapPending) {
+                    // The consumer simulated the interrupt to break readLine for a Prompt swap —
+                    // re-render with the new (PROMPTED) state.
+                    promptSwapPending = false;
+                    Thread.interrupted();
+                    continue;
                 }
+                // Genuine Ctrl+C → cancel the in-flight request / prompt (or exit if idle).
+                IpcFrame.Cancel cancel = session.cancel();
+                if (cancel == null) {
+                    break; // idle → exit the REPL
+                }
+                client.send(cancel);
+                continue;
             } catch (EndOfFileException e) {
-                // Triggered when user sends EOF (e.g., Ctrl+D).
                 break;
             }
 
             if (line == null) break;
             line = line.trim();
-
-            synchronized (stateLock) {
-                if (state == State.PROMPTED) {
-                    // Submit prompt reply directly to backend as Input.
-                    state = State.AWAITING_RESPONSE;
-                    client.send(new IpcFrame.Input(line));
-                    activePrompt = null;
-                    continue;
-                }
-            }
-
             if (line.isEmpty()) continue;
+
+            if (state == ClientSession.State.PROMPTED) {
+                // Reply to the server prompt as an Input frame.
+                IpcFrame.ClientFrame reply = session.submit(line);
+                if (reply != null) {
+                    client.send(reply);
+                }
+                continue;
+            }
 
             // Echo input inside a styled visual frame if it's a regular command (not a slash
             // command).
             if (!line.startsWith("/")) {
                 echoInput(line);
-                renderer.println(renderer.dim("  thinking…"));
+                renderer.println(theme.style(StyleToken.MUTED, "  thinking…"));
             }
 
-            executeRequest(line);
-        }
-    }
-
-    /**
-     * Enqueues a command for execution. If the terminal is currently idle, immediately dispatches
-     * the request to the ZMQ client.
-     *
-     * @param line the command string to execute
-     */
-    private void executeRequest(@NotNull String line) {
-        synchronized (stateLock) {
-            status.getRequestQueue().add(line);
-            if (state == State.IDLE) {
-                // Immediately dispatch if idle rather than waiting for the next REPL iteration.
-                String nextReq = status.getRequestQueue().removeFirst();
-                state = State.AWAITING_RESPONSE;
-                client.send(new IpcFrame.Request(nextReq));
+            IpcFrame.ClientFrame reply = session.submit(line);
+            if (reply != null) {
+                client.send(reply);
             }
-        }
-    }
-
-    /**
-     * Handles an incoming ServerFrame received asynchronously from the backend.
-     *
-     * @param frame the incoming frame
-     */
-    private void handleFrame(@NotNull IpcFrame.ServerFrame frame) {
-        if (frame instanceof IpcFrame.Delta(String content)) {
-            // Immediate print for stream response chunks.
-            log.debug("[DELTA] len={}", content.length());
-            renderer.println(content);
-        } else if (frame instanceof IpcFrame.Progress p) {
-            // Display background progress messages.
-            String styled = renderer.dim("  ⏳ " + p.content());
-            renderer.println(styled);
-        } else {
-            synchronized (stateLock) {
-                switch (frame) {
-                    case IpcFrame.Prompt prompt -> {
-                        // Server requests additional input. Interrupt readLine to show the new
-                        // prompt.
-                        activePrompt = prompt;
-                        targetState = State.PROMPTED;
-                        state = State.PROGRAMMATIC_INTERRUPT;
-                        mainThread.interrupt();
-                    }
-                    case IpcFrame.Done(Map<String, Object> meta, String content) -> {
-                        if (content != null) {
-                            renderer.println(content);
-                        }
-                        status.apply(meta);
-                        dispatchNextOrIdle();
-                        // Interrupt active readLine to transition state to the targetState.
-                        state = State.PROGRAMMATIC_INTERRUPT;
-                        mainThread.interrupt();
-                    }
-                    case IpcFrame.Terminate(String reason) -> {
-                        if (reason != null) {
-                            renderer.println(reason);
-                        }
-                        running = false;
-                        targetState = State.IDLE;
-                        state = State.PROGRAMMATIC_INTERRUPT;
-                        mainThread.interrupt();
-                    }
-                    case IpcFrame.Error e -> {
-                        renderer.error(e.content());
-                        dispatchNextOrIdle();
-                        state = State.PROGRAMMATIC_INTERRUPT;
-                        mainThread.interrupt();
-                    }
-                    default -> {}
-                }
-            }
-        }
-    }
-
-    /**
-     * Dequeues and dispatches the next request if one is queued, transitioning state to
-     * AWAITING_RESPONSE. Otherwise, sets targetState to IDLE.
-     *
-     * <p>Note: Must be called while holding {@code stateLock}.
-     */
-    private void dispatchNextOrIdle() {
-        if (!status.getRequestQueue().isEmpty()) {
-            String nextReq = status.getRequestQueue().removeFirst();
-            client.send(new IpcFrame.Request(nextReq));
-            targetState = State.AWAITING_RESPONSE;
-        } else {
-            targetState = State.IDLE;
         }
     }
 
@@ -372,16 +277,83 @@ public class VetoTerminal {
         int maxWidth = termWidth > 0 ? termWidth - 4 : 76;
         int borderLen = Math.max(0, Math.min(maxWidth, line.length() + 4));
         renderer.println("");
-        renderer.println(renderer.dim("  ╭─ you " + "─".repeat(borderLen)));
+        renderer.println(theme.style(StyleToken.BORDER, "  ╭─ you " + "─".repeat(borderLen)));
         renderer.println("  │ " + line);
-        renderer.println(renderer.dim("  ╰" + "─".repeat(Math.min(maxWidth, borderLen + 4))));
+        renderer.println(
+                theme.style(
+                        StyleToken.BORDER, "  ╰" + "─".repeat(Math.min(maxWidth, borderLen + 4))));
     }
 
     /** Prints the startup ASCII banner header. */
     private void printBanner() {
-        for (String line : HEADER.split("\n")) renderer.println(renderer.bold(renderer.cyan(line)));
-        renderer.println(renderer.dim("  terminal v3.0"));
+        for (String line : HEADER.split("\n")) {
+            renderer.println(theme.styleBold(StyleToken.ACCENT, line));
+        }
+        renderer.println(theme.style(StyleToken.MUTED, "  terminal v3.0"));
         renderer.println("");
+    }
+
+    // ── ClientView ────────────────────────────────────────────────────────
+
+    /**
+     * {@link ClientView} adapter rendering session events to the REPL. Runs on the consumer thread;
+     * all output goes through {@link LineReader#printAbove} (thread-safe) and {@link
+     * TerminalStatus#refresh} (reads session snapshots under the session's own lock).
+     */
+    private final class TerminalView implements ClientView {
+
+        @Override
+        public void onDelta(@NotNull String content) {
+            renderer.println(content);
+        }
+
+        @Override
+        public void onProgress(@NotNull StyledText content) {
+            renderer.println(theme.style(content.token(), content.text()));
+        }
+
+        @Override
+        public void onPrompt(@NotNull IpcFrame.Prompt prompt) {
+            // The session already set state=PROMPTED; break the main thread's readLine so it
+            // re-renders the prompted prompt. This is the one retained interrupt.
+            promptSwapPending = true;
+            mainThread.interrupt();
+        }
+
+        @Override
+        public void onDone(String content) {
+            if (content != null) {
+                renderer.println(content);
+            }
+            // No status refresh here — onMetaChanged / onAwaiting / onIdle (which follow) refresh
+            // it.
+        }
+
+        @Override
+        public void onError(@NotNull StyledText content) {
+            renderer.println(theme.style(content.token(), content.text()));
+        }
+
+        @Override
+        public void onTerminate(@NotNull StyledText content) {
+            renderer.println(theme.style(content.token(), content.text()));
+            running = false;
+        }
+
+        @Override
+        public void onIdle() {
+            status.refresh();
+        }
+
+        @Override
+        public void onAwaiting() {
+            status.refresh();
+        }
+
+        @Override
+        public void onMetaChanged(@NotNull ClientSession.SessionMeta meta) {
+            status.refresh();
+        }
     }
 
     // ── tab completion ───────────────────────────────────────────────────

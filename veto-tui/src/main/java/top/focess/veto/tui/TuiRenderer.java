@@ -16,6 +16,9 @@ public final class TuiRenderer {
 
     public record RenderResult(@NotNull List<AttributedString> lines, int cursorOffset) {}
 
+    /** Bright-black color index — the muted/border foreground used throughout the TUI chrome. */
+    private static final int BRIGHT_BLACK = AttributedStyle.WHITE + 8;
+
     @NotNull
     public RenderResult render(@NotNull TuiState state) {
         int width = Math.max(20, state.getTerminalWidth());
@@ -97,104 +100,88 @@ public final class TuiRenderer {
     private AttributedString renderHeader(@NotNull TuiState state, int width) {
         AttributedStringBuilder header = new AttributedStringBuilder();
         header.style(
-                AttributedStyle.DEFAULT
-                        .background(AttributedStyle.WHITE + 8)
-                        .foreground(AttributedStyle.WHITE));
+                AttributedStyle.DEFAULT.background(BRIGHT_BLACK).foreground(AttributedStyle.WHITE));
         header.append(" ");
         header.style(
                 AttributedStyle.DEFAULT
-                        .background(AttributedStyle.WHITE + 8)
+                        .background(BRIGHT_BLACK)
                         .foreground(AttributedStyle.CYAN)
                         .bold());
         header.append("■ VETO TUI ■");
         header.style(
-                AttributedStyle.DEFAULT
-                        .background(AttributedStyle.WHITE + 8)
-                        .foreground(AttributedStyle.WHITE));
+                AttributedStyle.DEFAULT.background(BRIGHT_BLACK).foreground(AttributedStyle.WHITE));
         header.append("   Connection: ");
 
         if (state.getConnection() == TuiState.ConnectionState.CONNECTED) {
             header.style(
                     AttributedStyle.DEFAULT
-                            .background(AttributedStyle.WHITE + 8)
+                            .background(BRIGHT_BLACK)
                             .foreground(AttributedStyle.GREEN)
                             .bold());
             header.append("Connected");
         } else if (state.getConnection() == TuiState.ConnectionState.CONNECTING) {
             header.style(
                     AttributedStyle.DEFAULT
-                            .background(AttributedStyle.WHITE + 8)
+                            .background(BRIGHT_BLACK)
                             .foreground(AttributedStyle.YELLOW)
                             .bold());
             header.append("Connecting");
         } else {
             header.style(
                     AttributedStyle.DEFAULT
-                            .background(AttributedStyle.WHITE + 8)
+                            .background(BRIGHT_BLACK)
                             .foreground(AttributedStyle.RED)
                             .bold());
             header.append("Disconnected");
         }
 
         header.style(
-                AttributedStyle.DEFAULT
-                        .background(AttributedStyle.WHITE + 8)
-                        .foreground(AttributedStyle.WHITE));
+                AttributedStyle.DEFAULT.background(BRIGHT_BLACK).foreground(AttributedStyle.WHITE));
         header.append("  │  User: ");
         if (state.getUsername() != null) {
             header.style(
                     AttributedStyle.DEFAULT
-                            .background(AttributedStyle.WHITE + 8)
+                            .background(BRIGHT_BLACK)
                             .foreground(AttributedStyle.GREEN));
             header.append(state.getUsername());
         } else {
-            header.style(
-                    AttributedStyle.DEFAULT
-                            .background(AttributedStyle.WHITE + 8)
-                            .foreground(AttributedStyle.WHITE + 8));
+            header.style(AttributedStyle.DEFAULT.background(BRIGHT_BLACK).foreground(BRIGHT_BLACK));
             header.append("None");
         }
 
         header.style(
-                AttributedStyle.DEFAULT
-                        .background(AttributedStyle.WHITE + 8)
-                        .foreground(AttributedStyle.WHITE));
+                AttributedStyle.DEFAULT.background(BRIGHT_BLACK).foreground(AttributedStyle.WHITE));
         header.append("  │  Turns: ");
         header.style(
                 AttributedStyle.DEFAULT
-                        .background(AttributedStyle.WHITE + 8)
+                        .background(BRIGHT_BLACK)
                         .foreground(AttributedStyle.YELLOW));
         header.append(String.valueOf(state.getTurnCount()));
 
         header.style(
-                AttributedStyle.DEFAULT
-                        .background(AttributedStyle.WHITE + 8)
-                        .foreground(AttributedStyle.WHITE));
+                AttributedStyle.DEFAULT.background(BRIGHT_BLACK).foreground(AttributedStyle.WHITE));
         header.append("  │  ID: ");
         if (state.getSessionId() != null) {
             header.style(
                     AttributedStyle.DEFAULT
-                            .background(AttributedStyle.WHITE + 8)
+                            .background(BRIGHT_BLACK)
                             .foreground(AttributedStyle.CYAN));
             header.append(state.getSessionId());
         } else {
-            header.style(
-                    AttributedStyle.DEFAULT
-                            .background(AttributedStyle.WHITE + 8)
-                            .foreground(AttributedStyle.WHITE + 8));
+            header.style(AttributedStyle.DEFAULT.background(BRIGHT_BLACK).foreground(BRIGHT_BLACK));
             header.append("N/A");
         }
 
         int currentLen = header.length();
         int pad = width - currentLen;
         if (pad > 0) {
-            header.style(AttributedStyle.DEFAULT.background(AttributedStyle.WHITE + 8));
+            header.style(AttributedStyle.DEFAULT.background(BRIGHT_BLACK));
             header.append(" ".repeat(pad));
         } else if (pad < 0) {
             return new AttributedString(
                     header.subSequence(0, width).toString(),
                     AttributedStyle.DEFAULT
-                            .background(AttributedStyle.WHITE + 8)
+                            .background(BRIGHT_BLACK)
                             .foreground(AttributedStyle.WHITE));
         }
         return header.toAttributedString();
@@ -205,7 +192,7 @@ public final class TuiRenderer {
             int width, @NotNull String left, @NotNull String middle, @NotNull String right) {
         int midWidth = Math.max(0, width - 2);
         AttributedStringBuilder sb = new AttributedStringBuilder();
-        sb.style(AttributedStyle.DEFAULT.foreground(AttributedStyle.WHITE + 8));
+        sb.style(AttributedStyle.DEFAULT.foreground(BRIGHT_BLACK));
         sb.append(left);
         sb.append(middle.repeat(midWidth));
         sb.append(right);
@@ -218,7 +205,7 @@ public final class TuiRenderer {
         int selected = state.getSelectedAutocompleteIndex();
 
         AttributedStringBuilder sb = new AttributedStringBuilder();
-        sb.style(AttributedStyle.DEFAULT.foreground(AttributedStyle.WHITE + 8));
+        sb.style(AttributedStyle.DEFAULT.foreground(BRIGHT_BLACK));
         sb.append("├─ Suggestions: ");
 
         int windowSize = 5;
@@ -229,13 +216,13 @@ public final class TuiRenderer {
         }
 
         if (start > 0) {
-            sb.style(AttributedStyle.DEFAULT.foreground(AttributedStyle.WHITE + 8));
+            sb.style(AttributedStyle.DEFAULT.foreground(BRIGHT_BLACK));
             sb.append("... ");
         }
 
         for (int i = start; i < end; i++) {
             if (i > start) {
-                sb.style(AttributedStyle.DEFAULT.foreground(AttributedStyle.WHITE + 8));
+                sb.style(AttributedStyle.DEFAULT.foreground(BRIGHT_BLACK));
                 sb.append("  ");
             }
             String cand = candidates.get(i);
@@ -253,17 +240,17 @@ public final class TuiRenderer {
         }
 
         if (end < candidates.size()) {
-            sb.style(AttributedStyle.DEFAULT.foreground(AttributedStyle.WHITE + 8));
+            sb.style(AttributedStyle.DEFAULT.foreground(BRIGHT_BLACK));
             sb.append(" ...");
         }
 
         int currentLen = sb.length();
         int pad = width - currentLen - 1;
         if (pad > 0) {
-            sb.style(AttributedStyle.DEFAULT.foreground(AttributedStyle.WHITE + 8));
+            sb.style(AttributedStyle.DEFAULT.foreground(BRIGHT_BLACK));
             sb.append("─".repeat(pad));
         }
-        sb.style(AttributedStyle.DEFAULT.foreground(AttributedStyle.WHITE + 8));
+        sb.style(AttributedStyle.DEFAULT.foreground(BRIGHT_BLACK));
         sb.append("┤");
 
         return sb.toAttributedString();
@@ -272,7 +259,7 @@ public final class TuiRenderer {
     @NotNull
     private AttributedString renderLogLine(@NotNull AttributedString content, int width) {
         AttributedStringBuilder sb = new AttributedStringBuilder();
-        sb.style(AttributedStyle.DEFAULT.foreground(AttributedStyle.WHITE + 8));
+        sb.style(AttributedStyle.DEFAULT.foreground(BRIGHT_BLACK));
         sb.append("│ ");
         sb.append(content);
 
@@ -283,7 +270,7 @@ public final class TuiRenderer {
             sb.style(AttributedStyle.DEFAULT);
             sb.append(" ".repeat(pad));
         }
-        sb.style(AttributedStyle.DEFAULT.foreground(AttributedStyle.WHITE + 8));
+        sb.style(AttributedStyle.DEFAULT.foreground(BRIGHT_BLACK));
         sb.append(" │");
         return sb.toAttributedString();
     }
@@ -315,7 +302,7 @@ public final class TuiRenderer {
         String midLine = "─".repeat(Math.max(0, midPad));
 
         AttributedStringBuilder sb = new AttributedStringBuilder();
-        sb.style(AttributedStyle.DEFAULT.foreground(AttributedStyle.WHITE + 8));
+        sb.style(AttributedStyle.DEFAULT.foreground(BRIGHT_BLACK));
         sb.append("├");
         sb.append(leftText);
         sb.append(midLine);
@@ -353,7 +340,7 @@ public final class TuiRenderer {
 
         String rawInput = state.getCommandBuffer().toString();
         // Mask input if active prompt has mask metadata
-        boolean mask = activePrompt != null && Boolean.TRUE.equals(activePrompt.meta().get("mask"));
+        boolean mask = activePrompt != null && activePrompt.mask();
         String inputToRender = mask ? "*".repeat(rawInput.length()) : rawInput;
 
         int cursorIndex = state.getCursorIndex();
@@ -372,7 +359,7 @@ public final class TuiRenderer {
         }
 
         AttributedStringBuilder sb = new AttributedStringBuilder();
-        sb.style(AttributedStyle.DEFAULT.foreground(AttributedStyle.WHITE + 8));
+        sb.style(AttributedStyle.DEFAULT.foreground(BRIGHT_BLACK));
         sb.append("│ ");
         sb.append(prefix);
         sb.style(AttributedStyle.DEFAULT); // normal input text style
@@ -385,7 +372,7 @@ public final class TuiRenderer {
             sb.append(" ".repeat(pad));
         }
 
-        sb.style(AttributedStyle.DEFAULT.foreground(AttributedStyle.WHITE + 8));
+        sb.style(AttributedStyle.DEFAULT.foreground(BRIGHT_BLACK));
         sb.append(" │");
 
         // Cursor column on the line is: 2 spaces border + prefix length + displayed cursor offset
@@ -398,69 +385,59 @@ public final class TuiRenderer {
     private AttributedString renderFooter(int width) {
         AttributedStringBuilder footer = new AttributedStringBuilder();
         footer.style(
-                AttributedStyle.DEFAULT
-                        .background(AttributedStyle.WHITE + 8)
-                        .foreground(AttributedStyle.WHITE));
+                AttributedStyle.DEFAULT.background(BRIGHT_BLACK).foreground(AttributedStyle.WHITE));
         footer.append(" ");
 
         footer.style(
                 AttributedStyle.DEFAULT
-                        .background(AttributedStyle.WHITE + 8)
+                        .background(BRIGHT_BLACK)
                         .foreground(AttributedStyle.WHITE)
                         .bold());
         footer.append("Ctrl+C:");
         footer.style(
-                AttributedStyle.DEFAULT
-                        .background(AttributedStyle.WHITE + 8)
-                        .foreground(AttributedStyle.WHITE));
+                AttributedStyle.DEFAULT.background(BRIGHT_BLACK).foreground(AttributedStyle.WHITE));
         footer.append(" Quit/Cancel  │  ");
 
         footer.style(
                 AttributedStyle.DEFAULT
-                        .background(AttributedStyle.WHITE + 8)
+                        .background(BRIGHT_BLACK)
                         .foreground(AttributedStyle.WHITE)
                         .bold());
         footer.append("PgUp/PgDn:");
         footer.style(
-                AttributedStyle.DEFAULT
-                        .background(AttributedStyle.WHITE + 8)
-                        .foreground(AttributedStyle.WHITE));
+                AttributedStyle.DEFAULT.background(BRIGHT_BLACK).foreground(AttributedStyle.WHITE));
         footer.append(" Scroll Logs  │  ");
 
         footer.style(
                 AttributedStyle.DEFAULT
-                        .background(AttributedStyle.WHITE + 8)
+                        .background(BRIGHT_BLACK)
                         .foreground(AttributedStyle.WHITE)
                         .bold());
         footer.append("Tab:");
         footer.style(
-                AttributedStyle.DEFAULT
-                        .background(AttributedStyle.WHITE + 8)
-                        .foreground(AttributedStyle.WHITE));
+                AttributedStyle.DEFAULT.background(BRIGHT_BLACK).foreground(AttributedStyle.WHITE));
         footer.append(" Complete  │  ");
 
         footer.style(
                 AttributedStyle.DEFAULT
-                        .background(AttributedStyle.WHITE + 8)
+                        .background(BRIGHT_BLACK)
                         .foreground(AttributedStyle.WHITE)
                         .bold());
         footer.append("Esc:");
         footer.style(
-                AttributedStyle.DEFAULT
-                        .background(AttributedStyle.WHITE + 8)
-                        .foreground(AttributedStyle.WHITE));
+                AttributedStyle.DEFAULT.background(BRIGHT_BLACK).foreground(AttributedStyle.WHITE));
         footer.append(" Clear");
 
         int currentLen = footer.length();
         int pad = width - currentLen;
         if (pad > 0) {
-            footer.style(AttributedStyle.DEFAULT.background(AttributedStyle.WHITE + 8));
+            footer.style(AttributedStyle.DEFAULT.background(BRIGHT_BLACK));
             footer.append(" ".repeat(pad));
         } else if (pad < 0) {
             return new AttributedString(
                     footer.subSequence(0, width).toString(),
                     AttributedStyle.DEFAULT
-                            .background(AttributedStyle.WHITE + 8)
+                            .background(BRIGHT_BLACK)
                             .foreground(AttributedStyle.WHITE));
         }
 

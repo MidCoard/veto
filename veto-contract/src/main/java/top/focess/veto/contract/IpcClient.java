@@ -95,12 +95,15 @@ public final class IpcClient implements AutoCloseable {
     }
 
     /**
-     * Package-private constructor for testing with an injected transport (e.g. an in-memory {@link
+     * Constructor for testing with an injected transport (e.g. an in-memory {@link
      * ClientTransport}), bypassing ZMQ entirely. The connection does not own a {@link ZContext}.
+     *
+     * <p>Public so a reusable in-memory transport in a downstream client module can drive a
+     * connection without ZMQ.
      *
      * @param transport the transport to drive
      */
-    IpcClient(@NotNull ClientTransport transport) {
+    public IpcClient(@NotNull ClientTransport transport) {
         this.identity = UUID.randomUUID().toString();
         this.ctx = null;
         this.ownsContext = false;

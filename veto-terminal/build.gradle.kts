@@ -25,8 +25,10 @@ val slf4jVersion: String by rootProject.extra
 val logbackVersion: String by rootProject.extra
 
 dependencies {
-    // ONLY veto-contract — deliberately NOT veto-core (no Spring)
+    // veto-contract (wire types) + veto-client-core (shared interaction protocol + palette + logging).
+    // Deliberately NOT veto-core (no Spring).
     implementation(project(":veto-contract"))
+    implementation(project(":veto-client-core"))
 
     // JLine 3 for terminal I/O, line editing, ANSI, Display
     implementation("org.jline:jline:$jlineVersion")

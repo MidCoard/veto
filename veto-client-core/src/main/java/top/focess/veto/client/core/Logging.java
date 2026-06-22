@@ -1,4 +1,4 @@
-package top.focess.veto.terminal;
+package top.focess.veto.client.core;
 
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.LoggerContext;
@@ -8,13 +8,15 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.bridge.SLF4JBridgeHandler;
 
 /**
- * Application-startup logging bootstrap for the terminal. Configures the Logback root level from
- * the parsed {@link top.focess.veto.contract.ClientOptions} and routes {@code java.util.logging}
- * (e.g. JLine's fallback warnings) through SLF4J.
+ * Application-startup logging bootstrap shared by both Veto clients (terminal + TUI). Configures
+ * the Logback root level from the parsed {@link top.focess.veto.contract.ClientOptions} and routes
+ * {@code java.util.logging} (e.g. JLine's fallback warnings) through SLF4J.
  *
- * <p>This is an application concern, not a contract concern — it lives in the client module, not in
- * {@code veto-contract}, so the contract module depends on the SLF4J facade only and never mandates
- * a logging implementation.
+ * <p>This is an application concern, not a contract concern — it lives in {@code veto-client-core},
+ * not in {@code veto-contract}, so the contract module depends on the SLF4J facade only and never
+ * mandates a logging implementation. Each client application brings a Logback backend (the {@code
+ * veto-client-core} module declares it so this class compiles; the clients declare it too for their
+ * own runtime).
  */
 public final class Logging {
 
@@ -22,7 +24,7 @@ public final class Logging {
 
     /**
      * Configures the logging level: {@code DEBUG} when {@code debug} is true, otherwise {@code OFF}
-     * (the terminal is interactive; normal output goes through the renderer, not logs).
+     * (the clients are interactive; normal output goes through the renderer, not logs).
      *
      * @param debug whether to enable debug-level logging
      */

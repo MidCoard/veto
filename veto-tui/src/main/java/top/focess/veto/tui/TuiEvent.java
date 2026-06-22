@@ -12,7 +12,5 @@ public sealed interface TuiEvent {
 
     record ZmqMessage(@NotNull IpcFrame.ServerFrame frame) implements TuiEvent {}
 
-    record HeartbeatTick() implements TuiEvent {}
-
     record Shutdown() implements TuiEvent {}
 }

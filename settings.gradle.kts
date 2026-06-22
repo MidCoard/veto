@@ -1,3 +1,3 @@
-rootProject.name = "veto-client-core"
+rootProject.name = "veto"
 
-include("veto-contract", "veto-core", "veto-terminal", "veto-tui")
+include("veto-contract", "veto-client-core", "veto-core", "veto-terminal", "veto-tui")

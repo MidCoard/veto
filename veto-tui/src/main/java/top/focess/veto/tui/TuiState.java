@@ -2,20 +2,27 @@ package top.focess.veto.tui;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jline.utils.AttributedString;
 import org.jline.utils.AttributedStringBuilder;
+import top.focess.veto.client.core.ClientSession;
+import top.focess.veto.client.core.ClientView;
+import top.focess.veto.client.core.StyleToken;
+import top.focess.veto.client.core.StyledText;
+import top.focess.veto.client.core.Theme;
 import top.focess.veto.contract.IpcFrame;
-import top.focess.veto.contract.IpcMeta;
 
 /**
- * Thread-safe wrapper or thread-confined state container for the TUI client. Holds session details,
- * logs, scroll offsets, and the current command line buffer. All mutations are performed
- * sequentially inside the main event loop thread, avoiding lock contention.
+ * Thread-confined state container for the TUI client: session metadata, logs, scroll offsets, the
+ * command-line buffer, and autocomplete UI. All mutations happen on the single event-loop thread,
+ * so there is no locking.
+ *
+ * <p>The interaction protocol (request pipeline, frame dispatch, session-meta application) lives in
+ * {@link ClientSession}; this class is a pure {@link ClientView} — the session drives it via
+ * callbacks, and {@code VetoTui} owns the session↔connection wiring (submit/cancel/send).
  */
-public final class TuiState {
+public final class TuiState implements ClientView {
 
     public enum ConnectionState {
         CONNECTING,
@@ -23,10 +30,12 @@ public final class TuiState {
         DISCONNECTED
     }
 
+    private final Theme theme;
+
     private ConnectionState connection = ConnectionState.CONNECTING;
     private String serverAddress = "tcp://127.0.0.1:5555";
 
-    // Session context
+    // Session context (cached from ClientSession.onMetaChanged for header rendering)
     private String username = null;
     private int turnCount = 0;
     private String sessionId = null;
@@ -35,10 +44,8 @@ public final class TuiState {
     private final StringBuilder commandBuffer = new StringBuilder();
     private int cursorIndex = 0;
 
-    // Server requests & prompts
+    // The server prompt currently being presented (cached: set on onPrompt, cleared on onAwaiting).
     private IpcFrame.Prompt activePrompt = null;
-    private final List<String> pendingRequests = new ArrayList<>();
-    private boolean awaitingResponse = false;
 
     // Log history & Scrolling
     private final List<AttributedString> outputLogs = new ArrayList<>();
@@ -53,9 +60,9 @@ public final class TuiState {
     private int selectedAutocompleteIndex = -1;
     private String originalInputBeforeAutocomplete = "";
 
-    public TuiState() {
-        // Add a starting log message
-        appendAnsiText("\u001B[90mStarting Veto TUI...\u001B[0m\n");
+    public TuiState(@NotNull Theme theme) {
+        this.theme = theme;
+        appendAnsiText(theme.style(StyleToken.MUTED, "Starting Veto TUI...") + "\n");
     }
 
     // ── Getters & Setters ──────────────────────────────────────────────────
@@ -141,19 +148,6 @@ public final class TuiState {
         return activePrompt;
     }
 
-    @NotNull
-    public List<String> getPendingRequests() {
-        return pendingRequests;
-    }
-
-    public boolean isAwaitingResponse() {
-        return awaitingResponse;
-    }
-
-    public void setAwaitingResponse(boolean awaitingResponse) {
-        this.awaitingResponse = awaitingResponse;
-    }
-
     public int getScrollOffset() {
         return scrollOffset;
     }
@@ -164,6 +158,85 @@ public final class TuiState {
 
     public int getTerminalHeight() {
         return terminalHeight;
+    }
+
+    // ── ClientView (driven by ClientSession on the event-loop thread) ──────
+
+    @Override
+    public void onDelta(@NotNull String content) {
+        appendAnsiText(content);
+    }
+
+    @Override
+    public void onProgress(@NotNull StyledText content) {
+        appendAnsiText(theme.style(content.token(), content.text()) + "\n");
+    }
+
+    @Override
+    public void onPrompt(@NotNull IpcFrame.Prompt prompt) {
+        activePrompt = prompt;
+        // Clear the in-progress command so the user starts the prompt reply fresh.
+        commandBuffer.setLength(0);
+        cursorIndex = 0;
+    }
+
+    @Override
+    public void onDone(@Nullable String content) {
+        if (content != null) {
+            appendAnsiText(content);
+        }
+    }
+
+    @Override
+    public void onError(@NotNull StyledText content) {
+        appendAnsiText(theme.style(content.token(), content.text()) + "\n");
+    }
+
+    @Override
+    public void onTerminate(@NotNull StyledText content) {
+        appendAnsiText(theme.style(content.token(), content.text()) + "\n");
+        connection = ConnectionState.DISCONNECTED;
+    }
+
+    @Override
+    public void onMetaChanged(@NotNull ClientSession.SessionMeta meta) {
+        username = meta.username();
+        turnCount = meta.turnCount();
+        sessionId = meta.sessionId();
+    }
+
+    @Override
+    public void onAwaiting() {
+        activePrompt = null;
+    }
+
+    @Override
+    public void onIdle() {
+        activePrompt = null;
+    }
+
+    // ── Submit presentation (the protocol dispatch is in VetoTui via ClientSession) ──
+
+    /**
+     * Echoes the user's input in a framed box with a "thinking…" line, for non-slash commands.
+     * Called by {@code VetoTui} before it submits the line to the session.
+     *
+     * @param cmd the trimmed command text
+     */
+    public void echoInput(@NotNull String cmd) {
+        appendAnsiText(
+                "\n"
+                        + theme.style(
+                                StyleToken.BORDER,
+                                "╭─ you ──────────────────────────────────────────────")
+                        + "\n");
+        appendAnsiText("  " + cmd + "\n");
+        appendAnsiText(
+                theme.style(
+                                StyleToken.BORDER,
+                                "╰────────────────────────────────────────────────────")
+                        + "\n");
+        appendAnsiText(theme.style(StyleToken.MUTED, "  thinking...") + "\n");
     }
 
     // ── Log Appending and Wrapping ────────────────────────────────────────
@@ -292,131 +365,5 @@ public final class TuiState {
         clearAutocomplete();
         commandBuffer.setLength(0);
         cursorIndex = 0;
-    }
-
-    // ── Actions Handlers ──────────────────────────────────────────────────
-
-    @Nullable
-    public IpcFrame.ClientFrame handleSubmit() {
-        String cmd = commandBuffer.toString().trim();
-        clearAutocomplete();
-        commandBuffer.setLength(0);
-        cursorIndex = 0;
-
-        if (activePrompt != null) {
-            IpcFrame.Input inputFrame = new IpcFrame.Input(cmd);
-            activePrompt = null;
-            awaitingResponse = true;
-            return inputFrame;
-        } else {
-            if (cmd.isEmpty()) {
-                return null;
-            }
-            if (!cmd.startsWith("/")) {
-                // Echo the user input with a nice framed structure
-                appendAnsiText(
-                        "\n\u001B[90m╭─ you ──────────────────────────────────────────────\u001B[0m\n");
-                appendAnsiText("  " + cmd + "\n");
-                appendAnsiText(
-                        "\u001B[90m╰────────────────────────────────────────────────────\u001B[0m\n");
-                appendAnsiText("\u001B[90m  thinking...\u001B[0m\n");
-            }
-            pendingRequests.add(cmd);
-            if (!awaitingResponse) {
-                awaitingResponse = true;
-                String nextReq = pendingRequests.remove(0);
-                return new IpcFrame.Request(nextReq);
-            }
-            return null;
-        }
-    }
-
-    @Nullable
-    public IpcFrame.Cancel handleCancel() {
-        clearAutocomplete();
-        if (awaitingResponse || activePrompt != null) {
-            activePrompt = null;
-            pendingRequests.clear();
-            awaitingResponse = false;
-            commandBuffer.setLength(0);
-            cursorIndex = 0;
-            return new IpcFrame.Cancel();
-        }
-        return null; // Signals we should shutdown
-    }
-
-    // ── Server Frame Event Processor ──────────────────────────────────────
-
-    /**
-     * Updates internal state from a server frame.
-     *
-     * @return a client frame that needs to be sent immediately as a result of this state update, or
-     *     null.
-     */
-    @Nullable
-    public IpcFrame.ClientFrame processServerFrame(@NotNull IpcFrame.ServerFrame frame) {
-        if (frame instanceof IpcFrame.Welcome) {
-            connection = ConnectionState.CONNECTED;
-            appendAnsiText("\u001B[92mConnected to backend.\u001B[0m\n");
-        } else if (frame instanceof IpcFrame.Delta d) {
-            appendAnsiText(d.content());
-        } else if (frame instanceof IpcFrame.Progress p) {
-            appendAnsiText("\u001B[90m  ⏳ " + p.content() + "\u001B[0m\n");
-        } else if (frame instanceof IpcFrame.Prompt pr) {
-            activePrompt = pr;
-            awaitingResponse = false;
-            commandBuffer.setLength(0);
-            cursorIndex = 0;
-        } else if (frame instanceof IpcFrame.Done done) {
-            if (done.content() != null) {
-                appendAnsiText(done.content());
-            }
-            applyMeta(done.meta());
-            if (!pendingRequests.isEmpty()) {
-                awaitingResponse = true;
-                String nextReq = pendingRequests.remove(0);
-                return new IpcFrame.Request(nextReq);
-            } else {
-                awaitingResponse = false;
-            }
-        } else if (frame instanceof IpcFrame.Error e) {
-            if (e.content() != null) {
-                appendAnsiText("\u001B[91mError: " + e.content() + "\u001B[0m\n");
-            }
-            if (!pendingRequests.isEmpty()) {
-                awaitingResponse = true;
-                String nextReq = pendingRequests.remove(0);
-                return new IpcFrame.Request(nextReq);
-            } else {
-                awaitingResponse = false;
-            }
-        } else if (frame instanceof IpcFrame.Terminate t) {
-            if (t.reason() != null) {
-                appendAnsiText("\u001B[91mTerminated: " + t.reason() + "\u001B[0m\n");
-            }
-            connection = ConnectionState.DISCONNECTED;
-        }
-        return null;
-    }
-
-    public void applyMeta(@Nullable Map<String, Object> meta) {
-        if (meta == null) return;
-        if (meta.containsKey(IpcMeta.USERNAME)) {
-            username = (String) meta.get(IpcMeta.USERNAME);
-        }
-        if (meta.containsKey(IpcMeta.TURN_NUMBER)) {
-            Number num = (Number) meta.get(IpcMeta.TURN_NUMBER);
-            if (num != null) {
-                turnCount = num.intValue();
-            }
-        }
-        if (meta.containsKey(IpcMeta.SESSION)) {
-            sessionId = (String) meta.get(IpcMeta.SESSION);
-        }
-        if (Boolean.TRUE.equals(meta.get(IpcMeta.CLEAR_SESSION))) {
-            username = null;
-            turnCount = 0;
-            sessionId = null;
-        }
     }
 }

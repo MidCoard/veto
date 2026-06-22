@@ -1,15 +1,10 @@
 plugins {
-    application
-    kotlin("jvm") version "2.0.21"
+    `java-library`
     id("com.diffplug.spotless") version "6.25.0"
 }
 
 group = "top.focess"
 version = "1.0.0-SNAPSHOT"
-
-application {
-    mainClass.set("top.focess.veto.tui.VetoTui")
-}
 
 java {
     sourceCompatibility = JavaVersion.VERSION_21
@@ -20,18 +15,18 @@ repositories {
     mavenCentral()
 }
 
-val jlineVersion: String by rootProject.extra
 val slf4jVersion: String by rootProject.extra
 val logbackVersion: String by rootProject.extra
 
 dependencies {
-    implementation(project(":veto-contract"))
-    implementation(project(":veto-client-core"))
+    // The wire-protocol types (IpcFrame, IpcClient, ClientTransport) are part of this module's
+    // public API, so they are exposed to the client applications via `api`.
+    api(project(":veto-contract"))
 
-    // JLine 3 core and dependencies
-    implementation("org.jline:jline:$jlineVersion")
+    compileOnly("org.jetbrains:annotations:24.1.0")
 
-    // Logging backend — the application owns this (veto-contract depends on the SLF4J facade only).
+    // Shared logging bootstrap (Logback root level + JUL→SLF4J bridge). Application concern, not a
+    // contract concern — lives here so both clients share one copy instead of two byte-identical ones.
     implementation("ch.qos.logback:logback-classic:$logbackVersion")
     implementation("org.slf4j:jul-to-slf4j:$slf4jVersion")
 
@@ -50,20 +45,8 @@ spotless {
 
 tasks.withType<JavaCompile> {
     options.encoding = "UTF-8"
-    options.compilerArgs.add("-encoding")
-    options.compilerArgs.add("UTF-8")
 }
 
 tasks.withType<Test> {
     useJUnitPlatform()
-}
-
-tasks.register<JavaExec>("runDebug") {
-    group = "application"
-    description = "Runs the TUI client in debug mode with logging redirected to veto_tui_debug.log"
-    mainClass.set("top.focess.veto.tui.VetoTui")
-    classpath = sourceSets["main"].runtimeClasspath
-    standardInput = System.`in`
-    args = listOf("--debug")
-    jvmArgs = listOf("-Dfile.encoding=UTF-8")
 }

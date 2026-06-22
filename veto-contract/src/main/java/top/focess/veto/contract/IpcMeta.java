@@ -61,6 +61,17 @@ public final class IpcMeta {
     }
 
     /**
+     * Reads the session id from a meta map.
+     *
+     * @param meta the metadata map
+     * @return the session id, or {@code null} if absent or not a string
+     */
+    public static @Nullable String session(@NotNull Map<String, Object> meta) {
+        Object v = meta.get(SESSION);
+        return v instanceof String s ? s : null;
+    }
+
+    /**
      * Reads the turn number from a meta map.
      *
      * @param meta the metadata map

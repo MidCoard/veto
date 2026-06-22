@@ -15,6 +15,9 @@ import org.jline.utils.Display;
 import org.jline.utils.InfoCmp.Capability;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import top.focess.veto.client.core.ClientSession;
+import top.focess.veto.client.core.Logging;
+import top.focess.veto.client.core.StyleToken;
 import top.focess.veto.contract.ClientOptions;
 import top.focess.veto.contract.IpcClient;
 import top.focess.veto.contract.IpcFrame;
@@ -22,6 +25,10 @@ import top.focess.veto.contract.IpcFrame;
 /**
  * Main application entry point for Veto TUI. Implements a single-threaded event loop architecture
  * to avoid race conditions.
+ *
+ * <p>The interaction protocol (request pipeline, frame dispatch, session state) lives in a shared
+ * {@link ClientSession}; this class owns the TUI-specific concerns — the raw-mode keyboard input,
+ * the full-screen redraw engine, and the session↔connection wiring (submit/cancel/send).
  */
 public class VetoTui {
 
@@ -31,19 +38,24 @@ public class VetoTui {
     private final Terminal terminal;
     private final Display display;
     private final IpcClient client;
+    private final ClientSession session;
     private final TuiState state;
     private final TuiRenderer renderer;
+    private final TuiTheme theme;
     private final Attributes originalAttributes;
     private volatile boolean running = true;
 
     public VetoTui(@NotNull String address) throws IOException {
-        this.state = new TuiState();
+        this.theme = new TuiTheme();
+        this.state = new TuiState(theme);
         this.state.setServerAddress(address);
 
         // Synchronously initialize the client and handshake with backend
         this.client = new IpcClient(address);
+        this.session = new ClientSession(state);
         this.state.setConnection(TuiState.ConnectionState.CONNECTED);
-        this.state.appendAnsiText("\u001B[92mConnected to backend at " + address + "\u001B[0m\n");
+        this.state.appendAnsiText(
+                theme.style(StyleToken.SUCCESS, "Connected to backend at " + address) + "\n");
 
         // Build JLine terminal
         this.terminal = TerminalBuilder.builder().system(true).jna(true).encoding("UTF-8").build();
@@ -199,17 +211,15 @@ public class VetoTui {
             state.handleResize(cols, rows);
             display.resize(rows, cols);
         } else if (event instanceof TuiEvent.ZmqMessage zmq) {
-            if (zmq.frame() instanceof IpcFrame.Terminate) {
-                state.processServerFrame(zmq.frame());
-                running = false;
-            } else {
-                IpcFrame.ClientFrame reply = state.processServerFrame(zmq.frame());
-                if (reply != null) {
-                    client.send(reply);
-                }
+            // Drive the frame through the session — it updates state via the ClientView callbacks
+            // and returns the next frame to dispatch (if any).
+            IpcFrame.ClientFrame reply = session.onFrame(zmq.frame());
+            if (reply != null) {
+                client.send(reply);
             }
-        } else if (event instanceof TuiEvent.HeartbeatTick) {
-            // Heartbeats are owned by IpcClient; no-op here (kept for event-type completeness).
+            if (zmq.frame() instanceof IpcFrame.Terminate) {
+                running = false;
+            }
         } else if (event instanceof TuiEvent.KeyInput key) {
             if (key.keyChar() != -1) {
                 state.insertChar((char) key.keyChar());
@@ -231,17 +241,32 @@ public class VetoTui {
                         }
                     }
                     case CANCEL -> {
-                        IpcFrame.Cancel cancelFrame = state.handleCancel();
+                        IpcFrame.Cancel cancelFrame = session.cancel();
                         if (cancelFrame != null) {
+                            state.clearInput();
                             client.send(cancelFrame);
                         } else {
                             eventQueue.offer(new TuiEvent.Shutdown());
                         }
                     }
                     case SUBMIT -> {
-                        IpcFrame.ClientFrame submitFrame = state.handleSubmit();
-                        if (submitFrame != null) {
-                            client.send(submitFrame);
+                        String cmd = state.getCommandBuffer().toString().trim();
+                        state.clearInput();
+                        ClientSession.State s = session.state();
+                        if (s == ClientSession.State.PROMPTED) {
+                            // Reply to the server prompt.
+                            IpcFrame.ClientFrame reply = session.submit(cmd);
+                            if (reply != null) {
+                                client.send(reply);
+                            }
+                        } else if (!cmd.isEmpty()) {
+                            if (!cmd.startsWith("/")) {
+                                state.echoInput(cmd);
+                            }
+                            IpcFrame.ClientFrame reply = session.submit(cmd);
+                            if (reply != null) {
+                                client.send(reply);
+                            }
                         }
                     }
                     case COMPLETE -> {
