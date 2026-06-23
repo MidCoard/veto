@@ -332,6 +332,10 @@ public class IpcServer {
         try {
             switch (frame) {
                 case IpcFrame.Request req -> {
+                    // A new command: reset the terminal-frame claim so this Request can resolve
+                    // with
+                    // exactly one terminal frame (§8/§9).
+                    session.terminalSent.set(false);
                     // Off-load to the request pool so long-running commands never stall this loop.
                     // CompletableFuture.whenComplete self-removes from the tracking set once the
                     // task finishes (normally or exceptionally), eliminating the holder[] trick.
@@ -360,25 +364,34 @@ public class IpcServer {
                                                         System.currentTimeMillis();
                                                 if (result == null) {
                                                     // A Request must always be answered with
-                                                    // exactly
-                                                    // one terminal frame; a null dispatch becomes
-                                                    // an
-                                                    // empty Done so the terminal never hangs
-                                                    // waiting.
+                                                    // exactly one terminal frame; a null dispatch
+                                                    // becomes an empty Done so the terminal never
+                                                    // hangs waiting.
                                                     result = new IpcFrame.Done(Map.of(), null);
                                                 }
-                                                send(identity, result);
+                                                // Claim the single terminal frame (§8/§9): a cancel
+                                                // may have already sent Done{cancelled}; if so,
+                                                // this
+                                                // command's real terminal is dropped (exactly-one).
+                                                sendTerminal(session, result);
                                                 log.trace(
                                                         "DONE {}: {}",
                                                         identity.substring(0, 8),
                                                         result.getClass().getSimpleName());
+                                                if (result instanceof IpcFrame.Terminate) {
+                                                    // §2.4: a command-Terminate (e.g. /exit) is
+                                                    // session-terminal — the server sends it and
+                                                    // then
+                                                    // closes the session; no Bye is expected back.
+                                                    closeSession(session);
+                                                }
                                             } catch (Throwable t) {
                                                 log.error(
                                                         "Unhandled error executing request for {}",
                                                         identity,
                                                         t);
-                                                send(
-                                                        identity,
+                                                sendTerminal(
+                                                        session,
                                                         IpcFrame.Error.ofError(
                                                                 "Internal error: "
                                                                         + t.getMessage()));
@@ -398,12 +411,14 @@ public class IpcServer {
                     log.trace("IN   {}", identity.substring(0, 8));
                     boolean accepted = session.sender.receiveInput(in.raw());
                     if (!accepted) {
-                        // The request that was waiting for input must have already timed out.
-                        log.trace("Stale input from {}: no waiting future", identity);
-                        send(
-                                identity,
-                                IpcFrame.Error.ofError(
-                                        "Input no longer expected — request may have timed out."));
+                        // §7.1 ACTIVE × Input with no waiting request: discard + log. No Error
+                        // frame
+                        // — the terminal only sends Input in reply to a Prompt (client routing), so
+                        // an unaccepted Input means no command awaits input; an Error would break
+                        // the exactly-one-terminal-frame invariant for an unrelated Request.
+                        log.trace(
+                                "Input from {} with no waiting request — discarding",
+                                identity.substring(0, 8));
                     }
                 }
 
@@ -424,21 +439,41 @@ public class IpcServer {
                 }
 
                 case IpcFrame.Cancel c -> {
-                    log.trace(
-                            "CANC {}: cancelling {} in-flight request(s)",
-                            identity.substring(0, 8),
-                            session.activeRequests.size());
-                    // Cancel all in-flight requests for this session, then acknowledge.
-                    cancelAllRequests(session);
-                    send(identity, new IpcFrame.Done(Map.of(IpcMeta.CANCELLED, true), null));
+                    if (session.activeRequests.isEmpty()) {
+                        // §8/§9: no command in flight — the Request already resolved (its terminal
+                        // frame is sent or in flight). Send nothing: a second terminal frame would
+                        // break the exactly-one-terminal-frame invariant for that Request.
+                        log.trace(
+                                "CANC {}: no in-flight request — no-op", identity.substring(0, 8));
+                    } else {
+                        // Claim this command's single terminal frame FIRST, so Done{cancelled} wins
+                        // the race against the command unwinding (its cancelled input() throws → an
+                        // Error that the dispatch task will then drop). Then cooperatively unblock
+                        // any input() the command is parked in (§8) so it does not wait out its
+                        // timeout, and cancel the task futures.
+                        boolean cancelled = session.terminalSent.compareAndSet(false, true);
+                        session.sender.cancelInput();
+                        cancelAllRequests(session);
+                        if (cancelled) {
+                            // Done{cancelled} is this command's single terminal frame — it resolves
+                            // the Request; it is not an ack of the Cancel (§9).
+                            send(
+                                    identity,
+                                    new IpcFrame.Done(Map.of(IpcMeta.CANCELLED, true), null));
+                        }
+                        log.trace(
+                                "CANC {}: cancelled in-flight request(s) (terminal sent={})",
+                                identity.substring(0, 8),
+                                cancelled);
+                    }
                 }
 
                 case IpcFrame.Bye b -> {
                     log.trace("BYE  {}: terminal disconnecting", identity.substring(0, 8));
-                    // Acknowledge the Bye before closing, so the terminal receives the Done frame.
-                    send(identity, new IpcFrame.Done(Map.of(), null));
+                    // §9: Bye is fire-and-forget — the client tears down without waiting, and the
+                    // server closes on receipt without sending anything back (no Done). Closing is
+                    // idempotent; closeSession sets closed=true so the session loop exits.
                     closeSession(session);
-                    // Return immediately; closeSession sets closed=true so the loop will exit.
                 }
 
                 case IpcFrame.Heartbeat h ->
@@ -499,6 +534,22 @@ public class IpcServer {
             cancelAllRequests(session);
             sessions.remove(session.identity);
             log.debug("Session closed for {}", session.identity.substring(0, 8));
+        }
+    }
+
+    /**
+     * Sends a command's terminal frame, claiming the session's exactly-once terminal slot first
+     * (IPC interaction LLD §8/§9). If a terminal frame was already sent for this in-flight command
+     * (e.g. a cancel already sent {@code Done{cancelled}}), this send is dropped — a Request
+     * resolves with exactly one terminal frame.
+     *
+     * @param session the session owning the in-flight command
+     * @param frame the terminal frame ({@link IpcFrame.Done}/{@link IpcFrame.Error}/{@link
+     *     IpcFrame.Terminate}) to send
+     */
+    private void sendTerminal(@NotNull Session session, @NotNull IpcFrame frame) {
+        if (session.terminalSent.compareAndSet(false, true)) {
+            send(session.identity, frame);
         }
     }
 
@@ -597,6 +648,18 @@ public class IpcServer {
          * session teardown even when multiple threads race to close the same session.
          */
         final AtomicBoolean closed = new AtomicBoolean(false);
+
+        /**
+         * Whether a terminal frame has been sent for the in-flight command. Claimed (false→true) by
+         * the dispatch task when it sends the command's terminal, and by the cancel handler when it
+         * sends {@code Done{cancelled}} — whichever claims first sends the command's single
+         * terminal frame (IPC interaction LLD §8/§9: exactly one terminal frame per {@link
+         * IpcFrame.Request}; a cancel racing a normal completion must not produce a second). Reset
+         * to {@code false} when a new {@link IpcFrame.Request} is dispatched. Server-initiated
+         * {@link IpcFrame.Terminate} (timeout/shutdown) bypasses the claim — it is session
+         * teardown, not a Request resolution.
+         */
+        final AtomicBoolean terminalSent = new AtomicBoolean(false);
 
         Session(@NotNull String identity, @NotNull VetoCommandSender sender) {
             this.identity = identity;

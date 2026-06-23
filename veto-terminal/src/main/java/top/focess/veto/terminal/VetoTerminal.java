@@ -39,13 +39,17 @@ import top.focess.veto.contract.IpcFrame;
  *
  * <h3>The one retained interrupt</h3>
  *
- * <p>When a {@link IpcFrame.Prompt} arrives mid-{@code readLine}, the consumer thread (via {@link
- * TerminalView#onPrompt}) sets {@link #promptSwapPending} and interrupts the main thread to break
- * the blocking read. The main thread's {@code UserInterruptException} catch uses {@code
- * promptSwapPending} to distinguish that simulated swap from a genuine Ctrl+C — so a real Ctrl+C
- * while prompted still cancels (rather than being misread as a re-render). A stale interrupt flag
- * from a swap that landed during {@code submit} (not {@code readLine}) is cleared before the next
- * read so it doesn't spuriously throw.
+ * <p>When a {@link IpcFrame.Prompt} arrives, the consumer thread (via {@link
+ * TerminalView#onPrompt}) sets {@link #promptSwapPending} and <b>then</b> interrupts the main
+ * thread to break its blocking {@code readLine}. The main thread's {@code UserInterruptException}
+ * catch distinguishes the two wake causes by reading the flag <b>after</b> {@code readLine} throws:
+ * flag set ⇒ a Prompt-swap re-render; flag unset ⇒ a genuine Ctrl+C (the {@code 0x03} byte, never a
+ * {@code Thread.interrupt()}) ⇒ cancel. Reading the flag after the throw — not clearing a "stale"
+ * interrupt at the loop top — is what keeps the distinction sound: the consumer's flag-set and
+ * interrupt are not atomic, so a loop-top clear could drain a not-yet-delivered interrupt and then
+ * misread the swap's late interrupt as Ctrl+C (exiting the terminal on a stray Prompt), or fall
+ * through to {@code readLine} with a stale prompt and a null mask (a password echoed in plaintext).
+ * See the catch in {@link #repl()} for the full rationale.
  */
 public class VetoTerminal {
 
@@ -90,9 +94,17 @@ public class VetoTerminal {
     private volatile boolean running;
 
     /**
-     * Set by the consumer thread (via {@link TerminalView#onPrompt}) to break the main thread's
-     * blocking {@code readLine} for the genuine mid-line Prompt swap. Read and cleared by the main
-     * thread to distinguish the swap from a genuine Ctrl+C.
+     * The sole swap-wake signal: set by the consumer thread (via {@link TerminalView#onPrompt}) to
+     * request that the main thread's next {@code readLine} wake be treated as a Prompt-swap
+     * re-render rather than a genuine Ctrl+C. The consumer sets this <b>before</b> calling {@link
+     * #mainThread}{@code .interrupt()} (which breaks the blocking {@code readLine}), so "an
+     * interrupt fired" implies "the flag was set."
+     *
+     * <p>It is read and cleared in exactly one place: the {@code UserInterruptException} catch in
+     * {@link #repl()}, <b>after</b> {@code readLine} throws. Reading/clearing it after the throw
+     * (not at the loop top) is what makes the swap/Ctrl+C distinction sound — see the catch for the
+     * full rationale (a loop-top clear races the consumer's non-atomic flag-set + interrupt,
+     * causing a phantom-Ctrl+C terminal exit and a stale-prompt/mask plaintext leak).
      */
     private volatile boolean promptSwapPending;
 
@@ -182,8 +194,13 @@ public class VetoTerminal {
      */
     private void repl() {
         while (running) {
-            ClientSession.State state = session.state();
-            IpcFrame.Prompt activePrompt = session.activePrompt();
+            // One atomic snapshot — state, activePrompt and username describe a single moment.
+            // Reading them via separate calls would be a TOCTOU: the consumer thread can transition
+            // the state machine (a Prompt arriving) between the reads, so the rendered prompt could
+            // disagree with the state it was chosen for.
+            ClientSession.PromptView view = session.promptView();
+            ClientSession.State state = view.state();
+            IpcFrame.Prompt activePrompt = view.activePrompt();
 
             String promptText;
             Character mask;
@@ -198,7 +215,7 @@ public class VetoTerminal {
                 reader.setVariable(LineReader.DISABLE_HISTORY, Boolean.TRUE);
             } else {
                 // Standard prompt: green when logged in, red when logged out.
-                boolean loggedIn = session.snapshot().username() != null;
+                boolean loggedIn = view.username() != null;
                 promptText =
                         loggedIn
                                 ? theme.style(StyleToken.SUCCESS, "▸ ")
@@ -207,27 +224,74 @@ public class VetoTerminal {
                 reader.setVariable(LineReader.DISABLE_HISTORY, Boolean.FALSE);
             }
 
-            // A Prompt-swap interrupt may have been requested by the consumer thread since the
-            // last readLine landed outside readLine (during submit). Clear the stale flag so this
-            // readLine blocks cleanly; a genuine Ctrl+C is raised by JLine during readLine, never
-            // queued between calls.
-            if (promptSwapPending) {
-                promptSwapPending = false;
-                Thread.interrupted();
-            }
-
             String line;
             try {
                 line = reader.readLine(promptText, mask);
             } catch (UserInterruptException e) {
+                // ── Why readLine threw, and how we tell the two causes apart ──────────────
+                //
+                // readLine can throw UserInterruptException for two distinct reasons:
+                //
+                //   (1) A Prompt swap — the consumer thread (on a backend Prompt frame) set
+                //       promptSwapPending = true and then called mainThread.interrupt() to break
+                //       this blocking readLine so the loop re-renders with the PROMPTED prompt.
+                //   (2) A genuine Ctrl+C — the user pressed Ctrl+C (the tty sent 0x03), which JLine
+                //       reads during readLine and turns into this exception.
+                //
+                // We distinguish them by the flag, and the distinction is sound ONLY because the
+                // consumer sets the flag BEFORE interrupting (onPrompt: flag = true; then
+                // interrupt)
+                // and because the flag is cleared in exactly one place — here, in the swap branch.
+                // So "the interrupt fired" ⇒ "the flag was set by the swap that caused it," and a
+                // read of the flag here is authoritative. (A real Ctrl+C never sets
+                // promptSwapPending;
+                // it arrives as the 0x03 byte, not as Thread.interrupt(), so it leaves the flag
+                // false.)
+                //
+                // ── Why the flag clear + interrupt drain lives HERE, not at the loop top ──────
+                //
+                // An earlier version drained a "stale swap interrupt" at the top of the loop,
+                // before
+                // readLine. That was unsound: the consumer's "set flag" and "interrupt" are NOT
+                // atomic, so the loop-top drain could observe the flag, clear it, and drain the
+                // interrupt flag BEFORE the consumer's interrupt() had even been delivered. Two
+                // races
+                // followed:
+                //
+                //   ABA / phantom Ctrl+C: flag set (1) → loop-top sees flag, clears it, drains a
+                //     NOT-YET-DELIVERED interrupt (no-op) → readLine blocks → consumer's
+                // interrupt()
+                //     finally lands on the blocked readLine → readLine throws → catch sees flag now
+                //     FALSE (cleared at the top) → misreads the swap as a genuine Ctrl+C → at IDLE,
+                //     cancel() returns null (shutdown) → the terminal EXITS on a stray backend
+                // Prompt.
+                //
+                //   Stale prompt/mask: a Prompt landing between the snapshot and readLine left the
+                //     loop rendering the old prompt with mask=null (a password echoed in
+                // plaintext).
+                //
+                // Moving the drain here fixes both: the swap interrupt is drained only AFTER
+                // readLine
+                // has actually thrown from it (so the interrupt we clear provably corresponds to
+                // this
+                // swap), and the `continue` re-snapshots promptView() — so a Prompt that arrived
+                // after
+                // the prior snapshot is picked up with its correct prompt + mask. The flag is the
+                // only
+                // swap signal and it is read exactly once, after the wake, with no intervening
+                // clear.
                 if (promptSwapPending) {
-                    // The consumer simulated the interrupt to break readLine for a Prompt swap —
-                    // re-render with the new (PROMPTED) state.
                     promptSwapPending = false;
+                    // Clear the interrupt flag THIS swap set on the main thread. Safe here because
+                    // the
+                    // throw proves the interrupt was delivered; leaving it set would make the next
+                    // readLine throw immediately (an infinite re-render loop).
                     Thread.interrupted();
-                    continue;
+                    continue; // re-snapshot at the loop top with the now-live PROMPTED state
                 }
-                // Genuine Ctrl+C → cancel the in-flight request / prompt (or exit if idle).
+                // Flag false ⇒ not a swap ⇒ genuine Ctrl+C → cancel the in-flight request/prompt,
+                // or exit if idle (cancel() returns null as the shutdown signal per §6.2 IDLE ×
+                // cancel).
                 IpcFrame.Cancel cancel = session.cancel();
                 if (cancel == null) {
                     break; // idle → exit the REPL
@@ -242,22 +306,21 @@ public class VetoTerminal {
             line = line.trim();
             if (line.isEmpty()) continue;
 
-            if (state == ClientSession.State.PROMPTED) {
-                // Reply to the server prompt as an Input frame.
-                IpcFrame.ClientFrame reply = session.submit(line);
-                if (reply != null) {
-                    client.send(reply);
-                }
-                continue;
-            }
-
-            // Echo input inside a styled visual frame if it's a regular command (not a slash
-            // command).
-            if (!line.startsWith("/")) {
-                echoInput(line);
-                renderer.println(theme.style(StyleToken.MUTED, "  thinking…"));
-            }
-
+            // Route the line authoritatively: submit() checks the *current* state under its lock
+            // and returns exactly the frame to send — Input for a prompt reply, Request for a
+            // dispatched new command, or null if enqueued while awaiting (or discarded as a stale
+            // reply). Routing on the `state` captured above would be a TOCTOU: the consumer thread
+            // can transition the state machine during the blocking readLine (a Prompt arriving, or
+            // a
+            // Done/Error completing the in-flight request), so the render-time snapshot may no
+            // longer hold when the user submits. The snapshot is used only to *render* the prompt,
+            // never to route the reply. A dispatched command is echoed by onCommandDispatched
+            // (fired
+            // by submit on dispatch, and by onFrame when a queued command is auto-dispatched) — so
+            // a
+            // queued command echoes when it actually runs, not when it is merely typed — and the
+            // call site need not distinguish Input from Request: both just get sent, and only the
+            // null case (enqueued / discarded) sends nothing.
             IpcFrame.ClientFrame reply = session.submit(line);
             if (reply != null) {
                 client.send(reply);
@@ -314,19 +377,13 @@ public class VetoTerminal {
 
         @Override
         public void onPrompt(@NotNull IpcFrame.Prompt prompt) {
-            // The session already set state=PROMPTED; break the main thread's readLine so it
-            // re-renders the prompted prompt. This is the one retained interrupt.
+            // The session already set state=PROMPTED. Signal the main thread to re-render with the
+            // prompted prompt: set the flag FIRST, then interrupt readLine. The ordering matters —
+            // "interrupt fired" must imply "flag was set" so the catch can distinguish this
+            // swap-wake
+            // from a genuine Ctrl+C (see the UserInterruptException catch in repl()).
             promptSwapPending = true;
             mainThread.interrupt();
-        }
-
-        @Override
-        public void onDone(String content) {
-            if (content != null) {
-                renderer.println(content);
-            }
-            // No status refresh here — onMetaChanged / onAwaiting / onIdle (which follow) refresh
-            // it.
         }
 
         @Override
@@ -346,8 +403,19 @@ public class VetoTerminal {
         }
 
         @Override
-        public void onAwaiting() {
+        public void onRunning() {
             status.refresh();
+        }
+
+        @Override
+        public void onCommandDispatched(@NotNull String line) {
+            // Fires on whichever thread performed the dispatch: the main thread (a line typed at
+            // IDLE) or the consumer thread (a queued command auto-dispatched from onFrame).
+            // printAbove is thread-safe, so both paths render uniformly.
+            if (!line.startsWith("/")) {
+                echoInput(line);
+                renderer.println(theme.style(StyleToken.MUTED, "  thinking…"));
+            }
         }
 
         @Override
@@ -373,7 +441,7 @@ public class VetoTerminal {
             String fullLine = line.line();
             // Completion is only requested for slash commands.
             if (!fullLine.startsWith("/")) return;
-            IpcFrame.CompleteResult compResult = client.complete(fullLine, 3, TimeUnit.SECONDS);
+            IpcFrame.CompleteResult compResult = client.complete(fullLine, 2, TimeUnit.SECONDS);
             if (compResult != null) {
                 for (IpcFrame.Completion comp : compResult.candidates()) {
                     String name = comp.value();

@@ -252,17 +252,20 @@ public class VetoTui {
                     case SUBMIT -> {
                         String cmd = state.getCommandBuffer().toString().trim();
                         state.clearInput();
-                        ClientSession.State s = session.state();
-                        if (s == ClientSession.State.PROMPTED) {
-                            // Reply to the server prompt.
-                            IpcFrame.ClientFrame reply = session.submit(cmd);
-                            if (reply != null) {
-                                client.send(reply);
-                            }
-                        } else if (!cmd.isEmpty()) {
-                            if (!cmd.startsWith("/")) {
-                                state.echoInput(cmd);
-                            }
+                        // An empty line is only meaningful as a prompt reply (e.g. an empty
+                        // password); skip it otherwise. Single-threaded on the event loop, so
+                        // this read is consistent with submit() below — no frame processing
+                        // interleaves within one event.
+                        boolean prompted =
+                                session.promptView().state() == ClientSession.State.PROMPTED;
+                        if (!cmd.isEmpty() || prompted) {
+                            // Route authoritatively on submit()'s return — it does the atomic
+                            // state check and returns exactly the frame to send: Input for a prompt
+                            // reply, Request for a dispatched command, or null if enqueued/dropped.
+                            // All non-null replies are simply sent; the dispatch echo is owned by
+                            // onCommandDispatched (fired by submit / onFrame), so the call site
+                            // need
+                            // not distinguish Input from Request.
                             IpcFrame.ClientFrame reply = session.submit(cmd);
                             if (reply != null) {
                                 client.send(reply);

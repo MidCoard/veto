@@ -45,10 +45,10 @@ class TuiStateTest {
     }
 
     @Test
-    void onAwaitingClearsActivePrompt() {
+    void onRunningClearsActivePrompt() {
         TuiState s = newState();
         s.onPrompt(new IpcFrame.Prompt("pw", Map.of()));
-        s.onAwaiting();
+        s.onRunning();
         assertNull(s.getActivePrompt());
     }
 

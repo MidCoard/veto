@@ -174,12 +174,10 @@ public final class VetoHintWidgets extends Widgets {
         if (line.endsWith(" ")) {
             IpcFrame.HintResult hintResult =
                     client.hint(line, HINT_TIMEOUT_MS, TimeUnit.MILLISECONDS);
-            if (hintResult != null && hintResult.hint() != null) {
+            if (hintResult != null) {
                 String display = hintResult.hint().displayText();
-                if (display != null) {
-                    setTailTip(display);
-                    return;
-                }
+                setTailTip(display);
+                return;
             }
         }
 

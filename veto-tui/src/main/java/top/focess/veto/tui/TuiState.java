@@ -44,7 +44,7 @@ public final class TuiState implements ClientView {
     private final StringBuilder commandBuffer = new StringBuilder();
     private int cursorIndex = 0;
 
-    // The server prompt currently being presented (cached: set on onPrompt, cleared on onAwaiting).
+    // The server prompt currently being presented (cached: set on onPrompt, cleared on onRunning).
     private IpcFrame.Prompt activePrompt = null;
 
     // Log history & Scrolling
@@ -181,13 +181,6 @@ public final class TuiState implements ClientView {
     }
 
     @Override
-    public void onDone(@Nullable String content) {
-        if (content != null) {
-            appendAnsiText(content);
-        }
-    }
-
-    @Override
     public void onError(@NotNull StyledText content) {
         appendAnsiText(theme.style(content.token(), content.text()) + "\n");
     }
@@ -206,8 +199,17 @@ public final class TuiState implements ClientView {
     }
 
     @Override
-    public void onAwaiting() {
+    public void onRunning() {
         activePrompt = null;
+    }
+
+    @Override
+    public void onCommandDispatched(@NotNull String line) {
+        // Fires for both dispatch paths (a line typed at IDLE, and a queued command auto-dispatched
+        // from onFrame). Slash-commands are not echoed; only plain-text (agent) prompts are.
+        if (!line.startsWith("/")) {
+            echoInput(line);
+        }
     }
 
     @Override

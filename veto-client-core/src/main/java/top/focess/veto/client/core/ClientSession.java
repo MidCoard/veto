@@ -14,54 +14,92 @@ import top.focess.veto.contract.IpcFrame;
 import top.focess.veto.contract.IpcMeta;
 
 /**
- * The shared client interaction protocol — the one piece both client applications used to
- * duplicate.
- *
- * <p>Owns session metadata (username, turn count, session id), the pending-request queue + awaiting
- * flag, the active server prompt, and the frame→event translation with dispatch-next-or-idle logic.
- * The two presentations (REPL, TUI) feed it user input ({@link #submit}, {@link #cancel}) and
+ * The shared client interaction protocol — the closed-loop state machine from the IPC interaction
+ * LLD (§6). Both client applications feed it user input ({@link #submit}, {@link #cancel}) and
  * inbound frames ({@link #onFrame}); it drives rendering back through {@link ClientView}.
+ *
+ * <h3>States (§6)</h3>
+ *
+ * <ul>
+ *   <li><b>{@code IDLE}</b> — no command in flight.
+ *   <li><b>{@code RUNNING}</b> — one command in flight; streaming and terminal frames may arrive.
+ *   <li><b>{@code PROMPTED}</b> — one command in flight <em>and</em> the backend awaits an {@link
+ *       IpcFrame.Input}.
+ * </ul>
+ *
+ * <p>The inbound table (§6.1) is a <b>state × frame</b> matrix — every cell is defined. At {@code
+ * IDLE}, streaming frames ({@link IpcFrame.Delta}/{@link IpcFrame.Progress}/{@link
+ * IpcFrame.Prompt}) are <b>rejected + logged</b> (an orphan: under 1:1 a streaming frame belongs to
+ * the in-flight command, and at {@code IDLE} none is in flight); the terminal frames ({@link
+ * IpcFrame.Done}/{@link IpcFrame.Error}) are tolerated (a cancel racing a normal completion can
+ * deliver a duplicate terminal frame) — {@code Done} applies meta, {@code Error} displays, and the
+ * state stays {@code IDLE}. {@link IpcFrame.Terminate} tears down from any state.
  *
  * <h3>Thread model</h3>
  *
- * <p>Thread-safe via a <b>self-owned internal monitor</b> (not a borrowed external lock — that was
- * the {@code TerminalStatus} anti-pattern). The REPL touches it from two threads (the consumer
- * thread calling {@link #onFrame}, the main thread calling {@link #submit}/{@link #cancel}/snapshot
- * between blocking {@code readLine} calls); the TUI touches it single-threaded from its event loop.
- * View callbacks are collected under the lock and <b>fired outside it</b> (snapshot-then-emit), so
- * a view may re-enter the session without deadlock and the critical section stays short.
+ * <p>Thread-safe via a <b>self-owned internal monitor</b>. The REPL touches it from two threads
+ * (the consumer thread calling {@link #onFrame}, the main thread calling {@link #submit}/{@link
+ * #cancel}/snapshot between blocking {@code readLine} calls); the TUI touches it single-threaded
+ * from its event loop. View callbacks are collected under the lock and <b>fired outside it</b>
+ * (snapshot-then-emit), so a view may re-enter the session without deadlock and the critical
+ * section stays short.
  *
  * <p>The session never sends frames itself — {@link #submit}/{@link #onFrame}/{@link #cancel}
  * <b>return</b> the {@link IpcFrame.ClientFrame} to send (or {@code null}); the caller owns the
  * {@link top.focess.veto.contract.IpcClient} and does the send. This keeps the core free of the
  * transport and avoids holding the monitor across a bounded-outbox {@code offer}.
  *
- * <h3>State machine</h3>
+ * <h3>Routing on the authoritative atomic op (§6.3)</h3>
  *
- * <pre>
- *   IDLE ──submit(Request)──▶ AWAITING ──Prompt──▶ PROMPTED ──submit(Input)──▶ AWAITING
- *    ▲                           │                                         │
- *    └──── Done/Error (idle) ────┘◄──── Done/Error (dispatch next) ─────────┘
- * </pre>
- *
- * <p>Cancel from AWAITING/PROMPTED clears the queue and returns {@code Cancel} (state stays
- * AWAITING to await the backend's cancel-ack {@link IpcFrame.Done}); cancel from IDLE returns
- * {@code null} as a shutdown signal (nothing to cancel).
+ * <p>{@link #submit} routes a line on its own return — it checks state and acts under one lock, so
+ * the returned frame is the source of truth (Input / Request / null=discard). A snapshot captured
+ * before a blocking read is for rendering only; a line typed for a {@code Prompt} that already
+ * resolved (a terminal frame raced the reply) is discarded by {@link #submit} returning {@code
+ * null} — never repurposed as a new command (the stale-reply rule).
  */
 public final class ClientSession {
 
     private static final Logger log = LoggerFactory.getLogger(ClientSession.class);
 
-    /** Session interaction state — replaces both clients' bespoke state enums. */
+    /** Session interaction state (§6) — IDLE / RUNNING / PROMPTED. */
     public enum State {
         IDLE,
-        AWAITING_RESPONSE,
+        RUNNING,
         PROMPTED
     }
 
     /** Immutable snapshot of session metadata for view rendering. */
     public record SessionMeta(
             @Nullable String username, int turnCount, @Nullable String sessionId) {}
+
+    /**
+     * Immutable snapshot of everything the prompt renderer needs at one instant: the interaction
+     * state, the active server prompt (when {@link State#PROMPTED}), and the username (to pick the
+     * logged-in/out prompt marker).
+     *
+     * <p>Captured atomically by {@link #promptView()} so the three fields describe a single
+     * consistent moment. Reading them via separate {@code state()} / {@code activePrompt()} calls
+     * would be a time-of-check/time-of-use race — the consumer thread can transition the state
+     * machine (e.g. a {@link IpcFrame.Prompt} arriving) between the reads, so the renderer could
+     * act on a {@code state} and an {@code activePrompt} that never coexisted.
+     */
+    public record PromptView(
+            @NotNull State state,
+            @Nullable IpcFrame.Prompt activePrompt,
+            @Nullable String username) {}
+
+    /**
+     * Immutable snapshot of everything the status bar renders at one instant: session metadata and
+     * the pending-request queue.
+     *
+     * <p>Captured atomically by {@link #statusView()} so the username and the queue describe the
+     * same moment. Reading them via separate {@code snapshot()} / {@code pendingQueue()} calls
+     * would let the consumer thread mutate the session between the reads (a {@link IpcFrame.Done}
+     * changing the username, or a {@code submit} adding to the queue), so the bar could show a
+     * username and a queue that never coexisted.
+     */
+    public record StatusView(
+            @Nullable String username, int turnCount, @NotNull List<String> pending) {}
 
     private final ClientView view;
     private final Object lock = new Object();
@@ -78,12 +116,21 @@ public final class ClientSession {
     }
 
     /**
-     * User submitted a line.
+     * User submitted a line (§6.2 outbound). Routes on the live state under one lock and returns
+     * the frame to send:
      *
-     * <p>{@code PROMPTED} → returns an {@link IpcFrame.Input} (prompt reply); {@code IDLE} →
-     * enqueues and dispatches the first request, returning an {@link IpcFrame.Request}; {@code
-     * AWAITING} → enqueues and returns {@code null} (dispatched when the in-flight request
-     * completes).
+     * <ul>
+     *   <li>{@code PROMPTED} → send {@link IpcFrame.Input} (prompt reply); → {@code RUNNING}.
+     *   <li>{@code IDLE} → dispatch the first request, returning a {@link IpcFrame.Request}; →
+     *       {@code RUNNING}.
+     *   <li>{@code RUNNING} → enqueue; return {@code null} (dispatched when the in-flight request
+     *       completes).
+     * </ul>
+     *
+     * <p><b>Stale-reply rule (§6.3):</b> a line is only an {@code Input} while the state is {@code
+     * PROMPTED} at the moment of this call. If a terminal frame resolved the prompt between the
+     * render snapshot and this call, the state is no longer {@code PROMPTED} and the line is
+     * treated as a new command (or enqueued) — it is never silently sent as a stale {@code Input}.
      *
      * @param line the submitted line
      * @return the client frame to send, or {@code null} if only enqueued
@@ -95,15 +142,16 @@ public final class ClientSession {
         synchronized (lock) {
             if (state == State.PROMPTED) {
                 activePrompt = null;
-                state = State.AWAITING_RESPONSE;
-                events.add(view::onAwaiting);
+                state = State.RUNNING;
+                events.add(view::onRunning);
                 frame = new IpcFrame.Input(line);
             } else {
                 pendingRequests.addLast(line);
                 if (state == State.IDLE) {
                     String first = pendingRequests.removeFirst();
-                    state = State.AWAITING_RESPONSE;
-                    events.add(view::onAwaiting);
+                    state = State.RUNNING;
+                    events.add(view::onRunning);
+                    events.add(() -> view.onCommandDispatched(first));
                     frame = new IpcFrame.Request(first);
                 } else {
                     frame = null; // enqueued; dispatched when the in-flight request completes
@@ -115,10 +163,17 @@ public final class ClientSession {
     }
 
     /**
-     * Cancels the in-flight request / prompt. Clears the queue and returns a {@link
-     * IpcFrame.Cancel} (state stays AWAITING to await the backend's cancel-ack Done). Returns
-     * {@code null} when idle with an empty queue — a shutdown signal (the caller exits / enqueues a
-     * shutdown event).
+     * Cancels the in-flight command (§6.2, §8). Returns a {@link IpcFrame.Cancel}; the state stays
+     * {@code RUNNING} awaiting the command's terminal frame (the real {@link IpcFrame.Done}/{@link
+     * IpcFrame.Error}, or {@code Done{cancelled}} if the cancel produced one), after which
+     * dispatch-next-or-idle runs the next queued request or goes {@code IDLE}.
+     *
+     * <p>The pending-request queue is <b>preserved</b> (§8: dispatch-next-or-idle may still
+     * dispatch a queued request after the cancelled command's terminal frame) — cancelling one
+     * command does not drop the rest of the queue. A {@code PROMPTED} prompt is cleared.
+     *
+     * <p>Returns {@code null} when idle with an empty queue — a shutdown signal (§6.2 IDLE × cancel
+     * = shutdown); the caller exits / enqueues a shutdown event.
      *
      * @return the Cancel frame, or {@code null} to signal shutdown
      */
@@ -127,13 +182,15 @@ public final class ClientSession {
         List<Runnable> events = new ArrayList<>();
         IpcFrame.Cancel frame;
         synchronized (lock) {
-            if (state == State.IDLE && pendingRequests.isEmpty()) {
+            if (state == State.IDLE) {
                 return null; // nothing to cancel — signal the caller to shut down
             }
+            boolean wasPrompted = state == State.PROMPTED;
             activePrompt = null;
-            pendingRequests.clear();
-            state = State.AWAITING_RESPONSE; // await the backend's cancel-ack Done
-            events.add(view::onAwaiting);
+            state = State.RUNNING; // await the command's terminal frame (§8)
+            if (wasPrompted) {
+                events.add(view::onRunning);
+            }
             frame = new IpcFrame.Cancel();
         }
         fire(events);
@@ -141,8 +198,13 @@ public final class ClientSession {
     }
 
     /**
-     * Processes an inbound server frame: updates state, applies metadata, dispatches the next
-     * queued request or goes idle, and emits render events.
+     * Processes an inbound server frame per the §6.1 state × frame matrix: updates state, applies
+     * metadata, dispatches the next queued request or goes idle, and emits render events.
+     *
+     * <p>{@link IpcFrame.Done} applies meta (and transitions) but never displays content — command
+     * output streams via {@link IpcFrame.Delta}; {@code Done} is the terminal marker only. {@link
+     * IpcFrame.Error} displays and transitions. At {@code IDLE}, streaming frames are rejected +
+     * logged rather than displayed.
      *
      * @param frame the inbound frame
      * @return the client frame to send (a dispatched next {@link IpcFrame.Request}), or {@code
@@ -154,34 +216,71 @@ public final class ClientSession {
         IpcFrame.ClientFrame reply = null;
         synchronized (lock) {
             switch (frame) {
-                case IpcFrame.Delta d -> events.add(() -> view.onDelta(d.content()));
-                case IpcFrame.Progress p ->
-                        events.add(() -> view.onProgress(StyledText.muted("  ⏳ " + p.content())));
-                case IpcFrame.Prompt pr -> {
-                    activePrompt = pr;
-                    state = State.PROMPTED;
-                    events.add(view::onPrompted);
-                    events.add(() -> view.onPrompt(pr));
-                }
-                case IpcFrame.Done done -> {
-                    if (done.content() != null) {
-                        events.add(() -> view.onDone(done.content()));
+                    // ── streaming ───────────────────────────────────────────────────
+                case IpcFrame.Delta d -> {
+                    if (state == State.IDLE) {
+                        rejectOrphan(d, "Delta");
+                    } else {
+                        events.add(() -> view.onDelta(d.content()));
                     }
+                }
+                case IpcFrame.Progress p -> {
+                    if (state == State.IDLE) {
+                        rejectOrphan(p, "Progress");
+                    } else {
+                        events.add(() -> view.onProgress(StyledText.muted("  ⏳ " + p.content())));
+                    }
+                }
+                case IpcFrame.Prompt pr -> {
+                    switch (state) {
+                        case IDLE -> rejectOrphan(pr, "Prompt");
+                        case RUNNING -> {
+                            activePrompt = pr;
+                            state = State.PROMPTED;
+                            events.add(view::onPrompted);
+                            events.add(() -> view.onPrompt(pr));
+                        }
+                        case PROMPTED -> {
+                            activePrompt = pr; // replace the outstanding prompt
+                            events.add(() -> view.onPrompt(pr));
+                        }
+                    }
+                }
+
+                    // ── terminal ────────────────────────────────────────────────────
+                case IpcFrame.Done done -> {
                     SessionMeta snap = applyMeta(done.meta());
                     if (snap != null) {
                         events.add(() -> view.onMetaChanged(snap));
                     }
-                    reply = dispatchNextOrIdle(events);
+                    if (state == State.IDLE) {
+                        // A late/duplicate completion (cancel racing normal completion): apply
+                        // meta and stay IDLE — no dispatch, no display (§6.1).
+                    } else {
+                        if (state == State.PROMPTED) {
+                            activePrompt = null; // clear the prompt the terminal frame resolved
+                        }
+                        reply = dispatchNextOrIdle(events);
+                    }
                 }
                 case IpcFrame.Error e -> {
                     events.add(() -> view.onError(StyledText.error("Error: " + e.content())));
-                    reply = dispatchNextOrIdle(events);
+                    if (state == State.IDLE) {
+                        // Display and stay IDLE (§6.1).
+                    } else {
+                        if (state == State.PROMPTED) {
+                            activePrompt = null;
+                        }
+                        reply = dispatchNextOrIdle(events);
+                    }
                 }
                 case IpcFrame.Terminate t -> {
                     String reason =
                             t.reason() != null ? t.reason() : "Server terminated the session.";
+                    activePrompt = null; // teardown — no stale prompt in a final snapshot
                     events.add(() -> view.onTerminate(StyledText.muted(reason)));
                 }
+
                 default ->
                         log.warn(
                                 "Unexpected server frame {} — ignoring",
@@ -193,7 +292,18 @@ public final class ClientSession {
     }
 
     /**
-     * Dispatches the next queued request (→ AWAITING) or goes IDLE. Must hold {@link #lock}.
+     * Logs an orphan streaming frame that arrived at {@code IDLE} (a protocol violation under 1:1)
+     * and drops it — never displayed. Must hold {@link #lock}.
+     */
+    private void rejectOrphan(@NotNull IpcFrame.ServerFrame frame, @NotNull String kind) {
+        log.warn(
+                "Orphan {} frame at IDLE — no command in flight; dropping (protocol violation)",
+                kind);
+    }
+
+    /**
+     * Dispatches the next queued request (→ {@code RUNNING}) or goes {@code IDLE} (§6.1
+     * dispatch-next-or-idle). Must hold {@link #lock}.
      *
      * @param events the event list to append a state-transition signal to
      * @return the next Request to send, or {@code null} if idle
@@ -202,8 +312,9 @@ public final class ClientSession {
     private IpcFrame.ClientFrame dispatchNextOrIdle(@NotNull List<Runnable> events) {
         if (!pendingRequests.isEmpty()) {
             String next = pendingRequests.removeFirst();
-            state = State.AWAITING_RESPONSE;
-            events.add(view::onAwaiting);
+            state = State.RUNNING;
+            events.add(view::onRunning);
+            events.add(() -> view.onCommandDispatched(next));
             return new IpcFrame.Request(next);
         }
         state = State.IDLE;
@@ -274,10 +385,15 @@ public final class ClientSession {
         }
     }
 
-    @Nullable
-    public IpcFrame.Prompt activePrompt() {
+    /**
+     * Atomic snapshot for prompt rendering — see {@link PromptView}. Use this instead of separate
+     * {@code state()} / {@code activePrompt()} reads when the caller renders a prompt from the
+     * session state, so the state and the active prompt describe the same moment.
+     */
+    @NotNull
+    public PromptView promptView() {
         synchronized (lock) {
-            return activePrompt;
+            return new PromptView(state, activePrompt, username);
         }
     }
 
@@ -285,6 +401,18 @@ public final class ClientSession {
     public SessionMeta snapshot() {
         synchronized (lock) {
             return new SessionMeta(username, turnCount, sessionId);
+        }
+    }
+
+    /**
+     * Atomic snapshot for status-bar rendering — see {@link StatusView}. Use this instead of
+     * separate {@code snapshot()} / {@code pendingQueue()} reads so the username and the queue
+     * describe the same moment.
+     */
+    @NotNull
+    public StatusView statusView() {
+        synchronized (lock) {
+            return new StatusView(username, turnCount, List.copyOf(pendingRequests));
         }
     }
 

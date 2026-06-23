@@ -33,16 +33,23 @@ public final class TerminalStatus {
         }
     }
 
-    /** Redraws the status line from the current session snapshot (username, turn count, queue). */
+    /**
+     * Redraws the status line from a single atomic session snapshot (username, turn count, queue).
+     */
     public void refresh() {
-        ClientSession.SessionMeta meta = session.snapshot();
+        // One atomic snapshot — username, turn count and the queue describe the same moment.
+        // Reading them via separate snapshot()/pendingQueue() calls would be a TOCTOU: the consumer
+        // thread can mutate the session between the reads (a Done changing the username, or a
+        // submit adding to the queue), so the bar could show a username and a queue that never
+        // coexisted.
+        ClientSession.StatusView view = session.statusView();
         String text =
-                meta.username() == null
+                view.username() == null
                         ? "  /login to start | /help"
-                        : "  " + meta.username() + " | turns: " + meta.turnCount();
+                        : "  " + view.username() + " | turns: " + view.turnCount();
         String styled = theme.style(StyleToken.MUTED, text);
 
-        List<String> queue = session.pendingQueue();
+        List<String> queue = view.pending();
         if (!queue.isEmpty()) {
             StringBuilder queueText = new StringBuilder(" | ⏳ next: ");
             for (int i = 0; i < queue.size(); i++) {

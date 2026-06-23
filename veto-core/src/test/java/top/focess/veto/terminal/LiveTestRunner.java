@@ -111,31 +111,32 @@ class LiveTestRunner {
             System.out.println("[LOGOUT] -> " + r);
             assert r instanceof IpcFrame.Done : "/logout failed: " + r;
 
-            // 6. /exit
-            r = exchange("/exit");
-            System.out.println("[EXIT] -> " + r);
-            assert r instanceof IpcFrame.Terminate : "/exit failed: " + r;
-
-            // 7. Tab completion
+            // 6. Tab completion
             send(new IpcFrame.Complete("/log", 1));
             IpcFrame comp = recv();
             System.out.println("[COMPLETE /log] -> " + comp);
             assert comp instanceof IpcFrame.CompleteResult;
 
-            // 8. Hint
+            // 7. Hint
             send(new IpcFrame.Hint("/login ", 2));
             IpcFrame hint = recv();
             System.out.println("[HINT /login ] -> " + hint);
             assert hint instanceof IpcFrame.HintResult;
 
-            // 9. Heartbeat
+            // 8. Heartbeat
             send(new IpcFrame.Heartbeat());
             System.out.println("[HEARTBEAT] -> sent");
 
-            // 10. Unknown command
+            // 9. Unknown command
             r = exchange("/nonexistent_cmd_12345");
             System.out.println("[UNKNOWN] -> " + r);
             assert r instanceof IpcFrame.Error;
+
+            // 10. /exit — last: §2.4 a command-Terminate is session-terminal, so the server closes
+            // the session after sending it; nothing after this reaches the session.
+            r = exchange("/exit");
+            System.out.println("[EXIT] -> " + r);
+            assert r instanceof IpcFrame.Terminate : "/exit failed: " + r;
 
             System.out.println("\n=== ALL COMMANDS PASSED ===");
         } finally {
