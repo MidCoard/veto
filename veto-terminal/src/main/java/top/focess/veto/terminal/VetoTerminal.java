@@ -282,10 +282,22 @@ public class VetoTerminal {
                 // clear.
                 if (promptSwapPending) {
                     promptSwapPending = false;
-                    // Clear the interrupt flag THIS swap set on the main thread. Safe here because
+                    // Drain the interrupt flag. This swap woke readLine via mainThread.interrupt();
+                    // JLine3 (LineReaderImpl.readLine) turns that into this UserInterruptException
+                    // and, in its own finally, RE-SETS the flag (Thread.interrupted() to
+                    // capture+clear,
+                    // then Thread.currentThread().interrupt() if it was set) — so on arrival here
                     // the
-                    // throw proves the interrupt was delivered; leaving it set would make the next
-                    // readLine throw immediately (an infinite re-render loop).
+                    // flag is set. We must clear it (Thread.interrupted()) before the next
+                    // readLine, or
+                    // JLine's non-blocking reader sees the set flag and throws again on the very
+                    // next
+                    // read, looping the re-render forever. Clearing it here is sound: the throw
+                    // proves
+                    // the swap's interrupt was actually delivered, so the flag we drain provably
+                    // belongs
+                    // to this swap (not some stale interrupt — the old loop-top drain raced a
+                    // not-yet-delivered interrupt).
                     Thread.interrupted();
                     continue; // re-snapshot at the loop top with the now-live PROMPTED state
                 }
@@ -395,6 +407,17 @@ public class VetoTerminal {
         public void onTerminate(@NotNull StyledText content) {
             renderer.println(theme.style(content.token(), content.text()));
             running = false;
+            // The main thread is blocked in readLine; setting running=false alone won't wake it, so
+            // the prompt would keep blinking (the session is dead but the REPL looks alive) until
+            // the user presses Enter. Interrupt to break readLine — the UserInterruptException
+            // catch
+            // then sees promptSwapPending is false (a Terminate is not a swap) and routes to
+            // cancel(), which always ends the iteration (null at IDLE → break; or a Cancel at
+            // RUNNING
+            // → send + continue → while(running) is now false → exit). Either way the REPL exits
+            // and
+            // teardown runs, promptly telling the user the session is over.
+            mainThread.interrupt();
         }
 
         @Override

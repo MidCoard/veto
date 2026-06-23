@@ -18,6 +18,11 @@ import top.focess.veto.contract.IpcFrame;
  * This means the user has finished typing a command name and the backend can suggest the next
  * argument (e.g. {@code <user> <pass>} after {@code /login }).
  *
+ * <p>Tab completion also triggers a hint: after the completer expands a candidate into the buffer,
+ * the resulting buffer is re-evaluated for a tail-tip (so completing {@code /log} → {@code /login }
+ * immediately shows the next-argument hint). Tab's original completion behavior is preserved — the
+ * hint trigger is appended, not substituted.
+ *
  * <h3>When hints persist</h3>
  *
  * After a hint is fetched, it stays visible while the user types arguments. Only self-insert is
@@ -49,6 +54,10 @@ public final class VetoHintWidgets extends Widgets {
         addWidget("_veto-delete-char", this::vetoDelete);
         addWidget("_veto-accept-line", this::vetoAcceptLine);
         addWidget("_veto-kill-whole-line", this::vetoKillWholeLine);
+        // Tab: keep completion (the original EXPAND_OR_COMPLETE drives the completer in emacs mode)
+        // and append a hint trigger so a completed command (e.g. /log → /login ) immediately shows
+        // its next-arg hint.
+        addWidget("_veto-expand-or-complete", this::vetoExpandOrComplete);
     }
 
     // ── enable / disable ──────────────────────────────────────────────────
@@ -64,6 +73,7 @@ public final class VetoHintWidgets extends Widgets {
         aliasWidget("_veto-delete-char", LineReader.DELETE_CHAR);
         aliasWidget("_veto-accept-line", LineReader.ACCEPT_LINE);
         aliasWidget("_veto-kill-whole-line", LineReader.KILL_WHOLE_LINE);
+        aliasWidget("_veto-expand-or-complete", LineReader.EXPAND_OR_COMPLETE);
         reader.setAutosuggestion(SuggestionType.TAIL_TIP);
         enabled = true;
     }
@@ -80,6 +90,7 @@ public final class VetoHintWidgets extends Widgets {
         aliasWidget("." + LineReader.DELETE_CHAR, LineReader.DELETE_CHAR);
         aliasWidget("." + LineReader.ACCEPT_LINE, LineReader.ACCEPT_LINE);
         aliasWidget("." + LineReader.KILL_WHOLE_LINE, LineReader.KILL_WHOLE_LINE);
+        aliasWidget("." + LineReader.EXPAND_OR_COMPLETE, LineReader.EXPAND_OR_COMPLETE);
         reader.setAutosuggestion(SuggestionType.NONE);
         enabled = false;
     }
@@ -149,6 +160,20 @@ public final class VetoHintWidgets extends Widgets {
     public boolean vetoAcceptLine() {
         clearTailTip();
         callWidget(LineReader.ACCEPT_LINE);
+        return true;
+    }
+
+    /**
+     * Intercepts Tab. Keeps the original completion (the completer expands a candidate into the
+     * buffer via {@code EXPAND_OR_COMPLETE}) and then appends a hint trigger: the post-completion
+     * buffer is re-evaluated for a tail-tip, so completing {@code /log} → {@code /login }
+     * immediately shows the next-argument hint without an extra keystroke. Completion itself is
+     * unchanged.
+     *
+     * @return true to indicate the action was handled
+     */
+    public boolean vetoExpandOrComplete() {
+        doHint(LineReader.EXPAND_OR_COMPLETE);
         return true;
     }
 
