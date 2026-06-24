@@ -1,13 +1,55 @@
 package top.focess.veto.llm.core;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.JsonNode;
+import java.util.List;
 
 /**
- * Standardized response that the Veto Agent Loop expects.
+ * The universal ReAct response record — every model response conforms to this shape. Transcribed
+ * from {@code plans/mvp-core/part1_loop/prompt_react_syntax.md} §2.1 (the {@code veto_pulse}
+ * schema).
  *
- * @param thought deep reasoning string explaining the plan
- * @param call the tool call to execute, or null if finished
- * @param isFinished whether the agent has completed its task
+ * <p>Fields:
+ *
+ * <ul>
+ *   <li>{@code thought} — optional; strictly controlled by this turn's effective thought flag (ON →
+ *       present &amp; non-empty; OFF → absent, forbidden by {@code additionalProperties:false}).
+ *   <li>{@code calls} — optional; the parallel tool calls to execute. Mutually exclusive with
+ *       {@code actionsProgram}. Populated in autonomous mode.
+ *   <li>{@code message} — optional user-facing text; required when thought is OFF or when finished.
+ *   <li>{@code is_finished} — required; true when the model cannot proceed without user input.
+ *   <li>{@code features} — required; describes the NEXT iteration's status ({@code guided}, {@code
+ *       thought}).
+ *   <li>{@code actionsProgram} — optional; the guided-mode IR, present only when {@code
+ *       features.guided=true}. Held as a raw {@link JsonNode} — the harness validates and parses it
+ *       into the guided driver's typed program; the translator emits its schema from {@code
+ *       prompt_react_syntax.md} §2.4.
+ * </ul>
+ *
+ * <p>Per-turn schema variants and harness enforcement are the {@code PromptCompiler} / loop's
+ * concern (Part 1); the provider-constraining schema is the {@code CapabilityTranslator}'s concern
+ * (Part 5.4). This record is the shared contract both compile against.
  */
 public record VetoResponse(
-        String thought, ToolCall call, @JsonProperty("is_finished") boolean isFinished) {}
+        String thought,
+        List<ToolCall> calls,
+        String message,
+        @JsonProperty("is_finished") boolean isFinished,
+        Features features,
+        JsonNode actionsProgram) {
+
+    /** Convenience: whether this response carries any tool calls. */
+    @JsonIgnore
+    public boolean hasCalls() {
+        return calls != null && !calls.isEmpty();
+    }
+
+    /**
+     * The NEXT-iteration status. Always present in a compliant response. {@code guided} selects
+     * guided vs autonomous for the next iteration; {@code thought} sets the effective thought flag
+     * for the following turn. Transcribed from {@code prompt_react_syntax.md} §2.1.
+     */
+    public record Features(
+            @JsonProperty("guided") boolean guided, @JsonProperty("thought") boolean thought) {}
+}

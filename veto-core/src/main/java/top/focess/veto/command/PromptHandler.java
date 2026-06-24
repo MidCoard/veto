@@ -229,12 +229,16 @@ public class PromptHandler {
                                 sender.output(r.thought());
                             }
 
+                            // NOTE: Phase-0 contract — VetoResponse now exposes `calls` (List) not
+                            // `call`. This legacy loop takes the first call only; Part 1 replaces
+                            // this PromptHandler loop with the AgentService/AgentRunner loop.
                             String observation = null;
-                            if (r.call() != null) {
-                                observation = executeToolCall(r.call());
+                            ToolCall call = r.hasCalls() ? r.calls().get(0) : null;
+                            if (call != null) {
+                                observation = executeToolCall(call);
                                 if (observation != null) {
                                     sender.output(
-                                            "\n[tool:" + r.call().toolName() + "] " + observation);
+                                            "\n[tool:" + call.toolName() + "] " + observation);
                                 }
                             }
 
@@ -242,12 +246,12 @@ public class PromptHandler {
                                     new TurnRecord(
                                             agent.nextTurnNumber() + newTurns.size(),
                                             r.thought(),
-                                            r.call() != null ? r.call().toolName() : null,
-                                            r.call() != null ? r.call().args() : null,
+                                            call != null ? call.toolName() : null,
+                                            call != null ? call.args() : null,
                                             observation,
                                             null));
 
-                            if (r.isFinished() || r.call() == null) break;
+                            if (r.isFinished() || call == null) break;
 
                             nextPrompt =
                                     "Observation: "

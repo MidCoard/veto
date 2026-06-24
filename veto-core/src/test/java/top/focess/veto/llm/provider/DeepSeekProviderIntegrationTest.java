@@ -53,7 +53,7 @@ class DeepSeekProviderIntegrationTest {
         VetoResponse response = provider.execute(resolved);
 
         assertNotNull(response.thought(), "thought should not be null");
-        assertNotNull(response.call(), "call should not be null (may be null-tool if finished)");
+        assertNotNull(response.calls(), "calls list should not be null (may be empty if finished)");
         assertTrue(response.isFinished(), "simple prompt should finish immediately");
     }
 

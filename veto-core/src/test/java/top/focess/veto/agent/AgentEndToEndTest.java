@@ -127,8 +127,8 @@ class AgentEndToEndTest {
                 new TurnRecord(
                         agent.nextTurnNumber(),
                         response.thought(),
-                        response.call() != null ? response.call().toolName() : null,
-                        response.call() != null ? response.call().args() : null,
+                        response.hasCalls() ? response.calls().get(0).toolName() : null,
+                        response.hasCalls() ? response.calls().get(0).args() : null,
                         null,
                         null);
         agent = agent.appendTurn(turn);
