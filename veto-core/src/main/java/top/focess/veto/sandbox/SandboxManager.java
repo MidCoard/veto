@@ -1,0 +1,58 @@
+package top.focess.veto.sandbox;
+
+import java.nio.file.Path;
+import java.util.concurrent.ConcurrentHashMap;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+/**
+ * The sole authority for sandbox provisioning/deprovisioning. {@code AgentRunner} never calls
+ * Docker/Firecracker/OS-primitive APIs directly. Transcribed from {@code
+ * container_sandbox_isolation.md} §7.
+ *
+ * <p>Holds {@link SandboxHandle}s in-memory keyed by {@code sessionId} — never persisted on {@code
+ * AgentEntity} (runtime resources are volatile). The substrate is the configured {@link
+ * ConstrainedSubprocessSubstrate} for the MVP; Phase-2 swaps in a container/microVM substrate per
+ * the deployer's fixed-menu selection.
+ */
+@Service
+public class SandboxManager {
+
+    private static final Logger log = LoggerFactory.getLogger(SandboxManager.class);
+
+    private final SandboxSubstrate substrate;
+    private final ConcurrentHashMap<String, SandboxHandle> handles = new ConcurrentHashMap<>();
+
+    public SandboxManager(ConstrainedSubprocessSubstrate substrate) {
+        this.substrate = substrate;
+    }
+
+    /** Provisions a sandbox for a session and caches the handle keyed by {@code sessionId}. */
+    public SandboxHandle provision(String sessionId, Path workspaceRoot) {
+        return handles.computeIfAbsent(
+                sessionId, k -> substrate.provision(SandboxProfile.defaults(workspaceRoot)));
+    }
+
+    /** Returns the cached handle for a session, provisioning a default if absent. */
+    public SandboxHandle handleFor(String sessionId) {
+        return handles.computeIfAbsent(
+                sessionId,
+                k -> {
+                    Path root = Path.of(".").toAbsolutePath().normalize();
+                    return substrate.provision(SandboxProfile.defaults(root));
+                });
+    }
+
+    public void deprovision(String sessionId) {
+        SandboxHandle h = handles.remove(sessionId);
+        if (h != null) {
+            substrate.deprovision(h);
+            log.debug("Sandbox deprovisioned for session {}", sessionId);
+        }
+    }
+
+    public SandboxSubstrate substrate() {
+        return substrate;
+    }
+}

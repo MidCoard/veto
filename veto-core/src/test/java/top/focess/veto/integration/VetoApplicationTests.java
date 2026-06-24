@@ -30,7 +30,6 @@ import top.focess.veto.veto.VetoGatewayConfiguration;
             "veto.veto-gateway.redact-secrets=true",
             "veto.veto-gateway.enforce-structural-constraints=true",
             "veto.vault.master-key-env=veto.test.key",
-            "veto.sandbox.temp-dir=build/tmp/test-sandbox",
             "veto.observability.encryption-enabled=false"
         })
 class VetoApplicationTests {
@@ -205,19 +204,6 @@ class VetoApplicationTests {
                 HttpStatus.BAD_REQUEST,
                 response.getStatusCode(),
                 "Empty payload should return 400");
-    }
-
-    @Test
-    void restEndpointToolCapabilities() {
-        String url = "http://localhost:" + port + "/api/tool/capabilities";
-        ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
-
-        assertEquals(
-                HttpStatus.OK, response.getStatusCode(), "Capabilities endpoint should return 200");
-        assertNotNull(response.getBody());
-        assertTrue(
-                response.getBody().containsKey("capabilities"),
-                "Response should contain capabilities list");
     }
 
     @Test

@@ -9,11 +9,14 @@ import com.anthropic.models.messages.Model;
 import com.anthropic.models.messages.Tool;
 import com.anthropic.models.messages.ToolChoice;
 import com.anthropic.models.messages.ToolChoiceTool;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Map;
+import top.focess.veto.agent.translation.CapabilityTranslator;
 import top.focess.veto.llm.core.ResolvedRequest;
 import top.focess.veto.llm.core.VetoRequest;
 import top.focess.veto.llm.exceptions.ModelCapabilityException;
-import top.focess.veto.llm.schema.SchemaNormalizerService;
 
 /**
  * Adapter wrapping an {@link AnthropicClient}. Forces the single {@code veto_pulse} tool to emulate
@@ -24,18 +27,28 @@ final class AnthropicLlmClient extends LlmClient {
     private static final String PULSE_TOOL = "veto_pulse";
 
     private final AnthropicClient sdkClient;
-    private final SchemaNormalizerService schemaNormalizer;
+    private final ObjectMapper objectMapper;
+    private final CapabilityTranslator capabilityTranslator;
 
-    AnthropicLlmClient(AnthropicClient sdkClient, SchemaNormalizerService schemaNormalizer) {
+    AnthropicLlmClient(
+            AnthropicClient sdkClient,
+            ObjectMapper objectMapper,
+            CapabilityTranslator capabilityTranslator) {
         this.sdkClient = sdkClient;
-        this.schemaNormalizer = schemaNormalizer;
+        this.objectMapper = objectMapper;
+        this.capabilityTranslator = capabilityTranslator;
     }
 
     @Override
     public RawCompletion complete(ResolvedRequest resolved) {
         VetoRequest request = resolved.request();
-        Map<String, Object> toolSchema =
-                schemaNormalizer.mapToAnthropicTools(request.tools()).get(0);
+        // The per-turn veto_pulse schema (default thought-ON, autonomous until Part 1 wires
+        // per-turn
+        // flags).
+        JsonNode responseSchema = capabilityTranslator.vetoResponseSchema(true, false);
+        Map<String, Object> inputSchema =
+                objectMapper.convertValue(
+                        responseSchema, new TypeReference<Map<String, Object>>() {});
 
         MessageCreateParams.Builder builder =
                 MessageCreateParams.builder()
@@ -45,14 +58,12 @@ final class AnthropicLlmClient extends LlmClient {
                         .addUserMessage(request.userPrompt())
                         .addTool(
                                 Tool.builder()
-                                        .name(toolSchema.get("name").toString())
-                                        .description(toolSchema.get("description").toString())
+                                        .name(PULSE_TOOL)
+                                        .description(
+                                                "Unified response format for Veto agent actions.")
                                         .inputSchema(
                                                 Tool.InputSchema.builder()
-                                                        .properties(
-                                                                JsonValue.from(
-                                                                        toolSchema.get(
-                                                                                "input_schema")))
+                                                        .properties(JsonValue.from(inputSchema))
                                                         .build())
                                         .build())
                         .toolChoice(

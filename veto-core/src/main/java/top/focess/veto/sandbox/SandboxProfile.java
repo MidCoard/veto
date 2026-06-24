@@ -1,0 +1,24 @@
+package top.focess.veto.sandbox;
+
+import java.nio.file.Path;
+import java.time.Duration;
+
+/**
+ * Substrate configuration for a session — the workspace root + resource caps. This is the Sandbox's
+ * own profile (the hard-backstop floor); it is <b>not</b> the Gateway's {@code PolicyProfile} (soft
+ * policy, {@code container_sandbox_isolation.md} §2 — the Sandbox performs no policy). Transcribed
+ * from {@code container_sandbox_isolation.md} §3/§7.
+ *
+ * @param workspaceRoot the canonical root all relative tool paths resolve under
+ * @param maxMemoryMb memory cap (best-effort on the subprocess substrate)
+ * @param maxCpuPercent CPU cap (best-effort)
+ * @param maxWallClock the default per-chain wall-clock timeout
+ */
+public record SandboxProfile(
+        Path workspaceRoot, long maxMemoryMb, int maxCpuPercent, Duration maxWallClock) {
+
+    /** A permissive default profile for the local MVP substrate. */
+    public static SandboxProfile defaults(Path workspaceRoot) {
+        return new SandboxProfile(workspaceRoot, 512, 100, Duration.ofMinutes(10));
+    }
+}

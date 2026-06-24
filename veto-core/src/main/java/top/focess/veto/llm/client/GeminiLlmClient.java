@@ -7,33 +7,38 @@ import com.google.genai.types.GenerateContentConfig;
 import com.google.genai.types.GenerateContentResponse;
 import com.google.genai.types.Part;
 import com.google.genai.types.Schema;
+import top.focess.veto.agent.translation.CapabilityTranslator;
 import top.focess.veto.llm.core.ResolvedRequest;
 import top.focess.veto.llm.core.VetoRequest;
-import top.focess.veto.llm.schema.SchemaNormalizerService;
 
 /**
- * Adapter wrapping a Gemini {@link Client}. Uses native JSON mode with a Gemini-dialect response
- * schema. All Gemini SDK types are confined to this class.
+ * Adapter wrapping a Gemini {@link Client}. Uses native JSON mode with the per-turn {@code
+ * veto_pulse} response schema. All Gemini SDK types are confined to this class.
  */
 final class GeminiLlmClient extends LlmClient {
 
     private final Client sdkClient;
     private final ObjectMapper objectMapper;
-    private final SchemaNormalizerService schemaNormalizer;
+    private final CapabilityTranslator capabilityTranslator;
 
     GeminiLlmClient(
-            Client sdkClient, ObjectMapper objectMapper, SchemaNormalizerService schemaNormalizer) {
+            Client sdkClient,
+            ObjectMapper objectMapper,
+            CapabilityTranslator capabilityTranslator) {
         this.sdkClient = sdkClient;
         this.objectMapper = objectMapper;
-        this.schemaNormalizer = schemaNormalizer;
+        this.capabilityTranslator = capabilityTranslator;
     }
 
     @Override
     public RawCompletion complete(ResolvedRequest resolved) {
         VetoRequest request = resolved.request();
+        // The per-turn veto_pulse schema (default thought-ON, autonomous until Part 1 wires
+        // per-turn
+        // flags).
         Schema responseSchema =
                 objectMapper.convertValue(
-                        schemaNormalizer.buildGeminiResponseSchema(request.tools()), Schema.class);
+                        capabilityTranslator.vetoResponseSchema(true, false), Schema.class);
 
         GenerateContentConfig.Builder configBuilder =
                 GenerateContentConfig.builder()

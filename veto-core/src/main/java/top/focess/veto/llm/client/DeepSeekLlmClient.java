@@ -1,5 +1,6 @@
 package top.focess.veto.llm.client;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -9,11 +10,11 @@ import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import top.focess.veto.agent.translation.CapabilityTranslator;
 import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.llm.core.ResolvedRequest;
 import top.focess.veto.llm.core.VetoRequest;
 import top.focess.veto.llm.exceptions.ModelCapabilityException;
-import top.focess.veto.llm.schema.SchemaNormalizerService;
 
 /**
  * Adapter for DeepSeek and other OpenAI-compatible providers that speaks pure REST JSON — no OpenAI
@@ -31,35 +32,32 @@ final class DeepSeekLlmClient extends LlmClient {
     private final String apiKey;
     private final String providerName;
     private final ObjectMapper objectMapper;
-    private final SchemaNormalizerService schemaNormalizer;
+    private final CapabilityTranslator capabilityTranslator;
 
     DeepSeekLlmClient(
             String baseUrl,
             String apiKey,
             String providerName,
             ObjectMapper objectMapper,
-            SchemaNormalizerService schemaNormalizer) {
+            CapabilityTranslator capabilityTranslator) {
         this.baseUrl = baseUrl != null && !baseUrl.isEmpty() ? baseUrl : "https://api.deepseek.com";
         this.apiKey = apiKey;
         this.providerName = providerName;
         this.objectMapper = objectMapper;
-        this.schemaNormalizer = schemaNormalizer;
+        this.capabilityTranslator = capabilityTranslator;
     }
 
     @Override
     public RawCompletion complete(ResolvedRequest resolved) {
         VetoRequest request = resolved.request();
-        Map<String, Object> responseSchema =
-                schemaNormalizer.buildOpenAIResponseSchema(request.tools());
+        // The per-turn veto_pulse schema (default thought-ON, autonomous until Part 1 wires
+        // per-turn
+        // flags).
+        JsonNode responseSchema = capabilityTranslator.vetoResponseSchema(true, false);
 
         try {
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("model", request.modelName());
-            body.put(
-                    "messages",
-                    List.of(
-                            Map.of("role", "system", "content", request.systemPrompt()),
-                            Map.of("role", "user", "content", request.userPrompt())));
 
             // DeepSeek only supports json_object; inject schema into system prompt
             String schemaJson =

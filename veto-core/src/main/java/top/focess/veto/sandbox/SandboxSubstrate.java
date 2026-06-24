@@ -1,0 +1,57 @@
+package top.focess.veto.sandbox;
+
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.List;
+
+/**
+ * The hard backstop containment boundary + execution substrate. One contract, three
+ * implementations. Transcribed from {@code
+ * plans/mvp-core/part5_agent/container_sandbox_isolation.md} §3.
+ *
+ * <p>The Sandbox performs <b>no policy decisions</b> — path/command/network confinement
+ * <i>policy</i> belongs to the Gateway's {@code PolicyProfile} (§2). The Sandbox only enforces a
+ * blast-radius floor and runs commands inside it. File-op syscalls route through the substrate
+ * (§3.1) so file ops share the hard wall on every substrate.
+ *
+ * <p><b>MVP scope:</b> only {@link ConstrainedSubprocessSubstrate} is implemented (local default,
+ * no third-party runtime). {@link ContainerSubstrate} and {@link MicrovmSubstrate} are Phase-2
+ * stubs ({@code container_sandbox_isolation.md} §4.2/§4.3 — out of MVP scope per Feature 15.1).
+ */
+public sealed interface SandboxSubstrate
+        permits ConstrainedSubprocessSubstrate, ContainerSubstrate, MicrovmSubstrate {
+
+    /**
+     * Provision the sandbox for a session. Preflight-checks the runtime is reachable — fails fast,
+     * no silent fallback to a weaker substrate.
+     */
+    SandboxHandle provision(SandboxProfile profile);
+
+    /**
+     * Run a {@code run_command} chain. NO SHELL — argv[] direct exec. Substrate owns the wall (cwd
+     * lock, env sanitization, resource caps, network wall).
+     */
+    CommandResult runCommands(
+            SandboxHandle h, List<Command> cmds, Path cwd, ChainMode connect, Duration timeout);
+
+    /** {@code view_file} — read bytes relative to the workspace root. */
+    byte[] readFile(SandboxHandle h, Path rel);
+
+    /** {@code write_to_file} — write bytes relative to the workspace root. */
+    void writeFile(SandboxHandle h, Path rel, byte[] content);
+
+    /** {@code replace_file_content} — apply a contiguous patch relative to the workspace root. */
+    void patchFile(SandboxHandle h, Path rel, PatchSpec patch);
+
+    /** {@code list_dir} — list entries relative to the workspace root. */
+    List<Entry> listDir(SandboxHandle h, Path rel);
+
+    /** {@code grep_search} — search under a path relative to the workspace root. */
+    List<Match> grep(SandboxHandle h, Path rel, GrepSpec spec);
+
+    /** Stat a path relative to the workspace root (ReadHistory snapshots). */
+    Stat stat(SandboxHandle h, Path rel);
+
+    /** Deprovision the sandbox, releasing runtime resources. */
+    void deprovision(SandboxHandle h);
+}
