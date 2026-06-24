@@ -22,6 +22,10 @@ import top.focess.veto.agent.mcp.ToolDefinition;
  * §2.1/§2.1.2 — building it here is transcription, not a Part-5 judgment. The flat-tool translation
  * is best-effort for native/agent tools (Part 5 compiles their JSON Schema from the args class);
  * remote tools carry their raw input schema.
+ *
+ * <p><b>Temporary standalone-test stub.</b> Exists only so this worktree compiles + tests in
+ * isolation without Part 5. Part 5's real {@code CapabilityTranslator} impl wins at Phase-2 merge
+ * and this class is removed.
  */
 public class DefaultCapabilityTranslator implements CapabilityTranslator {
 

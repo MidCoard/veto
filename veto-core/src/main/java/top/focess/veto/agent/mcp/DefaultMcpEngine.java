@@ -11,6 +11,10 @@ import top.focess.veto.llm.core.ToolCall;
  * {@link #resolveDefinition} returns {@code null} (the loop surfaces a "tool not found"
  * observation), and {@link #execute} returns a failure result. This keeps the live terminal path
  * (which has no tools today) running end-to-end without depending on Part 5.
+ *
+ * <p><b>Temporary standalone-test stub.</b> Exists only so this worktree compiles + tests in
+ * isolation without Part 5. Part 5's real {@code McpEngine} impl wins at Phase-2 merge and this
+ * class is removed.
  */
 public class DefaultMcpEngine implements McpEngine {
 
