@@ -21,7 +21,7 @@ repositories {
 }
 
 dependencies {
-    implementation(project(":veto-contract"))
+    implementation(project(":veto-protocol"))
 
     // Spring Boot
     implementation("org.springframework.boot:spring-boot-starter-web")
@@ -48,7 +48,7 @@ dependencies {
     implementation("top.focess:focess-command:2.2.0")
     implementation("top.focess:focess-scheduler:2.0.0")
 
-    // ZMQ transport (shared with veto-contract)
+    // ZMQ transport (shared with veto-protocol)
     implementation("org.zeromq:jeromq:0.6.0")
 
     // Encryption

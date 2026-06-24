@@ -25,10 +25,9 @@ val slf4jVersion: String by rootProject.extra
 val logbackVersion: String by rootProject.extra
 
 dependencies {
-    // veto-contract (wire types) + veto-client-core (shared interaction protocol + palette + logging).
+    // veto-protocol (wire types + shared interaction protocol + palette + logging).
     // Deliberately NOT veto-core (no Spring).
-    implementation(project(":veto-contract"))
-    implementation(project(":veto-client-core"))
+    implementation(project(":veto-protocol"))
 
     // JLine 3 for terminal I/O, line editing, ANSI, Display
     implementation("org.jline:jline:$jlineVersion")
@@ -36,7 +35,7 @@ dependencies {
     // Mordant — rich terminal output (tables, spinners, panels, ANSI detection)
     implementation("com.github.ajalt.mordant:mordant:3.0.2")
 
-    // Logging backend — the application owns this (veto-contract depends on the SLF4J facade only).
+    // Logging backend — the application owns this (veto-protocol depends on the SLF4J facade only).
     implementation("ch.qos.logback:logback-classic:$logbackVersion")
     implementation("org.slf4j:jul-to-slf4j:$slf4jVersion")
 }
