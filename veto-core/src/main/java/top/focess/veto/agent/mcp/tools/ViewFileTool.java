@@ -14,10 +14,7 @@ import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.SecurityHint;
 import top.focess.veto.agent.mcp.ToolSecurity;
 
-/**
- * {@code view_file} — read lines of a text file from the local filesystem. {@code
- * mcp_tool_foundation.md}.
- */
+/** {@code view_file} — read lines of a text file from the local filesystem. */
 @Component
 @ToolSecurity(risk = RiskCategory.READ_ONLY)
 public final class ViewFileTool implements NativeMcpTool<ViewFileTool.Args> {

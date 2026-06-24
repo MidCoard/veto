@@ -12,7 +12,7 @@ import org.springframework.stereotype.Service;
  *
  * <p>Holds {@link SandboxHandle}s in-memory keyed by {@code sessionId} — never persisted on {@code
  * AgentEntity} (runtime resources are volatile). The substrate is the configured {@link
- * ConstrainedSubprocessSubstrate} for the MVP; Phase-2 swaps in a container/microVM substrate per
+ * ConstrainedSubprocessSubstrate} for the MVP; a container/microVM substrate may be swapped in per
  * the deployer's fixed-menu selection.
  */
 @Service

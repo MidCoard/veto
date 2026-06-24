@@ -1,9 +1,6 @@
 package top.focess.veto.agent.mcp;
 
-/**
- * What kind of danger a tool represents. Read by the Gateway ({@code Part 3.1}) to decide screening
- * level..
- */
+/** What kind of danger a tool represents. Read by the Gateway to decide screening level. */
 public enum RiskCategory {
     /** File reads, directory listing — bypass semantic screening. */
     READ_ONLY,

@@ -1,9 +1,6 @@
 package top.focess.veto.agent.skills;
 
-/**
- * Scope of a skill — where it lives and who can use it. {@code
- * plans/mvp-core/part5_agent/mcp_tool_foundation.md}.
- */
+/** Scope of a skill — where it lives and who can use it. */
 public enum SkillSourceType {
     /** Shipped with Veto. Hash pre-seeded in DB at install time. Immutable. */
     NATIVE,

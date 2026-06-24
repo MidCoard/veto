@@ -12,9 +12,7 @@ import org.springframework.stereotype.Service;
 
 /**
  * The skill registry — lookup + SHA-256 integrity verification. Returns the full {@code SKILL.md}
- * body as a tool observation on {@code load_skill}. {@code
- * plans/mvp-core/part5_agent/agent_skills_execution.md} and {@code
- * plans/mvp-core/part5_agent/mcp_tool_foundation.md}.
+ * body as a tool observation on {@code load_skill}.
  *
  * <p>Scans PERSONAL ({@code ~/.veto/skills/<name>/}) and an optional PROJECT ({@code
  * <workspace>/.veto/skills/<name>/}) directory at startup. NATIVE skills (shipped with Veto, hash

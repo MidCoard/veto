@@ -4,8 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import java.util.Map;
 
 /**
- * The parameter contract for a tool. Two flavours. {@code
- * plans/mvp-core/part5_agent/mcp_tool_foundation.md}.
+ * The parameter contract for a tool. Two flavours.
  *
  * <ul>
  *   <li>{@link Structured} — native tool, backed by a Java record. Schema and security hints are

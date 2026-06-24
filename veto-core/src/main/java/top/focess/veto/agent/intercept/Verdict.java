@@ -1,10 +1,9 @@
 package top.focess.veto.agent.intercept;
 
 /**
- * The typed result of the {@link Gateway} screen for one native/remote tool call ({@code
- * hybrid_loop_design.md} step 4b, ). Not a boolean — the {@link HitlRegistry} decides {@link
- * ApprovalDecision} from it. Agent tools never produce a verdict (they early-route past the
- * Gateway).
+ * The typed result of the {@link Gateway} screen for one native/remote tool call. Not a boolean —
+ * the {@link HitlRegistry} decides {@link ApprovalDecision} from it. Agent tools never produce a
+ * verdict (they early-route past the Gateway).
  *
  * <p>Sealed:
  *

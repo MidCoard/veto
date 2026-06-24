@@ -20,11 +20,10 @@ import top.focess.veto.llm.core.UniformLLMCaller;
  * The top orchestration layer. Creates an {@link Agent} (starting in autonomous mode by default),
  * monitors for delegation spawns ({@code create_group}), and manages the agent lifecycle.
  *
- * <p><b>MVP scope:</b> the single-agent ReAct workflow ( — one agent, one prompt). Delegation
- * spawns, the Execution DAG, the Blackboard, and group governance are <b>Phase-2</b> ({@code
- * Feature 15.2}) and are not implemented here; this class is the structural extension point for
- * them. The terminal/REST paths delegate to {@link AgentService} directly ({@code
- * prompt_compiler.md} step 2); {@code WorkflowRunner} is the programmatic entry point.
+ * <p><b>Note:</b> the single-agent ReAct workflow (one agent, one prompt). Delegation spawns, the
+ * Execution DAG, the Blackboard, and group governance are not implemented here; this class is the
+ * structural extension point for them. The terminal/REST paths delegate to {@link AgentService}
+ * directly; {@code WorkflowRunner} is the programmatic entry point.
  */
 @Component
 public class WorkflowRunner {

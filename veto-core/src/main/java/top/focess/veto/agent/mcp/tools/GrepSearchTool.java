@@ -15,10 +15,7 @@ import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.SecurityHint;
 import top.focess.veto.agent.mcp.ToolSecurity;
 
-/**
- * {@code grep_search} — search for exact pattern matches inside files. {@code
- * mcp_tool_foundation.md}.
- */
+/** {@code grep_search} — search for exact pattern matches inside files. */
 @Component
 @ToolSecurity(risk = RiskCategory.READ_ONLY)
 public final class GrepSearchTool implements NativeMcpTool<GrepSearchTool.Args> {

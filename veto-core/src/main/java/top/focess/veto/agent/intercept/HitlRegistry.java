@@ -75,7 +75,7 @@ public class HitlRegistry {
             return ApprovalDecision.AUTO_APPROVE;
         }
         // gap (noted): the SLM screening model that would produce a proper write/exec/network
-        // scenario for an otherwise-clean state-changing call is Phase-2. Under a
+        // scenario for an otherwise-clean state-changing call is not enabled. Under a
         // state-changing/networked call without a rule still parks; offered a generic set.
         return new ApprovalDecision.Prompt(
                 VetoScenario.GENERIC, optionsFor(VetoScenario.GENERIC), verdict);

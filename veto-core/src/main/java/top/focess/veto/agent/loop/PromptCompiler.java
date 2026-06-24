@@ -47,7 +47,7 @@ public class PromptCompiler {
      *
      * @param persona the agent's identity + resolved manifest + registered skills
      * @param systemPromptBase the Layer-1 base (persona identity + role + response-format rules) —
-     *     resolved from the LLM config (MVP) / {@code ~/.veto/} (Part 5)
+     *     resolved from the LLM config or {@code ~/.veto/}
      * @param history the raw, append-only turn history (oldest→newest)
      * @param effectiveThoughtFlag the effective thought flag for THIS turn (ON at a user-prompt
      *     turn)

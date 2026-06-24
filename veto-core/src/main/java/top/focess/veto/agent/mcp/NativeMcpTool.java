@@ -7,8 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  * Contract for a native in-process MCP tool. The implementing class (a Java record carrying the
  * tool's structured parameters) must be annotated with {@link ToolSecurity} to declare its risk
  * category, and each parameter record component may carry a {@link SecurityHint} so the Gateway
- * knows how to screen individual arguments. {@code
- * plans/mvp-core/part5_agent/mcp_tool_foundation.md}.
+ * knows how to screen individual arguments.
  *
  * <p>The implementing record is both the parameter container and the tool bean: {@link
  * #getArgsClass} returns the record itself, and {@link #execute(Object)} runs the tool's typed

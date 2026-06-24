@@ -23,8 +23,8 @@ import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.llm.core.VetoResponse;
 
 /**
- * Exercises the Part-1 agent loop end-to-end (AgentService → VetoAgent → AgentRunner) with a
- * scripted {@link UniformLLMCaller}, the default McpEngine/CapabilityTranslator stubs, and the real
+ * Exercises the agent loop end-to-end (AgentService → VetoAgent → AgentRunner) with a scripted
+ * {@link UniformLLMCaller}, the default McpEngine/CapabilityTranslator stubs, and the real
  * PromptCompiler / Gateway / HITL / IngressDefense. This replaces the legacy test that drove the
  * pre-in-memory {@code Agent.builder} API (now retired) and needed a live DeepSeek key; this
  * variant runs deterministically without credentials or a Spring context.

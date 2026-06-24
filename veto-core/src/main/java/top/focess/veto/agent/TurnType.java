@@ -1,8 +1,8 @@
 package top.focess.veto.agent;
 
 /**
- * The type of a {@link TurnRecord}. Drives the {@code PromptCompiler}'s role mapping ({@code
- * prompt_compiler.md} ) and the append-only audit/history view.
+ * The type of a {@link TurnRecord}. Drives the {@code PromptCompiler}'s role mapping and the
+ * append-only audit/history view.
  */
 public enum TurnType {
     /** A user prompt — the start of a fresh reasoning episode. */

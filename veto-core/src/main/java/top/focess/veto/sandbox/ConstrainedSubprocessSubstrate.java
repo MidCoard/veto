@@ -15,8 +15,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * The Veto-implemented local-default substrate — pure OS primitives, no third-party runtime. The
- * Windows-friendly MVP substrate. {@code
- * plans/mvp-core/part5_agent/container_sandbox_isolation.md}.
+ * Windows-friendly MVP substrate.
  *
  * <p><b>MVP hardening gap (noted):</b> the specifies the full hard wall — Windows restricted token
  * ({@code CreateRestrictedToken}) + ACL + Job Object; Linux namespaces + {@code pivot_root} +

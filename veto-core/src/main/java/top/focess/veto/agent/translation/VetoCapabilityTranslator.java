@@ -14,13 +14,11 @@ import top.focess.veto.agent.mcp.ToolSchemaCompiler;
 
 /**
  * Translates the unified capability manifest into provider-facing forms and emits the per-turn
- * {@code veto_pulse} response schema. Implements {@link CapabilityTranslator} (Part 5 owns it; Part
- * 1's {@code PromptCompiler} calls it). {@code
- * plans/mvp-core/part5_agent/capability_schema_translator.md} and {@code
- * plans/mvp-core/part1_loop/prompt_react_syntax.md}.
+ * {@code veto_pulse} response schema. Implements {@link CapabilityTranslator} (the translator owns
+ * it; the {@code PromptCompiler} calls it).
  *
- * <p>Two responsibilities (Q3 — translator owns both, superseding the old single-{@code call}
- * {@code SchemaNormalizerService}):
+ * <p>Two responsibilities (translator owns both, superseding the old single-{@code call} {@code
+ * SchemaNormalizerService}):
  *
  * <ol>
  *   <li>{@link #translateTools} — manifest {@link ToolDefinition} (sealed) → flat {@link
@@ -28,13 +26,13 @@ import top.focess.veto.agent.mcp.ToolSchemaCompiler;
  *       VetoRequest.tools}.
  *   <li>{@link #vetoResponseSchema} — the per-turn {@code veto_pulse} schema variant that
  *       constrains the model to a {@link top.focess.veto.llm.core.VetoResponse}, governed by the
- *       effective thought flag and guided state (the four-cell matrix, ).
+ *       effective thought flag and guided state (the four-cell matrix).
  * </ol>
  *
  * <p>The emitted schema is provider-agnostic JSON Schema (Draft 7). Provider-specific strictness
  * adaptation (OpenAI {@code strict} + {@code additionalProperties:false} injection, GBNF grammar
- * compilation) is applied at the provider/client layer (Part 1's LLM clients); this translator
- * emits the canonical shape both compile against.
+ * compilation) is applied at the provider/client layer (the LLM clients); this translator emits the
+ * canonical shape both compile against.
  */
 @Service
 public class VetoCapabilityTranslator implements CapabilityTranslator {

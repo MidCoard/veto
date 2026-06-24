@@ -37,7 +37,7 @@ import top.focess.veto.vault.CredentialVault;
  *       the agent emits to {@link VetoCommandSender#output(String)} as it streams (the emission
  *       seam), then awaits the episode result.
  *   <li>Returns the synchronous {@link IpcFrame.TerminalResponse} — {@link IpcFrame.Done} on
- *       success, {@link IpcFrame.Error} on failure — per the Part 8.2 closed-loop contract.
+ *       success, {@link IpcFrame.Error} on failure — per the closed-loop contract.
  * </ol>
  *
  * <p>Agent lifecycle (creation, eviction, termination) is owned by {@link AgentService}; this
@@ -165,11 +165,10 @@ public class PromptHandler {
      * user-facing messages to the sender as they are emitted, and returning the terminal frame.
      *
      * <p>Never returns {@code null} — always returns either {@link IpcFrame.Done} on success or
-     * {@link IpcFrame.Error} on failure. Per Part 8.2, the agent's user-facing messages are
-     * streamed as {@link IpcFrame.Delta} frames via {@link VetoCommandSender#output(String)} while
-     * the episode runs; the final {@link IpcFrame.Done} carries only session metadata (the text was
-     * already streamed). On failure the message was not streamed, so the {@link IpcFrame.Error}
-     * carries it.
+     * {@link IpcFrame.Error} on failure. The agent's user-facing messages are streamed as {@link
+     * IpcFrame.Delta} frames via {@link VetoCommandSender#output(String)} while the episode runs;
+     * the final {@link IpcFrame.Done} carries only session metadata (the text was already
+     * streamed). On failure the message was not streamed, so the {@link IpcFrame.Error} carries it.
      */
     @NotNull
     public IpcFrame.TerminalResponse handle(

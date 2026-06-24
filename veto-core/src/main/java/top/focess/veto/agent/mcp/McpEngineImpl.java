@@ -28,24 +28,23 @@ import top.focess.veto.sandbox.SandboxManager;
 
 /**
  * The MCP engine implementation — manages server registrations, schema discovery, and tool
- * dispatching. Part 5 owns this; Part 1's loop calls {@link McpEngine}'s three loop-facing methods.
- * Transcribed (implementation) from.
+ * dispatching. The loop calls {@link McpEngine}'s three loop-facing methods.
  *
- * <p>Dispatch by definition flavour :
+ * <p>Dispatch by definition flavour:
  *
  * <ul>
  *   <li><b>Native</b> — in-process {@link NativeMcpTool#execute}, EXCEPT {@code run_command} which
  *       routes through the session's {@link top.focess.veto.sandbox.SandboxSubstrate}.
  *   <li><b>Agent</b> — engine handler ({@code load_skill} → {@link SkillRegistry} hash-verify +
- *       body; {@code create_group} → Phase-2 stub).
+ *       body; {@code create_group} → not implemented).
  *   <li><b>External</b> — forwarded over the registered {@link McpTransport}.
  * </ul>
  *
- * <p>{@code registerServer} + {@code McpTransport} + {@code executeTool} are Part-5-owned
- * implementation details, intentionally absent from the shared {@link McpEngine} interface. Remote
- * tool <i>discovery</i> (JSON-RPC {@code tools/list} over a transport) is beyond the schema
- * representation and is not implemented in the MVP; remote tools are registered explicitly via
- * {@link #registerRemoteTool}.
+ * <p>{@code registerServer} + {@code McpTransport} + {@code executeTool} are implementation
+ * details, intentionally absent from the shared {@link McpEngine} interface. Remote tool
+ * <i>discovery</i> (JSON-RPC {@code tools/list} over a transport) is beyond the schema
+ * representation and is not implemented; remote tools are registered explicitly via {@link
+ * #registerRemoteTool}.
  */
 @Service
 public class McpEngineImpl implements McpEngine {
@@ -208,7 +207,7 @@ public class McpEngineImpl implements McpEngine {
         ChainMode connect = parseChainMode(args.connect());
         Path cwd = Path.of(args.cwd());
         // MVP: provision a sandbox rooted at the requested cwd. The per-session handle
-        // (keyed by agentId) is Part 1's SandboxManager provision concern.
+        // (keyed by agentId) is a SandboxManager provision concern.
         var handle = sandboxManager.provision("runcmd-" + call.callId(), cwd);
         CommandResult result =
                 sandboxManager
@@ -229,7 +228,7 @@ public class McpEngineImpl implements McpEngine {
                             call.toolName(),
                             call.callId(),
                             false,
-                            "create_group is Phase-2 (out of MVP scope).");
+                            "create_group is not available.");
             default ->
                     new McpToolResult(
                             call.toolName(),

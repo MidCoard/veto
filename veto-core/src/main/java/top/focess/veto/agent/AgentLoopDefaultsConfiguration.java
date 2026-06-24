@@ -12,14 +12,14 @@ import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.llm.config.LlmJacksonConfig;
 
 /**
- * Registers the default (Part-5-replaceable) beans the Part-1 loop depends on: a {@link
- * CapabilityTranslator} (the deterministic {@code veto_pulse} schema + flat-tool builder) and a
- * {@link McpEngine} (no-op scaffold). Both are {@code @ConditionalOnMissingBean} — Part 5's real
- * implementations override them when present.
+ * Registers the default (replaceable) beans the loop depends on: a {@link CapabilityTranslator}
+ * (the deterministic {@code veto_pulse} schema + flat-tool builder) and a {@link McpEngine} (no-op
+ * scaffold). Both are {@code @ConditionalOnMissingBean} — richer implementations override them when
+ * present.
  *
  * <p>These defaults are required so the Spring context starts and the live terminal path runs
- * end-to-end without waiting for Part 5; they do not implement Part-5's richer logic (native-tool
- * reflection, server registration, transport dispatch).
+ * end-to-end; they do not implement the richer logic (native-tool reflection, server registration,
+ * transport dispatch).
  */
 @Configuration
 public class AgentLoopDefaultsConfiguration {

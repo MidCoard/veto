@@ -42,9 +42,8 @@ final class AnthropicLlmClient extends LlmClient {
     @Override
     public RawCompletion complete(ResolvedRequest resolved) {
         VetoRequest request = resolved.request();
-        // The per-turn veto_pulse schema (default thought-ON, autonomous until Part 1 wires
-        // per-turn
-        // flags).
+        // The per-turn veto_pulse schema (default thought-ON, autonomous until per-turn flags are
+        // wired).
         JsonNode responseSchema = capabilityTranslator.vetoResponseSchema(true, false);
         Map<String, Object> inputSchema =
                 objectMapper.convertValue(

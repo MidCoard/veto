@@ -22,13 +22,12 @@ import java.util.List;
  *       thought}).
  *   <li>{@code actionsProgram} — optional; the guided-mode IR, present only when {@code
  *       features.guided=true}. Held as a raw {@link JsonNode} — the harness validates and parses it
- *       into the guided driver's typed program; the translator emits its schema from {@code
- *       prompt_react_syntax.md}.
+ *       into the guided driver's typed program; the translator emits its schema.
  * </ul>
  *
  * <p>Per-turn schema variants and harness enforcement are the {@code PromptCompiler} / loop's
- * concern (Part 1); the provider-constraining schema is the {@code CapabilityTranslator}'s concern
- * (Part 5.4). This record is the shared contract both compile against.
+ * concern; the provider-constraining schema is the {@code CapabilityTranslator}'s concern. This
+ * record is the shared contract both compile against.
  */
 public record VetoResponse(
         String thought,

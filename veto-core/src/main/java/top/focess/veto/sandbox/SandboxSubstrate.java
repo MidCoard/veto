@@ -13,9 +13,9 @@ import java.util.List;
  * blast-radius floor and runs commands inside it. File-op syscalls route through the substrate so
  * file ops share the hard wall on every substrate.
  *
- * <p><b>MVP scope:</b> only {@link ConstrainedSubprocessSubstrate} is implemented (local default,
- * no third-party runtime). {@link ContainerSubstrate} and {@link MicrovmSubstrate} are Phase-2
- * stubs ( — out of MVP scope per Feature 15.1).
+ * <p><b>Note:</b> only {@link ConstrainedSubprocessSubstrate} is implemented (local default, no
+ * third-party runtime). {@link ContainerSubstrate} and {@link MicrovmSubstrate} are stubs (not
+ * enabled).
  */
 public sealed interface SandboxSubstrate
         permits ConstrainedSubprocessSubstrate, ContainerSubstrate, MicrovmSubstrate {

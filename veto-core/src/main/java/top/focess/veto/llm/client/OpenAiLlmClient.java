@@ -49,7 +49,7 @@ final class OpenAiLlmClient extends LlmClient {
     @Override
     public RawCompletion complete(ResolvedRequest resolved) {
         VetoRequest request = resolved.request();
-        // The per-turn veto_pulse schema. Default (thought-ON, autonomous) until Part 1's
+        // The per-turn veto_pulse schema. Default (thought-ON, autonomous) until the
         // PromptCompiler passes the effective thought flag / guided state per turn.
         Map<String, Object> responseSchema =
                 objectMapper.convertValue(

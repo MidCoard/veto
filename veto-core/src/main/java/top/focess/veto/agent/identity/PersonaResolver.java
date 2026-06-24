@@ -18,9 +18,8 @@ import top.focess.veto.agent.skills.Skill;
 import top.focess.veto.agent.skills.SkillRegistry;
 
 /**
- * Resolves an agent's identity + capability manifest at session start. {@code
- * plans/mvp-core/part5_agent/agent_identity_persona.md} (name→object resolution) and (system prompt
- * location &amp; bootstrapping).
+ * Resolves an agent's identity + capability manifest at session start — name→object resolution and
+ * system prompt location &amp; bootstrapping.
  *
  * <p><b>name→object resolution.</b> The persisted whitelisted tool names + skill names are resolved
  * into full domain objects: tool names via {@link McpEngine#resolveDefinition}; skill names via

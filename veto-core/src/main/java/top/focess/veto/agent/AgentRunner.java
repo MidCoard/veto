@@ -101,8 +101,9 @@ public class AgentRunner {
 
     // User-facing message listeners (the emission seam). emitMessage notifies these so a
     // transport (the terminal PromptHandler) can forward each assistantResponse to its client as a
-    // Delta while the loop runs. Part 8's JVM EventBus + ZmqServer Delta-frame broker will sit
-    // between this seam and the wire; until then the listener is the direct handoff.
+    // Delta while the loop runs. A JVM EventBus + ZmqServer Delta-frame broker will sit between
+    // this
+    // seam and the wire; until then the listener is the direct handoff.
     private final CopyOnWriteArrayList<Consumer<String>> messageListeners =
             new CopyOnWriteArrayList<>();
 
@@ -514,7 +515,7 @@ public class AgentRunner {
                 call.toolName(),
                 p.scenario(),
                 p.options());
-        // The transport (Part 8) subscribes to this; for MVP it is logged.
+        // The transport subscribes to this; for MVP it is logged.
         // A full VETO_REQUIRED frame is emitted via the event bus in a later part.
     }
 

@@ -7,8 +7,8 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Guards the snake_case binding of the universal {@link VetoResponse} ({@code veto_pulse}) schema —
- * the Phase-0 shared contract. Verifies {@code tool_name} / {@code is_finished} / {@code features}
- * populate the record correctly.
+ * the shared contract. Verifies {@code tool_name} / {@code is_finished} / {@code features} populate
+ * the record correctly.
  */
 class VetoResponseDeserializationTest {
     private final ObjectMapper mapper = new ObjectMapper();

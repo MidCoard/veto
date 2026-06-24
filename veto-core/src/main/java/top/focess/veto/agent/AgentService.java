@@ -110,11 +110,11 @@ public class AgentService {
 
     /**
      * Synchronous submit that streams each user-facing {@code response.message} the agent emits to
-     * {@code messageSink} while the loop runs ( emission seam), then returns the final result. The
-     * sink is attached before the prompt is enqueued (no missed messages) and detached in the
-     * finally (no leak across episodes / stale senders). Part 8's JVM EventBus + ZmqServer
-     * Delta-frame broker will eventually sit between the agent and the wire; this is the direct
-     * in-process handoff for the terminal path until then.
+     * {@code messageSink} while the loop runs (the emission seam), then returns the final result.
+     * The sink is attached before the prompt is enqueued (no missed messages) and detached in the
+     * finally (no leak across episodes / stale senders). A JVM EventBus + ZmqServer Delta-frame
+     * broker will eventually sit between the agent and the wire; this is the direct in-process
+     * handoff for the terminal path until then.
      */
     public AgentResult submit(
             String agentKey,
@@ -188,7 +188,7 @@ public class AgentService {
 
     /**
      * Builds the agent persona. MVP: a default persona carrying the resolved (empty for the live
-     * terminal path) manifest + skills. Full {@code ~/.veto/} persona resolution is Part 5.
+     * terminal path) manifest + skills. Full {@code ~/.veto/} persona resolution is not yet wired.
      */
     private AgentPersona buildPersona(String agentKey, AgentRunner.LlmBinding binding) {
         return new AgentPersona(

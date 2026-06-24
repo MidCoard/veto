@@ -118,7 +118,7 @@ public class TrainingManager {
         processExecutor.submit(
                 () -> {
                     try {
-                        // Phase 1: Generate training data
+                        // Step 1: Generate training data
                         progress.updatePhase("preparing_data", 0.1, "Generating training data...");
                         if (!runPythonScript(pythonDir, "prepare_data.py")) {
                             progress.fail("Data preparation failed");
@@ -126,7 +126,7 @@ public class TrainingManager {
                             return;
                         }
 
-                        // Phase 2: Train model
+                        // Step 2: Train model
                         progress.updatePhase("training", 0.3, "Fine-tuning model (QLoRA)...");
                         Path dataPath =
                                 trainingDir.resolve("data").resolve("veto_training_data.jsonl");
@@ -149,7 +149,7 @@ public class TrainingManager {
                             return;
                         }
 
-                        // Phase 3: Convert to GGUF
+                        // Step 3: Convert to GGUF
                         progress.updatePhase("converting", 0.8, "Converting to GGUF Q4_K_M...");
                         Path mergedDir = outputDir.resolve("merged");
                         String convertArgs =
@@ -162,7 +162,7 @@ public class TrainingManager {
                             return;
                         }
 
-                        // Phase 4: Evaluate
+                        // Step 4: Evaluate
                         progress.updatePhase("evaluating", 0.9, "Evaluating trained model...");
                         Path evalDataPath =
                                 trainingDir.resolve("data").resolve("veto_eval_data.jsonl");

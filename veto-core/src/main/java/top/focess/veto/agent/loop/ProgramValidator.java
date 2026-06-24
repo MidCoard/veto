@@ -4,9 +4,8 @@ import java.util.HashSet;
 import java.util.Set;
 
 /**
- * Validates an {@link ActionsProgram} before guided mode loads it ({@code
- * workflow_execution_engine.md} ). A program that fails validation is rejected and the agent stays
- * autonomous.
+ * Validates an {@link ActionsProgram} before guided mode loads it. A program that fails validation
+ * is rejected and the agent stays autonomous.
  *
  * <ul>
  *   <li><b>(A) Static lint</b> — the final element must be {@link StopAction}.
