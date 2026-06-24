@@ -3,10 +3,10 @@ package top.focess.veto.agent.loop;
 import java.util.List;
 
 /**
- * A programmatic check over {@link Scope} vars (LLD {@code workflow_execution_engine.md} §4).
- * Executed by {@link CheckEvaluator} deterministically with <b>zero LLM calls</b> (except {@link
- * Llm}, which is one model call — a signal that the task wasn't actually predictable). {@code
- * CURRENT_STEPS} is a readable var auto-incremented by the loop.
+ * A programmatic check over {@link Scope} vars. Executed by {@link CheckEvaluator}
+ * deterministically with <b>zero LLM calls</b> (except {@link Llm}, which is one model call — a
+ * signal that the task wasn't actually predictable). {@code CURRENT_STEPS} is a readable var
+ * auto-incremented by the loop.
  */
 public sealed interface Check
         permits Check.Equals,
@@ -22,7 +22,7 @@ public sealed interface Check
     /** {@code $var == value}. */
     record Equals(String var, String value) implements Check {}
 
-    /** {@code $var != value}. */
+    /** {@code $var!= value}. */
     record NotEquals(String var, String value) implements Check {}
 
     /** {@code $var} contains {@code substring}. */

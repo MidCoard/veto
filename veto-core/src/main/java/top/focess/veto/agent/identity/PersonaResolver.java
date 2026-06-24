@@ -18,22 +18,22 @@ import top.focess.veto.agent.skills.Skill;
 import top.focess.veto.agent.skills.SkillRegistry;
 
 /**
- * Resolves an agent's identity + capability manifest at session start. Transcribed from {@code
- * plans/mvp-core/part5_agent/agent_identity_persona.md} §2.1 (name→object resolution) and §2.2
- * (system prompt location &amp; bootstrapping).
+ * Resolves an agent's identity + capability manifest at session start. {@code
+ * plans/mvp-core/part5_agent/agent_identity_persona.md} (name→object resolution) and (system prompt
+ * location &amp; bootstrapping).
  *
- * <p><b>§2.1 — name→object resolution.</b> The persisted whitelisted tool names + skill names are
- * resolved into full domain objects: tool names via {@link McpEngine#resolveDefinition}; skill
- * names via {@link SkillRegistry}. Unresolvable names are dropped and logged (the agent runs
- * without them rather than failing the session). Agent tools are always-on and runtime-excluded
- * from the resolved whitelist.
+ * <p><b>name→object resolution.</b> The persisted whitelisted tool names + skill names are resolved
+ * into full domain objects: tool names via {@link McpEngine#resolveDefinition}; skill names via
+ * {@link SkillRegistry}. Unresolvable names are dropped and logged (the agent runs without them
+ * rather than failing the session). Agent tools are always-on and runtime-excluded from the
+ * resolved whitelist.
  *
- * <p><b>§2.2 — system prompt.</b> The base system prompt is read from {@code ~/.veto/} (e.g. {@code
+ * <p><b>system prompt.</b> The base system prompt is read from {@code ~/.veto/} (e.g. {@code
  * ~/.veto/system-prompt.md} for the default agent, {@code ~/.veto/agents/<name>.md} for a named
  * pattern). On first startup, if the file does not exist, it is bootstrapped from the bundled
- * default template (§4.1) and written; the deployer may then edit it freely — subsequent startups
- * read the deployer's version verbatim and never overwrite it. It is never set via REST and never
- * persisted to the database.
+ * default template and written; the deployer may then edit it freely — subsequent startups read the
+ * deployer's version verbatim and never overwrite it. It is never set via REST and never persisted
+ * to the database.
  */
 @Service
 public class PersonaResolver {
@@ -48,15 +48,13 @@ public class PersonaResolver {
         this.skillRegistry = skillRegistry;
     }
 
-    /** The shipped default agent id/name (§4.1). */
+    /** The shipped default agent id/name. */
     public static final String DEFAULT_AGENT_ID = "VetoCoreAgent";
 
     public static final String DEFAULT_AGENT_DESCRIPTION =
             "General-purpose engineering assistant for workspace and code automation.";
 
-    /**
-     * Bundled default system prompt template (§4.1), written to {@code ~/.veto/} on first start.
-     */
+    /** Bundled default system prompt template , written to {@code ~/.veto/} on first start. */
     static final String DEFAULT_SYSTEM_PROMPT =
             """
             You are a highly efficient software engineering assistant. Your goal is to help the user \

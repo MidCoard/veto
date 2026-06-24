@@ -3,7 +3,7 @@ package top.focess.veto.sandbox;
 import java.util.List;
 
 /**
- * A search spec for {@code grep_search}. Transcribed from {@code mcp_tool_foundation.md} §10.5.
+ * A search spec for {@code grep_search}..
  *
  * @param query the exact pattern to match
  * @param caseInsensitive whether to match case-insensitively

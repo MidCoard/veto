@@ -14,11 +14,11 @@ import top.focess.veto.contract.IpcFrame;
 import top.focess.veto.contract.IpcMeta;
 
 /**
- * The shared client interaction protocol — the closed-loop state machine from the IPC interaction
- * LLD (§6). Both client applications feed it user input ({@link #submit}, {@link #cancel}) and
- * inbound frames ({@link #onFrame}); it drives rendering back through {@link ClientView}.
+ * The shared client interaction protocol — the closed-loop state machine from the IPC interaction.
+ * Both client applications feed it user input ({@link #submit}, {@link #cancel}) and inbound frames
+ * ({@link #onFrame}); it drives rendering back through {@link ClientView}.
  *
- * <h3>States (§6)</h3>
+ * <h3>States </h3>
  *
  * <ul>
  *   <li><b>{@code IDLE}</b> — no command in flight.
@@ -27,10 +27,10 @@ import top.focess.veto.contract.IpcMeta;
  *       IpcFrame.Input}.
  * </ul>
  *
- * <p>The inbound table (§6.1) is a <b>state × frame</b> matrix — every cell is defined. At {@code
- * IDLE}, streaming frames ({@link IpcFrame.Delta}/{@link IpcFrame.Progress}/{@link
- * IpcFrame.Prompt}) are <b>rejected + logged</b> (an orphan: under 1:1 a streaming frame belongs to
- * the in-flight command, and at {@code IDLE} none is in flight); the terminal frames ({@link
+ * <p>The inbound table is a <b>state × frame</b> matrix — every cell is defined. At {@code IDLE},
+ * streaming frames ({@link IpcFrame.Delta}/{@link IpcFrame.Progress}/{@link IpcFrame.Prompt}) are
+ * <b>rejected + logged</b> (an orphan: under 1:1 a streaming frame belongs to the in-flight
+ * command, and at {@code IDLE} none is in flight); the terminal frames ({@link
  * IpcFrame.Done}/{@link IpcFrame.Error}) are tolerated (a cancel racing a normal completion can
  * deliver a duplicate terminal frame) — {@code Done} applies meta, {@code Error} displays, and the
  * state stays {@code IDLE}. {@link IpcFrame.Terminate} tears down from any state.
@@ -49,7 +49,7 @@ import top.focess.veto.contract.IpcMeta;
  * {@link top.focess.veto.contract.IpcClient} and does the send. This keeps the core free of the
  * transport and avoids holding the monitor across a bounded-outbox {@code offer}.
  *
- * <h3>Routing on the authoritative atomic op (§6.3)</h3>
+ * <h3>Routing on the authoritative atomic op </h3>
  *
  * <p>{@link #submit} routes a line on its own return — it checks state and acts under one lock, so
  * the returned frame is the source of truth (Input / Request / null=discard). A snapshot captured
@@ -61,7 +61,7 @@ public final class ClientSession {
 
     private static final Logger log = LoggerFactory.getLogger(ClientSession.class);
 
-    /** Session interaction state (§6) — IDLE / RUNNING / PROMPTED. */
+    /** Session interaction state — IDLE / RUNNING / PROMPTED. */
     public enum State {
         IDLE,
         RUNNING,
@@ -77,11 +77,11 @@ public final class ClientSession {
      * state, the active server prompt (when {@link State#PROMPTED}), and the username (to pick the
      * logged-in/out prompt marker).
      *
-     * <p>Captured atomically by {@link #promptView()} so the three fields describe a single
-     * consistent moment. Reading them via separate {@code state()} / {@code activePrompt()} calls
-     * would be a time-of-check/time-of-use race — the consumer thread can transition the state
-     * machine (e.g. a {@link IpcFrame.Prompt} arriving) between the reads, so the renderer could
-     * act on a {@code state} and an {@code activePrompt} that never coexisted.
+     * <p>Captured atomically by {@link #promptView} so the three fields describe a single
+     * consistent moment. Reading them via separate {@code state} / {@code activePrompt} calls would
+     * be a time-of-check/time-of-use race — the consumer thread can transition the state machine
+     * (e.g. a {@link IpcFrame.Prompt} arriving) between the reads, so the renderer could act on a
+     * {@code state} and an {@code activePrompt} that never coexisted.
      */
     public record PromptView(
             @NotNull State state,
@@ -92,11 +92,11 @@ public final class ClientSession {
      * Immutable snapshot of everything the status bar renders at one instant: session metadata and
      * the pending-request queue.
      *
-     * <p>Captured atomically by {@link #statusView()} so the username and the queue describe the
-     * same moment. Reading them via separate {@code snapshot()} / {@code pendingQueue()} calls
-     * would let the consumer thread mutate the session between the reads (a {@link IpcFrame.Done}
-     * changing the username, or a {@code submit} adding to the queue), so the bar could show a
-     * username and a queue that never coexisted.
+     * <p>Captured atomically by {@link #statusView} so the username and the queue describe the same
+     * moment. Reading them via separate {@code snapshot} / {@code pendingQueue} calls would let the
+     * consumer thread mutate the session between the reads (a {@link IpcFrame.Done} changing the
+     * username, or a {@code submit} adding to the queue), so the bar could show a username and a
+     * queue that never coexisted.
      */
     public record StatusView(
             @Nullable String username, int turnCount, @NotNull List<String> pending) {}
@@ -116,8 +116,8 @@ public final class ClientSession {
     }
 
     /**
-     * User submitted a line (§6.2 outbound). Routes on the live state under one lock and returns
-     * the frame to send:
+     * User submitted a line ( outbound). Routes on the live state under one lock and returns the
+     * frame to send:
      *
      * <ul>
      *   <li>{@code PROMPTED} → send {@link IpcFrame.Input} (prompt reply); → {@code RUNNING}.
@@ -127,7 +127,7 @@ public final class ClientSession {
      *       completes).
      * </ul>
      *
-     * <p><b>Stale-reply rule (§6.3):</b> a line is only an {@code Input} while the state is {@code
+     * <p><b>Stale-reply rule :</b> a line is only an {@code Input} while the state is {@code
      * PROMPTED} at the moment of this call. If a terminal frame resolved the prompt between the
      * render snapshot and this call, the state is no longer {@code PROMPTED} and the line is
      * treated as a new command (or enqueued) — it is never silently sent as a stale {@code Input}.
@@ -163,17 +163,17 @@ public final class ClientSession {
     }
 
     /**
-     * Cancels the in-flight command (§6.2, §8). Returns a {@link IpcFrame.Cancel}; the state stays
-     * {@code RUNNING} awaiting the command's terminal frame (the real {@link IpcFrame.Done}/{@link
+     * Cancels the in-flight command. Returns a {@link IpcFrame.Cancel}; the state stays {@code
+     * RUNNING} awaiting the command's terminal frame (the real {@link IpcFrame.Done}/{@link
      * IpcFrame.Error}, or {@code Done{cancelled}} if the cancel produced one), after which
      * dispatch-next-or-idle runs the next queued request or goes {@code IDLE}.
      *
-     * <p>The pending-request queue is <b>preserved</b> (§8: dispatch-next-or-idle may still
-     * dispatch a queued request after the cancelled command's terminal frame) — cancelling one
-     * command does not drop the rest of the queue. A {@code PROMPTED} prompt is cleared.
+     * <p>The pending-request queue is <b>preserved</b> (: dispatch-next-or-idle may still dispatch
+     * a queued request after the cancelled command's terminal frame) — cancelling one command does
+     * not drop the rest of the queue. A {@code PROMPTED} prompt is cleared.
      *
-     * <p>Returns {@code null} when idle with an empty queue — a shutdown signal (§6.2 IDLE × cancel
-     * = shutdown); the caller exits / enqueues a shutdown event.
+     * <p>Returns {@code null} when idle with an empty queue — a shutdown signal ( IDLE × cancel =
+     * shutdown); the caller exits / enqueues a shutdown event.
      *
      * @return the Cancel frame, or {@code null} to signal shutdown
      */
@@ -187,7 +187,7 @@ public final class ClientSession {
             }
             boolean wasPrompted = state == State.PROMPTED;
             activePrompt = null;
-            state = State.RUNNING; // await the command's terminal frame (§8)
+            state = State.RUNNING; // await the command's terminal frame
             if (wasPrompted) {
                 events.add(view::onRunning);
             }
@@ -198,7 +198,7 @@ public final class ClientSession {
     }
 
     /**
-     * Processes an inbound server frame per the §6.1 state × frame matrix: updates state, applies
+     * Processes an inbound server frame per the state × frame matrix: updates state, applies
      * metadata, dispatches the next queued request or goes idle, and emits render events.
      *
      * <p>{@link IpcFrame.Done} applies meta (and transitions) but never displays content — command
@@ -255,7 +255,7 @@ public final class ClientSession {
                     }
                     if (state == State.IDLE) {
                         // A late/duplicate completion (cancel racing normal completion): apply
-                        // meta and stay IDLE — no dispatch, no display (§6.1).
+                        // meta and stay IDLE — no dispatch, no display.
                     } else {
                         if (state == State.PROMPTED) {
                             activePrompt = null; // clear the prompt the terminal frame resolved
@@ -266,7 +266,7 @@ public final class ClientSession {
                 case IpcFrame.Error e -> {
                     events.add(() -> view.onError(StyledText.error("Error: " + e.content())));
                     if (state == State.IDLE) {
-                        // Display and stay IDLE (§6.1).
+                        // Display and stay IDLE.
                     } else {
                         if (state == State.PROMPTED) {
                             activePrompt = null;
@@ -302,7 +302,7 @@ public final class ClientSession {
     }
 
     /**
-     * Dispatches the next queued request (→ {@code RUNNING}) or goes {@code IDLE} (§6.1
+     * Dispatches the next queued request (→ {@code RUNNING}) or goes {@code IDLE} (
      * dispatch-next-or-idle). Must hold {@link #lock}.
      *
      * @param events the event list to append a state-transition signal to
@@ -387,8 +387,8 @@ public final class ClientSession {
 
     /**
      * Atomic snapshot for prompt rendering — see {@link PromptView}. Use this instead of separate
-     * {@code state()} / {@code activePrompt()} reads when the caller renders a prompt from the
-     * session state, so the state and the active prompt describe the same moment.
+     * {@code state} / {@code activePrompt} reads when the caller renders a prompt from the session
+     * state, so the state and the active prompt describe the same moment.
      */
     @NotNull
     public PromptView promptView() {
@@ -406,8 +406,8 @@ public final class ClientSession {
 
     /**
      * Atomic snapshot for status-bar rendering — see {@link StatusView}. Use this instead of
-     * separate {@code snapshot()} / {@code pendingQueue()} reads so the username and the queue
-     * describe the same moment.
+     * separate {@code snapshot} / {@code pendingQueue} reads so the username and the queue describe
+     * the same moment.
      */
     @NotNull
     public StatusView statusView() {

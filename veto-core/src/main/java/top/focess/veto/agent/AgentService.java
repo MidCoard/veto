@@ -29,10 +29,10 @@ import top.focess.veto.llm.config.LlmJacksonConfig;
 import top.focess.veto.llm.core.UniformLLMCaller;
 
 /**
- * The shared agent service (LLD {@code agent_class_design.md} "Multi-Client Unification"). Both the
- * ZMQ terminal ({@code PromptHandler}) and the REST controllers are thin facades that delegate here
- * — loop execution is hosted exclusively in {@code veto-core}, asynchronously on virtual threads
- * via {@link AgentRunner} managed per {@link VetoAgent}.
+ * The shared agent service ("Multi-Client Unification"). Both the ZMQ terminal ({@code
+ * PromptHandler}) and the REST controllers are thin facades that delegate here — loop execution is
+ * hosted exclusively in {@code veto-core}, asynchronously on virtual threads via {@link
+ * AgentRunner} managed per {@link VetoAgent}.
  *
  * <p>Resolves (or creates) an agent per transport identity, binds its model configuration, submits
  * a prompt, and blocks for the result. Owns agent lifecycle + veto resolution.
@@ -109,12 +109,12 @@ public class AgentService {
     }
 
     /**
-     * Synchronous submit that streams each user-facing {@code response.message()} the agent emits
-     * to {@code messageSink} while the loop runs (LLD {@code prompt_compiler.md} §6 emission seam),
-     * then returns the final result. The sink is attached before the prompt is enqueued (no missed
-     * messages) and detached in the finally (no leak across episodes / stale senders). Part 8's JVM
-     * EventBus + ZmqServer Delta-frame broker will eventually sit between the agent and the wire;
-     * this is the direct in-process handoff for the terminal path until then.
+     * Synchronous submit that streams each user-facing {@code response.message} the agent emits to
+     * {@code messageSink} while the loop runs ( emission seam), then returns the final result. The
+     * sink is attached before the prompt is enqueued (no missed messages) and detached in the
+     * finally (no leak across episodes / stale senders). Part 8's JVM EventBus + ZmqServer
+     * Delta-frame broker will eventually sit between the agent and the wire; this is the direct
+     * in-process handoff for the terminal path until then.
      */
     public AgentResult submit(
             String agentKey,

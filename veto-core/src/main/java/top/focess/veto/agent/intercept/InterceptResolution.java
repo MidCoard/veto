@@ -4,9 +4,8 @@ import java.util.Map;
 
 /**
  * The user's resolution of a veto pause, delivered via the veto endpoint and used to complete the
- * parked {@link java.util.concurrent.CompletableFuture} (LLD {@code hybrid_loop_design.md} §4.3.1,
- * {@code loop_interception_drift.md} §3.6). For {@link VetoOption#EDIT} the user rewrites the
- * call's args; the loop re-screens the edited call before executing.
+ * parked {@link java.util.concurrent.CompletableFuture}. For {@link VetoOption#EDIT} the user
+ * rewrites the call's args; the loop re-screens the edited call before executing.
  *
  * @param option the chosen resolution option
  * @param editedArgs the user-overridden args (non-null only for {@link VetoOption#EDIT})

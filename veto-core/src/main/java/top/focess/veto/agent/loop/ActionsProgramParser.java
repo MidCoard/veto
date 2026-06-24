@@ -8,9 +8,8 @@ import java.util.Map;
 
 /**
  * Parses the raw {@code actionsProgram} {@link JsonNode} (emitted by the agent) into a typed {@link
- * ActionsProgram} (LLD {@code prompt_react_syntax.md} §2.4). Each action element carries a {@code
- * type} discriminator. The result is validated by {@link ProgramValidator} before guided mode loads
- * it.
+ * ActionsProgram}. Each action element carries a {@code type} discriminator. The result is
+ * validated by {@link ProgramValidator} before guided mode loads it.
  */
 public final class ActionsProgramParser {
 

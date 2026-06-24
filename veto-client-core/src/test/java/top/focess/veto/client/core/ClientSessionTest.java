@@ -11,7 +11,7 @@ import top.focess.veto.contract.IpcFrame;
 import top.focess.veto.contract.IpcMeta;
 
 /**
- * Direct, deterministic tests of {@link ClientSession}'s protocol logic — one per cell of the §6
+ * Direct, deterministic tests of {@link ClientSession}'s protocol logic — one per cell of the
  * interaction matrices. The session is transport-agnostic (fed frames via {@link
  * ClientSession#onFrame}, returns frames via {@link ClientSession#submit}/{@link
  * ClientSession#cancel}), so no ZMQ or {@link top.focess.veto.contract.IpcClient} is needed — a
@@ -74,7 +74,7 @@ class ClientSessionTest {
         }
     }
 
-    // ═══ §6.2 outbound: submit ════════════════════════════════════════════
+    // ═══ outbound: submit ════════════════════════════════════════════
 
     @Test
     void submitFromIdleDispatchesRequestAndTransitionsToRunning() {
@@ -124,9 +124,9 @@ class ClientSessionTest {
 
     @Test
     void submitAfterPromptResolvedDiscardsStaleReply() {
-        // §6.3 stale-reply rule: a line typed for a Prompt that has already resolved (a terminal
+        // stale-reply rule: a line typed for a Prompt that has already resolved (a terminal
         // frame raced the reply) is treated as a NEW command (or enqueued) — never sent as a stale
-        // Input. submit() routes on the live state, so a reply typed after the prompt vanished
+        // Input. submit routes on the live state, so a reply typed after the prompt vanished
         // becomes a Request, not an Input.
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
@@ -146,7 +146,7 @@ class ClientSessionTest {
         assertEquals(ClientSession.State.RUNNING, s.state());
     }
 
-    // ═══ §6.2 outbound: cancel ════════════════════════════════════════════
+    // ═══ outbound: cancel ════════════════════════════════════════════
 
     @Test
     void cancelFromIdleReturnsNullAsShutdownSignal() {
@@ -159,7 +159,7 @@ class ClientSessionTest {
 
     @Test
     void cancelFromRunningReturnsCancelAndPreservesQueue() {
-        // §8: cancelling the in-flight command preserves the pending queue — dispatch-next-or-idle
+        // : cancelling the in-flight command preserves the pending queue — dispatch-next-or-idle
         // may still dispatch a queued request after the cancelled command's terminal frame.
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
@@ -189,7 +189,7 @@ class ClientSessionTest {
         assertEquals(ClientSession.State.RUNNING, s.state());
     }
 
-    // ═══ §6.1 inbound: IDLE ═══════════════════════════════════════════════
+    // ═══ inbound: IDLE ═══════════════════════════════════════════════
 
     @Test
     void idleRejectsOrphanDeltaWithoutDisplay() {
@@ -231,7 +231,7 @@ class ClientSessionTest {
 
     @Test
     void idleDoneAppliesMetaAndStaysIdle() {
-        // §6.1 IDLE × Done: a late/duplicate completion applies meta and stays IDLE — no display.
+        // IDLE × Done: a late/duplicate completion applies meta and stays IDLE — no display.
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
 
@@ -241,7 +241,7 @@ class ClientSessionTest {
         assertNull(f);
         assertEquals(ClientSession.State.IDLE, s.state());
         assertEquals("alice", s.snapshot().username());
-        // Done never displays content (§6.1) — no done event exists.
+        // Done never displays content — no done event exists.
         assertFalse(v.events.stream().anyMatch(e -> e.startsWith("done:")));
     }
 
@@ -257,7 +257,7 @@ class ClientSessionTest {
         assertTrue(v.events.contains("error:Error: late"));
     }
 
-    // ═══ §6.1 inbound: RUNNING ════════════════════════════════════════════
+    // ═══ inbound: RUNNING ════════════════════════════════════════════
 
     @Test
     void runningDeltaDisplays() {
@@ -311,7 +311,7 @@ class ClientSessionTest {
         assertEquals(ClientSession.State.RUNNING, s.state());
         assertTrue(v.events.contains("meta:alice/0/null"));
         assertTrue(v.events.contains("running"));
-        // The auto-dispatched queued command echoes onCommandDispatched (§6.1
+        // The auto-dispatched queued command echoes onCommandDispatched (
         // dispatch-next-or-idle).
         assertTrue(v.events.contains("dispatched:second"));
         // Done never displays content — no done event.
@@ -381,7 +381,7 @@ class ClientSessionTest {
         assertTrue(v.events.contains("error:Error: boom"));
     }
 
-    // ═══ §6.1 inbound: PROMPTED ═══════════════════════════════════════════
+    // ═══ inbound: PROMPTED ═══════════════════════════════════════════
 
     @Test
     void promptedDeltaDisplays() {
@@ -428,7 +428,7 @@ class ClientSessionTest {
         assertInstanceOf(IpcFrame.Request.class, f);
         assertEquals("second", ((IpcFrame.Request) f).raw());
         assertEquals(ClientSession.State.RUNNING, s.state());
-        // The prompt the terminal frame resolved must be cleared (§6.1 PROMPTED × Done).
+        // The prompt the terminal frame resolved must be cleared ( PROMPTED × Done).
         assertNull(s.promptView().activePrompt());
         assertEquals("alice", s.snapshot().username());
     }
@@ -462,11 +462,11 @@ class ClientSessionTest {
         assertInstanceOf(IpcFrame.Request.class, f);
         assertEquals("second", ((IpcFrame.Request) f).raw());
         assertEquals(ClientSession.State.RUNNING, s.state());
-        assertNull(s.promptView().activePrompt()); // cleared (§6.1 PROMPTED × Error)
+        assertNull(s.promptView().activePrompt()); // cleared (PROMPTED × Error)
         assertTrue(v.events.contains("error:Error: boom"));
     }
 
-    // ═══ §6.1 inbound: Terminate (any state) ═══════════════════════════════
+    // ═══ inbound: Terminate (any state) ═══════════════════════════════
 
     @Test
     void terminateFiresTerminateAndClearsPrompt() {

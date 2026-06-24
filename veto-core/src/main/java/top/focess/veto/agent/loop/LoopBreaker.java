@@ -1,10 +1,10 @@
 package top.focess.veto.agent.loop;
 
 /**
- * The single-agent circuit breaker (LLD {@code single_agent_breaker.md}). One metric: <b>model
- * calls between two {@code UserPromptAction}s</b> (a model call = one {@code VetoResponse} in
- * autonomous mode, one {@code generate} action in guided mode; {@code tool}/{@code goto}/{@code
- * conditional_goto}/{@code STOP} are zero-call and don't increment). Per-episode, self-count only.
+ * The single-agent circuit breaker. One metric: <b>model calls between two {@code
+ * UserPromptAction}s</b> (a model call = one {@code VetoResponse} in autonomous mode, one {@code
+ * generate} action in guided mode; {@code tool}/{@code goto}/{@code conditional_goto}/{@code STOP}
+ * are zero-call and don't increment). Per-episode, self-count only.
  *
  * <p>On a trip the agent transitions to {@code IDLE} (a trip is exactly an idle — not a distinct
  * state) and emits a notice; resumption is just a {@code UserPromptAction} ("continue"), which
@@ -47,7 +47,7 @@ public final class LoopBreaker {
         return maxCallsPerEpisode;
     }
 
-    /** The notice emitted on a trip (LLD §4). */
+    /** The notice emitted on a trip. */
     public static String tripNotice() {
         return "The agent auto-stopped due to many calls (episode limit reached). To continue, enter"
                 + " 'continue'. To run without limitation, configure the calls limit to infinite.";

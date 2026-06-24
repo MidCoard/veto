@@ -53,10 +53,8 @@ import top.focess.veto.llm.exceptions.ModelSchemaException;
 
 /**
  * The execution engine — the ReAct loop running in one of two modes (guided or autonomous) on the
- * agent's virtual thread (LLD {@code hybrid_loop_design.md} §3, {@code
- * workflow_execution_engine.md} §2). Owned by {@link VetoAgent}; never exposed to
- * workflows/transports. The code is synchronous-style while physically non-blocking on Java 21
- * virtual threads.
+ * agent's virtual thread. Owned by {@link VetoAgent}; never exposed to workflows/transports. The
+ * code is synchronous-style while physically non-blocking on Java 21 virtual threads.
  *
  * <p>Autonomous: think → act → observe → assess, full reasoning each step. Guided: drives a typed
  * actions program (IR) — {@code tool} actions may skip the model call; {@code generate} is the only
@@ -101,7 +99,7 @@ public class AgentRunner {
     private Consumer<AgentResult> callback;
     private volatile boolean sessionAlive = true;
 
-    // User-facing message listeners (the §6 emission seam). emitMessage notifies these so a
+    // User-facing message listeners (the emission seam). emitMessage notifies these so a
     // transport (the terminal PromptHandler) can forward each assistantResponse to its client as a
     // Delta while the loop runs. Part 8's JVM EventBus + ZmqServer Delta-frame broker will sit
     // between this seam and the wire; until then the listener is the direct handoff.
@@ -183,7 +181,7 @@ public class AgentRunner {
     // ── Episode setup + autonomous loop ─────────────────────────────────────
 
     private void processUserPrompt(String prompt) {
-        // Fresh UserPromptAction: reset guided/features, force effective thought ON (§3.3).
+        // Fresh UserPromptAction: reset guided/features, force effective thought ON.
         appendTurn(TurnRecord.userPrompt(++turnNumber, prompt));
         this.guided = false;
         this.activeProgram = null;
@@ -364,7 +362,7 @@ public class AgentRunner {
             try {
                 response = caller.call(request);
             } catch (LlmException e) {
-                // LLM failure → record error, break the loop (§4.2 table: LLM Error → IDLE).
+                // LLM failure → record error, break the loop ( table: LLM Error → IDLE).
                 appendObservation("llm_error", e.getMessage());
                 this.state = AgentState.IDLE;
                 throw e;
@@ -403,7 +401,7 @@ public class AgentRunner {
                 compiled.responseSchema());
     }
 
-    // ── executeToolCalls — the canonical chain (§3.2.1) ─────────────────────
+    // ── executeToolCalls — the canonical chain ─────────────────────
 
     private void executeToolCalls(List<ToolCall> calls) {
         transitionTo(AgentState.WAITING);
@@ -536,7 +534,7 @@ public class AgentRunner {
     private void emitMessage(String message) {
         appendTurn(TurnRecord.assistantResponse(++turnNumber, message));
         lastMessage = message;
-        // §6 emission seam: forward each user-facing message to subscribed transports so they
+        // emission seam: forward each user-facing message to subscribed transports so they
         // stream it while the loop runs (the terminal PromptHandler forwards as a Delta). Part
         // 8's JVM EventBus + ZmqServer broker will sit between this seam and the wire.
         if (!messageListeners.isEmpty()) {
@@ -620,7 +618,7 @@ public class AgentRunner {
     }
 
     /**
-     * Subscribes a user-facing-message listener (the §6 emission seam; forwarded in {@link
+     * Subscribes a user-facing-message listener (the emission seam; forwarded in {@link
      * #emitMessage}).
      */
     public void addMessageListener(Consumer<String> listener) {
@@ -641,7 +639,7 @@ public class AgentRunner {
         try {
             return f.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
         } catch (java.util.concurrent.ExecutionException e) {
-            // The runner completes the future normally via complete() (never exceptionally); an
+            // The runner completes the future normally via complete (never exceptionally); an
             // exceptional completion here is unexpected — surface its cause.
             Throwable cause = e.getCause() != null ? e.getCause() : e;
             throw new RuntimeException("Agent task completed exceptionally", cause);

@@ -10,7 +10,7 @@ import top.focess.command.CommandSender;
 import top.focess.command.DataConverter;
 
 /**
- * Base command for the Veto terminal. All commands extend this and override {@link #init()} to
+ * Base command for the Veto terminal. All commands extend this and override {@link #init} to
  * register executors via {@link #addExecutor}.
  *
  * <h3>Convenience factories</h3>

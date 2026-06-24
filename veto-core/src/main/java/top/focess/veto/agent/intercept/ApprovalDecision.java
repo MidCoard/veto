@@ -4,8 +4,7 @@ import java.util.List;
 
 /**
  * The {@link HitlRegistry}'s decision for one tool call, computed from the {@link Verdict} plus the
- * auto-approval policy and Session Rules (LLD {@code hybrid_loop_design.md} §4.3). Only on {@link
- * Prompt} does a veto pause happen.
+ * auto-approval policy and Session Rules. Only on {@link Prompt} does a veto pause happen.
  *
  * <p>Sealed:
  *

@@ -4,8 +4,8 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * A fully-bound deterministic tool action (LLD {@code workflow_execution_engine.md} §3.1). Runs
- * with <b>no model call</b> — the harness has the tool name, bound inputs, and output bindings.
+ * A fully-bound deterministic tool action. Runs with <b>no model call</b> — the harness has the
+ * tool name, bound inputs, and output bindings.
  */
 public record ToolAction(
         String id,

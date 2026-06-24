@@ -36,10 +36,10 @@ import org.zeromq.ZContext;
  * <h3>Improvements over {@code ZmqClient}</h3>
  *
  * <ul>
- *   <li>Seq numbers come from {@link SeqCorrelator#next()} as the single source, so the handshake
+ *   <li>Seq numbers come from {@link SeqCorrelator#next} as the single source, so the handshake
  *       (seq 1) and the first user request (seq 2) no longer collide.
  *   <li>The negotiated {@link IpcFrame.Welcome} version is validated.
- *   <li>{@link #close()} flushes the outbox (the final IO-loop drain sends the pending {@link
+ *   <li>{@link #close} flushes the outbox (the final IO-loop drain sends the pending {@link
  *       IpcFrame.Bye}) before teardown, so goodbye is not lost.
  *   <li>The outbox is bounded with an explicit drop-on-full policy.
  *   <li>Connect-once semantics: a transport error logs, closes, and the connection is dead. There
@@ -175,7 +175,7 @@ public final class IpcClient implements AutoCloseable {
             drainOutbox();
         } catch (Throwable t) {
             // Connect-once: a transport error is fatal. Log it, mark closed, and let the finally
-            // close the transport. Callers observe this via isClosed() / receive() returning null.
+            // close the transport. Callers observe this via isClosed / receive returning null.
             // (No silent mid-session reconnect: re-handshake belongs in the channel/tunnel; a fresh
             // session belongs to the application.)
             if (!closed) {
@@ -239,7 +239,7 @@ public final class IpcClient implements AutoCloseable {
      * close between the check and the enqueue), so it would only narrow the race window while
      * implying a guarantee that doesn't hold. The contract is single-ownership — the owner stops
      * using the connection before closing it. Best-effort status is available via {@link
-     * #isClosed()}.
+     * #isClosed}.
      *
      * @param frame the client frame to send
      */
@@ -338,7 +338,7 @@ public final class IpcClient implements AutoCloseable {
      * <p>Called from the owning (application) thread, never the IO thread — the IO loop's {@code
      * finally} closes the transport, not this. If that invariant is ever broken and the IO thread
      * does reach here, the {@code ioThread.join} self-joins (times out after 2 s), {@code
-     * ctx.close()} runs, and the resumed loop's final drain logs a send failure — surfaced, not
+     * ctx.close} runs, and the resumed loop's final drain logs a send failure — surfaced, not
      * silent. No guard for it: it guards an unreachable path, and a guard here would be the same
      * speculative defense we removed elsewhere.
      */

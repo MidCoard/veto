@@ -3,9 +3,9 @@ package top.focess.veto.agent.loop;
 import java.util.regex.Pattern;
 
 /**
- * Evaluates a {@link Check} over {@link Scope} vars deterministically, with zero LLM calls (LLD
- * {@code workflow_execution_engine.md} §4). {@link Check.Llm} is the single exception — one model
- * call — and is not evaluated here (the loop handles it).
+ * Evaluates a {@link Check} over {@link Scope} vars deterministically, with zero LLM calls. {@link
+ * Check.Llm} is the single exception — one model call — and is not evaluated here (the loop handles
+ * it).
  */
 public final class CheckEvaluator {
 

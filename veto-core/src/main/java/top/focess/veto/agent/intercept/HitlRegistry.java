@@ -12,13 +12,12 @@ import top.focess.veto.agent.mcp.ToolDefinition;
 import top.focess.veto.llm.core.ToolCall;
 
 /**
- * The single human-in-the-loop registry (LLD {@code hybrid_loop_design.md} §4.3, {@code
- * loop_interception_drift.md} §2.2). Owns three responsibilities:
+ * The single human-in-the-loop registry. Owns three responsibilities:
  *
  * <ol>
- *   <li>{@link #decide} — apply the auto-approval policy (§4.3.4) + Session Rules (§4.3.3) to a
- *       {@link Verdict} → {@link ApprovalDecision}. READ_ONLY + no flag → auto-proceed; a matching
- *       Session Rule → auto-approved (still re-checked: {@link Verdict.Blocked} is never approved).
+ *   <li>{@link #decide} — apply the auto-approval policy + Session Rules to a {@link Verdict} →
+ *       {@link ApprovalDecision}. READ_ONLY + no flag → auto-proceed; a matching Session Rule →
+ *       auto-approved (still re-checked: {@link Verdict.Blocked} is never approved).
  *   <li>{@link #register} / {@link #await} — park the agent's virtual thread on a {@link
  *       CompletableFuture} keyed by {@code (agentId, callId)} (the Loom yield).
  *   <li>{@link #resolve} — complete the future with the user's {@link InterceptResolution}; on
@@ -48,7 +47,7 @@ public class HitlRegistry {
      */
     public ApprovalDecision decide(
             String agentId, ToolCall call, ToolDefinition def, Verdict verdict) {
-        // Blocked is never auto-approved, regardless of session rules (§4.3.3).
+        // Blocked is never auto-approved, regardless of session rules.
         if (verdict instanceof Verdict.Blocked b) {
             return new ApprovalDecision.AutoBlock(b.reason());
         }
@@ -75,8 +74,8 @@ public class HitlRegistry {
         if (matchesSessionRule(agentId, call)) {
             return ApprovalDecision.AUTO_APPROVE;
         }
-        // LLD gap (noted): the SLM screening model that would produce a proper write/exec/network
-        // scenario for an otherwise-clean state-changing call is Phase-2. Under §4.3.4 a
+        // gap (noted): the SLM screening model that would produce a proper write/exec/network
+        // scenario for an otherwise-clean state-changing call is Phase-2. Under a
         // state-changing/networked call without a rule still parks; offered a generic set.
         return new ApprovalDecision.Prompt(
                 VetoScenario.GENERIC, optionsFor(VetoScenario.GENERIC), verdict);

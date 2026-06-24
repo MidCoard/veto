@@ -18,13 +18,13 @@ import org.slf4j.LoggerFactory;
  * await/cleanup were scattered across {@code send}, {@code route}, and {@code receive}.
  * Centralizing them makes the correlation logic unit-testable without a socket and eliminates the
  * seq-1 overlap between the handshake and the first request: the handshake now draws its seq from
- * {@link #next()} like every other request, so the first user request gets {@code 2}, not a reused
+ * {@link #next} like every other request, so the first user request gets {@code 2}, not a reused
  * {@code 1}.
  *
  * <h2>Lifecycle of a sequenced exchange</h2>
  *
  * <ol>
- *   <li>{@link #next()} allocates a monotonic seq.
+ *   <li>{@link #next} allocates a monotonic seq.
  *   <li>{@link #register(long)} creates a single-slot queue for the expected response (called
  *       before the request is sent, so a fast response is never missed).
  *   <li>The IO loop calls {@link #deliver(IpcFrame.SeqResponse)} for each incoming sequenced

@@ -1,8 +1,8 @@
 package top.focess.veto.agent.mcp;
 
 /**
- * What category of security check a tool parameter requires. Transcribed from {@code
- * plans/mvp-core/part5_agent/mcp_tool_foundation.md} §6.1.
+ * What category of security check a tool parameter requires. {@code
+ * plans/mvp-core/part5_agent/mcp_tool_foundation.md}.
  */
 public enum ParamCategory {
     /** Needs sandbox boundary validation. */

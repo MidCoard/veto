@@ -1,8 +1,8 @@
 package top.focess.veto.agent.intercept;
 
 /**
- * A resolution option offered at a veto prompt (LLD {@code hybrid_loop_design.md} §4.3.2, {@code
- * network_hitl_protocol.md} §4). The offered set is determined by the {@link VetoScenario}.
+ * A resolution option offered at a veto prompt. The offered set is determined by the {@link
+ * VetoScenario}.
  */
 public enum VetoOption {
     // Scenario R (read)

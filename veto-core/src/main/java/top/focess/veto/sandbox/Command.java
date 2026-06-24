@@ -4,8 +4,7 @@ import java.util.List;
 
 /**
  * A single discrete command in a {@code run_command} chain. The model lists discrete commands; Veto
- * supplies the connector between them ({@link ChainMode}). Transcribed from {@code
- * container_sandbox_isolation.md} §5 / {@code mcp_tool_foundation.md} §10.6.
+ * supplies the connector between them ({@link ChainMode})..
  *
  * @param executable the binary name (resolved against the exec allowlist), e.g. {@code "gradle"};
  *     never a shell string

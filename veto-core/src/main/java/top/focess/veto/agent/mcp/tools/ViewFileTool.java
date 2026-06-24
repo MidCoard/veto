@@ -15,8 +15,8 @@ import top.focess.veto.agent.mcp.SecurityHint;
 import top.focess.veto.agent.mcp.ToolSecurity;
 
 /**
- * {@code view_file} — read lines of a text file from the local filesystem. Transcribed from {@code
- * mcp_tool_foundation.md} §10.2.
+ * {@code view_file} — read lines of a text file from the local filesystem. {@code
+ * mcp_tool_foundation.md}.
  */
 @Component
 @ToolSecurity(risk = RiskCategory.READ_ONLY)

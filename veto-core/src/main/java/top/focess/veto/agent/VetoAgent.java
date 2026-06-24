@@ -12,8 +12,7 @@ import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.mcp.ToolDefinition;
 
 /**
- * The {@link Agent} implementation (LLD {@code hybrid_loop_design.md} §1.3, {@code
- * agent_class_design.md} §4). Owns its {@link AgentRunner} internally on a virtual thread;
+ * The {@link Agent} implementation. Owns its {@link AgentRunner} internally on a virtual thread;
  * workflows/transports interact only through the {@link Agent} API. The runner blocks on its action
  * queue while {@link AgentState#IDLE}; {@link #submit} enqueues a {@link
  * AgentAction.UserPromptAction} and the virtual thread wakes.
@@ -113,9 +112,9 @@ public class VetoAgent implements Agent {
     }
 
     /**
-     * Subscribes a user-facing-message listener (the §6 emission seam) for the duration a transport
+     * Subscribes a user-facing-message listener (the emission seam) for the duration a transport
      * cares about streaming. The listener fires on the agent's virtual thread as each {@code
-     * response.message()} is emitted.
+     * response.message} is emitted.
      */
     public void addMessageListener(java.util.function.Consumer<String> listener) {
         runner.addMessageListener(listener);

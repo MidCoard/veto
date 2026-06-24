@@ -21,8 +21,8 @@ import top.focess.veto.model.AgentPatternRepository;
 import top.focess.veto.vault.CredentialVault;
 
 /**
- * The terminal transport facade for plain-text (non-slash) prompts (LLD {@code
- * terminal_module_lld.md} §1.1 "Unified Agent Execution Pipeline").
+ * The terminal transport facade for plain-text (non-slash) prompts ( "Unified Agent Execution
+ * Pipeline").
  *
  * <p>The legacy blocking ReAct loop that used to live here is gone — loop execution is hosted
  * exclusively in {@code veto-core} on a virtual thread via {@link AgentService} / {@link
@@ -34,7 +34,7 @@ import top.focess.veto.vault.CredentialVault;
  *       {@link AgentRunner.LlmBinding}.
  *   <li>Delegates to {@link AgentService#submit(String, String, AgentRunner.LlmBinding, Duration,
  *       java.util.function.Consumer) AgentService.submit(...)}, forwarding each user-facing message
- *       the agent emits to {@link VetoCommandSender#output(String)} as it streams (the §6 emission
+ *       the agent emits to {@link VetoCommandSender#output(String)} as it streams (the emission
  *       seam), then awaits the episode result.
  *   <li>Returns the synchronous {@link IpcFrame.TerminalResponse} — {@link IpcFrame.Done} on
  *       success, {@link IpcFrame.Error} on failure — per the Part 8.2 closed-loop contract.
@@ -197,7 +197,7 @@ public class PromptHandler {
                         config.systemPrompt());
 
         try {
-            // Stream each user-facing message the agent emits (§6 seam) while the episode runs,
+            // Stream each user-facing message the agent emits ( seam) while the episode runs,
             // then block for the result. The sink is attached/detached inside AgentService.submit.
             AgentResult result =
                     agentService.submit(

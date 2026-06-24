@@ -9,10 +9,10 @@ import top.focess.veto.agent.mcp.ToolDefinition;
 import top.focess.veto.llm.core.ToolCall;
 
 /**
- * Deterministic ingress defense (Part 3.5, LLD {@code gateway_security_api.md} §7, {@code
- * targeted_redaction_performance.md}). Frames every observation as untrusted <b>data</b> with an
- * explicit source label before it re-enters the loop, and — for a successful write — invalidates
- * the {@link ReadHistory} entry for the written path (so the next read/write cycle starts fresh).
+ * Deterministic ingress defense (Part 3.5, ). Frames every observation as untrusted <b>data</b>
+ * with an explicit source label before it re-enters the loop, and — for a successful write —
+ * invalidates the {@link ReadHistory} entry for the written path (so the next read/write cycle
+ * starts fresh).
  *
  * <p><b>MVP scope:</b> the advisory local-SLM semantic masking (Part 3.3 — scrubbing secrets behind
  * {@code READ_MASK}/{@code ACCEPT_REDACTED}) is <b>Phase-2</b> and is skipped here. The

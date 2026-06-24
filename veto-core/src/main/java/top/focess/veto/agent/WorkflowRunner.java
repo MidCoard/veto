@@ -17,15 +17,14 @@ import top.focess.veto.agent.mcp.McpEngine;
 import top.focess.veto.llm.core.UniformLLMCaller;
 
 /**
- * The top orchestration layer (LLD {@code hybrid_loop_design.md} §1.1, {@code
- * workflow_execution_engine.md} §9). Creates an {@link Agent} (starting in autonomous mode by
- * default), monitors for delegation spawns ({@code create_group}), and manages the agent lifecycle.
+ * The top orchestration layer. Creates an {@link Agent} (starting in autonomous mode by default),
+ * monitors for delegation spawns ({@code create_group}), and manages the agent lifecycle.
  *
- * <p><b>MVP scope:</b> the single-agent ReAct workflow (LLD §1.4 — one agent, one prompt).
- * Delegation spawns, the Execution DAG, the Blackboard, and group governance are <b>Phase-2</b>
- * ({@code Feature 15.2}) and are not implemented here; this class is the structural extension point
- * for them. The terminal/REST paths delegate to {@link AgentService} directly (LLD {@code
- * prompt_compiler.md} §7.2 step 2); {@code WorkflowRunner} is the programmatic entry point.
+ * <p><b>MVP scope:</b> the single-agent ReAct workflow ( — one agent, one prompt). Delegation
+ * spawns, the Execution DAG, the Blackboard, and group governance are <b>Phase-2</b> ({@code
+ * Feature 15.2}) and are not implemented here; this class is the structural extension point for
+ * them. The terminal/REST paths delegate to {@link AgentService} directly ({@code
+ * prompt_compiler.md} step 2); {@code WorkflowRunner} is the programmatic entry point.
  */
 @Component
 public class WorkflowRunner {
@@ -69,8 +68,7 @@ public class WorkflowRunner {
 
     /**
      * Runs the single-agent ReAct workflow: create an agent (autonomous), submit the prompt, await
-     * the result. The agent starts in autonomous mode (LLD §1.2); guided mode is an in-loop agent
-     * decision.
+     * the result. The agent starts in autonomous mode ; guided mode is an in-loop agent decision.
      */
     public AgentResult runReact(
             AgentPersona persona, AgentRunner.LlmBinding binding, String prompt) {

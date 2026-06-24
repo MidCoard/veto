@@ -2,9 +2,9 @@ package top.focess.veto.sandbox;
 
 /**
  * Docker-engine substrate (cloud / self-hosted multi-user). <b>Phase-2 — not in MVP scope</b>
- * (Feature 15.1). Transcribed from {@code container_sandbox_isolation.md} §4.2 as a permitted
- * subtype of the sealed {@link SandboxSubstrate} so the contract hierarchy is complete; all
- * operations throw until implemented with the {@code docker-java} adapter.
+ * (Feature 15.1). as a permitted subtype of the sealed {@link SandboxSubstrate} so the contract
+ * hierarchy is complete; all operations throw until implemented with the {@code docker-java}
+ * adapter.
  */
 public final class ContainerSubstrate implements SandboxSubstrate {
 

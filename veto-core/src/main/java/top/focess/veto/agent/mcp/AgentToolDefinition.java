@@ -5,8 +5,7 @@ import java.util.Map;
 /**
  * An engine-provided control/meta tool — used directly inside the agent loop or workflows, not a
  * host-touching capability. Examples: {@code create_group} (spawn a delegation), {@code load_skill}
- * (load a skill body as an observation). Transcribed from {@code
- * plans/mvp-core/part5_agent/mcp_tool_foundation.md} §6.4.
+ * (load a skill body as an observation)..
  *
  * <p>These tools are <b>always available</b> to every agent (the user does not whitelist them) and
  * carry no host-path parameters, so the Gateway applies no path/semantic screening. They still flow

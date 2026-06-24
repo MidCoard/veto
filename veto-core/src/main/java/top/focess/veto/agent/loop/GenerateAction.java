@@ -4,10 +4,10 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * A model-invoked content action (LLD {@code workflow_execution_engine.md} §3.2). The only action
- * that calls the model — invoked within the same shared conversation, with bound inputs resolved
- * from the {@link Scope}. {@code thought} is per-action (nullable → use the agent's global flag,
- * fill-in semantics); {@code modelTier}/{@code temperature} are frozen at IR-authoring time.
+ * A model-invoked content action. The only action that calls the model — invoked within the same
+ * shared conversation, with bound inputs resolved from the {@link Scope}. {@code thought} is
+ * per-action (nullable → use the agent's global flag, fill-in semantics); {@code modelTier}/{@code
+ * temperature} are frozen at IR-authoring time.
  */
 public record GenerateAction(
         String id,

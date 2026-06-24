@@ -12,7 +12,7 @@ import top.focess.veto.agent.mcp.ToolSecurity;
 
 /**
  * {@code run_command} — the special tool that executes arbitrary external processes. Transcribed
- * from {@code mcp_tool_foundation.md} §10.6 / {@code container_sandbox_isolation.md} §5.
+ * from.
  *
  * <p>This tool is registered as a {@link NativeMcpTool} so its schema is advertised in the
  * manifest, but its execution does <b>not</b> run a process in the host JVM: {@link

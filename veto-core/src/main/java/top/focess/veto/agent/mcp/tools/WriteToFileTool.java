@@ -14,7 +14,7 @@ import top.focess.veto.agent.mcp.ToolSecurity;
 
 /**
  * {@code write_to_file} — create a new file or completely overwrite an existing file. Transcribed
- * from {@code mcp_tool_foundation.md} §10.3.
+ * from.
  */
 @Component
 @ToolSecurity(risk = RiskCategory.FILE_WRITE)

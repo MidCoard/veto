@@ -7,8 +7,8 @@ import java.lang.annotation.Target;
 
 /**
  * Declares what category of security check a native tool parameter requires. Read by the Gateway to
- * decide how to screen an individual argument. Transcribed from {@code
- * plans/mvp-core/part5_agent/mcp_tool_foundation.md} §6.1.
+ * decide how to screen an individual argument. {@code
+ * plans/mvp-core/part5_agent/mcp_tool_foundation.md}.
  */
 @Target({ElementType.RECORD_COMPONENT, ElementType.PARAMETER})
 @Retention(RetentionPolicy.RUNTIME)

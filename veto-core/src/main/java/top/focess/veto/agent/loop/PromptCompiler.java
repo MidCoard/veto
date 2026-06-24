@@ -13,8 +13,7 @@ import top.focess.veto.llm.core.ChatMessage;
 
 /**
  * Assembles each outgoing LLM payload from the agent's turn history, persona, and resolved tool
- * manifest (LLD {@code prompt_compiler.md}). Called once per loop cycle before the {@code
- * UniformLLMCaller} dispatches.
+ * manifest. Called once per loop cycle before the {@code UniformLLMCaller} dispatches.
  *
  * <p>Three responsibilities:
  *
@@ -22,8 +21,8 @@ import top.focess.veto.llm.core.ChatMessage;
  *   <li><b>System message</b> = Layer 1 (persona identity + role + response-format rules + native
  *       tool usage) + Layer 2 (skill name+description catalog) + Layer 3 (per-turn JSON-constraint
  *       reminder, picking the variant-ON/OFF schema by the effective thought flag).
- *   <li><b>messages[]</b> — raw history newest→oldest, role-mapped per §3.2, REWIND-resolved per
- *       §3.3, token-budgeted with pair-safe truncation (system never trimmed).
+ *   <li><b>messages[]</b> — raw history newest→oldest, role-mapped per, REWIND-resolved per ,
+ *       token-budgeted with pair-safe truncation (system never trimmed).
  *   <li><b>tools[]</b> + <b>response_schema</b> — via the {@link CapabilityTranslator} (flat tools
  *       + the per-turn {@code veto_pulse} schema variant).
  * </ol>
@@ -116,7 +115,7 @@ public class PromptCompiler {
                 + "\nRespond in the veto_pulse JSON schema.";
     }
 
-    // ── REWIND resolution (§3.3) ────────────────────────────────────────────
+    // ── REWIND resolution ────────────────────────────────────────────
 
     /**
      * Walks history ascending, applying REWIND suffix-drops; returns the effective compiled list.
@@ -149,7 +148,7 @@ public class PromptCompiler {
         }
     }
 
-    /** Role mapping per §3.2. */
+    /** Role mapping per. */
     private ChatMessage mapRole(TurnRecord turn) {
         return switch (turn.type()) {
             case USER_PROMPT -> ChatMessage.user(str(turn.payload(), "content"));
@@ -184,7 +183,7 @@ public class PromptCompiler {
         return v == null ? "" : v.toString();
     }
 
-    // ── Token budget (§3.1) ──────────────────────────────────────────────────
+    // ── Token budget ──────────────────────────────────────────────────
 
     /** Walks newest→oldest, keeping turns until the budget is exceeded (system never trimmed). */
     private List<ChatMessage> fitBudget(String systemMessage, List<ChatMessage> conversation) {

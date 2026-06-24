@@ -3,9 +3,8 @@ package top.focess.veto.agent;
 import java.util.Map;
 
 /**
- * The outcome of an agent task (LLD {@code hybrid_loop_design.md} §1.3). Returned by {@code
- * Agent.await()} / {@code Agent.result()} when the loop completes (finished, breaker trip, or
- * failure).
+ * The outcome of an agent task. Returned by {@code Agent.await} / {@code Agent.result} when the
+ * loop completes (finished, breaker trip, or failure).
  *
  * @param success whether the task completed successfully
  * @param message the final user-facing text

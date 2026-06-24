@@ -4,8 +4,7 @@ import java.nio.file.Path;
 
 /**
  * An in-memory handle to a provisioned sandbox session. Held by {@link SandboxManager} keyed by
- * {@code agentId} — never persisted on {@code AgentEntity} (runtime resources are volatile).
- * Transcribed from {@code container_sandbox_isolation.md} §7.
+ * {@code agentId} — never persisted on {@code AgentEntity} (runtime resources are volatile)..
  *
  * @param sessionId the agent/session this sandbox belongs to
  * @param runtimeRef an opaque reference to the runtime resource (process/container/vm), substrate

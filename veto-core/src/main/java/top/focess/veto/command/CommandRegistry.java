@@ -167,7 +167,7 @@ public class CommandRegistry {
      * Resolves the inline tail-tip hint for the next expected command argument.
      *
      * <p>Routes the current buffer contents through the {@link CommandManager} to determine which
-     * arguments come next, then constructs a {@link HintInfo} whose {@link HintInfo#displayText()}
+     * arguments come next, then constructs a {@link HintInfo} whose {@link HintInfo#displayText}
      * can be rendered as a JLine tail-tip suggestion.
      *
      * @param sender the command sender for the active terminal session

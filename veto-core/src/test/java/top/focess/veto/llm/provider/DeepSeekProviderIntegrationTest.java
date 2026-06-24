@@ -55,7 +55,7 @@ class DeepSeekProviderIntegrationTest {
         assertNotNull(response.thought(), "thought should not be null");
         // calls is OPTIONAL in the veto_pulse schema (a model that answers directly emits
         // thought + message + is_finished, no calls). The real invariant is "no empty turn"
-        // (prompt_react_syntax §2.1.1 Rule 3): the response must carry at least one of
+        // (prompt_react_syntax Rule 3): the response must carry at least one of
         // thought / message / calls, and a simple prompt should finish.
         assertTrue(
                 response.thought() != null || response.message() != null || response.hasCalls(),

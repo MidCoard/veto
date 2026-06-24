@@ -4,11 +4,10 @@ import top.focess.veto.llm.core.VetoResponse;
 import top.focess.veto.llm.exceptions.ModelSchemaException;
 
 /**
- * Post-parse harness enforcement of the {@code veto_pulse} contract (LLD {@code
- * prompt_react_syntax.md} §2.1.1 / §2.1.2). Constrained decoding is provider-side and not airtight;
- * this is the backstop the loop runs after {@code ObjectMapper.readValue}. A misbehaving model can
- * neither inject forbidden reasoning into the context nor silently proceed without the reasoning
- * the rule requires.
+ * Post-parse harness enforcement of the {@code veto_pulse} contract ( ). Constrained decoding is
+ * provider-side and not airtight; this is the backstop the loop runs after {@code
+ * ObjectMapper.readValue}. A misbehaving model can neither inject forbidden reasoning into the
+ * context nor silently proceed without the reasoning the rule requires.
  *
  * <ul>
  *   <li>Effective thought <b>ON</b> but {@code thought} missing/empty → {@link

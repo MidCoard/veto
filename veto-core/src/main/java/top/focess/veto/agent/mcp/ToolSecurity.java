@@ -7,8 +7,7 @@ import java.lang.annotation.Target;
 
 /**
  * Declares the risk category of a native tool class (the level of danger it represents). Read by
- * the Gateway to decide screening level. Transcribed from {@code
- * plans/mvp-core/part5_agent/mcp_tool_foundation.md} §6.1.
+ * the Gateway to decide screening level..
  */
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.TYPE)

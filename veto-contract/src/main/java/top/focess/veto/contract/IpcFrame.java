@@ -64,7 +64,7 @@ public sealed interface IpcFrame
     int PROTOCOL_VERSION = 1;
 
     // ══════════════════════════════════════════════════════════════════════
-    //  Client → Server
+    // Client → Server
     // ══════════════════════════════════════════════════════════════════════
 
     /**
@@ -145,7 +145,7 @@ public sealed interface IpcFrame
     record Heartbeat() implements ClientFrame {}
 
     // ══════════════════════════════════════════════════════════════════════
-    //  Server → Client
+    // Server → Client
     // ══════════════════════════════════════════════════════════════════════
 
     /**
@@ -325,7 +325,7 @@ public sealed interface IpcFrame
     record Terminate(@Nullable String reason) implements TerminalResponse {}
 
     // ══════════════════════════════════════════════════════════════════════
-    //  Fallback
+    // Fallback
     // ══════════════════════════════════════════════════════════════════════
 
     /**

@@ -14,7 +14,7 @@ import top.focess.veto.agent.mcp.ToolSecurity;
 
 /**
  * {@code list_dir} — list contents of a directory (files and child subdirectories). Transcribed
- * from {@code mcp_tool_foundation.md} §10.1.
+ * from.
  */
 @Component
 @ToolSecurity(risk = RiskCategory.READ_ONLY)

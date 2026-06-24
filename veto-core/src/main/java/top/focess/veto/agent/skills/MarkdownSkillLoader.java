@@ -17,11 +17,11 @@ import org.slf4j.LoggerFactory;
 /**
  * Scans the filesystem for {@code SKILL.md} files, parses the YAML frontmatter boundary, reads the
  * metadata (including tool dependencies), and instantiates the {@link Skill} model. Transcribed
- * from {@code plans/mvp-core/part5_agent/agent_skills_execution.md} §4.2.
+ * from.
  *
  * <p>The {@link Skill#contentHash} (SHA-256 of the markdown body) is computed at load and verified
- * on every {@code load_skill} call (§7.1). NATIVE hashes are pre-seeded at install time;
- * PERSONAL/PROJECT use trust-on-first-use.
+ * on every {@code load_skill} call. NATIVE hashes are pre-seeded at install time; PERSONAL/PROJECT
+ * use trust-on-first-use.
  */
 public class MarkdownSkillLoader {
 

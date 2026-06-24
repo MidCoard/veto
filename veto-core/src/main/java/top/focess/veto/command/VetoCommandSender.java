@@ -29,12 +29,12 @@ import top.focess.veto.terminal.IpcServer;
  * #receiveInput(String)} when an {@link IpcFrame.Input} frame arrives — completing the future and
  * unblocking the dispatch worker. No extra threads are spawned.
  *
- * <h3>Cooperative cancel (IPC interaction LLD §8)</h3>
+ * <h3>Cooperative cancel (IPC interaction )</h3>
  *
- * A {@link IpcFrame.Cancel} while a command is parked in {@code input()} must not let the command
- * linger waiting out its timeout. {@link #cancelInput()} completes the pending input future
- * exceptionally (a {@link CancellationException}), so {@code input().join()} throws immediately and
- * the command unwinds — its terminal frame ({@code Done{cancelled}}, sent by the server's cancel
+ * A {@link IpcFrame.Cancel} while a command is parked in {@code input} must not let the command
+ * linger waiting out its timeout. {@link #cancelInput} completes the pending input future
+ * exceptionally (a {@link CancellationException}), so {@code input.join} throws immediately and the
+ * command unwinds — its terminal frame ({@code Done{cancelled}}, sent by the server's cancel
  * handler) resolves the {@link IpcFrame.Request}. The future is captured here because {@code
  * AbstractCommandSender}'s input-future queue is private.
  */
@@ -47,10 +47,9 @@ public final class VetoCommandSender extends AbstractCommandSender {
     @NotNull private final String terminalId;
 
     /**
-     * The currently-pending input future (the one a command is parked in {@code input().join()}
-     * on), or {@code null} when no command awaits input. Captured so {@link #cancelInput()} can
-     * complete it exceptionally to cooperatively unblock a cancel (§8). Under 1:1 there is at most
-     * one at a time.
+     * The currently-pending input future (the one a command is parked in {@code input.join} on), or
+     * {@code null} when no command awaits input. Captured so {@link #cancelInput} can complete it
+     * exceptionally to cooperatively unblock a cancel. Under 1:1 there is at most one at a time.
      */
     @Nullable private volatile CompletableFuture<String> pendingInput;
 
@@ -105,7 +104,7 @@ public final class VetoCommandSender extends AbstractCommandSender {
     /**
      * Returns whether this sender's session is currently authenticated.
      *
-     * @return {@code true} if {@link #username()} is non-null, {@code false} otherwise
+     * @return {@code true} if {@link #username} is non-null, {@code false} otherwise
      */
     public boolean isLoggedIn() {
         return username() != null;
@@ -188,15 +187,15 @@ public final class VetoCommandSender extends AbstractCommandSender {
                 terminalId,
                 new IpcFrame.Prompt(text, Map.of(IpcMeta.PROMPT, text, IpcMeta.MASK, mask)));
         CompletableFuture<String> future = super.inputAsync(timeoutMillis);
-        pendingInput = future; // capture so cancelInput() can cooperatively unblock it (§8)
+        pendingInput = future; // capture so cancelInput() can cooperatively unblock it
         return future;
     }
 
     /**
-     * Cooperatively unblocks a command parked in {@code input()} (IPC interaction LLD §8):
-     * completes the pending input future exceptionally with a {@link CancellationException}, so
-     * {@code input().join()} throws immediately instead of waiting out its timeout. A no-op if no
-     * input is pending (the command is not blocked in {@code input()}).
+     * Cooperatively unblocks a command parked in {@code input} (IPC interaction ): completes the
+     * pending input future exceptionally with a {@link CancellationException}, so {@code
+     * input.join} throws immediately instead of waiting out its timeout. A no-op if no input is
+     * pending (the command is not blocked in {@code input}).
      *
      * <p>The command's terminal frame ({@code Done{cancelled}}) is sent by the server's cancel
      * handler — this method only unblocks the parked input so the command unwinds.

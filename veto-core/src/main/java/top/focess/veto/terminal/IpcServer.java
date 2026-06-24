@@ -32,18 +32,18 @@ import top.focess.veto.vault.UserContext;
  * <h3>Three-pool threading model</h3>
  *
  * <ul>
- *   <li><b>Pool 1 — Infrastructure</b> (2 fixed platform threads): runs {@link #ioLoop()} and
- *       {@link #heartbeatLoop()}. The IO thread is the <em>sole</em> owner of the transport; no
- *       other thread ever calls {@link ServerTransport#recv(long)} or {@link
- *       ServerTransport#send(String, IpcFrame)}.
+ *   <li><b>Pool 1 — Infrastructure</b> (2 fixed platform threads): runs {@link #ioLoop} and {@link
+ *       #heartbeatLoop}. The IO thread is the <em>sole</em> owner of the transport; no other thread
+ *       ever calls {@link ServerTransport#recv(long)} or {@link ServerTransport#send(String,
+ *       IpcFrame)}.
  *   <li><b>Pool 2 — Session workers</b> (one virtual thread per connected terminal): each session
  *       has a dedicated {@link BlockingQueue} mailbox. The session worker drains that mailbox and
  *       processes non-Request frames <em>synchronously</em>, preserving per-session ordering
  *       without any explicit locking. {@link IpcFrame.Request} frames are submitted to Pool 3.
- *   <li><b>Pool 3 — Request pool</b> (virtual thread per task): executes {@code
- *       registry.dispatch()}, which may block for an extended period (AI inference, tool calls,
- *       etc.). Multiple concurrent requests per session are supported; each future is tracked so it
- *       can be cancelled by a subsequent {@link IpcFrame.Cancel}.
+ *   <li><b>Pool 3 — Request pool</b> (virtual thread per task): executes {@code registry.dispatch},
+ *       which may block for an extended period (AI inference, tool calls, etc.). Multiple
+ *       concurrent requests per session are supported; each future is tracked so it can be
+ *       cancelled by a subsequent {@link IpcFrame.Cancel}.
  * </ul>
  *
  * <h3>Frame routing</h3>
@@ -154,7 +154,7 @@ public class IpcServer {
      *   <li>Sets {@link #running} to {@code false} so loops exit after their current iteration.
      *   <li>Sends a {@link IpcFrame.Terminate} frame to every connected terminal.
      *   <li>Waits 100 ms to allow the IO thread to flush outgoing terminate frames.
-     *   <li>Shuts down session and request pools ({@code shutdownNow()}).
+     *   <li>Shuts down session and request pools ({@code shutdownNow}).
      *   <li>Awaits infrastructure pool termination (up to 3 seconds).
      *   <li>Closes the transport socket and ZMQ context.
      * </ol>
@@ -272,7 +272,7 @@ public class IpcServer {
         }
         Session session = new Session(identity, createSender(identity));
         sessions.put(identity, session);
-        // Spawn the session worker — virtual thread parks on mailbox.take() between frames.
+        // Spawn the session worker — virtual thread parks on mailbox.take between frames.
         sessionPool.submit(() -> sessionLoop(session));
 
         int negotiated = Math.min(hello.version(), IpcFrame.PROTOCOL_VERSION);
@@ -334,7 +334,7 @@ public class IpcServer {
                 case IpcFrame.Request req -> {
                     // A new command: reset the terminal-frame claim so this Request can resolve
                     // with
-                    // exactly one terminal frame (§8/§9).
+                    // exactly one terminal frame.
                     session.terminalSent.set(false);
                     // Off-load to the request pool so long-running commands never stall this loop.
                     // CompletableFuture.whenComplete self-removes from the tracking set once the
@@ -343,7 +343,7 @@ public class IpcServer {
                     // Note: CompletableFuture.cancel(true) marks the future cancelled but does NOT
                     // interrupt the running thread (unlike Future from ExecutorService.submit).
                     // Command handlers should therefore also check
-                    // Thread.currentThread().isInterrupted()
+                    // Thread.currentThread.isInterrupted
                     // to be responsive to cancellation.
                     CompletableFuture<Void> task =
                             CompletableFuture.runAsync(
@@ -369,7 +369,7 @@ public class IpcServer {
                                                     // hangs waiting.
                                                     result = new IpcFrame.Done(Map.of(), null);
                                                 }
-                                                // Claim the single terminal frame (§8/§9): a cancel
+                                                // Claim the single terminal frame : a cancel
                                                 // may have already sent Done{cancelled}; if so,
                                                 // this
                                                 // command's real terminal is dropped (exactly-one).
@@ -379,7 +379,7 @@ public class IpcServer {
                                                         identity.substring(0, 8),
                                                         result.getClass().getSimpleName());
                                                 if (result instanceof IpcFrame.Terminate) {
-                                                    // §2.4: a command-Terminate (e.g. /exit) is
+                                                    // : a command-Terminate (e.g. /exit) is
                                                     // session-terminal — the server sends it and
                                                     // then
                                                     // closes the session; no Bye is expected back.
@@ -411,7 +411,7 @@ public class IpcServer {
                     log.trace("IN   {}", identity.substring(0, 8));
                     boolean accepted = session.sender.receiveInput(in.raw());
                     if (!accepted) {
-                        // §7.1 ACTIVE × Input with no waiting request: discard + log. No Error
+                        // ACTIVE × Input with no waiting request: discard + log. No Error
                         // frame
                         // — the terminal only sends Input in reply to a Prompt (client routing), so
                         // an unaccepted Input means no command awaits input; an Error would break
@@ -440,23 +440,23 @@ public class IpcServer {
 
                 case IpcFrame.Cancel c -> {
                     if (session.activeRequests.isEmpty()) {
-                        // §8/§9: no command in flight — the Request already resolved (its terminal
+                        // : no command in flight — the Request already resolved (its terminal
                         // frame is sent or in flight). Send nothing: a second terminal frame would
                         // break the exactly-one-terminal-frame invariant for that Request.
                         log.trace(
                                 "CANC {}: no in-flight request — no-op", identity.substring(0, 8));
                     } else {
                         // Claim this command's single terminal frame FIRST, so Done{cancelled} wins
-                        // the race against the command unwinding (its cancelled input() throws → an
+                        // the race against the command unwinding (its cancelled input throws → an
                         // Error that the dispatch task will then drop). Then cooperatively unblock
-                        // any input() the command is parked in (§8) so it does not wait out its
+                        // any input the command is parked in so it does not wait out its
                         // timeout, and cancel the task futures.
                         boolean cancelled = session.terminalSent.compareAndSet(false, true);
                         session.sender.cancelInput();
                         cancelAllRequests(session);
                         if (cancelled) {
                             // Done{cancelled} is this command's single terminal frame — it resolves
-                            // the Request; it is not an ack of the Cancel (§9).
+                            // the Request; it is not an ack of the Cancel.
                             send(
                                     identity,
                                     new IpcFrame.Done(Map.of(IpcMeta.CANCELLED, true), null));
@@ -470,7 +470,7 @@ public class IpcServer {
 
                 case IpcFrame.Bye b -> {
                     log.trace("BYE  {}: terminal disconnecting", identity.substring(0, 8));
-                    // §9: Bye is fire-and-forget — the client tears down without waiting, and the
+                    // : Bye is fire-and-forget — the client tears down without waiting, and the
                     // server closes on receipt without sending anything back (no Done). Closing is
                     // idempotent; closeSession sets closed=true so the session loop exits.
                     closeSession(session);
@@ -539,9 +539,9 @@ public class IpcServer {
 
     /**
      * Sends a command's terminal frame, claiming the session's exactly-once terminal slot first
-     * (IPC interaction LLD §8/§9). If a terminal frame was already sent for this in-flight command
-     * (e.g. a cancel already sent {@code Done{cancelled}}), this send is dropped — a Request
-     * resolves with exactly one terminal frame.
+     * (IPC interaction ). If a terminal frame was already sent for this in-flight command (e.g. a
+     * cancel already sent {@code Done{cancelled}}), this send is dropped — a Request resolves with
+     * exactly one terminal frame.
      *
      * @param session the session owning the in-flight command
      * @param frame the terminal frame ({@link IpcFrame.Done}/{@link IpcFrame.Error}/{@link
@@ -562,7 +562,7 @@ public class IpcServer {
      *
      * <p>Note: {@link CompletableFuture#cancel(boolean)} marks the future as cancelled but does not
      * interrupt the underlying thread. Commands that support cooperative cancellation should
-     * periodically check {@link Thread#isInterrupted()} and exit early.
+     * periodically check {@link Thread#isInterrupted} and exit early.
      */
     private void cancelAllRequests(@NotNull Session session) {
         // Drain the set atomically so concurrent whenComplete callbacks don't re-add entries.
@@ -653,7 +653,7 @@ public class IpcServer {
          * Whether a terminal frame has been sent for the in-flight command. Claimed (false→true) by
          * the dispatch task when it sends the command's terminal, and by the cancel handler when it
          * sends {@code Done{cancelled}} — whichever claims first sends the command's single
-         * terminal frame (IPC interaction LLD §8/§9: exactly one terminal frame per {@link
+         * terminal frame (IPC interaction : exactly one terminal frame per {@link
          * IpcFrame.Request}; a cancel racing a normal completion must not produce a second). Reset
          * to {@code false} when a new {@link IpcFrame.Request} is dispatched. Server-initiated
          * {@link IpcFrame.Terminate} (timeout/shutdown) bypasses the claim — it is session

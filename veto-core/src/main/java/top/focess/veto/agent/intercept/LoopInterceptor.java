@@ -5,12 +5,11 @@ import top.focess.veto.llm.core.ToolCall;
 
 /**
  * A user-plugin interceptor in the ordered chain the {@code AgentRunner} iterates at three join
- * points (LLD {@code loop_interception_drift.md} §2.1). This chain is <b>plugins only</b> — it
- * transforms, observes, or blocks; it does <b>not</b> perform security screening and does
- * <b>not</b> signal HITL. Security screening is the {@link Gateway}'s job (producing a {@link
- * Verdict}) and HITL pausing is the {@link HitlRegistry}'s job; both happen <i>before</i> this
- * chain for native/remote tools. Agent tools early-route past both but still pass this chain if
- * plugins are registered.
+ * points. This chain is <b>plugins only</b> — it transforms, observes, or blocks; it does
+ * <b>not</b> perform security screening and does <b>not</b> signal HITL. Security screening is the
+ * {@link Gateway}'s job (producing a {@link Verdict}) and HITL pausing is the {@link
+ * HitlRegistry}'s job; both happen <i>before</i> this chain for native/remote tools. Agent tools
+ * early-route past both but still pass this chain if plugins are registered.
  */
 public interface LoopInterceptor {
 

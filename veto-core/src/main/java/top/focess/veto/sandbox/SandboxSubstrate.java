@@ -6,17 +6,16 @@ import java.util.List;
 
 /**
  * The hard backstop containment boundary + execution substrate. One contract, three
- * implementations. Transcribed from {@code
- * plans/mvp-core/part5_agent/container_sandbox_isolation.md} §3.
+ * implementations..
  *
  * <p>The Sandbox performs <b>no policy decisions</b> — path/command/network confinement
- * <i>policy</i> belongs to the Gateway's {@code PolicyProfile} (§2). The Sandbox only enforces a
- * blast-radius floor and runs commands inside it. File-op syscalls route through the substrate
- * (§3.1) so file ops share the hard wall on every substrate.
+ * <i>policy</i> belongs to the Gateway's {@code PolicyProfile}. The Sandbox only enforces a
+ * blast-radius floor and runs commands inside it. File-op syscalls route through the substrate so
+ * file ops share the hard wall on every substrate.
  *
  * <p><b>MVP scope:</b> only {@link ConstrainedSubprocessSubstrate} is implemented (local default,
  * no third-party runtime). {@link ContainerSubstrate} and {@link MicrovmSubstrate} are Phase-2
- * stubs ({@code container_sandbox_isolation.md} §4.2/§4.3 — out of MVP scope per Feature 15.1).
+ * stubs ( — out of MVP scope per Feature 15.1).
  */
 public sealed interface SandboxSubstrate
         permits ConstrainedSubprocessSubstrate, ContainerSubstrate, MicrovmSubstrate {

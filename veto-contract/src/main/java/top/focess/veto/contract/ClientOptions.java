@@ -5,7 +5,7 @@ import org.jetbrains.annotations.NotNull;
 /**
  * Parsed command-line options for a Veto client (terminal / TUI). Pure data — no logging or other
  * side effects. Logging bootstrap is an application-startup concern and lives in each client
- * module's {@code main()}, not here.
+ * module's {@code main}, not here.
  *
  * <h3>Supported flags</h3>
  *

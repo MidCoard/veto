@@ -15,9 +15,9 @@ import top.focess.veto.agent.mcp.ToolSchemaCompiler;
 /**
  * Translates the unified capability manifest into provider-facing forms and emits the per-turn
  * {@code veto_pulse} response schema. Implements {@link CapabilityTranslator} (Part 5 owns it; Part
- * 1's {@code PromptCompiler} calls it). Transcribed from {@code
+ * 1's {@code PromptCompiler} calls it). {@code
  * plans/mvp-core/part5_agent/capability_schema_translator.md} and {@code
- * plans/mvp-core/part1_loop/prompt_react_syntax.md} §2.1/§2.1.2.
+ * plans/mvp-core/part1_loop/prompt_react_syntax.md}.
  *
  * <p>Two responsibilities (Q3 — translator owns both, superseding the old single-{@code call}
  * {@code SchemaNormalizerService}):
@@ -28,7 +28,7 @@ import top.focess.veto.agent.mcp.ToolSchemaCompiler;
  *       VetoRequest.tools}.
  *   <li>{@link #vetoResponseSchema} — the per-turn {@code veto_pulse} schema variant that
  *       constrains the model to a {@link top.focess.veto.llm.core.VetoResponse}, governed by the
- *       effective thought flag and guided state (the four-cell matrix, §2.1.2).
+ *       effective thought flag and guided state (the four-cell matrix, ).
  * </ol>
  *
  * <p>The emitted schema is provider-agnostic JSON Schema (Draft 7). Provider-specific strictness

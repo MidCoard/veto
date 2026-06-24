@@ -3,9 +3,8 @@ package top.focess.veto.agent.mcp;
 /**
  * Unified tool definition — the capability manifest element. Every tool exposes its name,
  * description, risk category, and parameter schema through this single contract. The Gateway reads
- * {@link #risk()} and {@link #parameters()} to decide how to screen each call, without hard-coding
- * per-tool-name logic. Transcribed from {@code plans/mvp-core/part5_agent/mcp_tool_foundation.md}
- * §6.2.
+ * {@link #risk} and {@link #parameters} to decide how to screen each call, without hard-coding
+ * per-tool-name logic..
  *
  * <p>Three flavours:
  *
@@ -16,8 +15,8 @@ package top.focess.veto.agent.mcp;
  *       agent loop or workflows ({@code create_group}, {@code load_skill}).
  * </ul>
  *
- * <p><b>Phase-0 contract note:</b> the LLD §6.2 also lists static {@code of(...)} factory methods
- * that delegate to {@code ToolSchemaCompiler} (a Part-5-owned utility). Those factories are
+ * <p><b>Phase-0 contract note:</b> the also lists static {@code of(...)} factory methods that
+ * delegate to {@code ToolSchemaCompiler} (a Part-5-owned utility). Those factories are
  * intentionally omitted from this shared interface — they are convenience builders, not part of the
  * read surface both parts compile against. Part 5's {@code ToolSchemaCompiler} builds {@link
  * NativeToolDefinition} instances directly; callers construct {@link RemoteToolDefinition}/{@link

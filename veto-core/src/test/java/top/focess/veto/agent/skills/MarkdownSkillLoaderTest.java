@@ -9,7 +9,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** Validates {@link MarkdownSkillLoader} parsing + SHA-256 integrity verification (§4.2/§7.1). */
+/** Validates {@link MarkdownSkillLoader} parsing + SHA-256 integrity verification. */
 class MarkdownSkillLoaderTest {
 
     private final MarkdownSkillLoader loader = new MarkdownSkillLoader();

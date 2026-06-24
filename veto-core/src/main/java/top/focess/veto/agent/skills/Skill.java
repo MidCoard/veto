@@ -5,9 +5,7 @@ import java.util.List;
 
 /**
  * A Skill is a high-level agentic workflow — a sequence of tool-invocation guidelines loaded on
- * demand via the {@code load_skill} tool. Transcribed from {@code
- * plans/mvp-core/part5_agent/mcp_tool_foundation.md} §6.5 (kept in sync with {@code
- * plans/mvp-core/part5_agent/agent_skills_execution.md}).
+ * demand via the {@code load_skill} tool. (kept in sync with ).
  *
  * <h3>Integrity model</h3>
  *

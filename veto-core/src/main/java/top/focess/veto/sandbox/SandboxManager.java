@@ -8,8 +8,7 @@ import org.springframework.stereotype.Service;
 
 /**
  * The sole authority for sandbox provisioning/deprovisioning. {@code AgentRunner} never calls
- * Docker/Firecracker/OS-primitive APIs directly. Transcribed from {@code
- * container_sandbox_isolation.md} §7.
+ * Docker/Firecracker/OS-primitive APIs directly..
  *
  * <p>Holds {@link SandboxHandle}s in-memory keyed by {@code sessionId} — never persisted on {@code
  * AgentEntity} (runtime resources are volatile). The substrate is the configured {@link

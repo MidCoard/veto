@@ -10,10 +10,9 @@ import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.identity.AgentPersona;
 
 /**
- * The identity + API surface of a Veto agent (LLD {@code hybrid_loop_design.md} §1.3, {@code
- * agent_class_design.md}). Holds the persona, tool whitelist, turn history, and a volatile state
- * machine. Owns its {@code AgentRunner} internally; workflows/transports interact only through this
- * API — they never touch the virtual thread, state machine, or loop mechanics.
+ * The identity + API surface of a Veto agent. Holds the persona, tool whitelist, turn history, and
+ * a volatile state machine. Owns its {@code AgentRunner} internally; workflows/transports interact
+ * only through this API — they never touch the virtual thread, state machine, or loop mechanics.
  */
 public interface Agent {
 

@@ -10,9 +10,8 @@ import top.focess.veto.llm.core.VetoResponse;
 
 /**
  * The engine-internal Scope — a derived projection of action outputs, auto-populated by the harness
- * (LLD {@code hybrid_loop_design.md} §3.5, {@code workflow_execution_engine.md} §5). The model
- * never reads/writes the Scope directly (it reads prior results from the conversation); the engine
- * consumes it for programmatic checks, transitions, and escape.
+ * . The model never reads/writes the Scope directly (it reads prior results from the conversation);
+ * the engine consumes it for programmatic checks, transitions, and escape.
  *
  * <p>Lexically scoped: program-global by default; a child scope reads through to its parent.
  * Missing keys are values, not errors — reading an unset slot returns the {@link #UNDEFINED}

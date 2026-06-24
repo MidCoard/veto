@@ -30,8 +30,8 @@ public class HelpCommand extends VetoCommand {
                     // user can discover /help itself — gated on the command's executor-permission
                     // predicate (the same one the dispatcher uses to allow/refuse execution), NOT
                     // on
-                    // getPermission(). Every Veto command defaults to CommandPermission.EVERYONE
-                    // (the enum tier is never reassigned), so filtering on getPermission() would
+                    // getPermission. Every Veto command defaults to CommandPermission.EVERYONE
+                    // (the enum tier is never reassigned), so filtering on getPermission would
                     // admit every command to every sender — leaking login-gated commands
                     // (status/logout/agent/...) to an unauthenticated user. Login gating is applied
                     // via setExecutorPermission(LOGGED_IN), so this is the authoritative check.

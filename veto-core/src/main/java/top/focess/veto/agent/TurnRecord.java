@@ -7,10 +7,10 @@ import top.focess.veto.llm.core.ToolCall;
 
 /**
  * One durable event in the agent's turn history — the append-only raw history the {@code
- * PromptCompiler} walks to assemble each outgoing LLM payload (LLD {@code prompt_compiler.md} §3).
+ * PromptCompiler} walks to assemble each outgoing LLM payload.
  *
  * <p>The {@link #payload} carries the type-specific fields the compiler reads to map the turn to an
- * API message role (§3.2). {@code REWIND} is a compiler directive, never emitted as a message.
+ * API message role. {@code REWIND} is a compiler directive, never emitted as a message.
  *
  * <p>Immutable. The loop appends; the compiled view is rebuilt fresh each cycle from the raw list.
  */

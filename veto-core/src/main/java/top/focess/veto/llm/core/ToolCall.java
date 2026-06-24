@@ -4,15 +4,15 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.Map;
 
 /**
- * A single tool call from the LLM. Each element of {@link VetoResponse#calls()} is a {@code
+ * A single tool call from the LLM. Each element of {@link VetoResponse#calls} is a {@code
  * ToolCall}.
  *
  * <p>The model emits {@code tool_name} + {@code args} (the {@code calls[]} item schema in {@code
- * prompt_react_syntax.md} §2.1 has no {@code call_id}). {@code callId} is <b>harness-assigned</b>
- * after parsing — it pairs the call with the returned {@code McpToolResult.callId}
- * (mcp_tool_foundation §4.3) and the HITL future keyed by {@code (agentId, callId)} (hybrid_loop
- * §4.3.1). It is absent from the model-facing schema; the two-argument convenience constructor
- * leaves it null for the harness to assign.
+ * prompt_react_syntax.md} has no {@code call_id}). {@code callId} is <b>harness-assigned</b> after
+ * parsing — it pairs the call with the returned {@code McpToolResult.callId} (mcp_tool_foundation )
+ * and the HITL future keyed by {@code (agentId, callId)} (hybrid_loop ). It is absent from the
+ * model-facing schema; the two-argument convenience constructor leaves it null for the harness to
+ * assign.
  *
  * <p>The {@code @JsonProperty} mappings are mandatory: the schema uses snake_case ({@code
  * tool_name}), so without them Jackson would silently bind {@code null}.

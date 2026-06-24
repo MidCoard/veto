@@ -132,7 +132,7 @@ class LiveTestRunner {
             System.out.println("[UNKNOWN] -> " + r);
             assert r instanceof IpcFrame.Error;
 
-            // 10. /exit — last: §2.4 a command-Terminate is session-terminal, so the server closes
+            // 10. /exit — last: a command-Terminate is session-terminal, so the server closes
             // the session after sending it; nothing after this reaches the session.
             r = exchange("/exit");
             System.out.println("[EXIT] -> " + r);

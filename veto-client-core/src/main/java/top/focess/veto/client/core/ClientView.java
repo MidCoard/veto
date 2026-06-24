@@ -13,9 +13,9 @@ import top.focess.veto.contract.IpcFrame;
  * view implement only the events it renders; the TUI ignores the granular state signals (it redraws
  * the whole frame every event regardless).
  *
- * <p>Note on {@link IpcFrame.Done}: per the §6.1 matrix a {@code Done} frame applies session meta
- * (and transitions state) but never displays content — command output streams via {@link #onDelta}.
- * So there is no {@code onDone(content)} event; a completed command is signalled by the {@link
+ * <p>Note on {@link IpcFrame.Done}: per the matrix a {@code Done} frame applies session meta (and
+ * transitions state) but never displays content — command output streams via {@link #onDelta}. So
+ * there is no {@code onDone(content)} event; a completed command is signalled by the {@link
  * #onRunning}/{@link #onIdle} transition and {@link #onMetaChanged}.
  */
 public interface ClientView {

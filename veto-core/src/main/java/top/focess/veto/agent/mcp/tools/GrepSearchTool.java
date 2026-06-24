@@ -16,8 +16,8 @@ import top.focess.veto.agent.mcp.SecurityHint;
 import top.focess.veto.agent.mcp.ToolSecurity;
 
 /**
- * {@code grep_search} — search for exact pattern matches inside files. Transcribed from {@code
- * mcp_tool_foundation.md} §10.5.
+ * {@code grep_search} — search for exact pattern matches inside files. {@code
+ * mcp_tool_foundation.md}.
  */
 @Component
 @ToolSecurity(risk = RiskCategory.READ_ONLY)

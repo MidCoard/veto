@@ -11,13 +11,13 @@ import top.focess.veto.llm.core.ProviderType;
  *
  * <pre>
  * veto:
- *   llm:
- *     egress:
- *       mode: direct            # or: proxy
- *       internal-token: ...      # token the engine presents to the broker (proxy mode)
- *       proxy-base-urls:
- *         openai: http://127.0.0.1:9000/openai
- *         anthropic: http://127.0.0.1:9000/anthropic
+ * llm:
+ * egress:
+ * mode: direct # or: proxy
+ * internal-token:... # token the engine presents to the broker (proxy mode)
+ * proxy-base-urls:
+ * openai: http://127.0.0.1:9000/openai
+ * anthropic: http://127.0.0.1:9000/anthropic
  * </pre>
  */
 @Component

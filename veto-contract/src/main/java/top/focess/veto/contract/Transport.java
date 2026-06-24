@@ -8,9 +8,8 @@ import org.jetbrains.annotations.Nullable;
  * backend (server).
  *
  * <p>A local desktop deployment uses {@link ZmqChannel}; remote/cloud deployments wrap the same
- * frames in WSS or gRPC tunnels ({@code terminal_module_lld.md} §2). The terminal's connection
- * layer ({@code IpcClient}) depends on this interface, never on ZMQ, so the transport can be
- * swapped without touching the terminal.
+ * frames in WSS or gRPC tunnels. The terminal's connection layer ({@code IpcClient}) depends on
+ * this interface, never on ZMQ, so the transport can be swapped without touching the terminal.
  *
  * <h3>Receive timeout convention</h3>
  *

@@ -7,8 +7,7 @@ import java.util.List;
 
 /**
  * The universal ReAct response record — every model response conforms to this shape. Transcribed
- * from {@code plans/mvp-core/part1_loop/prompt_react_syntax.md} §2.1 (the {@code veto_pulse}
- * schema).
+ * from (the {@code veto_pulse} schema).
  *
  * <p>Fields:
  *
@@ -24,7 +23,7 @@ import java.util.List;
  *   <li>{@code actionsProgram} — optional; the guided-mode IR, present only when {@code
  *       features.guided=true}. Held as a raw {@link JsonNode} — the harness validates and parses it
  *       into the guided driver's typed program; the translator emits its schema from {@code
- *       prompt_react_syntax.md} §2.4.
+ *       prompt_react_syntax.md}.
  * </ul>
  *
  * <p>Per-turn schema variants and harness enforcement are the {@code PromptCompiler} / loop's
@@ -48,7 +47,7 @@ public record VetoResponse(
     /**
      * The NEXT-iteration status. Always present in a compliant response. {@code guided} selects
      * guided vs autonomous for the next iteration; {@code thought} sets the effective thought flag
-     * for the following turn. Transcribed from {@code prompt_react_syntax.md} §2.1.
+     * for the following turn..
      */
     public record Features(
             @JsonProperty("guided") boolean guided, @JsonProperty("thought") boolean thought) {}

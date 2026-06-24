@@ -14,13 +14,12 @@ import java.util.regex.Pattern;
 
 /**
  * Compiles the two human-friendly input-schema formats into canonical {@link ToolDefinition}
- * instances and Draft-7 JSON Schema. Transcribed from {@code
- * plans/mvp-core/part5_agent/mcp_tool_foundation.md} §9.3.
+ * instances and Draft-7 JSON Schema..
  *
- * <p>This is the home of the LLD §6.2 {@code ToolDefinition.of(NativeMcpTool)} factory logic: the
- * static {@code of} convenience factories are intentionally absent from the shared {@link
- * ToolDefinition} interface (they are builders, not read surface); callers use {@link
- * #compileNative} here to build {@link NativeToolDefinition} instances.
+ * <p>This is the home of the {@code ToolDefinition.of(NativeMcpTool)} factory logic: the static
+ * {@code of} convenience factories are intentionally absent from the shared {@link ToolDefinition}
+ * interface (they are builders, not read surface); callers use {@link #compileNative} here to build
+ * {@link NativeToolDefinition} instances.
  */
 public final class ToolSchemaCompiler {
 
@@ -32,8 +31,8 @@ public final class ToolSchemaCompiler {
 
     /**
      * Compiles an already-instantiated Spring-managed native tool bean into a {@link
-     * NativeToolDefinition}. Native tools are Spring beans (§5.1), so the bean instance is passed
-     * in — this method never {@code newInstance()}s the tool (that would bypass Spring DI). It only
+     * NativeToolDefinition}. Native tools are Spring beans , so the bean instance is passed in —
+     * this method never {@code newInstance}s the tool (that would bypass Spring DI). It only
      * reflects over the class to derive the schema + security hints.
      */
     public static NativeToolDefinition compileNative(NativeMcpTool<?> toolBean) {
@@ -109,7 +108,7 @@ public final class ToolSchemaCompiler {
 
     /**
      * Compiles a key-value String DSL map ({@code "<name>": "<type><modifier> <description>"}) into
-     * a Draft-7 JSON Schema. {@code !} = required, {@code ?}/omitted = optional.
+     * a Draft-7 JSON Schema. {@code!} = required, {@code?}/omitted = optional.
      */
     public static JsonNode compileFromStringDsl(Map<String, String> dslMap) {
         ObjectNode schema = MAPPER.createObjectNode();

@@ -13,8 +13,7 @@ import top.focess.veto.agent.mcp.SecurityHint;
 import top.focess.veto.agent.mcp.ToolSecurity;
 
 /**
- * {@code replace_file_content} — replace a single contiguous block of text in an existing file.
- * Transcribed from {@code mcp_tool_foundation.md} §10.4.
+ * {@code replace_file_content} — replace a single contiguous block of text in an existing file..
  */
 @Component
 @ToolSecurity(risk = RiskCategory.FILE_WRITE)

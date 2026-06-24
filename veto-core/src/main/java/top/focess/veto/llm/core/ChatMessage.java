@@ -2,8 +2,8 @@ package top.focess.veto.llm.core;
 
 /**
  * A single chat message in a compiled conversation — the role-mapped form the {@code
- * PromptCompiler} emits and the providers send (LLD {@code prompt_compiler.md} §3.2). Provider
- * adapters convert these into their SDK-specific message types.
+ * PromptCompiler} emits and the providers send. Provider adapters convert these into their
+ * SDK-specific message types.
  *
  * @param role one of {@code system}, {@code user}, {@code assistant}, {@code tool}
  * @param content the message content (text; tool calls/responses are rendered as text observations)

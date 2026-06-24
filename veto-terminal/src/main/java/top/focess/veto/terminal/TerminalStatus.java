@@ -13,7 +13,7 @@ import top.focess.veto.client.core.Theme;
  * Draws the session status bar on JLine's bottom status line.
  *
  * <p>Stateless beyond the thread-safe JLine {@link Status} — it reads session metadata and the
- * pending-request queue from the {@link ClientSession} on each {@link #refresh()}, so it needs no
+ * pending-request queue from the {@link ClientSession} on each {@link #refresh}, so it needs no
  * external synchronization. (The prior "not thread-safe; synchronize on an external stateLock"
  * design is gone: the session owns its own lock, and this view just reads snapshots.)
  */
@@ -38,7 +38,7 @@ public final class TerminalStatus {
      */
     public void refresh() {
         // One atomic snapshot — username, turn count and the queue describe the same moment.
-        // Reading them via separate snapshot()/pendingQueue() calls would be a TOCTOU: the consumer
+        // Reading them via separate snapshot/pendingQueue calls would be a TOCTOU: the consumer
         // thread can mutate the session between the reads (a Done changing the username, or a
         // submit adding to the queue), so the bar could show a username and a queue that never
         // coexisted.

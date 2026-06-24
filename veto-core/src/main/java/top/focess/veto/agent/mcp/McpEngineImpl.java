@@ -29,13 +29,13 @@ import top.focess.veto.sandbox.SandboxManager;
 /**
  * The MCP engine implementation — manages server registrations, schema discovery, and tool
  * dispatching. Part 5 owns this; Part 1's loop calls {@link McpEngine}'s three loop-facing methods.
- * Transcribed (implementation) from {@code plans/mvp-core/part5_agent/mcp_tool_foundation.md} §2.
+ * Transcribed (implementation) from.
  *
- * <p>Dispatch by definition flavour (§4.2 / §5.1):
+ * <p>Dispatch by definition flavour :
  *
  * <ul>
  *   <li><b>Native</b> — in-process {@link NativeMcpTool#execute}, EXCEPT {@code run_command} which
- *       routes through the session's {@link top.focess.veto.sandbox.SandboxSubstrate} (§10.6).
+ *       routes through the session's {@link top.focess.veto.sandbox.SandboxSubstrate}.
  *   <li><b>Agent</b> — engine handler ({@code load_skill} → {@link SkillRegistry} hash-verify +
  *       body; {@code create_group} → Phase-2 stub).
  *   <li><b>External</b> — forwarded over the registered {@link McpTransport}.
@@ -43,9 +43,9 @@ import top.focess.veto.sandbox.SandboxManager;
  *
  * <p>{@code registerServer} + {@code McpTransport} + {@code executeTool} are Part-5-owned
  * implementation details, intentionally absent from the shared {@link McpEngine} interface. Remote
- * tool <i>discovery</i> (JSON-RPC {@code tools/list} over a transport) is beyond the LLD §2.1
- * schema representation and is not implemented in the MVP; remote tools are registered explicitly
- * via {@link #registerRemoteTool}.
+ * tool <i>discovery</i> (JSON-RPC {@code tools/list} over a transport) is beyond the schema
+ * representation and is not implemented in the MVP; remote tools are registered explicitly via
+ * {@link #registerRemoteTool}.
  */
 @Service
 public class McpEngineImpl implements McpEngine {
@@ -154,7 +154,7 @@ public class McpEngineImpl implements McpEngine {
 
     /**
      * Registers an external tool discovered from a registered MCP server. Names are prefixed {@code
-     * {serverName}__{originalToolName}} (§8).
+     * {serverName}__{originalToolName}}.
      */
     public RemoteToolDefinition registerRemoteTool(
             String serverName,
@@ -254,9 +254,9 @@ public class McpEngineImpl implements McpEngine {
     }
 
     /**
-     * External tool execution over the registered {@link McpTransport}. <b>MVP stub</b>: the LLD §3
+     * External tool execution over the registered {@link McpTransport}. <b>MVP stub</b>: the
      * defines the transport types but the JSON-RPC {@code tools/call} I/O over stdio/SSE/socket is
-     * beyond the LLD §2.1 schema representation — not implemented in the MVP.
+     * beyond the schema representation — not implemented in the MVP.
      */
     private McpToolResult executeRemote(ToolCall call, RemoteToolDefinition def) {
         McpTransport transport = transports.get(def.serverName());

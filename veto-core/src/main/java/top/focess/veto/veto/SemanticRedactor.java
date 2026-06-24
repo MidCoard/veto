@@ -37,7 +37,7 @@ public class SemanticRedactor {
                             Pattern.compile("\\b[A-Za-z0-9+/=]{32,}\\b"),
                             "[REDACTED_KEY]",
                             RedactionType.SECRET_KEY),
-                    // SSH private key headers  - matches BEGIN/END format with optional key type
+                    // SSH private key headers - matches BEGIN/END format with optional key type
                     // and PRIVATE
                     new RedactionRule(
                             Pattern.compile(
@@ -166,7 +166,7 @@ public class SemanticRedactor {
         try {
             if (llmSuggestion.contains("\"redacted_fields\"")) {
                 // The SLM identified specific fields to redact
-                // This is a simplified implementation  - in production, the
+                // This is a simplified implementation - in production, the
                 // SLM output is parsed via the GBNF grammar
                 log.debug("gateway Redactor: Applying SLM-suggested redactions");
             }

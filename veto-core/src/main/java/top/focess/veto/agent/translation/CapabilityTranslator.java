@@ -6,10 +6,8 @@ import top.focess.veto.agent.mcp.ToolDefinition;
 
 /**
  * Translates the unified capability manifest into provider-facing forms. Part 5 owns the
- * implementation; Part 1's {@code PromptCompiler} calls it. Per the provider schema translator LLD
- * ({@code plans/mvp-core/part5_agent/capability_schema_translator.md}) and Part 1's prompt compiler
- * ({@code plans/mvp-core/part1_loop/prompt_compiler.md} §4), the translator owns two
- * responsibilities:
+ * implementation; Part 1's {@code PromptCompiler} calls it. Per the provider schema translator and
+ * Part 1's prompt compiler , the translator owns two responsibilities:
  *
  * <ol>
  *   <li>{@link #translateTools} — manifest {@link ToolDefinition} (sealed) → flat {@code
@@ -18,12 +16,12 @@ import top.focess.veto.agent.mcp.ToolDefinition;
  *   <li>{@link #vetoResponseSchema} — the per-turn {@code veto_pulse} response schema variant that
  *       constrains the model to emit a {@link top.focess.veto.llm.core.VetoResponse}. The variant
  *       is governed by the effective thought flag and guided state (the four-cell matrix in {@code
- *       prompt_react_syntax.md} §2.1.2).
+ *       prompt_react_syntax.md} ).
  * </ol>
  *
- * <p><b>Phase-0 contract note:</b> the LLD §2 names this {@code ProviderSchemaTranslator<T>} with a
- * single {@code T translate(ToolDefinition)} method and a stale {@code McpToolDefinition} import (a
- * typo for {@link ToolDefinition}). Part 1's {@code PromptCompiler} calls it {@code
+ * <p><b>Phase-0 contract note:</b> the names this {@code ProviderSchemaTranslator<T>} with a single
+ * {@code T translate(ToolDefinition)} method and a stale {@code McpToolDefinition} import (a typo
+ * for {@link ToolDefinition}). Part 1's {@code PromptCompiler} calls it {@code
  * CapabilityTranslator}. The two-method shape here consolidates the tools + response-schema
  * responsibilities per the coordinator's decision (translator owns both), superseding the old
  * single-{@code call}-shape {@code SchemaNormalizerService}. This interface is shared/read-only: do

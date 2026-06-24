@@ -1,8 +1,8 @@
 package top.focess.veto.agent;
 
 /**
- * The type of a {@link TurnRecord}. Drives the {@code PromptCompiler}'s role mapping (LLD {@code
- * prompt_compiler.md} §3.2) and the append-only audit/history view.
+ * The type of a {@link TurnRecord}. Drives the {@code PromptCompiler}'s role mapping ({@code
+ * prompt_compiler.md} ) and the append-only audit/history view.
  */
 public enum TurnType {
     /** A user prompt — the start of a fresh reasoning episode. */
@@ -11,7 +11,7 @@ public enum TurnType {
     USER_INTERRUPT,
     /** The agent's reasoning — the raw {@code VetoResponse} JSON for a thought-ON turn. */
     ASSISTANT_THOUGHT,
-    /** A user-facing message the agent emitted ({@code response.message()}). */
+    /** A user-facing message the agent emitted ({@code response.message}). */
     ASSISTANT_RESPONSE,
     /** A tool call the agent issued ({@code calls[]} entry). */
     TOOL_CALL,

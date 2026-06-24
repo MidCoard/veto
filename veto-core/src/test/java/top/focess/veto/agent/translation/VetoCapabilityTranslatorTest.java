@@ -14,7 +14,7 @@ import top.focess.veto.agent.mcp.tools.LoadSkillArgs;
 
 /**
  * Validates {@link VetoCapabilityTranslator} against the per-turn veto_pulse variant matrix ({@code
- * prompt_react_syntax.md} §2.1.2) and the manifest→flat tool translation (§3).
+ * prompt_react_syntax.md} ) and the manifest→flat tool translation.
  */
 class VetoCapabilityTranslatorTest {
 

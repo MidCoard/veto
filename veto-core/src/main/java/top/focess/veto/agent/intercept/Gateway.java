@@ -19,31 +19,30 @@ import top.focess.veto.agent.mcp.ToolDefinition;
 import top.focess.veto.llm.core.ToolCall;
 
 /**
- * The deterministic tool-call security screen (Part 3.1, LLD {@code gateway_security_api.md} §2–§4,
- * {@code loop_interception_drift.md} §3.4). Screens every <b>native/remote</b> tool call into a
- * typed {@link Verdict} — path validation (filesystem-path args under the workspace root), an
- * executable allowlist + blacklist for {@code run_command}, and a {@link ReadHistory} drift check
- * on writes. Agent tools early-route past the Gateway entirely (step 4a) and never reach here.
+ * The deterministic tool-call security screen (Part 3.1). Screens every <b>native/remote</b> tool
+ * call into a typed {@link Verdict} — path validation (filesystem-path args under the workspace
+ * root), an executable allowlist + blacklist for {@code run_command}, and a {@link ReadHistory}
+ * drift check on writes. Agent tools early-route past the Gateway entirely (step 4a) and never
+ * reach here.
  *
  * <p><b>MVP scope:</b> the advisory local-SLM semantic screening (Part 3.2/3.3 relevance &amp;
  * judgmental danger) is <b>Phase-2/BETA</b> and is skipped here. Under that degradation the
- * deterministic layer is authoritative ({@code targeted_redaction_performance.md} §3): only
- * deterministic trips (out-of-bounds path, blacklisted/non-allowlisted executable, write drift)
- * produce a non-{@link Verdict.Safe} verdict. SLM-driven prompting of otherwise-clean
- * writes/network/exec is deferred. Constructed per-agent so {@link #screen} matches the LLD
- * signature (the agent's {@link ReadHistory} is instance state).
+ * deterministic layer is authoritative : only deterministic trips (out-of-bounds path,
+ * blacklisted/non-allowlisted executable, write drift) produce a non-{@link Verdict.Safe} verdict.
+ * SLM-driven prompting of otherwise-clean writes/network/exec is deferred. Constructed per-agent so
+ * {@link #screen} matches the signature (the agent's {@link ReadHistory} is instance state).
  */
 public class Gateway {
 
     private static final Logger log = LoggerFactory.getLogger(Gateway.class);
 
-    /** Default executable allowlist (Part 3.1 §4; deployer-configurable via Runtime Profile). */
+    /** Default executable allowlist (Part 3.1; deployer-configurable via Runtime Profile). */
     private static final Set<String> DEFAULT_EXEC_ALLOWLIST =
             Set.of(
                     "mvn", "gradle", "gradlew", "npm", "git", "python", "python3", "gcc", "g++",
                     "make");
 
-    /** Default network/scanner/spawn blacklist → CRITICAL → BLOCKED (Part 3.1 §4). */
+    /** Default network/scanner/spawn blacklist → CRITICAL → BLOCKED (Part 3.1 ). */
     private static final Set<String> DEFAULT_EXEC_BLACKLIST =
             Set.of("nc", "ncat", "nmap", "curl", "wget", "ssh", "scp", "bash", "sh", "zsh", "fish");
 
@@ -100,7 +99,7 @@ public class Gateway {
         };
     }
 
-    // ── Path validation (Part 3.1 §3) ───────────────────────────────────────
+    // ── Path validation (Part 3.1 ) ───────────────────────────────────────
 
     /** Extracts filesystem-path arguments using the definition's {@link ParamCategory} hints. */
     private List<String> extractPathArgs(ToolCall call, ToolDefinition def) {
@@ -145,7 +144,7 @@ public class Gateway {
         return null;
     }
 
-    // ── Write drift (Part 3.1 §3 / loop_interception_drift §3.4) ─────────────
+    // ── Write drift (Part 3.1 / loop_interception_drift ) ─────────────
 
     private Verdict checkWriteDrift(List<String> paths) {
         for (String path : paths) {
@@ -176,7 +175,7 @@ public class Gateway {
                 + "File was modified externally since the agent last read it.";
     }
 
-    // ── Shell command integrity (Part 3.1 §4) ───────────────────────────────
+    // ── Shell command integrity (Part 3.1 ) ───────────────────────────────
 
     @SuppressWarnings("unchecked")
     private Verdict checkShellCommand(ToolCall call) {

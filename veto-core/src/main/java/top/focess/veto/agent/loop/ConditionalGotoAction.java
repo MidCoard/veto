@@ -1,8 +1,8 @@
 package top.focess.veto.agent.loop;
 
 /**
- * Branch on a programmatic {@link Check} over {@link Scope} vars (LLD §3.3 {@code
- * conditional_goto}). Zero model calls.
+ * Branch on a programmatic {@link Check} over {@link Scope} vars ( {@code conditional_goto}). Zero
+ * model calls.
  */
 public record ConditionalGotoAction(
         String id, String label, Check check, int trueGoto, Integer falseGoto) implements Action {

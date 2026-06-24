@@ -3,11 +3,10 @@ package top.focess.veto.agent.loop;
 import java.util.Map;
 
 /**
- * One step of a guided-mode {@link ActionsProgram} (the IR). Transcribed from {@code
- * prompt_react_syntax.md} §2.4 + {@code workflow_execution_engine.md} §3. The agent authors this
- * directly in its {@code VetoResponse.actionsProgram} (no {@code plan} tool); the harness parses
- * and validates it before loading into guided mode. Every element carries an {@code id} + {@code
- * label}; the {@code type} discriminator is realized as the record type.
+ * One step of a guided-mode {@link ActionsProgram} (the IR).. The agent authors this directly in
+ * its {@code VetoResponse.actionsProgram} (no {@code plan} tool); the harness parses and validates
+ * it before loading into guided mode. Every element carries an {@code id} + {@code label}; the
+ * {@code type} discriminator is realized as the record type.
  *
  * <p>Three families:
  *

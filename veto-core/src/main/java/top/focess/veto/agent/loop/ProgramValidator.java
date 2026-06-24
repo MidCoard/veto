@@ -4,9 +4,9 @@ import java.util.HashSet;
 import java.util.Set;
 
 /**
- * Validates an {@link ActionsProgram} before guided mode loads it (LLD {@code
- * workflow_execution_engine.md} §3.4, {@code prompt_react_syntax.md} §2.4). A program that fails
- * validation is rejected and the agent stays autonomous.
+ * Validates an {@link ActionsProgram} before guided mode loads it ({@code
+ * workflow_execution_engine.md} ). A program that fails validation is rejected and the agent stays
+ * autonomous.
  *
  * <ul>
  *   <li><b>(A) Static lint</b> — the final element must be {@link StopAction}.
@@ -93,7 +93,7 @@ public final class ProgramValidator {
         } else if (a instanceof StopAction) {
             cycle = false; // terminal
         }
-        // conditional_goto: a conditional cycle is bounded by CURRENT_STEPS checks (§3.4 note); we
+        // conditional_goto: a conditional cycle is bounded by CURRENT_STEPS checks ( note); we
         // only flag unconditional goto cycles here.
         onStack[i] = false;
         return cycle;

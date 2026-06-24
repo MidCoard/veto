@@ -13,15 +13,15 @@ import top.focess.veto.agent.mcp.RemoteToolDefinition;
 import top.focess.veto.agent.mcp.ToolDefinition;
 
 /**
- * The default {@link CapabilityTranslator} — the deterministic, LLD-specified {@code veto_pulse}
+ * The default {@link CapabilityTranslator} — the deterministic, -specified {@code veto_pulse}
  * schema builder + flat-tool translator. Registered as a {@code @ConditionalOnMissingBean} so Part
  * 5's richer implementation (provider-specific schema nuances, native-tool reflection via {@code
  * ToolSchemaCompiler}) overrides it when present.
  *
- * <p>The {@code veto_pulse} response schema is fully specified in {@code prompt_react_syntax.md}
- * §2.1/§2.1.2 — building it here is transcription, not a Part-5 judgment. The flat-tool translation
- * is best-effort for native/agent tools (Part 5 compiles their JSON Schema from the args class);
- * remote tools carry their raw input schema.
+ * <p>The {@code veto_pulse} response schema is fully specified in — building it here is
+ * transcription, not a Part-5 judgment. The flat-tool translation is best-effort for native/agent
+ * tools (Part 5 compiles their JSON Schema from the args class); remote tools carry their raw input
+ * schema.
  *
  * <p><b>Temporary standalone-test stub.</b> Exists only so this worktree compiles + tests in
  * isolation without Part 5. Part 5's real {@code CapabilityTranslator} impl wins at Phase-2 merge

@@ -15,20 +15,19 @@ import org.springframework.stereotype.Component;
 
 /**
  * The Veto-implemented local-default substrate — pure OS primitives, no third-party runtime. The
- * Windows-friendly MVP substrate. Transcribed from {@code
- * plans/mvp-core/part5_agent/container_sandbox_isolation.md} §4.1.
+ * Windows-friendly MVP substrate. {@code
+ * plans/mvp-core/part5_agent/container_sandbox_isolation.md}.
  *
- * <p><b>MVP hardening gap (noted):</b> the LLD §4.1 specifies the full hard wall — Windows
- * restricted token ({@code CreateRestrictedToken}) + ACL + Job Object; Linux namespaces + {@code
- * pivot_root} + dedicated UID + {@code seccomp} + cgroups. Those require platform-native (JNA/JNI)
- * plumbing and are a deployer-hardening follow-up. This MVP implementation provides the
- * load-bearing security property that is constructively enforceable from pure Java: <b>no shell,
- * ever</b> — each command is exec'd directly as {@code executable + argv[]} via {@link
- * ProcessBuilder}, so there is no string the model can inject {@code ;}/{@code &&}/{@code |}/
- * {@code $()}/backticks into (injection impossible by construction, not by filtering), the cwd is
- * locked under the workspace root, the environment is sanitized to an allowlist, and a wall-clock
- * timeout bounds runaway processes. The kernel-level token/namespace/cgroup enforcement is the
- * noted gap.
+ * <p><b>MVP hardening gap (noted):</b> the specifies the full hard wall — Windows restricted token
+ * ({@code CreateRestrictedToken}) + ACL + Job Object; Linux namespaces + {@code pivot_root} +
+ * dedicated UID + {@code seccomp} + cgroups. Those require platform-native (JNA/JNI) plumbing and
+ * are a deployer-hardening follow-up. This MVP implementation provides the load-bearing security
+ * property that is constructively enforceable from pure Java: <b>no shell, ever</b> — each command
+ * is exec'd directly as {@code executable + argv[]} via {@link ProcessBuilder}, so there is no
+ * string the model can inject {@code;}/{@code &&}/{@code |}/ {@code $}/backticks into (injection
+ * impossible by construction, not by filtering), the cwd is locked under the workspace root, the
+ * environment is sanitized to an allowlist, and a wall-clock timeout bounds runaway processes. The
+ * kernel-level token/namespace/cgroup enforcement is the noted gap.
  */
 @Component
 public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {

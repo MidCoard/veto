@@ -2,9 +2,8 @@ package top.focess.veto.sandbox;
 
 /**
  * Firecracker microVM substrate (public cloud / hostile untrusted tenants). <b>Phase-2 — not in MVP
- * scope</b> (Feature 15.1). Transcribed from {@code container_sandbox_isolation.md} §4.3 as a
- * permitted subtype of the sealed {@link SandboxSubstrate}; all operations throw until implemented
- * with the Firecracker API adapter.
+ * scope</b> (Feature 15.1). as a permitted subtype of the sealed {@link SandboxSubstrate}; all
+ * operations throw until implemented with the Firecracker API adapter.
  */
 public final class MicrovmSubstrate implements SandboxSubstrate {
 
