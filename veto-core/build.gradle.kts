@@ -42,6 +42,7 @@ dependencies {
     // JSON Processing (from Spring Boot BOM)
     implementation("com.fasterxml.jackson.core:jackson-databind")
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310")
+    implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml")
 
     // Focess Command API
     implementation("top.focess:focess-command:2.2.0")

@@ -1,5 +1,6 @@
 package top.focess.veto.llm.client;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openai.client.OpenAIClient;
 import com.openai.core.JsonValue;
@@ -12,11 +13,11 @@ import com.openai.models.chat.completions.ChatCompletionMessageParam;
 import com.openai.models.chat.completions.ChatCompletionSystemMessageParam;
 import com.openai.models.chat.completions.ChatCompletionUserMessageParam;
 import java.util.Map;
+import top.focess.veto.agent.translation.CapabilityTranslator;
 import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.llm.core.ResolvedRequest;
 import top.focess.veto.llm.core.VetoRequest;
 import top.focess.veto.llm.exceptions.ModelCapabilityException;
-import top.focess.veto.llm.schema.SchemaNormalizerService;
 
 /**
  * Adapter wrapping an {@link OpenAIClient} for OpenAI and OpenAI-compatible providers (DeepSeek,
@@ -30,26 +31,30 @@ final class OpenAiLlmClient extends LlmClient {
     private final boolean supportsJsonSchema;
     private final String providerName;
     private final ObjectMapper objectMapper;
-    private final SchemaNormalizerService schemaNormalizer;
+    private final CapabilityTranslator capabilityTranslator;
 
     OpenAiLlmClient(
             OpenAIClient sdkClient,
             boolean supportsJsonSchema,
             String providerName,
             ObjectMapper objectMapper,
-            SchemaNormalizerService schemaNormalizer) {
+            CapabilityTranslator capabilityTranslator) {
         this.sdkClient = sdkClient;
         this.supportsJsonSchema = supportsJsonSchema;
         this.providerName = providerName;
         this.objectMapper = objectMapper;
-        this.schemaNormalizer = schemaNormalizer;
+        this.capabilityTranslator = capabilityTranslator;
     }
 
     @Override
     public RawCompletion complete(ResolvedRequest resolved) {
         VetoRequest request = resolved.request();
+        // The per-turn veto_pulse schema. Default (thought-ON, autonomous) until Part 1's
+        // PromptCompiler passes the effective thought flag / guided state per turn.
         Map<String, Object> responseSchema =
-                schemaNormalizer.buildOpenAIResponseSchema(request.tools());
+                objectMapper.convertValue(
+                        capabilityTranslator.vetoResponseSchema(true, false),
+                        new TypeReference<Map<String, Object>>() {});
         String systemPrompt = request.systemPrompt();
 
         ChatCompletionCreateParams.Builder builder =

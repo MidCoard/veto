@@ -5,8 +5,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiFunction;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
+import top.focess.veto.agent.translation.CapabilityTranslator;
 import top.focess.veto.llm.config.LlmJacksonConfig;
-import top.focess.veto.llm.schema.SchemaNormalizerService;
 
 /**
  * Generic, type-safe cache for LLM SDK clients. SDK clients (the expensive part with OkHttp pools)
@@ -29,19 +29,19 @@ public class LlmClientFactory {
             new ConcurrentHashMap<>();
 
     private final ObjectMapper objectMapper;
-    private final SchemaNormalizerService schemaNormalizer;
+    private final CapabilityTranslator capabilityTranslator;
 
     /**
      * Constructs a new LlmClientFactory with the specified dependencies.
      *
      * @param objectMapper the mapper for JSON serialization (used by adapters)
-     * @param schemaNormalizer the service for normalizing schemas (used by adapters)
+     * @param capabilityTranslator the translator that emits the per-turn veto_pulse schema
      */
     public LlmClientFactory(
             @Qualifier(LlmJacksonConfig.LLM_OBJECT_MAPPER) ObjectMapper objectMapper,
-            SchemaNormalizerService schemaNormalizer) {
+            CapabilityTranslator capabilityTranslator) {
         this.objectMapper = objectMapper;
-        this.schemaNormalizer = schemaNormalizer;
+        this.capabilityTranslator = capabilityTranslator;
     }
 
     // ── Generic (plugin-extensible) API ──────────────────────────────────────
@@ -102,7 +102,7 @@ public class LlmClientFactory {
         com.openai.client.OpenAIClient sdk =
                 get(com.openai.client.OpenAIClient.class, baseUrl, apiKey);
         return new OpenAiLlmClient(
-                sdk, supportsJsonSchema, providerName, objectMapper, schemaNormalizer);
+                sdk, supportsJsonSchema, providerName, objectMapper, capabilityTranslator);
     }
 
     /**
@@ -110,7 +110,8 @@ public class LlmClientFactory {
      * OpenAI-compatible providers. No OpenAI SDK dependency — uses JDK {@code HttpClient} directly.
      */
     public LlmClient deepSeek(String baseUrl, String apiKey, String providerName) {
-        return new DeepSeekLlmClient(baseUrl, apiKey, providerName, objectMapper, schemaNormalizer);
+        return new DeepSeekLlmClient(
+                baseUrl, apiKey, providerName, objectMapper, capabilityTranslator);
     }
 
     /**
@@ -123,7 +124,7 @@ public class LlmClientFactory {
     public LlmClient anthropic(String baseUrl, String apiKey) {
         com.anthropic.client.AnthropicClient sdk =
                 get(com.anthropic.client.AnthropicClient.class, baseUrl, apiKey);
-        return new AnthropicLlmClient(sdk, schemaNormalizer);
+        return new AnthropicLlmClient(sdk, objectMapper, capabilityTranslator);
     }
 
     /**
@@ -135,7 +136,7 @@ public class LlmClientFactory {
      */
     public LlmClient gemini(String baseUrl, String apiKey) {
         com.google.genai.Client sdk = get(com.google.genai.Client.class, baseUrl, apiKey);
-        return new GeminiLlmClient(sdk, objectMapper, schemaNormalizer);
+        return new GeminiLlmClient(sdk, objectMapper, capabilityTranslator);
     }
 
     private static String cacheKey(String baseUrl, String apiKey) {
