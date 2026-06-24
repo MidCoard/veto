@@ -5,6 +5,7 @@ import java.util.UUID;
 import java.util.concurrent.TimeoutException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.intercept.Gateway;
@@ -50,8 +51,8 @@ public class WorkflowRunner {
             UniformLLMCaller caller,
             com.fasterxml.jackson.databind.ObjectMapper objectMapper,
             java.util.List<LoopInterceptor> interceptors,
-            java.nio.file.Path workspaceRoot,
-            long maxCallsPerEpisode) {
+            @Value("${veto.workspace.root:}") String workspaceRoot,
+            @Value("${veto.breaker.max_calls_per_episode:50}") long maxCallsPerEpisode) {
         this.mcpEngine = mcpEngine;
         this.hitlRegistry = hitlRegistry;
         this.ingressDefense = ingressDefense;
@@ -59,7 +60,10 @@ public class WorkflowRunner {
         this.caller = caller;
         this.objectMapper = objectMapper;
         this.interceptors = interceptors == null ? java.util.List.of() : interceptors;
-        this.workspaceRoot = workspaceRoot;
+        this.workspaceRoot =
+                workspaceRoot == null || workspaceRoot.isBlank()
+                        ? java.nio.file.Path.of(System.getProperty("user.dir", "."))
+                        : java.nio.file.Path.of(workspaceRoot);
         this.maxCallsPerEpisode = maxCallsPerEpisode;
     }
 

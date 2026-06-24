@@ -24,7 +24,10 @@ public record TurnRecord(
         if (payload == null) {
             payload = Map.of();
         } else {
-            payload = Map.copyOf(payload);
+            // Null-tolerant unmodifiable copy: the payload schema has OPTIONAL fields (e.g. a
+            // synthetic TOOL_RESPONSE observation carries no call_id), so Map.copyOf's null-hostile
+            // copy would throw NPE for those. Keys remain String; values may legitimately be null.
+            payload = java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(payload));
         }
         if (timestamp == null) {
             timestamp = Instant.now();
@@ -72,11 +75,13 @@ public record TurnRecord(
      */
     public static TurnRecord toolResponse(
             int turnNumber, String callId, String content, boolean success) {
-        return new TurnRecord(
-                turnNumber,
-                TurnType.TOOL_RESPONSE,
-                Map.of("call_id", callId, "content", content, "success", success),
-                null);
+        // callId is OPTIONAL (absent for synthetic observations — guided-escape, llm-error,
+        // tool-not-found), so Map.of's null-hostile builder would throw; use a null-tolerant map.
+        Map<String, Object> p = new LinkedHashMap<>();
+        p.put("call_id", callId);
+        p.put("content", content);
+        p.put("success", success);
+        return new TurnRecord(turnNumber, TurnType.TOOL_RESPONSE, p, null);
     }
 
     /**
