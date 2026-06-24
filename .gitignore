@@ -39,6 +39,9 @@ Desktop.ini
 /audit/
 /logs/
 /models/
+# TamperProofStore writes its audit log relative to the test JVM cwd (the module
+# root), so it lands under veto-core/audit/ — not the root /audit/ above.
+/veto-core/audit/
 /temp/
 /grammars/cache/
 
