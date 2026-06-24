@@ -3,7 +3,7 @@ package top.focess.veto.vault;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 
-/** Configuration for C8 Local Credential Vault. */
+/** Configuration for vault Local Credential Vault. */
 @Configuration
 @ConfigurationProperties(prefix = "veto.vault")
 public class CredentialVaultConfiguration {

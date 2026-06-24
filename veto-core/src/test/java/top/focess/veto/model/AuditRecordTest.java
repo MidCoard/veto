@@ -12,7 +12,7 @@ class AuditRecordTest {
                 new AuditRecord(
                         "dag-1",
                         "req-1",
-                        "C7-Veto",
+                        "gateway",
                         "raw data with secrets",
                         "redacted data (safe)",
                         "L1: -raw data with secrets\n  +redacted data (safe)",
@@ -24,7 +24,7 @@ class AuditRecordTest {
         assertNotNull(record.getCurrentHash());
         assertFalse(record.getCurrentHash().isEmpty());
         assertTrue(record.isVetoApplied());
-        assertEquals("C7-Veto", record.getComponentSource());
+        assertEquals("gateway", record.getComponentSource());
     }
 
     @Test
@@ -33,7 +33,7 @@ class AuditRecordTest {
                 new AuditRecord(
                         "dag-1",
                         "req-1",
-                        "C6",
+                        "sandbox",
                         "req",
                         "res",
                         "diff1",
@@ -45,7 +45,7 @@ class AuditRecordTest {
                 new AuditRecord(
                         "dag-1",
                         "req-2",
-                        "C7",
+                        "gateway",
                         "raw",
                         "redacted",
                         "diff2",
@@ -64,7 +64,7 @@ class AuditRecordTest {
                 new AuditRecord(
                         "d1",
                         "r1",
-                        "C9",
+                        "observability",
                         "a",
                         "b",
                         "diff",
@@ -75,7 +75,7 @@ class AuditRecordTest {
                 new AuditRecord(
                         "d1",
                         "r1",
-                        "C9",
+                        "observability",
                         "a",
                         "b",
                         "diff",
@@ -90,7 +90,8 @@ class AuditRecordTest {
     void testDifferentActions() {
         for (AuditRecord.AuditAction action : AuditRecord.AuditAction.values()) {
             AuditRecord record =
-                    new AuditRecord("d1", "r1", "C9", "a", "b", "diff", "", action, false);
+                    new AuditRecord(
+                            "d1", "r1", "observability", "a", "b", "diff", "", action, false);
             assertEquals(action, record.getAction());
         }
     }

@@ -3,7 +3,7 @@ package top.focess.veto.bus;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 
-/** Configuration for C3 Communication & Routing Bus. */
+/** Configuration for bus Communication & Routing Bus. */
 @Configuration
 @ConfigurationProperties(prefix = "veto.bus")
 public class BusConfiguration {

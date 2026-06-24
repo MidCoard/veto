@@ -8,12 +8,12 @@ import org.springframework.stereotype.Service;
 import top.focess.veto.observability.AuditLogger;
 
 /**
- * C7 Local SLM Veto Gateway - THE CORE OF PROJECT VETO.
+ * gateway Local SLM Veto Gateway - THE CORE OF PROJECT VETO.
  *
- * <p>The absolute choke point for all outbound data. Intercepts all raw data read by C4 (MCP) or C6
- * (Sandbox). 1. Extracts structural schemas 2. Redacts sensitive literals (secrets, proprietary
- * physics parameters) 3. Enforces structural constraints before allowing data to flow to C3
- * (Communication Bus)
+ * <p>The absolute choke point for all outbound data. Intercepts all raw data read by mcp (MCP) or
+ * sandbox (Sandbox). 1. Extracts structural schemas 2. Redacts sensitive literals (secrets,
+ * proprietary physics parameters) 3. Enforces structural constraints before allowing data to flow
+ * to bus (Communication Bus)
  *
  * <p>Uses llama.cpp (quantized 1B-3B) with GBNF grammar-constrained decoding.
  */
@@ -52,7 +52,7 @@ public class VetoGateway {
     public void init() {
         if (!config.isEnabled()) {
             log.warn(
-                    "C7 VetoGateway: DISABLED by configuration. ALL data will pass through unchecked!");
+                    "gateway VetoGateway: DISABLED by configuration. ALL data will pass through unchecked!");
             return;
         }
 
@@ -60,11 +60,11 @@ public class VetoGateway {
         boolean slmStarted = llamaCppBridge.start();
         if (!slmStarted) {
             log.warn(
-                    "C7 VetoGateway: SLM not available. Running in deterministic-only redaction mode.");
+                    "gateway VetoGateway: SLM not available. Running in deterministic-only redaction mode.");
         }
 
         log.info(
-                "C7 VetoGateway: Initialized. interceptAllOutbound={}, redactSecrets={}, enforceConstraints={}",
+                "gateway VetoGateway: Initialized. interceptAllOutbound={}, redactSecrets={}, enforceConstraints={}",
                 config.isInterceptAllOutbound(),
                 config.isRedactSecrets(),
                 config.isEnforceStructuralConstraints());
@@ -74,7 +74,7 @@ public class VetoGateway {
     public void shutdown() {
         llamaCppBridge.stop();
         log.info(
-                "C7 VetoGateway: Shut down. Processed {} vetoes, {} passes, {} redactions",
+                "gateway VetoGateway: Shut down. Processed {} vetoes, {} passes, {} redactions",
                 totalVetoes.get(),
                 totalPasses.get(),
                 totalRedactions.get());
@@ -86,7 +86,7 @@ public class VetoGateway {
      * @param payload The raw payload data to be sent to the cloud
      * @param dagPayloadId The DAG payload ID for audit trail
      * @param requestId The tool execution request ID for audit trail
-     * @param componentSource Source component (C4 MCP or C6 Sandbox)
+     * @param componentSource Source component (mcp MCP or sandbox Sandbox)
      * @return VetoResult containing the decision and processed payload
      */
     public VetoResult processOutbound(
@@ -97,7 +97,7 @@ public class VetoGateway {
 
         long startTime = System.currentTimeMillis();
         log.info(
-                "C7 VetoGateway: Processing outbound payload ({} bytes, source={})",
+                "gateway VetoGateway: Processing outbound payload ({} bytes, source={})",
                 payload.length(),
                 componentSource);
 
@@ -142,14 +142,14 @@ public class VetoGateway {
                         "Payload required redaction ("
                                 + deterministicReport.getTotalRedactions()
                                 + " deterministic, SLM analysis)";
-                log.info("C7 VetoGateway: VETO/REDACT applied  - {}", reason);
+                log.info("gateway VetoGateway: VETO/REDACT applied  - {}", reason);
             } else {
                 decision = VetoDecision.PASS;
                 totalPasses.incrementAndGet();
                 reason = "Payload passed all checks";
             }
 
-            // Step 5: Log to audit trail (C9)
+            // Step 5: Log to audit trail (observability)
             String diff = computeDiff(payload, finalPayload);
             auditLogger.logRedaction(
                     dagPayloadId,
@@ -167,7 +167,7 @@ public class VetoGateway {
 
             long elapsed = System.currentTimeMillis() - startTime;
             log.info(
-                    "C7 VetoGateway: Decision={}, elapsed={}ms, redactions={}",
+                    "gateway VetoGateway: Decision={}, elapsed={}ms, redactions={}",
                     decision,
                     elapsed,
                     deterministicReport.getTotalRedactions());
@@ -176,7 +176,7 @@ public class VetoGateway {
                     decision, finalPayload, reason, deterministicReport.getTotalRedactions());
 
         } catch (Exception e) {
-            log.error("C7 VetoGateway: Processing error  - falling back to BLOCK", e);
+            log.error("gateway VetoGateway: Processing error  - falling back to BLOCK", e);
             auditLogger.logError(dagPayloadId, requestId, componentSource, e.getMessage());
             return VetoResult.block("Veto gateway processing error: " + e.getMessage());
         }

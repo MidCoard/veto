@@ -3,7 +3,7 @@ package top.focess.veto.veto;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 
-/** Configuration for C7 Local SLM Veto Gateway. */
+/** Configuration for gateway Local SLM Veto Gateway. */
 @Configuration
 @ConfigurationProperties(prefix = "veto.veto-gateway")
 public class VetoGatewayConfiguration {

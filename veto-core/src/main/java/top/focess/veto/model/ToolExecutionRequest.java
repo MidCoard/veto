@@ -3,7 +3,7 @@ package top.focess.veto.model;
 import java.time.Instant;
 import java.util.*;
 
-/** A request to execute a specific atomic tool capability within C6 Sandbox. */
+/** A request to execute a specific atomic tool capability within sandbox Sandbox. */
 public class ToolExecutionRequest {
 
     private final String id;

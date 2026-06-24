@@ -14,8 +14,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * C5 File Lock Manager - manages local file-lock contention between worker processes. Prevents
- * concurrent access to shared files across the swarm.
+ * orchestrator File Lock Manager - manages local file-lock contention between worker processes.
+ * Prevents concurrent access to shared files across the swarm.
  */
 @Component
 public class FileLockManager {
@@ -48,7 +48,7 @@ public class FileLockManager {
 
             if (lock != null) {
                 activeLocks.put(path, new FileLockHandle(channel, lock));
-                log.debug("C5 FileLock: Acquired lock for {}", path);
+                log.debug("orchestrator FileLock: Acquired lock for {}", path);
                 return true;
             }
 
@@ -59,21 +59,23 @@ public class FileLockManager {
                 lock = channel.tryLock(0L, Long.MAX_VALUE, false);
                 if (lock != null) {
                     activeLocks.put(path, new FileLockHandle(channel, lock));
-                    log.debug("C5 FileLock: Acquired lock for {} (after wait)", path);
+                    log.debug("orchestrator FileLock: Acquired lock for {} (after wait)", path);
                     return true;
                 }
             }
 
             channel.close();
-            log.warn("C5 FileLock: Timeout waiting for lock on {}", path);
+            log.warn("orchestrator FileLock: Timeout waiting for lock on {}", path);
             return false;
 
         } catch (OverlappingFileLockException e) {
-            log.warn("C5 FileLock: Overlapping lock for {} (already held in this JVM)", path);
+            log.warn(
+                    "orchestrator FileLock: Overlapping lock for {} (already held in this JVM)",
+                    path);
             return false;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            log.warn("C5 FileLock: Interrupted while waiting for lock on {}", path);
+            log.warn("orchestrator FileLock: Interrupted while waiting for lock on {}", path);
             return false;
         }
     }
@@ -85,9 +87,9 @@ public class FileLockManager {
             try {
                 handle.lock.release();
                 handle.channel.close();
-                log.debug("C5 FileLock: Released lock for {}", path);
+                log.debug("orchestrator FileLock: Released lock for {}", path);
             } catch (IOException e) {
-                log.warn("C5 FileLock: Error releasing lock for {}", path, e);
+                log.warn("orchestrator FileLock: Error releasing lock for {}", path, e);
             }
         }
     }
@@ -103,7 +105,7 @@ public class FileLockManager {
         for (Path p : activeLocks.keySet()) {
             releaseLock(p);
         }
-        log.info("C5 FileLock: Released all locks");
+        log.info("orchestrator FileLock: Released all locks");
     }
 
     private record FileLockHandle(FileChannel channel, FileLock lock) {}

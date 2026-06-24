@@ -11,7 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * C8 Secure Store — encrypted on-disk storage for a single user's credentials. Uses AES-256-GCM.
+ * vault Secure Store — encrypted on-disk storage for a single user's credentials. Uses AES-256-GCM.
  * The encryption key (Vault Key) is provided externally via {@link #unlock(SecretKey)} after the
  * user authenticates.
  *
@@ -59,10 +59,10 @@ public class SecureStore {
         try {
             Files.createDirectories(storePath.getParent());
         } catch (IOException e) {
-            log.warn("C8 Vault: Cannot create store directory", e);
+            log.warn("Vault: Cannot create store directory", e);
         }
         initialized = true;
-        log.info("C8 Vault: Secure store at '{}' (LOCKED — waiting for login)", storePath);
+        log.info("Vault: Secure store at '{}' (LOCKED — waiting for login)", storePath);
     }
 
     /**
@@ -75,14 +75,14 @@ public class SecureStore {
         }
         this.storeKey = vaultKey;
         loadStore();
-        log.info("C8 Vault: Unlocked — {} credentials loaded", credentialCache.size());
+        log.info("Vault: Unlocked — {} credentials loaded", credentialCache.size());
     }
 
     /** Locks the vault, wiping the encryption key and decrypted credentials from memory. */
     public synchronized void lock() {
         this.storeKey = null;
         this.credentialCache.clear();
-        log.info("C8 Vault: Locked — credentials cleared from memory");
+        log.info("Vault: Locked — credentials cleared from memory");
     }
 
     /** Returns true if the vault is unlocked and ready for operations. */
@@ -99,9 +99,9 @@ public class SecureStore {
             String encrypted = encrypt(value);
             credentialCache.put(key, encrypted);
             saveStore();
-            log.debug("C8 Vault: Stored credential '{}'", key);
+            log.debug("Vault: Stored credential '{}'", key);
         } catch (Exception e) {
-            log.error("C8 Vault: Failed to store credential '{}'", key, e);
+            log.error("Vault: Failed to store credential '{}'", key, e);
         }
     }
 
@@ -110,13 +110,13 @@ public class SecureStore {
         requireUnlocked();
         String encrypted = credentialCache.get(key);
         if (encrypted == null) {
-            log.debug("C8 Vault: Credential '{}' not found", key);
+            log.debug("Vault: Credential '{}' not found", key);
             return Optional.empty();
         }
         try {
             return Optional.of(decrypt(encrypted));
         } catch (Exception e) {
-            log.error("C8 Vault: Failed to decrypt credential '{}'", key, e);
+            log.error("Vault: Failed to decrypt credential '{}'", key, e);
             return Optional.empty();
         }
     }
@@ -126,7 +126,7 @@ public class SecureStore {
         requireUnlocked();
         credentialCache.remove(key);
         saveStore();
-        log.debug("C8 Vault: Deleted credential '{}'", key);
+        log.debug("Vault: Deleted credential '{}'", key);
     }
 
     /** List all stored credential keys (not the values). */
@@ -186,13 +186,13 @@ public class SecureStore {
 
     private void loadStore() {
         if (!Files.exists(storePath)) {
-            log.info("C8 Vault: No existing store file at '{}', starting fresh", storePath);
+            log.info("Vault: No existing store file at '{}', starting fresh", storePath);
             return;
         }
         try (BufferedReader reader = Files.newBufferedReader(storePath)) {
             String header = reader.readLine();
             if (!STORE_HEADER.equals(header)) {
-                log.warn("C8 Vault: Invalid store header");
+                log.warn("Vault: Invalid store header");
                 return;
             }
             String line;
@@ -203,7 +203,7 @@ public class SecureStore {
                 }
             }
         } catch (IOException e) {
-            log.error("C8 Vault: Failed to load store", e);
+            log.error("Vault: Failed to load store", e);
         }
     }
 
@@ -217,7 +217,7 @@ public class SecureStore {
             }
             writer.flush();
         } catch (IOException e) {
-            log.error("C8 Vault: Failed to save store", e);
+            log.error("Vault: Failed to save store", e);
         }
     }
 

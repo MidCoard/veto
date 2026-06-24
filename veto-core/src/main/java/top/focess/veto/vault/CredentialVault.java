@@ -11,9 +11,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 /**
- * C8 Local Credential Vault — top-level service. Each user has their own credential file at {@code
- * credentials/{username}.enc}, encrypted with a per-user Vault Key. No user can read another user's
- * credentials.
+ * vault Local Credential Vault — top-level service. Each user has their own credential file at
+ * {@code credentials/{username}.enc}, encrypted with a per-user Vault Key. No user can read another
+ * user's credentials.
  *
  * <p>The vault starts LOCKED. A user must authenticate to unwrap their Vault Key and call {@link
  * #unlock(SecretKey, String)}. Supports multiple concurrent active users.
@@ -36,14 +36,14 @@ public class CredentialVault {
     /** Initializes the vault directory. Vault remains LOCKED until a user logs in. */
     @PostConstruct
     public void init() {
-        log.info("C8 CredentialVault: Initialized (LOCKED). Waiting for authentication.");
+        log.info("vault CredentialVault: Initialized (LOCKED). Waiting for authentication.");
     }
 
     /** Logs shutdown state. */
     @PreDestroy
     public void shutdown() {
         log.info(
-                "C8 CredentialVault: Shut down with {} active injection sessions",
+                "vault CredentialVault: Shut down with {} active injection sessions",
                 injectionService.getActiveInjectionCount());
     }
 
@@ -56,7 +56,7 @@ public class CredentialVault {
         store.unlock(vaultKey);
         activeStores.put(username, store);
         log.info(
-                "C8 CredentialVault: Unlocked for user '{}'. {} credentials available.",
+                "vault CredentialVault: Unlocked for user '{}'. {} credentials available.",
                 username,
                 store.listKeys().size());
     }
@@ -69,7 +69,7 @@ public class CredentialVault {
         } else {
             activeStores.values().forEach(SecureStore::lock);
             activeStores.clear();
-            log.info("C8 CredentialVault: Locked all stores.");
+            log.info("vault CredentialVault: Locked all stores.");
         }
     }
 
@@ -79,7 +79,7 @@ public class CredentialVault {
         if (store != null) {
             store.lock();
         }
-        log.info("C8 CredentialVault: Locked for user '{}'.", username);
+        log.info("vault CredentialVault: Locked for user '{}'.", username);
     }
 
     public boolean isUnlocked() {

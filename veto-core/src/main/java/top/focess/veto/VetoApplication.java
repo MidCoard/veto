@@ -7,9 +7,10 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 /**
  * Project Veto - Zero-Trust Cloud-Edge Agent Client.
  *
- * <p>Entry point for the core engine hosting components C3 - C9: C3: Communication & Routing Bus
- * C4: MCP Extensibility Engine C5: Swarm Lifecycle Orchestrator C6: Atomic Tool Execution Sandbox
- * C7: Local SLM Veto Gateway C8: Local Credential Vault C9: Observability & Shadow Audit
+ * <p>Entry point for the core engine hosting components bus - observability: bus: Communication &
+ * Routing Bus mcp: MCP Extensibility Engine orchestrator: Swarm Lifecycle Orchestrator sandbox:
+ * Atomic Tool Execution Sandbox gateway: Local SLM Veto Gateway vault: Local Credential Vault
+ * observability: Observability & Shadow Audit
  */
 @SpringBootApplication
 @EnableScheduling

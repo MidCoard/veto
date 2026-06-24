@@ -9,9 +9,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * C7 GBNF Grammar Engine - manages GBNF (GGML BNF) grammars for constrained decoding. GBNF grammars
- * define the structural constraints that the local SLM must adhere to, ensuring that redacted
- * output follows strict schemas.
+ * gateway GBNF Grammar Engine - manages GBNF (GGML BNF) grammars for constrained decoding. GBNF
+ * grammars define the structural constraints that the local SLM must adhere to, ensuring that
+ * redacted output follows strict schemas.
  */
 @Component
 public class GBNFGrammarEngine {
@@ -39,17 +39,18 @@ public class GBNFGrammarEngine {
                         Path resolved = Path.of(path);
                         if (!Files.exists(resolved)) {
                             log.warn(
-                                    "C7 GBNF: Grammar file not found at '{}', using default", path);
+                                    "gateway GBNF: Grammar file not found at '{}', using default",
+                                    path);
                             return getDefaultVetoGrammar();
                         }
                         String grammar = Files.readString(resolved);
                         log.info(
-                                "C7 GBNF: Loaded grammar from '{}' ({} bytes)",
+                                "gateway GBNF: Loaded grammar from '{}' ({} bytes)",
                                 path,
                                 grammar.length());
                         return grammar;
                     } catch (IOException e) {
-                        log.error("C7 GBNF: Failed to load grammar from '{}'", path, e);
+                        log.error("gateway GBNF: Failed to load grammar from '{}'", path, e);
                         return getDefaultVetoGrammar();
                     }
                 });
@@ -107,6 +108,6 @@ string ::= "\\"" [^"]* "\\""
     /** Register a custom grammar. */
     public void registerGrammar(String name, String grammar) {
         grammarCache.put(name, grammar);
-        log.info("C7 GBNF: Registered grammar '{}'", name);
+        log.info("gateway GBNF: Registered grammar '{}'", name);
     }
 }

@@ -35,10 +35,11 @@ public class TrainingAutoConfiguration {
                     boolean restarted = llamaCppBridge.restartWithModel(modelPath);
                     if (restarted) {
                         log.info(
-                                "C7 VetoGateway: Restarted with newly trained model: {}",
+                                "gateway VetoGateway: Restarted with newly trained model: {}",
                                 modelPath);
                     } else {
-                        log.error("C7 VetoGateway: Failed to restart with model: {}", modelPath);
+                        log.error(
+                                "gateway VetoGateway: Failed to restart with model: {}", modelPath);
                     }
                 });
         log.info("Training deploy callback registered -> LlamaCppBridge");

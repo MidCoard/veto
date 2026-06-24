@@ -10,9 +10,9 @@ import org.springframework.stereotype.Service;
 import top.focess.veto.model.DAGPayload;
 
 /**
- * C3 Communication & Routing Bus - top-level service. Orchestrates WebSocket transport, DAG payload
- * routing, and lifecycle. This is the single umbilical cord between the Veto client and the cloud
- * backend.
+ * bus Communication & Routing Bus - top-level service. Orchestrates WebSocket transport, DAG
+ * payload routing, and lifecycle. This is the single umbilical cord between the Veto client and the
+ * cloud backend.
  */
 @Service
 public class RoutingBusService {
@@ -40,11 +40,11 @@ public class RoutingBusService {
         webSocketBus.registerMessageRoute(
                 "fallback",
                 payload -> {
-                    log.debug("C3 Bus: Fallback message received ({} bytes)", payload.length());
+                    log.debug("Bus: Fallback message received ({} bytes)", payload.length());
                 });
 
         log.info(
-                "C3 RoutingBusService: Initialized. WS port={}, gRPC port={}",
+                "bus RoutingBusService: Initialized. WS port={}, gRPC port={}",
                 config.getWebsocket().getPort(),
                 config.getGrpc().getPort());
     }
@@ -52,7 +52,7 @@ public class RoutingBusService {
     @PreDestroy
     public void shutdown() {
         webSocketBus.disconnect();
-        log.info("C3 RoutingBusService: Shut down");
+        log.info("bus RoutingBusService: Shut down");
     }
 
     /** Submit a DAG payload to the cloud backend and return a future for the response. */

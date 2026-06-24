@@ -6,8 +6,8 @@ import top.focess.veto.llm.core.ProviderType;
 import top.focess.veto.llm.credential.CredentialResolver;
 
 /**
- * Default egress: make the HTTPS call in-place. The real credential is resolved from the C8 Vault
- * and handed to the SDK, which calls the provider directly. Active unless {@code
+ * Default egress: make the HTTPS call in-place. The real credential is resolved from the vault
+ * Vault and handed to the SDK, which calls the provider directly. Active unless {@code
  * veto.llm.egress.mode=proxy}.
  */
 @Component

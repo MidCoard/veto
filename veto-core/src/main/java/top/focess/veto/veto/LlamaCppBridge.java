@@ -9,7 +9,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * C7 LlamaCpp Bridge �?interface to llama.cpp for local SLM inference. Manages the llama.cpp
+ * gateway LlamaCpp Bridge �?interface to llama.cpp for local SLM inference. Manages the llama.cpp
  * subprocess lifecycle and provides grammar-constrained decoding using GBNF grammars. The SLM
  * (quantized 1B-3B model) acts as the intent firewall and semantic redactor.
  */
@@ -54,7 +54,7 @@ public class LlamaCppBridge {
 
         if (!Files.exists(resolved)) {
             log.warn(
-                    "C7 LlamaCpp: Model not found at '{}'. SLM inference disabled. "
+                    "gateway LlamaCpp: Model not found at '{}'. SLM inference disabled. "
                             + "Place a quantized GGUF model (1B-3B) at this path.",
                     modelPath);
             this.available = false;
@@ -96,7 +96,7 @@ public class LlamaCppBridge {
 
             available = true;
             log.info(
-                    "C7 LlamaCpp: Started llama.cpp with model '{}' (ctx={}, temp={})",
+                    "gateway LlamaCpp: Started llama.cpp with model '{}' (ctx={}, temp={})",
                     modelPath,
                     config.getLlamaCpp().getNCtx(),
                     config.getLlamaCpp().getTemperature());
@@ -107,7 +107,7 @@ public class LlamaCppBridge {
             return true;
 
         } catch (IOException e) {
-            log.error("C7 LlamaCpp: Failed to start llama.cpp. Is it installed?", e);
+            log.error("gateway LlamaCpp: Failed to start llama.cpp. Is it installed?", e);
             this.available = false;
             return false;
         }
@@ -163,7 +163,7 @@ public class LlamaCppBridge {
                         return response.toString();
 
                     } catch (IOException e) {
-                        log.error("C7 LlamaCpp: Inference failed", e);
+                        log.error("gateway LlamaCpp: Inference failed", e);
                         return "{\"veto_decision\":\"pass\",\"data\":{\"error\":\""
                                 + escapeJson(e.getMessage())
                                 + "\"}}";
@@ -175,7 +175,7 @@ public class LlamaCppBridge {
     /** Kill request for priority interruption. */
     public void killCurrentInference() {
         // Implementation would send SIGINT or use llama.cpp's interrupt API
-        log.warn("C7 LlamaCpp: Kill current inference requested");
+        log.warn("gateway LlamaCpp: Kill current inference requested");
     }
 
     /** Gracefully stop the llama.cpp subprocess. */
@@ -193,7 +193,7 @@ public class LlamaCppBridge {
                 llamaProcess.destroyForcibly();
             }
         }
-        log.info("C7 LlamaCpp: Stopped");
+        log.info("gateway LlamaCpp: Stopped");
     }
 
     private void startHealthMonitor() {
@@ -201,7 +201,7 @@ public class LlamaCppBridge {
                 () -> {
                     while (available) {
                         if (llamaProcess != null && !llamaProcess.isAlive()) {
-                            log.warn("C7 LlamaCpp: Process died unexpectedly");
+                            log.warn("gateway LlamaCpp: Process died unexpectedly");
                             available = false;
                             break;
                         }
@@ -223,7 +223,7 @@ public class LlamaCppBridge {
      * @return true if the restart succeeded
      */
     public synchronized boolean restartWithModel(String newModelPath) {
-        log.info("C7 LlamaCpp: Restarting with new model '{}'", newModelPath);
+        log.info("gateway LlamaCpp: Restarting with new model '{}'", newModelPath);
         stop();
 
         // Update the config model path

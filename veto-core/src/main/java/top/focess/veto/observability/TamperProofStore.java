@@ -15,8 +15,9 @@ import org.springframework.stereotype.Component;
 import top.focess.veto.model.AuditRecord;
 
 /**
- * C9 Tamper-Proof Store - encrypted, hash-chained persistent audit log. Each entry includes the
- * previous entry's hash, forming an immutable chain. Logs are encrypted at rest using AES-256-GCM.
+ * observability Tamper-Proof Store - encrypted, hash-chained persistent audit log. Each entry
+ * includes the previous entry's hash, forming an immutable chain. Logs are encrypted at rest using
+ * AES-256-GCM.
  */
 @Component
 public class TamperProofStore {
@@ -49,13 +50,13 @@ public class TamperProofStore {
             Files.createDirectories(auditDir);
             loadChainTail();
             log.info(
-                    "C9 TamperProofStore: Initialized at '{}'. Chain tail hash: {}",
+                    "observability TamperProofStore: Initialized at '{}'. Chain tail hash: {}",
                     auditDir,
                     chainTailHash.isEmpty()
                             ? "(new chain)"
                             : chainTailHash.substring(0, 16) + "...");
         } catch (IOException e) {
-            log.error("C9 TamperProofStore: Cannot initialize", e);
+            log.error("observability TamperProofStore: Cannot initialize", e);
         }
     }
 
@@ -68,7 +69,7 @@ public class TamperProofStore {
             // Verify previous record's hash chain
             if (!chainTailHash.isEmpty() && !record.getPreviousRecordHash().equals(chainTailHash)) {
                 log.warn(
-                        "C9 TamperProofStore: Hash chain broken! Expected tail '{}', got '{}'",
+                        "observability TamperProofStore: Hash chain broken! Expected tail '{}', got '{}'",
                         chainTailHash,
                         record.getPreviousRecordHash());
             }
@@ -94,12 +95,12 @@ public class TamperProofStore {
             appendToIndex(record);
 
             log.debug(
-                    "C9 TamperProofStore: Appended record '{}' (action={})",
+                    "observability TamperProofStore: Appended record '{}' (action={})",
                     record.getId(),
                     record.getAction());
 
         } catch (Exception e) {
-            log.error("C9 TamperProofStore: Failed to append audit record", e);
+            log.error("observability TamperProofStore: Failed to append audit record", e);
         }
     }
 
@@ -174,7 +175,7 @@ public class TamperProofStore {
                 }
             }
         } catch (Exception e) {
-            log.error("C9 TamperProofStore: Export error", e);
+            log.error("observability TamperProofStore: Export error", e);
         }
         return records;
     }
@@ -288,7 +289,7 @@ public class TamperProofStore {
                 }
             }
         } catch (IOException e) {
-            log.warn("C9 TamperProofStore: Cannot load chain tail", e);
+            log.warn("observability TamperProofStore: Cannot load chain tail", e);
         }
     }
 

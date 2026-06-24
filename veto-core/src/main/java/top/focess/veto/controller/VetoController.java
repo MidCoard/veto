@@ -11,8 +11,8 @@ import org.springframework.web.bind.annotation.*;
 import top.focess.veto.veto.VetoGateway;
 
 /**
- * REST controller for C7 Veto Gateway operations. Provides endpoints to process payloads through
- * the veto gate and query gateway status.
+ * REST controller for gateway Veto Gateway operations. Provides endpoints to process payloads
+ * through the veto gate and query gateway status.
  */
 @RestController
 @RequestMapping("/api/veto")
@@ -47,7 +47,7 @@ public class VetoController {
         String dagPayloadId =
                 (String) request.getOrDefault("dagPayloadId", UUID.randomUUID().toString());
         String requestId = (String) request.getOrDefault("requestId", UUID.randomUUID().toString());
-        String componentSource = (String) request.getOrDefault("componentSource", "C7-Gateway");
+        String componentSource = (String) request.getOrDefault("componentSource", "gateway");
 
         log.info(
                 "REST: /api/veto/process - payload={} bytes, source={}",

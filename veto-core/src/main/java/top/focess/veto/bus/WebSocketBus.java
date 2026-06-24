@@ -16,7 +16,7 @@ import org.springframework.web.socket.handler.TextWebSocketHandler;
 import top.focess.veto.model.DAGPayload;
 
 /**
- * C3 Communication Bus - WebSocket transport layer. Single umbilical to the Java Spring Boot cloud
+ * bus Communication Bus - WebSocket transport layer. Single umbilical to the Java Spring Boot cloud
  * backend. Handles bidirectional routing of DAG task payloads with heartbeat and reconnection.
  */
 @Component
@@ -50,25 +50,25 @@ public class WebSocketBus extends TextWebSocketHandler {
         try {
             StandardWebSocketClient client = new StandardWebSocketClient();
             String wsUrl = backendUrl + config.getWebsocket().getPath();
-            log.info("C3 Bus: Connecting to {} ...", wsUrl);
+            log.info("Bus: Connecting to {} ...", wsUrl);
 
             client.doHandshake(this, wsUrl)
                     .addCallback(
                             wsSession -> {
                                 this.session = wsSession;
                                 log.info(
-                                        "C3 Bus: Connected successfully (session={})",
+                                        "Bus: Connected successfully (session={})",
                                         wsSession.getId());
                                 heartbeatManager.start(this);
                                 future.complete(true);
                             },
                             ex -> {
-                                log.error("C3 Bus: Connection failed", ex);
+                                log.error("Bus: Connection failed", ex);
                                 reconnectionHandler.scheduleReconnect(this, backendUrl);
                                 future.complete(false);
                             });
         } catch (Exception e) {
-            log.error("C3 Bus: Connection error", e);
+            log.error("Bus: Connection error", e);
             future.completeExceptionally(e);
         }
         return future;
@@ -77,43 +77,41 @@ public class WebSocketBus extends TextWebSocketHandler {
     /** Register a DAG payload route. */
     public void registerDAGRoute(String taskType, Consumer<DAGPayload> handler) {
         dagRouteTable.put(taskType, handler);
-        log.debug("C3 Bus: Registered DAG route for taskType={}", taskType);
+        log.debug("Bus: Registered DAG route for taskType={}", taskType);
     }
 
     /** Register a generic message route. */
     public void registerMessageRoute(String messageType, Consumer<String> handler) {
         messageRouteTable.put(messageType, handler);
-        log.debug("C3 Bus: Registered message route for type={}", messageType);
+        log.debug("Bus: Registered message route for type={}", messageType);
     }
 
     /** Send a DAG payload to the cloud backend. */
     public synchronized void sendDAGPayload(DAGPayload payload) {
         if (!isConnected()) {
-            log.warn("C3 Bus: Cannot send DAG payload, not connected");
+            log.warn("Bus: Cannot send DAG payload, not connected");
             return;
         }
         try {
             String json = objectMapper.writeValueAsString(payload);
             session.sendMessage(new TextMessage(json));
             log.debug(
-                    "C3 Bus: Sent DAG payload id={}, type={}",
-                    payload.getId(),
-                    payload.getTaskType());
+                    "Bus: Sent DAG payload id={}, type={}", payload.getId(), payload.getTaskType());
         } catch (IOException e) {
-            log.error("C3 Bus: Failed to send DAG payload", e);
+            log.error("Bus: Failed to send DAG payload", e);
         }
     }
 
     /** Send a raw message. */
     public synchronized void sendMessage(String message) {
         if (!isConnected()) {
-            log.warn("C3 Bus: Cannot send message, not connected");
+            log.warn("Bus: Cannot send message, not connected");
             return;
         }
         try {
             session.sendMessage(new TextMessage(message));
         } catch (IOException e) {
-            log.error("C3 Bus: Failed to send message", e);
+            log.error("Bus: Failed to send message", e);
         }
     }
 
@@ -126,7 +124,7 @@ public class WebSocketBus extends TextWebSocketHandler {
             if (handler != null) {
                 handler.accept(dagPayload);
             } else {
-                log.warn("C3 Bus: No route for taskType={}", dagPayload.getTaskType());
+                log.warn("Bus: No route for taskType={}", dagPayload.getTaskType());
             }
         } catch (Exception e) {
             // Try generic message routing
@@ -134,7 +132,7 @@ public class WebSocketBus extends TextWebSocketHandler {
             if (fallback != null) {
                 fallback.accept(payload);
             } else {
-                log.warn("C3 Bus: Unhandled message ({} bytes)", payload.length());
+                log.warn("Bus: Unhandled message ({} bytes)", payload.length());
             }
         }
     }
@@ -142,7 +140,7 @@ public class WebSocketBus extends TextWebSocketHandler {
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
         log.warn(
-                "C3 Bus: Connection closed (code={}, reason={})",
+                "Bus: Connection closed (code={}, reason={})",
                 status.getCode(),
                 status.getReason());
         this.session = null;
@@ -152,7 +150,7 @@ public class WebSocketBus extends TextWebSocketHandler {
 
     @Override
     public void handleTransportError(WebSocketSession session, Throwable exception) {
-        log.error("C3 Bus: Transport error", exception);
+        log.error("Bus: Transport error", exception);
     }
 
     public boolean isConnected() {
@@ -165,7 +163,7 @@ public class WebSocketBus extends TextWebSocketHandler {
             try {
                 session.close(CloseStatus.NORMAL);
             } catch (IOException e) {
-                log.warn("C3 Bus: Error during disconnect", e);
+                log.warn("Bus: Error during disconnect", e);
             }
         }
         this.session = null;

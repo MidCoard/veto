@@ -3,7 +3,7 @@ package top.focess.veto.orchestrator;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 
-/** Configuration for C5 Swarm Lifecycle Orchestrator. */
+/** Configuration for orchestrator Swarm Lifecycle Orchestrator. */
 @Configuration
 @ConfigurationProperties(prefix = "veto.orchestrator")
 public class OrchestratorConfiguration {

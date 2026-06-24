@@ -7,7 +7,7 @@ import top.focess.veto.vault.CredentialVault;
 import top.focess.veto.vault.SecureStore;
 
 /**
- * Resolves the API key for a request from the C8 {@link CredentialVault}, keyed by {@code
+ * Resolves the API key for a request from the vault {@link CredentialVault}, keyed by {@code
  * VetoRequest.credentialKey()}. Credentials are looked up at call time so they never live inside
  * the request object or the audit trail.
  */

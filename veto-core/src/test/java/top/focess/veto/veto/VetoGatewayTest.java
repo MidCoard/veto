@@ -38,7 +38,7 @@ class VetoGatewayTest {
     void testProcessOutboundPassesCleanData() {
         String cleanPayload = "{\"action\":\"compile\",\"files\":[\"main.cpp\"]}";
         VetoGateway.VetoResult result =
-                vetoGateway.processOutbound(cleanPayload, "dag-1", "req-1", "C6-Sandbox");
+                vetoGateway.processOutbound(cleanPayload, "dag-1", "req-1", "sandbox");
 
         assertEquals(VetoGateway.VetoDecision.PASS, result.decision());
         assertTrue(result.isAllowed());
@@ -49,7 +49,7 @@ class VetoGatewayTest {
     void testProcessOutboundRedactsIPs() {
         String payload = "Server configured at 10.0.0.50 with SSH key";
         VetoGateway.VetoResult result =
-                vetoGateway.processOutbound(payload, "dag-2", "req-2", "C6-Sandbox");
+                vetoGateway.processOutbound(payload, "dag-2", "req-2", "sandbox");
 
         assertEquals(VetoGateway.VetoDecision.REDACT, result.decision());
         assertTrue(result.isAllowed()); // REDACT is still allowed (safe to send)
@@ -62,7 +62,7 @@ class VetoGatewayTest {
         String payload =
                 "IP: 192.168.1.1, Email: admin@internal.corp, Key: abcdefghijklmnopqrstuvwxyz0123456789ABCDEF";
         VetoGateway.VetoResult result =
-                vetoGateway.processOutbound(payload, "dag-3", "req-3", "C4-MCP");
+                vetoGateway.processOutbound(payload, "dag-3", "req-3", "mcp");
 
         assertEquals(VetoGateway.VetoDecision.REDACT, result.decision());
         assertTrue(result.redactionCount() >= 3);
@@ -85,7 +85,7 @@ class VetoGatewayTest {
 
         String sensitivePayload = "Secret: my-api-key-12345";
         VetoGateway.VetoResult result =
-                disabledGateway.processOutbound(sensitivePayload, "dag-4", "req-4", "C6-Sandbox");
+                disabledGateway.processOutbound(sensitivePayload, "dag-4", "req-4", "sandbox");
 
         assertEquals(VetoGateway.VetoDecision.PASS, result.decision());
         assertEquals(sensitivePayload, result.processedPayload()); // No redaction

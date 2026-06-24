@@ -7,9 +7,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * C7 Semantic Redactor - intercepts and redacts sensitive literals from outbound data. Identifies
- * secrets, proprietary physics parameters, IP addresses, and other sensitive information before the
- * data flows through C3 to the cloud.
+ * gateway Semantic Redactor - intercepts and redacts sensitive literals from outbound data.
+ * Identifies secrets, proprietary physics parameters, IP addresses, and other sensitive information
+ * before the data flows through bus to the cloud.
  *
  * <p>Works in concert with the local SLM (llama.cpp) for semantic understanding, but also applies
  * deterministic regex-based redaction as a first pass.
@@ -121,7 +121,7 @@ public class SemanticRedactor {
             if (count > 0) {
                 sb.append(redacted.substring(lastEnd));
                 redacted = sb.toString();
-                log.debug("C7 Redactor: Redacted {} instances of type {}", count, rule.type());
+                log.debug("gateway Redactor: Redacted {} instances of type {}", count, rule.type());
             }
         }
 
@@ -168,10 +168,10 @@ public class SemanticRedactor {
                 // The SLM identified specific fields to redact
                 // This is a simplified implementation  - in production, the
                 // SLM output is parsed via the GBNF grammar
-                log.debug("C7 Redactor: Applying SLM-suggested redactions");
+                log.debug("gateway Redactor: Applying SLM-suggested redactions");
             }
         } catch (Exception e) {
-            log.warn("C7 Redactor: Failed to apply SLM redactions", e);
+            log.warn("gateway Redactor: Failed to apply SLM redactions", e);
         }
         return payload; // Return original if SLM processing fails
     }
@@ -179,7 +179,7 @@ public class SemanticRedactor {
     /** Add a custom proprietary parameter pattern. */
     public void addProprietaryPattern(String regex) {
         proprietaryParameterPatterns.add(Pattern.compile(regex));
-        log.info("C7 Redactor: Added proprietary pattern '{}'", regex);
+        log.info("gateway Redactor: Added proprietary pattern '{}'", regex);
     }
 
     /** Redaction report containing original, redacted, and all entries. */

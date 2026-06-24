@@ -47,7 +47,7 @@ public class TaskController {
         Map<String, Object> parameters =
                 (Map<String, Object>) request.getOrDefault("parameters", Map.of());
         String sourceComponent = (String) request.getOrDefault("sourceComponent", "REST-API");
-        String targetComponent = (String) request.getOrDefault("targetComponent", "C3-Bus");
+        String targetComponent = (String) request.getOrDefault("targetComponent", "bus");
 
         DAGPayload payload =
                 DAGPayload.builder()

@@ -6,8 +6,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * C9 Diff Calculator - computes exact diffs between pre- and post-redaction payloads. Used to
- * produce the shadow audit trail for compliance verification.
+ * observability Diff Calculator - computes exact diffs between pre- and post-redaction payloads.
+ * Used to produce the shadow audit trail for compliance verification.
  */
 @Component
 public class DiffCalculator {
@@ -64,7 +64,10 @@ public class DiffCalculator {
                         totalChanges, maxLines, charsChanged, lineCountChange);
 
         long elapsedNs = System.nanoTime() - startTime;
-        log.debug("C9 DiffCalculator: Computed diff in {}us  - {}", elapsedNs / 1000, summary);
+        log.debug(
+                "observability DiffCalculator: Computed diff in {}us  - {}",
+                elapsedNs / 1000,
+                summary);
 
         return new DiffResult(totalChanges, charsChanged, lineCountChange, summary, lineDiffs);
     }

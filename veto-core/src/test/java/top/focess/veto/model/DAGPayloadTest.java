@@ -16,8 +16,8 @@ class DAGPayloadTest {
                         .parameter("source", "test.cpp")
                         .parameter("optimization", "-O2")
                         .dependency("dep-1")
-                        .sourceComponent("C6")
-                        .targetComponent("C3")
+                        .sourceComponent("sandbox")
+                        .targetComponent("bus")
                         .build();
 
         assertEquals("test-1", payload.getId());

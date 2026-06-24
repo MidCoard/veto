@@ -11,8 +11,8 @@ import org.slf4j.LoggerFactory;
 import top.focess.veto.model.ToolExecutionRequest;
 
 /**
- * C5 Swarm Lifecycle - an isolated worker process for executing sub-tasks. Workers are spawned by
- * the SwarmOrchestrator and run with strict resource isolation.
+ * orchestrator Swarm Lifecycle - an isolated worker process for executing sub-tasks. Workers are
+ * spawned by the SwarmOrchestrator and run with strict resource isolation.
  */
 public class WorkerProcess {
 
@@ -38,7 +38,7 @@ public class WorkerProcess {
                             t.setDaemon(true);
                             return t;
                         });
-        log.debug("C5 Worker[{}]: Spawned", id);
+        log.debug("orchestrator Worker[{}]: Spawned", id);
     }
 
     /** Execute a task on this worker. Returns a future that completes with the result. */
@@ -58,7 +58,7 @@ public class WorkerProcess {
         lastActivity.set(Instant.now());
         task.markRunning();
 
-        log.info("C5 Worker[{}]: Executing task '{}'", id, task.getCapabilityName());
+        log.info("orchestrator Worker[{}]: Executing task '{}'", id, task.getCapabilityName());
 
         return CompletableFuture.supplyAsync(
                 () -> {
@@ -66,12 +66,14 @@ public class WorkerProcess {
                         String result = executorFn.apply(task);
                         task.markCompleted(result);
                         log.info(
-                                "C5 Worker[{}]: Task '{}' completed", id, task.getCapabilityName());
+                                "orchestrator Worker[{}]: Task '{}' completed",
+                                id,
+                                task.getCapabilityName());
                         return result;
                     } catch (Exception e) {
                         task.markFailed(e.getMessage());
                         log.error(
-                                "C5 Worker[{}]: Task '{}' failed: {}",
+                                "orchestrator Worker[{}]: Task '{}' failed: {}",
                                 id,
                                 task.getCapabilityName(),
                                 e.getMessage());
@@ -94,7 +96,7 @@ public class WorkerProcess {
 
     /** Forcefully kill this worker's current task. */
     public void kill() {
-        log.warn("C5 Worker[{}]: Kill signal received", id);
+        log.warn("orchestrator Worker[{}]: Kill signal received", id);
         executor.shutdownNow();
         running.set(false);
         busy.set(false);

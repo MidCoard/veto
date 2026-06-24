@@ -11,7 +11,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * Heartbeat manager for C3 Communication Bus. Sends periodic heartbeat pings and monitors
+ * Heartbeat manager for bus Communication Bus. Sends periodic heartbeat pings and monitors
  * connection health.
  */
 @Component
@@ -49,7 +49,7 @@ public class HeartbeatManager {
         heartbeatFuture =
                 scheduler.scheduleAtFixedRate(
                         this::sendHeartbeat, intervalMs, intervalMs, TimeUnit.MILLISECONDS);
-        log.info("C3 Heartbeat: Started (interval={}ms)", intervalMs);
+        log.info("bus Heartbeat: Started (interval={}ms)", intervalMs);
     }
 
     /** Stop sending heartbeats. */
@@ -62,7 +62,7 @@ public class HeartbeatManager {
             scheduler.shutdown();
             scheduler = null;
         }
-        log.info("C3 Heartbeat: Stopped (sent {} total)", heartbeatCount.get());
+        log.info("bus Heartbeat: Stopped (sent {} total)", heartbeatCount.get());
     }
 
     private void sendHeartbeat() {
@@ -72,17 +72,17 @@ public class HeartbeatManager {
                         "{\"type\":\"heartbeat\",\"seq\":"
                                 + heartbeatCount.incrementAndGet()
                                 + "}");
-                log.trace("C3 Heartbeat: Sent seq={}", heartbeatCount.get());
+                log.trace("bus Heartbeat: Sent seq={}", heartbeatCount.get());
             }
         } catch (Exception e) {
-            log.warn("C3 Heartbeat: Failed to send", e);
+            log.warn("bus Heartbeat: Failed to send", e);
         }
 
         // Check for stale connection (no ack in 3x interval)
         long staleThreshold = config.getWebsocket().getHeartbeatIntervalMs() * 3L;
         long elapsed = System.currentTimeMillis() - lastHeartbeatAck.get();
         if (elapsed > staleThreshold) {
-            log.warn("C3 Heartbeat: No ack for {}ms, connection may be stale", elapsed);
+            log.warn("bus Heartbeat: No ack for {}ms, connection may be stale", elapsed);
         }
     }
 

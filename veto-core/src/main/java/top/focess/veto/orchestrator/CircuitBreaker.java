@@ -8,9 +8,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * C5 Circuit Breaker - prevents cascading failures by tracking consecutive errors and tripping to
- * OPEN state when thresholds are exceeded. After a reset period, transitions to HALF_OPEN to test
- * recovery.
+ * orchestrator Circuit Breaker - prevents cascading failures by tracking consecutive errors and
+ * tripping to OPEN state when thresholds are exceeded. After a reset period, transitions to
+ * HALF_OPEN to test recovery.
  */
 @Component
 public class CircuitBreaker {
@@ -39,12 +39,13 @@ public class CircuitBreaker {
                 long elapsed = System.currentTimeMillis() - lastStateChange.get();
                 if (elapsed >= config.getCircuitBreakerResetMs()) {
                     if (state.compareAndSet(CircuitState.OPEN, CircuitState.HALF_OPEN)) {
-                        log.info("C5 CircuitBreaker: OPEN -> HALF_OPEN (reset period elapsed)");
+                        log.info(
+                                "orchestrator CircuitBreaker: OPEN -> HALF_OPEN (reset period elapsed)");
                         return true;
                     }
                 }
                 log.warn(
-                        "C5 CircuitBreaker: Request blocked (state=OPEN, failures={})",
+                        "orchestrator CircuitBreaker: Request blocked (state=OPEN, failures={})",
                         failureCount.get());
                 return false;
             case HALF_OPEN:
@@ -62,7 +63,7 @@ public class CircuitBreaker {
             state.set(CircuitState.CLOSED);
             failureCount.set(0);
             lastStateChange.set(System.currentTimeMillis());
-            log.info("C5 CircuitBreaker: HALF_OPEN -> CLOSED (recovery confirmed)");
+            log.info("orchestrator CircuitBreaker: HALF_OPEN -> CLOSED (recovery confirmed)");
         }
         failureCount.set(0);
     }
@@ -78,7 +79,7 @@ public class CircuitBreaker {
                 state.set(CircuitState.OPEN);
                 lastStateChange.set(System.currentTimeMillis());
                 log.warn(
-                        "C5 CircuitBreaker: {} -> OPEN (threshold={} failures reached)",
+                        "orchestrator CircuitBreaker: {} -> OPEN (threshold={} failures reached)",
                         currentState,
                         config.getCircuitBreakerThreshold());
             }
@@ -90,7 +91,7 @@ public class CircuitBreaker {
         state.set(CircuitState.CLOSED);
         failureCount.set(0);
         lastStateChange.set(System.currentTimeMillis());
-        log.info("C5 CircuitBreaker: Reset to CLOSED");
+        log.info("orchestrator CircuitBreaker: Reset to CLOSED");
     }
 
     public CircuitState getState() {

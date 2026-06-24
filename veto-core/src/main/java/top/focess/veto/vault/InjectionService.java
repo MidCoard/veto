@@ -8,8 +8,8 @@ import org.springframework.stereotype.Component;
 import top.focess.veto.model.ToolExecutionRequest;
 
 /**
- * C8 Injection Service - injects credentials into C6 Sandbox temporarily during execution.
- * Credentials are injected only for the duration of the tool execution and are never exposed to C3
+ * vault Injection Service - injects credentials into sandbox Sandbox temporarily during execution.
+ * Credentials are injected only for the duration of the tool execution and are never exposed to bus
  * (Communication Bus).
  *
  * <p>Resolves credentials via {@link CredentialVault}, which delegates to the current user's
@@ -52,13 +52,13 @@ public class InjectionService {
 
         if (!missing.isEmpty()) {
             log.warn(
-                    "C8 Injection: Missing credentials for request {}: {}",
+                    "vault Injection: Missing credentials for request {}: {}",
                     request.getId(),
                     missing);
         }
 
         log.info(
-                "C8 Injection: Injected {} credentials for request '{}'",
+                "vault Injection: Injected {} credentials for request '{}'",
                 resolved.size(),
                 request.getCapabilityName());
 
@@ -70,7 +70,7 @@ public class InjectionService {
         Map<String, String> injected = activeInjections.remove(requestId);
         if (injected != null) {
             injected.clear();
-            log.debug("C8 Injection: Released injection session '{}'", requestId);
+            log.debug("vault Injection: Released injection session '{}'", requestId);
         }
     }
 

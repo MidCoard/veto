@@ -11,9 +11,9 @@ import org.springframework.stereotype.Service;
 import top.focess.veto.model.ToolExecutionRequest;
 
 /**
- * C5 Swarm Lifecycle Orchestrator - the local process manager. Spawns isolated worker threads for
- * parallel sub-tasks, manages local file-lock contention, and acts as a circuit breaker to kill
- * deadlocked sub-agents.
+ * orchestrator Swarm Lifecycle Orchestrator - the local process manager. Spawns isolated worker
+ * threads for parallel sub-tasks, manages local file-lock contention, and acts as a circuit breaker
+ * to kill deadlocked sub-agents.
  */
 @Service
 public class SwarmOrchestrator {
@@ -54,7 +54,7 @@ public class SwarmOrchestrator {
                         });
         maintenanceScheduler.scheduleAtFixedRate(this::maintenanceCycle, 30, 30, TimeUnit.SECONDS);
 
-        log.info("C5 SwarmOrchestrator: Initialized with {} workers", workers.size());
+        log.info("orchestrator SwarmOrchestrator: Initialized with {} workers", workers.size());
     }
 
     @PreDestroy
@@ -64,7 +64,7 @@ public class SwarmOrchestrator {
         }
         workers.forEach(WorkerProcess::kill);
         fileLockManager.releaseAll();
-        log.info("C5 SwarmOrchestrator: Shut down");
+        log.info("orchestrator SwarmOrchestrator: Shut down");
     }
 
     /**
@@ -85,7 +85,7 @@ public class SwarmOrchestrator {
             if (workers.size() < config.getMaxWorkers()) {
                 worker = new WorkerProcess(config);
                 workers.add(worker);
-                log.info("C5 SwarmOrchestrator: Scaled up to {} workers", workers.size());
+                log.info("orchestrator SwarmOrchestrator: Scaled up to {} workers", workers.size());
             } else {
                 task.markFailed("No available workers");
                 return CompletableFuture.failedFuture(
@@ -95,7 +95,7 @@ public class SwarmOrchestrator {
 
         int taskNum = taskCounter.incrementAndGet();
         log.info(
-                "C5 SwarmOrchestrator: Task #{} ('{}') assigned to Worker[{}]",
+                "orchestrator SwarmOrchestrator: Task #{} ('{}') assigned to Worker[{}]",
                 taskNum,
                 task.getCapabilityName(),
                 worker.getId());
@@ -140,7 +140,7 @@ public class SwarmOrchestrator {
                                     System.currentTimeMillis() - task.getCreatedAt().toEpochMilli();
                             if (runningMs > 300_000) { // 5 minutes
                                 log.warn(
-                                        "C5 SwarmOrchestrator: Deadlock detected  - Worker[{}] running '{}' for {}ms",
+                                        "orchestrator SwarmOrchestrator: Deadlock detected  - Worker[{}] running '{}' for {}ms",
                                         w.getId(),
                                         task.getCapabilityName(),
                                         runningMs);
@@ -167,14 +167,14 @@ public class SwarmOrchestrator {
             }
 
             log.debug(
-                    "C5 SwarmOrchestrator: Maintenance  - workers={}, active={}, idle={}, killed={}",
+                    "orchestrator SwarmOrchestrator: Maintenance  - workers={}, active={}, idle={}, killed={}",
                     workers.size(),
                     activeCount,
                     idleCount,
                     killedCount);
 
         } catch (Exception e) {
-            log.warn("C5 SwarmOrchestrator: Maintenance cycle error", e);
+            log.warn("orchestrator SwarmOrchestrator: Maintenance cycle error", e);
         }
     }
 

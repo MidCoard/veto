@@ -8,7 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-/** Exponential backoff reconnection handler for C3 Communication Bus. */
+/** Exponential backoff reconnection handler for bus Communication Bus. */
 @Component
 public class ReconnectionHandler {
 
@@ -34,7 +34,7 @@ public class ReconnectionHandler {
     /** Schedule an exponential-backoff reconnection attempt. */
     public void scheduleReconnect(WebSocketBus bus, String backendUrl) {
         if (backendUrl == null || backendUrl.isEmpty()) {
-            log.warn("C3 Reconnect: No backend URL to reconnect to");
+            log.warn("bus Reconnect: No backend URL to reconnect to");
             return;
         }
         this.lastBackendUrl = backendUrl;
@@ -43,7 +43,7 @@ public class ReconnectionHandler {
         int maxAttempts = config.getWebsocket().getMaxReconnectAttempts();
 
         if (attempt > maxAttempts) {
-            log.error("C3 Reconnect: Exhausted {} reconnect attempts. Giving up.", maxAttempts);
+            log.error("bus Reconnect: Exhausted {} reconnect attempts. Giving up.", maxAttempts);
             reconnectAttempts.set(0);
             return;
         }
@@ -53,11 +53,11 @@ public class ReconnectionHandler {
         delay = Math.min(delay, 120_000); // Cap at 2 minutes
 
         reconnecting = true;
-        log.info("C3 Reconnect: Scheduling attempt {}/{} in {}ms", attempt, maxAttempts, delay);
+        log.info("bus Reconnect: Scheduling attempt {}/{} in {}ms", attempt, maxAttempts, delay);
 
         scheduler.schedule(
                 () -> {
-                    log.info("C3 Reconnect: Attempt {}/{} ...", attempt, maxAttempts);
+                    log.info("bus Reconnect: Attempt {}/{} ...", attempt, maxAttempts);
                     bus.connect(backendUrl)
                             .thenAccept(
                                     success -> {
@@ -65,7 +65,7 @@ public class ReconnectionHandler {
                                             reconnectAttempts.set(0);
                                             reconnecting = false;
                                             log.info(
-                                                    "C3 Reconnect: Successfully reconnected on attempt {}",
+                                                    "bus Reconnect: Successfully reconnected on attempt {}",
                                                     attempt);
                                         }
                                     });

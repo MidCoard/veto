@@ -35,7 +35,7 @@ class ToolExecutionRequestTest {
     @Test
     void testMarkVetoed() {
         ToolExecutionRequest req = new ToolExecutionRequest("test", Map.of());
-        req.markVetoed("vetoed by C7 gateway");
+        req.markVetoed("vetoed by gateway gateway");
         assertEquals(ToolExecutionRequest.ToolExecutionStatus.VETOED, req.getStatus());
     }
 

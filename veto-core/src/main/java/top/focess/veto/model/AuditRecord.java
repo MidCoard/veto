@@ -7,8 +7,8 @@ import java.util.HexFormat;
 import java.util.UUID;
 
 /**
- * A tamper-proof audit record capturing pre/post redaction diffs for C9 Observability. Each record
- * is self-validating via a SHA-256 hash chain.
+ * A tamper-proof audit record capturing pre/post redaction diffs for observability Observability.
+ * Each record is self-validating via a SHA-256 hash chain.
  */
 public class AuditRecord {
 

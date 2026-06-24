@@ -9,9 +9,9 @@ import org.springframework.stereotype.Service;
 import top.focess.veto.model.AuditRecord;
 
 /**
- * C9 Observability & Shadow Audit - top-level service. A tamper-proof black box that logs the exact
- * diff of data before and after the C7 Veto Gateway redaction. Logs are encrypted and stored
- * locally for enterprise compliance audits.
+ * observability Observability & Shadow Audit - top-level service. A tamper-proof black box that
+ * logs the exact diff of data before and after the gateway Veto Gateway redaction. Logs are
+ * encrypted and stored locally for enterprise compliance audits.
  */
 @Service
 public class AuditLogger {
@@ -37,7 +37,7 @@ public class AuditLogger {
     public void init() {
         tamperProofStore.initialize();
         log.info(
-                "C9 AuditLogger: Initialized. tamperProof={}, encryption={}",
+                "observability AuditLogger: Initialized. tamperProof={}, encryption={}",
                 config.isTamperProof(),
                 config.isEncryptionEnabled());
     }
@@ -45,7 +45,7 @@ public class AuditLogger {
     @PreDestroy
     public void shutdown() {
         log.info(
-                "C9 AuditLogger: Shut down. {} records written this session.",
+                "observability AuditLogger: Shut down. {} records written this session.",
                 totalRecordsWritten.get());
     }
 
@@ -76,7 +76,7 @@ public class AuditLogger {
         totalRecordsWritten.incrementAndGet();
 
         log.info(
-                "C9 Audit: Logged veto interception for payload={} (vetoed={}, hash={}...)",
+                "observability Audit: Logged veto interception for payload={} (vetoed={}, hash={}...)",
                 dagPayloadId,
                 vetoApplied,
                 record.getCurrentHash()
@@ -113,13 +113,13 @@ public class AuditLogger {
                 new AuditRecord(
                         "LLM-EXCHANGE",
                         requestId,
-                        "C7-UniformLLMCaller",
+                        "gateway",
                         requestPayload,
                         rawResponsePayload,
                         "Model: " + modelName,
                         tamperProofStore.getChainTailHash(),
                         AuditRecord.AuditAction.VETO_INTERCEPTION, // Reusing action or add new one?
-                        // VETO_INTERCEPTION is for C7
+                        // VETO_INTERCEPTION is for gateway
                         false);
 
         tamperProofStore.append(record);
@@ -132,7 +132,7 @@ public class AuditLogger {
                 new AuditRecord(
                         dagPayloadId,
                         requestId,
-                        "C8-Vault",
+                        "vault",
                         credKeys,
                         "(injected)",
                         "(credential injection - values redacted from audit)",

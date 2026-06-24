@@ -4,7 +4,7 @@ import java.time.Instant;
 import java.util.*;
 
 /**
- * A DAG (Directed Acyclic Graph) task payload routed through C3 Communication Bus. Each DAGPayload
+ * A DAG (Directed Acyclic Graph) task payload routed through bus Communication Bus. Each DAGPayload
  * represents a node in the task graph with dependencies and execution context.
  */
 public class DAGPayload {
