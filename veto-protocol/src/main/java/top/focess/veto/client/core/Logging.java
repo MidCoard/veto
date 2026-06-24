@@ -12,11 +12,11 @@ import org.slf4j.bridge.SLF4JBridgeHandler;
  * the Logback root level from the parsed {@link top.focess.veto.contract.ClientOptions} and routes
  * {@code java.util.logging} (e.g. JLine's fallback warnings) through SLF4J.
  *
- * <p>This is an application concern, not a contract concern — it lives in {@code veto-client-core},
- * not in {@code veto-contract}, so the contract module depends on the SLF4J facade only and never
- * mandates a logging implementation. Each client application brings a Logback backend (the {@code
- * veto-client-core} module declares it so this class compiles; the clients declare it too for their
- * own runtime).
+ * <p>This is an application concern, not a wire-protocol concern — it coexists with the wire-types
+ * in {@code veto-protocol}, which depends on the SLF4J facade only and never mandates a logging
+ * implementation. Logback + the JUL→SLF4J bridge are {@code compileOnly} in {@code veto-protocol}
+ * so this class compiles without forcing a backend on consumers; each client application declares
+ * its own Logback at runtime.
  */
 public final class Logging {
 
