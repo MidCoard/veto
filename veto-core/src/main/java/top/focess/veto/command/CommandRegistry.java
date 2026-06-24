@@ -154,7 +154,7 @@ public class CommandRegistry {
             if (promptHandler != null) {
                 var agent = promptHandler.sessions().get(sender.terminalId());
                 if (agent != null) {
-                    meta.put(IpcMeta.TURN_NUMBER, agent.turns().size());
+                    meta.put(IpcMeta.TURN_NUMBER, agent.history().size());
                 }
             }
         }

@@ -1,69 +1,67 @@
 package top.focess.veto.command;
 
 import java.time.Duration;
-import java.util.*;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.agent.Agent;
-import top.focess.veto.agent.AgentState;
-import top.focess.veto.agent.SessionCompactor;
-import top.focess.veto.agent.TurnRecord;
+import top.focess.veto.agent.AgentResult;
+import top.focess.veto.agent.AgentRunner;
+import top.focess.veto.agent.AgentService;
 import top.focess.veto.contract.IpcFrame;
 import top.focess.veto.contract.IpcMeta;
-import top.focess.veto.llm.core.*;
+import top.focess.veto.llm.core.LlmOptions;
+import top.focess.veto.llm.core.ProviderType;
 import top.focess.veto.model.AgentPatternEntity;
 import top.focess.veto.model.AgentPatternRepository;
 import top.focess.veto.vault.CredentialVault;
 
 /**
- * Handles plain-text (non-slash) prompts by routing them through the LLM ReAct loop.
+ * The terminal transport facade for plain-text (non-slash) prompts (LLD {@code
+ * terminal_module_lld.md} §1.1 "Unified Agent Execution Pipeline").
  *
- * <p>Each call to {@link #handle(String, String, VetoCommandSender)} runs the following pipeline:
+ * <p>The legacy blocking ReAct loop that used to live here is gone — loop execution is hosted
+ * exclusively in {@code veto-core} on a virtual thread via {@link AgentService} / {@link
+ * AgentRunner}. This facade now does only what a transport should:
  *
  * <ol>
- *   <li>Authenticates the caller via {@link top.focess.veto.vault.CredentialVault}.
- *   <li>Evicts stale agent sessions older than {@code SESSION_TTL_MS}.
- *   <li>Resolves the active LLM configuration (provider, model, system prompt) for the user.
- *   <li>Executes a ReAct (Reason + Act) loop: calls the LLM, processes any tool calls, feeds the
- *       observation back, and repeats until the model signals completion or the maximum iteration
- *       count is reached.
- *   <li>Appends the new turns to the in-memory {@link top.focess.veto.agent.Agent} and optionally
- *       compacts the session via {@link top.focess.veto.agent.SessionCompactor}.
- *   <li>Streams output deltas back to the terminal via {@link
- *       top.focess.command.CommandSender#output(String)}.
+ *   <li>Authenticates the caller via {@link CredentialVault} and rejects empty prompts.
+ *   <li>Resolves the active LLM configuration (provider, model, system prompt) for the user into an
+ *       {@link AgentRunner.LlmBinding}.
+ *   <li>Delegates to {@link AgentService#submit(String, String, AgentRunner.LlmBinding, Duration,
+ *       java.util.function.Consumer) AgentService.submit(...)}, forwarding each user-facing message
+ *       the agent emits to {@link VetoCommandSender#output(String)} as it streams (the §6 emission
+ *       seam), then awaits the episode result.
+ *   <li>Returns the synchronous {@link IpcFrame.TerminalResponse} — {@link IpcFrame.Done} on
+ *       success, {@link IpcFrame.Error} on failure — per the Part 8.2 closed-loop contract.
  * </ol>
+ *
+ * <p>Agent lifecycle (creation, eviction, termination) is owned by {@link AgentService}; this
+ * facade only resolves config and streams. Per-user active-pattern / ad-hoc-config state stays here
+ * (it is transport-layer session state, not agent state).
  *
  * <h3>Thread safety</h3>
  *
- * <p>The {@link #sessions} and {@link #compactors} maps are {@link
- * java.util.concurrent.ConcurrentHashMap}. Per-session state is protected by {@link
- * ConcurrentHashMap#compute}, which serializes concurrent prompts for the same terminal while
- * leaving other terminals unaffected.
+ * <p>{@link #activePatterns} / {@link #adhocConfigs} are {@link ConcurrentHashMap}. The agent map
+ * lives in {@link AgentService}, which serializes per-agent episodes (the synchronous submit+await
+ * blocks the dispatch worker for one terminal while the agent runs).
  */
 public class PromptHandler {
 
     private static final Logger log = LoggerFactory.getLogger(PromptHandler.class);
 
-    /** Idle sessions older than this threshold are removed by {@link #evictStaleSessions()}. */
-    private static final long SESSION_TTL_MS = Duration.ofMinutes(30).toMillis();
-
-    /** Maximum number of LLM–tool-call iterations per prompt to prevent infinite loops. */
-    private static final int MAX_TOOL_LOOP_ITERATIONS = 10;
+    /** How long to block for one agent episode before timing the terminal out. */
+    private static final Duration EPISODE_TIMEOUT = Duration.ofMinutes(5);
 
     /** Vault used to look up the currently authenticated user for each terminal. */
     private final CredentialVault vault;
 
-    /** Unified LLM caller that abstracts over multiple AI providers. */
-    private final UniformLLMCaller caller;
-
-    /** Live agent sessions keyed by terminal ID. Protected by {@link ConcurrentHashMap#compute}. */
-    private final ConcurrentHashMap<String, Agent> sessions = new ConcurrentHashMap<>();
-
-    /** Session compactors keyed by terminal ID; lazily created per terminal. */
-    private final ConcurrentHashMap<String, SessionCompactor> compactors =
-            new ConcurrentHashMap<>();
+    /** The shared agent service that owns loop execution + agent lifecycle. */
+    private final AgentService agentService;
 
     /**
      * Per-user active LLM pattern name (key = username, value = pattern name). Shared with {@code
@@ -80,32 +78,36 @@ public class PromptHandler {
      * Constructs a new {@code PromptHandler}.
      *
      * @param vault the credential vault used to resolve the current logged-in user
-     * @param caller the unified LLM caller used to invoke the AI model
+     * @param agentService the shared agent service that owns loop execution + agent lifecycle
      * @param activePatterns the shared map of per-user active pattern names
      * @param patternRepo the repository for user-defined agent patterns
      */
     public PromptHandler(
             @NotNull CredentialVault vault,
-            @NotNull UniformLLMCaller caller,
+            @NotNull AgentService agentService,
             @NotNull ConcurrentHashMap<String, String> activePatterns,
             @NotNull AgentPatternRepository patternRepo) {
         this.vault = vault;
-        this.caller = caller;
+        this.agentService = agentService;
         this.activePatterns = activePatterns;
         this.patternRepo = patternRepo;
     }
 
     /**
-     * Returns the live agent session map.
+     * Returns a point-in-time snapshot of the live agent sessions (delegated to {@link
+     * AgentService}).
      *
-     * <p>Exposed for read-only inspection (e.g. building {@link IpcMeta#TURN_NUMBER} metadata in
-     * {@link CommandRegistry}). Callers must not mutate the returned map directly.
+     * <p>Exposed for read-only inspection — building {@link IpcMeta#TURN_NUMBER} metadata in {@link
+     * CommandRegistry} and the {@code /status} summary. Returns a snapshot so callers can iterate
+     * without concurrent-modification risk; callers must not mutate the returned map.
      *
-     * @return the live sessions map keyed by terminal ID; never {@code null}
+     * @return a snapshot of the live agents keyed by terminal ID; never {@code null}
      */
     @NotNull
     public Map<String, Agent> sessions() {
-        return sessions;
+        Map<String, Agent> snapshot = new HashMap<>();
+        agentService.agentsView().forEach(snapshot::put);
+        return snapshot;
     }
 
     public void usePattern(String username, String patternName) {
@@ -159,13 +161,15 @@ public class PromptHandler {
     }
 
     /**
-     * Handle a plain-text prompt and stream the LLM response via the sender's {@code output()}
-     * method. On completion, returns a Done or Error response.
+     * Handle a plain-text prompt by delegating to {@link AgentService}, streaming the agent's
+     * user-facing messages to the sender as they are emitted, and returning the terminal frame.
      *
      * <p>Never returns {@code null} — always returns either {@link IpcFrame.Done} on success or
-     * {@link IpcFrame.Error} on failure. Error frames carry the message themselves and are rendered
-     * by the terminal, so {@code sender.output()} must not be called redundantly before returning
-     * an error.
+     * {@link IpcFrame.Error} on failure. Per Part 8.2, the agent's user-facing messages are
+     * streamed as {@link IpcFrame.Delta} frames via {@link VetoCommandSender#output(String)} while
+     * the episode runs; the final {@link IpcFrame.Done} carries only session metadata (the text was
+     * already streamed). On failure the message was not streamed, so the {@link IpcFrame.Error}
+     * carries it.
      */
     @NotNull
     public IpcFrame.TerminalResponse handle(
@@ -178,112 +182,63 @@ public class PromptHandler {
             return IpcFrame.Error.ofError("Empty prompt.");
         }
 
-        evictStaleSessions();
-
         LlmConfig config = resolveLlmConfig(user);
         if (config == null) {
             return IpcFrame.Error.ofError(
                     "No agent is currently active. Use /agent use <patternName> to select an agent.");
         }
 
-        var resultHolder = new IpcFrame.TerminalResponse[1];
+        AgentRunner.LlmBinding binding =
+                new AgentRunner.LlmBinding(
+                        config.provider(),
+                        config.model(),
+                        config.credKey(),
+                        LlmOptions.defaults(),
+                        config.systemPrompt());
 
-        // Atomic read-modify-write — serializes concurrent prompts for the
-        // same terminal while leaving other terminals unaffected.
-        sessions.compute(
-                terminalId,
-                (k, agent) -> {
-                    if (agent == null) {
-                        agent =
-                                Agent.builder()
-                                        .name("agent-" + k.substring(0, Math.min(8, k.length())))
-                                        .systemPrompt(config.systemPrompt)
-                                        .sessionId(k)
-                                        .build()
-                                        .withState(AgentState.RUNNING);
-                    }
-                    try {
-                        List<ToolDefinition> tools = resolveTools(agent);
-                        List<TurnRecord> newTurns = new ArrayList<>();
-                        String nextPrompt = prompt;
+        try {
+            // Stream each user-facing message the agent emits (§6 seam) while the episode runs,
+            // then block for the result. The sink is attached/detached inside AgentService.submit.
+            AgentResult result =
+                    agentService.submit(
+                            terminalId, prompt, binding, EPISODE_TIMEOUT, sender::output);
 
-                        // ReAct loop: call LLM → process tool call → feed
-                        // observation → repeat until finished or max iters
-                        for (int iter = 0; iter < MAX_TOOL_LOOP_ITERATIONS; iter++) {
-                            VetoResponse r =
-                                    caller.call(
-                                            new VetoRequest(
-                                                    config.systemPrompt,
-                                                    nextPrompt,
-                                                    tools,
-                                                    config.provider,
-                                                    config.model,
-                                                    config.credKey,
-                                                    new LlmOptions(
-                                                            0.0,
-                                                            null,
-                                                            1024,
-                                                            Duration.ofSeconds(60))));
+            Map<String, Object> doneMeta = new HashMap<>();
+            doneMeta.put(IpcMeta.USERNAME, user);
+            doneMeta.put(IpcMeta.TURN_NUMBER, turnsOf(result));
 
-                            if (r.thought() != null && !r.thought().isBlank()) {
-                                sender.output(r.thought());
-                            }
+            if (result.success()) {
+                // The message text was already streamed as Delta frames; Done carries meta only.
+                return new IpcFrame.Done(doneMeta, null);
+            }
+            // Failure (breaker trip / error): the reason was not streamed as an assistantResponse,
+            // so surface it in the Error frame.
+            String reason =
+                    result.message() == null || result.message().isBlank()
+                            ? "Agent failed."
+                            : result.message();
+            return IpcFrame.Error.ofError(reason);
+        } catch (java.util.concurrent.TimeoutException e) {
+            log.warn("Agent episode timed out for terminal {}", terminalId);
+            return IpcFrame.Error.ofError("Agent timed out.");
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return IpcFrame.Error.ofError("Interrupted.");
+        } catch (Exception e) {
+            log.error("Prompt failed for terminal {}", terminalId, e);
+            return IpcFrame.Error.ofError("Agent failed: " + e.getMessage());
+        }
+    }
 
-                            // NOTE: Phase-0 contract — VetoResponse now exposes `calls` (List) not
-                            // `call`. This legacy loop takes the first call only; Part 1 replaces
-                            // this PromptHandler loop with the AgentService/AgentRunner loop.
-                            String observation = null;
-                            ToolCall call = r.hasCalls() ? r.calls().get(0) : null;
-                            if (call != null) {
-                                observation = executeToolCall(call);
-                                if (observation != null) {
-                                    sender.output(
-                                            "\n[tool:" + call.toolName() + "] " + observation);
-                                }
-                            }
-
-                            newTurns.add(
-                                    new TurnRecord(
-                                            agent.nextTurnNumber() + newTurns.size(),
-                                            r.thought(),
-                                            call != null ? call.toolName() : null,
-                                            call != null ? call.args() : null,
-                                            observation,
-                                            null));
-
-                            if (r.isFinished() || call == null) break;
-
-                            nextPrompt =
-                                    "Observation: "
-                                            + (observation != null
-                                                    ? observation
-                                                    : "(tool executed)");
-                        }
-
-                        for (TurnRecord t : newTurns) {
-                            agent = agent.appendTurn(t);
-                        }
-
-                        SessionCompactor compactor =
-                                compactors.computeIfAbsent(
-                                        terminalId, key -> new SessionCompactor(caller));
-                        if (compactor.shouldCompact(agent)) {
-                            agent =
-                                    compactor.compact(
-                                            agent, config.provider, config.model, config.credKey);
-                        }
-                        Map<String, Object> doneMeta = new HashMap<>();
-                        doneMeta.put(IpcMeta.USERNAME, user);
-                        doneMeta.put(IpcMeta.TURN_NUMBER, agent.turns().size());
-                        resultHolder[0] = new IpcFrame.Done(doneMeta, null);
-                    } catch (Exception e) {
-                        log.error("Prompt failed for terminal {}", terminalId, e);
-                        resultHolder[0] =
-                                IpcFrame.Error.ofError("LLM call failed: " + e.getMessage());
-                    }
-                    return agent;
-                });
-        return resultHolder[0];
+    /**
+     * Reads the episode's turn count from the result metadata ({@code turns}, set by the runner).
+     */
+    private static int turnsOf(AgentResult result) {
+        if (result == null || result.metadata() == null) {
+            return 0;
+        }
+        Object v = result.metadata().get("turns");
+        return v instanceof Number n ? n.intValue() : 0;
     }
 
     // ── LLM config resolution ─────────────────────────────────────────────
@@ -326,55 +281,17 @@ public class PromptHandler {
         return null;
     }
 
-    // ── tool loop ─────────────────────────────────────────────────────────
-
-    /** Resolve tools available to the agent. Currently returns an empty list — extend here. */
-    private List<ToolDefinition> resolveTools(Agent agent) {
-        return List.of();
-    }
+    // ── session removal ───────────────────────────────────────────────────
 
     /**
-     * Execute a tool call and return the observation. Override or inject a {@code ToolExecutor}
-     * bean to enable actual tool execution. Returns {@code null} when no executor is configured.
-     */
-    private String executeToolCall(ToolCall call) {
-        return null;
-    }
-
-    // ── session eviction ──────────────────────────────────────────────────
-
-    /**
-     * Removes agent sessions whose most-recent turn is older than {@link #SESSION_TTL_MS}.
+     * Removes the agent for the given terminal ID (delegated to {@link AgentService}).
      *
-     * <p>Called at the start of each {@link #handle} invocation to bound memory growth. Sessions
-     * with no turns are never evicted (the session has not yet produced any output).
-     */
-    private void evictStaleSessions() {
-        long cutoff = System.currentTimeMillis() - SESSION_TTL_MS;
-        Iterator<Map.Entry<String, Agent>> it = sessions.entrySet().iterator();
-        while (it.hasNext()) {
-            Map.Entry<String, Agent> entry = it.next();
-            Agent agent = entry.getValue();
-            if (agent.turns().isEmpty()) continue;
-            TurnRecord lastTurn = agent.turns().get(agent.turns().size() - 1);
-            if (lastTurn.timestamp().toEpochMilli() < cutoff) {
-                log.debug("Evicting stale agent session {}", entry.getKey());
-                it.remove();
-                compactors.remove(entry.getKey());
-            }
-        }
-    }
-
-    /**
-     * Removes the agent session and compactor for the given terminal ID.
+     * <p>Called by logout / cleanup paths (e.g. {@code LogoutCommand}) to free in-memory state when
+     * a terminal disconnects or the user explicitly logs out.
      *
-     * <p>Called by logout or cleanup paths (e.g. {@code LogoutCommand}) to free in-memory state
-     * when a terminal disconnects or the user explicitly logs out.
-     *
-     * @param terminalId the ZMQ identity of the terminal whose session should be removed
+     * @param terminalId the ZMQ identity of the terminal whose agent should be removed
      */
     public void removeSession(@NotNull String terminalId) {
-        sessions.remove(terminalId);
-        compactors.remove(terminalId);
+        agentService.remove(terminalId);
     }
 }

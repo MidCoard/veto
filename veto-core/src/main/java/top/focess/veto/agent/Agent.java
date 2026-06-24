@@ -1,193 +1,59 @@
 package top.focess.veto.agent;
 
-import java.time.Instant;
-import java.util.*;
+import java.time.Duration;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeoutException;
+import java.util.function.Consumer;
+import top.focess.veto.agent.drift.ReadHistory;
+import top.focess.veto.agent.identity.AgentPersona;
 
 /**
- * A Veto agent — the central entity in the agent loop (ARCHITECTURE.md Part 5). Holds identity
- * (persona), state, tool arsenal, and turn history.
- *
- * <p>Immutable. State transitions return new instances via {@code withState()} and {@code
- * appendTurn()}.
+ * The identity + API surface of a Veto agent (LLD {@code hybrid_loop_design.md} §1.3, {@code
+ * agent_class_design.md}). Holds the persona, tool whitelist, turn history, and a volatile state
+ * machine. Owns its {@code AgentRunner} internally; workflows/transports interact only through this
+ * API — they never touch the virtual thread, state machine, or loop mechanics.
  */
-public class Agent {
+public interface Agent {
 
-    private final String id;
-    private final String name;
-    private final String description;
-    private final String systemPrompt;
-    private final AgentState state;
-    private final Set<String> toolNames;
-    private final List<TurnRecord> turns;
-    private final Instant createdAt;
-    private final String sessionId;
+    // --- Identity ---
+    String id();
 
-    private Agent(Builder builder) {
-        this.id = builder.id != null ? builder.id : UUID.randomUUID().toString();
-        this.name = Objects.requireNonNull(builder.name, "name");
-        this.description = builder.description != null ? builder.description : "";
-        this.systemPrompt = Objects.requireNonNull(builder.systemPrompt, "systemPrompt");
-        this.state = builder.state;
-        this.toolNames = Set.copyOf(builder.toolNames);
-        this.turns = List.copyOf(builder.turns);
-        this.createdAt = builder.createdAt;
-        this.sessionId = builder.sessionId;
-    }
+    String name();
 
-    // ── Getters ─────────────────────────────────────────────────────────────
+    AgentPersona persona();
 
-    public String id() {
-        return id;
-    }
+    Set<String> whitelistedTools();
 
-    public String name() {
-        return name;
-    }
+    AgentState state();
 
-    public String description() {
-        return description;
-    }
+    // --- Execution ---
 
-    public String systemPrompt() {
-        return systemPrompt;
-    }
+    /** Submit a prompt for the agent to work on. Non-blocking — the virtual thread picks it up. */
+    void submit(String prompt);
 
-    public AgentState state() {
-        return state;
-    }
+    /**
+     * Non-blocking submit with a callback fired on the agent's virtual thread when the task done.
+     */
+    void submit(String prompt, Consumer<AgentResult> callback);
 
-    public Set<String> toolNames() {
-        return toolNames;
-    }
+    /** Block the caller until the current task completes (or the timeout elapses). */
+    AgentResult await(Duration timeout) throws TimeoutException, InterruptedException;
 
-    public List<TurnRecord> turns() {
-        return turns;
-    }
+    /** The current task's result future, or a completed future if idle. */
+    CompletableFuture<AgentResult> result();
 
-    public Instant createdAt() {
-        return createdAt;
-    }
+    // --- Lifecycle ---
+    void pause(); // → PAUSED
 
-    public String sessionId() {
-        return sessionId;
-    }
+    void resume(); // → RUNNING
 
-    // ── State transitions ───────────────────────────────────────────────────
+    void terminate(); // → TERMINATED, virtual thread stopped
 
-    public Agent withState(AgentState newState) {
-        return new Builder(this).state(newState).build();
-    }
+    // --- History ---
+    List<TurnRecord> history();
 
-    /** Records a completed turn and appends it to the turn history. */
-    public Agent appendTurn(TurnRecord turn) {
-        List<TurnRecord> newTurns = new ArrayList<>(this.turns);
-        newTurns.add(turn);
-        return new Builder(this).turns(newTurns).build();
-    }
-
-    public Agent withToolNames(Set<String> toolNames) {
-        return new Builder(this).toolNames(new HashSet<>(toolNames)).build();
-    }
-
-    public int nextTurnNumber() {
-        return turns.size() + 1;
-    }
-
-    // ── Builder ─────────────────────────────────────────────────────────────
-
-    public static Builder builder() {
-        return new Builder();
-    }
-
-    public static class Builder {
-        private String id;
-        private String name;
-        private String description = "";
-        private String systemPrompt;
-        private AgentState state = AgentState.IDLE;
-        private Set<String> toolNames = Set.of();
-        private List<TurnRecord> turns = List.of();
-        private Instant createdAt = Instant.now();
-        private String sessionId;
-
-        public Builder() {}
-
-        Builder(Agent agent) {
-            this.id = agent.id;
-            this.name = agent.name;
-            this.description = agent.description;
-            this.systemPrompt = agent.systemPrompt;
-            this.state = agent.state;
-            this.toolNames = new HashSet<>(agent.toolNames);
-            this.turns = new ArrayList<>(agent.turns);
-            this.createdAt = agent.createdAt;
-            this.sessionId = agent.sessionId;
-        }
-
-        public Builder id(String id) {
-            this.id = id;
-            return this;
-        }
-
-        public Builder name(String name) {
-            this.name = name;
-            return this;
-        }
-
-        public Builder description(String description) {
-            this.description = description;
-            return this;
-        }
-
-        public Builder systemPrompt(String sp) {
-            this.systemPrompt = sp;
-            return this;
-        }
-
-        public Builder state(AgentState state) {
-            this.state = state;
-            return this;
-        }
-
-        public Builder toolNames(Set<String> names) {
-            this.toolNames = names;
-            return this;
-        }
-
-        public Builder turns(List<TurnRecord> turns) {
-            this.turns = turns;
-            return this;
-        }
-
-        public Builder createdAt(Instant at) {
-            this.createdAt = at;
-            return this;
-        }
-
-        public Builder sessionId(String sid) {
-            this.sessionId = sid;
-            return this;
-        }
-
-        public Agent build() {
-            return new Agent(this);
-        }
-    }
-
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (!(o instanceof Agent agent)) return false;
-        return id.equals(agent.id);
-    }
-
-    @Override
-    public int hashCode() {
-        return Objects.hash(id);
-    }
-
-    @Override
-    public String toString() {
-        return "Agent{id='" + id + "', name='" + name + "', state=" + state + "}";
-    }
+    /** The read-history (for drift detection). */
+    ReadHistory readHistory();
 }
