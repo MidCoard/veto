@@ -4,6 +4,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.jetbrains.annotations.NotNull;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import top.focess.veto.agent.AgentService;
 import top.focess.veto.command.commands.*;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.model.AgentPatternRepository;
@@ -34,10 +35,11 @@ public class CommandConfiguration {
     private final ConcurrentHashMap<String, String> activePatterns = new ConcurrentHashMap<>();
 
     /**
-     * Creates the {@link PromptHandler} bean responsible for streaming LLM responses.
+     * Creates the {@link PromptHandler} bean — the terminal transport facade that delegates loop
+     * execution to {@link AgentService}.
      *
      * @param vault the credential vault used to look up the current logged-in user
-     * @param caller the uniform LLM caller used to invoke the AI model
+     * @param agentService the shared agent service that owns loop execution + agent lifecycle
      * @param patternRepo repository for user-defined agent patterns
      * @return the configured {@link PromptHandler} singleton
      */
@@ -45,9 +47,9 @@ public class CommandConfiguration {
     @NotNull
     public PromptHandler promptHandler(
             @NotNull CredentialVault vault,
-            @NotNull UniformLLMCaller caller,
+            @NotNull AgentService agentService,
             @NotNull AgentPatternRepository patternRepo) {
-        return new PromptHandler(vault, caller, activePatterns, patternRepo);
+        return new PromptHandler(vault, agentService, activePatterns, patternRepo);
     }
 
     /**

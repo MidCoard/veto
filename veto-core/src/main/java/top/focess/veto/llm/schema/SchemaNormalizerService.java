@@ -8,80 +8,16 @@ import org.springframework.stereotype.Service;
 import top.focess.veto.llm.core.ToolDefinition;
 
 /**
- * Service to normalize JSON schemas for specific provider requirements. For example, OpenAI's
- * strict mode requires 'additionalProperties: false' in all objects.
+ * Normalizes JSON schemas for provider-specific requirements (e.g. OpenAI's strict mode requires
+ * {@code additionalProperties: false} in all objects).
+ *
+ * <p>The per-turn {@code veto_pulse} response schema is now built by the {@link
+ * top.focess.veto.agent.translation.CapabilityTranslator} (Part 1 loop / Part 5) and carried on the
+ * {@link top.focess.veto.llm.core.VetoRequest}; the old single-{@code call} veto_pulse builders
+ * that lived here are retired.
  */
 @Service
 public class SchemaNormalizerService {
-
-    /**
-     * Builds a complete response schema for OpenAI's json_schema response format.
-     *
-     * @param tools the tool definitions
-     * @return the OpenAI response schema
-     */
-    public Map<String, Object> buildOpenAIResponseSchema(List<ToolDefinition> tools) {
-        Map<String, Object> properties = new LinkedHashMap<>();
-
-        // 1. thought
-        properties.put(
-                "thought",
-                orderedMap(
-                        "type",
-                        "string",
-                        "description",
-                        "Deep reasoning string explaining the plan"));
-
-        // 2. call
-        List<Map<String, Object>> toolSchemas = new ArrayList<>();
-        for (ToolDefinition tool : tools) {
-            toolSchemas.add(
-                    orderedMap(
-                            "type",
-                            "object",
-                            "properties",
-                            orderedMap(
-                                    "tool_name",
-                                    orderedMap("const", tool.name()),
-                                    "args",
-                                    normalizeForOpenAI(tool.inputSchema())),
-                            "required",
-                            List.of("tool_name", "args"),
-                            "additionalProperties",
-                            false));
-        }
-
-        // Null tool call if finished
-        toolSchemas.add(
-                orderedMap(
-                        "type",
-                        "object",
-                        "properties",
-                        orderedMap(
-                                "tool_name",
-                                orderedMap("type", "null"),
-                                "args",
-                                orderedMap("type", "object")),
-                        "required",
-                        List.of("tool_name", "args"),
-                        "additionalProperties",
-                        false));
-
-        properties.put("call", orderedMap("type", "object", "oneOf", toolSchemas));
-
-        // 3. is_finished
-        properties.put("is_finished", orderedMap("type", "boolean"));
-
-        return orderedMap(
-                "type",
-                "object",
-                "properties",
-                properties,
-                "required",
-                List.of("thought", "call", "is_finished"),
-                "additionalProperties",
-                false);
-    }
 
     /**
      * Normalizes a JSON schema to be compatible with OpenAI's strict mode.
@@ -124,82 +60,8 @@ public class SchemaNormalizerService {
         return normalized;
     }
 
-    /**
-     * Maps Veto tools to Anthropic tool definitions.
-     *
-     * @param tools the tool definitions
-     * @return the Anthropic tool definitions
-     */
-    public List<Map<String, Object>> mapToAnthropicTools(List<ToolDefinition> tools) {
-        List<Map<String, Object>> toolSchemas = new ArrayList<>();
-        for (ToolDefinition tool : tools) {
-            toolSchemas.add(
-                    orderedMap(
-                            "type",
-                            "object",
-                            "properties",
-                            orderedMap(
-                                    "tool_name",
-                                    orderedMap("const", tool.name()),
-                                    "args",
-                                    tool.inputSchema()),
-                            "required",
-                            List.of("tool_name", "args")));
-        }
-        toolSchemas.add(
-                orderedMap(
-                        "type",
-                        "object",
-                        "properties",
-                        orderedMap(
-                                "tool_name",
-                                orderedMap("type", "null"),
-                                "args",
-                                orderedMap("type", "object")),
-                        "required",
-                        List.of("tool_name", "args")));
-
-        return List.of(
-                orderedMap(
-                        "name",
-                        "veto_pulse",
-                        "description",
-                        "Unified response format for Veto agent actions.",
-                        "input_schema",
-                        orderedMap(
-                                "type",
-                                "object",
-                                "properties",
-                                orderedMap(
-                                        "thought",
-                                        orderedMap(
-                                                "type",
-                                                "string",
-                                                "description",
-                                                "Deep reasoning string explaining the plan"),
-                                        "call",
-                                        orderedMap("type", "object", "oneOf", toolSchemas),
-                                        "is_finished",
-                                        orderedMap("type", "boolean")),
-                                "required",
-                                List.of("thought", "call", "is_finished"))));
-    }
-
-    /**
-     * Maps Veto tools and response requirement to Gemini response schema.
-     *
-     * @param tools the tool definitions
-     * @return the Gemini response schema
-     */
-    public Map<String, Object> buildGeminiResponseSchema(List<ToolDefinition> tools) {
-        return buildOpenAIResponseSchema(tools);
-    }
-
-    private static Map<String, Object> orderedMap(Object... kv) {
-        Map<String, Object> m = new LinkedHashMap<>();
-        for (int i = 0; i < kv.length; i += 2) {
-            m.put((String) kv[i], kv[i + 1]);
-        }
-        return m;
+    /** Normalizes a flat {@link ToolDefinition}'s input schema for OpenAI strict mode. */
+    public Map<String, Object> normalizeToolForOpenAI(ToolDefinition tool) {
+        return normalizeForOpenAI(tool.inputSchema());
     }
 }
