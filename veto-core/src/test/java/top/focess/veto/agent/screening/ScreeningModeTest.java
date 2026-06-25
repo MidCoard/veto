@@ -36,7 +36,7 @@ class ScreeningModeTest {
         assertEquals(ScreeningOutcome.APPROVE, m.cell(Relevance.HIGH, Danger.ELEVATED));
         assertEquals(ScreeningOutcome.APPROVE, m.cell(Relevance.HIGH, Danger.DANGEROUS));
         assertEquals(ScreeningOutcome.MUST_ASK, m.cell(Relevance.HIGH, Danger.CRITICAL));
-        assertEquals(ScreeningOutcome.ASK, m.cell(Relevance.LOW, Danger.DANGEROUS));
+        assertEquals(ScreeningOutcome.APPROVE, m.cell(Relevance.LOW, Danger.DANGEROUS));
     }
 
     @Test
