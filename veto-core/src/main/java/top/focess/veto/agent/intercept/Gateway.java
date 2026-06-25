@@ -16,6 +16,8 @@ import top.focess.veto.agent.mcp.NativeToolDefinition;
 import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RemoteToolDefinition;
 import top.focess.veto.agent.mcp.ToolDefinition;
+import top.focess.veto.agent.workspace.Resolution;
+import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.ToolCall;
 
 /**
@@ -45,7 +47,7 @@ public class Gateway {
     private static final Set<String> DEFAULT_EXEC_BLACKLIST =
             Set.of("nc", "ncat", "nmap", "curl", "wget", "ssh", "scp", "bash", "sh", "zsh", "fish");
 
-    private final Path workspaceRoot;
+    private final Workspace workspace;
     private final Set<String> execAllowlist;
     private final Set<String> execBlacklist;
     private final ReadHistory readHistory;
@@ -53,20 +55,20 @@ public class Gateway {
     /**
      * Constructs a per-agent Gateway.
      *
-     * @param workspaceRoot the agent's virtual root; incoming paths resolve against it.
+     * @param workspace the agent's workspace; incoming paths resolve against its resolver.
      * @param readHistory this agent's read-history (for write drift checks).
      */
-    public Gateway(Path workspaceRoot, ReadHistory readHistory) {
-        this(workspaceRoot, DEFAULT_EXEC_ALLOWLIST, DEFAULT_EXEC_BLACKLIST, readHistory);
+    public Gateway(Workspace workspace, ReadHistory readHistory) {
+        this(workspace, DEFAULT_EXEC_ALLOWLIST, DEFAULT_EXEC_BLACKLIST, readHistory);
     }
 
     /** Full constructor (for tests / Runtime-Profile-injected allow/blacklists). */
     public Gateway(
-            Path workspaceRoot,
+            Workspace workspace,
             Set<String> execAllowlist,
             Set<String> execBlacklist,
             ReadHistory readHistory) {
-        this.workspaceRoot = workspaceRoot;
+        this.workspace = workspace;
         this.execAllowlist = execAllowlist;
         this.execBlacklist = execBlacklist;
         this.readHistory = readHistory;
@@ -130,14 +132,12 @@ public class Gateway {
         };
     }
 
-    /** Returns a BLOCKED verdict if any path escapes the workspace root, else null. */
+    /** Returns a BLOCKED verdict if any path is out-of-scope, else null. */
     private Verdict validatePaths(List<String> paths) {
         for (String raw : paths) {
-            Path resolved = workspaceRoot.resolve(raw).normalize();
-            Path normalizedRoot = workspaceRoot.normalize();
-            if (!resolved.startsWith(normalizedRoot)) {
-                return new Verdict.Blocked(
-                        "path escapes workspace root: " + raw + " -> " + resolved);
+            Resolution resolution = workspace.pathResolver().resolveToHost(raw);
+            if (!resolution.inScope()) {
+                return new Verdict.Blocked("path escapes workspace roots: " + raw);
             }
         }
         return null;
@@ -151,7 +151,8 @@ public class Gateway {
             if (prior == null) {
                 continue; // write without prior read — nothing to compare, proceed
             }
-            String currentHash = computeHash(workspaceRoot.resolve(path));
+            String currentHash =
+                    computeHash(workspace.pathResolver().resolveToHost(path).hostPath());
             if (!prior.sha256Hash().equals(currentHash)) {
                 return new Verdict.Drift(path, buildDiff(path, prior, currentHash));
             }
@@ -257,9 +258,9 @@ public class Gateway {
         return readHistory;
     }
 
-    /** The workspace root this Gateway resolves against (for tests). */
+    /** The operational workspace root this Gateway resolves against (for tests). */
     public Path workspaceRoot() {
-        return workspaceRoot;
+        return workspace.pathResolver().operationalRoot();
     }
 
     /** Computes a SHA-256 hex hash of the given path (for read-time recording by the sandbox). */

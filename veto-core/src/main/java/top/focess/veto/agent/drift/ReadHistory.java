@@ -4,6 +4,7 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import top.focess.veto.agent.workspace.Workspace;
 
 /**
  * Records the state of every file the agent reads during a session; the {@link
@@ -41,8 +42,8 @@ public class ReadHistory {
         return history.size();
     }
 
-    /** Resolves a workspace-relative path string against the agent's virtual root. */
-    public static Path resolveHostPath(Path workspaceRoot, String relativePath) {
-        return workspaceRoot.resolve(relativePath).normalize();
+    /** Resolves an agent path string against the workspace's path resolver. */
+    public static Path resolveHostPath(Workspace workspace, String agentPath) {
+        return workspace.pathResolver().resolveToHost(agentPath).hostPath();
     }
 }
