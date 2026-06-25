@@ -1,7 +1,6 @@
 package top.focess.veto.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
@@ -25,6 +24,7 @@ import top.focess.veto.agent.intercept.InterceptResolution;
 import top.focess.veto.agent.intercept.LoopInterceptor;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.mcp.McpEngine;
+import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.config.LlmJacksonConfig;
 import top.focess.veto.llm.core.UniformLLMCaller;
 
@@ -50,7 +50,7 @@ public class AgentService {
     private final UniformLLMCaller caller;
     private final ObjectMapper objectMapper;
     private final List<LoopInterceptor> interceptors;
-    private final Path workspaceRoot;
+    private final Workspace workspace;
     private final long maxCallsPerEpisode;
 
     private final ConcurrentHashMap<String, VetoAgent> agents = new ConcurrentHashMap<>();
@@ -63,7 +63,9 @@ public class AgentService {
             UniformLLMCaller caller,
             @Qualifier(LlmJacksonConfig.LLM_OBJECT_MAPPER) ObjectMapper objectMapper,
             List<LoopInterceptor> interceptors,
-            @Value("${veto.workspace.root:}") String workspaceRoot,
+            @Value("${veto.workspace.root:}") String legacyRoot,
+            @Value("${veto.workspace.roots:}") String rootsCsv,
+            @Value("${veto.workspace.path-mode:REAL}") String pathMode,
             @Value("${veto.breaker.max_calls_per_episode:50}") long maxCallsPerEpisode) {
         this.mcpEngine = mcpEngine;
         this.hitlRegistry = hitlRegistry;
@@ -72,10 +74,7 @@ public class AgentService {
         this.caller = caller;
         this.objectMapper = objectMapper;
         this.interceptors = interceptors == null ? List.of() : interceptors;
-        this.workspaceRoot =
-                workspaceRoot == null || workspaceRoot.isBlank()
-                        ? Path.of(System.getProperty("user.dir", "."))
-                        : Path.of(workspaceRoot);
+        this.workspace = Workspace.fromConfig(legacyRoot, rootsCsv, pathMode);
         this.maxCallsPerEpisode = maxCallsPerEpisode;
     }
 
@@ -168,7 +167,7 @@ public class AgentService {
     private VetoAgent createAgent(String agentKey, AgentRunner.LlmBinding binding) {
         AgentPersona persona = buildPersona(agentKey, binding);
         ReadHistory readHistory = new ReadHistory();
-        Gateway gateway = new Gateway(workspaceRoot, readHistory);
+        Gateway gateway = new Gateway(workspace, readHistory);
         AgentRunner runner =
                 new AgentRunner(
                         persona.id(),
@@ -199,8 +198,8 @@ public class AgentService {
                 List.of());
     }
 
-    /** The workspace root agents resolve paths against (for tests). */
-    public Path workspaceRoot() {
-        return workspaceRoot;
+    /** The workspace agents resolve paths against (for tests). */
+    public Workspace workspace() {
+        return workspace;
     }
 }

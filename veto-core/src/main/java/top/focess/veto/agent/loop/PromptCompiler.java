@@ -9,6 +9,7 @@ import top.focess.veto.agent.TurnType;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.skills.Skill;
 import top.focess.veto.agent.translation.CapabilityTranslator;
+import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.ChatMessage;
 
 /**
@@ -31,6 +32,7 @@ import top.focess.veto.llm.core.ChatMessage;
 public class PromptCompiler {
 
     private final CapabilityTranslator translator;
+    private final Workspace workspace;
 
     @Value("${veto.context.max_input_tokens:32000}")
     private int maxInputTokens;
@@ -38,8 +40,9 @@ public class PromptCompiler {
     @Value("${veto.context.context_fill_ratio:0.9}")
     private double contextFillRatio;
 
-    public PromptCompiler(CapabilityTranslator translator) {
+    public PromptCompiler(CapabilityTranslator translator, Workspace workspace) {
         this.translator = translator;
+        this.workspace = workspace;
     }
 
     /**
@@ -77,7 +80,12 @@ public class PromptCompiler {
     private String buildSystemMessage(
             AgentPersona persona, String base, boolean thoughtFlag, boolean guidedSwitch) {
         StringBuilder sb = new StringBuilder();
-        // Layer 1 — persona identity + role + response-format rules + native tool usage.
+        // Layer 1 — The Law (VETO.md, resolved per-root + cross-root) + persona identity + role +
+        // response-format rules + native tool usage. The Law is reserved (never truncated).
+        String law = workspace.vetoMdResolver().resolve();
+        if (law != null && !law.isBlank()) {
+            sb.append(law).append("\n\n");
+        }
         sb.append(base == null || base.isBlank() ? defaultPersonaBase(persona) : base);
         // Layer 2 — skill catalog (name + description only; bodies via load_skill).
         List<Skill> skills = persona.registeredSkills();

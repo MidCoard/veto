@@ -3,6 +3,7 @@ package top.focess.veto.agent;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.List;
@@ -16,6 +17,8 @@ import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.mcp.DefaultMcpEngine;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
+import top.focess.veto.agent.workspace.PathMode;
+import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.llm.core.ProviderType;
 import top.focess.veto.llm.core.ToolCall;
@@ -36,7 +39,11 @@ class AgentEndToEndTest {
     /** Builds an {@link AgentService} wired with the default stubs + a scripted caller. */
     private static AgentService serviceWith(UniformLLMCaller caller) {
         ObjectMapper mapper = new ObjectMapper();
-        PromptCompiler compiler = new PromptCompiler(new DefaultCapabilityTranslator(mapper));
+        PromptCompiler compiler =
+                new PromptCompiler(
+                        new DefaultCapabilityTranslator(mapper),
+                        Workspace.single(
+                                Path.of(System.getProperty("user.dir", ".")), PathMode.REAL));
         // The @Value defaults are only injected by Spring; set sensible budgets for the unit test.
         ReflectionTestUtils.setField(compiler, "maxInputTokens", 32000);
         ReflectionTestUtils.setField(compiler, "contextFillRatio", 0.9);
@@ -49,6 +56,8 @@ class AgentEndToEndTest {
                 mapper,
                 List.of(),
                 System.getProperty("user.dir", "."),
+                "",
+                "REAL",
                 50L);
     }
 

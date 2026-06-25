@@ -14,6 +14,7 @@ import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.intercept.LoopInterceptor;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.mcp.McpEngine;
+import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.UniformLLMCaller;
 
 /**
@@ -38,7 +39,7 @@ public class WorkflowRunner {
     private final UniformLLMCaller caller;
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
     private final java.util.List<LoopInterceptor> interceptors;
-    private final java.nio.file.Path workspaceRoot;
+    private final Workspace workspace;
     private final long maxCallsPerEpisode;
 
     public WorkflowRunner(
@@ -49,7 +50,9 @@ public class WorkflowRunner {
             UniformLLMCaller caller,
             com.fasterxml.jackson.databind.ObjectMapper objectMapper,
             java.util.List<LoopInterceptor> interceptors,
-            @Value("${veto.workspace.root:}") String workspaceRoot,
+            @Value("${veto.workspace.root:}") String legacyRoot,
+            @Value("${veto.workspace.roots:}") String rootsCsv,
+            @Value("${veto.workspace.path-mode:REAL}") String pathMode,
             @Value("${veto.breaker.max_calls_per_episode:50}") long maxCallsPerEpisode) {
         this.mcpEngine = mcpEngine;
         this.hitlRegistry = hitlRegistry;
@@ -58,10 +61,7 @@ public class WorkflowRunner {
         this.caller = caller;
         this.objectMapper = objectMapper;
         this.interceptors = interceptors == null ? java.util.List.of() : interceptors;
-        this.workspaceRoot =
-                workspaceRoot == null || workspaceRoot.isBlank()
-                        ? java.nio.file.Path.of(System.getProperty("user.dir", "."))
-                        : java.nio.file.Path.of(workspaceRoot);
+        this.workspace = Workspace.fromConfig(legacyRoot, rootsCsv, pathMode);
         this.maxCallsPerEpisode = maxCallsPerEpisode;
     }
 
@@ -73,7 +73,7 @@ public class WorkflowRunner {
             AgentPersona persona, AgentRunner.LlmBinding binding, String prompt) {
         top.focess.veto.agent.drift.ReadHistory readHistory =
                 new top.focess.veto.agent.drift.ReadHistory();
-        Gateway gateway = new Gateway(workspaceRoot, readHistory);
+        Gateway gateway = new Gateway(workspace, readHistory);
         AgentRunner runner =
                 new AgentRunner(
                         persona.id(),

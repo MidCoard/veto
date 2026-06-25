@@ -2,6 +2,7 @@ package top.focess.veto.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -9,6 +10,7 @@ import top.focess.veto.agent.mcp.DefaultMcpEngine;
 import top.focess.veto.agent.mcp.McpEngine;
 import top.focess.veto.agent.translation.CapabilityTranslator;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
+import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.config.LlmJacksonConfig;
 
 /**
@@ -35,5 +37,20 @@ public class AgentLoopDefaultsConfiguration {
     @ConditionalOnMissingBean(McpEngine.class)
     public McpEngine defaultMcpEngine() {
         return new DefaultMcpEngine();
+    }
+
+    /**
+     * The default {@link Workspace} (built from {@code veto.workspace.*} config) used to resolve
+     * VETO.md (The Law) in {@link top.focess.veto.agent.loop.PromptCompiler}. Required as a bean
+     * because {@code PromptCompiler} is a Spring-managed {@code @Component} whose constructor takes
+     * a {@link Workspace}. {@code @ConditionalOnMissingBean} lets a richer workspace bean override.
+     */
+    @Bean
+    @ConditionalOnMissingBean(Workspace.class)
+    public Workspace defaultWorkspace(
+            @Value("${veto.workspace.root:}") String legacyRoot,
+            @Value("${veto.workspace.roots:}") String rootsCsv,
+            @Value("${veto.workspace.path-mode:REAL}") String pathMode) {
+        return Workspace.fromConfig(legacyRoot, rootsCsv, pathMode);
     }
 }
