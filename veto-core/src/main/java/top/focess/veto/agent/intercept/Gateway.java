@@ -15,24 +15,32 @@ import top.focess.veto.agent.mcp.AgentToolDefinition;
 import top.focess.veto.agent.mcp.NativeToolDefinition;
 import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RemoteToolDefinition;
+import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.ToolDefinition;
-import top.focess.veto.agent.workspace.Resolution;
+import top.focess.veto.agent.screening.Danger;
+import top.focess.veto.agent.screening.DangerComputation;
+import top.focess.veto.agent.screening.DeployerPolicy;
+import top.focess.veto.agent.screening.ProtectedSet;
+import top.focess.veto.agent.screening.Relevance;
+import top.focess.veto.agent.screening.Screening;
+import top.focess.veto.agent.screening.SlmRelevanceProvider;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.ToolCall;
 
 /**
- * The deterministic tool-call security screen. Screens every <b>native/remote</b> tool call into a
- * typed {@link Verdict} — path validation (filesystem-path args must resolve in-scope under the
- * workspace roots), an executable allowlist + blacklist for {@code run_command}, and a {@link
- * ReadHistory} drift check on writes. Agent tools early-route past the Gateway entirely (step 4a)
- * and never reach here.
+ * The tool-call security screen. Screens every native/remote tool call into a typed {@link
+ * GatewayResult}: a {@link GatewayResult.Screened} ({@link Relevance}, {@link Danger}) result
+ * computed via {@link DangerComputation} + {@link SlmRelevanceProvider}, a {@link
+ * GatewayResult.DriftResult} when a write target changed since the agent last read it (Scenario W;
+ * a correctness check, not a danger class), or {@link GatewayResult.NotScreened} when an agent tool
+ * early-routes past the Gateway. The {@link HitlRegistry} decides {@link ApprovalDecision} from it.
+ * Agent tools early-route past the Gateway entirely and never reach here.
  *
  * <p><b>Note:</b> the advisory local-SLM semantic screening (relevance &amp; judgmental danger) is
- * not enabled and is skipped here. Under that degradation the deterministic layer is authoritative:
- * only deterministic trips (out-of-bounds path, blacklisted/non-allowlisted executable, write
- * drift) produce a non-{@link Verdict.Safe} verdict. SLM-driven prompting of otherwise-clean
- * writes/network/exec is deferred. Constructed per-agent so {@link #screen} matches the signature
- * (the agent's {@link ReadHistory} is instance state).
+ * not enabled; the degraded SLM relevance provider returns {@link Relevance#HIGH}. Under that
+ * degradation the deterministic layer ({@link DangerComputation}) is authoritative. Constructed
+ * per-agent so {@link #screen} matches the signature (the agent's {@link ReadHistory} is instance
+ * state).
  */
 public class Gateway {
 
@@ -49,59 +57,104 @@ public class Gateway {
             Set.of("nc", "ncat", "nmap", "curl", "wget", "ssh", "scp", "bash", "sh", "zsh", "fish");
 
     private final Workspace workspace;
+    private final DangerComputation dangerComputation;
+    private final SlmRelevanceProvider slmRelevance;
+    private final DeployerPolicy policy;
+    private final ProtectedSet protectedSet;
     private final Set<String> execAllowlist;
     private final Set<String> execBlacklist;
     private final ReadHistory readHistory;
 
     /**
-     * Constructs a per-agent Gateway.
+     * Constructs a per-agent Gateway wired to its screening dependencies.
      *
      * @param workspace the agent's workspace; incoming paths resolve against its resolver.
+     * @param dangerComputation the deterministic danger computation (path/shell classification).
+     * @param slmRelevance the SLM relevance seam (degraded → HIGH).
+     * @param policy the install-time deployer policy (FULL / PROTECT_SENSITIVE).
+     * @param protectedSet the PROTECT_SENSITIVE protected paths (empty under FULL).
      * @param readHistory this agent's read-history (for write drift checks).
      */
-    public Gateway(Workspace workspace, ReadHistory readHistory) {
-        this(workspace, DEFAULT_EXEC_ALLOWLIST, DEFAULT_EXEC_BLACKLIST, readHistory);
-    }
-
-    /** Full constructor (for tests / Runtime-Profile-injected allow/blacklists). */
     public Gateway(
             Workspace workspace,
-            Set<String> execAllowlist,
-            Set<String> execBlacklist,
+            DangerComputation dangerComputation,
+            SlmRelevanceProvider slmRelevance,
+            DeployerPolicy policy,
+            ProtectedSet protectedSet,
             ReadHistory readHistory) {
         this.workspace = workspace;
-        this.execAllowlist = execAllowlist;
-        this.execBlacklist = execBlacklist;
+        this.dangerComputation = dangerComputation;
+        this.slmRelevance = slmRelevance;
+        this.policy = policy;
+        this.protectedSet = protectedSet;
         this.readHistory = readHistory;
+        this.execAllowlist = DEFAULT_EXEC_ALLOWLIST;
+        this.execBlacklist = DEFAULT_EXEC_BLACKLIST;
     }
 
     /**
-     * Screens one native/remote tool call. Runs deterministic checks only; the SLM semantic screen
-     * is not enabled. Returns a typed {@link Verdict}; the {@link HitlRegistry} decides {@link
-     * ApprovalDecision} from it.
+     * Back-compat constructor for callers that still resolve a Gateway from a {@link Workspace} +
+     * {@link ReadHistory} (e.g. {@link top.focess.veto.agent.WorkflowRunner}, {@link
+     * top.focess.veto.agent.AgentService}). Wires the degraded screening defaults: deterministic
+     * {@link DangerComputation}, degraded SLM relevance (HIGH), {@link DeployerPolicy#FULL}, empty
+     * {@link ProtectedSet}.
      */
-    public Verdict screen(ToolCall call, ToolDefinition def) {
+    public Gateway(Workspace workspace, ReadHistory readHistory) {
+        this(
+                workspace,
+                new DangerComputation(),
+                SlmRelevanceProvider.degraded(),
+                DeployerPolicy.FULL,
+                ProtectedSet.empty(),
+                readHistory);
+    }
+
+    /**
+     * Screens one native/remote tool call. Agent tools early-route to {@link
+     * GatewayResult.NotScreened}; write-tool drift (the target changed since the agent last read
+     * it) routes to {@link GatewayResult.DriftResult} as a correctness check before danger;
+     * otherwise the call is screened to a {@link GatewayResult.Screened} ({@link Relevance}, {@link
+     * Danger}) via {@link DangerComputation} + {@link SlmRelevanceProvider}. The {@link
+     * HitlRegistry} decides {@link ApprovalDecision} from the result.
+     */
+    public GatewayResult screen(ToolCall call, ToolDefinition def) {
         if (def instanceof AgentToolDefinition) {
-            // Agent tools early-route past the Gateway — never screened here.
-            return Verdict.SAFE;
+            return new GatewayResult.NotScreened();
         }
-
         List<String> paths = extractPathArgs(call, def);
-        Verdict pathVerdict = validatePaths(paths);
-        if (pathVerdict != null) {
-            return pathVerdict;
+        // drift is a correctness check on writes — checked before danger.
+        if (def.risk() == RiskCategory.FILE_WRITE) {
+            Verdict drift = checkWriteDrift(paths);
+            if (drift instanceof Verdict.Drift d) {
+                return new GatewayResult.DriftResult(d.path(), d.diff());
+            }
         }
+        Danger danger = dangerComputation.compute(def, call, workspace, policy, protectedSet);
+        Relevance relevance = slmRelevance.relevance(call, def, /* thought */ null);
+        VetoScenario scenario = scenarioFor(danger, def);
+        String reason = reasonFor(danger, def);
+        return new GatewayResult.Screened(new Screening(relevance, danger, scenario, reason));
+    }
 
+    private VetoScenario scenarioFor(Danger danger, ToolDefinition def) {
+        if (danger == Danger.CRITICAL)
+            return VetoScenario
+                    .EXEC_DETERMINISTIC; // E1-style; the registry offers options per scenario
         return switch (def.risk()) {
-            case READ_ONLY -> Verdict.SAFE;
-            case FILE_WRITE -> checkWriteDrift(paths);
-            case SHELL_EXEC -> checkShellCommand(call);
-            case NETWORK -> Verdict.SAFE; // clean egress: deterministic floor clean (SLM deferred)
-            case AGENT -> Verdict.SAFE;
+            case READ_ONLY -> VetoScenario.READ;
+            case FILE_WRITE ->
+                    VetoScenario
+                            .GENERIC; // non-drift write — generic (no WRITE_DRIFT scenario here)
+            case SHELL_EXEC, NETWORK -> VetoScenario.EXEC_FIRST_TIME; // E3 first-time pattern
+            case AGENT -> VetoScenario.GENERIC;
         };
     }
 
-    // ── Path validation ───────────────────────────────────────────────────
+    private String reasonFor(Danger danger, ToolDefinition def) {
+        return def.risk() + " -> " + danger;
+    }
+
+    // ── Path extraction ───────────────────────────────────────────────────
 
     /** Extracts filesystem-path arguments using the definition's {@link ParamCategory} hints. */
     private List<String> extractPathArgs(ToolCall call, ToolDefinition def) {
@@ -131,17 +184,6 @@ public class Gateway {
             case AgentToolDefinition a -> a.paramHints();
             case RemoteToolDefinition r -> Map.of();
         };
-    }
-
-    /** Returns a BLOCKED verdict if any path is out-of-scope, else null. */
-    private Verdict validatePaths(List<String> paths) {
-        for (String raw : paths) {
-            Resolution resolution = workspace.pathResolver().resolveToHost(raw);
-            if (!resolution.inScope()) {
-                return new Verdict.Blocked("path escapes workspace roots: " + raw);
-            }
-        }
-        return null;
     }
 
     // ── Write drift ─────────────
@@ -176,7 +218,7 @@ public class Gateway {
                 + "File was modified externally since the agent last read it.";
     }
 
-    // ── Shell command integrity ─────────────────────────────────────────────
+    // ── Shell command integrity (deterministic; DangerComputation owns danger) ────
 
     @SuppressWarnings("unchecked")
     private Verdict checkShellCommand(ToolCall call) {
