@@ -30,6 +30,17 @@ class ScreeningModeTest {
     }
 
     @Test
+    void balancedLowSafeIsAsk() {
+        // §5 BALANCED row: LOW → ASK, ASK, ASK, MUST_ASK. SAFE must NOT auto-approve at LOW
+        // relevance (previously the matrix approved SAFE for any relevance — regression guard).
+        ScreeningMode m = ScreeningMode.BALANCED;
+        assertEquals(ScreeningOutcome.ASK, m.cell(Relevance.LOW, Danger.SAFE));
+        assertEquals(ScreeningOutcome.ASK, m.cell(Relevance.LOW, Danger.ELEVATED));
+        assertEquals(ScreeningOutcome.ASK, m.cell(Relevance.LOW, Danger.DANGEROUS));
+        assertEquals(ScreeningOutcome.MUST_ASK, m.cell(Relevance.LOW, Danger.CRITICAL));
+    }
+
+    @Test
     void bypassAllApprovesEverythingExceptCritical() {
         ScreeningMode m = ScreeningMode.BYPASS_ALL;
         assertEquals(ScreeningOutcome.APPROVE, m.cell(Relevance.HIGH, Danger.SAFE));

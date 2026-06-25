@@ -88,7 +88,7 @@ public class AgentService {
         this.deployerPolicy = parseDeployerPolicy(deployerPolicyRaw);
         this.protectedSet =
                 this.deployerPolicy == DeployerPolicy.PROTECT_SENSITIVE
-                        ? ProtectedSet.withDeployerDefaults()
+                        ? ProtectedSet.withDeployerDefaults(this.workspace.hostRoots())
                         : ProtectedSet.empty();
         // Thread the runtime screening matrix to the (shared) HITL registry.
         this.hitlRegistry.setScreeningMode(parseScreeningMode(screeningModeRaw));

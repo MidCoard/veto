@@ -151,5 +151,31 @@ class DangerComputationTest {
                 dc.compute(execDef, call, ws(root), DeployerPolicy.FULL, ProtectedSet.empty()));
     }
 
+    @Test
+    void pathQualifiedBlacklistedExecutableIsCritical() throws Exception {
+        // A path-qualified blacklisted executable (/usr/bin/nc) must still classify CRITICAL
+        // (grant-immune) after baseName normalization — not fall through to the grantable
+        // DANGEROUS bucket. Regression guard for the deleted Gateway.baseName().
+        NativeToolDefinition execDef =
+                new NativeToolDefinition(
+                        "run_command",
+                        "exec",
+                        RiskCategory.SHELL_EXEC,
+                        false,
+                        ExecArgs.class,
+                        Map.of());
+        ToolCall call =
+                new ToolCall(
+                        "run_command",
+                        Map.of(
+                                "commands",
+                                List.of(Map.of("executable", "/usr/bin/nc", "args", List.of("-l"))),
+                                "cwd",
+                                root.toString()));
+        assertEquals(
+                Danger.CRITICAL,
+                dc.compute(execDef, call, ws(root), DeployerPolicy.FULL, ProtectedSet.empty()));
+    }
+
     public record ExecArgs(Map<String, Object> commands, String cwd) {}
 }

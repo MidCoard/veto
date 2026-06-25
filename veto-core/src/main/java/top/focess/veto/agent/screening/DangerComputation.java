@@ -143,7 +143,11 @@ public class DangerComputation {
                 return Danger.CRITICAL;
             }
             Object execObj = cmd.get("executable");
-            String exec = execObj == null ? "" : execObj.toString();
+            // Normalize the executable to its base name so a path-qualified blacklisted tool
+            // (/bin/bash, /usr/bin/nc) still matches EXEC_BLACKLIST/isNetworkScan rather than
+            // falling through to the grantable DANGEROUS bucket. (Restores the Gateway.baseName()
+            // behavior deleted with the dead shell-cluster.)
+            String exec = baseName(execObj == null ? "" : execObj.toString());
             Danger d;
             if (EXEC_BLACKLIST.contains(exec)) {
                 d = Danger.CRITICAL;
@@ -161,6 +165,17 @@ public class DangerComputation {
 
     private boolean isNetworkScan(String exec) {
         return Set.of("curl", "wget", "nc", "ncat", "nmap", "ftp", "telnet").contains(exec);
+    }
+
+    /**
+     * Strips the path prefix from an executable invocation, returning the bare command name ({@code
+     * /usr/bin/nc} → {@code nc}, {@code C:\tools\curl.exe} → {@code curl.exe}). Cross-platform:
+     * handles both {@code /} and {@code \} separators without parsing via {@link Path} (which is
+     * filesystem-sensitive and can misparse foreign-style paths).
+     */
+    private static String baseName(String exe) {
+        int slash = Math.max(exe.lastIndexOf('/'), exe.lastIndexOf('\\'));
+        return slash >= 0 ? exe.substring(slash + 1) : exe;
     }
 
     private static Danger max(Danger... ds) {

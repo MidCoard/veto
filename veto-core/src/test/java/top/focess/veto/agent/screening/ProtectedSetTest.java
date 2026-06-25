@@ -3,6 +3,7 @@ package top.focess.veto.agent.screening;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
@@ -29,6 +30,20 @@ class ProtectedSetTest {
         // ~/.veto and ~/.ssh entries should be present (absolute canonicalized)
         assertTrue(ps.paths().stream().anyMatch(p -> p.toString().contains(".veto")));
         assertTrue(ps.paths().stream().anyMatch(p -> p.toString().contains(".ssh")));
+    }
+
+    @Test
+    void deployerDefaultsCoverWorkspaceEnvFiles() {
+        // Spec §6: project .env files are among the protected defaults. They are
+        // workspace-root-relative, so the roots must be threaded into withDeployerDefaults —
+        // a project .env under PROTECT_SENSITIVE must be CRITICAL (covered), not DANGEROUS.
+        Path root1 = Path.of("/home/u/proj1").toAbsolutePath().normalize();
+        Path root2 = Path.of("/home/u/proj2").toAbsolutePath().normalize();
+        ProtectedSet ps = ProtectedSet.withDeployerDefaults(List.of(root1, root2));
+        assertTrue(ps.covers(root1.resolve(".env")));
+        assertTrue(ps.covers(root2.resolve(".env")));
+        // home-relative defaults are still present alongside the per-root .env entries
+        assertTrue(ps.paths().stream().anyMatch(p -> p.toString().contains(".veto")));
     }
 
     @Test

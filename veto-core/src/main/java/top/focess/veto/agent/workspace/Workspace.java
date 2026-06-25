@@ -49,6 +49,14 @@ public record Workspace(List<WorkspaceRoot> roots, PathMode pathMode, int curren
         return new PathResolver(roots, pathMode, currentRootIndex);
     }
 
+    /**
+     * The absolute host paths of each workspace root (canonicalized by {@link
+     * WorkspaceRoot#probe}).
+     */
+    public List<Path> hostRoots() {
+        return roots.stream().map(WorkspaceRoot::hostPath).toList();
+    }
+
     public VetoMdResolver vetoMdResolver() {
         return new VetoMdResolver(roots);
     }

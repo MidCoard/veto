@@ -1,13 +1,16 @@
 package top.focess.veto.agent.screening;
 
 import java.nio.file.Path;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
  * The PROTECT_SENSITIVE protected set — paths default-blocked (CRITICAL on access). Seeded with
- * deployer defaults: ~/.veto/, ~/.ssh, ~/.aws, ~/.gnupg. User-editable. covers() is canonical
- * prefix match. Under FULL the set is empty (no effect).
+ * deployer defaults: ~/.veto/, ~/.ssh, ~/.aws, ~/.gnupg and each workspace root's {@code .env}
+ * (spec §6). User-editable. covers() is canonical prefix match. Under FULL the set is empty (no
+ * effect).
  */
 public record ProtectedSet(Set<Path> paths) {
 
@@ -19,15 +22,35 @@ public record ProtectedSet(Set<Path> paths) {
         return new ProtectedSet(Set.of());
     }
 
-    /** Seeded with deployer defaults: ~/.veto, ~/.ssh, ~/.aws, ~/.gnupg. */
+    /**
+     * Seeded with the home-relative deployer defaults only ({@code ~/.veto}, {@code ~/.ssh}, {@code
+     * ~/.aws}, {@code ~/.gnupg}). No workspace {@code .env} entries — use {@link
+     * #withDeployerDefaults(List)} from a context that knows the workspace roots.
+     */
     public static ProtectedSet withDeployerDefaults() {
+        return withDeployerDefaults(List.of());
+    }
+
+    /**
+     * Seeded with deployer defaults per spec §6: {@code ~/.veto}, {@code ~/.ssh}, {@code ~/.aws},
+     * {@code ~/.gnupg}, plus {@code <root>/.env} for each workspace root. A project {@code .env} is
+     * workspace-root-relative (unlike the home defaults), so the roots must be threaded in by the
+     * caller (e.g. {@code top.focess.veto.agent.AgentService} via {@code workspace.hostRoots()}).
+     */
+    public static ProtectedSet withDeployerDefaults(List<Path> workspaceRoots) {
         String home = System.getProperty("user.home", "");
-        Set<Path> defaults =
-                Set.of(
-                        Path.of(home, ".veto"),
-                        Path.of(home, ".ssh"),
-                        Path.of(home, ".aws"),
-                        Path.of(home, ".gnupg"));
+        Set<Path> defaults = new HashSet<>();
+        defaults.add(Path.of(home, ".veto"));
+        defaults.add(Path.of(home, ".ssh"));
+        defaults.add(Path.of(home, ".aws"));
+        defaults.add(Path.of(home, ".gnupg"));
+        if (workspaceRoots != null) {
+            for (Path root : workspaceRoots) {
+                if (root != null) {
+                    defaults.add(root.resolve(".env"));
+                }
+            }
+        }
         return new ProtectedSet(defaults);
     }
 
