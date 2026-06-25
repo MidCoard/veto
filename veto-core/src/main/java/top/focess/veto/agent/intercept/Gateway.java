@@ -22,9 +22,10 @@ import top.focess.veto.llm.core.ToolCall;
 
 /**
  * The deterministic tool-call security screen. Screens every <b>native/remote</b> tool call into a
- * typed {@link Verdict} — path validation (filesystem-path args under the workspace root), an
- * executable allowlist + blacklist for {@code run_command}, and a {@link ReadHistory} drift check
- * on writes. Agent tools early-route past the Gateway entirely (step 4a) and never reach here.
+ * typed {@link Verdict} — path validation (filesystem-path args must resolve in-scope under the
+ * workspace roots), an executable allowlist + blacklist for {@code run_command}, and a {@link
+ * ReadHistory} drift check on writes. Agent tools early-route past the Gateway entirely (step 4a)
+ * and never reach here.
  *
  * <p><b>Note:</b> the advisory local-SLM semantic screening (relevance &amp; judgmental danger) is
  * not enabled and is skipped here. Under that degradation the deterministic layer is authoritative:

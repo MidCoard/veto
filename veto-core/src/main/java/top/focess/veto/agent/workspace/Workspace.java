@@ -2,10 +2,16 @@ package top.focess.veto.agent.workspace;
 
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** A multi-root workspace entity (Part 10.1). */
 public record Workspace(List<WorkspaceRoot> roots, PathMode pathMode, int currentRootIndex) {
+
+    private static final Logger log = LoggerFactory.getLogger(Workspace.class);
 
     public Workspace {
         if (roots == null || roots.isEmpty()) {
@@ -13,6 +19,29 @@ public record Workspace(List<WorkspaceRoot> roots, PathMode pathMode, int curren
         }
         if (currentRootIndex < 0 || currentRootIndex >= roots.size()) {
             throw new IllegalArgumentException("currentRootIndex out of range");
+        }
+        warnOnRootNameCollisions(roots);
+    }
+
+    /**
+     * LLD §3: two roots sharing the same directory name collide in VIRTUAL mode — their virtual
+     * prefixes ({@code /{rootDirName}}) are identical, so the first-in-order root wins and the
+     * other is silently unreachable via virtual path. Warn at assembly time so the deployer
+     * notices; first-in-order wins is enforced by {@link PathResolver}, which matches the first
+     * segment only.
+     */
+    private static void warnOnRootNameCollisions(List<WorkspaceRoot> roots) {
+        Set<String> seen = new HashSet<>();
+        for (WorkspaceRoot root : roots) {
+            Path fileName = root.hostPath().getFileName();
+            String name = fileName == null ? "" : fileName.toString();
+            if (!name.isEmpty() && !seen.add(name)) {
+                log.warn(
+                        "Workspace root-name collision: multiple roots share the directory name"
+                                + " \"{}\". In VIRTUAL mode the first-in-order root wins and the"
+                                + " other(s) are unreachable via the virtual path prefix.",
+                        name);
+            }
         }
     }
 
