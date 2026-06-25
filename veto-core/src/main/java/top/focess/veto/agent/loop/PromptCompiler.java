@@ -19,9 +19,10 @@ import top.focess.veto.llm.core.ChatMessage;
  * <p>Three responsibilities:
  *
  * <ol>
- *   <li><b>System message</b> = Layer 1 (persona identity + role + response-format rules + native
- *       tool usage) + Layer 2 (skill name+description catalog) + Layer 3 (per-turn JSON-constraint
- *       reminder, picking the variant-ON/OFF schema by the effective thought flag).
+ *   <li><b>System message</b> = Layer 1 (The Law / VETO.md resolved per-root + cross-root, then
+ *       persona identity + role + response-format rules + native tool usage) + Layer 2 (skill
+ *       name+description catalog) + Layer 3 (per-turn JSON-constraint reminder, picking the
+ *       variant-ON/OFF schema by the effective thought flag).
  *   <li><b>messages[]</b> — raw history newest→oldest, role-mapped per, REWIND-resolved per ,
  *       token-budgeted with pair-safe truncation (system never trimmed).
  *   <li><b>tools[]</b> + <b>response_schema</b> — via the {@link CapabilityTranslator} (flat tools
