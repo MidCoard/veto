@@ -56,6 +56,12 @@ veto:
     forbid-generic-shell: true
     temp-dir: ${VETO_TEMP_DIR:./work/sandbox}
 
+  security:
+    # Install-time deployer policy: FULL (no protected set) | PROTECT_SENSITIVE (default-block
+    # ~/.veto, ~/.ssh, ~/.aws, ~/.gnupg). Runtime screening matrix: STRICT | BALANCED | BYPASS_ALL.
+    deployer-policy: FULL
+    screening-mode: STRICT
+
   terminal:
     max-concurrent-connections: 16
     request-timeout-ms: 60000

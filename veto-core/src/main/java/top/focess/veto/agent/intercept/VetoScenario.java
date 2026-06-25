@@ -1,7 +1,7 @@
 package top.focess.veto.agent.intercept;
 
 /**
- * The scenario a veto pause belongs to. Determined by the {@link Verdict} the {@link Gateway}
+ * The scenario a veto pause belongs to. Determined by the {@link GatewayResult} the {@link Gateway}
  * produced (which depends on the call's risk category and what tripped). The scenario fixes the
  * offered option set; one shared HITL mechanism, several resolution vocabularies.
  */

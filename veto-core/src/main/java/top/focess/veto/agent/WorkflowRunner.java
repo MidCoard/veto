@@ -14,6 +14,10 @@ import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.intercept.LoopInterceptor;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.mcp.McpEngine;
+import top.focess.veto.agent.screening.DangerComputation;
+import top.focess.veto.agent.screening.DeployerPolicy;
+import top.focess.veto.agent.screening.ProtectedSet;
+import top.focess.veto.agent.screening.SlmRelevanceProvider;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.UniformLLMCaller;
 
@@ -73,7 +77,14 @@ public class WorkflowRunner {
             AgentPersona persona, AgentRunner.LlmBinding binding, String prompt) {
         top.focess.veto.agent.drift.ReadHistory readHistory =
                 new top.focess.veto.agent.drift.ReadHistory();
-        Gateway gateway = new Gateway(workspace, readHistory);
+        Gateway gateway =
+                new Gateway(
+                        workspace,
+                        new DangerComputation(),
+                        SlmRelevanceProvider.degraded(),
+                        DeployerPolicy.FULL,
+                        ProtectedSet.empty(),
+                        readHistory);
         AgentRunner runner =
                 new AgentRunner(
                         persona.id(),

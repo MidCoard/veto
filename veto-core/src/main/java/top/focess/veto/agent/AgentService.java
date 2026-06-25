@@ -24,6 +24,11 @@ import top.focess.veto.agent.intercept.InterceptResolution;
 import top.focess.veto.agent.intercept.LoopInterceptor;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.mcp.McpEngine;
+import top.focess.veto.agent.screening.DangerComputation;
+import top.focess.veto.agent.screening.DeployerPolicy;
+import top.focess.veto.agent.screening.ProtectedSet;
+import top.focess.veto.agent.screening.ScreeningMode;
+import top.focess.veto.agent.screening.SlmRelevanceProvider;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.config.LlmJacksonConfig;
 import top.focess.veto.llm.core.UniformLLMCaller;
@@ -52,6 +57,8 @@ public class AgentService {
     private final List<LoopInterceptor> interceptors;
     private final Workspace workspace;
     private final long maxCallsPerEpisode;
+    private final DeployerPolicy deployerPolicy;
+    private final ProtectedSet protectedSet;
 
     private final ConcurrentHashMap<String, VetoAgent> agents = new ConcurrentHashMap<>();
 
@@ -66,7 +73,9 @@ public class AgentService {
             @Value("${veto.workspace.root:}") String legacyRoot,
             @Value("${veto.workspace.roots:}") String rootsCsv,
             @Value("${veto.workspace.path-mode:REAL}") String pathMode,
-            @Value("${veto.breaker.max_calls_per_episode:50}") long maxCallsPerEpisode) {
+            @Value("${veto.breaker.max_calls_per_episode:50}") long maxCallsPerEpisode,
+            @Value("${veto.security.deployer-policy:FULL}") String deployerPolicyRaw,
+            @Value("${veto.security.screening-mode:STRICT}") String screeningModeRaw) {
         this.mcpEngine = mcpEngine;
         this.hitlRegistry = hitlRegistry;
         this.ingressDefense = ingressDefense;
@@ -76,6 +85,13 @@ public class AgentService {
         this.interceptors = interceptors == null ? List.of() : interceptors;
         this.workspace = Workspace.fromConfig(legacyRoot, rootsCsv, pathMode);
         this.maxCallsPerEpisode = maxCallsPerEpisode;
+        this.deployerPolicy = parseDeployerPolicy(deployerPolicyRaw);
+        this.protectedSet =
+                this.deployerPolicy == DeployerPolicy.PROTECT_SENSITIVE
+                        ? ProtectedSet.withDeployerDefaults()
+                        : ProtectedSet.empty();
+        // Thread the runtime screening matrix to the (shared) HITL registry.
+        this.hitlRegistry.setScreeningMode(parseScreeningMode(screeningModeRaw));
     }
 
     /**
@@ -167,7 +183,14 @@ public class AgentService {
     private VetoAgent createAgent(String agentKey, AgentRunner.LlmBinding binding) {
         AgentPersona persona = buildPersona(agentKey, binding);
         ReadHistory readHistory = new ReadHistory();
-        Gateway gateway = new Gateway(workspace, readHistory);
+        Gateway gateway =
+                new Gateway(
+                        workspace,
+                        new DangerComputation(),
+                        SlmRelevanceProvider.degraded(),
+                        deployerPolicy,
+                        protectedSet,
+                        readHistory);
         AgentRunner runner =
                 new AgentRunner(
                         persona.id(),
@@ -201,5 +224,31 @@ public class AgentService {
     /** The workspace agents resolve paths against (for tests). */
     public Workspace workspace() {
         return workspace;
+    }
+
+    /** Parses the deployer policy (case-insensitive; defaults to FULL on blank/unknown). */
+    private static DeployerPolicy parseDeployerPolicy(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return DeployerPolicy.FULL;
+        }
+        for (DeployerPolicy p : DeployerPolicy.values()) {
+            if (p.name().equalsIgnoreCase(raw.trim())) {
+                return p;
+            }
+        }
+        return DeployerPolicy.FULL;
+    }
+
+    /** Parses the screening mode (case-insensitive; defaults to STRICT on blank/unknown). */
+    private static ScreeningMode parseScreeningMode(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return ScreeningMode.STRICT;
+        }
+        for (ScreeningMode m : ScreeningMode.values()) {
+            if (m.name().equalsIgnoreCase(raw.trim())) {
+                return m;
+            }
+        }
+        return ScreeningMode.STRICT;
     }
 }

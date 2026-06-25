@@ -22,6 +22,7 @@ import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.intercept.ApprovalDecision;
 import top.focess.veto.agent.intercept.Gateway;
+import top.focess.veto.agent.intercept.GatewayResult;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.intercept.LoopInterceptor;
@@ -41,6 +42,7 @@ import top.focess.veto.agent.mcp.AgentToolDefinition;
 import top.focess.veto.agent.mcp.McpEngine;
 import top.focess.veto.agent.mcp.McpToolResult;
 import top.focess.veto.agent.mcp.ToolDefinition;
+import top.focess.veto.agent.screening.Danger;
 import top.focess.veto.llm.core.ChatMessage;
 import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.llm.core.ProviderType;
@@ -429,8 +431,11 @@ public class AgentRunner {
         // (a) early-route agent tools past the Gateway + HITL.
         ApprovalDecision decision = ApprovalDecision.AUTO_APPROVE;
         if (!(def instanceof AgentToolDefinition)) {
-            var verdict = gateway.screen(call, def);
-            decision = hitlRegistry.decide(agentId, call, def, verdict);
+            var result = gateway.screen(call, def);
+            decision = hitlRegistry.decide(agentId, call, def, result);
+            // Defensive: under the screening model no decide() path produces an AutoBlock
+            // (CRITICAL → MUST_ASK → Prompt), but keep the branch in case a future decision
+            // synthesizes a hard refusal.
             if (decision instanceof ApprovalDecision.AutoBlock ab) {
                 appendTurn(TurnRecord.toolCall(++turnNumber, call));
                 appendObservation(call.toolName(), "Blocked: " + ab.reason());
@@ -497,9 +502,15 @@ public class AgentRunner {
         if (resolution.option() == VetoOption.EDIT && resolution.editedArgs() != null) {
             ToolCall edited = new ToolCall(call.toolName(), resolution.editedArgs(), call.callId());
             // re-screen the edited call.
-            var v2 = gateway.screen(edited, def);
-            if (v2 instanceof top.focess.veto.agent.intercept.Verdict.Blocked b) {
-                appendObservation(call.toolName(), "Edited call blocked: " + b.reason());
+            var r2 = gateway.screen(edited, def);
+            if (r2 instanceof GatewayResult.Screened sc
+                    && sc.screening().danger() == Danger.CRITICAL) {
+                appendObservation(
+                        call.toolName(), "Edited call is CRITICAL: " + sc.screening().reason());
+                return null;
+            }
+            if (r2 instanceof GatewayResult.DriftResult) {
+                appendObservation(call.toolName(), "Edited call drifts.");
                 return null;
             }
             return edited;

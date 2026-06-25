@@ -7,17 +7,21 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.stereotype.Component;
-import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.ToolDefinition;
+import top.focess.veto.agent.screening.Screening;
+import top.focess.veto.agent.screening.ScreeningMode;
+import top.focess.veto.agent.screening.ScreeningOutcome;
 import top.focess.veto.llm.core.ToolCall;
 
 /**
  * The single human-in-the-loop registry. Owns three responsibilities:
  *
  * <ol>
- *   <li>{@link #decide} — apply the auto-approval policy + Session Rules to a {@link Verdict} →
- *       {@link ApprovalDecision}. READ_ONLY + no flag → auto-proceed; a matching Session Rule →
- *       auto-approved (still re-checked: {@link Verdict.Blocked} is never approved).
+ *   <li>{@link #decide} — resolve the {@link GatewayResult} (via the {@link ScreeningMode} matrix)
+ *       + Session Rules into an {@link ApprovalDecision}. NotScreened + matching Session Rule →
+ *       auto-proceed; {@link ScreeningOutcome#APPROVE} → AutoApprove; {@link
+ *       ScreeningOutcome#MUST_ASK} → Prompt (unconditional); {@link ScreeningOutcome#ASK} → Prompt
+ *       unless a Session Rule matches.
  *   <li>{@link #register} / {@link #await} — park the agent's virtual thread on a {@link
  *       CompletableFuture} keyed by {@code (agentId, callId)} (the Loom yield).
  *   <li>{@link #resolve} — complete the future with the user's {@link InterceptResolution}; on
@@ -32,6 +36,13 @@ import top.focess.veto.llm.core.ToolCall;
 @Component
 public class HitlRegistry {
 
+    /**
+     * The runtime-tunable screening matrix ({@link ScreeningMode#cell}). Defaults to {@link
+     * ScreeningMode#STRICT}; {@link top.focess.veto.agent.AgentService} sets it from {@code
+     * veto.security.screening-mode}.
+     */
+    private ScreeningMode screeningMode = ScreeningMode.STRICT;
+
     /** Pending veto futures keyed by {@code agentId + "|" + callId}. */
     private final ConcurrentHashMap<String, CompletableFuture<InterceptResolution>> pending =
             new ConcurrentHashMap<>();
@@ -42,43 +53,45 @@ public class HitlRegistry {
     // ── Decide ──────────────────────────────────────────────────────────────
 
     /**
-     * Decides an outcome from the Gateway's verdict, applying the auto-approval policy + Session
-     * Rules for the given agent.
+     * Decides an outcome from the {@link GatewayResult}, applying the {@link ScreeningMode} matrix
+     * + Session Rules for the given agent. NotScreened (agent tools) → AutoApprove; a {@link
+     * GatewayResult.DriftResult} → a WRITE_DRIFT Prompt; a {@link GatewayResult.Screened} result is
+     * resolved via {@code screeningMode.cell(relevance, danger)} — APPROVE → AutoApprove, MUST_ASK
+     * → Prompt (unconditional), ASK → AutoApprove on a matching Session Rule else Prompt.
      */
     public ApprovalDecision decide(
-            String agentId, ToolCall call, ToolDefinition def, Verdict verdict) {
-        // Blocked is never auto-approved, regardless of session rules.
-        if (verdict instanceof Verdict.Blocked b) {
-            return new ApprovalDecision.AutoBlock(b.reason());
+            String agentId, ToolCall call, ToolDefinition def, GatewayResult result) {
+        if (result instanceof GatewayResult.NotScreened) {
+            return ApprovalDecision.AUTO_APPROVE;
         }
-        if (verdict instanceof Verdict.Drift) {
+        if (result instanceof GatewayResult.DriftResult) {
             return new ApprovalDecision.Prompt(
                     VetoScenario.WRITE_DRIFT,
                     List.of(
                             VetoOption.ABORT_WRITE,
                             VetoOption.REREAD,
                             VetoOption.FORCE_OVERWRITE,
-                            VetoOption.EDIT),
-                    verdict);
+                            VetoOption.EDIT));
         }
-        if (verdict instanceof Verdict.Risky r) {
-            if (matchesSessionRule(agentId, call)) {
-                return ApprovalDecision.AUTO_APPROVE;
-            }
-            return new ApprovalDecision.Prompt(r.scenario(), optionsFor(r.scenario()), verdict);
-        }
-        // Verdict.SAFE
-        if (def.risk() == RiskCategory.READ_ONLY) {
-            return ApprovalDecision.AUTO_APPROVE;
-        }
-        if (matchesSessionRule(agentId, call)) {
-            return ApprovalDecision.AUTO_APPROVE;
-        }
-        // gap (noted): the SLM screening model that would produce a proper write/exec/network
-        // scenario for an otherwise-clean state-changing call is not enabled. Under a
-        // state-changing/networked call without a rule still parks; offered a generic set.
-        return new ApprovalDecision.Prompt(
-                VetoScenario.GENERIC, optionsFor(VetoScenario.GENERIC), verdict);
+        GatewayResult.Screened s = (GatewayResult.Screened) result;
+        Screening screening = s.screening();
+        ScreeningOutcome outcome = screeningMode.cell(screening.relevance(), screening.danger());
+        return switch (outcome) {
+            case APPROVE -> ApprovalDecision.AUTO_APPROVE;
+            case MUST_ASK ->
+                    new ApprovalDecision.Prompt(
+                            screening.scenario(), optionsFor(screening.scenario()));
+            case ASK ->
+                    matchesSessionRule(agentId, call)
+                            ? ApprovalDecision.AUTO_APPROVE
+                            : new ApprovalDecision.Prompt(
+                                    screening.scenario(), optionsFor(screening.scenario()));
+        };
+    }
+
+    /** Sets the screening matrix (called by {@link top.focess.veto.agent.AgentService}). */
+    public void setScreeningMode(ScreeningMode screeningMode) {
+        this.screeningMode = screeningMode;
     }
 
     private List<VetoOption> optionsFor(VetoScenario scenario) {

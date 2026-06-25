@@ -3,7 +3,7 @@ package top.focess.veto.agent.intercept;
 import top.focess.veto.agent.screening.Screening;
 
 /**
- * The {@link Gateway} screen result for one tool call — replaces {@code Verdict}. Sealed:
+ * The {@link Gateway} screen result for one tool call. Sealed:
  *
  * <ul>
  *   <li>{@link Screened} — the normal (relevance, danger) screening result.

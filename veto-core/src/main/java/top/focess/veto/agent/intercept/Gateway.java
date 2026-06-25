@@ -7,7 +7,6 @@ import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.agent.drift.ReadHistory;
@@ -46,27 +45,18 @@ public class Gateway {
 
     private static final Logger log = LoggerFactory.getLogger(Gateway.class);
 
-    /** Default executable allowlist (deployer-configurable via Runtime Profile). */
-    private static final Set<String> DEFAULT_EXEC_ALLOWLIST =
-            Set.of(
-                    "mvn", "gradle", "gradlew", "npm", "git", "python", "python3", "gcc", "g++",
-                    "make");
-
-    /** Default network/scanner/spawn blacklist → CRITICAL → BLOCKED. */
-    private static final Set<String> DEFAULT_EXEC_BLACKLIST =
-            Set.of("nc", "ncat", "nmap", "curl", "wget", "ssh", "scp", "bash", "sh", "zsh", "fish");
-
     private final Workspace workspace;
     private final DangerComputation dangerComputation;
     private final SlmRelevanceProvider slmRelevance;
     private final DeployerPolicy policy;
     private final ProtectedSet protectedSet;
-    private final Set<String> execAllowlist;
-    private final Set<String> execBlacklist;
     private final ReadHistory readHistory;
 
     /**
-     * Constructs a per-agent Gateway wired to its screening dependencies.
+     * Constructs a per-agent Gateway wired to its screening dependencies. Callers ({@link
+     * top.focess.veto.agent.AgentService}, {@link top.focess.veto.agent.WorkflowRunner}) assemble
+     * the deterministic {@link DangerComputation}, the (degraded) {@link SlmRelevanceProvider}, the
+     * deployer {@link DeployerPolicy} + {@link ProtectedSet}, and this agent's {@link ReadHistory}.
      *
      * @param workspace the agent's workspace; incoming paths resolve against its resolver.
      * @param dangerComputation the deterministic danger computation (path/shell classification).
@@ -88,25 +78,6 @@ public class Gateway {
         this.policy = policy;
         this.protectedSet = protectedSet;
         this.readHistory = readHistory;
-        this.execAllowlist = DEFAULT_EXEC_ALLOWLIST;
-        this.execBlacklist = DEFAULT_EXEC_BLACKLIST;
-    }
-
-    /**
-     * Back-compat constructor for callers that still resolve a Gateway from a {@link Workspace} +
-     * {@link ReadHistory} (e.g. {@link top.focess.veto.agent.WorkflowRunner}, {@link
-     * top.focess.veto.agent.AgentService}). Wires the degraded screening defaults: deterministic
-     * {@link DangerComputation}, degraded SLM relevance (HIGH), {@link DeployerPolicy#FULL}, empty
-     * {@link ProtectedSet}.
-     */
-    public Gateway(Workspace workspace, ReadHistory readHistory) {
-        this(
-                workspace,
-                new DangerComputation(),
-                SlmRelevanceProvider.degraded(),
-                DeployerPolicy.FULL,
-                ProtectedSet.empty(),
-                readHistory);
     }
 
     /**
@@ -124,9 +95,9 @@ public class Gateway {
         List<String> paths = extractPathArgs(call, def);
         // drift is a correctness check on writes — checked before danger.
         if (def.risk() == RiskCategory.FILE_WRITE) {
-            Verdict drift = checkWriteDrift(paths);
-            if (drift instanceof Verdict.Drift d) {
-                return new GatewayResult.DriftResult(d.path(), d.diff());
+            GatewayResult.DriftResult drift = checkWriteDrift(paths);
+            if (drift != null) {
+                return drift;
             }
         }
         Danger danger = dangerComputation.compute(def, call, workspace, policy, protectedSet);
@@ -188,7 +159,8 @@ public class Gateway {
 
     // ── Write drift ─────────────
 
-    private Verdict checkWriteDrift(List<String> paths) {
+    /** Returns a drift result if a write target changed since the agent last read it, else null. */
+    private GatewayResult.DriftResult checkWriteDrift(List<String> paths) {
         for (String path : paths) {
             ReadHistory.Snapshot prior = readHistory.lookup(path).orElse(null);
             if (prior == null) {
@@ -197,10 +169,10 @@ public class Gateway {
             String currentHash =
                     computeHash(workspace.pathResolver().resolveToHost(path).hostPath());
             if (!prior.sha256Hash().equals(currentHash)) {
-                return new Verdict.Drift(path, buildDiff(path, prior, currentHash));
+                return new GatewayResult.DriftResult(path, buildDiff(path, prior, currentHash));
             }
         }
-        return Verdict.SAFE;
+        return null;
     }
 
     private String buildDiff(String path, ReadHistory.Snapshot prior, String currentHash) {
@@ -216,68 +188,6 @@ public class Gateway {
                 + currentHash
                 + ")\n"
                 + "File was modified externally since the agent last read it.";
-    }
-
-    // ── Shell command integrity (deterministic; DangerComputation owns danger) ────
-
-    @SuppressWarnings("unchecked")
-    private Verdict checkShellCommand(ToolCall call) {
-        Map<String, Object> args = call.args();
-        if (args == null) {
-            return Verdict.SAFE;
-        }
-        // run_command takes a structured command array (no shell); inspect each executable.
-        Object commands = args.get("commands");
-        if (commands instanceof List<?> list) {
-            for (Object item : list) {
-                String exe = extractExecutable(item);
-                Verdict v = classifyExecutable(exe);
-                if (v != Verdict.SAFE) {
-                    return v;
-                }
-            }
-            return Verdict.SAFE;
-        }
-        // Fallback: a single executable field.
-        Object exe = args.get("executable");
-        if (exe instanceof String s) {
-            return classifyExecutable(s);
-        }
-        return Verdict.SAFE;
-    }
-
-    @SuppressWarnings("unchecked")
-    private String extractExecutable(Object commandItem) {
-        if (commandItem instanceof String s) {
-            return baseName(s);
-        }
-        if (commandItem instanceof Map<?, ?> m) {
-            Object exe = m.get("executable");
-            if (exe instanceof String s) {
-                return baseName(s);
-            }
-        }
-        return "";
-    }
-
-    private Verdict classifyExecutable(String exe) {
-        if (exe == null || exe.isBlank()) {
-            return Verdict.SAFE;
-        }
-        if (execBlacklist.contains(exe)) {
-            return new Verdict.Blocked("blacklisted executable: " + exe);
-        }
-        if (!execAllowlist.contains(exe)) {
-            // Non-allowlisted but not blacklisted → first-time pattern (Scenario E3).
-            return new Verdict.Risky(
-                    VetoScenario.EXEC_FIRST_TIME, "non-allowlisted executable: " + exe);
-        }
-        return Verdict.SAFE;
-    }
-
-    private static String baseName(String exe) {
-        int slash = Math.max(exe.lastIndexOf('/'), exe.lastIndexOf('\\'));
-        return slash >= 0 ? exe.substring(slash + 1) : exe;
     }
 
     // ── Hashing ──────────────────────────────────────────────────────────────

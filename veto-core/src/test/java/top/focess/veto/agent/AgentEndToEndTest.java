@@ -58,7 +58,9 @@ class AgentEndToEndTest {
                 System.getProperty("user.dir", "."),
                 "",
                 "REAL",
-                50L);
+                50L,
+                "FULL",
+                "STRICT");
     }
 
     private static AgentRunner.LlmBinding binding(String systemPrompt) {
