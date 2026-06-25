@@ -226,7 +226,12 @@ public class AgentService {
         return workspace;
     }
 
-    /** Parses the deployer policy (case-insensitive; defaults to FULL on blank/unknown). */
+    /**
+     * Parses the deployer policy (case-insensitive). Blank → {@link DeployerPolicy#FULL} (the
+     * default). An unknown/non-blank value (a typo) fails fast — a security toggle must not
+     * silently downgrade to FULL (which would lose protected-path blocking) without surfacing the
+     * misconfiguration.
+     */
     private static DeployerPolicy parseDeployerPolicy(String raw) {
         if (raw == null || raw.isBlank()) {
             return DeployerPolicy.FULL;
@@ -236,7 +241,11 @@ public class AgentService {
                 return p;
             }
         }
-        return DeployerPolicy.FULL;
+        throw new IllegalArgumentException(
+                "Unknown veto.security.deployer-policy '"
+                        + raw
+                        + "'; expected one of "
+                        + java.util.Arrays.toString(DeployerPolicy.values()));
     }
 
     /** Parses the screening mode (case-insensitive; defaults to STRICT on blank/unknown). */
