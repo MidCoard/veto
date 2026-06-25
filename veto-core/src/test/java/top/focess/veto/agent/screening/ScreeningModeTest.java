@@ -52,13 +52,15 @@ class ScreeningModeTest {
     }
 
     @Test
-    void lowDangerousIsAskInEveryMode() {
-        // the injection signature (LOW, DANGEROUS) — ASK (grant-skippable), never MUST_ASK
-        for (ScreeningMode m : ScreeningMode.values()) {
-            assertEquals(
-                    ScreeningOutcome.ASK,
-                    m.cell(Relevance.LOW, Danger.DANGEROUS),
-                    m + "/LOW/DANGEROUS must be ASK");
-        }
+    void lowDangerousIsAskInStrictBalancedButApprovedInBypassAll() {
+        // (LOW, DANGEROUS) — the injection signature. STRICT/BALANCED → ASK (grant-skippable);
+        // BYPASS_ALL → APPROVE (everything except CRITICAL auto-approves). Per §5 table.
+        assertEquals(
+                ScreeningOutcome.ASK, ScreeningMode.STRICT.cell(Relevance.LOW, Danger.DANGEROUS));
+        assertEquals(
+                ScreeningOutcome.ASK, ScreeningMode.BALANCED.cell(Relevance.LOW, Danger.DANGEROUS));
+        assertEquals(
+                ScreeningOutcome.APPROVE,
+                ScreeningMode.BYPASS_ALL.cell(Relevance.LOW, Danger.DANGEROUS));
     }
 }
