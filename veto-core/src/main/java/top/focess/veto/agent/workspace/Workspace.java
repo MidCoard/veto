@@ -18,6 +18,10 @@ public record Workspace(List<WorkspaceRoot> roots, PathMode pathMode, int curren
         return new PathResolver(roots, pathMode, currentRootIndex);
     }
 
+    public VetoMdResolver vetoMdResolver() {
+        return new VetoMdResolver(roots);
+    }
+
     /** The N=1 case (today's single-root usage). */
     public static Workspace single(java.nio.file.Path hostPath, PathMode mode) {
         return new Workspace(List.of(WorkspaceRoot.probe(hostPath, TrustMarker.OWNED)), mode, 0);
