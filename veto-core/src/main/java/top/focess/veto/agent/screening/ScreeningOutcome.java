@@ -4,5 +4,5 @@ package top.focess.veto.agent.screening;
 public enum ScreeningOutcome {
     APPROVE,
     ASK,
-    MUST_ASK
+    REFUSED
 }

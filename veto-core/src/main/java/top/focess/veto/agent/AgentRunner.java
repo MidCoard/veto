@@ -25,6 +25,7 @@ import top.focess.veto.agent.intercept.Gateway;
 import top.focess.veto.agent.intercept.GatewayResult;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
+import top.focess.veto.agent.intercept.InterceptResolution;
 import top.focess.veto.agent.intercept.LoopInterceptor;
 import top.focess.veto.agent.intercept.VetoOption;
 import top.focess.veto.agent.loop.ActionsProgram;
@@ -409,14 +410,158 @@ public class AgentRunner {
     private void executeToolCalls(List<ToolCall> calls) {
         transitionTo(AgentState.WAITING);
         try {
+            // 1. Check phase (screen all calls first)
+            List<ApprovalDecision> decisions = new ArrayList<>();
+            boolean hasVeto = false;
+            boolean hasRefused = false;
             for (ToolCall call : calls) {
-                executeOneCall(call);
+                ToolDefinition def = mcpEngine.resolveDefinition(call.toolName());
+                if (def == null || def instanceof AgentToolDefinition) {
+                    decisions.add(ApprovalDecision.AUTO_APPROVE);
+                } else {
+                    var result = gateway.screen(call, def);
+                    ApprovalDecision decision = hitlRegistry.decide(agentId, call, def, result);
+                    decisions.add(decision);
+                    if (decision instanceof ApprovalDecision.Prompt) {
+                        hasVeto = true;
+                    } else if (decision instanceof ApprovalDecision.Refused) {
+                        hasRefused = true;
+                    }
+                }
             }
+
+            // 2. Hold phase
+            List<ToolCall> skippedCalls = new ArrayList<>();
+            if (hasVeto || hasRefused) {
+                boolean batchApproved = true;
+                List<ToolCall> resolvedCalls = new ArrayList<>(calls);
+
+                for (int i = 0; i < calls.size(); i++) {
+                    ToolCall call = calls.get(i);
+                    ApprovalDecision decision = decisions.get(i);
+
+                    if (decision instanceof ApprovalDecision.Refused r) {
+                        emitMessage(r.reason());
+                        transitionTo(AgentState.INTERCEPTED);
+                        hitlRegistry.register(agentId, call.callId());
+                        InterceptResolution res = hitlRegistry.await(agentId, call.callId());
+                        batchApproved = false;
+                        break;
+                    } else if (decision instanceof ApprovalDecision.Prompt p) {
+                        transitionTo(AgentState.INTERCEPTED);
+                        emitVetoRequired(call, p);
+                        hitlRegistry.register(agentId, call.callId());
+                        InterceptResolution resolution = hitlRegistry.await(agentId, call.callId());
+
+                        if (resolution.option() == VetoOption.DECLINE_AND_CONTINUE) {
+                            skippedCalls.add(call);
+                        } else if (resolution.isRefusal()) {
+                            batchApproved = false;
+                            break;
+                        } else if (resolution.option() == VetoOption.EDIT
+                                && resolution.editedArgs() != null) {
+                            ToolCall edited =
+                                    new ToolCall(
+                                            call.toolName(),
+                                            resolution.editedArgs(),
+                                            call.callId());
+                            ToolDefinition def = mcpEngine.resolveDefinition(edited.toolName());
+                            var r2 = gateway.screen(edited, def);
+                            if (r2 instanceof GatewayResult.Screened sc
+                                    && sc.screening().danger() == Danger.CRITICAL) {
+                                appendObservation(
+                                        call.toolName(),
+                                        "Edited call is CRITICAL: " + sc.screening().reason());
+                                batchApproved = false;
+                                break;
+                            }
+                            if (r2 instanceof GatewayResult.DriftResult) {
+                                appendObservation(call.toolName(), "Edited call drifts.");
+                                batchApproved = false;
+                                break;
+                            }
+                            resolvedCalls.set(i, edited);
+                        }
+                    }
+                }
+
+                if (!batchApproved) {
+                    // Synthesize ToolResponse(status=REFUSED) for all calls, no execution, go IDLE
+                    for (ToolCall call : calls) {
+                        appendTurn(TurnRecord.toolCall(turnNumber, call));
+                        appendTurn(
+                                TurnRecord.toolResponse(
+                                        ++turnNumber, call.callId(), "REFUSED", false));
+                    }
+                    this.state = AgentState.IDLE;
+                    throw new RuntimeException("Veto execution refused");
+                }
+
+                // Batch approved! Replace calls with resolvedCalls
+                calls = resolvedCalls;
+            }
+
+            // 3. Execute phase (all confirmed / skipped)
+            for (ToolCall call : calls) {
+                if (skippedCalls.contains(call)) {
+                    appendTurn(TurnRecord.toolCall(turnNumber, call));
+                    appendTurn(
+                            TurnRecord.toolResponse(++turnNumber, call.callId(), "REFUSED", false));
+                } else {
+                    executeOneConfirmedCall(call);
+                }
+            }
+
         } finally {
             if (state == AgentState.WAITING || state == AgentState.INTERCEPTED) {
                 transitionTo(AgentState.RUNNING);
             }
         }
+    }
+
+    private McpToolResult executeOneConfirmedCall(ToolCall call) {
+        ToolDefinition def = mcpEngine.resolveDefinition(call.toolName());
+        if (def == null) {
+            String obs = "Tool not found: " + call.toolName();
+            appendTurn(TurnRecord.toolCall(turnNumber, call));
+            appendObservation(call.toolName(), obs);
+            return new McpToolResult(call.toolName(), call.callId(), false, obs);
+        }
+
+        appendTurn(TurnRecord.toolCall(turnNumber, call));
+
+        // (c) plugin preAction chain
+        for (LoopInterceptor plugin : interceptors) {
+            if (!plugin.preAction(agentId, call)) {
+                appendObservation(call.toolName(), "Blocked by plugin.");
+                return new McpToolResult(
+                        call.toolName(), call.callId(), false, "blocked by plugin");
+            }
+        }
+
+        // (d) execute.
+        McpToolResult result = mcpEngine.execute(call, def);
+
+        // (e) plugin postAction chain
+        McpToolResult transformed = result;
+        for (LoopInterceptor plugin : interceptors) {
+            transformed = plugin.postAction(agentId, call, transformed);
+        }
+
+        // (f) ingress defense
+        String observation =
+                ingressDefense.maskAndFrame(
+                        call, def, transformed, ApprovalDecision.AUTO_APPROVE, readHistory);
+
+        // (g) plugin preObservation chain
+        for (LoopInterceptor plugin : interceptors) {
+            observation = plugin.preObservation(agentId, observation);
+        }
+
+        appendTurn(
+                TurnRecord.toolResponse(
+                        ++turnNumber, call.callId(), observation, transformed.success()));
+        return transformed;
     }
 
     private McpToolResult executeOneCall(ToolCall call) {
@@ -433,20 +578,28 @@ public class AgentRunner {
         if (!(def instanceof AgentToolDefinition)) {
             var result = gateway.screen(call, def);
             decision = hitlRegistry.decide(agentId, call, def, result);
-            // Defensive: under the screening model no decide() path produces an AutoBlock
-            // (CRITICAL → MUST_ASK → Prompt), but keep the branch in case a future decision
-            // synthesizes a hard refusal.
             if (decision instanceof ApprovalDecision.AutoBlock ab) {
                 appendTurn(TurnRecord.toolCall(++turnNumber, call));
                 appendObservation(call.toolName(), "Blocked: " + ab.reason());
                 return new McpToolResult(
                         call.toolName(), call.callId(), false, "blocked: " + ab.reason());
             }
+            if (decision instanceof ApprovalDecision.Refused r) {
+                emitMessage(r.reason());
+                transitionTo(AgentState.INTERCEPTED);
+                hitlRegistry.register(agentId, call.callId());
+                InterceptResolution res = hitlRegistry.await(agentId, call.callId());
+
+                appendTurn(TurnRecord.toolCall(turnNumber, call));
+                appendTurn(TurnRecord.toolResponse(++turnNumber, call.callId(), "REFUSED", false));
+                this.state = AgentState.IDLE;
+                return new McpToolResult(call.toolName(), call.callId(), false, "REFUSED");
+            }
             if (decision instanceof ApprovalDecision.Prompt p) {
                 call = awaitVeto(call, def, p);
                 if (call == null) {
-                    return new McpToolResult(
-                            call == null ? "" : call.toolName(), "", false, "declined");
+                    this.state = AgentState.IDLE;
+                    return new McpToolResult("", "", false, "declined");
                 }
             }
         }
@@ -496,7 +649,8 @@ public class AgentRunner {
                 hitlRegistry.await(agentId, call.callId());
         transitionTo(AgentState.WAITING);
         if (resolution.isRefusal()) {
-            appendObservation(call.toolName(), "Declined by user (" + resolution.option() + ").");
+            appendTurn(TurnRecord.toolCall(turnNumber, call));
+            appendTurn(TurnRecord.toolResponse(++turnNumber, call.callId(), "REFUSED", false));
             return null;
         }
         if (resolution.option() == VetoOption.EDIT && resolution.editedArgs() != null) {
@@ -505,12 +659,13 @@ public class AgentRunner {
             var r2 = gateway.screen(edited, def);
             if (r2 instanceof GatewayResult.Screened sc
                     && sc.screening().danger() == Danger.CRITICAL) {
-                appendObservation(
-                        call.toolName(), "Edited call is CRITICAL: " + sc.screening().reason());
+                appendTurn(TurnRecord.toolCall(turnNumber, call));
+                appendTurn(TurnRecord.toolResponse(++turnNumber, call.callId(), "REFUSED", false));
                 return null;
             }
             if (r2 instanceof GatewayResult.DriftResult) {
-                appendObservation(call.toolName(), "Edited call drifts.");
+                appendTurn(TurnRecord.toolCall(turnNumber, call));
+                appendTurn(TurnRecord.toolResponse(++turnNumber, call.callId(), "REFUSED", false));
                 return null;
             }
             return edited;
@@ -618,6 +773,9 @@ public class AgentRunner {
     public void startTask(Consumer<AgentResult> callback, AgentAction action) {
         this.callback = callback;
         this.resultFuture = new CompletableFuture<>();
+        if (this.state == AgentState.INTERCEPTED) {
+            hitlRegistry.declineAll(agentId);
+        }
         actionQueue.add(action);
     }
 

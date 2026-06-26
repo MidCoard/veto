@@ -12,10 +12,10 @@ class ScreeningModeTest {
         assertEquals(ScreeningOutcome.APPROVE, m.cell(Relevance.HIGH, Danger.SAFE));
         assertEquals(ScreeningOutcome.ASK, m.cell(Relevance.HIGH, Danger.ELEVATED));
         assertEquals(ScreeningOutcome.ASK, m.cell(Relevance.HIGH, Danger.DANGEROUS));
-        assertEquals(ScreeningOutcome.MUST_ASK, m.cell(Relevance.HIGH, Danger.CRITICAL));
+        assertEquals(ScreeningOutcome.REFUSED, m.cell(Relevance.HIGH, Danger.CRITICAL));
         assertEquals(ScreeningOutcome.ASK, m.cell(Relevance.MEDIUM, Danger.SAFE));
         assertEquals(ScreeningOutcome.ASK, m.cell(Relevance.LOW, Danger.SAFE));
-        assertEquals(ScreeningOutcome.MUST_ASK, m.cell(Relevance.LOW, Danger.CRITICAL));
+        assertEquals(ScreeningOutcome.REFUSED, m.cell(Relevance.LOW, Danger.CRITICAL));
     }
 
     @Test
@@ -24,20 +24,20 @@ class ScreeningModeTest {
         assertEquals(ScreeningOutcome.APPROVE, m.cell(Relevance.HIGH, Danger.SAFE));
         assertEquals(ScreeningOutcome.APPROVE, m.cell(Relevance.HIGH, Danger.ELEVATED));
         assertEquals(ScreeningOutcome.ASK, m.cell(Relevance.HIGH, Danger.DANGEROUS));
-        assertEquals(ScreeningOutcome.MUST_ASK, m.cell(Relevance.HIGH, Danger.CRITICAL));
+        assertEquals(ScreeningOutcome.REFUSED, m.cell(Relevance.HIGH, Danger.CRITICAL));
         assertEquals(ScreeningOutcome.APPROVE, m.cell(Relevance.MEDIUM, Danger.SAFE));
         assertEquals(ScreeningOutcome.ASK, m.cell(Relevance.MEDIUM, Danger.ELEVATED));
     }
 
     @Test
     void balancedLowSafeIsAsk() {
-        // §5 BALANCED row: LOW → ASK, ASK, ASK, MUST_ASK. SAFE must NOT auto-approve at LOW
+        // BALANCED row: LOW -> ASK, ASK, ASK, REFUSED. SAFE must NOT auto-approve at LOW
         // relevance (previously the matrix approved SAFE for any relevance — regression guard).
         ScreeningMode m = ScreeningMode.BALANCED;
         assertEquals(ScreeningOutcome.ASK, m.cell(Relevance.LOW, Danger.SAFE));
         assertEquals(ScreeningOutcome.ASK, m.cell(Relevance.LOW, Danger.ELEVATED));
         assertEquals(ScreeningOutcome.ASK, m.cell(Relevance.LOW, Danger.DANGEROUS));
-        assertEquals(ScreeningOutcome.MUST_ASK, m.cell(Relevance.LOW, Danger.CRITICAL));
+        assertEquals(ScreeningOutcome.REFUSED, m.cell(Relevance.LOW, Danger.CRITICAL));
     }
 
     @Test
@@ -46,26 +46,26 @@ class ScreeningModeTest {
         assertEquals(ScreeningOutcome.APPROVE, m.cell(Relevance.HIGH, Danger.SAFE));
         assertEquals(ScreeningOutcome.APPROVE, m.cell(Relevance.HIGH, Danger.ELEVATED));
         assertEquals(ScreeningOutcome.APPROVE, m.cell(Relevance.HIGH, Danger.DANGEROUS));
-        assertEquals(ScreeningOutcome.MUST_ASK, m.cell(Relevance.HIGH, Danger.CRITICAL));
+        assertEquals(ScreeningOutcome.REFUSED, m.cell(Relevance.HIGH, Danger.CRITICAL));
         assertEquals(ScreeningOutcome.APPROVE, m.cell(Relevance.LOW, Danger.DANGEROUS));
     }
 
     @Test
-    void criticalIsMustAskInEveryMode() {
+    void criticalIsRefusedInEveryMode() {
         for (ScreeningMode m : ScreeningMode.values()) {
             for (Relevance r : Relevance.values()) {
                 assertEquals(
-                        ScreeningOutcome.MUST_ASK,
+                        ScreeningOutcome.REFUSED,
                         m.cell(r, Danger.CRITICAL),
-                        m + "/" + r + "/CRITICAL must be MUST_ASK");
+                        m + "/" + r + "/CRITICAL must be REFUSED");
             }
         }
     }
 
     @Test
     void lowDangerousIsAskInStrictBalancedButApprovedInBypassAll() {
-        // (LOW, DANGEROUS) — the injection signature. STRICT/BALANCED → ASK (grant-skippable);
-        // BYPASS_ALL → APPROVE (everything except CRITICAL auto-approves). Per §5 table.
+        // (LOW, DANGEROUS) — the injection signature. STRICT/BALANCED -> ASK (grant-skippable);
+        // BYPASS_ALL -> APPROVE (everything except CRITICAL auto-approves).
         assertEquals(
                 ScreeningOutcome.ASK, ScreeningMode.STRICT.cell(Relevance.LOW, Danger.DANGEROUS));
         assertEquals(

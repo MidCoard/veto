@@ -8,7 +8,7 @@ import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/** A multi-root workspace entity (Part 10.1). */
+/** A multi-root workspace entity. */
 public record Workspace(List<WorkspaceRoot> roots, PathMode pathMode, int currentRootIndex) {
 
     private static final Logger log = LoggerFactory.getLogger(Workspace.class);
@@ -24,11 +24,11 @@ public record Workspace(List<WorkspaceRoot> roots, PathMode pathMode, int curren
     }
 
     /**
-     * LLD §3: two roots sharing the same directory name collide in VIRTUAL mode — their virtual
-     * prefixes ({@code /{rootDirName}}) are identical, so the first-in-order root wins and the
-     * other is silently unreachable via virtual path. Warn at assembly time so the deployer
-     * notices; first-in-order wins is enforced by {@link PathResolver}, which matches the first
-     * segment only.
+     * Two roots sharing the same directory name collide in VIRTUAL mode — their virtual prefixes
+     * ({@code /{rootDirName}}) are identical, so the first-in-order root wins and the other is
+     * silently unreachable via virtual path. Warn at assembly time so the deployer notices;
+     * first-in-order wins is enforced by {@link PathResolver}, which matches the first segment
+     * only.
      */
     private static void warnOnRootNameCollisions(List<WorkspaceRoot> roots) {
         Set<String> seen = new HashSet<>();

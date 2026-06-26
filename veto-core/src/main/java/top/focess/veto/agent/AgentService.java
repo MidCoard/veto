@@ -74,7 +74,7 @@ public class AgentService {
             @Value("${veto.workspace.roots:}") String rootsCsv,
             @Value("${veto.workspace.path-mode:REAL}") String pathMode,
             @Value("${veto.breaker.max_calls_per_episode:50}") long maxCallsPerEpisode,
-            @Value("${veto.security.deployer-policy:FULL}") String deployerPolicyRaw,
+            @Value("${veto.security.deployer-policy:FULL_ACCESS}") String deployerPolicyRaw,
             @Value("${veto.security.screening-mode:STRICT}") String screeningModeRaw) {
         this.mcpEngine = mcpEngine;
         this.hitlRegistry = hitlRegistry;
@@ -87,7 +87,7 @@ public class AgentService {
         this.maxCallsPerEpisode = maxCallsPerEpisode;
         this.deployerPolicy = parseDeployerPolicy(deployerPolicyRaw);
         this.protectedSet =
-                this.deployerPolicy == DeployerPolicy.PROTECT_SENSITIVE
+                this.deployerPolicy == DeployerPolicy.PROTECTED
                         ? ProtectedSet.withDeployerDefaults(this.workspace.hostRoots())
                         : ProtectedSet.empty();
         // Thread the runtime screening matrix to the (shared) HITL registry.
@@ -183,13 +183,17 @@ public class AgentService {
     private VetoAgent createAgent(String agentKey, AgentRunner.LlmBinding binding) {
         AgentPersona persona = buildPersona(agentKey, binding);
         ReadHistory readHistory = new ReadHistory();
+        ProtectedSet userProtectedSet =
+                this.deployerPolicy == DeployerPolicy.PROTECTED
+                        ? ProtectedSet.withDeployerDefaults(agentKey, this.workspace.hostRoots())
+                        : ProtectedSet.empty();
         Gateway gateway =
                 new Gateway(
                         workspace,
                         new DangerComputation(),
                         SlmRelevanceProvider.degraded(),
                         deployerPolicy,
-                        protectedSet,
+                        userProtectedSet,
                         readHistory);
         AgentRunner runner =
                 new AgentRunner(
@@ -226,15 +230,9 @@ public class AgentService {
         return workspace;
     }
 
-    /**
-     * Parses the deployer policy (case-insensitive). Blank → {@link DeployerPolicy#FULL} (the
-     * default). An unknown/non-blank value (a typo) fails fast — a security toggle must not
-     * silently downgrade to FULL (which would lose protected-path blocking) without surfacing the
-     * misconfiguration.
-     */
     private static DeployerPolicy parseDeployerPolicy(String raw) {
         if (raw == null || raw.isBlank()) {
-            return DeployerPolicy.FULL;
+            return DeployerPolicy.FULL_ACCESS;
         }
         for (DeployerPolicy p : DeployerPolicy.values()) {
             if (p.name().equalsIgnoreCase(raw.trim())) {

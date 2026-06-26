@@ -30,6 +30,9 @@ public class PatternController {
     public AgentPatternEntity create(@RequestBody Map<String, String> body) {
         String user = vault.getCurrentUser();
         if (user == null) throw new IllegalStateException("Not logged in");
+        String topModel = body.getOrDefault("topModel", body.get("model"));
+        String midModel = body.get("midModel");
+        String lowModel = body.get("lowModel");
         var p =
                 new AgentPatternEntity(
                         body.get("name"),
@@ -37,7 +40,10 @@ public class PatternController {
                         body.get("model"),
                         "pattern-" + body.get("name"),
                         body.getOrDefault("systemPrompt", "You are a helpful assistant."),
-                        user);
+                        user,
+                        topModel,
+                        midModel,
+                        lowModel);
         vault.store(p.getCredentialKey(), body.get("apiKey"));
         return repo.save(p);
     }

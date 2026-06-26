@@ -9,5 +9,7 @@ public interface AgentPatternRepository extends JpaRepository<AgentPatternEntity
 
     List<AgentPatternEntity> findByOwner(String owner);
 
+    java.util.Optional<AgentPatternEntity> findByNameAndOwner(String name, String owner);
+
     void deleteByNameAndOwner(String name, String owner);
 }

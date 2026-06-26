@@ -26,4 +26,33 @@ public record AgentPersona(
         String name,
         String description,
         Set<ToolDefinition> whitelistedTools,
-        List<Skill> registeredSkills) {}
+        List<Skill> registeredSkills,
+        String topModel,
+        String midModel,
+        String lowModel) {
+
+    public AgentPersona(
+            String id,
+            String name,
+            String description,
+            Set<ToolDefinition> whitelistedTools,
+            List<Skill> registeredSkills) {
+        this(
+                id,
+                name,
+                description,
+                whitelistedTools,
+                registeredSkills,
+                "gemini-3.5-flash",
+                null,
+                null);
+    }
+
+    public String midModelOrDefault() {
+        return midModel != null ? midModel : topModel;
+    }
+
+    public String lowModelOrDefault() {
+        return lowModel != null ? lowModel : topModel;
+    }
+}

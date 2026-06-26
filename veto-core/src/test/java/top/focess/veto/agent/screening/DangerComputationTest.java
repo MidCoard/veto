@@ -68,7 +68,12 @@ class DangerComputationTest {
                 new ToolCall("view_file", Map.of("path", root.resolve("src/Main.java").toString()));
         assertEquals(
                 Danger.SAFE,
-                dc.compute(readDef(), call, ws(root), DeployerPolicy.FULL, ProtectedSet.empty()));
+                dc.compute(
+                        readDef(),
+                        call,
+                        ws(root),
+                        DeployerPolicy.FULL_ACCESS,
+                        ProtectedSet.empty()));
     }
 
     @Test
@@ -78,7 +83,8 @@ class DangerComputationTest {
                         "view_file", Map.of("path", root.resolve("../../etc/passwd").toString()));
         assertEquals(
                 Danger.CRITICAL,
-                dc.compute(readDef(), call, ws(root), DeployerPolicy.FULL, ProtectedSet.empty()));
+                dc.compute(
+                        readDef(), call, ws(root), DeployerPolicy.SANDBOXED, ProtectedSet.empty()));
     }
 
     @Test
@@ -88,7 +94,12 @@ class DangerComputationTest {
         ToolCall call = new ToolCall("view_file", Map.of("path", secret.toString()));
         assertEquals(
                 Danger.DANGEROUS,
-                dc.compute(readDef(), call, ws(root), DeployerPolicy.FULL, ProtectedSet.empty()));
+                dc.compute(
+                        readDef(),
+                        call,
+                        ws(root),
+                        DeployerPolicy.FULL_ACCESS,
+                        ProtectedSet.empty()));
     }
 
     @Test
@@ -100,7 +111,7 @@ class DangerComputationTest {
         ToolCall call = new ToolCall("view_file", Map.of("path", protectedFile.toString()));
         assertEquals(
                 Danger.CRITICAL,
-                dc.compute(readDef(), call, ws(root), DeployerPolicy.PROTECT_SENSITIVE, ps));
+                dc.compute(readDef(), call, ws(root), DeployerPolicy.PROTECTED, ps));
     }
 
     @Test
@@ -113,7 +124,8 @@ class DangerComputationTest {
         // under FULL the protected set is not consulted — but .ssh is also a secret-location →
         // DANGEROUS
         assertEquals(
-                Danger.DANGEROUS, dc.compute(readDef(), call, ws(root), DeployerPolicy.FULL, ps));
+                Danger.DANGEROUS,
+                dc.compute(readDef(), call, ws(root), DeployerPolicy.FULL_ACCESS, ps));
     }
 
     @Test
@@ -125,7 +137,12 @@ class DangerComputationTest {
                         Map.of("path", root.resolve("src/Main.java").toString(), "content", "x"));
         assertEquals(
                 Danger.ELEVATED,
-                dc.compute(writeDef(), call, ws(root), DeployerPolicy.FULL, ProtectedSet.empty()));
+                dc.compute(
+                        writeDef(),
+                        call,
+                        ws(root),
+                        DeployerPolicy.FULL_ACCESS,
+                        ProtectedSet.empty()));
     }
 
     @Test
@@ -148,7 +165,8 @@ class DangerComputationTest {
                                 root.toString()));
         assertEquals(
                 Danger.CRITICAL,
-                dc.compute(execDef, call, ws(root), DeployerPolicy.FULL, ProtectedSet.empty()));
+                dc.compute(
+                        execDef, call, ws(root), DeployerPolicy.FULL_ACCESS, ProtectedSet.empty()));
     }
 
     @Test
@@ -174,7 +192,8 @@ class DangerComputationTest {
                                 root.toString()));
         assertEquals(
                 Danger.CRITICAL,
-                dc.compute(execDef, call, ws(root), DeployerPolicy.FULL, ProtectedSet.empty()));
+                dc.compute(
+                        execDef, call, ws(root), DeployerPolicy.FULL_ACCESS, ProtectedSet.empty()));
     }
 
     public record ExecArgs(Map<String, Object> commands, String cwd) {}

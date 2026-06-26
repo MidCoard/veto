@@ -19,6 +19,15 @@ public class AgentPatternEntity {
     @Column(nullable = false)
     private String model;
 
+    @Column(name = "top_model", nullable = false)
+    private String topModel;
+
+    @Column(name = "mid_model")
+    private String midModel;
+
+    @Column(name = "low_model")
+    private String lowModel;
+
     @Column(name = "credential_key", nullable = false)
     private String credentialKey;
 
@@ -39,7 +48,10 @@ public class AgentPatternEntity {
             String model,
             String credentialKey,
             String systemPrompt,
-            String owner) {
+            String owner,
+            String topModel,
+            String midModel,
+            String lowModel) {
         this.id = UUID.randomUUID().toString();
         this.name = name;
         this.provider = provider;
@@ -48,6 +60,19 @@ public class AgentPatternEntity {
         this.systemPrompt = systemPrompt;
         this.owner = owner;
         this.createdAt = Instant.now();
+        this.topModel = topModel;
+        this.midModel = midModel;
+        this.lowModel = lowModel;
+    }
+
+    public AgentPatternEntity(
+            String name,
+            String provider,
+            String model,
+            String credentialKey,
+            String systemPrompt,
+            String owner) {
+        this(name, provider, model, credentialKey, systemPrompt, owner, model, null, null);
     }
 
     public String getId() {
@@ -108,5 +133,29 @@ public class AgentPatternEntity {
 
     public void setCreatedAt(Instant createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public String getTopModel() {
+        return topModel;
+    }
+
+    public void setTopModel(String topModel) {
+        this.topModel = topModel;
+    }
+
+    public String getMidModel() {
+        return midModel;
+    }
+
+    public void setMidModel(String midModel) {
+        this.midModel = midModel;
+    }
+
+    public String getLowModel() {
+        return lowModel;
+    }
+
+    public void setLowModel(String lowModel) {
+        this.lowModel = lowModel;
     }
 }

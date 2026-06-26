@@ -59,7 +59,7 @@ class AgentEndToEndTest {
                 "",
                 "REAL",
                 50L,
-                "FULL",
+                "FULL_ACCESS",
                 "STRICT");
     }
 

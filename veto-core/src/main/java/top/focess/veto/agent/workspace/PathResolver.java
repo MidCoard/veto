@@ -8,11 +8,11 @@ import java.util.List;
 /**
  * Resolves agent paths to host paths (VIRTUAL: virtual-under-`/` by root prefix; REAL: canonicalize
  * + find containing root) and identifies which root (or out-of-scope). Does NOT classify danger —
- * that's Part 3 (sub-spec B). This only answers "which root, or out-of-scope."
+ * that's the Gateway's responsibility. This only answers "which root, or out-of-scope."
  *
- * <p><b>Traversal safety (LLD §3):</b> after resolving a host path lexically, it is canonicalized
- * and then re-classified against the roots. Canonicalization resolves symlinks in the <i>existing
- * prefix</i> of the path (the common write/create case targets a non-existent file through a
+ * <p><b>Traversal safety:</b> after resolving a host path lexically, it is canonicalized and then
+ * re-classified against the roots. Canonicalization resolves symlinks in the <i>existing prefix</i>
+ * of the path (the common write/create case targets a non-existent file through a
  * possibly-symlinked directory): {@link Path#toRealPath()} the path itself when it exists, else
  * walk up to the deepest existing ancestor, {@code toRealPath()} <i>that</i> (resolving outward
  * symlinks the whole-path call could not), and re-append the non-existent tail. A {@code ..} or
@@ -84,8 +84,8 @@ public class PathResolver {
 
     /**
      * Canonicalizes a host path: resolves {@code ..} and symlinks to their real target so an
-     * outward escape is visible to the {@code startsWith(root)} check. This is the LLD §3 "resolve
-     * → classify against roots" canonicalization step applied uniformly in VIRTUAL and REAL modes.
+     * outward escape is visible to the {@code startsWith(root)} check. This is the "resolve →
+     * classify against roots" canonicalization step applied uniformly in VIRTUAL and REAL modes.
      *
      * <p>The subtlety is the common write/create case: the agent targets a <i>non-existent</i> path
      * that runs <i>through</i> an existing outward symlink (e.g. {@code /root/escape-link/newfile}
@@ -143,8 +143,8 @@ public class PathResolver {
     /**
      * Re-classifies an already-canonicalized host path against the matched root {@code i}
      * (VIRTUAL). If it still lands under {@code roots[i]} after canonicalization it is in-scope;
-     * otherwise the canonical path traversed out of the workspace → out-of-scope (LLD §3: the real
-     * path's class decides, no special-casing).
+     * otherwise the canonical path traversed out of the workspace → out-of-scope (the real path's
+     * class decides, no special-casing).
      */
     private Resolution classifyAgainstRoot(Path canonical, int i) {
         if (canonical.startsWith(roots.get(i).hostPath())) {

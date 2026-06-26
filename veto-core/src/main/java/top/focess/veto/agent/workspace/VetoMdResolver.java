@@ -8,7 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Resolves VETO.md (The Law, Part 4.4): per-root merge of {@code <root>/VETO.md} (primary) + {@code
+ * Resolves VETO.md ("The Law"): per-root merge of {@code <root>/VETO.md} (primary) + {@code
  * <root>/.veto/VETO.md} (override — appended last, so its rules win), then cross-root concatenation
  * in root order. Read at compile time by the PromptCompiler (config, bypasses tool-call screening).
  * A root with neither contributes nothing.

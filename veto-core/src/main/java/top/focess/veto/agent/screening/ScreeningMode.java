@@ -1,15 +1,15 @@
 package top.focess.veto.agent.screening;
 
 /**
- * The user's runtime-tunable auto-approve cell set. CRITICAL is always MUST_ASK in every mode.
+ * The user's runtime-tunable auto-approve cell set. CRITICAL is always REFUSED in every mode.
  * Otherwise: STRICT approves only (HIGH, SAFE); BALANCED approves (HIGH, SAFE), (HIGH, ELEVATED),
- * and (MEDIUM, SAFE); BYPASS_ALL approves everything except CRITICAL. Per screening_model.md §5.
+ * and (MEDIUM, SAFE); BYPASS_ALL approves everything except CRITICAL.
  */
 public enum ScreeningMode {
     STRICT {
         @Override
         public ScreeningOutcome cell(Relevance r, Danger d) {
-            if (d == Danger.CRITICAL) return ScreeningOutcome.MUST_ASK;
+            if (d == Danger.CRITICAL) return ScreeningOutcome.REFUSED;
             if (r == Relevance.HIGH && d == Danger.SAFE) return ScreeningOutcome.APPROVE;
             return ScreeningOutcome.ASK;
         }
@@ -17,7 +17,7 @@ public enum ScreeningMode {
     BALANCED {
         @Override
         public ScreeningOutcome cell(Relevance r, Danger d) {
-            if (d == Danger.CRITICAL) return ScreeningOutcome.MUST_ASK;
+            if (d == Danger.CRITICAL) return ScreeningOutcome.REFUSED;
             if (r == Relevance.HIGH && (d == Danger.SAFE || d == Danger.ELEVATED))
                 return ScreeningOutcome.APPROVE;
             if (r == Relevance.MEDIUM && d == Danger.SAFE) return ScreeningOutcome.APPROVE;
@@ -27,7 +27,7 @@ public enum ScreeningMode {
     BYPASS_ALL {
         @Override
         public ScreeningOutcome cell(Relevance r, Danger d) {
-            if (d == Danger.CRITICAL) return ScreeningOutcome.MUST_ASK;
+            if (d == Danger.CRITICAL) return ScreeningOutcome.REFUSED;
             return ScreeningOutcome.APPROVE;
         }
     };

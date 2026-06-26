@@ -17,13 +17,19 @@ import java.util.List;
  * </ul>
  */
 public sealed interface ApprovalDecision
-        permits ApprovalDecision.AutoApprove, ApprovalDecision.Prompt, ApprovalDecision.AutoBlock {
+        permits ApprovalDecision.AutoApprove,
+                ApprovalDecision.Prompt,
+                ApprovalDecision.AutoBlock,
+                ApprovalDecision.Refused {
 
     /** Singleton: proceed with the call, no HITL round-trip. */
     AutoApprove AUTO_APPROVE = new AutoApprove();
 
     /** Proceed with the call, no HITL round-trip. */
     record AutoApprove() implements ApprovalDecision {}
+
+    /** Refuse outright with a refusal notice. */
+    record Refused(String reason) implements ApprovalDecision {}
 
     /** Park the virtual thread on a HITL future; the user must resolve via the veto endpoint. */
     record Prompt(VetoScenario scenario, List<VetoOption> options) implements ApprovalDecision {

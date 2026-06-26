@@ -111,17 +111,22 @@ public class VetoGateway {
             String llmGuidedPayload = payload;
 
             if (llamaCppBridge.isAvailable()) {
-                // Ask the SLM to analyze the payload for structural compliance
-                String analysisPrompt =
-                        String.format(
-                                "Analyze the following payload for secrets, proprietary data, and structural compliance:\n%s",
-                                payload);
-                slmAnalysis = llamaCppBridge.infer(analysisPrompt, "veto-output").join();
+                try {
+                    // Ask the SLM to analyze the payload for structural compliance
+                    String analysisPrompt =
+                            String.format(
+                                    "Analyze the following payload for secrets, proprietary data, and structural compliance:\n%s",
+                                    payload);
+                    slmAnalysis = llamaCppBridge.infer(analysisPrompt, "veto-output").join();
 
-                // Apply SLM-guided redactions
-                llmGuidedPayload =
-                        semanticRedactor.semanticRedact(
-                                deterministicReport.redactedPayload(), slmAnalysis);
+                    // Apply SLM-guided redactions
+                    llmGuidedPayload =
+                            semanticRedactor.semanticRedact(
+                                    deterministicReport.redactedPayload(), slmAnalysis);
+                } catch (Exception e) {
+                    log.error("Local SLM failed (OOM/error); applying deterministic fallback.", e);
+                    llmGuidedPayload = deterministicReport.redactedPayload();
+                }
             } else {
                 llmGuidedPayload = deterministicReport.redactedPayload();
             }

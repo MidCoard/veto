@@ -39,7 +39,7 @@ class GatewayScreeningTest {
                 ws,
                 new DangerComputation(),
                 new DegradedSlmRelevanceProvider(),
-                DeployerPolicy.FULL,
+                DeployerPolicy.FULL_ACCESS,
                 ProtectedSet.empty(),
                 new ReadHistory());
     }
@@ -87,10 +87,19 @@ class GatewayScreeningTest {
 
     @Test
     void outOfScopeReadScreensCritical() {
+        Workspace ws = Workspace.single(root, PathMode.REAL);
+        Gateway g =
+                new Gateway(
+                        ws,
+                        new DangerComputation(),
+                        new DegradedSlmRelevanceProvider(),
+                        DeployerPolicy.SANDBOXED,
+                        ProtectedSet.empty(),
+                        new ReadHistory());
         ToolCall call =
                 new ToolCall(
                         "view_file", Map.of("path", root.resolve("../../etc/passwd").toString()));
-        GatewayResult r = gateway().screen(call, readDef());
+        GatewayResult r = g.screen(call, readDef());
         Screening s = ((GatewayResult.Screened) r).screening();
         assertEquals(Danger.CRITICAL, s.danger());
     }
@@ -107,7 +116,7 @@ class GatewayScreeningTest {
                         ws,
                         new DangerComputation(),
                         new DegradedSlmRelevanceProvider(),
-                        DeployerPolicy.FULL,
+                        DeployerPolicy.FULL_ACCESS,
                         ProtectedSet.empty(),
                         rh);
         Files.writeString(f, "CHANGED"); // drift

@@ -57,9 +57,9 @@ veto:
     temp-dir: ${VETO_TEMP_DIR:./work/sandbox}
 
   security:
-    # Install-time deployer policy: FULL (no protected set) | PROTECT_SENSITIVE (default-block
-    # ~/.veto, ~/.ssh, ~/.aws, ~/.gnupg). Runtime screening matrix: STRICT | BALANCED | BYPASS_ALL.
-    deployer-policy: FULL
+    # Install-time deployer policy: FULL_ACCESS (no path is CRITICAL) | PROTECTED (deny-list) | SANDBOXED (scoped to root) | TENANT (multi-user workspace).
+    # Runtime screening matrix: STRICT | BALANCED | BYPASS_ALL.
+    deployer-policy: FULL_ACCESS
     screening-mode: STRICT
 
   terminal:
@@ -89,8 +89,6 @@ veto:
 
   mcp:
     server-registry-path: ./mcp/servers/
-    wasm-sandbox-enabled: true
-    max-wasm-memory-mb: 64
     discovery-interval-ms: 60000
 
 logging:

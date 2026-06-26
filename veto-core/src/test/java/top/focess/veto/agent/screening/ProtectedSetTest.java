@@ -48,8 +48,8 @@ class ProtectedSetTest {
 
     @Test
     void fullPolicyHasNoProtectedSetEffect() {
-        // FULL → no protected set; ProtectedSet.empty() covers nothing
-        assertEquals(DeployerPolicy.FULL, DeployerPolicy.FULL);
+        // FULL_ACCESS → no protected set; ProtectedSet.empty() covers nothing
+        assertEquals(DeployerPolicy.FULL_ACCESS, DeployerPolicy.FULL_ACCESS);
         ProtectedSet empty = new ProtectedSet(Set.of());
         assertFalse(empty.covers(Path.of("/etc/shadow").toAbsolutePath().normalize()));
     }

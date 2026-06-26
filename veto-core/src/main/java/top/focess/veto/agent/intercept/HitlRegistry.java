@@ -78,9 +78,14 @@ public class HitlRegistry {
         ScreeningOutcome outcome = screeningMode.cell(screening.relevance(), screening.danger());
         return switch (outcome) {
             case APPROVE -> ApprovalDecision.AUTO_APPROVE;
-            case MUST_ASK ->
-                    new ApprovalDecision.Prompt(
-                            screening.scenario(), optionsFor(screening.scenario()));
+            case REFUSED ->
+                    new ApprovalDecision.Refused(
+                            "The agent is attempting a dangerous/refused action: ["
+                                    + call.toolName()
+                                    + (call.args() != null && !call.args().isEmpty()
+                                            ? " " + call.args()
+                                            : "")
+                                    + "]. Reprompt to steer the LLM away from this. If you believe this is a mis-classification, contact your administrator.");
             case ASK ->
                     matchesSessionRule(agentId, call)
                             ? ApprovalDecision.AUTO_APPROVE
@@ -163,6 +168,15 @@ public class HitlRegistry {
         }
         future.complete(resolution);
         return true;
+    }
+
+    public void declineAll(String agentId) {
+        pending.forEach(
+                (key, future) -> {
+                    if (key.startsWith(agentId + "|")) {
+                        future.complete(new InterceptResolution(VetoOption.DECLINE, null));
+                    }
+                });
     }
 
     /** Drops any pending veto + session rules for the agent (on terminate). */

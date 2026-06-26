@@ -7,10 +7,10 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * The PROTECT_SENSITIVE protected set — paths default-blocked (CRITICAL on access). Seeded with
- * deployer defaults: ~/.veto/, ~/.ssh, ~/.aws, ~/.gnupg and each workspace root's {@code .env}
- * (spec §6). User-editable. covers() is canonical prefix match. Under FULL the set is empty (no
- * effect).
+ * The PROTECTED protected set — paths default-blocked (CRITICAL on access). Seeded with deployer
+ * defaults: ~/.veto/users/{veto_user_id}/, ~/.ssh, ~/.aws, ~/.gnupg and each workspace root's
+ * {@code .env} (spec §6). User-editable. covers() is canonical prefix match. Under FULL_ACCESS the
+ * set is empty.
  */
 public record ProtectedSet(Set<Path> paths) {
 
@@ -23,24 +23,25 @@ public record ProtectedSet(Set<Path> paths) {
     }
 
     /**
-     * Seeded with the home-relative deployer defaults only ({@code ~/.veto}, {@code ~/.ssh}, {@code
-     * ~/.aws}, {@code ~/.gnupg}). No workspace {@code .env} entries — use {@link
-     * #withDeployerDefaults(List)} from a context that knows the workspace roots.
+     * Seeded with the home-relative deployer defaults only ({@code ~/.veto/users/default/}, {@code
+     * ~/.ssh}, {@code ~/.aws}, {@code ~/.gnupg}).
      */
     public static ProtectedSet withDeployerDefaults() {
-        return withDeployerDefaults(List.of());
+        return withDeployerDefaults("default", List.of());
+    }
+
+    public static ProtectedSet withDeployerDefaults(List<Path> workspaceRoots) {
+        return withDeployerDefaults("default", workspaceRoots);
     }
 
     /**
-     * Seeded with deployer defaults per spec §6: {@code ~/.veto}, {@code ~/.ssh}, {@code ~/.aws},
-     * {@code ~/.gnupg}, plus {@code <root>/.env} for each workspace root. A project {@code .env} is
-     * workspace-root-relative (unlike the home defaults), so the roots must be threaded in by the
-     * caller (e.g. {@code top.focess.veto.agent.AgentService} via {@code workspace.hostRoots()}).
+     * Seeded with deployer defaults per spec §6: {@code ~/.veto/users/{vetoUserId}/}, {@code
+     * ~/.ssh}, {@code ~/.aws}, {@code ~/.gnupg}, plus {@code <root>/.env} for each workspace root.
      */
-    public static ProtectedSet withDeployerDefaults(List<Path> workspaceRoots) {
+    public static ProtectedSet withDeployerDefaults(String vetoUserId, List<Path> workspaceRoots) {
         String home = System.getProperty("user.home", "");
         Set<Path> defaults = new HashSet<>();
-        defaults.add(Path.of(home, ".veto"));
+        defaults.add(Path.of(home, ".veto", "users", vetoUserId));
         defaults.add(Path.of(home, ".ssh"));
         defaults.add(Path.of(home, ".aws"));
         defaults.add(Path.of(home, ".gnupg"));

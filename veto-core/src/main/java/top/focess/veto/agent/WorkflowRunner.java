@@ -82,7 +82,7 @@ public class WorkflowRunner {
                         workspace,
                         new DangerComputation(),
                         SlmRelevanceProvider.degraded(),
-                        DeployerPolicy.FULL,
+                        DeployerPolicy.FULL_ACCESS,
                         ProtectedSet.empty(),
                         readHistory);
         AgentRunner runner =

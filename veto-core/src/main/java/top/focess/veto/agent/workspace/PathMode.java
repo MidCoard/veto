@@ -1,6 +1,6 @@
 package top.focess.veto.agent.workspace;
 
-/** How the agent expresses paths. Set by deployer policy (Part 3's chooser). */
+/** How the agent expresses paths. Set by deployer policy. */
 public enum PathMode {
     /** Agent uses virtual paths under `/`; resolver maps to a root by prefix. */
     VIRTUAL,

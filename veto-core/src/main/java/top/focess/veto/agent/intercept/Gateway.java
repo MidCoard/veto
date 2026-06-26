@@ -61,8 +61,9 @@ public class Gateway {
      * @param workspace the agent's workspace; incoming paths resolve against its resolver.
      * @param dangerComputation the deterministic danger computation (path/shell classification).
      * @param slmRelevance the SLM relevance seam (degraded → HIGH).
-     * @param policy the install-time deployer policy (FULL / PROTECT_SENSITIVE).
-     * @param protectedSet the PROTECT_SENSITIVE protected paths (empty under FULL).
+     * @param policy the install-time deployer policy (FULL_ACCESS / PROTECTED / SANDBOXED /
+     *     TENANT).
+     * @param protectedSet the protected paths (empty under FULL_ACCESS).
      * @param readHistory this agent's read-history (for write drift checks).
      */
     public Gateway(

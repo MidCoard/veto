@@ -14,9 +14,9 @@ import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.ToolCall;
 
 /**
- * The deterministic danger computation (screening_model.md §3.3), max-wins across: RiskCategory
- * base, args-aware path classification (via the Workspace PathResolver), shell args. SLM danger is
- * omitted (degraded) — finalDanger = detDanger.
+ * The deterministic danger computation, max-wins across: RiskCategory base, args-aware path
+ * classification (via the Workspace PathResolver), shell args. SLM danger is omitted (degraded) —
+ * finalDanger = detDanger.
  */
 public class DangerComputation {
 
@@ -94,21 +94,41 @@ public class DangerComputation {
 
     private Danger classifyPath(
             Resolution res, RiskCategory risk, DeployerPolicy policy, ProtectedSet protectedSet) {
-        if (!res.inScope()) {
-            return Danger.CRITICAL;
-        }
         Path host = res.hostPath();
         String str = host.toString();
-        // protected set (PROTECT_SENSITIVE only)
-        if (policy == DeployerPolicy.PROTECT_SENSITIVE && protectedSet.covers(host)) {
-            return Danger.CRITICAL;
+
+        // 1. Check policies that make certain paths CRITICAL
+        if (policy == DeployerPolicy.PROTECTED) {
+            if (protectedSet != null && protectedSet.covers(host)) {
+                return Danger.CRITICAL;
+            }
+        } else if (policy == DeployerPolicy.SANDBOXED) {
+            if (!res.inScope()) {
+                return Danger.CRITICAL;
+            }
+        } else if (policy == DeployerPolicy.TENANT) {
+            if (!res.inScope()) {
+                return Danger.CRITICAL;
+            }
         }
+
+        // 2. Under FULL_ACCESS or non-critical paths in other policies:
+        if (isDeviceOrKernelPath(str)) {
+            return Danger.DANGEROUS;
+        }
+
         // secret-location pattern
         for (String pat : SECRET_PATTERNS) {
             if (str.contains(pat)) {
                 return Danger.DANGEROUS;
             }
         }
+
+        // arbitrary host path (out of scope)
+        if (!res.inScope()) {
+            return risk == RiskCategory.FILE_WRITE ? Danger.DANGEROUS : Danger.ELEVATED;
+        }
+
         // dependency/cache dir → ELEVATED (read only; writes stay at base ELEVATED anyway)
         if (str.contains("/target/")
                 || str.contains("/build/")
@@ -120,8 +140,17 @@ public class DangerComputation {
                 || str.contains("\\.git\\")) {
             return Danger.ELEVATED;
         }
+
         // in-project → no bump
         return Danger.SAFE;
+    }
+
+    private boolean isDeviceOrKernelPath(String path) {
+        String p = path.toLowerCase();
+        return p.startsWith("/dev/")
+                || p.startsWith("/proc/")
+                || p.startsWith("/sys/")
+                || p.startsWith("\\\\.\\");
     }
 
     @SuppressWarnings("unchecked")
