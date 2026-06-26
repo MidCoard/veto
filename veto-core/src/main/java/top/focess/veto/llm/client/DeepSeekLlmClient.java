@@ -139,7 +139,8 @@ final class DeepSeekLlmClient extends LlmClient {
                 Number prompt = (Number) usage.get("prompt_tokens");
                 Number completion = (Number) usage.get("completion_tokens");
                 if (prompt != null && completion != null) {
-                    top.focess.veto.llm.core.LlmSystemUsage.set(prompt.longValue(), completion.longValue());
+                    top.focess.veto.llm.core.LlmSystemUsage.set(
+                            prompt.longValue(), completion.longValue());
                 }
             }
             if (content == null || content.isEmpty()) {

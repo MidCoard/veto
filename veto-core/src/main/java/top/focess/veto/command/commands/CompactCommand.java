@@ -1,7 +1,6 @@
 package top.focess.veto.command.commands;
 
 import java.util.List;
-import java.util.Map;
 import org.jetbrains.annotations.NotNull;
 import top.focess.command.CommandResult;
 import top.focess.command.CommandSender;
@@ -11,8 +10,8 @@ import top.focess.veto.command.VetoCommand;
 import top.focess.veto.command.VetoCommandSender;
 
 /**
- * Command to compact the active agent's turn history segment.
- * Compresses the current role segment and replaces verbose turns with a summary.
+ * Command to compact the active agent's turn history segment. Compresses the current role segment
+ * and replaces verbose turns with a summary.
  */
 public class CompactCommand extends VetoCommand {
 

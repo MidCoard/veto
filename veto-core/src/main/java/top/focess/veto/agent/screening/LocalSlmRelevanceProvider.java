@@ -1,0 +1,83 @@
+package top.focess.veto.agent.screening;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import top.focess.veto.agent.mcp.ToolDefinition;
+import top.focess.veto.llm.core.ToolCall;
+import top.focess.veto.veto.LlamaCppBridge;
+
+/**
+ * Local-SLM-backed {@link SlmRelevanceProvider} (Part 3.2 BETA). Asks the running llama.cpp
+ * subprocess whether the agent's emitted call is plausibly in service of the task (HIGH / MEDIUM /
+ * LOW). Falls back to {@link Relevance#HIGH} when the SLM is unavailable — the LLD's documented
+ * degradation: trust the agent's relevance by default; the deterministic danger floor still
+ * protects.
+ *
+ * <p>The prompt asks the SLM to emit a single token from the set {HIGH, MEDIUM, LOW}; the bridge
+ * runs with a GBNF grammar-constrained decoder so the response is always one of those three tokens.
+ * This implementation parses the response leniently (any string containing {@code HIGH}, {@code
+ * MEDIUM}, or {@code LOW} wins; otherwise the fallback).
+ */
+public class LocalSlmRelevanceProvider implements SlmRelevanceProvider {
+
+    private static final Logger log = LoggerFactory.getLogger(LocalSlmRelevanceProvider.class);
+
+    private final LlamaCppBridge bridge;
+
+    public LocalSlmRelevanceProvider(LlamaCppBridge bridge) {
+        this.bridge = bridge;
+    }
+
+    @Override
+    public Relevance relevance(ToolCall call, ToolDefinition def, String thought) {
+        if (bridge == null || !bridge.isAvailable()) {
+            return Relevance.HIGH;
+        }
+        String prompt = buildPrompt(call, def, thought);
+        try {
+            String response = bridge.infer(prompt, "veto-relevance").get();
+            if (response == null) {
+                return Relevance.HIGH;
+            }
+            String upper = response.toUpperCase();
+            if (upper.contains("LOW")) {
+                return Relevance.LOW;
+            }
+            if (upper.contains("MEDIUM")) {
+                return Relevance.MEDIUM;
+            }
+            if (upper.contains("HIGH")) {
+                return Relevance.HIGH;
+            }
+            log.debug(
+                    "LocalSlmRelevanceProvider: unparseable response '{}', defaulting HIGH",
+                    response);
+            return Relevance.HIGH;
+        } catch (Exception e) {
+            log.warn(
+                    "LocalSlmRelevanceProvider: inference failed, defaulting HIGH: {}",
+                    e.getMessage());
+            return Relevance.HIGH;
+        }
+    }
+
+    private static String buildPrompt(ToolCall call, ToolDefinition def, String thought) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Given the agent's thought: \"").append(safe(thought)).append("\"\n");
+        sb.append("And the tool call: ").append(call.toolName()).append("(");
+        if (call.args() != null) {
+            sb.append(call.args().toString());
+        }
+        sb.append(")\n");
+        sb.append(
+                "Is this call plausibly in service of the agent's stated task? Reply with one of: HIGH MEDIUM LOW\n");
+        return sb.toString();
+    }
+
+    private static String safe(String s) {
+        if (s == null) {
+            return "";
+        }
+        return s.length() > 200 ? s.substring(0, 200) + "..." : s;
+    }
+}

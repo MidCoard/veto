@@ -229,8 +229,9 @@ class NewRequirementsTest {
                 if (hitlRegistry.resolve(
                         resolvedAgentId,
                         resolvedCallId,
-                        new InterceptResolution(VetoOption.DECLINE, null),
-                        "run_command")) {
+                        new InterceptResolution(VetoOption.EXEC_DECLINE, null),
+                        ncCall,
+                        mcpEngine.resolveDefinition("run_command"))) {
                     resolved = true;
                     break;
                 }

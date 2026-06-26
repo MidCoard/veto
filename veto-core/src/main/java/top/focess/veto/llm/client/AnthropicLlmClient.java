@@ -77,9 +77,7 @@ final class AnthropicLlmClient extends LlmClient {
         Message message = sdkClient.messages().create(builder.build());
         if (message.usage() != null) {
             top.focess.veto.llm.core.LlmSystemUsage.set(
-                    message.usage().inputTokens(),
-                    message.usage().outputTokens()
-            );
+                    message.usage().inputTokens(), message.usage().outputTokens());
         }
         String rawInput =
                 message.content().stream()

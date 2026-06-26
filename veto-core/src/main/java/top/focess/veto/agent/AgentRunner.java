@@ -227,7 +227,7 @@ public class AgentRunner {
             }
         }
         int anchorIndex = lastInitIndex != -1 ? lastInitIndex : 0;
-        
+
         List<TurnRecord> workTurns = new ArrayList<>();
         synchronized (history) {
             if (anchorIndex >= history.size() - 1) {
@@ -241,7 +241,11 @@ public class AgentRunner {
 
         StringBuilder sb = new StringBuilder();
         for (TurnRecord turn : workTurns) {
-            sb.append("Turn ").append(turn.turnNumber()).append(" (").append(turn.type()).append("):\n");
+            sb.append("Turn ")
+                    .append(turn.turnNumber())
+                    .append(" (")
+                    .append(turn.type())
+                    .append("):\n");
             try {
                 sb.append(objectMapper.writeValueAsString(turn.payload())).append("\n\n");
             } catch (Exception e) {
@@ -253,22 +257,29 @@ public class AgentRunner {
         List<String> chunks = new ArrayList<>();
         int chunkSize = 60000;
         for (int i = 0; i < contentToCompact.length(); i += chunkSize) {
-            chunks.add(contentToCompact.substring(i, Math.min(i + chunkSize, contentToCompact.length())));
+            chunks.add(
+                    contentToCompact.substring(
+                            i, Math.min(i + chunkSize, contentToCompact.length())));
         }
 
         List<String> summaries = new ArrayList<>();
         for (int i = 0; i < chunks.size(); i++) {
             String chunk = chunks.get(i);
-            String systemPrompt = "Summarize the following conversation segment into a structured record. "
-                    + "This is chunk " + (i + 1) + " of " + chunks.size() + ". Preserve specific facts. Output ONLY valid JSON matching this schema:\n"
-                    + "{\n"
-                    + "  \"files_touched\": [\"paths\"],\n"
-                    + "  \"changes_made\": [\"specific edits with file paths\"],\n"
-                    + "  \"errors_encountered\": [{\"error\": \"...\", \"file\": \"...\", \"resolved\": true/false}],\n"
-                    + "  \"decisions\": [\"key decisions and why\"],\n"
-                    + "  \"pending\": [\"started but incomplete tasks\"],\n"
-                    + "  \"user_feedback\": [\"explicit instructions, vetoes, corrections\"]\n"
-                    + "}";
+            String systemPrompt =
+                    "Summarize the following conversation segment into a structured record. "
+                            + "This is chunk "
+                            + (i + 1)
+                            + " of "
+                            + chunks.size()
+                            + ". Preserve specific facts. Output ONLY valid JSON matching this schema:\n"
+                            + "{\n"
+                            + "  \"files_touched\": [\"paths\"],\n"
+                            + "  \"changes_made\": [\"specific edits with file paths\"],\n"
+                            + "  \"errors_encountered\": [{\"error\": \"...\", \"file\": \"...\", \"resolved\": true/false}],\n"
+                            + "  \"decisions\": [\"key decisions and why\"],\n"
+                            + "  \"pending\": [\"started but incomplete tasks\"],\n"
+                            + "  \"user_feedback\": [\"explicit instructions, vetoes, corrections\"]\n"
+                            + "}";
             String rawSummary = callCompactor(systemPrompt, chunk);
             summaries.add(rawSummary);
         }
@@ -279,17 +290,22 @@ public class AgentRunner {
         } else {
             StringBuilder combined = new StringBuilder();
             for (int i = 0; i < summaries.size(); i++) {
-                combined.append("Summary ").append(i + 1).append(":\n").append(summaries.get(i)).append("\n\n");
+                combined.append("Summary ")
+                        .append(i + 1)
+                        .append(":\n")
+                        .append(summaries.get(i))
+                        .append("\n\n");
             }
-            String systemPrompt = "Summarize the following combined conversation summaries into a single final structured record. Output ONLY valid JSON matching this schema:\n"
-                    + "{\n"
-                    + "  \"files_touched\": [\"paths\"],\n"
-                    + "  \"changes_made\": [\"specific edits with file paths\"],\n"
-                    + "  \"errors_encountered\": [{\"error\": \"...\", \"file\": \"...\", \"resolved\": true/false}],\n"
-                    + "  \"decisions\": [\"key decisions and why\"],\n"
-                    + "  \"pending\": [\"started but incomplete tasks\"],\n"
-                    + "  \"user_feedback\": [\"explicit instructions, vetoes, corrections\"]\n"
-                    + "}";
+            String systemPrompt =
+                    "Summarize the following combined conversation summaries into a single final structured record. Output ONLY valid JSON matching this schema:\n"
+                            + "{\n"
+                            + "  \"files_touched\": [\"paths\"],\n"
+                            + "  \"changes_made\": [\"specific edits with file paths\"],\n"
+                            + "  \"errors_encountered\": [{\"error\": \"...\", \"file\": \"...\", \"resolved\": true/false}],\n"
+                            + "  \"decisions\": [\"key decisions and why\"],\n"
+                            + "  \"pending\": [\"started but incomplete tasks\"],\n"
+                            + "  \"user_feedback\": [\"explicit instructions, vetoes, corrections\"]\n"
+                            + "}";
             finalSummary = callCompactor(systemPrompt, combined.toString());
         }
 
@@ -299,23 +315,23 @@ public class AgentRunner {
     }
 
     private String callCompactor(String systemPrompt, String userPrompt) {
-        List<ChatMessage> messages = List.of(
-            ChatMessage.system(systemPrompt),
-            ChatMessage.user(userPrompt)
-        );
-        VetoRequest request = new VetoRequest(
-                systemPrompt,
-                userPrompt,
-                List.of(),
-                binding.provider(),
-                binding.model(),
-                binding.credentialKey(),
-                binding.options(),
-                messages,
-                null
-        );
+        List<ChatMessage> messages =
+                List.of(ChatMessage.system(systemPrompt), ChatMessage.user(userPrompt));
+        VetoRequest request =
+                new VetoRequest(
+                        systemPrompt,
+                        userPrompt,
+                        List.of(),
+                        binding.provider(),
+                        binding.model(),
+                        binding.credentialKey(),
+                        binding.options(),
+                        messages,
+                        null);
         VetoResponse response = caller.call(request);
-        return response.message() != null && !response.message().isBlank() ? response.message() : (response.thought() != null ? response.thought() : "{}");
+        return response.message() != null && !response.message().isBlank()
+                ? response.message()
+                : (response.thought() != null ? response.thought() : "{}");
     }
 
     private void runAutonomous() {
@@ -484,7 +500,8 @@ public class AgentRunner {
             VetoResponse response;
             try {
                 response = caller.call(request);
-                top.focess.veto.llm.core.LlmSystemUsage.Usage usage = top.focess.veto.llm.core.LlmSystemUsage.getAndClear();
+                top.focess.veto.llm.core.LlmSystemUsage.Usage usage =
+                        top.focess.veto.llm.core.LlmSystemUsage.getAndClear();
                 if (usage != null && this.lastEstimatedTokens > 0) {
                     double ratio = (double) usage.promptTokens() / this.lastEstimatedTokens;
                     this.correctionFactor = this.correctionFactor * 0.9 + ratio * 0.1;

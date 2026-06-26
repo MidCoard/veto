@@ -95,9 +95,7 @@ final class OpenAiLlmClient extends LlmClient {
         if (completion.usage().isPresent()) {
             var usage = completion.usage().get();
             top.focess.veto.llm.core.LlmSystemUsage.set(
-                    usage.promptTokens(),
-                    usage.completionTokens()
-            );
+                    usage.promptTokens(), usage.completionTokens());
         }
         String content =
                 completion

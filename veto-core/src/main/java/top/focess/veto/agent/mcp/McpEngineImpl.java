@@ -3,6 +3,7 @@ package top.focess.veto.agent.mcp;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
+import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -98,6 +99,24 @@ public class McpEngineImpl implements McpEngine {
                         CreateGroupArgs.class,
                         Map.of("description", ParamCategory.GENERIC)));
         log.info("McpEngine: initialized. {} native tool(s), 2 agent tool(s).", nativeDefs.size());
+    }
+
+    /** Discover tools from a remote MCP server via JSON-RPC tools/list and register them. */
+    public java.util.List<RemoteToolDefinition> discoverAndRegister(McpTransport transport) {
+        try {
+            java.util.List<RemoteToolDefinition> tools =
+                    new McpJsonRpcClient(mapper).discoverTools(transport);
+            for (RemoteToolDefinition t : tools) {
+                remoteDefs.put(t.name(), t);
+                transports.put(t.name(), transport);
+            }
+            log.info("McpEngine: discovered {} tool(s) from {}.", tools.size(), transport);
+            return tools;
+        } catch (IOException e) {
+            log.warn(
+                    "McpEngine: tools/list discovery failed for {}: {}", transport, e.getMessage());
+            return java.util.List.of();
+        }
     }
 
     @Override

@@ -55,6 +55,49 @@ public record ProtectedSet(Set<Path> paths) {
         return new ProtectedSet(defaults);
     }
 
+    /**
+     * Seeded with deployer defaults plus owner-issued shared-grant paths (Part 3.6 /
+     * group_screening §1.3). Each shared-grant entry is a workspace root the owning user has
+     * explicitly shared with the requesting user; the requesting user gets {@code READ_ONLY} or
+     * {@code READ_WRITE} on it per the grant mode.
+     */
+    public static ProtectedSet withSharedGrants(
+            String vetoUserId, List<Path> workspaceRoots, List<SharedGrant> sharedGrants) {
+        ProtectedSet base = withDeployerDefaults(vetoUserId, workspaceRoots);
+        if (sharedGrants == null || sharedGrants.isEmpty()) {
+            return base;
+        }
+        Set<Path> paths = new HashSet<>(base.paths());
+        for (SharedGrant g : sharedGrants) {
+            if (g == null || g.rootPath() == null) {
+                continue;
+            }
+            paths.add(g.rootPath());
+        }
+        return new ProtectedSet(paths);
+    }
+
+    /**
+     * A user-issued grant (Part 3.6 / group_screening §1.3). {@code rootPath} is the workspace root
+     * being shared; {@code mode} is the access level. The grant is a per-user authorization — it is
+     * checked when {@code DangerComputation} runs under {@link DeployerPolicy#TENANT}.
+     */
+    public record SharedGrant(Path rootPath, GrantMode mode) {
+        public SharedGrant {
+            if (rootPath == null) {
+                throw new IllegalArgumentException("rootPath");
+            }
+            if (mode == null) {
+                mode = GrantMode.READ_ONLY;
+            }
+        }
+    }
+
+    public enum GrantMode {
+        READ_ONLY,
+        READ_WRITE
+    }
+
     /** True if the canonical path is under any protected entry. */
     public boolean covers(Path canonical) {
         Path c = canonical.toAbsolutePath().normalize();

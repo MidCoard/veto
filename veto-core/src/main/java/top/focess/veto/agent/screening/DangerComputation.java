@@ -118,8 +118,17 @@ public class DangerComputation {
             if (res.rootIndex() >= 0 && res.rootIndex() < workspace.roots().size()) {
                 top.focess.veto.agent.workspace.WorkspaceRoot root =
                         workspace.roots().get(res.rootIndex());
-                if (root.trust() == top.focess.veto.agent.workspace.TrustMarker.SHARED_GRANT
-                        && risk == RiskCategory.FILE_WRITE) {
+                int currentRoot = workspace.currentRootIndex();
+                if (root.trust() == top.focess.veto.agent.workspace.TrustMarker.SHARED_GRANT) {
+                    // Shared root — reads are allowed, writes are CRITICAL (grant mode would
+                    // distinguish read vs read+write, but for the MVP read is grantable
+                    // and write is grant-gated).
+                    if (risk == RiskCategory.FILE_WRITE) {
+                        return Danger.CRITICAL;
+                    }
+                } else if (res.rootIndex() != currentRoot) {
+                    // Another root, not shared, not the current root → another user's
+                    // workspace, not shared with me → CRITICAL (owner-gated).
                     return Danger.CRITICAL;
                 }
             }

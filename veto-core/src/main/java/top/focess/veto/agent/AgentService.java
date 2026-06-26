@@ -90,8 +90,10 @@ public class AgentService {
                 this.deployerPolicy == DeployerPolicy.PROTECTED
                         ? ProtectedSet.withDeployerDefaults(this.workspace.hostRoots())
                         : ProtectedSet.empty();
-        // Thread the runtime screening matrix to the (shared) HITL registry.
+        // Thread the runtime screening matrix + workspace to the (shared) HITL registry. The
+        // workspace is needed for canonical-path arg extraction when matching permission grants.
         this.hitlRegistry.setScreeningMode(parseScreeningMode(screeningModeRaw));
+        this.hitlRegistry.setWorkspace(this.workspace);
     }
 
     /**
@@ -153,10 +155,20 @@ public class AgentService {
         }
     }
 
-    /** Resolves a pending veto for an agent's call. */
+    /**
+     * Resolves a pending veto for an agent's call. The {@code toolName} parameter is kept for
+     * back-compat with the old API (the new {@code HitlRegistry.resolve} reads the tool name from
+     * the supplied {@link ToolCall}). The caller can pass {@code null} for the call/def when the
+     * original call is not available (e.g. legacy veto endpoints).
+     */
     public boolean resolveVeto(
-            String agentId, String callId, InterceptResolution resolution, String toolName) {
-        return hitlRegistry.resolve(agentId, callId, resolution, toolName);
+            String agentId,
+            String callId,
+            InterceptResolution resolution,
+            String toolName,
+            top.focess.veto.llm.core.ToolCall originalCall,
+            top.focess.veto.agent.mcp.ToolDefinition originalDef) {
+        return hitlRegistry.resolve(agentId, callId, resolution, originalCall, originalDef);
     }
 
     /** The live agent for a transport id (for history / state inspection). */

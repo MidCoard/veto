@@ -76,9 +76,13 @@ public class PromptCompiler {
         int trimmed = conversation.size() - budgeted.size();
         long estimate = Math.round(ceilChars(systemMessage.length()) * correctionFactor);
         for (ChatMessage msg : budgeted) {
-            estimate += Math.round(ceilChars(msg.content() == null ? 0 : msg.content().length()) * correctionFactor);
+            estimate +=
+                    Math.round(
+                            ceilChars(msg.content() == null ? 0 : msg.content().length())
+                                    * correctionFactor);
         }
-        return new CompiledPrompt(systemMessage, budgeted, tools, responseSchema, trimmed, estimate);
+        return new CompiledPrompt(
+                systemMessage, budgeted, tools, responseSchema, trimmed, estimate);
     }
 
     // ── System message (3 layers) ───────────────────────────────────────────
@@ -200,13 +204,17 @@ public class PromptCompiler {
     // ── Token budget ──────────────────────────────────────────────────
 
     /** Walks newest→oldest, keeping turns until the budget is exceeded (system never trimmed). */
-    private List<ChatMessage> fitBudget(String systemMessage, List<ChatMessage> conversation, double correctionFactor) {
+    private List<ChatMessage> fitBudget(
+            String systemMessage, List<ChatMessage> conversation, double correctionFactor) {
         long budget = (long) (maxInputTokens * contextFillRatio);
         long estimate = Math.round(ceilChars(systemMessage.length()) * correctionFactor);
         List<ChatMessage> kept = new ArrayList<>();
         for (int i = conversation.size() - 1; i >= 0; i--) {
             ChatMessage msg = conversation.get(i);
-            long turnEstimate = Math.round(ceilChars(msg.content() == null ? 0 : msg.content().length()) * correctionFactor);
+            long turnEstimate =
+                    Math.round(
+                            ceilChars(msg.content() == null ? 0 : msg.content().length())
+                                    * correctionFactor);
             if (estimate + turnEstimate > budget && !kept.isEmpty()) {
                 break; // stop adding — these old turns won't fit
             }
