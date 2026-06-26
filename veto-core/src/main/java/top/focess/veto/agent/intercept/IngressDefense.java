@@ -21,7 +21,7 @@ import top.focess.veto.llm.core.ToolCall;
 public class IngressDefense {
 
     /**
-     * Masks (no-op under MVP degradation) and frames an observation.
+     * Masks and frames an observation.
      *
      * @param call the tool call that produced the result
      * @param def the resolved tool definition (drives source label + write detection)

@@ -86,29 +86,42 @@ public class DangerComputation {
                 continue;
             }
             Resolution res = resolver.resolveToHost(s);
-            Danger d = classifyPath(res, def.risk(), policy, protectedSet);
+            Danger d = classifyPath(res, def.risk(), policy, protectedSet, workspace);
             worst = max(worst, d);
         }
         return worst;
     }
 
     private Danger classifyPath(
-            Resolution res, RiskCategory risk, DeployerPolicy policy, ProtectedSet protectedSet) {
+            Resolution res,
+            RiskCategory risk,
+            DeployerPolicy policy,
+            ProtectedSet protectedSet,
+            Workspace workspace) {
         Path host = res.hostPath();
         String str = host.toString();
 
         // 1. Check policies that make certain paths CRITICAL
-        if (policy == DeployerPolicy.PROTECTED) {
+        if (policy != DeployerPolicy.FULL_ACCESS) {
             if (protectedSet != null && protectedSet.covers(host)) {
                 return Danger.CRITICAL;
             }
-        } else if (policy == DeployerPolicy.SANDBOXED) {
+        }
+        if (policy == DeployerPolicy.SANDBOXED) {
             if (!res.inScope()) {
                 return Danger.CRITICAL;
             }
         } else if (policy == DeployerPolicy.TENANT) {
             if (!res.inScope()) {
                 return Danger.CRITICAL;
+            }
+            if (res.rootIndex() >= 0 && res.rootIndex() < workspace.roots().size()) {
+                top.focess.veto.agent.workspace.WorkspaceRoot root =
+                        workspace.roots().get(res.rootIndex());
+                if (root.trust() == top.focess.veto.agent.workspace.TrustMarker.SHARED_GRANT
+                        && risk == RiskCategory.FILE_WRITE) {
+                    return Danger.CRITICAL;
+                }
             }
         }
 

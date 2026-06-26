@@ -5,12 +5,12 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
- * Project Veto - Zero-Trust Cloud-Edge Agent Client.
+ * Project Veto — Zero-Trust Cloud-Edge Agent Client.
  *
- * <p>Entry point for the core engine hosting components bus - observability: bus: Communication &
- * Routing Bus mcp: MCP Extensibility Engine orchestrator: Swarm Lifecycle Orchestrator sandbox:
- * Atomic Tool Execution Sandbox gateway: Local SLM Veto Gateway vault: Local Credential Vault
- * observability: Observability & Shadow Audit
+ * <p>Core engine components: {@code bus} — Communication &amp; Routing Bus · {@code mcp} — MCP
+ * Extensibility Engine · {@code sandbox} — Atomic Tool Execution Sandbox · {@code gateway} — Local
+ * SLM Veto Gateway · {@code vault} — Local Credential Vault · {@code observability} — Observability
+ * &amp; Shadow Audit.
  */
 @SpringBootApplication
 @EnableScheduling

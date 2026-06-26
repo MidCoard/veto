@@ -50,9 +50,10 @@ final class DeepSeekLlmClient extends LlmClient {
     @Override
     public RawCompletion complete(ResolvedRequest resolved) {
         VetoRequest request = resolved.request();
-        // The per-turn veto_pulse schema (default thought-ON, autonomous until per-turn flags are
-        // wired).
-        JsonNode responseSchema = capabilityTranslator.vetoResponseSchema(true, false);
+        JsonNode responseSchema =
+                request.responseSchema() != null
+                        ? request.responseSchema()
+                        : capabilityTranslator.vetoResponseSchema(true, false);
 
         try {
             Map<String, Object> body = new LinkedHashMap<>();
@@ -131,6 +132,15 @@ final class DeepSeekLlmClient extends LlmClient {
             // DeepSeek v4 reasoning models may return reasoning_content instead of content
             if (content == null || content.isEmpty()) {
                 content = (String) message.get("reasoning_content");
+            }
+            @SuppressWarnings("unchecked")
+            Map<String, Object> usage = (Map<String, Object>) responseMap.get("usage");
+            if (usage != null) {
+                Number prompt = (Number) usage.get("prompt_tokens");
+                Number completion = (Number) usage.get("completion_tokens");
+                if (prompt != null && completion != null) {
+                    top.focess.veto.llm.core.LlmSystemUsage.set(prompt.longValue(), completion.longValue());
+                }
             }
             if (content == null || content.isEmpty()) {
                 throw new ModelCapabilityException(

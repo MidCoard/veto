@@ -213,7 +213,7 @@ public class AgentService {
     }
 
     /**
-     * Builds the agent persona. MVP: a default persona carrying the resolved (empty for the live
+     * Builds the agent persona. A default persona carrying the resolved (empty for the live
      * terminal path) manifest + skills. Full {@code ~/.veto/} persona resolution is not yet wired.
      */
     private AgentPersona buildPersona(String agentKey, AgentRunner.LlmBinding binding) {

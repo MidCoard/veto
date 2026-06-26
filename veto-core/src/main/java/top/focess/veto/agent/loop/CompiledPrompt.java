@@ -23,4 +23,5 @@ public record CompiledPrompt(
         List<ChatMessage> messages,
         List<ToolDefinition> tools,
         JsonNode responseSchema,
-        int trimmedTurns) {}
+        int trimmedTurns,
+        long estimatedTokens) {}

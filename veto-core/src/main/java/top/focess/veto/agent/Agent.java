@@ -55,4 +55,7 @@ public interface Agent {
 
     /** The read-history (for drift detection). */
     ReadHistory readHistory();
+
+    /** Compact the agent's turn history segment. */
+    void compact();
 }

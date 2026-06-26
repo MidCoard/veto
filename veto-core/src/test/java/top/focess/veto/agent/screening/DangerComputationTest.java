@@ -196,5 +196,63 @@ class DangerComputationTest {
                         execDef, call, ws(root), DeployerPolicy.FULL_ACCESS, ProtectedSet.empty()));
     }
 
+    @Test
+    void tenantPolicySharedGrantWriteIsCritical() throws Exception {
+        Path ownedRoot = root.resolve("owned");
+        Path sharedRoot = root.resolve("shared");
+        Files.createDirectories(ownedRoot);
+        Files.createDirectories(sharedRoot);
+
+        top.focess.veto.agent.workspace.WorkspaceRoot owned =
+                top.focess.veto.agent.workspace.WorkspaceRoot.probe(
+                        ownedRoot, top.focess.veto.agent.workspace.TrustMarker.OWNED);
+        top.focess.veto.agent.workspace.WorkspaceRoot shared =
+                top.focess.veto.agent.workspace.WorkspaceRoot.probe(
+                        sharedRoot, top.focess.veto.agent.workspace.TrustMarker.SHARED_GRANT);
+
+        Workspace ws = new Workspace(List.of(owned, shared), PathMode.REAL, 0);
+
+        // A write to owned is ELEVATED
+        ToolCall writeOwnedCall =
+                new ToolCall(
+                        "write_to_file",
+                        Map.of("path", ownedRoot.resolve("file.txt").toString(), "content", "x"));
+        assertEquals(
+                Danger.ELEVATED,
+                dc.compute(
+                        writeDef(),
+                        writeOwnedCall,
+                        ws,
+                        DeployerPolicy.TENANT,
+                        ProtectedSet.empty()));
+
+        // A write to shared (SHARED_GRANT) under TENANT is CRITICAL
+        ToolCall writeSharedCall =
+                new ToolCall(
+                        "write_to_file",
+                        Map.of("path", sharedRoot.resolve("file.txt").toString(), "content", "x"));
+        assertEquals(
+                Danger.CRITICAL,
+                dc.compute(
+                        writeDef(),
+                        writeSharedCall,
+                        ws,
+                        DeployerPolicy.TENANT,
+                        ProtectedSet.empty()));
+
+        // A read from shared (SHARED_GRANT) under TENANT is SAFE
+        ToolCall readSharedCall =
+                new ToolCall(
+                        "view_file", Map.of("path", sharedRoot.resolve("file.txt").toString()));
+        assertEquals(
+                Danger.SAFE,
+                dc.compute(
+                        readDef(),
+                        readSharedCall,
+                        ws,
+                        DeployerPolicy.TENANT,
+                        ProtectedSet.empty()));
+    }
+
     public record ExecArgs(Map<String, Object> commands, String cwd) {}
 }

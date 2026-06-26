@@ -42,9 +42,10 @@ final class AnthropicLlmClient extends LlmClient {
     @Override
     public RawCompletion complete(ResolvedRequest resolved) {
         VetoRequest request = resolved.request();
-        // The per-turn veto_pulse schema (default thought-ON, autonomous until per-turn flags are
-        // wired).
-        JsonNode responseSchema = capabilityTranslator.vetoResponseSchema(true, false);
+        JsonNode responseSchema =
+                request.responseSchema() != null
+                        ? request.responseSchema()
+                        : capabilityTranslator.vetoResponseSchema(true, false);
         Map<String, Object> inputSchema =
                 objectMapper.convertValue(
                         responseSchema, new TypeReference<Map<String, Object>>() {});
@@ -74,6 +75,12 @@ final class AnthropicLlmClient extends LlmClient {
         }
 
         Message message = sdkClient.messages().create(builder.build());
+        if (message.usage() != null) {
+            top.focess.veto.llm.core.LlmSystemUsage.set(
+                    message.usage().inputTokens(),
+                    message.usage().outputTokens()
+            );
+        }
         String rawInput =
                 message.content().stream()
                         .filter(ContentBlock::isToolUse)

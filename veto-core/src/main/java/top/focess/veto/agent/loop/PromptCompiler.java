@@ -62,18 +62,23 @@ public class PromptCompiler {
             String systemPromptBase,
             List<TurnRecord> history,
             boolean effectiveThoughtFlag,
-            boolean guidedSwitch) {
+            boolean guidedSwitch,
+            double correctionFactor) {
 
         String systemMessage =
                 buildSystemMessage(persona, systemPromptBase, effectiveThoughtFlag, guidedSwitch);
         List<ChatMessage> conversation = resolveRewinds(history);
-        List<ChatMessage> budgeted = fitBudget(systemMessage, conversation);
+        List<ChatMessage> budgeted = fitBudget(systemMessage, conversation, correctionFactor);
 
         var tools = translator.translateTools(List.copyOf(persona.whitelistedTools()));
         var responseSchema = translator.vetoResponseSchema(effectiveThoughtFlag, guidedSwitch);
 
         int trimmed = conversation.size() - budgeted.size();
-        return new CompiledPrompt(systemMessage, budgeted, tools, responseSchema, trimmed);
+        long estimate = Math.round(ceilChars(systemMessage.length()) * correctionFactor);
+        for (ChatMessage msg : budgeted) {
+            estimate += Math.round(ceilChars(msg.content() == null ? 0 : msg.content().length()) * correctionFactor);
+        }
+        return new CompiledPrompt(systemMessage, budgeted, tools, responseSchema, trimmed, estimate);
     }
 
     // ── System message (3 layers) ───────────────────────────────────────────
@@ -195,13 +200,13 @@ public class PromptCompiler {
     // ── Token budget ──────────────────────────────────────────────────
 
     /** Walks newest→oldest, keeping turns until the budget is exceeded (system never trimmed). */
-    private List<ChatMessage> fitBudget(String systemMessage, List<ChatMessage> conversation) {
+    private List<ChatMessage> fitBudget(String systemMessage, List<ChatMessage> conversation, double correctionFactor) {
         long budget = (long) (maxInputTokens * contextFillRatio);
-        long estimate = ceilChars(systemMessage.length());
+        long estimate = Math.round(ceilChars(systemMessage.length()) * correctionFactor);
         List<ChatMessage> kept = new ArrayList<>();
         for (int i = conversation.size() - 1; i >= 0; i--) {
             ChatMessage msg = conversation.get(i);
-            long turnEstimate = ceilChars(msg.content() == null ? 0 : msg.content().length());
+            long turnEstimate = Math.round(ceilChars(msg.content() == null ? 0 : msg.content().length()) * correctionFactor);
             if (estimate + turnEstimate > budget && !kept.isEmpty()) {
                 break; // stop adding — these old turns won't fit
             }

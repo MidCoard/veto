@@ -16,7 +16,7 @@ import java.time.Duration;
 public record SandboxProfile(
         Path workspaceRoot, long maxMemoryMb, int maxCpuPercent, Duration maxWallClock) {
 
-    /** A permissive default profile for the local MVP substrate. */
+    /** A permissive default profile for the local substrate. */
     public static SandboxProfile defaults(Path workspaceRoot) {
         return new SandboxProfile(workspaceRoot, 512, 100, Duration.ofMinutes(10));
     }

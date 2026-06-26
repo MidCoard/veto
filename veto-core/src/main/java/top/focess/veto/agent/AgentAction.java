@@ -12,7 +12,8 @@ public sealed interface AgentAction
         permits AgentAction.UserPromptAction,
                 AgentAction.PauseAction,
                 AgentAction.ResumeAction,
-                AgentAction.TerminateAction {
+                AgentAction.TerminateAction,
+                AgentAction.CompactAction {
 
     /**
      * Submit a prompt for the agent to work on. A fresh {@code UserPromptAction} starts a new
@@ -36,4 +37,7 @@ public sealed interface AgentAction
 
     /** Terminate the session → {@link AgentState#TERMINATED}; the virtual thread stops. */
     record TerminateAction() implements AgentAction {}
+
+    /** Perform history/context compaction. */
+    record CompactAction() implements AgentAction {}
 }

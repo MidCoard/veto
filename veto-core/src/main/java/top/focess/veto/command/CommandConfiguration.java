@@ -96,6 +96,7 @@ public class CommandConfiguration {
         registry.register(new ExitCommand());
         registry.register(new PatternCommand(vault, patternRepo));
         registry.register(new AgentCommand(patternRepo, promptHandler));
+        registry.register(new CompactCommand(promptHandler));
         registry.register(new HelpCommand(registry));
         return registry;
     }

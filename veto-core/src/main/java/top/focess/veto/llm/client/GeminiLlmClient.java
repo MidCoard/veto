@@ -1,5 +1,6 @@
 package top.focess.veto.llm.client;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.genai.Client;
 import com.google.genai.types.Content;
@@ -33,11 +34,11 @@ final class GeminiLlmClient extends LlmClient {
     @Override
     public RawCompletion complete(ResolvedRequest resolved) {
         VetoRequest request = resolved.request();
-        // The per-turn veto_pulse schema (default thought-ON, autonomous until per-turn flags are
-        // wired).
-        Schema responseSchema =
-                objectMapper.convertValue(
-                        capabilityTranslator.vetoResponseSchema(true, false), Schema.class);
+        JsonNode rawSchema =
+                request.responseSchema() != null
+                        ? request.responseSchema()
+                        : capabilityTranslator.vetoResponseSchema(true, false);
+        Schema responseSchema = objectMapper.convertValue(rawSchema, Schema.class);
 
         GenerateContentConfig.Builder configBuilder =
                 GenerateContentConfig.builder()
@@ -55,6 +56,12 @@ final class GeminiLlmClient extends LlmClient {
         GenerateContentResponse response =
                 sdkClient.models.generateContent(
                         request.modelName(), request.userPrompt(), configBuilder.build());
+        if (response.usageMetadata().isPresent()) {
+            var usage = response.usageMetadata().get();
+            long prompt = usage.promptTokenCount().map(Number::longValue).orElse(0L);
+            long candidates = usage.candidatesTokenCount().map(Number::longValue).orElse(0L);
+            top.focess.veto.llm.core.LlmSystemUsage.set(prompt, candidates);
+        }
 
         String summary = "model=" + request.modelName() + ", tools=" + request.tools().size();
         return new RawCompletion(summary, response.text());

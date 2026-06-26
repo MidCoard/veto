@@ -104,6 +104,11 @@ public class VetoAgent implements Agent {
         return runner.readHistory();
     }
 
+    @Override
+    public void compact() {
+        runner.startTask(null, new AgentAction.CompactAction());
+    }
+
     /**
      * Updates the model binding (provider/model/credential) — used when the user switches agent.
      */

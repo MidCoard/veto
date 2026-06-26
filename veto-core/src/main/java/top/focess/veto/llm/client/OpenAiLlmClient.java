@@ -1,6 +1,7 @@
 package top.focess.veto.llm.client;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openai.client.OpenAIClient;
 import com.openai.core.JsonValue;
@@ -49,12 +50,12 @@ final class OpenAiLlmClient extends LlmClient {
     @Override
     public RawCompletion complete(ResolvedRequest resolved) {
         VetoRequest request = resolved.request();
-        // The per-turn veto_pulse schema. Default (thought-ON, autonomous) until the
-        // PromptCompiler passes the effective thought flag / guided state per turn.
+        JsonNode rawSchema =
+                request.responseSchema() != null
+                        ? request.responseSchema()
+                        : capabilityTranslator.vetoResponseSchema(true, false);
         Map<String, Object> responseSchema =
-                objectMapper.convertValue(
-                        capabilityTranslator.vetoResponseSchema(true, false),
-                        new TypeReference<Map<String, Object>>() {});
+                objectMapper.convertValue(rawSchema, new TypeReference<Map<String, Object>>() {});
         String systemPrompt = request.systemPrompt();
 
         ChatCompletionCreateParams.Builder builder =
@@ -91,6 +92,13 @@ final class OpenAiLlmClient extends LlmClient {
         applyOptions(builder, request.options());
 
         ChatCompletion completion = sdkClient.chat().completions().create(builder.build());
+        if (completion.usage().isPresent()) {
+            var usage = completion.usage().get();
+            top.focess.veto.llm.core.LlmSystemUsage.set(
+                    usage.promptTokens(),
+                    usage.completionTokens()
+            );
+        }
         String content =
                 completion
                         .choices()

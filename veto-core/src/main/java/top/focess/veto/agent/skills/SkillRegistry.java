@@ -16,7 +16,7 @@ import org.springframework.stereotype.Service;
  *
  * <p>Scans PERSONAL ({@code ~/.veto/skills/<name>/}) and an optional PROJECT ({@code
  * <workspace>/.veto/skills/<name>/}) directory at startup. NATIVE skills (shipped with Veto, hash
- * pre-seeded at install time) are a deployer-installation concern — the MVP scans the on-disk
+ * pre-seeded at install time) are a deployer-installation concern — the registry scans the on-disk
  * personal/project dirs; bundling native SKILL.md resources is noted as a follow-up.
  */
 @Service

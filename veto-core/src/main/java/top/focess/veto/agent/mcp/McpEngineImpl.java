@@ -206,7 +206,7 @@ public class McpEngineImpl implements McpEngine {
                 args.commands().stream().map(c -> new Command(c.executable(), c.args())).toList();
         ChainMode connect = parseChainMode(args.connect());
         Path cwd = Path.of(args.cwd());
-        // MVP: provision a sandbox rooted at the requested cwd. The per-session handle
+        // Provision a sandbox rooted at the requested cwd. The per-session handle
         // (keyed by agentId) is a SandboxManager provision concern.
         var handle = sandboxManager.provision("runcmd-" + call.callId(), cwd);
         CommandResult result =
@@ -253,9 +253,9 @@ public class McpEngineImpl implements McpEngine {
     }
 
     /**
-     * External tool execution over the registered {@link McpTransport}. <b>MVP stub</b>: the
-     * defines the transport types but the JSON-RPC {@code tools/call} I/O over stdio/SSE/socket is
-     * beyond the schema representation — not implemented in the MVP.
+     * External tool execution over the registered {@link McpTransport}. The defines the transport
+     * types but the JSON-RPC {@code tools/call} I/O over stdio/SSE/socket is beyond the schema
+     * representation — not implemented.
      */
     private McpToolResult executeRemote(ToolCall call, RemoteToolDefinition def) {
         McpTransport transport = transports.get(def.serverName());
@@ -272,7 +272,7 @@ public class McpEngineImpl implements McpEngine {
                 false,
                 "Remote tool execution over "
                         + transport.getClass().getSimpleName()
-                        + " is not implemented in the MVP.");
+                        + " is not implemented.");
     }
 
     private static ChainMode parseChainMode(String connect) {

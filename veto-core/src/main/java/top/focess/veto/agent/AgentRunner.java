@@ -101,6 +101,8 @@ public class AgentRunner {
     private CompletableFuture<AgentResult> resultFuture = CompletableFuture.completedFuture(null);
     private Consumer<AgentResult> callback;
     private volatile boolean sessionAlive = true;
+    private double correctionFactor = 1.0;
+    private long lastEstimatedTokens = 0;
 
     // User-facing message listeners (the emission seam). emitMessage notifies these so a
     // transport (the terminal PromptHandler) can forward each assistantResponse to its client as a
@@ -161,6 +163,19 @@ public class AgentRunner {
                     transitionTo(AgentState.RUNNING);
                     continue;
                 }
+                if (action instanceof AgentAction.CompactAction) {
+                    transitionTo(AgentState.RUNNING);
+                    try {
+                        processCompaction();
+                        completeSuccess();
+                    } catch (Exception e) {
+                        log.error("Agent {} compaction failed", agentId, e);
+                        completeFailure(e.getMessage());
+                    } finally {
+                        transitionTo(AgentState.IDLE);
+                    }
+                    continue;
+                }
                 if (action instanceof AgentAction.UserPromptAction upa) {
                     transitionTo(AgentState.RUNNING);
                     try {
@@ -199,6 +214,108 @@ public class AgentRunner {
         } else {
             runAutonomous();
         }
+    }
+
+    private void processCompaction() {
+        int lastInitIndex = -1;
+        synchronized (history) {
+            for (int i = history.size() - 1; i >= 0; i--) {
+                if (history.get(i).type() == TurnType.AGENT_INIT) {
+                    lastInitIndex = i;
+                    break;
+                }
+            }
+        }
+        int anchorIndex = lastInitIndex != -1 ? lastInitIndex : 0;
+        
+        List<TurnRecord> workTurns = new ArrayList<>();
+        synchronized (history) {
+            if (anchorIndex >= history.size() - 1) {
+                emitMessage("Nothing to compact.");
+                return;
+            }
+            for (int i = anchorIndex + 1; i < history.size(); i++) {
+                workTurns.add(history.get(i));
+            }
+        }
+
+        StringBuilder sb = new StringBuilder();
+        for (TurnRecord turn : workTurns) {
+            sb.append("Turn ").append(turn.turnNumber()).append(" (").append(turn.type()).append("):\n");
+            try {
+                sb.append(objectMapper.writeValueAsString(turn.payload())).append("\n\n");
+            } catch (Exception e) {
+                sb.append(turn.payload().toString()).append("\n\n");
+            }
+        }
+        String contentToCompact = sb.toString();
+
+        List<String> chunks = new ArrayList<>();
+        int chunkSize = 60000;
+        for (int i = 0; i < contentToCompact.length(); i += chunkSize) {
+            chunks.add(contentToCompact.substring(i, Math.min(i + chunkSize, contentToCompact.length())));
+        }
+
+        List<String> summaries = new ArrayList<>();
+        for (int i = 0; i < chunks.size(); i++) {
+            String chunk = chunks.get(i);
+            String systemPrompt = "Summarize the following conversation segment into a structured record. "
+                    + "This is chunk " + (i + 1) + " of " + chunks.size() + ". Preserve specific facts. Output ONLY valid JSON matching this schema:\n"
+                    + "{\n"
+                    + "  \"files_touched\": [\"paths\"],\n"
+                    + "  \"changes_made\": [\"specific edits with file paths\"],\n"
+                    + "  \"errors_encountered\": [{\"error\": \"...\", \"file\": \"...\", \"resolved\": true/false}],\n"
+                    + "  \"decisions\": [\"key decisions and why\"],\n"
+                    + "  \"pending\": [\"started but incomplete tasks\"],\n"
+                    + "  \"user_feedback\": [\"explicit instructions, vetoes, corrections\"]\n"
+                    + "}";
+            String rawSummary = callCompactor(systemPrompt, chunk);
+            summaries.add(rawSummary);
+        }
+
+        String finalSummary = "";
+        if (summaries.size() == 1) {
+            finalSummary = summaries.get(0);
+        } else {
+            StringBuilder combined = new StringBuilder();
+            for (int i = 0; i < summaries.size(); i++) {
+                combined.append("Summary ").append(i + 1).append(":\n").append(summaries.get(i)).append("\n\n");
+            }
+            String systemPrompt = "Summarize the following combined conversation summaries into a single final structured record. Output ONLY valid JSON matching this schema:\n"
+                    + "{\n"
+                    + "  \"files_touched\": [\"paths\"],\n"
+                    + "  \"changes_made\": [\"specific edits with file paths\"],\n"
+                    + "  \"errors_encountered\": [{\"error\": \"...\", \"file\": \"...\", \"resolved\": true/false}],\n"
+                    + "  \"decisions\": [\"key decisions and why\"],\n"
+                    + "  \"pending\": [\"started but incomplete tasks\"],\n"
+                    + "  \"user_feedback\": [\"explicit instructions, vetoes, corrections\"]\n"
+                    + "}";
+            finalSummary = callCompactor(systemPrompt, combined.toString());
+        }
+
+        appendTurn(TurnRecord.rewind(++turnNumber, 1));
+        appendTurn(TurnRecord.compactionSummary(++turnNumber, finalSummary));
+        emitMessage("Compaction complete. Summarized " + workTurns.size() + " turns.");
+    }
+
+    private String callCompactor(String systemPrompt, String userPrompt) {
+        List<ChatMessage> messages = List.of(
+            ChatMessage.system(systemPrompt),
+            ChatMessage.user(userPrompt)
+        );
+        VetoRequest request = new VetoRequest(
+                systemPrompt,
+                userPrompt,
+                List.of(),
+                binding.provider(),
+                binding.model(),
+                binding.credentialKey(),
+                binding.options(),
+                messages,
+                null
+        );
+        VetoResponse response = caller.call(request);
+        return response.message() != null && !response.message().isBlank() ? response.message() : (response.thought() != null ? response.thought() : "{}");
     }
 
     private void runAutonomous() {
@@ -314,7 +431,7 @@ public class AgentRunner {
     private VetoResponse callGenerate(GenerateAction gen, boolean useThought) {
         // A generate action invokes the model within the shared conversation with its scoped
         // prompt.
-        // For MVP, the generate prompt is fed as a user turn; the model responds in veto_pulse.
+        // The generate prompt is fed as a user turn; the model responds in veto_pulse.
         appendTurn(TurnRecord.userPrompt(++turnNumber, gen.resolvePrompt(scope)));
         boolean effectiveThought = useThought;
         VetoResponse response = callModel(effectiveThought, false);
@@ -358,13 +475,20 @@ public class AgentRunner {
                         binding.systemPromptBase(),
                         List.copyOf(history),
                         effectiveThought,
-                        guidedSwitch);
+                        guidedSwitch,
+                        this.correctionFactor);
+        this.lastEstimatedTokens = compiled.estimatedTokens();
         VetoRequest request = buildRequest(compiled);
         ModelSchemaException last = null;
         for (int attempt = 0; attempt <= MAX_SCHEMA_RETRIES; attempt++) {
             VetoResponse response;
             try {
                 response = caller.call(request);
+                top.focess.veto.llm.core.LlmSystemUsage.Usage usage = top.focess.veto.llm.core.LlmSystemUsage.getAndClear();
+                if (usage != null && this.lastEstimatedTokens > 0) {
+                    double ratio = (double) usage.promptTokens() / this.lastEstimatedTokens;
+                    this.correctionFactor = this.correctionFactor * 0.9 + ratio * 0.1;
+                }
             } catch (LlmException e) {
                 // LLM failure → record error, break the loop ( table: LLM Error → IDLE).
                 appendObservation("llm_error", e.getMessage());
@@ -681,7 +805,7 @@ public class AgentRunner {
                 call.toolName(),
                 p.scenario(),
                 p.options());
-        // The transport subscribes to this; for MVP it is logged.
+        // The transport subscribes to this; it is logged.
         // A full VETO_REQUIRED frame is emitted via the event bus in a later part.
     }
 

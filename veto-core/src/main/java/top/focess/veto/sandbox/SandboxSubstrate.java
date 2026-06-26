@@ -5,20 +5,15 @@ import java.time.Duration;
 import java.util.List;
 
 /**
- * The hard backstop containment boundary + execution substrate. One contract, three
- * implementations..
+ * The hard backstop containment boundary and execution substrate. The Sandbox performs <b>no policy
+ * decisions</b> — path/command/network confinement <i>policy</i> belongs to the Gateway's {@code
+ * PolicyProfile}. The Sandbox only enforces a blast-radius floor and runs commands inside it.
+ * File-op syscalls route through the substrate so file ops share the hard wall.
  *
- * <p>The Sandbox performs <b>no policy decisions</b> — path/command/network confinement
- * <i>policy</i> belongs to the Gateway's {@code PolicyProfile}. The Sandbox only enforces a
- * blast-radius floor and runs commands inside it. File-op syscalls route through the substrate so
- * file ops share the hard wall on every substrate.
- *
- * <p><b>Note:</b> only {@link ConstrainedSubprocessSubstrate} is implemented (local default, no
- * third-party runtime). {@link ContainerSubstrate} and {@link MicrovmSubstrate} are stubs (not
- * enabled).
+ * <p>The only active implementation is {@link ConstrainedSubprocessSubstrate} (local, no
+ * third-party runtime required).
  */
-public sealed interface SandboxSubstrate
-        permits ConstrainedSubprocessSubstrate, ContainerSubstrate, MicrovmSubstrate {
+public sealed interface SandboxSubstrate permits ConstrainedSubprocessSubstrate {
 
     /**
      * Provision the sandbox for a session. Preflight-checks the runtime is reachable — fails fast,

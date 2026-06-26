@@ -53,10 +53,10 @@ public class Gateway {
     private final ReadHistory readHistory;
 
     /**
-     * Constructs a per-agent Gateway wired to its screening dependencies. Callers ({@link
-     * top.focess.veto.agent.AgentService}, {@link top.focess.veto.agent.WorkflowRunner}) assemble
-     * the deterministic {@link DangerComputation}, the (degraded) {@link SlmRelevanceProvider}, the
-     * deployer {@link DeployerPolicy} + {@link ProtectedSet}, and this agent's {@link ReadHistory}.
+     * Constructs a per-agent Gateway wired to its screening dependencies. The caller ({@link
+     * top.focess.veto.agent.AgentService}) assembles the deterministic {@link DangerComputation},
+     * the (degraded) {@link SlmRelevanceProvider}, the deployer {@link DeployerPolicy} + {@link
+     * ProtectedSet}, and this agent's {@link ReadHistory}.
      *
      * @param workspace the agent's workspace; incoming paths resolve against its resolver.
      * @param dangerComputation the deterministic danger computation (path/shell classification).
