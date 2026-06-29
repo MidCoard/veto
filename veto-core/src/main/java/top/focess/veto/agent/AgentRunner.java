@@ -16,6 +16,8 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.agent.drift.ReadHistory;
@@ -72,32 +74,32 @@ public class AgentRunner {
     private static final int MAX_SCHEMA_RETRIES = 2;
 
     // --- identity / deps ---
-    private final String agentId;
-    private final AgentPersona persona;
-    private final Set<String> whitelistedTools;
-    private final McpEngine mcpEngine;
-    private final Gateway gateway;
-    private final HitlRegistry hitlRegistry;
-    private final IngressDefense ingressDefense;
-    private final List<LoopInterceptor> interceptors;
-    private final PromptCompiler promptCompiler;
-    private final UniformLLMCaller caller;
-    private final ObjectMapper objectMapper;
-    private final LoopBreaker breaker;
-    private final ReadHistory readHistory;
+    private final @NotNull String agentId;
+    private final @NotNull AgentPersona persona;
+    private final @NotNull Set<String> whitelistedTools;
+    private final @NotNull McpEngine mcpEngine;
+    private final @NotNull Gateway gateway;
+    private final @NotNull HitlRegistry hitlRegistry;
+    private final @NotNull IngressDefense ingressDefense;
+    private final @NotNull List<LoopInterceptor> interceptors;
+    private final @NotNull PromptCompiler promptCompiler;
+    private final @NotNull UniformLLMCaller caller;
+    private final @NotNull ObjectMapper objectMapper;
+    private final @NotNull LoopBreaker breaker;
+    private final @NotNull ReadHistory readHistory;
     // The Part-8 Delta-broker seam: when present, each loop emission is published as a DeltaFrame
     // (per-session, broker-assigned sequence) so transports (WebSocket) can stream it. Nullable so
     // non-Spring callers (tests) keep working without a broker.
-    private final DeltaBroker deltaBroker;
-    private final UUID sessionId;
+    private final @Nullable DeltaBroker deltaBroker;
+    private final @NotNull UUID sessionId;
     // The per-turn memory-capture service (Part 4 §3.1). Nullable — when null (tests / no capture
     // configured), appendTurn only updates the in-memory history; when present, each turn is also
     // captured into Session LTM + the raw-turn audit log.
-    private final top.focess.veto.memory.MemoryCaptureService captureService;
-    private final UUID userId;
+    private final @Nullable top.focess.veto.memory.MemoryCaptureService captureService;
+    private final @NotNull UUID userId;
 
     // --- model binding (provider/model/credential), set per prompt ---
-    private volatile LlmBinding binding;
+    private volatile @NotNull LlmBinding binding;
 
     // --- loop state (mutated only by the runner's virtual thread) ---
     private final BlockingQueue<AgentAction> actionQueue = new LinkedBlockingQueue<>();
@@ -110,9 +112,9 @@ public class AgentRunner {
     private ActionsProgram activeProgram = null;
     private int programCounter = 0;
     private int currentSteps = 0;
-    private Scope scope;
+    private @NotNull Scope scope;
     private CompletableFuture<AgentResult> resultFuture = CompletableFuture.completedFuture(null);
-    private Consumer<AgentResult> callback;
+    private @Nullable Consumer<AgentResult> callback;
     private volatile boolean sessionAlive = true;
     private double correctionFactor = 1.0;
     private long lastEstimatedTokens = 0;
@@ -126,21 +128,21 @@ public class AgentRunner {
             new CopyOnWriteArrayList<>();
 
     public AgentRunner(
-            String agentId,
-            AgentPersona persona,
-            McpEngine mcpEngine,
-            Gateway gateway,
-            HitlRegistry hitlRegistry,
-            IngressDefense ingressDefense,
-            List<LoopInterceptor> interceptors,
-            PromptCompiler promptCompiler,
-            UniformLLMCaller caller,
-            ObjectMapper objectMapper,
+            @NotNull String agentId,
+            @NotNull AgentPersona persona,
+            @NotNull McpEngine mcpEngine,
+            @NotNull Gateway gateway,
+            @NotNull HitlRegistry hitlRegistry,
+            @NotNull IngressDefense ingressDefense,
+            @Nullable List<LoopInterceptor> interceptors,
+            @NotNull PromptCompiler promptCompiler,
+            @NotNull UniformLLMCaller caller,
+            @NotNull ObjectMapper objectMapper,
             long maxCallsPerEpisode,
-            LlmBinding binding,
-            DeltaBroker deltaBroker,
-            UUID userId,
-            top.focess.veto.memory.MemoryCaptureService captureService) {
+            @NotNull LlmBinding binding,
+            @Nullable DeltaBroker deltaBroker,
+            @NotNull UUID userId,
+            @Nullable top.focess.veto.memory.MemoryCaptureService captureService) {
         this.agentId = agentId;
         this.persona = persona;
         this.whitelistedTools =
@@ -1031,7 +1033,7 @@ public class AgentRunner {
      * before enqueueing removes the submit→await race — await always snapshots the future this task
      * will complete, not the previous episode's already-completed one.
      */
-    public void startTask(Consumer<AgentResult> callback, AgentAction action) {
+    public void startTask(@Nullable Consumer<AgentResult> callback, @NotNull AgentAction action) {
         this.callback = callback;
         this.resultFuture = new CompletableFuture<>();
         if (this.state == AgentState.INTERCEPTED) {
@@ -1040,11 +1042,11 @@ public class AgentRunner {
         actionQueue.add(action);
     }
 
-    public void enqueue(AgentAction action) {
+    public void enqueue(@NotNull AgentAction action) {
         actionQueue.add(action);
     }
 
-    public void bind(LlmBinding binding) {
+    public void bind(@NotNull LlmBinding binding) {
         this.binding = binding;
     }
 
@@ -1052,20 +1054,22 @@ public class AgentRunner {
      * Subscribes a user-facing-message listener (the emission seam; forwarded in {@link
      * #emitMessage}).
      */
-    public void addMessageListener(Consumer<String> listener) {
+    public void addMessageListener(@NotNull Consumer<String> listener) {
         if (listener != null) {
             messageListeners.add(listener);
         }
     }
 
     /** Unsubscribes a user-facing-message listener. */
-    public void removeMessageListener(Consumer<String> listener) {
+    public void removeMessageListener(@NotNull Consumer<String> listener) {
         if (listener != null) {
             messageListeners.remove(listener);
         }
     }
 
-    public AgentResult await(Duration timeout) throws TimeoutException, InterruptedException {
+    @NotNull
+    public AgentResult await(@NotNull Duration timeout)
+            throws TimeoutException, InterruptedException {
         CompletableFuture<AgentResult> f = resultFuture;
         try {
             return f.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
@@ -1077,27 +1081,33 @@ public class AgentRunner {
         }
     }
 
+    @NotNull
     public CompletableFuture<AgentResult> result() {
         return resultFuture;
     }
 
+    @NotNull
     public AgentState state() {
         return state;
     }
 
+    @NotNull
     public synchronized List<TurnRecord> history() {
         return List.copyOf(history);
     }
 
+    @NotNull
     public ReadHistory readHistory() {
         return readHistory;
     }
 
     /** The whitelisted tool-name view (immutable). */
+    @NotNull
     public Set<String> whitelistedToolsView() {
         return whitelistedTools;
     }
 
+    @NotNull
     public String agentId() {
         return agentId;
     }
@@ -1128,11 +1138,11 @@ public class AgentRunner {
 
     /** A model binding: provider/model/credential/options + the Layer-1 system-prompt base. */
     public record LlmBinding(
-            ProviderType provider,
-            String model,
-            String credentialKey,
-            LlmOptions options,
-            String systemPromptBase) {}
+            @NotNull ProviderType provider,
+            @NotNull String model,
+            @NotNull String credentialKey,
+            @NotNull LlmOptions options,
+            @NotNull String systemPromptBase) {}
 
     /** Signals a breaker trip (caught at the action boundary → IDLE + notice). */
     private static final class BreakerTripException extends RuntimeException {}

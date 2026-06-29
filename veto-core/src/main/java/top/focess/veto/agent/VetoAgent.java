@@ -7,6 +7,8 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.mcp.ToolDefinition;
@@ -19,13 +21,13 @@ import top.focess.veto.agent.mcp.ToolDefinition;
  */
 public class VetoAgent implements Agent {
 
-    private final String id;
-    private final AgentPersona persona;
-    private final Set<String> whitelistedTools;
-    private final AgentRunner runner;
-    private final Thread virtualThread;
+    private final @NotNull String id;
+    private final @NotNull AgentPersona persona;
+    private final @NotNull Set<String> whitelistedTools;
+    private final @NotNull AgentRunner runner;
+    private final @NotNull Thread virtualThread;
 
-    public VetoAgent(AgentPersona persona, AgentRunner runner) {
+    public VetoAgent(@NotNull AgentPersona persona, @NotNull AgentRunner runner) {
         this.id = persona.id() != null ? persona.id() : UUID.randomUUID().toString();
         this.persona = persona;
         this.whitelistedTools = runner.whitelistedToolsView();
@@ -34,46 +36,54 @@ public class VetoAgent implements Agent {
     }
 
     @Override
+    @NotNull
     public String id() {
         return id;
     }
 
     @Override
+    @NotNull
     public String name() {
         return persona.name();
     }
 
     @Override
+    @NotNull
     public AgentPersona persona() {
         return persona;
     }
 
     @Override
+    @NotNull
     public Set<String> whitelistedTools() {
         return whitelistedTools;
     }
 
     @Override
+    @NotNull
     public AgentState state() {
         return runner.state();
     }
 
     @Override
-    public void submit(String prompt) {
+    public void submit(@NotNull String prompt) {
         runner.startTask(null, new AgentAction.UserPromptAction(prompt));
     }
 
     @Override
-    public void submit(String prompt, Consumer<AgentResult> callback) {
+    public void submit(@NotNull String prompt, @Nullable Consumer<AgentResult> callback) {
         runner.startTask(callback, new AgentAction.UserPromptAction(prompt));
     }
 
     @Override
-    public AgentResult await(Duration timeout) throws TimeoutException, InterruptedException {
+    @NotNull
+    public AgentResult await(@NotNull Duration timeout)
+            throws TimeoutException, InterruptedException {
         return runner.await(timeout);
     }
 
     @Override
+    @NotNull
     public CompletableFuture<AgentResult> result() {
         return runner.result();
     }
@@ -95,11 +105,13 @@ public class VetoAgent implements Agent {
     }
 
     @Override
+    @NotNull
     public List<TurnRecord> history() {
         return runner.history();
     }
 
     @Override
+    @NotNull
     public ReadHistory readHistory() {
         return runner.readHistory();
     }
@@ -112,7 +124,7 @@ public class VetoAgent implements Agent {
     /**
      * Updates the model binding (provider/model/credential) — used when the user switches agent.
      */
-    public void bind(AgentRunner.LlmBinding binding) {
+    public void bind(@NotNull AgentRunner.LlmBinding binding) {
         runner.bind(binding);
     }
 
@@ -121,16 +133,17 @@ public class VetoAgent implements Agent {
      * cares about streaming. The listener fires on the agent's virtual thread as each {@code
      * response.message} is emitted.
      */
-    public void addMessageListener(java.util.function.Consumer<String> listener) {
+    public void addMessageListener(@NotNull java.util.function.Consumer<String> listener) {
         runner.addMessageListener(listener);
     }
 
     /** Unsubscribes a user-facing-message listener. */
-    public void removeMessageListener(java.util.function.Consumer<String> listener) {
+    public void removeMessageListener(@NotNull java.util.function.Consumer<String> listener) {
         runner.removeMessageListener(listener);
     }
 
     /** The persona's resolved manifest (for the PromptCompiler / tests). */
+    @NotNull
     public Set<ToolDefinition> manifest() {
         return persona.whitelistedTools();
     }
