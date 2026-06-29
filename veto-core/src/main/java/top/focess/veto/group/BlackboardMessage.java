@@ -2,6 +2,7 @@ package top.focess.veto.group;
 
 import java.util.Objects;
 import java.util.UUID;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * A single message on the group Blackboard (blackboard.md §2). Append-only, ordered by {@code
@@ -9,12 +10,12 @@ import java.util.UUID;
  * node-task instructions — never file contents.
  */
 public record BlackboardMessage(
-        String messageId,
-        UUID groupId,
-        String senderId, // Mate id or "LEADER"
-        String receiverId, // "LEADER" for Mate posts; a Mate id for Leader dispatches
-        MessageType type,
-        String payload,
+        @NotNull String messageId,
+        @NotNull UUID groupId,
+        @NotNull String senderId, // Mate id or "LEADER"
+        @NotNull String receiverId, // "LEADER" for Mate posts; a Mate id for Leader dispatches
+        @NotNull MessageType type,
+        @NotNull String payload,
         long turnSeq) {
 
     public BlackboardMessage {

@@ -3,19 +3,21 @@ package top.focess.veto.group;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * A single node in the group's Execution DAG (execution_dag.md). Each node is a unit of work
  * assigned to a single Mate, with explicit dependencies on other nodes.
  */
 public record DagNode(
-        String nodeId,
-        String description,
-        String assignedMateId, // null if unassigned
-        String requiredSkillset, // e.g. "coding", "testing", "graphql"
-        Set<String> dependsOn, // nodeIds
-        NodeState state,
-        NodeResult result,
+        @NotNull String nodeId,
+        @NotNull String description,
+        @Nullable String assignedMateId, // null if unassigned
+        @NotNull String requiredSkillset, // e.g. "coding", "testing", "graphql"
+        @NotNull Set<String> dependsOn, // nodeIds
+        @NotNull NodeState state,
+        @NotNull NodeResult result,
         int retryCount) { // number of FAILED → retry cycles
 
     public DagNode {
@@ -45,17 +47,22 @@ public record DagNode(
     public record ResultNone() implements NodeResult {}
 
     /** Verifier accepted: an artifact was produced at the given workspace path. */
-    public record ResultArtifact(String artifactPath) implements NodeResult {}
+    public record ResultArtifact(@NotNull String artifactPath) implements NodeResult {}
 
     /** Verifier (or self) reported failure with a short feedback string. */
-    public record ResultFailure(String feedback, List<String> logRefs) implements NodeResult {
+    public record ResultFailure(@NotNull String feedback, @NotNull List<String> logRefs)
+            implements NodeResult {
         public ResultFailure {
             logRefs = logRefs == null ? List.of() : List.copyOf(logRefs);
         }
     }
 
+    @NotNull
     public static DagNode pending(
-            String nodeId, String description, String requiredSkillset, Set<String> dependsOn) {
+            @NotNull String nodeId,
+            @NotNull String description,
+            @NotNull String requiredSkillset,
+            @NotNull Set<String> dependsOn) {
         return new DagNode(
                 nodeId,
                 description,
@@ -69,13 +76,13 @@ public record DagNode(
 
     /** Compatibility constructor for legacy code that doesn't specify retryCount. Defaults to 0. */
     public DagNode(
-            String nodeId,
-            String description,
-            String assignedMateId,
-            String requiredSkillset,
-            Set<String> dependsOn,
-            NodeState state,
-            NodeResult result) {
+            @NotNull String nodeId,
+            @NotNull String description,
+            @Nullable String assignedMateId,
+            @NotNull String requiredSkillset,
+            @NotNull Set<String> dependsOn,
+            @NotNull NodeState state,
+            @NotNull NodeResult result) {
         this(nodeId, description, assignedMateId, requiredSkillset, dependsOn, state, result, 0);
     }
 }
