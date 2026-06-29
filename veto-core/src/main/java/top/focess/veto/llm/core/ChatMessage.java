@@ -1,5 +1,7 @@
 package top.focess.veto.llm.core;
 
+import org.jetbrains.annotations.NotNull;
+
 /**
  * A single chat message in a compiled conversation — the role-mapped form the {@code
  * PromptCompiler} emits and the providers send. Provider adapters convert these into their
@@ -8,21 +10,25 @@ package top.focess.veto.llm.core;
  * @param role one of {@code system}, {@code user}, {@code assistant}, {@code tool}
  * @param content the message content (text; tool calls/responses are rendered as text observations)
  */
-public record ChatMessage(String role, String content) {
+public record ChatMessage(@NotNull String role, @NotNull String content) {
 
-    public static ChatMessage system(String content) {
+    @NotNull
+    public static ChatMessage system(@NotNull String content) {
         return new ChatMessage("system", content);
     }
 
-    public static ChatMessage user(String content) {
+    @NotNull
+    public static ChatMessage user(@NotNull String content) {
         return new ChatMessage("user", content);
     }
 
-    public static ChatMessage assistant(String content) {
+    @NotNull
+    public static ChatMessage assistant(@NotNull String content) {
         return new ChatMessage("assistant", content);
     }
 
-    public static ChatMessage tool(String content) {
+    @NotNull
+    public static ChatMessage tool(@NotNull String content) {
         return new ChatMessage("tool", content);
     }
 }

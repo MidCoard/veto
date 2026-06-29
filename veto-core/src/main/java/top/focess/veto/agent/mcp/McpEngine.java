@@ -2,6 +2,8 @@ package top.focess.veto.agent.mcp;
 
 import java.util.List;
 import java.util.Set;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import top.focess.veto.llm.core.ToolCall;
 
 /**
@@ -21,11 +23,14 @@ import top.focess.veto.llm.core.ToolCall;
 public interface McpEngine {
 
     /** Queries all registered servers to compile a whitelisted tools list for the agent. */
-    List<ToolDefinition> getActiveTools(Set<String> whitelist);
+    @NotNull
+    List<ToolDefinition> getActiveTools(@Nullable Set<String> whitelist);
 
     /** Resolves a tool name to its typed {@link ToolDefinition} (native / remote / agent). */
-    ToolDefinition resolveDefinition(String toolName);
+    @Nullable
+    ToolDefinition resolveDefinition(@NotNull String toolName);
 
     /** Executes a tool call, dispatching by the resolved definition's flavour. */
-    McpToolResult execute(ToolCall call, ToolDefinition def);
+    @NotNull
+    McpToolResult execute(@NotNull ToolCall call, @NotNull ToolDefinition def);
 }

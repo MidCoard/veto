@@ -2,6 +2,7 @@ package top.focess.veto.agent.mcp;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * Contract for a native in-process MCP tool. The implementing class (a Java record carrying the
@@ -20,24 +21,30 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 public interface NativeMcpTool<T> {
 
     /** The unique name of the tool (e.g. {@code "view_file"}). */
+    @NotNull
     String getName();
 
     /** The description explaining when and how the LLM should invoke the tool. */
+    @NotNull
     String getDescription();
 
     /**
      * The class of the arguments container used for schema compilation and JSON deserialization.
      */
+    @NotNull
     Class<T> getArgsClass();
 
     /** Executes the tool logic with strongly-typed arguments. */
-    String execute(T args) throws Exception;
+    @NotNull
+    String execute(@NotNull T args) throws Exception;
 
     /**
      * Bridge method to parse raw JSON node parameters and execute the tool. Inherited automatically
      * by implementations.
      */
-    default String executeFromJson(JsonNode jsonArgs, ObjectMapper mapper) throws Exception {
+    @NotNull
+    default String executeFromJson(@NotNull JsonNode jsonArgs, @NotNull ObjectMapper mapper)
+            throws Exception {
         T typedArgs = mapper.treeToValue(jsonArgs, getArgsClass());
         return execute(typedArgs);
     }

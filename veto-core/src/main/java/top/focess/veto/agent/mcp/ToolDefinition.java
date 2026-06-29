@@ -1,5 +1,7 @@
 package top.focess.veto.agent.mcp;
 
+import org.jetbrains.annotations.NotNull;
+
 /**
  * Unified tool definition — the capability manifest element. Every tool exposes its name,
  * description, risk category, and parameter schema through this single contract. The Gateway reads
@@ -26,11 +28,15 @@ package top.focess.veto.agent.mcp;
 public sealed interface ToolDefinition
         permits NativeToolDefinition, RemoteToolDefinition, AgentToolDefinition {
 
+    @NotNull
     String name();
 
+    @NotNull
     String description();
 
+    @NotNull
     RiskCategory risk();
 
+    @NotNull
     ParameterSchema parameters();
 }
