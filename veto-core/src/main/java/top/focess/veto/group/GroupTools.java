@@ -3,6 +3,7 @@ package top.focess.veto.group;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import org.jetbrains.annotations.NotNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.mcp.Doc;
 import top.focess.veto.agent.mcp.NativeMcpTool;
@@ -69,7 +70,7 @@ public final class GroupTools {
         }
 
         @Override
-        public String execute(Args args) {
+        public String execute(@NotNull Args args) {
             String task = args.task() == null ? "" : args.task();
             UUID groupId = UUID.randomUUID();
             ExecutionDag dag =
@@ -133,7 +134,7 @@ public final class GroupTools {
         }
 
         @Override
-        public String execute(Args args) {
+        public String execute(@NotNull Args args) {
             spawner.disband(UUID.fromString(args.groupId()));
             return "disbanded";
         }
@@ -177,7 +178,7 @@ public final class GroupTools {
         }
 
         @Override
-        public String execute(Args args) {
+        public String execute(@NotNull Args args) {
             spawner.addMate(
                     UUID.fromString(args.groupId()), args.mateId(), args.skillset(), agentFactory);
             return "mate added";
@@ -215,7 +216,7 @@ public final class GroupTools {
         }
 
         @Override
-        public String execute(Args args) {
+        public String execute(@NotNull Args args) {
             spawner.removeMate(UUID.fromString(args.groupId()), args.mateId());
             return "mate removed";
         }
@@ -258,7 +259,7 @@ public final class GroupTools {
         }
 
         @Override
-        public String execute(Args args) {
+        public String execute(@NotNull Args args) {
             // Payload shape "<nodeId>:<instruction>" is what MateAgent.handleDispatch parses; for
             // an
             // ad-hoc dispatch (not tied to a DAG node) the mateId stands in as the nodeId.
@@ -315,9 +316,10 @@ public final class GroupTools {
         }
 
         @Override
-        public String execute(Args args) {
+        public String execute(@NotNull Args args) {
             BlackboardMessage.MessageType type = BlackboardMessage.MessageType.valueOf(args.type());
-            // Resolve senderId from tool call context (the calling Mate's agentId)
+            // Resolve senderId from tool call context (the calling Mate's agentId).
+            // get() is @Nullable — a single null-check suffices.
             ToolCallContext ctx = ToolCallContextHolder.get();
             String senderId = ctx != null ? ctx.agentId() : "mate";
             blackboard.post(
@@ -368,7 +370,7 @@ public final class GroupTools {
         }
 
         @Override
-        public String execute(Args args) {
+        public String execute(@NotNull Args args) {
             Group g = registry.get(UUID.fromString(args.groupId()));
             if (g == null) {
                 return "unknown group";
