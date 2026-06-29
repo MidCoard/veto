@@ -110,6 +110,39 @@ public class KernelSandboxSubstrate {
     }
 
     /**
+     * Attach the kernel-level wall and return a handle that should be closed after the process
+     * exits. On Windows, this returns a closeable that closes the Job Object handle. On unsupported
+     * platforms, returns {@code null}.
+     *
+     * <p><b>Usage:</b>
+     *
+     * <pre>{@code
+     * Process p = pb.start();
+     * try (AutoCloseable handle = substrate.attachWithHandle(p)) {
+     *     p.waitFor();
+     * } // handle closed here
+     * }</pre>
+     *
+     * @param process the spawned process to attach to
+     * @return a closeable handle, or null on unsupported platforms
+     */
+    public AutoCloseable attachWithHandle(Process process) {
+        if (process == null) {
+            return null;
+        }
+        if (IS_WINDOWS && windowsKernel != null) {
+            return attachWindowsJobObjectWithHandle(process);
+        } else if (IS_LINUX) {
+            attachLinuxCgroup(process);
+            // Linux cgroup doesn't need explicit cleanup (cgroup is per-pid)
+            return null;
+        } else {
+            log.debug("KernelSandboxSubstrate: no kernel wall available (platform={})", OS);
+            return null;
+        }
+    }
+
+    /**
      * Helper for the Linux path: returns a {@code ProcessBuilder} that wraps the actual command in
      * {@code unshare(1)} to give the child a fresh mount/pid/net namespace. If {@code unshare} is
      * not on PATH, returns the original ProcessBuilder unchanged.
@@ -273,13 +306,28 @@ public class KernelSandboxSubstrate {
     }
 
     private void attachWindowsJobObject(Process process) {
+        // Delegate to attachWithHandle but don't track the handle (legacy API, leaks the handle)
+        attachWindowsJobObjectWithHandle(process);
+    }
+
+    /**
+     * Attach Windows Job Object and return a closeable handle. The handle should be closed after
+     * the process exits to release the kernel Job Object resource.
+     */
+    private AutoCloseable attachWindowsJobObjectWithHandle(Process process) {
         try {
             // 1. Create a Job Object with KILL_ON_JOB_CLOSE so the process is terminated
             //    if the parent (the Veto process) crashes.
             WinNT.HANDLE job = windowsKernel.CreateJobObjectW(null, null);
-            if (job == null || job.getPointer() == null || job.getPointer().equals(Pointer.NULL)) {
-                log.warn("KernelSandboxSubstrate: CreateJobObjectW failed");
-                return;
+            if (job == null) {
+                log.warn("KernelSandboxSubstrate: CreateJobObjectW failed (returned null)");
+                return null;
+            }
+            Pointer jobPtr = job.getPointer();
+            if (jobPtr == null) {
+                log.warn(
+                        "KernelSandboxSubstrate: CreateJobObjectW returned handle with null pointer");
+                return null;
             }
             // 2. Build a JOBOBJECT_EXTENDED_LIMIT_INFORMATION via JNA Structure (NOT a raw byte
             //    buffer). The previous implementation wrote BasicLimitFlags at byte offset 24 of
@@ -297,14 +345,14 @@ public class KernelSandboxSubstrate {
             if (!windowsKernel.SetInformationJobObject(
                     job, JobObjectInfoClass.JobObjectExtendedLimitInformation, info, info.size())) {
                 log.warn("KernelSandboxSubstrate: SetInformationJobObject failed");
-                return;
+                return null;
             }
             // 3. AssignProcessToJobObject — pin the child to the Job.
             Kernel32 kernel32 = windowsStdKernel;
             int pid = getProcessId(process);
             if (pid <= 0) {
                 log.warn("KernelSandboxSubstrate: could not determine child pid");
-                return;
+                return null;
             }
             WinNT.HANDLE handle =
                     kernel32.OpenProcess(
@@ -312,31 +360,63 @@ public class KernelSandboxSubstrate {
                             false, pid);
             // Windows OpenProcess returns either a valid HANDLE, NULL (0) on some failures,
             // or INVALID_HANDLE_VALUE (0xFFFFFFFFFFFFFFFF, i.e. (HANDLE)-1) on others (e.g.
-            // access denied, invalid parameter). Checking only Pointer.NULL would let
+            // access denied, invalid parameter). Checking only null would let
             // INVALID_HANDLE_VALUE slip through; AssignProcessToJobObject then fails with
             // ERROR_INVALID_HANDLE and the child is silently NOT pinned to the Job, defeating
-            // KILL_ON_JOB_CLOSE. Catch all three failure sentinels.
+            // KILL_ON_JOB_CLOSE. Catch all failure sentinels.
             Pointer handlePtr = handle == null ? null : handle.getPointer();
             Pointer invalidHandleValue = Pointer.createConstant(-1L);
-            if (handle == null
-                    || handlePtr == null
-                    || Pointer.NULL.equals(handlePtr)
-                    || invalidHandleValue.equals(handlePtr)) {
+            if (handle == null || handlePtr == null) {
                 log.warn(
                         "KernelSandboxSubstrate: OpenProcess failed for pid {} (Win32 error={})",
                         pid,
                         kernel32.GetLastError());
-                return;
+                return null;
+            }
+            // Check for null pointer (0) and INVALID_HANDLE_VALUE (-1)
+            long handleAddr = Pointer.nativeValue(handlePtr);
+            if (handleAddr == 0 || handleAddr == -1L) {
+                log.warn(
+                        "KernelSandboxSubstrate: OpenProcess returned invalid handle for pid {} (addr={})",
+                        pid,
+                        handleAddr);
+                return null;
             }
             if (!windowsKernel.AssignProcessToJobObject(job, handle)) {
                 log.warn(
                         "KernelSandboxSubstrate: AssignProcessToJobObject failed (Win32 error={})",
                         kernel32.GetLastError());
-                return;
+                return null;
             }
             log.info("KernelSandboxSubstrate: attached Windows Job Object to pid {}", pid);
+            // Return a closeable that closes the Job handle
+            return new JobHandle(job, pid);
         } catch (Throwable t) {
             log.warn("KernelSandboxSubstrate: Windows attach failed: {}", t.getMessage());
+            return null;
+        }
+    }
+
+    /** A closeable wrapper for a Windows Job Object handle. */
+    private final class JobHandle implements AutoCloseable {
+        private final WinNT.HANDLE job;
+        private final int pid;
+
+        JobHandle(WinNT.HANDLE job, int pid) {
+            this.job = job;
+            this.pid = pid;
+        }
+
+        @Override
+        public void close() {
+            if (job != null && windowsStdKernel != null) {
+                try {
+                    windowsStdKernel.CloseHandle(job);
+                    log.debug("KernelSandboxSubstrate: closed Job handle for pid {}", pid);
+                } catch (Throwable t) {
+                    log.warn("KernelSandboxSubstrate: CloseHandle failed: {}", t.getMessage());
+                }
+            }
         }
     }
 
