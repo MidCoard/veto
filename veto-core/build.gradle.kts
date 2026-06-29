@@ -23,6 +23,9 @@ repositories {
 dependencies {
     implementation(project(":veto-protocol"))
 
+    // Jetbrains nullability annotations
+    compileOnly("org.jetbrains:annotations:26.1.0")
+
     // Spring Boot
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-websocket")

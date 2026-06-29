@@ -21,7 +21,7 @@ val slf4jVersion: String by rootProject.extra
 val logbackVersion: String by rootProject.extra
 
 dependencies {
-    compileOnly("org.jetbrains:annotations:24.1.0")
+    compileOnly("org.jetbrains:annotations:26.1.0")
     api("com.fasterxml.jackson.core:jackson-databind:$jacksonVersion")
     api("org.zeromq:jeromq:$jeromqVersion")
 
