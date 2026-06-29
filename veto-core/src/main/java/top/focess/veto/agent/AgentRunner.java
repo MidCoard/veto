@@ -42,8 +42,11 @@ import top.focess.veto.agent.loop.StopAction;
 import top.focess.veto.agent.mcp.AgentToolDefinition;
 import top.focess.veto.agent.mcp.McpEngine;
 import top.focess.veto.agent.mcp.McpToolResult;
+import top.focess.veto.agent.mcp.ToolCallContextHolder;
 import top.focess.veto.agent.mcp.ToolDefinition;
 import top.focess.veto.agent.screening.Danger;
+import top.focess.veto.bus.DeltaBroker;
+import top.focess.veto.bus.DeltaFrame;
 import top.focess.veto.llm.core.ChatMessage;
 import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.llm.core.ProviderType;
@@ -82,6 +85,16 @@ public class AgentRunner {
     private final ObjectMapper objectMapper;
     private final LoopBreaker breaker;
     private final ReadHistory readHistory;
+    // The Part-8 Delta-broker seam: when present, each loop emission is published as a DeltaFrame
+    // (per-session, broker-assigned sequence) so transports (WebSocket) can stream it. Nullable so
+    // non-Spring callers (tests) keep working without a broker.
+    private final DeltaBroker deltaBroker;
+    private final UUID sessionId;
+    // The per-turn memory-capture service (Part 4 §3.1). Nullable — when null (tests / no capture
+    // configured), appendTurn only updates the in-memory history; when present, each turn is also
+    // captured into Session LTM + the raw-turn audit log.
+    private final top.focess.veto.memory.MemoryCaptureService captureService;
+    private final UUID userId;
 
     // --- model binding (provider/model/credential), set per prompt ---
     private volatile LlmBinding binding;
@@ -124,7 +137,10 @@ public class AgentRunner {
             UniformLLMCaller caller,
             ObjectMapper objectMapper,
             long maxCallsPerEpisode,
-            LlmBinding binding) {
+            LlmBinding binding,
+            DeltaBroker deltaBroker,
+            UUID userId,
+            top.focess.veto.memory.MemoryCaptureService captureService) {
         this.agentId = agentId;
         this.persona = persona;
         this.whitelistedTools =
@@ -143,6 +159,13 @@ public class AgentRunner {
         this.readHistory = gateway.readHistory();
         this.binding = binding;
         this.scope = new Scope(objectMapper);
+        this.deltaBroker = deltaBroker;
+        // agentId is the persona id (a UUID string — see AgentService.createAgent); derive the
+        // per-session frame key once. Fail-fast if a non-UUID id ever reaches here.
+        this.sessionId = UUID.fromString(agentId);
+        this.userId = userId;
+        // Capture is nullable: non-Spring callers (tests) pass null so turns are not captured.
+        this.captureService = captureService;
     }
 
     // ── Virtual-thread loop ────────────────────────────────────────────────
@@ -524,6 +547,8 @@ public class AgentRunner {
                 if (attempt == MAX_SCHEMA_RETRIES) {
                     throw e;
                 }
+                // Inject an ephemeral rejection message so the model knows what to fix on retry.
+                request = injectSchemaRejection(request, e);
             }
         }
         throw last;
@@ -544,6 +569,64 @@ public class AgentRunner {
                 b.options(),
                 messages,
                 compiled.responseSchema());
+    }
+
+    /**
+     * Injects an ephemeral rejection message for a schema-violation retry. The rejection is added
+     * only to the {@link VetoRequest} for the next attempt — it is never appended to {@link
+     * #history}, so a crash after a successful retry loses it (acceptable). All binding fields
+     * (provider/model/credential/options/schema) are preserved verbatim.
+     */
+    private VetoRequest injectSchemaRejection(VetoRequest request, ModelSchemaException e) {
+        String rejection =
+                String.format(
+                        "Your previous response was rejected due to a schema violation: %s.\n"
+                                + "Expected: %s.\n"
+                                + "Please regenerate a valid response matching the veto_pulse schema.",
+                        e.getMessage(), getExpectedDescription(e));
+        List<ChatMessage> augmented = new ArrayList<>(request.messages());
+        augmented.add(ChatMessage.user(rejection));
+        return new VetoRequest(
+                request.systemPrompt(),
+                request.userPrompt(),
+                request.tools(),
+                request.providerType(),
+                request.modelName(),
+                request.credentialKey(),
+                request.options(),
+                augmented,
+                request.responseSchema());
+    }
+
+    /**
+     * Maps a {@link ModelSchemaException} message to the human-readable behavior the model should
+     * adopt on retry. Substring-matched against the canonical messages {@link ResponseEnforcer}
+     * emits.
+     */
+    private String getExpectedDescription(ModelSchemaException e) {
+        String msg = e.getMessage();
+        if (msg.contains("thought ON")) {
+            return "thought field must be present and non-empty when the effective thought flag is ON";
+        }
+        // NOTE: "message required" must be matched before "thought OFF" — the message-required
+        // exception string is "message required (thought OFF or is_finished)", which contains the
+        // substring "thought OFF"; checking "thought OFF" first would mis-map it.
+        if (msg.contains("message required")) {
+            return "message field is required when thought is OFF or is_finished is true";
+        }
+        if (msg.contains("thought OFF")) {
+            return "thought field must not be present when the effective thought flag is OFF";
+        }
+        if (msg.contains("mutually exclusive")) {
+            return "either calls or actionsProgram, not both";
+        }
+        if (msg.contains("empty turn")) {
+            return "at least one of thought, message, calls, or actionsProgram";
+        }
+        if (msg.contains("features")) {
+            return "features field is always required";
+        }
+        return "valid JSON matching the veto_pulse schema";
     }
 
     // ── executeToolCalls — the canonical chain ─────────────────────
@@ -680,29 +763,34 @@ public class AgentRunner {
             }
         }
 
-        // (d) execute.
-        McpToolResult result = mcpEngine.execute(call, def);
+        // (d) execute with tool call context (agentId + userId) threaded through.
+        ToolCallContextHolder.set(agentId, userId);
+        try {
+            McpToolResult result = mcpEngine.execute(call, def);
 
-        // (e) plugin postAction chain
-        McpToolResult transformed = result;
-        for (LoopInterceptor plugin : interceptors) {
-            transformed = plugin.postAction(agentId, call, transformed);
+            // (e) plugin postAction chain
+            McpToolResult transformed = result;
+            for (LoopInterceptor plugin : interceptors) {
+                transformed = plugin.postAction(agentId, call, transformed);
+            }
+
+            // (f) ingress defense
+            String observation =
+                    ingressDefense.maskAndFrame(
+                            call, def, transformed, ApprovalDecision.AUTO_APPROVE, readHistory);
+
+            // (g) plugin preObservation chain
+            for (LoopInterceptor plugin : interceptors) {
+                observation = plugin.preObservation(agentId, observation);
+            }
+
+            appendTurn(
+                    TurnRecord.toolResponse(
+                            ++turnNumber, call.callId(), observation, transformed.success()));
+            return transformed;
+        } finally {
+            ToolCallContextHolder.clear();
         }
-
-        // (f) ingress defense
-        String observation =
-                ingressDefense.maskAndFrame(
-                        call, def, transformed, ApprovalDecision.AUTO_APPROVE, readHistory);
-
-        // (g) plugin preObservation chain
-        for (LoopInterceptor plugin : interceptors) {
-            observation = plugin.preObservation(agentId, observation);
-        }
-
-        appendTurn(
-                TurnRecord.toolResponse(
-                        ++turnNumber, call.callId(), observation, transformed.success()));
-        return transformed;
     }
 
     private McpToolResult executeOneCall(ToolCall call) {
@@ -756,28 +844,33 @@ public class AgentRunner {
             }
         }
 
-        // (d) execute.
-        McpToolResult result = mcpEngine.execute(call, def);
+        // (d) execute with tool call context (agentId + userId) threaded through.
+        ToolCallContextHolder.set(agentId, userId);
+        try {
+            McpToolResult result = mcpEngine.execute(call, def);
 
-        // (e) plugin postAction chain.
-        McpToolResult transformed = result;
-        for (LoopInterceptor plugin : interceptors) {
-            transformed = plugin.postAction(agentId, call, transformed);
+            // (e) plugin postAction chain.
+            McpToolResult transformed = result;
+            for (LoopInterceptor plugin : interceptors) {
+                transformed = plugin.postAction(agentId, call, transformed);
+            }
+
+            // (f) ingress defense (mask + frame + invalidate read-history on write).
+            String observation =
+                    ingressDefense.maskAndFrame(call, def, transformed, decision, readHistory);
+
+            // (g) plugin preObservation chain.
+            for (LoopInterceptor plugin : interceptors) {
+                observation = plugin.preObservation(agentId, observation);
+            }
+
+            appendTurn(
+                    TurnRecord.toolResponse(
+                            ++turnNumber, call.callId(), observation, transformed.success()));
+            return transformed;
+        } finally {
+            ToolCallContextHolder.clear();
         }
-
-        // (f) ingress defense (mask + frame + invalidate read-history on write).
-        String observation =
-                ingressDefense.maskAndFrame(call, def, transformed, decision, readHistory);
-
-        // (g) plugin preObservation chain.
-        for (LoopInterceptor plugin : interceptors) {
-            observation = plugin.preObservation(agentId, observation);
-        }
-
-        appendTurn(
-                TurnRecord.toolResponse(
-                        ++turnNumber, call.callId(), observation, transformed.success()));
-        return transformed;
     }
 
     /** Parks the virtual thread on a HITL future; applies the resolution (EDIT re-screens). */
@@ -854,14 +947,41 @@ public class AgentRunner {
                 }
             }
         }
+        // Part-8 emission seam: publish a DeltaFrame to the broker so transports (the WebSocket
+        // bus via DeltaBusBridge) can stream each user-facing message. The broker assigns the
+        // per-session sequence; the frame text is the message verbatim.
+        if (deltaBroker != null) {
+            try {
+                deltaBroker.publish(
+                        DeltaFrame.builder()
+                                .sessionId(sessionId)
+                                .kind(DeltaFrame.Kind.ASSISTANT_MESSAGE)
+                                .text(message)
+                                .build());
+            } catch (RuntimeException e) {
+                log.warn("Agent {} delta-broker publish failed", agentId, e);
+            }
+        }
     }
 
     private void appendObservation(String toolName, String content) {
         appendTurn(TurnRecord.toolResponse(++turnNumber, null, content, false));
     }
 
-    private synchronized void appendTurn(TurnRecord turn) {
-        history.add(turn);
+    private void appendTurn(TurnRecord turn) {
+        synchronized (this) {
+            history.add(turn);
+        }
+        // Capture the turn into Session LTM + the raw-turn audit log (Part 4 §3.1). Best-effort —
+        // done outside the history lock so a DB write doesn't block history readers, and the
+        // service swallows failures so the loop is never affected.
+        if (captureService != null) {
+            try {
+                captureService.capture(turn, sessionId, userId);
+            } catch (RuntimeException e) {
+                log.warn("Agent {} turn capture failed", agentId, e);
+            }
+        }
     }
 
     // ── completion ──────────────────────────────────────────────────────────

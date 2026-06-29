@@ -1,11 +1,16 @@
 package top.focess.veto.group;
 
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.mcp.Doc;
 import top.focess.veto.agent.mcp.NativeMcpTool;
 import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.SecurityHint;
+import top.focess.veto.agent.mcp.ToolCallContext;
+import top.focess.veto.agent.mcp.ToolCallContextHolder;
 import top.focess.veto.agent.mcp.ToolSecurity;
 
 /**
@@ -14,7 +19,14 @@ import top.focess.veto.agent.mcp.ToolSecurity;
  * messages to the Leader (blackboard.md §3.2).
  *
  * <p>These are native tools — they pass through the Gateway (read of own data is SAFE, writes are
- * ELEVATED + audited).
+ * ELEVATED + audited). Each tool's {@code execute(...)} body is wired to the group runtime ({@link
+ * GroupSpawner} / {@link Blackboard} / {@link GroupRegistry}); the {@code create_group} path spawns
+ * a registered group + DAG that {@link GroupOrchestrator#tick} (driven by {@link
+ * GroupTickScheduler}) advances once Mates are added via {@code create_mate}.
+ *
+ * <p><b>Tool call-context gap:</b> the {@code NativeMcpTool.execute(Args)} contract carries no
+ * caller identity, so the tools use placeholder {@code leaderId}/{@code userId}/{@code senderId}
+ * values until per-call context (the calling agent's id) is threaded through tool execution.
  */
 public final class GroupTools {
 
@@ -24,6 +36,12 @@ public final class GroupTools {
     @Component
     @ToolSecurity(risk = RiskCategory.FILE_WRITE)
     public static final class CreateGroup implements NativeMcpTool<CreateGroup.Args> {
+
+        private final GroupSpawner spawner;
+
+        public CreateGroup(GroupSpawner spawner) {
+            this.spawner = spawner;
+        }
 
         public record Args(
                 @SecurityHint(ParamCategory.GENERIC)
@@ -52,8 +70,35 @@ public final class GroupTools {
 
         @Override
         public String execute(Args args) {
-            // Wired at runtime by McpEngineImpl; the body is invoked through the MCP engine.
-            return "";
+            String task = args.task() == null ? "" : args.task();
+            UUID groupId = UUID.randomUUID();
+            ExecutionDag dag =
+                    (args.dag() != null && !args.dag().isBlank())
+                            ? LlmLeader.parseDagFromJson(groupId, args.dag())
+                            : null;
+            if (dag == null) {
+                // Single-node DAG seeded with the task; the Leader refines via create_mate +
+                // dispatch.
+                dag =
+                        new ExecutionDag(
+                                groupId,
+                                List.of(
+                                        new DagNode(
+                                                "n1",
+                                                task,
+                                                null,
+                                                "coding",
+                                                Set.of(),
+                                                DagNode.NodeState.PENDING,
+                                                new DagNode.ResultNone(),
+                                                0)));
+            }
+            // Resolve leaderId and userId from tool call context
+            ToolCallContext ctx = ToolCallContextHolder.get();
+            String leaderId = ctx != null ? ctx.agentId() : "leader";
+            String userId = ctx != null ? ctx.userId().toString() : "default";
+            Group g = spawner.spawnGroup(leaderId, userId, task, dag);
+            return g.groupId().toString();
         }
     }
 
@@ -61,6 +106,12 @@ public final class GroupTools {
     @Component
     @ToolSecurity(risk = RiskCategory.FILE_WRITE)
     public static final class DisbandGroup implements NativeMcpTool<DisbandGroup.Args> {
+
+        private final GroupSpawner spawner;
+
+        public DisbandGroup(GroupSpawner spawner) {
+            this.spawner = spawner;
+        }
 
         public record Args(
                 @SecurityHint(ParamCategory.GENERIC) @Doc("The group id to disband.")
@@ -83,7 +134,8 @@ public final class GroupTools {
 
         @Override
         public String execute(Args args) {
-            return "";
+            spawner.disband(UUID.fromString(args.groupId()));
+            return "disbanded";
         }
     }
 
@@ -91,6 +143,14 @@ public final class GroupTools {
     @Component
     @ToolSecurity(risk = RiskCategory.FILE_WRITE)
     public static final class CreateMate implements NativeMcpTool<CreateMate.Args> {
+
+        private final GroupSpawner spawner;
+        private final GroupSpawner.AgentFactory agentFactory;
+
+        public CreateMate(GroupSpawner spawner, GroupSpawner.AgentFactory agentFactory) {
+            this.spawner = spawner;
+            this.agentFactory = agentFactory;
+        }
 
         public record Args(
                 @SecurityHint(ParamCategory.GENERIC) @Doc("Group id.") String groupId,
@@ -118,7 +178,9 @@ public final class GroupTools {
 
         @Override
         public String execute(Args args) {
-            return "";
+            spawner.addMate(
+                    UUID.fromString(args.groupId()), args.mateId(), args.skillset(), agentFactory);
+            return "mate added";
         }
     }
 
@@ -126,6 +188,12 @@ public final class GroupTools {
     @Component
     @ToolSecurity(risk = RiskCategory.FILE_WRITE)
     public static final class RemoveMate implements NativeMcpTool<RemoveMate.Args> {
+
+        private final GroupSpawner spawner;
+
+        public RemoveMate(GroupSpawner spawner) {
+            this.spawner = spawner;
+        }
 
         public record Args(
                 @SecurityHint(ParamCategory.GENERIC) @Doc("Group id.") String groupId,
@@ -148,7 +216,8 @@ public final class GroupTools {
 
         @Override
         public String execute(Args args) {
-            return "";
+            spawner.removeMate(UUID.fromString(args.groupId()), args.mateId());
+            return "mate removed";
         }
     }
 
@@ -156,6 +225,12 @@ public final class GroupTools {
     @Component
     @ToolSecurity(risk = RiskCategory.FILE_WRITE)
     public static final class DispatchTask implements NativeMcpTool<DispatchTask.Args> {
+
+        private final Blackboard blackboard;
+
+        public DispatchTask(Blackboard blackboard) {
+            this.blackboard = blackboard;
+        }
 
         public record Args(
                 @SecurityHint(ParamCategory.GENERIC) @Doc("Group id.") String groupId,
@@ -184,7 +259,20 @@ public final class GroupTools {
 
         @Override
         public String execute(Args args) {
-            return "";
+            // Payload shape "<nodeId>:<instruction>" is what MateAgent.handleDispatch parses; for
+            // an
+            // ad-hoc dispatch (not tied to a DAG node) the mateId stands in as the nodeId.
+            String payload = args.mateId() + ":" + args.instruction();
+            blackboard.post(
+                    new BlackboardMessage(
+                            UUID.randomUUID().toString(),
+                            UUID.fromString(args.groupId()),
+                            "LEADER",
+                            args.mateId(),
+                            BlackboardMessage.MessageType.TASK_DISPATCH,
+                            payload,
+                            0));
+            return "dispatched";
         }
     }
 
@@ -192,6 +280,12 @@ public final class GroupTools {
     @Component
     @ToolSecurity(risk = RiskCategory.FILE_WRITE)
     public static final class PostMessage implements NativeMcpTool<PostMessage.Args> {
+
+        private final Blackboard blackboard;
+
+        public PostMessage(Blackboard blackboard) {
+            this.blackboard = blackboard;
+        }
 
         public record Args(
                 @SecurityHint(ParamCategory.GENERIC) @Doc("Group id.") String groupId,
@@ -222,7 +316,20 @@ public final class GroupTools {
 
         @Override
         public String execute(Args args) {
-            return "";
+            BlackboardMessage.MessageType type = BlackboardMessage.MessageType.valueOf(args.type());
+            // Resolve senderId from tool call context (the calling Mate's agentId)
+            ToolCallContext ctx = ToolCallContextHolder.get();
+            String senderId = ctx != null ? ctx.agentId() : "mate";
+            blackboard.post(
+                    new BlackboardMessage(
+                            UUID.randomUUID().toString(),
+                            UUID.fromString(args.groupId()),
+                            senderId,
+                            "LEADER",
+                            type,
+                            args.payload(),
+                            0));
+            return "posted";
         }
     }
 
@@ -230,6 +337,12 @@ public final class GroupTools {
     @Component
     @ToolSecurity(risk = RiskCategory.FILE_WRITE)
     public static final class PostStatus implements NativeMcpTool<PostStatus.Args> {
+
+        private final GroupRegistry registry;
+
+        public PostStatus(GroupRegistry registry) {
+            this.registry = registry;
+        }
 
         public record Args(
                 @SecurityHint(ParamCategory.GENERIC) @Doc("Group id.") String groupId,
@@ -256,7 +369,29 @@ public final class GroupTools {
 
         @Override
         public String execute(Args args) {
-            return "";
+            Group g = registry.get(UUID.fromString(args.groupId()));
+            if (g == null) {
+                return "unknown group";
+            }
+            DagNode.NodeState state = DagNode.NodeState.valueOf(args.status());
+            ExecutionDag dag = g.dag();
+            for (DagNode n : dag.nodes()) {
+                if (n.nodeId().equals(args.nodeId())) {
+                    DagNode updated =
+                            new DagNode(
+                                    n.nodeId(),
+                                    n.description(),
+                                    n.assignedMateId(),
+                                    n.requiredSkillset(),
+                                    n.dependsOn(),
+                                    state,
+                                    n.result(),
+                                    n.retryCount());
+                    registry.put(g.withDag(dag.withNode(args.nodeId(), updated)));
+                    return "ok";
+                }
+            }
+            return "node not found";
         }
     }
 }
