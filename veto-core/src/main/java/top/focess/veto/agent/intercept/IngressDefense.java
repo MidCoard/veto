@@ -1,5 +1,8 @@
 package top.focess.veto.agent.intercept;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.mcp.AgentToolDefinition;
@@ -23,6 +26,30 @@ import top.focess.veto.llm.core.ToolCall;
  */
 @Component
 public class IngressDefense {
+
+    private static final Logger log = LoggerFactory.getLogger(IngressDefense.class);
+
+    /**
+     * The advisory semantic masker (Part 3.3). Layered over the deterministic {@link SecretMasker}
+     * floor: it consults the local SLM to flag likely-exfiltration observations, while always
+     * applying the deterministic redaction regardless of SLM availability. Nullable so the no-arg
+     * construction path (existing tests, no SLM configured) degrades to deterministic-only.
+     */
+    private final SemanticMasker semanticMasker;
+
+    /** Spring-injected constructor — the SLM-backed masker is optional (degrades if absent). */
+    @Autowired
+    public IngressDefense(@Autowired(required = false) SemanticMasker semanticMasker) {
+        this.semanticMasker = semanticMasker;
+    }
+
+    /**
+     * No-arg constructor — degrades to deterministic-only masking (the SLM semantic layer is
+     * absent). Kept so existing non-Spring callers and tests compile unchanged.
+     */
+    public IngressDefense() {
+        this(new SemanticMasker());
+    }
 
     /**
      * Masks and frames an observation.
@@ -53,12 +80,28 @@ public class IngressDefense {
 
         // apply accept_and_mask: scrub secrets from read / exec observations before they enter
         // context. Default-on; the caller's flag is authoritative. Writes have no observation
-        // content to mask (they return void / success), so we skip them.
+        // content to mask (they return void / success), so we skip them. The SLM semantic masker
+        // (Part 3.3) is the advisory layer over the deterministic SecretMasker floor — it always
+        // applies the deterministic redaction and may additionally surface a HighRiskSignal.
         if (maskObservation
                 && (def.risk() == RiskCategory.READ_ONLY
                         || def.risk() == RiskCategory.SHELL_EXEC
                         || def.risk() == RiskCategory.NETWORK)) {
-            body = SecretMasker.mask(body);
+            if (semanticMasker != null) {
+                SemanticMasker.MaskResult masked = semanticMasker.maskWithSignal(body, call, def);
+                body = masked.masked();
+                if (masked.highRisk() != null) {
+                    // The observation is already redacted; the signal is advisory — the caller
+                    // (AgentRunner) cannot reject post-execution, so it is surfaced for
+                    // observability/alerting rather than gating the call.
+                    log.warn(
+                            "SemanticMasker flagged high-risk exfiltration for tool {}: {}",
+                            masked.highRisk().toolName(),
+                            masked.highRisk().reason());
+                }
+            } else {
+                body = SecretMasker.mask(body);
+            }
         }
 
         return "Observation ("

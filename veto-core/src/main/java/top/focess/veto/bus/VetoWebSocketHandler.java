@@ -304,7 +304,11 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
         }
     }
 
-    private void broadcastRaw(String json) {
+    /**
+     * Broadcast a raw JSON string to all connected clients. Public so the {@link DeltaBusBridge}
+     * can forward serialized {@link DeltaFrame}s to every connected client.
+     */
+    public void broadcastRaw(String json) {
         for (WebSocketSession s : sessions) {
             if (s.isOpen()) {
                 try {

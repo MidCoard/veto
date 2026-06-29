@@ -15,7 +15,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
-import top.focess.veto.agent.mcp.tools.CreateGroupArgs;
 import top.focess.veto.agent.mcp.tools.LoadSkillArgs;
 import top.focess.veto.agent.mcp.tools.RunCommandTool;
 import top.focess.veto.agent.skills.Skill;
@@ -37,7 +36,8 @@ import top.focess.veto.sandbox.SandboxManager;
  *   <li><b>Native</b> — in-process {@link NativeMcpTool#execute}, EXCEPT {@code run_command} which
  *       routes through the session's {@link top.focess.veto.sandbox.SandboxSubstrate}.
  *   <li><b>Agent</b> — engine handler ({@code load_skill} → {@link SkillRegistry} hash-verify +
- *       body; {@code create_group} → not implemented).
+ *       body). {@code create_group} and the other group tools are <b>native</b> tools ({@code
+ *       GroupTools}, component-scanned) — not agent tools.
  *   <li><b>External</b> — forwarded over the registered {@link McpTransport}.
  * </ul>
  *
@@ -90,15 +90,10 @@ public class McpEngineImpl implements McpEngine {
                                 + "Returns the full SKILL.md body in the observation.",
                         LoadSkillArgs.class,
                         Map.of("skillName", ParamCategory.GENERIC)));
-        agentDefs.put(
-                "create_group",
-                new AgentToolDefinition(
-                        "create_group",
-                        "Spawn a delegation (a group of agents) to accomplish a goal. Bounded by the "
-                                + "resource gate at spawn time.",
-                        CreateGroupArgs.class,
-                        Map.of("description", ParamCategory.GENERIC)));
-        log.info("McpEngine: initialized. {} native tool(s), 2 agent tool(s).", nativeDefs.size());
+        // create_group is a NATIVE tool (GroupTools.CreateGroup, @ToolSecurity) — not an agent
+        // tool. The duplicate agent-tool entry here was dead code: resolveDefinition checks
+        // nativeDefs first, so the native GroupTools.CreateGroup (stub) always won. Removed.
+        log.info("McpEngine: initialized. {} native tool(s), 1 agent tool(s).", nativeDefs.size());
     }
 
     /** Discover tools from a remote MCP server via JSON-RPC tools/list and register them. */
@@ -242,12 +237,6 @@ public class McpEngineImpl implements McpEngine {
     private McpToolResult executeAgent(ToolCall call, AgentToolDefinition def) {
         return switch (def.name()) {
             case "load_skill" -> executeLoadSkill(call);
-            case "create_group" ->
-                    new McpToolResult(
-                            call.toolName(),
-                            call.callId(),
-                            false,
-                            "create_group is not available.");
             default ->
                     new McpToolResult(
                             call.toolName(),

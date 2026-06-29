@@ -15,7 +15,8 @@ public record DagNode(
         String requiredSkillset, // e.g. "coding", "testing", "graphql"
         Set<String> dependsOn, // nodeIds
         NodeState state,
-        NodeResult result) {
+        NodeResult result,
+        int retryCount) { // number of FAILED → retry cycles
 
     public DagNode {
         Objects.requireNonNull(nodeId, "nodeId");
@@ -24,6 +25,9 @@ public record DagNode(
         dependsOn = dependsOn == null ? Set.of() : Set.copyOf(dependsOn);
         if (state == null) {
             state = NodeState.PENDING;
+        }
+        if (retryCount < 0) {
+            retryCount = 0;
         }
     }
 
@@ -59,6 +63,19 @@ public record DagNode(
                 requiredSkillset,
                 dependsOn,
                 NodeState.PENDING,
-                new ResultNone());
+                new ResultNone(),
+                0);
+    }
+
+    /** Compatibility constructor for legacy code that doesn't specify retryCount. Defaults to 0. */
+    public DagNode(
+            String nodeId,
+            String description,
+            String assignedMateId,
+            String requiredSkillset,
+            Set<String> dependsOn,
+            NodeState state,
+            NodeResult result) {
+        this(nodeId, description, assignedMateId, requiredSkillset, dependsOn, state, result, 0);
     }
 }

@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.TurnRecord;
 
@@ -25,6 +26,7 @@ import top.focess.veto.agent.TurnRecord;
  * ~0). The production backend plugs into the local embedding model (Part 14.4).
  */
 @Component
+@ConditionalOnProperty(name = "veto.memory.store", havingValue = "memory", matchIfMissing = true)
 public class InMemoryMemoryStore implements MemoryStore {
 
     private static final int EMBEDDING_DIM = 64;

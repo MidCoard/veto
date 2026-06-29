@@ -156,7 +156,9 @@ class NewRequirementsTest {
                         "REAL",
                         50L,
                         "FULL_ACCESS",
-                        "STRICT");
+                        "STRICT",
+                        null,
+                        null);
 
         String agentKey = "refused-test";
         CompletableFuture<AgentResult> resultFuture =
@@ -300,7 +302,9 @@ class NewRequirementsTest {
                         "REAL",
                         50L,
                         "FULL_ACCESS",
-                        "STRICT");
+                        "STRICT",
+                        null,
+                        null);
 
         String agentKey = "disconnect-test";
         AgentResult result =

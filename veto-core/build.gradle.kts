@@ -54,6 +54,10 @@ dependencies {
     // Encryption
     implementation("org.bouncycastle:bcprov-jdk18on:1.84")
 
+    // JNA (Java Native Access) for kernel-level sandbox substrate
+    implementation("net.java.dev.jna:jna:5.14.0")
+    implementation("net.java.dev.jna:jna-platform:5.14.0")
+
     // WebSocket Client
     implementation("org.java-websocket:Java-WebSocket:1.6.0")
 

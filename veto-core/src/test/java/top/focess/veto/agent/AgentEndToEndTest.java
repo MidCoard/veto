@@ -60,7 +60,9 @@ class AgentEndToEndTest {
                 "REAL",
                 50L,
                 "FULL_ACCESS",
-                "STRICT");
+                "STRICT",
+                null,
+                null);
     }
 
     private static AgentRunner.LlmBinding binding(String systemPrompt) {

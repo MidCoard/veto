@@ -8,6 +8,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
@@ -57,11 +58,19 @@ public class GroupOrchestrator {
         this(registry, blackboard, new HeuristicLeader());
     }
 
+    @Autowired
     public GroupOrchestrator(
             GroupRegistry registry, Blackboard blackboard, HeuristicLeader leader) {
         this.registry = registry;
         this.blackboard = blackboard;
         this.leader = leader;
+    }
+
+    /** Construct with an LlmLeader (extracts the heuristic fallback for direct calls). */
+    public GroupOrchestrator(GroupRegistry registry, Blackboard blackboard, LlmLeader llmLeader) {
+        this.registry = registry;
+        this.blackboard = blackboard;
+        this.leader = llmLeader.heuristic();
     }
 
     public HeuristicLeader getLeader() {
@@ -267,6 +276,11 @@ public class GroupOrchestrator {
         if (!group.isActive()) {
             return group;
         }
+        // F11: An empty DAG (no nodes) means the Leader hasn't authored yet.
+        // Do NOT complete the group — it should stay ACTIVE.
+        if (group.dag().nodes().isEmpty()) {
+            return group;
+        }
         boolean anyInFlight = false;
         for (DagNode n : group.dag().nodes()) {
             if (n.state() == DagNode.NodeState.RUNNING) {
@@ -344,5 +358,16 @@ public class GroupOrchestrator {
                         nodeId + ":feedback:" + (feedback == null ? "test failure" : feedback),
                         0);
         blackboard.post(m);
+    }
+
+    /**
+     * Callback when a group is disbanded. This hook is called by {@link GroupSpawner} when a
+     * group's lifecycle ends (either naturally complete or explicitly disbanded). For the MVP, this
+     * is a no-op placeholder that logs the event; a real implementation would clean up resources,
+     * persist final state, and notify downstream systems.
+     */
+    public void onGroupDisbanded(UUID groupId) {
+        log.info("GroupOrchestrator: group {} disbanded", groupId);
+        // MVP: no additional cleanup needed; the registry already holds the final state.
     }
 }

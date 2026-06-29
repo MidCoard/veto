@@ -120,7 +120,7 @@ public class HeuristicLeader {
             if (!n.nodeId().equals(nodeId)) {
                 continue;
             }
-            int retries = countRetries(n);
+            int retries = n.retryCount();
             if (retries >= maxRetries) {
                 log.info(
                         "HeuristicLeader: node {} retried {} times — pivoting to STALE",
@@ -135,7 +135,8 @@ public class HeuristicLeader {
                                 n.dependsOn(),
                                 DagNode.NodeState.STALE,
                                 new DagNode.ResultFailure(
-                                        feedback == null ? "max retries" : feedback, List.of()));
+                                        feedback == null ? "max retries" : feedback, List.of()),
+                                retries + 1);
                 return group.withDag(dag.withNode(nodeId, updated));
             }
             // Re-dispatch: PENDING with the feedback in the result so the engine + Mate
@@ -149,17 +150,16 @@ public class HeuristicLeader {
                             n.dependsOn(),
                             DagNode.NodeState.PENDING,
                             new DagNode.ResultFailure(
-                                    feedback == null ? "retry" : feedback, List.of()));
+                                    feedback == null ? "retry" : feedback, List.of()),
+                            retries + 1);
             return group.withDag(dag.withNode(nodeId, updated));
         }
         return group;
     }
 
     private int countRetries(DagNode n) {
-        // Count the number of FAILED / FAILED-retry cycles recorded in the result.
-        // For the MVP, count any ResultFailure as a retry; a real implementation would
-        // track the retry count on the result.
-        return n.result() instanceof DagNode.ResultFailure ? 1 : 0;
+        // Use the persisted retryCount field on the node.
+        return n.retryCount();
     }
 
     /**
@@ -210,5 +210,27 @@ public class HeuristicLeader {
     public Group pivot(Group group) {
         log.info("HeuristicLeader: pivoting group {}", group.groupId());
         return replan(group);
+    }
+
+    /**
+     * Compute the context saturation ratio for a group. This is a heuristic measure of how "full"
+     * the group's reasoning context is, based on the number of messages, artifacts, and DAG nodes.
+     * For the MVP, this returns a simple ratio based on DAG size; a real LLM Leader would use token
+     * counting or embedding-based similarity.
+     *
+     * @return a value between 0.0 (empty) and 1.0 (saturated)
+     */
+    public double contextSaturation(Group group) {
+        ExecutionDag dag = group.dag();
+        int nodeCount = dag.nodes().size();
+        // Simple heuristic: assume saturation at ~20 nodes (arbitrary MVP threshold)
+        // A real implementation would count tokens in the blackboard + DAG.
+        double ratio = nodeCount / 20.0;
+        return Math.min(1.0, ratio);
+    }
+
+    /** Test accessor: return the per-Mate pivot threshold for unit tests. */
+    public int perMateThresholdForTest() {
+        return pivotThreshold;
     }
 }

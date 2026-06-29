@@ -62,10 +62,14 @@ application-local.yml
 veto-grammar-*.gbnf
 
 plans/
-gradle.properties
 
 ## Claude Code
 .claude/
 .veto_history
 *.lck
 plans.zip
+.kotlin/
+.superpowers/
+
+## Docs (design scratchpad — not project source)
+docs/

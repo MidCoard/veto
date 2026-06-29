@@ -18,7 +18,7 @@ object MordantTerminal {
     /** True if the terminal can render ANSI escape codes. */
     @JvmStatic
     fun supportsAnsi(term: Terminal): Boolean =
-        term.info.ansiLevel != AnsiLevel.NONE
+        term.terminalInfo.ansiLevel != AnsiLevel.NONE
 
     // ── Colors (passthrough when ANSI unsupported) ────────────────────────────
 

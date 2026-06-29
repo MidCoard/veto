@@ -11,6 +11,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
@@ -45,6 +46,27 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
                     "SystemRoot",
                     "TEMP",
                     "TMP");
+
+    /**
+     * The kernel-level wall (Windows Job Object / Linux cgroup) attached to each spawned process.
+     * Nullable: the no-arg constructor (tests) leaves it null so attach is skipped; Spring injects
+     * the {@link KernelSandboxSubstrate} bean in production so the wall applies to spawned
+     * commands.
+     */
+    private final KernelSandboxSubstrate kernelWall;
+
+    /** No-arg constructor (tests): no kernel wall — attach is skipped. */
+    public ConstrainedSubprocessSubstrate() {
+        this(null);
+    }
+
+    /**
+     * Spring constructor: injects the kernel wall so spawned processes are attached in production.
+     */
+    @Autowired
+    public ConstrainedSubprocessSubstrate(KernelSandboxSubstrate kernelWall) {
+        this.kernelWall = kernelWall;
+    }
 
     @Override
     public SandboxHandle provision(SandboxProfile profile) {
@@ -90,6 +112,7 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
     private CommandResult runPipeline(List<ProcessBuilder> builders, Duration timeout)
             throws IOException, InterruptedException {
         List<Process> pipeline = ProcessBuilder.startPipeline(builders);
+        pipeline.forEach(this::attachKernelWall);
         Process last = pipeline.get(pipeline.size() - 1);
         String stdout = new String(last.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
         String stderr = new String(last.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
@@ -111,6 +134,7 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
         List<Integer> codes = new ArrayList<>();
         for (ProcessBuilder pb : builders) {
             Process p = pb.start();
+            attachKernelWall(p);
             String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
             String err = new String(p.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
             stdout.append(out);
@@ -129,6 +153,23 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
         }
         int overall = codes.isEmpty() ? 0 : codes.get(codes.size() - 1);
         return new CommandResult(overall, stdout.toString(), stderr.toString(), codes);
+    }
+
+    /**
+     * Best-effort attach the kernel wall to a spawned process; skipped when no wall is configured.
+     */
+    private void attachKernelWall(Process process) {
+        if (kernelWall == null || !kernelWall.isAvailable()) {
+            return;
+        }
+        try {
+            kernelWall.attach(process);
+        } catch (Throwable t) {
+            // The wall is best-effort hardening — a failure to attach must not break the run.
+            log.debug(
+                    "ConstrainedSubprocessSubstrate: kernel-wall attach failed: {}",
+                    t.getMessage());
+        }
     }
 
     @Override
