@@ -23,13 +23,16 @@ import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.intercept.InterceptResolution;
 import top.focess.veto.agent.intercept.LoopInterceptor;
 import top.focess.veto.agent.loop.PromptCompiler;
+import top.focess.veto.agent.mcp.AgentToolDefinition;
 import top.focess.veto.agent.mcp.McpEngine;
+import top.focess.veto.agent.mcp.ToolDefinition;
 import top.focess.veto.agent.screening.DangerComputation;
 import top.focess.veto.agent.screening.DeployerPolicy;
 import top.focess.veto.agent.screening.ProtectedSet;
 import top.focess.veto.agent.screening.ScreeningMode;
 import top.focess.veto.agent.screening.SlmRelevanceProvider;
 import top.focess.veto.agent.workspace.Workspace;
+import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.llm.config.LlmJacksonConfig;
 import top.focess.veto.llm.core.UniformLLMCaller;
 
@@ -59,6 +62,19 @@ public class AgentService {
     private final long maxCallsPerEpisode;
     private final DeployerPolicy deployerPolicy;
     private final ProtectedSet protectedSet;
+    // The Part-8 Delta-broker — optional (nullable in tests); when present, threaded into each
+    // AgentRunner so loop emissions publish per-session DeltaFrames for transports to stream.
+    private final DeltaBroker deltaBroker;
+    // The Part-4 per-turn memory-capture service — optional (nullable in tests); when present,
+    // threaded into each AgentRunner so appendTurn captures into Session LTM + the raw-turn log.
+    private final top.focess.veto.memory.MemoryCaptureService captureService;
+
+    /**
+     * The default user id for memory capture. Per-user identity is not yet wired at the transport
+     * ({@code submit} takes no user id), so all local-CLI agents capture under this single user
+     * until the transport passes a real user id. Multi-user isolation is the follow-up.
+     */
+    static final UUID DEFAULT_USER_ID = UUID.fromString("00000000-0000-0000-0000-000000000000");
 
     private final ConcurrentHashMap<String, VetoAgent> agents = new ConcurrentHashMap<>();
 
@@ -75,7 +91,9 @@ public class AgentService {
             @Value("${veto.workspace.path-mode:REAL}") String pathMode,
             @Value("${veto.breaker.max_calls_per_episode:50}") long maxCallsPerEpisode,
             @Value("${veto.security.deployer-policy:FULL_ACCESS}") String deployerPolicyRaw,
-            @Value("${veto.security.screening-mode:STRICT}") String screeningModeRaw) {
+            @Value("${veto.security.screening-mode:STRICT}") String screeningModeRaw,
+            DeltaBroker deltaBroker,
+            top.focess.veto.memory.MemoryCaptureService captureService) {
         this.mcpEngine = mcpEngine;
         this.hitlRegistry = hitlRegistry;
         this.ingressDefense = ingressDefense;
@@ -94,6 +112,8 @@ public class AgentService {
         // workspace is needed for canonical-path arg extraction when matching permission grants.
         this.hitlRegistry.setScreeningMode(parseScreeningMode(screeningModeRaw));
         this.hitlRegistry.setWorkspace(this.workspace);
+        this.deltaBroker = deltaBroker;
+        this.captureService = captureService;
     }
 
     /**
@@ -156,6 +176,31 @@ public class AgentService {
     }
 
     /**
+     * Synchronous submit with explicit user identity. The {@code userId} is threaded through to
+     * {@link AgentRunner} for memory capture and group ownership, enabling multi-user tenant
+     * isolation. Use this overload when the transport has authenticated the user.
+     *
+     * @param agentKey the transport identity (unique per session)
+     * @param prompt the user's prompt
+     * @param binding the LLM configuration
+     * @param timeout the maximum time to wait
+     * @param userId the authenticated user's id (for memory/group isolation)
+     * @return the agent result
+     */
+    public AgentResult submit(
+            String agentKey,
+            String prompt,
+            AgentRunner.LlmBinding binding,
+            Duration timeout,
+            UUID userId)
+            throws TimeoutException, InterruptedException {
+        VetoAgent agent = agents.computeIfAbsent(agentKey, k -> createAgent(k, binding, userId));
+        agent.bind(binding);
+        agent.submit(prompt);
+        return agent.await(timeout);
+    }
+
+    /**
      * Resolves a pending veto for an agent's call. The {@code toolName} parameter is kept for
      * back-compat with the old API (the new {@code HitlRegistry.resolve} reads the tool name from
      * the supplied {@link ToolCall}). The caller can pass {@code null} for the call/def when the
@@ -193,6 +238,10 @@ public class AgentService {
     }
 
     private VetoAgent createAgent(String agentKey, AgentRunner.LlmBinding binding) {
+        return createAgent(agentKey, binding, DEFAULT_USER_ID);
+    }
+
+    private VetoAgent createAgent(String agentKey, AgentRunner.LlmBinding binding, UUID userId) {
         AgentPersona persona = buildPersona(agentKey, binding);
         ReadHistory readHistory = new ReadHistory();
         ProtectedSet userProtectedSet =
@@ -220,21 +269,71 @@ public class AgentService {
                         caller,
                         objectMapper,
                         maxCallsPerEpisode,
-                        binding);
+                        binding,
+                        deltaBroker,
+                        userId,
+                        captureService);
         return new VetoAgent(persona, runner);
     }
 
     /**
-     * Builds the agent persona. A default persona carrying the resolved (empty for the live
-     * terminal path) manifest + skills. Full {@code ~/.veto/} persona resolution is not yet wired.
+     * Builds a Mate {@link Agent} (a Leader-delegated worker) for the group engine. Unlike {@link
+     * #createAgent} this does not register the agent under a transport key (Mates are not
+     * transport-addressable — {@code GroupSpawner} tracks their lifecycle) and uses an empty {@link
+     * ProtectedSet} (Mates inherit screening via the Gateway; per-user isolation is not wired for
+     * spawned Mates yet).
+     */
+    public Agent createMate(AgentPersona persona, AgentRunner.LlmBinding binding) {
+        return createMate(persona, binding, DEFAULT_USER_ID);
+    }
+
+    /**
+     * Builds a Mate {@link Agent} with explicit user identity for multi-user tenant isolation. The
+     * Mate inherits the Leader's userId so its memory capture is scoped to the same tenant.
+     */
+    public Agent createMate(AgentPersona persona, AgentRunner.LlmBinding binding, UUID userId) {
+        ReadHistory readHistory = new ReadHistory();
+        Gateway gateway =
+                new Gateway(
+                        workspace,
+                        new DangerComputation(),
+                        SlmRelevanceProvider.degraded(),
+                        deployerPolicy,
+                        ProtectedSet.empty(),
+                        readHistory);
+        AgentRunner runner =
+                new AgentRunner(
+                        persona.id(),
+                        persona,
+                        mcpEngine,
+                        gateway,
+                        hitlRegistry,
+                        ingressDefense,
+                        interceptors,
+                        promptCompiler,
+                        caller,
+                        objectMapper,
+                        maxCallsPerEpisode,
+                        binding,
+                        deltaBroker,
+                        userId,
+                        captureService);
+        return new VetoAgent(persona, runner);
+    }
+
+    /**
+     * Builds the agent persona. Resolves the tool whitelist from the {@link McpEngine}'s active
+     * native + remote tools (agent tools like {@code load_skill} are always-on, runtime-excluded
+     * from the stored set per {@link AgentPersona}). Full {@code ~/.veto/} persona resolution
+     * (skills, per-agent tool grants) is not yet wired — the default grants all registered tools.
      */
     private AgentPersona buildPersona(String agentKey, AgentRunner.LlmBinding binding) {
+        Set<ToolDefinition> tools =
+                mcpEngine.getActiveTools(null).stream()
+                        .filter(d -> !(d instanceof AgentToolDefinition))
+                        .collect(java.util.stream.Collectors.toUnmodifiableSet());
         return new AgentPersona(
-                UUID.randomUUID().toString(),
-                "agent-" + agentKey,
-                "Veto agent",
-                Set.of(),
-                List.of());
+                UUID.randomUUID().toString(), "agent-" + agentKey, "Veto agent", tools, List.of());
     }
 
     /** The workspace agents resolve paths against (for tests). */
