@@ -67,7 +67,7 @@ plans/
 .claude/
 .veto_history
 *.lck
-plans.zip
+*.zip
 .kotlin/
 .superpowers/
 

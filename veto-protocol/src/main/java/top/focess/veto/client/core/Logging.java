@@ -6,11 +6,12 @@ import java.util.logging.LogManager;
 import org.slf4j.ILoggerFactory;
 import org.slf4j.LoggerFactory;
 import org.slf4j.bridge.SLF4JBridgeHandler;
+import top.focess.veto.contract.ClientOptions;
 
 /**
  * Application-startup logging bootstrap shared by both Veto clients (terminal + TUI). Configures
- * the Logback root level from the parsed {@link top.focess.veto.contract.ClientOptions} and routes
- * {@code java.util.logging} (e.g. JLine's fallback warnings) through SLF4J.
+ * the Logback root level from the parsed {@link ClientOptions} and routes {@code java.util.logging}
+ * (e.g. JLine's fallback warnings) through SLF4J.
  *
  * <p>This is an application concern, not a wire-protocol concern — it coexists with the wire-types
  * in {@code veto-protocol}, which depends on the SLF4J facade only and never mandates a logging

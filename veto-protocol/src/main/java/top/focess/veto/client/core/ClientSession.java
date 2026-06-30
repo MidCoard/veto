@@ -10,6 +10,7 @@ import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import top.focess.veto.contract.IpcClient;
 import top.focess.veto.contract.IpcFrame;
 import top.focess.veto.contract.IpcMeta;
 
@@ -46,8 +47,8 @@ import top.focess.veto.contract.IpcMeta;
  *
  * <p>The session never sends frames itself — {@link #submit}/{@link #onFrame}/{@link #cancel}
  * <b>return</b> the {@link IpcFrame.ClientFrame} to send (or {@code null}); the caller owns the
- * {@link top.focess.veto.contract.IpcClient} and does the send. This keeps the core free of the
- * transport and avoids holding the monitor across a bounded-outbox {@code offer}.
+ * {@link IpcClient} and does the send. This keeps the core free of the transport and avoids holding
+ * the monitor across a bounded-outbox {@code offer}.
  *
  * <h3>Routing on the authoritative atomic op </h3>
  *

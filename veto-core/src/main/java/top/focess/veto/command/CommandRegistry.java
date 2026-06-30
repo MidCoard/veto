@@ -7,6 +7,7 @@ import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.command.*;
+import top.focess.command.Command;
 import top.focess.veto.contract.IpcFrame;
 import top.focess.veto.contract.IpcFrame.HintInfo;
 import top.focess.veto.contract.IpcMeta;
@@ -23,8 +24,8 @@ import top.focess.veto.terminal.IpcServer;
  * <h3>Thread safety</h3>
  *
  * <p>The underlying {@code CommandManager} is accessed from request-pool virtual threads (one per
- * active command execution). Callers must ensure that individual {@link top.focess.command.Command}
- * implementations are themselves thread-safe if concurrent invocations are possible.
+ * active command execution). Callers must ensure that individual {@link Command} implementations
+ * are themselves thread-safe if concurrent invocations are possible.
  */
 public class CommandRegistry {
 

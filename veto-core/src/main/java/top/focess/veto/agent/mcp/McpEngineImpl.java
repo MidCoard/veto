@@ -27,6 +27,7 @@ import top.focess.veto.sandbox.ChainMode;
 import top.focess.veto.sandbox.Command;
 import top.focess.veto.sandbox.CommandResult;
 import top.focess.veto.sandbox.SandboxManager;
+import top.focess.veto.sandbox.SandboxSubstrate;
 
 /**
  * The MCP engine implementation — manages server registrations, schema discovery, and tool
@@ -36,7 +37,7 @@ import top.focess.veto.sandbox.SandboxManager;
  *
  * <ul>
  *   <li><b>Native</b> — in-process {@link NativeMcpTool#execute}, EXCEPT {@code run_command} which
- *       routes through the session's {@link top.focess.veto.sandbox.SandboxSubstrate}.
+ *       routes through the session's {@link SandboxSubstrate}.
  *   <li><b>Agent</b> — engine handler ({@code load_skill} → {@link SkillRegistry} hash-verify +
  *       body). {@code create_group} and the other group tools are <b>native</b> tools ({@code
  *       GroupTools}, component-scanned) — not agent tools.

@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.mcp.DefaultMcpEngine;
 import top.focess.veto.agent.mcp.McpEngine;
 import top.focess.veto.agent.translation.CapabilityTranslator;
@@ -42,9 +43,9 @@ public class AgentLoopDefaultsConfiguration {
 
     /**
      * The default {@link Workspace} (built from {@code veto.workspace.*} config) used to resolve
-     * VETO.md (The Law) in {@link top.focess.veto.agent.loop.PromptCompiler}. Required as a bean
-     * because {@code PromptCompiler} is a Spring-managed {@code @Component} whose constructor takes
-     * a {@link Workspace}. {@code @ConditionalOnMissingBean} lets a richer workspace bean override.
+     * VETO.md (The Law) in {@link PromptCompiler}. Required as a bean because {@code
+     * PromptCompiler} is a Spring-managed {@code @Component} whose constructor takes a {@link
+     * Workspace}. {@code @ConditionalOnMissingBean} lets a richer workspace bean override.
      */
     @Bean
     @ConditionalOnMissingBean(Workspace.class)

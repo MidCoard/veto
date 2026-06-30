@@ -3,6 +3,7 @@ package top.focess.veto.agent.translation;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.List;
 import top.focess.veto.agent.mcp.ToolDefinition;
+import top.focess.veto.llm.core.VetoResponse;
 
 /**
  * Translates the unified capability manifest into provider-facing forms. The translator owns the
@@ -13,8 +14,8 @@ import top.focess.veto.agent.mcp.ToolDefinition;
  *       llm.core.ToolDefinition} (name / description / inputSchema) for the {@code
  *       VetoRequest.tools} list the providers consume.
  *   <li>{@link #vetoResponseSchema} — the per-turn {@code veto_pulse} response schema variant that
- *       constrains the model to emit a {@link top.focess.veto.llm.core.VetoResponse}. The variant
- *       is governed by the effective thought flag and guided state (the four-cell matrix).
+ *       constrains the model to emit a {@link VetoResponse}. The variant is governed by the
+ *       effective thought flag and guided state (the four-cell matrix).
  * </ol>
  *
  * <p><b>Note:</b> the spec names this {@code ProviderSchemaTranslator<T>} with a single {@code T

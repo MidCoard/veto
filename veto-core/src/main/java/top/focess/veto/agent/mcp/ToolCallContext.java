@@ -2,12 +2,13 @@ package top.focess.veto.agent.mcp;
 
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.agent.AgentRunner;
+import top.focess.veto.group.GroupTools;
 
 /**
  * The call context for a tool execution: the calling agent's id and the user id. Threaded from
- * {@link top.focess.veto.agent.AgentRunner} through {@link McpEngineImpl} to {@link NativeMcpTool}
- * implementations so tools like {@link top.focess.veto.group.GroupTools} can record the caller's
- * identity.
+ * {@link AgentRunner} through {@link McpEngineImpl} to {@link NativeMcpTool} implementations so
+ * tools like {@link GroupTools} can record the caller's identity.
  *
  * @param agentId the id of the agent making the call (e.g., the Leader's persona id); always
  *     non-null

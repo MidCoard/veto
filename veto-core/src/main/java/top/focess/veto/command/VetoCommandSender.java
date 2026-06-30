@@ -8,11 +8,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.command.AbstractCommandSender;
 import top.focess.command.CommandPermission;
+import top.focess.command.CommandSender;
 import top.focess.veto.contract.IpcFrame;
 import top.focess.veto.terminal.IpcServer;
 
 /**
- * A pure {@link top.focess.command.CommandSender} for a single terminal session.
+ * A pure {@link CommandSender} for a single terminal session.
  *
  * <h3>Output</h3>
  *

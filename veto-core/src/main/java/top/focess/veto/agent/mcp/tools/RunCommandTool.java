@@ -9,6 +9,7 @@ import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.SecurityHint;
 import top.focess.veto.agent.mcp.ToolSecurity;
+import top.focess.veto.sandbox.SandboxSubstrate;
 
 /**
  * {@code run_command} — the special tool that executes arbitrary external processes. Transcribed
@@ -17,9 +18,9 @@ import top.focess.veto.agent.mcp.ToolSecurity;
  * <p>This tool is registered as a {@link NativeMcpTool} so its schema is advertised in the
  * manifest, but its execution does <b>not</b> run a process in the host JVM: {@link
  * top.focess.veto.agent.mcp.McpEngine#execute} special-cases {@code run_command} and routes it
- * through the session's {@link top.focess.veto.sandbox.SandboxSubstrate} (no shell, argv[] direct
- * exec, cwd locked, Veto-controlled chaining). Consequently {@link #execute} is never invoked by
- * the engine and throws to make the special-casing explicit.
+ * through the session's {@link SandboxSubstrate} (no shell, argv[] direct exec, cwd locked,
+ * Veto-controlled chaining). Consequently {@link #execute} is never invoked by the engine and
+ * throws to make the special-casing explicit.
  */
 @Component
 @ToolSecurity(risk = RiskCategory.SHELL_EXEC)

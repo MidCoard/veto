@@ -3,11 +3,12 @@ package top.focess.veto.agent.mcp;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
+import top.focess.veto.agent.AgentRunner;
 
 /**
- * Thread-local holder for {@link ToolCallContext}. {@link top.focess.veto.agent.AgentRunner} sets
- * the context before calling {@link McpEngine#execute}, and {@link NativeMcpTool} implementations
- * read it during execution. This avoids changing the {@link NativeMcpTool} interface.
+ * Thread-local holder for {@link ToolCallContext}. {@link AgentRunner} sets the context before
+ * calling {@link McpEngine#execute}, and {@link NativeMcpTool} implementations read it during
+ * execution. This avoids changing the {@link NativeMcpTool} interface.
  *
  * <p><b>Usage in AgentRunner:</b>
  *

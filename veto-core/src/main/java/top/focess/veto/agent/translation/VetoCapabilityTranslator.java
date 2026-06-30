@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import top.focess.veto.agent.mcp.ParameterSchema;
 import top.focess.veto.agent.mcp.ToolDefinition;
 import top.focess.veto.agent.mcp.ToolSchemaCompiler;
+import top.focess.veto.llm.core.VetoResponse;
 
 /**
  * Translates the unified capability manifest into provider-facing forms and emits the per-turn
@@ -26,8 +27,8 @@ import top.focess.veto.agent.mcp.ToolSchemaCompiler;
  *       top.focess.veto.llm.core.ToolDefinition} (name/description/inputSchema) for {@code
  *       VetoRequest.tools}.
  *   <li>{@link #vetoResponseSchema} — the per-turn {@code veto_pulse} schema variant that
- *       constrains the model to a {@link top.focess.veto.llm.core.VetoResponse}, governed by the
- *       effective thought flag and guided state (the four-cell matrix).
+ *       constrains the model to a {@link VetoResponse}, governed by the effective thought flag and
+ *       guided state (the four-cell matrix).
  * </ol>
  *
  * <p>The emitted schema is provider-agnostic JSON Schema (Draft 7). Provider-specific strictness

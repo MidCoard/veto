@@ -9,6 +9,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
+import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.mcp.AgentToolDefinition;
 import top.focess.veto.agent.mcp.NativeToolDefinition;
 import top.focess.veto.agent.mcp.RiskCategory;
@@ -50,14 +51,14 @@ public class HitlRegistry {
 
     /**
      * The runtime-tunable screening matrix ({@link ScreeningMode#cell}). Defaults to {@link
-     * ScreeningMode#STRICT}; {@link top.focess.veto.agent.AgentService} sets it from {@code
+     * ScreeningMode#STRICT}; {@link AgentService} sets it from {@code
      * veto.security.screening-mode}.
      */
     private ScreeningMode screeningMode = ScreeningMode.STRICT;
 
     /**
      * The agent's workspace (needed to canonicalize path args for grant matching). Set by {@link
-     * top.focess.veto.agent.AgentService}.
+     * AgentService}.
      */
     private volatile Workspace workspace;
 
@@ -117,12 +118,12 @@ public class HitlRegistry {
         };
     }
 
-    /** Sets the screening matrix (called by {@link top.focess.veto.agent.AgentService}). */
+    /** Sets the screening matrix (called by {@link AgentService}). */
     public void setScreeningMode(@NonNull ScreeningMode screeningMode) {
         this.screeningMode = screeningMode;
     }
 
-    /** Sets the workspace (called by {@link top.focess.veto.agent.AgentService}). */
+    /** Sets the workspace (called by {@link AgentService}). */
     public void setWorkspace(@NonNull Workspace workspace) {
         this.workspace = workspace;
     }
