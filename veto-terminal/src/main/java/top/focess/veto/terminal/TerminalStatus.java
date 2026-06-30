@@ -12,16 +12,30 @@ import top.focess.veto.client.core.Theme;
 /**
  * Draws the session status bar on JLine's bottom status line.
  *
- * <p>Stateless beyond the thread-safe JLine {@link Status} — it reads session metadata and the
- * pending-request queue from the {@link ClientSession} on each {@link #refresh}, so it needs no
- * external synchronization. (The prior "not thread-safe; synchronize on an external stateLock"
- * design is gone: the session owns its own lock, and this view just reads snapshots.)
+ * <p>JLine's {@link Status} is <b>not thread-safe</b> (no synchronization on its mutable fields:
+ * {@code lines}, {@code suspended}, {@code scrollRegion}, {@code display.oldLines}). The consumer
+ * thread and the main thread both reach {@link #refresh} and {@link #clear} through {@code
+ * ClientSession.fire} (which runs outside the session lock), so concurrent calls are possible. All
+ * {@link Status#update} calls are serialized on {@link #statusLock} to prevent data races on the
+ * underlying JLine object.
+ *
+ * <p>Session state reads ({@link ClientSession#statusView}) are performed <b>outside</b> {@code
+ * statusLock} — they acquire the session's own lock internally, and nesting it inside {@code
+ * statusLock} would create a lock-ordering constraint with no benefit. The snapshot is immutable
+ * once captured, so it remains consistent through the render.
  */
 public final class TerminalStatus {
 
     private final Theme theme;
     private final Status status;
     private final ClientSession session;
+
+    /**
+     * Guards all calls to {@link Status#update} — JLine's {@code Status} is not thread-safe, and
+     * both the consumer thread and the main thread can call {@link #refresh}/{@link #clear}
+     * concurrently via {@code ClientSession.fire}.
+     */
+    private final Object statusLock = new Object();
 
     public TerminalStatus(
             @NonNull Terminal terminal, @NonNull ClientSession session, @NonNull Theme theme) {
@@ -66,11 +80,15 @@ public final class TerminalStatus {
             styled += " " + theme.style(StyleToken.WARNING, queueText.toString());
         }
 
-        status.update(List.of(AttributedString.fromAnsi(styled)));
+        synchronized (statusLock) {
+            status.update(List.of(AttributedString.fromAnsi(styled)));
+        }
     }
 
     /** Clears the status bar by removing any currently displayed text. */
     public void clear() {
-        status.update(List.of());
+        synchronized (statusLock) {
+            status.update(List.of());
+        }
     }
 }

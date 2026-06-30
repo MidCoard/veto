@@ -15,9 +15,7 @@ public final class IpcCodecException extends RuntimeException {
      * @param message the detail message
      * @param cause the underlying serialization cause
      */
-    public
-    @NonNull
-    IpcCodecException(@NonNull String message, @NonNull Throwable cause) {
+    public IpcCodecException(@NonNull String message, @NonNull Throwable cause) {
         super(message, cause);
     }
 }

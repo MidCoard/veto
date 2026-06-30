@@ -77,7 +77,7 @@ class IpcFrameSerializationTest {
                             2),
                     new IpcFrame.HintResult(new IpcFrame.HintInfo("[user]", "enter username"), 3),
                     new IpcFrame.Error("fail", 1),
-                    new IpcFrame.Prompt("enter:", Map.of("mask", true)),
+                    new IpcFrame.Prompt("enter:", true),
                     new IpcFrame.Terminate("goodbye"),
                 }) {
             String json = new String(JSON.writeValueAsBytes(f), StandardCharsets.UTF_8);

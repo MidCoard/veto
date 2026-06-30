@@ -108,7 +108,7 @@ class ClientSessionTest {
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
         s.submit("first"); // RUNNING
-        s.onFrame(new IpcFrame.Prompt("password", Map.of(IpcMeta.MASK, true)));
+        s.onFrame(new IpcFrame.Prompt("password", true));
 
         assertEquals(ClientSession.State.PROMPTED, s.state());
         assertNotNull(s.promptView().activePrompt());
@@ -131,7 +131,7 @@ class ClientSessionTest {
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
         s.submit("first"); // RUNNING
-        s.onFrame(new IpcFrame.Prompt("pw", Map.of())); // PROMPTED
+        s.onFrame(new IpcFrame.Prompt("pw", false)); // PROMPTED
         s.onFrame(
                 new IpcFrame.Done(
                         Map.of(), null)); // terminal raced the reply → RUNNING (idle dispatch)
@@ -180,7 +180,7 @@ class ClientSessionTest {
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
         s.submit("first");
-        s.onFrame(new IpcFrame.Prompt("pw", Map.of()));
+        s.onFrame(new IpcFrame.Prompt("pw", false));
 
         IpcFrame.Cancel c = s.cancel();
 
@@ -220,7 +220,7 @@ class ClientSessionTest {
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
 
-        IpcFrame.ClientFrame f = s.onFrame(new IpcFrame.Prompt("pw", Map.of()));
+        IpcFrame.ClientFrame f = s.onFrame(new IpcFrame.Prompt("pw", false));
 
         assertNull(f);
         assertEquals(ClientSession.State.IDLE, s.state());
@@ -287,7 +287,7 @@ class ClientSessionTest {
         ClientSession s = new ClientSession(v);
         s.submit("first"); // RUNNING
 
-        s.onFrame(new IpcFrame.Prompt("password", Map.of(IpcMeta.MASK, true)));
+        s.onFrame(new IpcFrame.Prompt("password", true));
 
         assertEquals(ClientSession.State.PROMPTED, s.state());
         assertEquals("password", s.promptView().activePrompt().content());
@@ -388,7 +388,7 @@ class ClientSessionTest {
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
         s.submit("first");
-        s.onFrame(new IpcFrame.Prompt("pw", Map.of())); // PROMPTED
+        s.onFrame(new IpcFrame.Prompt("pw", false)); // PROMPTED
 
         s.onFrame(new IpcFrame.Delta("chunk"));
 
@@ -401,9 +401,9 @@ class ClientSessionTest {
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
         s.submit("first");
-        s.onFrame(new IpcFrame.Prompt("pw1", Map.of())); // PROMPTED
+        s.onFrame(new IpcFrame.Prompt("pw1", false)); // PROMPTED
 
-        s.onFrame(new IpcFrame.Prompt("pw2", Map.of())); // replace
+        s.onFrame(new IpcFrame.Prompt("pw2", false)); // replace
 
         assertEquals(ClientSession.State.PROMPTED, s.state());
         assertEquals("pw2", s.promptView().activePrompt().content());
@@ -418,7 +418,7 @@ class ClientSessionTest {
         ClientSession s = new ClientSession(v);
         s.submit("first");
         s.submit("second"); // queued
-        s.onFrame(new IpcFrame.Prompt("pw", Map.of())); // PROMPTED
+        s.onFrame(new IpcFrame.Prompt("pw", false)); // PROMPTED
         assertNotNull(s.promptView().activePrompt());
 
         v.events.clear();
@@ -438,7 +438,7 @@ class ClientSessionTest {
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
         s.submit("first");
-        s.onFrame(new IpcFrame.Prompt("pw", Map.of())); // PROMPTED
+        s.onFrame(new IpcFrame.Prompt("pw", false)); // PROMPTED
         assertNotNull(s.promptView().activePrompt());
 
         IpcFrame.ClientFrame f = s.onFrame(new IpcFrame.Done(Map.of(), null));
@@ -454,7 +454,7 @@ class ClientSessionTest {
         ClientSession s = new ClientSession(v);
         s.submit("first");
         s.submit("second"); // queued
-        s.onFrame(new IpcFrame.Prompt("pw", Map.of())); // PROMPTED
+        s.onFrame(new IpcFrame.Prompt("pw", false)); // PROMPTED
         assertNotNull(s.promptView().activePrompt());
 
         IpcFrame.ClientFrame f = s.onFrame(IpcFrame.Error.ofError("boom"));
@@ -473,7 +473,7 @@ class ClientSessionTest {
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
         s.submit("first");
-        s.onFrame(new IpcFrame.Prompt("pw", Map.of())); // PROMPTED
+        s.onFrame(new IpcFrame.Prompt("pw", false)); // PROMPTED
         assertNotNull(s.promptView().activePrompt());
 
         IpcFrame.ClientFrame f = s.onFrame(new IpcFrame.Terminate("bye now"));
@@ -554,7 +554,7 @@ class ClientSessionTest {
         ClientSession s = new ClientSession(v);
         s.submit("first"); // RUNNING
 
-        s.onFrame(new IpcFrame.Prompt("password", Map.of(IpcMeta.MASK, true)));
+        s.onFrame(new IpcFrame.Prompt("password", true));
         ClientSession.PromptView prompted = s.promptView();
         assertEquals(ClientSession.State.PROMPTED, prompted.state());
         assertNotNull(prompted.activePrompt());
@@ -617,7 +617,7 @@ class ClientSessionTest {
                                 } catch (InterruptedException e) {
                                     Thread.currentThread().interrupt();
                                 }
-                                s.onFrame(new IpcFrame.Prompt("pw", Map.of()));
+                                s.onFrame(new IpcFrame.Prompt("pw", false));
                             });
 
             a.start();

@@ -1,6 +1,5 @@
 package top.focess.veto.command;
 
-import java.util.Map;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import org.jspecify.annotations.NonNull;
@@ -10,7 +9,6 @@ import org.slf4j.LoggerFactory;
 import top.focess.command.AbstractCommandSender;
 import top.focess.command.CommandPermission;
 import top.focess.veto.contract.IpcFrame;
-import top.focess.veto.contract.IpcMeta;
 import top.focess.veto.terminal.IpcServer;
 
 /**
@@ -179,9 +177,7 @@ public final class VetoCommandSender extends AbstractCommandSender {
      */
     public @NonNull CompletableFuture<String> inputAsync(
             @NonNull String text, boolean mask, long timeoutMillis) {
-        ipcServer.send(
-                terminalId,
-                new IpcFrame.Prompt(text, Map.of(IpcMeta.PROMPT, text, IpcMeta.MASK, mask)));
+        ipcServer.send(terminalId, new IpcFrame.Prompt(text, mask));
         CompletableFuture<String> future = super.inputAsync(timeoutMillis);
         pendingInput = future; // capture so cancelInput() can cooperatively unblock it
         return future;

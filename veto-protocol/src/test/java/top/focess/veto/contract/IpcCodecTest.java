@@ -37,7 +37,7 @@ class IpcCodecTest {
             new IpcFrame.Delta("chunk"),
             new IpcFrame.Progress("working", 42),
             new IpcFrame.Progress("working", IpcFrame.Progress.INDETERMINATE),
-            new IpcFrame.Prompt("password:", Map.of("mask", true)),
+            new IpcFrame.Prompt("password:", true),
             new IpcFrame.Terminate("bye"),
         };
 
@@ -121,10 +121,10 @@ class IpcCodecTest {
     }
 
     @Test
-    void promptMaskAccessorReadsMetaSafely() {
-        IpcFrame.Prompt masked = new IpcFrame.Prompt("password:", Map.of("mask", true));
+    void promptMaskAccessor() {
+        IpcFrame.Prompt masked = new IpcFrame.Prompt("password:", true);
         assertTrue(masked.mask());
-        IpcFrame.Prompt plain = new IpcFrame.Prompt("name:", Map.of());
+        IpcFrame.Prompt plain = new IpcFrame.Prompt("name:", false);
         assertFalse(plain.mask());
     }
 }

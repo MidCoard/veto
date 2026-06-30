@@ -1,6 +1,5 @@
 package top.focess.veto.contract;
 
-import com.fasterxml.jackson.annotation.JsonAnySetter;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
@@ -128,7 +127,8 @@ public sealed interface IpcFrame
 
     /** User replied to a backend-issued {@link Prompt}. Fire-and-forget. */
     record Input(@NonNull String raw) implements ClientFrame {
-        @Override /* annotation was: @NonNull */
+        @Override
+        @NonNull
         public String toString() {
             return "Input[raw=********]";
         }
@@ -299,20 +299,9 @@ public sealed interface IpcFrame
      * reply.
      *
      * @param content the prompt message content to display
-     * @param meta prompt-related metadata options (such as masking input characters)
+     * @param mask whether to mask the user's input characters (e.g. for password fields)
      */
-    record Prompt(@NonNull String content, @NonNull Map<String, Object> meta)
-            implements ServerFrame {
-        /** Typed accessor for {@link IpcMeta#MASK} (whether to mask the user's input). */
-        public boolean mask() {
-            return IpcMeta.mask(meta);
-        }
-
-        /** Typed, null-safe accessor for {@link IpcMeta#PROMPT}. */
-        public @Nullable String promptText() {
-            return IpcMeta.promptText(meta);
-        }
-    }
+    record Prompt(@NonNull String content, boolean mask) implements ServerFrame {}
 
     /**
      * Sent by the server to forcefully terminate the terminal connection session.

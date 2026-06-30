@@ -194,10 +194,6 @@ public class VetoTerminal {
      */
     private void repl() {
         while (running) {
-            // One atomic snapshot — state, activePrompt and username describe a single moment.
-            // Reading them via separate calls would be a TOCTOU: the consumer thread can transition
-            // the state machine (a Prompt arriving) between the reads, so the rendered prompt could
-            // disagree with the state it was chosen for.
             ClientSession.PromptView view = session.promptView();
             ClientSession.State state = view.state();
             IpcFrame.Prompt activePrompt = view.activePrompt();
@@ -228,78 +224,28 @@ public class VetoTerminal {
             try {
                 line = reader.readLine(promptText, mask);
             } catch (UserInterruptException e) {
-                // ── Why readLine threw, and how we tell the two causes apart ──────────────
-                //
-                // readLine can throw UserInterruptException for two distinct reasons:
-                //
-                // (1) A Prompt swap — the consumer thread (on a backend Prompt frame) set
-                // promptSwapPending = true and then called mainThread.interrupt to break
-                // this blocking readLine so the loop re-renders with the PROMPTED prompt.
-                // (2) A genuine Ctrl+C — the user pressed Ctrl+C (the tty sent 0x03), which JLine
-                // reads during readLine and turns into this exception.
-                //
-                // We distinguish them by the flag, and the distinction is sound ONLY because the
-                // consumer sets the flag BEFORE interrupting (onPrompt: flag = true; then
-                // interrupt)
-                // and because the flag is cleared in exactly one place — here, in the swap branch.
-                // So "the interrupt fired" ⇒ "the flag was set by the swap that caused it," and a
-                // read of the flag here is authoritative. (A real Ctrl+C never sets
-                // promptSwapPending;
-                // it arrives as the 0x03 byte, not as Thread.interrupt, so it leaves the flag
-                // false.)
-                //
-                // ── Why the flag clear + interrupt drain lives HERE, not at the loop top ──────
-                //
-                // An earlier version drained a "stale swap interrupt" at the top of the loop,
-                // before
-                // readLine. That was unsound: the consumer's "set flag" and "interrupt" are NOT
-                // atomic, so the loop-top drain could observe the flag, clear it, and drain the
-                // interrupt flag BEFORE the consumer's interrupt had even been delivered. Two
-                // races
-                // followed:
-                //
-                // ABA / phantom Ctrl+C: flag set (1) → loop-top sees flag, clears it, drains a
-                // NOT-YET-DELIVERED interrupt (no-op) → readLine blocks → consumer's
-                // interrupt
-                // finally lands on the blocked readLine → readLine throws → catch sees flag now
-                // FALSE (cleared at the top) → misreads the swap as a genuine Ctrl+C → at IDLE,
-                // cancel returns null (shutdown) → the terminal EXITS on a stray backend
-                // Prompt.
-                //
-                // Stale prompt/mask: a Prompt landing between the snapshot and readLine left the
-                // loop rendering the old prompt with mask=null (a password echoed in
-                // plaintext).
-                //
-                // Moving the drain here fixes both: the swap interrupt is drained only AFTER
-                // readLine
-                // has actually thrown from it (so the interrupt we clear provably corresponds to
-                // this
-                // swap), and the `continue` re-snapshots promptView — so a Prompt that arrived
-                // after
-                // the prior snapshot is picked up with its correct prompt + mask. The flag is the
-                // only
-                // swap signal and it is read exactly once, after the wake, with no intervening
-                // clear.
+                // two ways to trigger this, first the user press the ctrl+C,
+                // second the consumerThread actively call the mainThread to interrupt.
+                // when consumerThread actively call the mainThread to interrupt, the
+                // promptSwapPending flag is always first set
+                // and then the mainThread interrupts, so when two ways come both, there are
+                // multiple cases.
+                // case 1: the ctrl+C is always first, so we move to cancel, it is expected
+                // behavior.
+                // case 2: the ctrl+C is first, but promptSwapPending is true when codes come to
+                // here, and until calling the "continue", the mainThread is not interrupted.
+                // so in this case, when come to reader.readLine again, another
+                // UserInterruptException is thrown, and we move to cancel, this is also expected.
+                // case 3: the ctrl+C is first, but promptSwapPending is true and the mainThread
+                // interrupts when codes come to here, so thread's interrupt status is cleared.
+                // when codes come to reader.readLine again, nothing break this, the user might need
+                // ctrl+C again, but it is acceptable, and rarely happened.
+                // case 4: the ctrl+C is last, so we first change the prompt and then move to
+                // cancel, it is expected behavior
                 if (promptSwapPending) {
                     promptSwapPending = false;
-                    // Drain the interrupt flag. This swap woke readLine via mainThread.interrupt;
-                    // JLine3 (LineReaderImpl.readLine) turns that into this UserInterruptException
-                    // and, in its own finally, RE-SETS the flag (Thread.interrupted to
-                    // capture+clear,
-                    // then Thread.currentThread.interrupt if it was set) — so on arrival here
-                    // the
-                    // flag is set. We must clear it (Thread.interrupted) before the next
-                    // readLine, or
-                    // JLine's non-blocking reader sees the set flag and throws again on the very
-                    // next
-                    // read, looping the re-render forever. Clearing it here is sound: the throw
-                    // proves
-                    // the swap's interrupt was actually delivered, so the flag we drain provably
-                    // belongs
-                    // to this swap (not some stale interrupt — the old loop-top drain raced a
-                    // not-yet-delivered interrupt).
                     Thread.interrupted();
-                    continue; // re-snapshot at the loop top with the now-live PROMPTED state
+                    continue;
                 }
                 // Flag false ⇒ not a swap ⇒ genuine Ctrl+C → cancel the in-flight request/prompt,
                 // or exit if idle (cancel returns null as the shutdown signal per IDLE ×

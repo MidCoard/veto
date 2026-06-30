@@ -5,7 +5,7 @@ import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Standard metadata keys used in {@link IpcFrame.Done#meta} and {@link IpcFrame.Prompt#meta}.
+ * Standard metadata keys used in {@link IpcFrame.Done#meta}.
  *
  * <p>Use these constants instead of raw strings to prevent typos and make metadata usage
  * discoverable across the codebase. The typed {@code...Value} accessors perform the safe casts so
@@ -36,16 +36,6 @@ public final class IpcMeta {
 
     /** {@code int} — the current agent turn number in the session. */
     public static final String TURN_NUMBER = "turnNumber";
-
-    // ── Prompt meta ─────────────────────────────────────────────────────────
-
-    /**
-     * {@code boolean} — instructs the terminal to mask input characters (e.g. for password fields).
-     */
-    public static final String MASK = "mask";
-
-    /** {@code String} — the prompt text to display above the input field. */
-    public static final String PROMPT = "prompt";
 
     // ── typed, null-safe accessors ──────────────────────────────────────────
 
@@ -91,16 +81,5 @@ public final class IpcMeta {
     /** True if the meta instructs the terminal to clear cached session metadata. */
     public static boolean clearSession(@NonNull Map<String, Object> meta) {
         return Boolean.TRUE.equals(meta.get(CLEAR_SESSION));
-    }
-
-    /** True if the prompt meta requests masked input. */
-    public static boolean mask(@NonNull Map<String, Object> meta) {
-        return Boolean.TRUE.equals(meta.get(MASK));
-    }
-
-    /** Reads the prompt display text from a meta map, or {@code null} if absent. */
-    public static @Nullable String promptText(@NonNull Map<String, Object> meta) {
-        Object v = meta.get(PROMPT);
-        return v instanceof String s ? s : null;
     }
 }

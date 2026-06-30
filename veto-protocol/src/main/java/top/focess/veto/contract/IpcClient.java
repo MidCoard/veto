@@ -141,19 +141,26 @@ public final class IpcClient implements AutoCloseable {
             Transport.FramedMsg msg = transport.recv(remaining);
             if (msg == null) continue;
             IpcFrame frame = msg.frame();
-            if (frame instanceof IpcFrame.Welcome w && w.seq() == seq) {
-                if (w.version() < 1) {
+            if (frame instanceof IpcFrame.Welcome(int version, long seq1) && seq1 == seq) {
+                if (version < 1) {
                     throw new RuntimeException(
-                            "Backend negotiated unsupported protocol version " + w.version());
+                            "Backend negotiated unsupported protocol version " + version);
                 }
-                negotiatedVersion = w.version();
+                negotiatedVersion = version;
                 return;
             }
             if (frame instanceof IpcFrame.Error e) {
                 throw new RuntimeException("Backend rejected handshake: " + e.content());
             }
-            // An unrelated frame arrived during handshake — route it so it is not lost.
-            if (frame instanceof IpcFrame.ServerFrame sf) route(sf);
+            // An unrelated frame arrived during handshake — protocol violation.
+            if (frame instanceof IpcFrame.Terminate t) {
+                throw new RuntimeException("Backend terminated during handshake: " + t.reason());
+            }
+            if (frame instanceof IpcFrame.ServerFrame) {
+                log.warn(
+                        "Unexpected {} frame during handshake — discarding (protocol violation)",
+                        frame.getClass().getSimpleName());
+            }
         }
     }
 
@@ -248,6 +255,9 @@ public final class IpcClient implements AutoCloseable {
             correlator.register(sr.seq());
         }
         if (!outbox.offer(frame)) {
+            if (frame instanceof IpcFrame.SeqRequest sr) {
+                correlator.discard(sr.seq());
+            }
             log.warn(
                     "Outbox full ({} entries) — dropping {}",
                     OUTBOX_CAPACITY,
