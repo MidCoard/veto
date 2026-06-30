@@ -9,6 +9,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 import javax.crypto.*;
 import javax.crypto.spec.GCMParameterSpec;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -31,14 +32,17 @@ public class TamperProofStore {
     private static final int GCM_TAG_LENGTH = 128;
     private static final int GCM_IV_LENGTH = 12;
 
-    private final ObservabilityConfiguration config;
-    private final Path auditDir;
-    private final DiffCalculator diffCalculator;
+    private final @NonNull ObservabilityConfiguration config;
+    private final @NonNull Path auditDir;
+    private final @NonNull DiffCalculator diffCalculator;
 
     // In-memory hash chain tail (last record's hash for integrity)
     private volatile String chainTailHash = "";
 
-    public TamperProofStore(ObservabilityConfiguration config, DiffCalculator diffCalculator) {
+    public
+    @NonNull
+    TamperProofStore(
+            @NonNull ObservabilityConfiguration config, @NonNull DiffCalculator diffCalculator) {
         this.config = config;
         this.auditDir = Path.of(config.getAuditLogPath());
         this.diffCalculator = diffCalculator;
@@ -64,7 +68,7 @@ public class TamperProofStore {
      * Append an audit record to the tamper-proof store. The record is encrypted and written to the
      * daily audit file. The hash chain is maintained in memory and persisted in a compact index.
      */
-    public synchronized void append(AuditRecord record) {
+    public synchronized void append(@NonNull AuditRecord record) {
         try {
             // Verify previous record's hash chain
             if (!chainTailHash.isEmpty() && !record.getPreviousRecordHash().equals(chainTailHash)) {
@@ -158,7 +162,7 @@ public class TamperProofStore {
     }
 
     /** Export audit records for a date range. Requires the store encryption key. */
-    public List<String> exportRecords(LocalDate from, LocalDate to) {
+    public @NonNull List<String> exportRecords(@NonNull LocalDate from, @NonNull LocalDate to) {
         List<String> records = new ArrayList<>();
         try {
             try (DirectoryStream<Path> stream =

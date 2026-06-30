@@ -2,8 +2,8 @@ package top.focess.veto.llm.core;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.List;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Standardized request for the Veto Agent Loop.
@@ -22,25 +22,25 @@ import org.jetbrains.annotations.Nullable;
  * object that may be logged, serialized, or echoed into the audit trail.
  */
 public record VetoRequest(
-        @NotNull String systemPrompt,
-        @NotNull String userPrompt,
-        @NotNull List<ToolDefinition> tools,
-        @NotNull ProviderType providerType,
-        @NotNull String modelName,
-        @NotNull String credentialKey,
-        @NotNull LlmOptions options,
-        @NotNull List<ChatMessage> messages,
+        @NonNull String systemPrompt,
+        @NonNull String userPrompt,
+        @NonNull List<ToolDefinition> tools,
+        @NonNull ProviderType providerType,
+        @NonNull String modelName,
+        @NonNull String credentialKey,
+        @NonNull LlmOptions options,
+        @NonNull List<ChatMessage> messages,
         @Nullable JsonNode responseSchema) {
 
     /** Backwards-compatible constructor (single-turn system+user; no per-turn schema). */
     public VetoRequest(
-            @NotNull String systemPrompt,
-            @NotNull String userPrompt,
-            @NotNull List<ToolDefinition> tools,
-            @NotNull ProviderType providerType,
-            @NotNull String modelName,
-            @NotNull String credentialKey,
-            @NotNull LlmOptions options) {
+            @NonNull String systemPrompt,
+            @NonNull String userPrompt,
+            @NonNull List<ToolDefinition> tools,
+            @NonNull ProviderType providerType,
+            @NonNull String modelName,
+            @NonNull String credentialKey,
+            @NonNull LlmOptions options) {
         this(
                 systemPrompt,
                 userPrompt,

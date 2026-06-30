@@ -1,9 +1,10 @@
 package top.focess.veto.memory;
 
 import java.util.UUID;
+import org.jspecify.annotations.NonNull;
 
 /** A unique identifier for a {@link Memory} entry. */
-public record MemoryId(UUID value) {
+public record MemoryId(@NonNull UUID value) {
 
     public MemoryId {
         if (value == null) {

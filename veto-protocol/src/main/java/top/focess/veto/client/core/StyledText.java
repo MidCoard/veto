@@ -1,6 +1,6 @@
 package top.focess.veto.client.core;
 
-import org.jetbrains.annotations.NotNull;
+import org.jspecify.annotations.NonNull;
 
 /**
  * A piece of text paired with the {@link StyleToken} it should be rendered in.
@@ -9,29 +9,29 @@ import org.jetbrains.annotations.NotNull;
  * Terminate); the {@link ClientView} resolves them to a native styled string via its {@link Theme}.
  * Plain streamed content (Delta, Done) is passed through as bare strings.
  */
-public record StyledText(@NotNull StyleToken token, @NotNull String text) {
+public record StyledText(@NonNull StyleToken token, @NonNull String text) {
 
-    public static StyledText plain(@NotNull String text) {
+    public static StyledText plain(@NonNull String text) {
         return new StyledText(StyleToken.PLAIN, text);
     }
 
-    public static StyledText muted(@NotNull String text) {
+    public static StyledText muted(@NonNull String text) {
         return new StyledText(StyleToken.MUTED, text);
     }
 
-    public static StyledText error(@NotNull String text) {
+    public static StyledText error(@NonNull String text) {
         return new StyledText(StyleToken.ERROR, text);
     }
 
-    public static StyledText accent(@NotNull String text) {
+    public static StyledText accent(@NonNull String text) {
         return new StyledText(StyleToken.ACCENT, text);
     }
 
-    public static StyledText success(@NotNull String text) {
+    public static StyledText success(@NonNull String text) {
         return new StyledText(StyleToken.SUCCESS, text);
     }
 
-    public static StyledText warning(@NotNull String text) {
+    public static StyledText warning(@NonNull String text) {
         return new StyledText(StyleToken.WARNING, text);
     }
 }

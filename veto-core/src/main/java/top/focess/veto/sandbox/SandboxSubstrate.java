@@ -3,6 +3,7 @@ package top.focess.veto.sandbox;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import org.jspecify.annotations.NonNull;
 
 /**
  * The hard backstop containment boundary and execution substrate. The Sandbox performs <b>no policy
@@ -19,33 +20,37 @@ public sealed interface SandboxSubstrate permits ConstrainedSubprocessSubstrate 
      * Provision the sandbox for a session. Preflight-checks the runtime is reachable — fails fast,
      * no silent fallback to a weaker substrate.
      */
-    SandboxHandle provision(SandboxProfile profile);
+    @NonNull SandboxHandle provision(@NonNull SandboxProfile profile);
 
     /**
      * Run a {@code run_command} chain. NO SHELL — argv[] direct exec. Substrate owns the wall (cwd
      * lock, env sanitization, resource caps, network wall).
      */
-    CommandResult runCommands(
-            SandboxHandle h, List<Command> cmds, Path cwd, ChainMode connect, Duration timeout);
+    @NonNull CommandResult runCommands(
+            @NonNull SandboxHandle h,
+            @NonNull List<Command> cmds,
+            @NonNull Path cwd,
+            @NonNull ChainMode connect,
+            @NonNull Duration timeout);
 
     /** {@code view_file} — read bytes relative to the workspace root. */
-    byte[] readFile(SandboxHandle h, Path rel);
+    byte @NonNull [] readFile(@NonNull SandboxHandle h, @NonNull Path rel);
 
     /** {@code write_to_file} — write bytes relative to the workspace root. */
-    void writeFile(SandboxHandle h, Path rel, byte[] content);
+    void writeFile(@NonNull SandboxHandle h, @NonNull Path rel, byte @NonNull [] content);
 
     /** {@code replace_file_content} — apply a contiguous patch relative to the workspace root. */
-    void patchFile(SandboxHandle h, Path rel, PatchSpec patch);
+    void patchFile(@NonNull SandboxHandle h, @NonNull Path rel, @NonNull PatchSpec patch);
 
     /** {@code list_dir} — list entries relative to the workspace root. */
-    List<Entry> listDir(SandboxHandle h, Path rel);
+    @NonNull List<Entry> listDir(@NonNull SandboxHandle h, @NonNull Path rel);
 
     /** {@code grep_search} — search under a path relative to the workspace root. */
-    List<Match> grep(SandboxHandle h, Path rel, GrepSpec spec);
+    @NonNull List<Match> grep(@NonNull SandboxHandle h, @NonNull Path rel, @NonNull GrepSpec spec);
 
     /** Stat a path relative to the workspace root (ReadHistory snapshots). */
-    Stat stat(SandboxHandle h, Path rel);
+    @NonNull Stat stat(@NonNull SandboxHandle h, @NonNull Path rel);
 
     /** Deprovision the sandbox, releasing runtime resources. */
-    void deprovision(SandboxHandle h);
+    void deprovision(@NonNull SandboxHandle h);
 }

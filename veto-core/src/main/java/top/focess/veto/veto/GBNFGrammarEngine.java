@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.ConcurrentHashMap;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -18,10 +19,12 @@ public class GBNFGrammarEngine {
 
     private static final Logger log = LoggerFactory.getLogger(GBNFGrammarEngine.class);
 
-    private final VetoGatewayConfiguration config;
+    private final @NonNull VetoGatewayConfiguration config;
     private final ConcurrentHashMap<String, String> grammarCache = new ConcurrentHashMap<>();
 
-    public GBNFGrammarEngine(VetoGatewayConfiguration config) {
+    public
+    @NonNull
+    GBNFGrammarEngine(@NonNull VetoGatewayConfiguration config) {
         this.config = config;
     }
 
@@ -31,7 +34,7 @@ public class GBNFGrammarEngine {
     }
 
     /** Load a grammar from file, with caching. */
-    public String loadGrammar(String grammarPath) {
+    public @NonNull String loadGrammar(@NonNull String grammarPath) {
         return grammarCache.computeIfAbsent(
                 grammarPath,
                 path -> {
@@ -106,7 +109,7 @@ string ::= "\\"" [^"]* "\\""
     }
 
     /** Register a custom grammar. */
-    public void registerGrammar(String name, String grammar) {
+    public void registerGrammar(@NonNull String name, @NonNull String grammar) {
         grammarCache.put(name, grammar);
         log.info("gateway GBNF: Registered grammar '{}'", name);
     }

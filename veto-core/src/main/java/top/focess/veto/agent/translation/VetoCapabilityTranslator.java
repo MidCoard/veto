@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Service;
 import top.focess.veto.agent.mcp.ParameterSchema;
 import top.focess.veto.agent.mcp.ToolDefinition;
@@ -54,7 +55,7 @@ public class VetoCapabilityTranslator implements CapabilityTranslator {
     }
 
     @Override
-    public JsonNode vetoResponseSchema(boolean thoughtRequired, boolean guidedSwitch) {
+    public @NonNull JsonNode vetoResponseSchema(boolean thoughtRequired, boolean guidedSwitch) {
         ObjectNode root = MAPPER.createObjectNode();
         root.put("type", "object");
         ObjectNode properties = MAPPER.createObjectNode();

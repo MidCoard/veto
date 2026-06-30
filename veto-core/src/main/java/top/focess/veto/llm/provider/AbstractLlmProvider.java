@@ -2,6 +2,7 @@ package top.focess.veto.llm.provider;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.UUID;
+import org.jspecify.annotations.NonNull;
 import top.focess.veto.llm.client.LlmClient;
 import top.focess.veto.llm.core.ResolvedRequest;
 import top.focess.veto.llm.core.VetoResponse;
@@ -29,7 +30,9 @@ public abstract class AbstractLlmProvider implements LLMProviderStrategy {
      * @param objectMapper the mapper for JSON serialization
      * @param auditLogger the logger for auditing requests
      */
-    protected AbstractLlmProvider(ObjectMapper objectMapper, AuditLogger auditLogger) {
+    protected
+    @NonNull
+    AbstractLlmProvider(@NonNull ObjectMapper objectMapper, @NonNull AuditLogger auditLogger) {
         this.objectMapper = objectMapper;
         this.auditLogger = auditLogger;
     }
@@ -41,7 +44,8 @@ public abstract class AbstractLlmProvider implements LLMProviderStrategy {
      * @return the raw completion from the provider
      * @throws Exception if the SDK call fails
      */
-    protected abstract LlmClient.RawCompletion invoke(ResolvedRequest request) throws Exception;
+    protected abstract LlmClient.@NonNull RawCompletion invoke(@NonNull ResolvedRequest request)
+            throws Exception;
 
     /**
      * Returns the human-readable provider name for log/exception messages.
@@ -58,7 +62,7 @@ public abstract class AbstractLlmProvider implements LLMProviderStrategy {
      * @return the normalized response from the LLM
      */
     @Override
-    public final VetoResponse execute(ResolvedRequest request) {
+    public final @NonNull VetoResponse execute(@NonNull ResolvedRequest request) {
         String requestId = UUID.randomUUID().toString();
         try {
             LlmClient.RawCompletion raw = invoke(request);
@@ -84,7 +88,7 @@ public abstract class AbstractLlmProvider implements LLMProviderStrategy {
     /**
      * Best-effort mapping of an SDK/transport exception to a typed, retryable-aware LlmException.
      */
-    protected LlmException classify(Exception e, String model) {
+    protected @NonNull LlmException classify(@NonNull Exception e, @NonNull String model) {
         String msg = e.getMessage() == null ? "" : e.getMessage().toLowerCase();
         if (e instanceof java.net.SocketTimeoutException
                 || msg.contains("timeout")

@@ -14,6 +14,7 @@ import com.openai.models.chat.completions.ChatCompletionMessageParam;
 import com.openai.models.chat.completions.ChatCompletionSystemMessageParam;
 import com.openai.models.chat.completions.ChatCompletionUserMessageParam;
 import java.util.Map;
+import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.translation.CapabilityTranslator;
 import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.llm.core.ResolvedRequest;
@@ -28,11 +29,11 @@ import top.focess.veto.llm.exceptions.ModelCapabilityException;
  */
 final class OpenAiLlmClient extends LlmClient {
 
-    private final OpenAIClient sdkClient;
+    private final @NonNull OpenAIClient sdkClient;
     private final boolean supportsJsonSchema;
-    private final String providerName;
-    private final ObjectMapper objectMapper;
-    private final CapabilityTranslator capabilityTranslator;
+    private final @NonNull String providerName;
+    private final @NonNull ObjectMapper objectMapper;
+    private final @NonNull CapabilityTranslator capabilityTranslator;
 
     OpenAiLlmClient(
             OpenAIClient sdkClient,
@@ -48,7 +49,7 @@ final class OpenAiLlmClient extends LlmClient {
     }
 
     @Override
-    public RawCompletion complete(ResolvedRequest resolved) {
+    public @NonNull RawCompletion complete(@NonNull ResolvedRequest resolved) {
         VetoRequest request = resolved.request();
         JsonNode rawSchema =
                 request.responseSchema() != null

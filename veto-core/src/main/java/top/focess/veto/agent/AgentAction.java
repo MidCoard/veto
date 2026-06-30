@@ -1,6 +1,6 @@
 package top.focess.veto.agent;
 
-import org.jetbrains.annotations.NotNull;
+import org.jspecify.annotations.NonNull;
 
 /**
  * A unit of work enqueued into an {@code AgentRunner}'s action queue ( ). The runner's virtual
@@ -23,7 +23,7 @@ public sealed interface AgentAction
      * effective thought flag is forced ON for the first model call ( ). Breaker trip resumption is
      * just a {@code UserPromptAction("continue")}.
      */
-    record UserPromptAction(@NotNull String prompt) implements AgentAction {
+    record UserPromptAction(@NonNull String prompt) implements AgentAction {
         public UserPromptAction {
             if (prompt == null) {
                 prompt = "";

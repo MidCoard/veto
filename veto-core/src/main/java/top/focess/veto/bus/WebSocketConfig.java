@@ -1,5 +1,6 @@
 package top.focess.veto.bus;
 
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Configuration;
@@ -17,14 +18,16 @@ public class WebSocketConfig implements WebSocketConfigurer {
 
     private static final Logger log = LoggerFactory.getLogger(WebSocketConfig.class);
 
-    private final VetoWebSocketHandler vetoWebSocketHandler;
+    private final @NonNull VetoWebSocketHandler vetoWebSocketHandler;
 
-    public WebSocketConfig(VetoWebSocketHandler vetoWebSocketHandler) {
+    public
+    @NonNull
+    WebSocketConfig(@NonNull VetoWebSocketHandler vetoWebSocketHandler) {
         this.vetoWebSocketHandler = vetoWebSocketHandler;
     }
 
     @Override
-    public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
+    public void registerWebSocketHandlers(@NonNull WebSocketHandlerRegistry registry) {
         registry.addHandler(vetoWebSocketHandler, "/ws/veto/bus")
                 .setAllowedOrigins("*")
                 .withSockJS()

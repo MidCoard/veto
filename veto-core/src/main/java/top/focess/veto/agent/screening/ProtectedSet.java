@@ -5,6 +5,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.jspecify.annotations.NonNull;
 
 /**
  * The PROTECTED protected set — paths default-blocked (CRITICAL on access). Seeded with deployer
@@ -12,7 +13,7 @@ import java.util.stream.Collectors;
  * {@code .env} (spec §6). User-editable. covers() is canonical prefix match. Under FULL_ACCESS the
  * set is empty.
  */
-public record ProtectedSet(Set<Path> paths) {
+public record ProtectedSet(@NonNull Set<Path> paths) {
 
     public ProtectedSet {
         paths = paths == null ? Set.of() : canonicalizeAll(paths);
@@ -30,7 +31,7 @@ public record ProtectedSet(Set<Path> paths) {
         return withDeployerDefaults("default", List.of());
     }
 
-    public static ProtectedSet withDeployerDefaults(List<Path> workspaceRoots) {
+    public static @NonNull ProtectedSet withDeployerDefaults(@NonNull List<Path> workspaceRoots) {
         return withDeployerDefaults("default", workspaceRoots);
     }
 
@@ -38,7 +39,8 @@ public record ProtectedSet(Set<Path> paths) {
      * Seeded with deployer defaults per spec §6: {@code ~/.veto/users/{vetoUserId}/}, {@code
      * ~/.ssh}, {@code ~/.aws}, {@code ~/.gnupg}, plus {@code <root>/.env} for each workspace root.
      */
-    public static ProtectedSet withDeployerDefaults(String vetoUserId, List<Path> workspaceRoots) {
+    public static @NonNull ProtectedSet withDeployerDefaults(
+            @NonNull String vetoUserId, @NonNull List<Path> workspaceRoots) {
         String home = System.getProperty("user.home", "");
         Set<Path> defaults = new HashSet<>();
         defaults.add(Path.of(home, ".veto", "users", vetoUserId));
@@ -82,7 +84,7 @@ public record ProtectedSet(Set<Path> paths) {
      * being shared; {@code mode} is the access level. The grant is a per-user authorization — it is
      * checked when {@code DangerComputation} runs under {@link DeployerPolicy#TENANT}.
      */
-    public record SharedGrant(Path rootPath, GrantMode mode) {
+    public record SharedGrant(@NonNull Path rootPath, @NonNull GrantMode mode) {
         public SharedGrant {
             if (rootPath == null) {
                 throw new IllegalArgumentException("rootPath");
@@ -99,7 +101,7 @@ public record ProtectedSet(Set<Path> paths) {
     }
 
     /** True if the canonical path is under any protected entry. */
-    public boolean covers(Path canonical) {
+    public boolean covers(@NonNull Path canonical) {
         Path c = canonical.toAbsolutePath().normalize();
         for (Path entry : paths) {
             if (c.startsWith(entry)) {

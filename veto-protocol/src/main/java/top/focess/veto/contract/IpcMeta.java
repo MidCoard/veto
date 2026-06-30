@@ -1,8 +1,8 @@
 package top.focess.veto.contract;
 
 import java.util.Map;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Standard metadata keys used in {@link IpcFrame.Done#meta} and {@link IpcFrame.Prompt#meta}.
@@ -55,7 +55,7 @@ public final class IpcMeta {
      * @param meta the metadata map
      * @return the username, or {@code null} if absent or not a string
      */
-    public static @Nullable String username(@NotNull Map<String, Object> meta) {
+    public static @Nullable String username(@NonNull Map<String, Object> meta) {
         Object v = meta.get(USERNAME);
         return v instanceof String s ? s : null;
     }
@@ -66,7 +66,7 @@ public final class IpcMeta {
      * @param meta the metadata map
      * @return the session id, or {@code null} if absent or not a string
      */
-    public static @Nullable String session(@NotNull Map<String, Object> meta) {
+    public static @Nullable String session(@NonNull Map<String, Object> meta) {
         Object v = meta.get(SESSION);
         return v instanceof String s ? s : null;
     }
@@ -78,28 +78,28 @@ public final class IpcMeta {
      * @param def the value to return if the key is absent or not numeric
      * @return the turn number, or {@code def} if absent or not numeric
      */
-    public static int turnNumber(@NotNull Map<String, Object> meta, int def) {
+    public static int turnNumber(@NonNull Map<String, Object> meta, int def) {
         Object v = meta.get(TURN_NUMBER);
         return v instanceof Number n ? n.intValue() : def;
     }
 
     /** True if the meta marks the request cancelled. */
-    public static boolean cancelled(@NotNull Map<String, Object> meta) {
+    public static boolean cancelled(@NonNull Map<String, Object> meta) {
         return Boolean.TRUE.equals(meta.get(CANCELLED));
     }
 
     /** True if the meta instructs the terminal to clear cached session metadata. */
-    public static boolean clearSession(@NotNull Map<String, Object> meta) {
+    public static boolean clearSession(@NonNull Map<String, Object> meta) {
         return Boolean.TRUE.equals(meta.get(CLEAR_SESSION));
     }
 
     /** True if the prompt meta requests masked input. */
-    public static boolean mask(@NotNull Map<String, Object> meta) {
+    public static boolean mask(@NonNull Map<String, Object> meta) {
         return Boolean.TRUE.equals(meta.get(MASK));
     }
 
     /** Reads the prompt display text from a meta map, or {@code null} if absent. */
-    public static @Nullable String promptText(@NotNull Map<String, Object> meta) {
+    public static @Nullable String promptText(@NonNull Map<String, Object> meta) {
         Object v = meta.get(PROMPT);
         return v instanceof String s ? s : null;
     }

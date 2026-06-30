@@ -6,6 +6,7 @@ import java.time.Instant;
 import java.util.Optional;
 import org.bouncycastle.crypto.generators.Argon2BytesGenerator;
 import org.bouncycastle.crypto.params.Argon2Parameters;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -29,14 +30,17 @@ public class UserRegistry {
     private static final int HASH_LENGTH = 32;
     private static final int SALT_LENGTH = 16;
 
-    private final UserRepository repo;
+    private final @NonNull UserRepository repo;
 
-    public UserRegistry(UserRepository repo) {
+    public
+    @NonNull
+    UserRegistry(@NonNull UserRepository repo) {
         this.repo = repo;
     }
 
     /** Creates a user with the given role. Use Role.ADMIN for the first user. */
-    public UserEntity create(String username, String password, String role) {
+    public @NonNull UserEntity create(
+            @NonNull String username, @NonNull String password, @NonNull String role) {
         if (repo.existsById(username)) {
             throw new IllegalArgumentException("User '" + username + "' already exists");
         }
@@ -51,7 +55,8 @@ public class UserRegistry {
 
     /** Authenticates by verifying the password against the stored Argon2id hash. */
     @Transactional(readOnly = true)
-    public Optional<UserEntity> authenticate(String username, String password) {
+    public @NonNull Optional<UserEntity> authenticate(
+            @NonNull String username, @NonNull String password) {
         Optional<UserEntity> user = repo.findById(username);
         if (user.isEmpty()) {
             hashPassword(password, new byte[SALT_LENGTH]); // constant-time mitigation
@@ -71,7 +76,7 @@ public class UserRegistry {
     }
 
     @Transactional(readOnly = true)
-    public Optional<UserEntity> findByUsername(String username) {
+    public @NonNull Optional<UserEntity> findByUsername(@NonNull String username) {
         return repo.findById(username);
     }
 

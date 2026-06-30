@@ -1,6 +1,7 @@
 package top.focess.veto.agent.loop;
 
 import java.util.Map;
+import org.jspecify.annotations.NonNull;
 
 /**
  * One step of a guided-mode {@link ActionsProgram} (the IR).. The agent authors this directly in
@@ -22,15 +23,15 @@ public sealed interface Action
         permits ToolAction, GenerateAction, GotoAction, ConditionalGotoAction, StopAction {
 
     /** Unique within the program. */
-    String id();
+    @NonNull String id();
 
     /** Human-readable, for logging. */
-    String label();
+    @NonNull String label();
 
     /**
      * Resolves {@code $var|literal} input bindings against the {@link Scope} into concrete args.
      */
-    default Map<String, Object> resolveInputs(Scope scope) {
+    default @NonNull Map<String, Object> resolveInputs(@NonNull Scope scope) {
         return Map.of();
     }
 }

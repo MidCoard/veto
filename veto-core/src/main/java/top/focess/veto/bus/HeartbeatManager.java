@@ -6,6 +6,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -19,19 +20,21 @@ public class HeartbeatManager {
 
     private static final Logger log = LoggerFactory.getLogger(HeartbeatManager.class);
 
-    private final BusConfiguration config;
+    private final @NonNull BusConfiguration config;
     private final AtomicInteger heartbeatCount = new AtomicInteger(0);
     private final AtomicLong lastHeartbeatAck = new AtomicLong(0);
     private ScheduledExecutorService scheduler;
     private ScheduledFuture<?> heartbeatFuture;
     private volatile WebSocketBus bus;
 
-    public HeartbeatManager(BusConfiguration config) {
+    public
+    @NonNull
+    HeartbeatManager(@NonNull BusConfiguration config) {
         this.config = config;
     }
 
     /** Start sending heartbeats at the configured interval. */
-    public synchronized void start(WebSocketBus bus) {
+    public synchronized void start(@NonNull WebSocketBus bus) {
         this.bus = bus;
         if (heartbeatFuture != null && !heartbeatFuture.isCancelled()) {
             return;

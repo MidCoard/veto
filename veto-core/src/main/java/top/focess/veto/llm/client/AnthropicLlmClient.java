@@ -13,6 +13,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Map;
+import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.translation.CapabilityTranslator;
 import top.focess.veto.llm.core.ResolvedRequest;
 import top.focess.veto.llm.core.VetoRequest;
@@ -26,9 +27,9 @@ final class AnthropicLlmClient extends LlmClient {
 
     private static final String PULSE_TOOL = "veto_pulse";
 
-    private final AnthropicClient sdkClient;
-    private final ObjectMapper objectMapper;
-    private final CapabilityTranslator capabilityTranslator;
+    private final @NonNull AnthropicClient sdkClient;
+    private final @NonNull ObjectMapper objectMapper;
+    private final @NonNull CapabilityTranslator capabilityTranslator;
 
     AnthropicLlmClient(
             AnthropicClient sdkClient,
@@ -40,7 +41,7 @@ final class AnthropicLlmClient extends LlmClient {
     }
 
     @Override
-    public RawCompletion complete(ResolvedRequest resolved) {
+    public @NonNull RawCompletion complete(@NonNull ResolvedRequest resolved) {
         VetoRequest request = resolved.request();
         JsonNode responseSchema =
                 request.responseSchema() != null

@@ -1,5 +1,6 @@
 package top.focess.veto.agent.intercept;
 
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,11 +36,13 @@ public class IngressDefense {
      * applying the deterministic redaction regardless of SLM availability. Nullable so the no-arg
      * construction path (existing tests, no SLM configured) degrades to deterministic-only.
      */
-    private final SemanticMasker semanticMasker;
+    private final @NonNull SemanticMasker semanticMasker;
 
     /** Spring-injected constructor — the SLM-backed masker is optional (degrades if absent). */
     @Autowired
-    public IngressDefense(@Autowired(required = false) SemanticMasker semanticMasker) {
+    public
+    @NonNull
+    IngressDefense(@NonNull @Autowired(required = false) SemanticMasker semanticMasker) {
         this.semanticMasker = semanticMasker;
     }
 

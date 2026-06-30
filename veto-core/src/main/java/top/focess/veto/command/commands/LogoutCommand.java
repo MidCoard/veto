@@ -1,7 +1,7 @@
 package top.focess.veto.command.commands;
 
 import java.util.List;
-import org.jetbrains.annotations.NotNull;
+import org.jspecify.annotations.NonNull;
 import top.focess.command.CommandResult;
 import top.focess.command.CommandSender;
 import top.focess.veto.command.LogoutException;
@@ -16,8 +16,8 @@ public class LogoutCommand extends VetoCommand {
     private final PromptHandler promptHandler;
 
     public LogoutCommand(
-            @NotNull AuthLifecycleManager authLifecycleManager,
-            @NotNull PromptHandler promptHandler) {
+            @NonNull AuthLifecycleManager authLifecycleManager,
+            @NonNull PromptHandler promptHandler) {
         super("logout", "Sign out");
         this.authLifecycleManager = authLifecycleManager;
         this.promptHandler = promptHandler;
@@ -43,8 +43,7 @@ public class LogoutCommand extends VetoCommand {
     }
 
     @Override
-    @NotNull
-    public List<String> usage(@NotNull CommandSender s) {
+    public @NonNull List<String> usage(@NonNull CommandSender s) {
         return List.of("/logout — Sign out");
     }
 }

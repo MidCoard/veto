@@ -3,6 +3,7 @@ package top.focess.veto.controller;
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
@@ -20,9 +21,11 @@ public class VetoController {
 
     private static final Logger log = LoggerFactory.getLogger(VetoController.class);
 
-    private final VetoGateway vetoGateway;
+    private final @NonNull VetoGateway vetoGateway;
 
-    public VetoController(VetoGateway vetoGateway) {
+    public
+    @NonNull
+    VetoController(@NonNull VetoGateway vetoGateway) {
         this.vetoGateway = vetoGateway;
     }
 

@@ -1,7 +1,7 @@
 package top.focess.veto.vault;
 
 import javax.crypto.SecretKey;
-import org.jetbrains.annotations.NotNull;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -20,7 +20,7 @@ public class AuthLifecycleManager {
     private final PromptHandler promptHandler;
 
     public AuthLifecycleManager(
-            @NotNull CredentialVault vault, @NotNull PromptHandler promptHandler) {
+            @NonNull CredentialVault vault, @NonNull PromptHandler promptHandler) {
         this.vault = vault;
         this.promptHandler = promptHandler;
     }
@@ -31,7 +31,7 @@ public class AuthLifecycleManager {
      * @param username the name of the user logging in
      * @param vaultKey the decrypted vault key for the user
      */
-    public synchronized void login(@NotNull String username, @NotNull SecretKey vaultKey) {
+    public synchronized void login(@NonNull String username, @NonNull SecretKey vaultKey) {
         log.info("AuthLifecycleManager: Logging in user '{}'", username);
         vault.unlock(vaultKey, username);
     }
@@ -42,7 +42,7 @@ public class AuthLifecycleManager {
      *
      * @param username the name of the user logging out
      */
-    public synchronized void logout(@NotNull String username) {
+    public synchronized void logout(@NonNull String username) {
         log.info("AuthLifecycleManager: Logging out user '{}'", username);
         try {
             promptHandler.deactivateAgent(username);

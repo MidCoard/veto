@@ -1,6 +1,6 @@
 package top.focess.veto.contract;
 
-import org.jetbrains.annotations.NotNull;
+import org.jspecify.annotations.NonNull;
 
 /**
  * Transport half that sends frames from the backend (server) to a specific connected terminal —
@@ -17,5 +17,5 @@ public non-sealed interface ServerTransport extends Transport {
      * @param identity the destination peer routing identity
      * @param frame the frame to send
      */
-    void send(@NotNull String identity, @NotNull IpcFrame frame);
+    void send(@NonNull String identity, @NonNull IpcFrame frame);
 }

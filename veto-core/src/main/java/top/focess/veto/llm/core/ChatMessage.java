@@ -1,6 +1,6 @@
 package top.focess.veto.llm.core;
 
-import org.jetbrains.annotations.NotNull;
+import org.jspecify.annotations.NonNull;
 
 /**
  * A single chat message in a compiled conversation — the role-mapped form the {@code
@@ -10,25 +10,21 @@ import org.jetbrains.annotations.NotNull;
  * @param role one of {@code system}, {@code user}, {@code assistant}, {@code tool}
  * @param content the message content (text; tool calls/responses are rendered as text observations)
  */
-public record ChatMessage(@NotNull String role, @NotNull String content) {
+public record ChatMessage(@NonNull String role, @NonNull String content) {
 
-    @NotNull
-    public static ChatMessage system(@NotNull String content) {
+    public static @NonNull ChatMessage system(@NonNull String content) {
         return new ChatMessage("system", content);
     }
 
-    @NotNull
-    public static ChatMessage user(@NotNull String content) {
+    public static @NonNull ChatMessage user(@NonNull String content) {
         return new ChatMessage("user", content);
     }
 
-    @NotNull
-    public static ChatMessage assistant(@NotNull String content) {
+    public static @NonNull ChatMessage assistant(@NonNull String content) {
         return new ChatMessage("assistant", content);
     }
 
-    @NotNull
-    public static ChatMessage tool(@NotNull String content) {
+    public static @NonNull ChatMessage tool(@NonNull String content) {
         return new ChatMessage("tool", content);
     }
 }

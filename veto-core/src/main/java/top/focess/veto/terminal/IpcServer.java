@@ -7,7 +7,7 @@ import java.util.Set;
 import java.util.concurrent.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
-import org.jetbrains.annotations.NotNull;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -120,7 +120,7 @@ public class IpcServer {
      *
      * @param registry the command registry used to dispatch requests and produce completions
      */
-    public IpcServer(@NotNull CommandRegistry registry) {
+    public IpcServer(@NonNull CommandRegistry registry) {
         this.registry = registry;
     }
 
@@ -237,7 +237,7 @@ public class IpcServer {
      *
      * <p>Must only be called from the IO thread.
      */
-    private void routeFrame(@NotNull String identity, @NotNull IpcFrame frame) {
+    private void routeFrame(@NonNull String identity, @NonNull IpcFrame frame) {
         if (frame instanceof IpcFrame.Hello hello) {
             // Hello is a special bootstrapping frame — handle inline before the session exists.
             handleHello(identity, hello);
@@ -263,7 +263,7 @@ public class IpcServer {
      * Otherwise creates the session, starts its worker virtual thread, and sends {@link
      * IpcFrame.Welcome} back.
      */
-    private void handleHello(@NotNull String identity, @NotNull IpcFrame.Hello hello) {
+    private void handleHello(@NonNull String identity, IpcFrame.@NonNull Hello hello) {
         if (sessions.containsKey(identity)) {
             // The IO thread is the only writer to `sessions`, so containsKey + put is safe here.
             log.warn("Duplicate identity {} — rejecting handshake", identity.substring(0, 8));
@@ -294,7 +294,7 @@ public class IpcServer {
      * given session's frames at a time. {@link IpcFrame.Request} frames are the single exception:
      * they are submitted to {@link #requestPool} so long-running commands never stall this loop.
      */
-    private void sessionLoop(@NotNull Session session) {
+    private void sessionLoop(@NonNull Session session) {
         log.debug("Session worker started for {}", session.identity.substring(0, 8));
         while (!session.closed.get() && running) {
             IpcFrame frame;
@@ -323,7 +323,7 @@ public class IpcServer {
      * IpcFrame.Request} is the only frame type that may block for a significant duration and is
      * therefore off-loaded to {@link #requestPool}.
      */
-    private void handleSessionFrame(@NotNull Session session, @NotNull IpcFrame frame) {
+    private void handleSessionFrame(@NonNull Session session, @NonNull IpcFrame frame) {
         String identity = session.identity;
         String user = session.sender.username();
         if (user != null) {
@@ -529,7 +529,7 @@ public class IpcServer {
      * Idempotently closes a session. Uses {@link AtomicBoolean#compareAndSet} so concurrent calls
      * from the session worker, heartbeat thread, or server shutdown are all safe.
      */
-    private void closeSession(@NotNull Session session) {
+    private void closeSession(@NonNull Session session) {
         if (session.closed.compareAndSet(false, true)) {
             cancelAllRequests(session);
             sessions.remove(session.identity);
@@ -547,7 +547,7 @@ public class IpcServer {
      * @param frame the terminal frame ({@link IpcFrame.Done}/{@link IpcFrame.Error}/{@link
      *     IpcFrame.Terminate}) to send
      */
-    private void sendTerminal(@NotNull Session session, @NotNull IpcFrame frame) {
+    private void sendTerminal(@NonNull Session session, @NonNull IpcFrame frame) {
         if (session.terminalSent.compareAndSet(false, true)) {
             send(session.identity, frame);
         }
@@ -564,7 +564,7 @@ public class IpcServer {
      * interrupt the underlying thread. Commands that support cooperative cancellation should
      * periodically check {@link Thread#isInterrupted} and exit early.
      */
-    private void cancelAllRequests(@NotNull Session session) {
+    private void cancelAllRequests(@NonNull Session session) {
         // Drain the set atomically so concurrent whenComplete callbacks don't re-add entries.
         Set<CompletableFuture<Void>> snapshot = Set.copyOf(session.activeRequests);
         session.activeRequests.removeAll(snapshot);
@@ -583,7 +583,7 @@ public class IpcServer {
      * @param identity the ZMQ DEALER identity of the target terminal
      * @param frame the frame to send
      */
-    public void send(@NotNull String identity, @NotNull IpcFrame frame) {
+    public void send(@NonNull String identity, @NonNull IpcFrame frame) {
         if (outbox.size() > MAX_OUTBOX_SIZE) {
             log.warn(
                     "Outbox congested ({} entries) — dropping {} for {}",
@@ -604,15 +604,14 @@ public class IpcServer {
      * @param identity the ZMQ DEALER identity of the connecting terminal
      * @return a new, unauthenticated {@link VetoCommandSender}; never {@code null}
      */
-    @NotNull
-    private VetoCommandSender createSender(@NotNull String identity) {
+    private @NonNull VetoCommandSender createSender(@NonNull String identity) {
         return new VetoCommandSender(this, null, identity);
     }
 
     // ── Types ─────────────────────────────────────────────────────────────
 
     /** A frame that has been queued for sending by the IO thread. */
-    public record OutboxEntry(@NotNull String identity, @NotNull IpcFrame frame) {}
+    public record OutboxEntry(@NonNull String identity, @NonNull IpcFrame frame) {}
 
     /**
      * All mutable state for a single connected terminal session.
@@ -623,8 +622,8 @@ public class IpcServer {
      * Both structures are thread-safe by design.
      */
     static class Session {
-        @NotNull final String identity;
-        @NotNull final VetoCommandSender sender;
+        @NonNull final String identity;
+        @NonNull final VetoCommandSender sender;
 
         /** Timestamp of the last received frame; read by the heartbeat thread. */
         volatile long lastActivityMillis = System.currentTimeMillis();
@@ -661,7 +660,7 @@ public class IpcServer {
          */
         final AtomicBoolean terminalSent = new AtomicBoolean(false);
 
-        Session(@NotNull String identity, @NotNull VetoCommandSender sender) {
+        Session(@NonNull String identity, @NonNull VetoCommandSender sender) {
             this.identity = identity;
             this.sender = sender;
         }

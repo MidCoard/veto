@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
+import org.jspecify.annotations.NonNull;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.TurnRecord;
@@ -22,18 +23,20 @@ import top.focess.veto.agent.TurnRecord;
 @ConditionalOnProperty(name = "veto.memory.store", havingValue = "vector")
 public class VectorIndexMemoryStore implements MemoryStore {
 
-    private final VectorIndex index;
+    private final @NonNull VectorIndex index;
 
     /** Memories are stored separately so we can attach metadata for the search result. */
     private final java.util.concurrent.ConcurrentMap<UUID, Memory> store =
             new java.util.concurrent.ConcurrentHashMap<>();
 
-    public VectorIndexMemoryStore(VectorIndex index) {
+    public
+    @NonNull
+    VectorIndexMemoryStore(@NonNull VectorIndex index) {
         this.index = index;
     }
 
     @Override
-    public List<ScoredMemory> search(MemoryQuery query) {
+    public @NonNull List<ScoredMemory> search(@NonNull MemoryQuery query) {
         // Over-fetch from the index in a single widening loop. The 4x budget covers the common
         // case where the user/tier/session/project filters are loose (4x hit-rate is generous);
         // if the post-filter result is still short of `topK`, widen the budget and re-query
@@ -90,14 +93,14 @@ public class VectorIndexMemoryStore implements MemoryStore {
     private static final int QUERY_WIDENING_CAP = 64;
 
     @Override
-    public MemoryId add(Memory memory) {
+    public @NonNull MemoryId add(@NonNull Memory memory) {
         store.put(idOf(memory.id()), memory);
         index.insert(idOf(memory.id()), memory.embedding());
         return memory.id();
     }
 
     @Override
-    public void capture(TurnRecord turn, UUID sessionId, UUID userId) {
+    public void capture(@NonNull TurnRecord turn, @NonNull UUID sessionId, @NonNull UUID userId) {
         if (turn == null || sessionId == null || userId == null) {
             return;
         }
@@ -121,7 +124,7 @@ public class VectorIndexMemoryStore implements MemoryStore {
     }
 
     @Override
-    public void promote(MemoryId id) {
+    public void promote(@NonNull MemoryId id) {
         Memory m = store.get(idOf(id));
         if (m == null || m.tier() != MemoryTier.SESSION) {
             return;
@@ -144,7 +147,7 @@ public class VectorIndexMemoryStore implements MemoryStore {
     }
 
     @Override
-    public void forget(MemoryId id) {
+    public void forget(@NonNull MemoryId id) {
         // store is keyed by UUID (see add() above) — apply idOf() consistently so the
         // entry is actually evicted. Previously the raw MemoryId was passed, making
         // store.remove a no-op and leaving the memory visible to future searches.
@@ -154,7 +157,7 @@ public class VectorIndexMemoryStore implements MemoryStore {
     }
 
     @Override
-    public float[] embed(String text) {
+    public float[] embed(@NonNull String text) {
         // Same deterministic stub. Production would call a local embedding model (Part 14.4).
         byte[] bytes = text.getBytes();
         float[] vec = new float[64];

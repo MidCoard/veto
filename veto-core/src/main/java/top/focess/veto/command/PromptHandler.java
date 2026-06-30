@@ -5,7 +5,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import org.jetbrains.annotations.NotNull;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.agent.Agent;
@@ -83,10 +83,10 @@ public class PromptHandler {
      * @param patternRepo the repository for user-defined agent patterns
      */
     public PromptHandler(
-            @NotNull CredentialVault vault,
-            @NotNull AgentService agentService,
-            @NotNull ConcurrentHashMap<String, String> activePatterns,
-            @NotNull AgentPatternRepository patternRepo) {
+            @NonNull CredentialVault vault,
+            @NonNull AgentService agentService,
+            @NonNull ConcurrentHashMap<String, String> activePatterns,
+            @NonNull AgentPatternRepository patternRepo) {
         this.vault = vault;
         this.agentService = agentService;
         this.activePatterns = activePatterns;
@@ -103,8 +103,7 @@ public class PromptHandler {
      *
      * @return a snapshot of the live agents keyed by terminal ID; never {@code null}
      */
-    @NotNull
-    public Map<String, Agent> sessions() {
+    public @NonNull Map<String, Agent> sessions() {
         Map<String, Agent> snapshot = new HashMap<>();
         agentService.agentsView().forEach(snapshot::put);
         return snapshot;
@@ -170,9 +169,8 @@ public class PromptHandler {
      * the final {@link IpcFrame.Done} carries only session metadata (the text was already
      * streamed). On failure the message was not streamed, so the {@link IpcFrame.Error} carries it.
      */
-    @NotNull
-    public IpcFrame.TerminalResponse handle(
-            @NotNull String prompt, @NotNull String terminalId, @NotNull VetoCommandSender sender) {
+    public IpcFrame.@NonNull TerminalResponse handle(
+            @NonNull String prompt, @NonNull String terminalId, @NonNull VetoCommandSender sender) {
         String user = vault.getCurrentUser();
         if (user == null) {
             return IpcFrame.Error.ofError("Not logged in. Use /login.");
@@ -251,7 +249,7 @@ public class PromptHandler {
     }
 
     /** Looks up the active pattern for the user, falling back to built-in defaults. */
-    public LlmConfig resolveLlmConfig(@NotNull String user) {
+    public LlmConfig resolveLlmConfig(@NonNull String user) {
         LlmConfig adhoc = adhocConfigs.get(user);
         if (adhoc != null) {
             return adhoc;
@@ -290,7 +288,7 @@ public class PromptHandler {
      *
      * @param terminalId the ZMQ identity of the terminal whose agent should be removed
      */
-    public void removeSession(@NotNull String terminalId) {
+    public void removeSession(@NonNull String terminalId) {
         agentService.remove(terminalId);
     }
 }

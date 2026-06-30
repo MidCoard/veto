@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -40,9 +41,9 @@ public class GroupOrchestrator {
 
     private static final Logger log = LoggerFactory.getLogger(GroupOrchestrator.class);
 
-    private final GroupRegistry registry;
-    private final Blackboard blackboard;
-    private final HeuristicLeader leader;
+    private final @NonNull GroupRegistry registry;
+    private final @NonNull Blackboard blackboard;
+    private final @NonNull HeuristicLeader leader;
 
     /** Per-group ledger of last-seen turnSeq so each tick only processes new messages. */
     private final ConcurrentMap<UUID, Long> lastSeenSeq = new ConcurrentHashMap<>();
@@ -54,7 +55,9 @@ public class GroupOrchestrator {
         this(new GroupRegistry(), new Blackboard(), new HeuristicLeader());
     }
 
-    public GroupOrchestrator(GroupRegistry registry, Blackboard blackboard) {
+    public
+    @NonNull
+    GroupOrchestrator(@NonNull GroupRegistry registry, @NonNull Blackboard blackboard) {
         this(registry, blackboard, new HeuristicLeader());
     }
 
@@ -67,7 +70,12 @@ public class GroupOrchestrator {
     }
 
     /** Construct with an LlmLeader (extracts the heuristic fallback for direct calls). */
-    public GroupOrchestrator(GroupRegistry registry, Blackboard blackboard, LlmLeader llmLeader) {
+    public
+    @NonNull
+    GroupOrchestrator(
+            @NonNull GroupRegistry registry,
+            @NonNull Blackboard blackboard,
+            @NonNull LlmLeader llmLeader) {
         this.registry = registry;
         this.blackboard = blackboard;
         this.leader = llmLeader.heuristic();
@@ -82,7 +90,7 @@ public class GroupOrchestrator {
      * dispatch dispatchable nodes, and emit outbound Blackboard messages. The updated group is
      * persisted back into the registry. Returns the updated group.
      */
-    public Group tick(UUID groupId) {
+    public @NonNull Group tick(@NonNull UUID groupId) {
         Group group = registry.get(groupId);
         if (group == null) {
             return null;
@@ -264,7 +272,7 @@ public class GroupOrchestrator {
      * new node (or re-dispatches the same). The orchestrator exposes this hook so the Leader (or a
      * test) can drive re-planning.
      */
-    public Group replanFailed(UUID groupId, String nodeId) {
+    public @NonNull Group replanFailed(@NonNull UUID groupId, @NonNull String nodeId) {
         Group group = registry.get(groupId);
         if (group == null) {
             return null;
@@ -341,13 +349,18 @@ public class GroupOrchestrator {
      * Build a one-shot synthetic ACCEPT for a node (testing + bootstrap). Posts the ACCEPT to the
      * Blackboard; the next {@link #tick} will VERIFY the node.
      */
-    public void simulateAccept(UUID groupId, String mateId, String nodeId) {
+    public void simulateAccept(
+            @NonNull UUID groupId, @NonNull String mateId, @NonNull String nodeId) {
         BlackboardMessage m = mateExecutor.accept(groupId, mateId, nodeId, null);
         blackboard.post(m);
     }
 
     /** Build a one-shot synthetic FEEDBACK for a node (testing + bootstrap). */
-    public void simulateFeedback(UUID groupId, String mateId, String nodeId, String feedback) {
+    public void simulateFeedback(
+            @NonNull UUID groupId,
+            @NonNull String mateId,
+            @NonNull String nodeId,
+            @NonNull String feedback) {
         BlackboardMessage m =
                 new BlackboardMessage(
                         UUID.randomUUID().toString(),
@@ -366,7 +379,7 @@ public class GroupOrchestrator {
      * is a no-op placeholder that logs the event; a real implementation would clean up resources,
      * persist final state, and notify downstream systems.
      */
-    public void onGroupDisbanded(UUID groupId) {
+    public void onGroupDisbanded(@NonNull UUID groupId) {
         log.info("GroupOrchestrator: group {} disbanded", groupId);
         // MVP: no additional cleanup needed; the registry already holds the final state.
     }

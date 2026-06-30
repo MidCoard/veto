@@ -1,7 +1,7 @@
 package top.focess.veto.command;
 
 import java.util.concurrent.ConcurrentHashMap;
-import org.jetbrains.annotations.NotNull;
+import org.jspecify.annotations.NonNull;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import top.focess.veto.agent.AgentService;
@@ -44,11 +44,10 @@ public class CommandConfiguration {
      * @return the configured {@link PromptHandler} singleton
      */
     @Bean
-    @NotNull
-    public PromptHandler promptHandler(
-            @NotNull CredentialVault vault,
-            @NotNull AgentService agentService,
-            @NotNull AgentPatternRepository patternRepo) {
+    public @NonNull PromptHandler promptHandler(
+            @NonNull CredentialVault vault,
+            @NonNull AgentService agentService,
+            @NonNull AgentPatternRepository patternRepo) {
         return new PromptHandler(vault, agentService, activePatterns, patternRepo);
     }
 
@@ -77,15 +76,14 @@ public class CommandConfiguration {
      * @return the fully-configured {@link CommandRegistry} singleton
      */
     @Bean
-    @NotNull
-    public CommandRegistry commandRegistry(
-            @NotNull CredentialVault vault,
-            @NotNull UserRegistry users,
-            @NotNull VaultKeyManager keys,
-            @NotNull UniformLLMCaller caller,
-            @NotNull PromptHandler promptHandler,
-            @NotNull AgentPatternRepository patternRepo,
-            @NotNull AuthLifecycleManager authLifecycleManager) {
+    public @NonNull CommandRegistry commandRegistry(
+            @NonNull CredentialVault vault,
+            @NonNull UserRegistry users,
+            @NonNull VaultKeyManager keys,
+            @NonNull UniformLLMCaller caller,
+            @NonNull PromptHandler promptHandler,
+            @NonNull AgentPatternRepository patternRepo,
+            @NonNull AuthLifecycleManager authLifecycleManager) {
 
         CommandRegistry registry = new CommandRegistry(promptHandler);
 

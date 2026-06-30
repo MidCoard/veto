@@ -1,6 +1,6 @@
 package top.focess.veto.contract;
 
-import org.jetbrains.annotations.NotNull;
+import org.jspecify.annotations.NonNull;
 
 /**
  * Parsed command-line options for a Veto client (terminal / TUI). Pure data — no logging or other
@@ -21,7 +21,7 @@ import org.jetbrains.annotations.NotNull;
  * @param debug whether debug logging is enabled
  * @param address the backend connect address
  */
-public record ClientOptions(boolean debug, @NotNull String address) {
+public record ClientOptions(boolean debug, @NonNull String address) {
 
     /** Default backend connect address. */
     public static final String DEFAULT_ADDRESS = "tcp://127.0.0.1:5555";
@@ -34,8 +34,7 @@ public record ClientOptions(boolean debug, @NotNull String address) {
      * @throws IllegalArgumentException if an unknown flag is encountered or {@code --address} has
      *     no value
      */
-    @NotNull
-    public static ClientOptions parse(@NotNull String[] args) {
+    public static @NonNull ClientOptions parse(@NonNull String[] args) {
         boolean debug = false;
         String address = DEFAULT_ADDRESS;
 

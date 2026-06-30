@@ -1,6 +1,7 @@
 package top.focess.veto.observability;
 
 import java.util.*;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -24,7 +25,7 @@ public class DiffCalculator {
      * @param redacted The payload after veto redaction
      * @return A DiffResult containing line-level and character-level difference data
      */
-    public DiffResult computeDiff(String original, String redacted) {
+    public @NonNull DiffResult computeDiff(@NonNull String original, @NonNull String redacted) {
         if (original == null || redacted == null) {
             return new DiffResult(0, 0, 0, "(null input)", List.of());
         }
@@ -73,7 +74,7 @@ public class DiffCalculator {
     }
 
     /** Generate a human-readable diff summary. */
-    public String generateSummaryReport(DiffResult diff) {
+    public @NonNull String generateSummaryReport(@NonNull DiffResult diff) {
         if (diff.totalChanges == 0) {
             return "No changes detected.";
         }
@@ -116,7 +117,7 @@ public class DiffCalculator {
     }
 
     /** A single line-level diff entry. */
-    public record DiffLine(int lineNumber, String original, String redacted) {
+    public record DiffLine(int lineNumber, @NonNull String original, @NonNull String redacted) {
         public boolean isModified() {
             return !original.equals(redacted);
         }

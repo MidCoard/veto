@@ -4,13 +4,14 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import jakarta.annotation.Nullable;
 import java.lang.reflect.RecordComponent;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Compiles the two human-friendly input-schema formats into canonical {@link ToolDefinition}
@@ -35,7 +36,7 @@ public final class ToolSchemaCompiler {
      * this method never {@code newInstance}s the tool (that would bypass Spring DI). It only
      * reflects over the class to derive the schema + security hints.
      */
-    public static NativeToolDefinition compileNative(NativeMcpTool<?> toolBean) {
+    public static @NonNull NativeToolDefinition compileNative(@NonNull NativeMcpTool<?> toolBean) {
         Class<?> toolClass = toolBean.getClass();
         ToolSecurity security = toolClass.getAnnotation(ToolSecurity.class);
         if (security == null) {
@@ -65,7 +66,7 @@ public final class ToolSchemaCompiler {
      * the provider manifest). {@code @Doc} supplies parameter descriptions; non-nullable components
      * are added to {@code required}.
      */
-    public static JsonNode compileFromRecord(Class<?> recordClass) {
+    public static @NonNull JsonNode compileFromRecord(@NonNull Class<?> recordClass) {
         if (!recordClass.isRecord()) {
             throw new IllegalArgumentException("Class must be a Java Record");
         }
@@ -110,7 +111,7 @@ public final class ToolSchemaCompiler {
      * Compiles a key-value String DSL map ({@code "<name>": "<type><modifier> <description>"}) into
      * a Draft-7 JSON Schema. {@code!} = required, {@code?}/omitted = optional.
      */
-    public static JsonNode compileFromStringDsl(Map<String, String> dslMap) {
+    public static @NonNull JsonNode compileFromStringDsl(@NonNull Map<String, String> dslMap) {
         ObjectNode schema = MAPPER.createObjectNode();
         schema.put("type", "object");
         ObjectNode properties = MAPPER.createObjectNode();

@@ -2,6 +2,7 @@ package top.focess.veto.memory;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.UUID;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,9 +26,9 @@ public class MemoryCaptureService {
 
     private static final Logger log = LoggerFactory.getLogger(MemoryCaptureService.class);
 
-    private final MemoryStore store;
-    private final TurnRecordRepository turnRecordRepository;
-    private final ObjectMapper mapper;
+    private final @NonNull MemoryStore store;
+    private final @NonNull TurnRecordRepository turnRecordRepository;
+    private final @NonNull ObjectMapper mapper;
     private volatile boolean enabled = true;
 
     @Autowired
@@ -55,7 +56,7 @@ public class MemoryCaptureService {
      * non-capturable turn types and when disabled. Each sink is best-effort — a failure in one
      * never blocks the loop or the other.
      */
-    public void capture(TurnRecord turn, UUID sessionId, UUID userId) {
+    public void capture(@NonNull TurnRecord turn, @NonNull UUID sessionId, @NonNull UUID userId) {
         if (!enabled) {
             return;
         }

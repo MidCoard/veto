@@ -1,5 +1,6 @@
 package top.focess.veto.agent.screening;
 
+import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.intercept.VetoScenario;
 
 /**
@@ -7,7 +8,11 @@ import top.focess.veto.agent.intercept.VetoScenario;
  * scenario + reason. The {@link top.focess.veto.agent.intercept.HitlRegistry} resolves it via the
  * screening mode matrix.
  */
-public record Screening(Relevance relevance, Danger danger, VetoScenario scenario, String reason) {
+public record Screening(
+        @NonNull Relevance relevance,
+        @NonNull Danger danger,
+        @NonNull VetoScenario scenario,
+        @NonNull String reason) {
     public Screening {
         if (relevance == null) {
             relevance = Relevance.HIGH;

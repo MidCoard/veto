@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -28,12 +29,12 @@ public class GroupSpawner {
 
     private static final Logger log = LoggerFactory.getLogger(GroupSpawner.class);
 
-    private final Blackboard blackboard;
-    private final GroupRegistry registry;
-    private final GroupOrchestrator orchestrator;
-    private final MateBreakerRegistry breakers;
+    private final @NonNull Blackboard blackboard;
+    private final @NonNull GroupRegistry registry;
+    private final @NonNull GroupOrchestrator orchestrator;
+    private final @NonNull MateBreakerRegistry breakers;
     private final long defaultMaxCallsPerEpisode;
-    private final String mateModelId;
+    private final @NonNull String mateModelId;
 
     /**
      * Live MateAgents per group. Used by {@link #disband(UUID)} to stop polling and shut down each
@@ -155,7 +156,11 @@ public class GroupSpawner {
      * the orchestrator assigns existing ones). This is the {@code create_group} path: it registers
      * the group + DAG so {@link GroupOrchestrator#tick} can drive it once Mates exist.
      */
-    public Group spawnGroup(String leaderId, String userId, String contextBrief, ExecutionDag dag) {
+    public @NonNull Group spawnGroup(
+            @NonNull String leaderId,
+            @NonNull String userId,
+            @NonNull String contextBrief,
+            @NonNull ExecutionDag dag) {
         Group g = Group.create(leaderId, userId, contextBrief, blackboard, dag);
         registry.put(g);
         log.info("GroupSpawner: spawned group {} (no Mates yet)", g.groupId());
@@ -167,7 +172,11 @@ public class GroupSpawner {
      * polling {@link MateAgent}, and register it on the group. The Leader uses {@code create_mate}
      * to add a Mate under a skillset tag.
      */
-    public void addMate(UUID groupId, String mateId, String skillset, AgentFactory agentFactory) {
+    public void addMate(
+            @NonNull UUID groupId,
+            @NonNull String mateId,
+            @NonNull String skillset,
+            @NonNull AgentFactory agentFactory) {
         Group g = registry.get(groupId);
         if (g == null) {
             throw new IllegalArgumentException("unknown group: " + groupId);
@@ -206,7 +215,7 @@ public class GroupSpawner {
      * tracker. In-flight nodes the Mate owned go back to PENDING on the next tick for
      * re-assignment.
      */
-    public void removeMate(UUID groupId, String mateId) {
+    public void removeMate(@NonNull UUID groupId, @NonNull String mateId) {
         List<MateAgent> mates = liveMates.get(groupId);
         if (mates != null) {
             for (MateAgent m : mates) {
@@ -228,7 +237,7 @@ public class GroupSpawner {
      * breaker registry entries, mark the group DISBANDED, and retain the Blackboard for audit.
      * Idempotent — calling disband twice is a no-op.
      */
-    public void disband(java.util.UUID groupId) {
+    public void disband(java.util.@NonNull UUID groupId) {
         Group g = registry.get(groupId);
         if (g == null) {
             // Even if the group record is gone, still try to clean up any straggler Mates.
@@ -263,7 +272,7 @@ public class GroupSpawner {
     }
 
     /** A specification for a Mate in a group. */
-    public record MateSpec(String mateId, String skillset) {
+    public record MateSpec(@NonNull String mateId, @NonNull String skillset) {
         public MateSpec {
             if (mateId == null || mateId.isBlank()) {
                 throw new IllegalArgumentException("mateId");

@@ -2,6 +2,7 @@ package top.focess.veto.agent.identity;
 
 import java.util.List;
 import java.util.Set;
+import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.mcp.ToolDefinition;
 import top.focess.veto.agent.skills.Skill;
 
@@ -48,11 +49,11 @@ public record AgentPersona(
                 null);
     }
 
-    public String midModelOrDefault() {
+    public @NonNull String midModelOrDefault() {
         return midModel != null ? midModel : topModel;
     }
 
-    public String lowModelOrDefault() {
+    public @NonNull String lowModelOrDefault() {
         return lowModel != null ? lowModel : topModel;
     }
 }

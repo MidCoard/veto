@@ -1,7 +1,7 @@
 package top.focess.veto.terminal;
 
-import org.jetbrains.annotations.NotNull;
 import org.jline.reader.LineReader;
+import org.jspecify.annotations.NonNull;
 
 /**
  * Unified output seam for the REPL: every line of output goes through {@link LineReader#printAbove}
@@ -15,7 +15,7 @@ public final class MordantRenderer {
 
     private final LineReader reader;
 
-    public MordantRenderer(@NotNull LineReader reader) {
+    public MordantRenderer(@NonNull LineReader reader) {
         this.reader = reader;
     }
 
@@ -24,7 +24,7 @@ public final class MordantRenderer {
      *
      * @param text the text to print
      */
-    public void println(@NotNull String text) {
+    public void println(@NonNull String text) {
         reader.printAbove(text);
     }
 }

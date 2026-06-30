@@ -7,6 +7,7 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -48,20 +49,24 @@ public class LlmLeader {
 
     private static final Logger log = LoggerFactory.getLogger(LlmLeader.class);
 
-    private final Agent leaderAgent;
-    private final HeuristicLeader fallback;
+    private final @NonNull Agent leaderAgent;
+    private final @NonNull HeuristicLeader fallback;
 
     public LlmLeader() {
         this(null, new HeuristicLeader());
     }
 
-    public LlmLeader(AgentPersona leaderPersona, Agent leaderAgent) {
+    public
+    @NonNull
+    LlmLeader(@NonNull AgentPersona leaderPersona, @NonNull Agent leaderAgent) {
         this.leaderAgent = leaderAgent;
         this.fallback = new HeuristicLeader();
     }
 
     /** Construct with a pre-built heuristic fallback (for tests). */
-    public LlmLeader(Agent leaderAgent, HeuristicLeader fallback) {
+    public
+    @NonNull
+    LlmLeader(@NonNull Agent leaderAgent, @NonNull HeuristicLeader fallback) {
         this.leaderAgent = leaderAgent;
         this.fallback = fallback;
     }
@@ -70,7 +75,8 @@ public class LlmLeader {
      * Author the DAG from the contextBrief: have the Leader agent investigate + draft the initial
      * node list. Returns the fallback's linear DAG if the LLM call fails.
      */
-    public ExecutionDag authorDag(java.util.UUID groupId, String contextBrief) {
+    public @NonNull ExecutionDag authorDag(
+            java.util.@NonNull UUID groupId, @NonNull String contextBrief) {
         if (leaderAgent == null) {
             return ExecutionDag.linear(groupId, List.of("n1"));
         }
@@ -158,7 +164,7 @@ public class LlmLeader {
     }
 
     /** Delegate skillset-based Mate assignment to the heuristic (it's structural). */
-    public Group assignMates(Group group) {
+    public @NonNull Group assignMates(@NonNull Group group) {
         return fallback.assignMates(group);
     }
 
@@ -167,22 +173,23 @@ public class LlmLeader {
      * implementation (LLM-backed Leader) will query PromptCompiler for the active buffer's
      * fraction-full when the agent is wired.
      */
-    public double contextSaturation(Group group) {
+    public double contextSaturation(@NonNull Group group) {
         return fallback.contextSaturation(group);
     }
 
     /** Delegate the retry/backoff escalation to the heuristic. */
-    public Group escalate(Group group, String nodeId, String feedback) {
+    public @NonNull Group escalate(
+            @NonNull Group group, @NonNull String nodeId, @NonNull String feedback) {
         return fallback.escalate(group, nodeId, feedback);
     }
 
     /** Delegate the re-plan to the heuristic. */
-    public Group pivot(Group group) {
+    public @NonNull Group pivot(@NonNull Group group) {
         return fallback.pivot(group);
     }
 
     /** Delegate replanFailed to the heuristic. */
-    public Group replanFailed(Group group, String nodeId) {
+    public @NonNull Group replanFailed(@NonNull Group group, @NonNull String nodeId) {
         return fallback.escalate(group, nodeId, "re-plan");
     }
 

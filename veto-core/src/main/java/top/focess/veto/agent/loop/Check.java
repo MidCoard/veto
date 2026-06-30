@@ -1,6 +1,7 @@
 package top.focess.veto.agent.loop;
 
 import java.util.List;
+import org.jspecify.annotations.NonNull;
 
 /**
  * A programmatic check over {@link Scope} vars. Executed by {@link CheckEvaluator}
@@ -20,31 +21,32 @@ public sealed interface Check
                 Check.Llm {
 
     /** {@code $var == value}. */
-    record Equals(String var, String value) implements Check {}
+    record Equals(@NonNull String var, @NonNull String value) implements Check {}
 
     /** {@code $var!= value}. */
-    record NotEquals(String var, String value) implements Check {}
+    record NotEquals(@NonNull String var, @NonNull String value) implements Check {}
 
     /** {@code $var} contains {@code substring}. */
-    record Contains(String var, String substring) implements Check {}
+    record Contains(@NonNull String var, @NonNull String substring) implements Check {}
 
     /** {@code $var} matches {@code regex}. */
-    record Matches(String var, String regex) implements Check {}
+    record Matches(@NonNull String var, @NonNull String regex) implements Check {}
 
     /** {@code $var} is empty (or unset → undefined sentinel). */
-    record Empty(String var) implements Check {}
+    record Empty(@NonNull String var) implements Check {}
 
     /** {@code $var} is non-empty. */
-    record NotEmpty(String var) implements Check {}
+    record NotEmpty(@NonNull String var) implements Check {}
 
     /** Numeric comparison: {@code $var <op> value} (op in gt/lt/eq/gte/lte). */
-    record Numeric(String var, String op, String value) implements Check {}
+    record Numeric(@NonNull String var, @NonNull String op, @NonNull String value)
+            implements Check {}
 
     /** Did the referenced step exit ok (success)? */
-    record ExitOk(String stepId) implements Check {}
+    record ExitOk(@NonNull String stepId) implements Check {}
 
     /** A genuinely semantic judgment — one model call. Reserve for decisions checks cannot make. */
-    record Llm(String prompt, String var) implements Check {}
+    record Llm(@NonNull String prompt, @NonNull String var) implements Check {}
 
     /** The operands a check references (for validation). */
     default List<String> operands() {

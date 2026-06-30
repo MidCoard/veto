@@ -8,6 +8,7 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
+import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.TurnRecord;
 
 /**
@@ -71,15 +72,15 @@ public class TurnRecordEntity {
         }
     }
 
-    public String getId() {
+    public @NonNull String getId() {
         return id;
     }
 
-    public String getUserId() {
+    public @NonNull String getUserId() {
         return userId;
     }
 
-    public String getSessionId() {
+    public @NonNull String getSessionId() {
         return sessionId;
     }
 
@@ -87,15 +88,15 @@ public class TurnRecordEntity {
         return turnNumber;
     }
 
-    public String getType() {
+    public @NonNull String getType() {
         return type;
     }
 
-    public String getPayload() {
+    public @NonNull String getPayload() {
         return payload;
     }
 
-    public Instant getTimestamp() {
+    public @NonNull Instant getTimestamp() {
         return timestamp;
     }
 }

@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import org.jspecify.annotations.NonNull;
 
 /**
  * The Part 5.5 trust chain — a sealed record of the trust model for skillset authorizations in a
@@ -72,7 +73,11 @@ public sealed interface TrustChain
     String auditHash();
 
     /** One hop in the delegation chain: who delegated, to whom, with what trust level, and when. */
-    record Hop(String fromAuthority, String toAuthority, String trust, Instant at) {
+    record Hop(
+            @NonNull String fromAuthority,
+            @NonNull String toAuthority,
+            @NonNull String trust,
+            @NonNull Instant at) {
         public Hop {
             Objects.requireNonNull(fromAuthority, "fromAuthority");
             Objects.requireNonNull(toAuthority, "toAuthority");

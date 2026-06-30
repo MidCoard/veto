@@ -7,6 +7,7 @@ import java.security.*;
 import java.util.*;
 import javax.crypto.*;
 import javax.crypto.spec.*;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,15 +32,17 @@ public class SecureStore {
     private static final int GCM_IV_LENGTH = 12;
     private static final String STORE_HEADER = "VETO_CREDENTIAL_STORE_V1";
 
-    private final Path storePath;
-    private final String username;
+    private final @NonNull Path storePath;
+    private final @NonNull String username;
     private volatile boolean initialized = false;
     private volatile SecretKey storeKey;
 
     // In-memory credential cache (encrypted blobs)
     private final Map<String, String> credentialCache = new LinkedHashMap<>();
 
-    public SecureStore(CredentialVaultConfiguration config, String username) {
+    public
+    @NonNull
+    SecureStore(@NonNull CredentialVaultConfiguration config, @NonNull String username) {
         this.username = username;
         this.storePath = Path.of(config.getVaultHome(), "vault", "credentials", username + ".enc");
     }
@@ -69,7 +72,7 @@ public class SecureStore {
      * Unlocks the vault with the given Vault Key. Loads and decrypts all credentials into the
      * in-memory cache.
      */
-    public synchronized void unlock(SecretKey vaultKey) {
+    public synchronized void unlock(@NonNull SecretKey vaultKey) {
         if (!initialized) {
             initialize();
         }
@@ -93,7 +96,7 @@ public class SecureStore {
     // ── Credential operations ───────────────────────────────────────────────
 
     /** Store a credential securely (encrypted at rest). */
-    public synchronized void store(String key, String value) {
+    public synchronized void store(@NonNull String key, @NonNull String value) {
         requireUnlocked();
         try {
             String encrypted = encrypt(value);
@@ -106,7 +109,7 @@ public class SecureStore {
     }
 
     /** Retrieve a decrypted credential. */
-    public synchronized Optional<String> retrieve(String key) {
+    public synchronized @NonNull Optional<String> retrieve(@NonNull String key) {
         requireUnlocked();
         String encrypted = credentialCache.get(key);
         if (encrypted == null) {
@@ -122,7 +125,7 @@ public class SecureStore {
     }
 
     /** Delete a stored credential. */
-    public synchronized void delete(String key) {
+    public synchronized void delete(@NonNull String key) {
         requireUnlocked();
         credentialCache.remove(key);
         saveStore();
@@ -136,7 +139,7 @@ public class SecureStore {
     }
 
     /** Check if a credential exists in the secure store. */
-    public synchronized boolean exists(String key) {
+    public synchronized boolean exists(@NonNull String key) {
         requireUnlocked();
         return credentialCache.containsKey(key);
     }
@@ -232,7 +235,9 @@ public class SecureStore {
 
     /** Thrown when an operation is attempted on a locked vault. */
     public static class VaultLockedException extends RuntimeException {
-        public VaultLockedException(String message) {
+        public
+        @NonNull
+        VaultLockedException(@NonNull String message) {
             super(message);
         }
     }

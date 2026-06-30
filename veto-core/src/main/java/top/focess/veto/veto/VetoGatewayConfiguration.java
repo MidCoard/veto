@@ -1,5 +1,6 @@
 package top.focess.veto.veto;
 
+import org.jspecify.annotations.NonNull;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 
@@ -26,7 +27,7 @@ public class VetoGatewayConfiguration {
         return llamaCpp;
     }
 
-    public void setLlamaCpp(LlamaCppConfig llamaCpp) {
+    public void setLlamaCpp(@NonNull LlamaCppConfig llamaCpp) {
         this.llamaCpp = llamaCpp;
     }
 
@@ -65,7 +66,7 @@ public class VetoGatewayConfiguration {
             return modelPath;
         }
 
-        public void setModelPath(String modelPath) {
+        public void setModelPath(@NonNull String modelPath) {
             this.modelPath = modelPath;
         }
 
@@ -97,7 +98,7 @@ public class VetoGatewayConfiguration {
             return gbnfGrammarPath;
         }
 
-        public void setGbnfGrammarPath(String gbnfGrammarPath) {
+        public void setGbnfGrammarPath(@NonNull String gbnfGrammarPath) {
             this.gbnfGrammarPath = gbnfGrammarPath;
         }
     }

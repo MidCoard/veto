@@ -3,6 +3,7 @@ package top.focess.veto.agent.workspace;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -16,7 +17,7 @@ public record WorkspaceRoot(
     private static final Logger log = LoggerFactory.getLogger(WorkspaceRoot.class);
 
     /** Probes a host path: is it a git repo, what branch, with the given trust. */
-    public static WorkspaceRoot probe(Path hostPath, TrustMarker trust) {
+    public static @NonNull WorkspaceRoot probe(@NonNull Path hostPath, @NonNull TrustMarker trust) {
         Path normalized = hostPath.toAbsolutePath().normalize();
         boolean isGit = Files.isDirectory(normalized.resolve(".git"));
         String branch = isGit ? readBranch(normalized) : null;

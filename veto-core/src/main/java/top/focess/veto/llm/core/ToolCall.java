@@ -2,8 +2,8 @@ package top.focess.veto.llm.core;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.Map;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A single tool call from the LLM. Each element of {@link VetoResponse#calls} is a {@code
@@ -23,12 +23,12 @@ import org.jetbrains.annotations.Nullable;
  * @param callId harness-assigned id for result/HITL pairing (not model-emitted)
  */
 public record ToolCall(
-        @JsonProperty("tool_name") @NotNull String toolName,
-        @JsonProperty("args") @NotNull Map<String, Object> args,
+        @JsonProperty("tool_name") @NonNull String toolName,
+        @JsonProperty("args") @NonNull Map<String, Object> args,
         @JsonProperty("call_id") @Nullable String callId) {
 
     /** Convenience constructor for model-parsed calls (callId assigned later by the harness). */
-    public ToolCall(@NotNull String toolName, @NotNull Map<String, Object> args) {
+    public ToolCall(@NonNull String toolName, @NonNull Map<String, Object> args) {
         this(toolName, args, null);
     }
 }

@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.NonNull;
 
 /**
  * Parses the raw {@code actionsProgram} {@link JsonNode} (emitted by the agent) into a typed {@link
@@ -16,7 +17,7 @@ public final class ActionsProgramParser {
     private ActionsProgramParser() {}
 
     /** Parses; throws {@link ProgramValidator.InvalidProgramException} on a malformed program. */
-    public static ActionsProgram parse(JsonNode node) {
+    public static @NonNull ActionsProgram parse(@NonNull JsonNode node) {
         if (node == null || !node.has("actions") || !node.get("actions").isArray()) {
             throw new ProgramValidator.InvalidProgramException(
                     "actionsProgram missing 'actions' array");

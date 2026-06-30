@@ -3,6 +3,7 @@ package top.focess.veto.group;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -46,7 +47,9 @@ public class HeuristicLeader {
         this(DEFAULT_MAX_RETRIES, DEFAULT_PIVOT_THRESHOLD);
     }
 
-    public HeuristicLeader(int maxRetries, int pivotThreshold) {
+    public
+    @NonNull
+    HeuristicLeader(int maxRetries, int pivotThreshold) {
         this.maxRetries = maxRetries;
         this.pivotThreshold = pivotThreshold;
     }
@@ -55,7 +58,7 @@ public class HeuristicLeader {
      * Assign Mates to PENDING nodes based on skillset match. Returns the updated group. Nodes that
      * already have an assignment are left alone.
      */
-    public Group assignMates(Group group) {
+    public @NonNull Group assignMates(@NonNull Group group) {
         ExecutionDag dag = group.dag();
         List<DagNode> next = new ArrayList<>();
         boolean changed = false;
@@ -114,7 +117,8 @@ public class HeuristicLeader {
      * re-dispatch to the same Mate with the feedback. Otherwise, mark the node {@code STALE}
      * (Strategic Pivot — the engine will re-dispatch after re-plan).
      */
-    public Group escalate(Group group, String nodeId, String feedback) {
+    public @NonNull Group escalate(
+            @NonNull Group group, @NonNull String nodeId, @NonNull String feedback) {
         ExecutionDag dag = group.dag();
         for (DagNode n : dag.nodes()) {
             if (!n.nodeId().equals(nodeId)) {
@@ -166,7 +170,7 @@ public class HeuristicLeader {
      * Re-plan after a Strategic Pivot: nodes that are STALE get unassigned and put back to PENDING;
      * the engine will re-dispatch them via {@link #assignMates(Group)}.
      */
-    public Group replan(Group group) {
+    public @NonNull Group replan(@NonNull Group group) {
         ExecutionDag dag = group.dag();
         List<DagNode> next = new ArrayList<>();
         for (DagNode n : dag.nodes()) {
@@ -207,7 +211,7 @@ public class HeuristicLeader {
      * {@link #assignMates(Group)} re-assign on the next tick. This is the entry point the {@link
      * GroupOrchestrator} calls when {@link #shouldPivot} returns true.
      */
-    public Group pivot(Group group) {
+    public @NonNull Group pivot(@NonNull Group group) {
         log.info("HeuristicLeader: pivoting group {}", group.groupId());
         return replan(group);
     }
@@ -220,7 +224,7 @@ public class HeuristicLeader {
      *
      * @return a value between 0.0 (empty) and 1.0 (saturated)
      */
-    public double contextSaturation(Group group) {
+    public double contextSaturation(@NonNull Group group) {
         ExecutionDag dag = group.dag();
         int nodeCount = dag.nodes().size();
         // Simple heuristic: assume saturation at ~20 nodes (arbitrary MVP threshold)

@@ -1,5 +1,6 @@
 package top.focess.veto.vault;
 
+import org.jspecify.annotations.NonNull;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 
@@ -20,7 +21,7 @@ public class CredentialVaultConfiguration {
     }
 
     /** Sets the base directory for all vault files. */
-    public void setVaultHome(String vaultHome) {
+    public void setVaultHome(@NonNull String vaultHome) {
         this.vaultHome = expandTilde(vaultHome);
     }
 

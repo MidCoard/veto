@@ -1,5 +1,7 @@
 package top.focess.veto.llm.credential;
 
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 import top.focess.veto.llm.core.ProviderType;
 import top.focess.veto.llm.exceptions.LlmAuthException;
@@ -13,14 +15,16 @@ import top.focess.veto.vault.SecureStore;
  */
 @Service
 public class CredentialResolver {
-    private final CredentialVault vault;
+    private final @NonNull CredentialVault vault;
 
     /**
      * Constructs a new CredentialResolver with the specified credential vault.
      *
      * @param vault the vault used to retrieve credentials
      */
-    public CredentialResolver(CredentialVault vault) {
+    public
+    @NonNull
+    CredentialResolver(@NonNull CredentialVault vault) {
         this.vault = vault;
     }
 
@@ -32,7 +36,8 @@ public class CredentialResolver {
      * @return the resolved API key
      * @throws LlmAuthException if the credential key is missing or no credential is found
      */
-    public String resolve(ProviderType providerType, String credentialKey) {
+    public @Nullable String resolve(
+            @NonNull ProviderType providerType, @NonNull String credentialKey) {
         if (credentialKey == null || credentialKey.isEmpty()) {
             throw new LlmAuthException("Credential key is missing for provider " + providerType);
         }

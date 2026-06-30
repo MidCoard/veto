@@ -4,6 +4,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.loop.LoopBreaker;
 
@@ -23,13 +24,14 @@ public class MateBreakerRegistry {
             new ConcurrentHashMap<>();
 
     /** Get-or-create the LoopBreaker for a Mate in a group. */
-    public LoopBreaker forMate(UUID groupId, String mateId, long maxCallsPerEpisode) {
+    public @NonNull LoopBreaker forMate(
+            @NonNull UUID groupId, @NonNull String mateId, long maxCallsPerEpisode) {
         return breakers.computeIfAbsent(groupId, k -> new ConcurrentHashMap<>())
                 .computeIfAbsent(mateId, k -> new LoopBreaker(maxCallsPerEpisode));
     }
 
     /** Reset the breaker (called when a Mate receives a new dispatch from the Leader). */
-    public void newEpisode(UUID groupId, String mateId) {
+    public void newEpisode(@NonNull UUID groupId, @NonNull String mateId) {
         LoopBreaker b = breaker(groupId, mateId);
         if (b != null) {
             b.newEpisode();
@@ -37,7 +39,7 @@ public class MateBreakerRegistry {
     }
 
     /** Record one model call for a Mate. */
-    public void recordModelCall(UUID groupId, String mateId) {
+    public void recordModelCall(@NonNull UUID groupId, @NonNull String mateId) {
         LoopBreaker b = breaker(groupId, mateId);
         if (b != null) {
             b.recordModelCall();
@@ -45,18 +47,18 @@ public class MateBreakerRegistry {
     }
 
     /** Check whether the Mate's per-episode ceiling has been reached. */
-    public boolean shouldTrip(UUID groupId, String mateId) {
+    public boolean shouldTrip(@NonNull UUID groupId, @NonNull String mateId) {
         LoopBreaker b = breaker(groupId, mateId);
         return b != null && b.shouldTrip();
     }
 
     /** Drop all breakers for a group (called when the group is disbanded). */
-    public void clear(UUID groupId) {
+    public void clear(@NonNull UUID groupId) {
         breakers.remove(groupId);
     }
 
     /** Test-only: snapshot of all breakers for a group. */
-    public Map<String, LoopBreaker> snapshot(UUID groupId) {
+    public Map<String, @NonNull LoopBreaker> snapshot(@NonNull UUID groupId) {
         ConcurrentMap<String, LoopBreaker> map = breakers.get(groupId);
         return map == null ? Map.of() : Map.copyOf(map);
     }

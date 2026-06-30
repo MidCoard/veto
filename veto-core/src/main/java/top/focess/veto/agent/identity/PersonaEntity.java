@@ -4,6 +4,7 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.mcp.ToolDefinition;
 import top.focess.veto.agent.skills.Skill;
 
@@ -41,7 +42,9 @@ public class PersonaEntity {
 
     protected PersonaEntity() {}
 
-    public PersonaEntity(AgentPersona persona) {
+    public
+    @NonNull
+    PersonaEntity(@NonNull AgentPersona persona) {
         this.id = persona.id();
         this.name = persona.name();
         this.description = persona.description();
@@ -56,7 +59,7 @@ public class PersonaEntity {
         this.lowModel = persona.lowModel();
     }
 
-    public static AgentPersona toPersona(PersonaEntity e) {
+    public static @NonNull AgentPersona toPersona(@NonNull PersonaEntity e) {
         return new AgentPersona(
                 e.id,
                 e.name,

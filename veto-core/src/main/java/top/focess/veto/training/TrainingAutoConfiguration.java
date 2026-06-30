@@ -1,6 +1,7 @@
 package top.focess.veto.training;
 
 import jakarta.annotation.PostConstruct;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Configuration;
@@ -16,8 +17,8 @@ public class TrainingAutoConfiguration {
 
     private static final Logger log = LoggerFactory.getLogger(TrainingAutoConfiguration.class);
 
-    private final TrainingManager trainingManager;
-    private final LlamaCppBridge llamaCppBridge;
+    private final @NonNull TrainingManager trainingManager;
+    private final @NonNull LlamaCppBridge llamaCppBridge;
 
     public TrainingAutoConfiguration(
             TrainingManager trainingManager, LlamaCppBridge llamaCppBridge) {

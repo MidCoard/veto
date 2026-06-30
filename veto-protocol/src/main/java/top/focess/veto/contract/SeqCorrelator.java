@@ -5,8 +5,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -69,7 +69,7 @@ public final class SeqCorrelator {
      *
      * @param response the incoming sequenced response
      */
-    public void deliver(@NotNull IpcFrame.SeqResponse response) {
+    public void deliver(IpcFrame.@NonNull SeqResponse response) {
         long seq = response.seq();
         if (seq == 0) return;
         BlockingQueue<IpcFrame.SeqResponse> queue = handlers.get(seq);
@@ -89,8 +89,7 @@ public final class SeqCorrelator {
      * @return the response, or {@code null} on timeout or if no handler was registered
      * @throws InterruptedException if the calling thread is interrupted while waiting
      */
-    @Nullable
-    public IpcFrame.SeqResponse await(long seq, long timeout, @NotNull TimeUnit unit)
+    public IpcFrame.@Nullable SeqResponse await(long seq, long timeout, @NonNull TimeUnit unit)
             throws InterruptedException {
         BlockingQueue<IpcFrame.SeqResponse> queue = handlers.get(seq);
         if (queue == null) return null;

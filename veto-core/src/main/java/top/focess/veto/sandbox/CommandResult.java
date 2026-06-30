@@ -1,6 +1,8 @@
 package top.focess.veto.sandbox;
 
 import java.util.List;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The result of a {@code run_command} chain..
@@ -10,7 +12,11 @@ import java.util.List;
  * @param stderr the combined stderr
  * @param perCommand exit codes per command, in order
  */
-public record CommandResult(int exitCode, String stdout, String stderr, List<Integer> perCommand) {
+public record CommandResult(
+        int exitCode,
+        @NonNull String stdout,
+        @Nullable String stderr,
+        @NonNull List<Integer> perCommand) {
 
     public boolean success() {
         return exitCode == 0;

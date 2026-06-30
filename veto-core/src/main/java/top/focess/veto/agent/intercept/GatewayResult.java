@@ -1,5 +1,6 @@
 package top.focess.veto.agent.intercept;
 
+import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.screening.Screening;
 
 /**
@@ -16,10 +17,10 @@ public sealed interface GatewayResult
         permits GatewayResult.Screened, GatewayResult.DriftResult, GatewayResult.NotScreened {
 
     /** The normal screening result. */
-    record Screened(Screening screening) implements GatewayResult {}
+    record Screened(@NonNull Screening screening) implements GatewayResult {}
 
     /** Write-tool drift — target changed since the agent last read it (Scenario W). */
-    record DriftResult(String path, String diff) implements GatewayResult {}
+    record DriftResult(@NonNull String path, @NonNull String diff) implements GatewayResult {}
 
     /** Agent tools early-route — no host-path params, not screened. */
     record NotScreened() implements GatewayResult {}

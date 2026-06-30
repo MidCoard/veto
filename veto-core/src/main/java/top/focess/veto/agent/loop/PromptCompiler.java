@@ -2,6 +2,7 @@ package top.focess.veto.agent.loop;
 
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.TurnRecord;
@@ -32,8 +33,8 @@ import top.focess.veto.llm.core.ChatMessage;
 @Component
 public class PromptCompiler {
 
-    private final CapabilityTranslator translator;
-    private final Workspace workspace;
+    private final @NonNull CapabilityTranslator translator;
+    private final @NonNull Workspace workspace;
 
     @Value("${veto.context.max_input_tokens:32000}")
     private int maxInputTokens;
@@ -41,7 +42,9 @@ public class PromptCompiler {
     @Value("${veto.context.context_fill_ratio:0.9}")
     private double contextFillRatio;
 
-    public PromptCompiler(CapabilityTranslator translator, Workspace workspace) {
+    public
+    @NonNull
+    PromptCompiler(@NonNull CapabilityTranslator translator, @NonNull Workspace workspace) {
         this.translator = translator;
         this.workspace = workspace;
     }

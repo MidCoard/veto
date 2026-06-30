@@ -5,8 +5,8 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.zeromq.ZContext;
@@ -86,7 +86,7 @@ public final class IpcClient implements AutoCloseable {
      * @param address the transport connect address (e.g. {@code tcp://127.0.0.1:5555})
      * @throws RuntimeException if the handshake times out or is rejected
      */
-    public IpcClient(@NotNull String address) {
+    public IpcClient(@NonNull String address) {
         this.identity = UUID.randomUUID().toString();
         this.ctx = new ZContext();
         this.ownsContext = true;
@@ -103,7 +103,7 @@ public final class IpcClient implements AutoCloseable {
      *
      * @param transport the transport to drive
      */
-    public IpcClient(@NotNull ClientTransport transport) {
+    public IpcClient(@NonNull ClientTransport transport) {
         this.identity = UUID.randomUUID().toString();
         this.ctx = null;
         this.ownsContext = false;
@@ -188,7 +188,7 @@ public final class IpcClient implements AutoCloseable {
     }
 
     /** Routes an inbound server frame to the correlator (sequenced) or the incoming queue. */
-    private void route(@NotNull IpcFrame.ServerFrame frame) {
+    private void route(IpcFrame.@NonNull ServerFrame frame) {
         if (frame instanceof IpcFrame.SeqResponse sr && sr.seq() != 0) {
             correlator.deliver(sr);
             return;
@@ -243,7 +243,7 @@ public final class IpcClient implements AutoCloseable {
      *
      * @param frame the client frame to send
      */
-    public void send(@NotNull IpcFrame.ClientFrame frame) {
+    public void send(IpcFrame.@NonNull ClientFrame frame) {
         if (frame instanceof IpcFrame.SeqRequest sr) {
             correlator.register(sr.seq());
         }
@@ -263,8 +263,7 @@ public final class IpcClient implements AutoCloseable {
      * @return the next server frame, or {@code null} if timed out
      * @throws InterruptedException if the calling thread is interrupted
      */
-    @Nullable
-    public IpcFrame.ServerFrame receive() throws InterruptedException {
+    public IpcFrame.@Nullable ServerFrame receive() throws InterruptedException {
         return incomingQueue.poll(DEFAULT_RECEIVE_TIMEOUT_S, TimeUnit.SECONDS);
     }
 
@@ -276,8 +275,7 @@ public final class IpcClient implements AutoCloseable {
      * @return the next server frame, or {@code null} if timed out
      * @throws InterruptedException if the calling thread is interrupted
      */
-    @Nullable
-    public IpcFrame.ServerFrame receive(long timeout, @NotNull TimeUnit unit)
+    public IpcFrame.@Nullable ServerFrame receive(long timeout, @NonNull TimeUnit unit)
             throws InterruptedException {
         return incomingQueue.poll(timeout, unit);
     }
@@ -292,9 +290,8 @@ public final class IpcClient implements AutoCloseable {
      * @param unit the time unit
      * @return the completion result, or {@code null} on timeout or error response
      */
-    @Nullable
-    public IpcFrame.CompleteResult complete(
-            @NotNull String line, long timeout, @NotNull TimeUnit unit) {
+    public IpcFrame.@Nullable CompleteResult complete(
+            @NonNull String line, long timeout, @NonNull TimeUnit unit) {
         long seq = correlator.next();
         send(new IpcFrame.Complete(line, seq));
         try {
@@ -316,8 +313,8 @@ public final class IpcClient implements AutoCloseable {
      * @param unit the time unit
      * @return the hint result, or {@code null} on timeout or error response
      */
-    @Nullable
-    public IpcFrame.HintResult hint(@NotNull String line, long timeout, @NotNull TimeUnit unit) {
+    public IpcFrame.@Nullable HintResult hint(
+            @NonNull String line, long timeout, @NonNull TimeUnit unit) {
         long seq = correlator.next();
         send(new IpcFrame.Hint(line, seq));
         try {
@@ -365,8 +362,7 @@ public final class IpcClient implements AutoCloseable {
     }
 
     /** The unique UUID identity of this connection. */
-    @NotNull
-    public String identity() {
+    public @NonNull String identity() {
         return identity;
     }
 

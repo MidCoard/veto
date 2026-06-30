@@ -1,3 +1,6 @@
 package top.focess.veto.model.tier;
 
-public record VaultCredentialRef(String userId, Provider provider, String credentialKey) {}
+import org.jspecify.annotations.NonNull;
+
+public record VaultCredentialRef(
+        @NonNull String userId, @NonNull Provider provider, @NonNull String credentialKey) {}

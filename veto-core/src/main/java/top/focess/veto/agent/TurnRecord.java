@@ -3,8 +3,8 @@ package top.focess.veto.agent;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import top.focess.veto.llm.core.ToolCall;
 
 /**
@@ -18,8 +18,8 @@ import top.focess.veto.llm.core.ToolCall;
  */
 public record TurnRecord(
         int turnNumber,
-        @NotNull TurnType type,
-        @NotNull Map<String, Object> payload,
+        @NonNull TurnType type,
+        @NonNull Map<String, Object> payload,
         @Nullable Instant timestamp) {
 
     public TurnRecord {
@@ -42,14 +42,12 @@ public record TurnRecord(
     // ── Factories ───────────────────────────────────────────────────────────
 
     /** A user prompt ({@code payload.content}). */
-    @NotNull
-    public static TurnRecord userPrompt(int turnNumber, @NotNull String content) {
+    public static @NonNull TurnRecord userPrompt(int turnNumber, @NonNull String content) {
         return new TurnRecord(turnNumber, TurnType.USER_PROMPT, Map.of("content", content), null);
     }
 
     /** A user interrupt/feedback ({@code payload.feedback}). */
-    @NotNull
-    public static TurnRecord userInterrupt(int turnNumber, @NotNull String feedback) {
+    public static @NonNull TurnRecord userInterrupt(int turnNumber, @NonNull String feedback) {
         return new TurnRecord(
                 turnNumber, TurnType.USER_INTERRUPT, Map.of("feedback", feedback), null);
     }
@@ -57,22 +55,20 @@ public record TurnRecord(
     /**
      * The raw {@code VetoResponse} JSON string for a thought-ON turn ({@code payload.response}).
      */
-    @NotNull
-    public static TurnRecord assistantThought(int turnNumber, @NotNull String rawResponseJson) {
+    public static @NonNull TurnRecord assistantThought(
+            int turnNumber, @NonNull String rawResponseJson) {
         return new TurnRecord(
                 turnNumber, TurnType.ASSISTANT_THOUGHT, Map.of("response", rawResponseJson), null);
     }
 
     /** A user-facing message the agent emitted ({@code payload.content}). */
-    @NotNull
-    public static TurnRecord assistantResponse(int turnNumber, @NotNull String content) {
+    public static @NonNull TurnRecord assistantResponse(int turnNumber, @NonNull String content) {
         return new TurnRecord(
                 turnNumber, TurnType.ASSISTANT_RESPONSE, Map.of("content", content), null);
     }
 
     /** A tool call the agent issued ({@code payload.call_id/tool_name/args}). */
-    @NotNull
-    public static TurnRecord toolCall(int turnNumber, @NotNull ToolCall call) {
+    public static @NonNull TurnRecord toolCall(int turnNumber, @NonNull ToolCall call) {
         Map<String, Object> p = new LinkedHashMap<>();
         p.put("call_id", call.callId());
         p.put("tool_name", call.toolName());
@@ -83,9 +79,8 @@ public record TurnRecord(
     /**
      * The framed observation returned for a tool call ({@code payload.call_id/content/success}).
      */
-    @NotNull
-    public static TurnRecord toolResponse(
-            int turnNumber, @Nullable String callId, @NotNull String content, boolean success) {
+    public static @NonNull TurnRecord toolResponse(
+            int turnNumber, @Nullable String callId, @NonNull String content, boolean success) {
         // callId is OPTIONAL (absent for synthetic observations — guided-escape, llm-error,
         // tool-not-found), so Map.of's null-hostile builder would throw; use a null-tolerant map.
         Map<String, Object> p = new LinkedHashMap<>();
@@ -99,14 +94,12 @@ public record TurnRecord(
      * A rewind directive — 0-based suffix-drop: keeps compiled positions {@code 0..from_index-1},
      * drops {@code from_index..end}. Never emitted as a message.
      */
-    @NotNull
-    public static TurnRecord rewind(int turnNumber, int fromIndex) {
+    public static @NonNull TurnRecord rewind(int turnNumber, int fromIndex) {
         return new TurnRecord(turnNumber, TurnType.REWIND, Map.of("from_index", fromIndex), null);
     }
 
     /** A compaction summary seed re-injected after a {@link #rewind}. */
-    @NotNull
-    public static TurnRecord compactionSummary(int turnNumber, @NotNull String content) {
+    public static @NonNull TurnRecord compactionSummary(int turnNumber, @NonNull String content) {
         return new TurnRecord(
                 turnNumber, TurnType.COMPACTION_SUMMARY, Map.of("content", content), null);
     }

@@ -1,7 +1,7 @@
 package top.focess.veto.contract;
 
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Transport-agnostic seam for exchanging {@link IpcFrame}s between a terminal (client) and the
@@ -32,7 +32,7 @@ import org.jetbrains.annotations.Nullable;
 public sealed interface Transport permits ClientTransport, ServerTransport {
 
     /** A received frame paired with its sender routing identity (empty for client-side DEALER). */
-    record FramedMsg(@NotNull String identity, @NotNull IpcFrame frame) {}
+    record FramedMsg(@NonNull String identity, @NonNull IpcFrame frame) {}
 
     /**
      * Receives the next framed message.
@@ -41,8 +41,7 @@ public sealed interface Transport permits ClientTransport, ServerTransport {
      * @return the next message, or {@code null} if none arrived within the timeout or a malformed
      *     payload was dropped
      */
-    @Nullable
-    FramedMsg recv(long timeoutMillis);
+    @Nullable FramedMsg recv(long timeoutMillis);
 
     /** Closes the transport, releasing the underlying socket. */
     void close();

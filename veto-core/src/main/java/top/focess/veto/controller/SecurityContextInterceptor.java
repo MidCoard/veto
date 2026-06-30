@@ -2,7 +2,7 @@ package top.focess.veto.controller;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import org.jetbrains.annotations.NotNull;
+import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 import top.focess.veto.vault.SessionManager;
@@ -23,9 +23,9 @@ public class SecurityContextInterceptor implements HandlerInterceptor {
 
     @Override
     public boolean preHandle(
-            @NotNull HttpServletRequest request,
-            @NotNull HttpServletResponse response,
-            @NotNull Object handler) {
+            @NonNull HttpServletRequest request,
+            @NonNull HttpServletResponse response,
+            @NonNull Object handler) {
         String token = request.getHeader("X-Veto-Session-Token");
         if (token != null) {
             sessionManager
@@ -40,9 +40,9 @@ public class SecurityContextInterceptor implements HandlerInterceptor {
 
     @Override
     public void afterCompletion(
-            @NotNull HttpServletRequest request,
-            @NotNull HttpServletResponse response,
-            @NotNull Object handler,
+            @NonNull HttpServletRequest request,
+            @NonNull HttpServletResponse response,
+            @NonNull Object handler,
             Exception ex) {
         UserContext.clear();
     }

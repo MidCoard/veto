@@ -4,6 +4,7 @@ import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.*;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -18,8 +19,8 @@ public class LlamaCppBridge {
 
     private static final Logger log = LoggerFactory.getLogger(LlamaCppBridge.class);
 
-    private final VetoGatewayConfiguration config;
-    private final GBNFGrammarEngine grammarEngine;
+    private final @NonNull VetoGatewayConfiguration config;
+    private final @NonNull GBNFGrammarEngine grammarEngine;
 
     private Process llamaProcess;
     private PrintWriter processInput;
@@ -35,7 +36,10 @@ public class LlamaCppBridge {
 
     private volatile boolean available = false;
 
-    public LlamaCppBridge(VetoGatewayConfiguration config, GBNFGrammarEngine grammarEngine) {
+    public
+    @NonNull
+    LlamaCppBridge(
+            @NonNull VetoGatewayConfiguration config, @NonNull GBNFGrammarEngine grammarEngine) {
         this.config = config;
         this.grammarEngine = grammarEngine;
     }
@@ -117,7 +121,8 @@ public class LlamaCppBridge {
      * Perform SLM inference with grammar-constrained output. Returns the model's structured
      * response.
      */
-    public CompletableFuture<String> infer(String prompt, String grammarName) {
+    public @NonNull CompletableFuture<String> infer(
+            @NonNull String prompt, @NonNull String grammarName) {
         if (!available) {
             return CompletableFuture.completedFuture(
                     "{\"veto_decision\":\"pass\",\"data\":{\"note\":\"SLM unavailable, passed without analysis\"}}");
@@ -222,7 +227,7 @@ public class LlamaCppBridge {
      * @param newModelPath path to the new GGUF model file
      * @return true if the restart succeeded
      */
-    public synchronized boolean restartWithModel(String newModelPath) {
+    public synchronized boolean restartWithModel(@NonNull String newModelPath) {
         log.info("gateway LlamaCpp: Restarting with new model '{}'", newModelPath);
         stop();
 

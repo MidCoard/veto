@@ -1,11 +1,12 @@
 package top.focess.veto.agent.mcp.tools;
 
-import jakarta.annotation.Nullable;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.mcp.Doc;
 import top.focess.veto.agent.mcp.NativeMcpTool;
@@ -43,7 +44,7 @@ public final class ViewFileTool implements NativeMcpTool<ViewFileTool.Args> {
     }
 
     @Override
-    public String execute(Args args) throws IOException {
+    public @NonNull String execute(@NonNull Args args) throws IOException {
         Path path = Path.of(args.absolutePath());
         if (!Files.isRegularFile(path)) {
             return "{\"status\":\"error\",\"error\":\"Not a regular file: "

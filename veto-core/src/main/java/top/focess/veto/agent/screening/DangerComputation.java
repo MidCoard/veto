@@ -4,6 +4,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.mcp.NativeToolDefinition;
 import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RiskCategory;
@@ -38,12 +39,12 @@ public class DangerComputation {
                     ".npmrc",
                     ".pypirc");
 
-    public Danger compute(
-            ToolDefinition def,
-            ToolCall call,
-            Workspace workspace,
-            DeployerPolicy policy,
-            ProtectedSet protectedSet) {
+    public @NonNull Danger compute(
+            @NonNull ToolDefinition def,
+            @NonNull ToolCall call,
+            @NonNull Workspace workspace,
+            @NonNull DeployerPolicy policy,
+            @NonNull ProtectedSet protectedSet) {
         Danger base = baseFromRisk(def.risk());
         Danger pathDanger = pathDanger(def, call, workspace, policy, protectedSet);
         Danger shellDanger = shellDanger(def, call);

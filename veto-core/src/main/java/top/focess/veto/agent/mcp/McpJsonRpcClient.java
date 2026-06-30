@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -30,18 +31,21 @@ public final class McpJsonRpcClient {
 
     private static final Logger log = LoggerFactory.getLogger(McpJsonRpcClient.class);
 
-    private final ObjectMapper mapper;
+    private final @NonNull ObjectMapper mapper;
 
     public McpJsonRpcClient() {
         this(new ObjectMapper());
     }
 
-    public McpJsonRpcClient(ObjectMapper mapper) {
+    public
+    @NonNull
+    McpJsonRpcClient(@NonNull ObjectMapper mapper) {
         this.mapper = mapper;
     }
 
     /** Discovers the list of tools from the server. */
-    public List<RemoteToolDefinition> discoverTools(McpTransport transport) throws IOException {
+    public @NonNull List<RemoteToolDefinition> discoverTools(@NonNull McpTransport transport)
+            throws IOException {
         JsonNode response = invoke(transport, "tools/list", null, 30_000);
         JsonNode tools = response.get("tools");
         if (tools == null || !tools.isArray()) {
@@ -64,7 +68,10 @@ public final class McpJsonRpcClient {
     }
 
     /** Calls a tool on the server and returns the raw JSON result. */
-    public JsonNode callTool(McpTransport transport, String toolName, Map<String, Object> args)
+    public @NonNull JsonNode callTool(
+            @NonNull McpTransport transport,
+            @NonNull String toolName,
+            @NonNull Map<String, Object> args)
             throws IOException {
         Map<String, Object> params =
                 Map.of("name", toolName, "arguments", args == null ? Map.of() : args);

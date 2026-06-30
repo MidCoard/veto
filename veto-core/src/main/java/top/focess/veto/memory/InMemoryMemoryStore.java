@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import org.jspecify.annotations.NonNull;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.TurnRecord;
@@ -34,7 +35,7 @@ public class InMemoryMemoryStore implements MemoryStore {
     private final ConcurrentMap<MemoryId, Memory> store = new ConcurrentHashMap<>();
 
     @Override
-    public List<ScoredMemory> search(MemoryQuery query) {
+    public @NonNull List<ScoredMemory> search(@NonNull MemoryQuery query) {
         float[] queryVec = embed(query.queryText());
         List<ScoredMemory> matches = new ArrayList<>();
         for (Memory m : store.values()) {
@@ -70,13 +71,13 @@ public class InMemoryMemoryStore implements MemoryStore {
     }
 
     @Override
-    public MemoryId add(Memory memory) {
+    public @NonNull MemoryId add(@NonNull Memory memory) {
         store.put(memory.id(), memory);
         return memory.id();
     }
 
     @Override
-    public void capture(TurnRecord turn, UUID sessionId, UUID userId) {
+    public void capture(@NonNull TurnRecord turn, @NonNull UUID sessionId, @NonNull UUID userId) {
         if (turn == null || sessionId == null || userId == null) {
             return;
         }
@@ -100,7 +101,7 @@ public class InMemoryMemoryStore implements MemoryStore {
     }
 
     @Override
-    public void promote(MemoryId id) {
+    public void promote(@NonNull MemoryId id) {
         Memory m = store.get(id);
         if (m == null || m.tier() != MemoryTier.SESSION) {
             return;
@@ -121,12 +122,12 @@ public class InMemoryMemoryStore implements MemoryStore {
     }
 
     @Override
-    public void forget(MemoryId id) {
+    public void forget(@NonNull MemoryId id) {
         store.remove(id);
     }
 
     @Override
-    public float[] embed(String text) {
+    public float[] embed(@NonNull String text) {
         // Deterministic stub: hash the text, fold into a fixed-length vector. Identical texts
         // produce identical vectors; very different texts produce very different vectors. The
         // semantics are not great for semantic recall (the production model wins there) but it

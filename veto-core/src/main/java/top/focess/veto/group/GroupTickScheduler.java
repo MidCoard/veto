@@ -2,6 +2,7 @@ package top.focess.veto.group;
 
 import java.util.Map;
 import java.util.UUID;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -23,10 +24,12 @@ public class GroupTickScheduler {
 
     private static final Logger log = LoggerFactory.getLogger(GroupTickScheduler.class);
 
-    private final GroupOrchestrator orchestrator;
-    private final GroupRegistry registry;
+    private final @NonNull GroupOrchestrator orchestrator;
+    private final @NonNull GroupRegistry registry;
 
-    public GroupTickScheduler(GroupOrchestrator orchestrator, GroupRegistry registry) {
+    public
+    @NonNull
+    GroupTickScheduler(@NonNull GroupOrchestrator orchestrator, @NonNull GroupRegistry registry) {
         this.orchestrator = orchestrator;
         this.registry = registry;
     }

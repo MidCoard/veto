@@ -2,6 +2,7 @@ package top.focess.veto.agent.loop;
 
 import java.util.HashSet;
 import java.util.Set;
+import org.jspecify.annotations.NonNull;
 
 /**
  * Validates an {@link ActionsProgram} before guided mode loads it. A program that fails validation
@@ -20,7 +21,7 @@ public final class ProgramValidator {
     private ProgramValidator() {}
 
     /** Validates; throws {@link InvalidProgramException} on failure. */
-    public static void validate(ActionsProgram program) {
+    public static void validate(@NonNull ActionsProgram program) {
         if (program == null || program.actions().isEmpty()) {
             throw new InvalidProgramException("program is empty");
         }
@@ -100,7 +101,9 @@ public final class ProgramValidator {
 
     /** Thrown when an actions program fails validation. */
     public static final class InvalidProgramException extends RuntimeException {
-        public InvalidProgramException(String message) {
+        public
+        @NonNull
+        InvalidProgramException(@NonNull String message) {
             super(message);
         }
     }

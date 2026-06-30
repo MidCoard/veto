@@ -1,5 +1,7 @@
 package top.focess.veto.llm.exceptions;
 
+import org.jspecify.annotations.NonNull;
+
 /**
  * Thrown when a model response violates the {@code veto_pulse} contract after parsing — e.g.
  * effective thought ON but {@code thought} missing/empty, {@code message} missing when required,
@@ -8,11 +10,15 @@ package top.focess.veto.llm.exceptions;
  * user).
  */
 public class ModelSchemaException extends RuntimeException {
-    public ModelSchemaException(String message) {
+    public
+    @NonNull
+    ModelSchemaException(@NonNull String message) {
         super(message);
     }
 
-    public ModelSchemaException(String message, Throwable cause) {
+    public
+    @NonNull
+    ModelSchemaException(@NonNull String message, @NonNull Throwable cause) {
         super(message, cause);
     }
 }

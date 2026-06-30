@@ -1,6 +1,7 @@
 package top.focess.veto.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -35,7 +36,7 @@ public class AgentLoopDefaultsConfiguration {
 
     @Bean
     @ConditionalOnMissingBean(McpEngine.class)
-    public McpEngine defaultMcpEngine() {
+    public @NonNull McpEngine defaultMcpEngine() {
         return new DefaultMcpEngine();
     }
 

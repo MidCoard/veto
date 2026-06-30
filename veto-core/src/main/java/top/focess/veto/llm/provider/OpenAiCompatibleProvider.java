@@ -1,6 +1,7 @@
 package top.focess.veto.llm.provider;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.jspecify.annotations.NonNull;
 import top.focess.veto.llm.client.LlmClient;
 import top.focess.veto.llm.client.LlmClientFactory;
 import top.focess.veto.llm.core.ResolvedRequest;
@@ -38,7 +39,8 @@ public abstract class OpenAiCompatibleProvider extends AbstractLlmProvider {
     protected abstract boolean supportsJsonSchema();
 
     @Override
-    protected LlmClient.RawCompletion invoke(ResolvedRequest resolved) throws Exception {
+    protected LlmClient.@NonNull RawCompletion invoke(@NonNull ResolvedRequest resolved)
+            throws Exception {
         return clientFactory
                 .openAi(resolved.baseUrl(), resolved.apiKey(), supportsJsonSchema(), providerName())
                 .complete(resolved);

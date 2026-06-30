@@ -8,6 +8,7 @@ import com.google.genai.types.GenerateContentConfig;
 import com.google.genai.types.GenerateContentResponse;
 import com.google.genai.types.Part;
 import com.google.genai.types.Schema;
+import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.translation.CapabilityTranslator;
 import top.focess.veto.llm.core.ResolvedRequest;
 import top.focess.veto.llm.core.VetoRequest;
@@ -18,9 +19,9 @@ import top.focess.veto.llm.core.VetoRequest;
  */
 final class GeminiLlmClient extends LlmClient {
 
-    private final Client sdkClient;
-    private final ObjectMapper objectMapper;
-    private final CapabilityTranslator capabilityTranslator;
+    private final @NonNull Client sdkClient;
+    private final @NonNull ObjectMapper objectMapper;
+    private final @NonNull CapabilityTranslator capabilityTranslator;
 
     GeminiLlmClient(
             Client sdkClient,
@@ -32,7 +33,7 @@ final class GeminiLlmClient extends LlmClient {
     }
 
     @Override
-    public RawCompletion complete(ResolvedRequest resolved) {
+    public @NonNull RawCompletion complete(@NonNull ResolvedRequest resolved) {
         VetoRequest request = resolved.request();
         JsonNode rawSchema =
                 request.responseSchema() != null

@@ -5,6 +5,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
+import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 
 /**
@@ -52,12 +53,13 @@ public class Blackboard {
     }
 
     /** Read all messages for a group, in turnSeq order. */
-    public List<BlackboardMessage> readAll(UUID groupId) {
+    public @NonNull List<BlackboardMessage> readAll(@NonNull UUID groupId) {
         return messages.getOrDefault(groupId, List.of());
     }
 
     /** Read messages addressed to a specific receiver. */
-    public List<BlackboardMessage> readFor(UUID groupId, String receiverId) {
+    public @NonNull List<BlackboardMessage> readFor(
+            @NonNull UUID groupId, @NonNull String receiverId) {
         return readAll(groupId).stream().filter(m -> receiverId.equals(m.receiverId())).toList();
     }
 

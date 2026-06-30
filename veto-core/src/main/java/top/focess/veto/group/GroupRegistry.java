@@ -4,6 +4,8 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 
 /**
@@ -19,11 +21,11 @@ public class GroupRegistry {
 
     private final ConcurrentMap<UUID, Group> groups = new ConcurrentHashMap<>();
 
-    public void put(Group group) {
+    public void put(@NonNull Group group) {
         groups.put(group.groupId(), group);
     }
 
-    public Group get(UUID groupId) {
+    public @Nullable Group get(@NonNull UUID groupId) {
         return groups.get(groupId);
     }
 
@@ -39,7 +41,7 @@ public class GroupRegistry {
         return groups.remove(groupId) != null;
     }
 
-    public Map<UUID, Group> snapshot() {
+    public @NonNull Map<UUID, Group> snapshot() {
         return Map.copyOf(groups);
     }
 }

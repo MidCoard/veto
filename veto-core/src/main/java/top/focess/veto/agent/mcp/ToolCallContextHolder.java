@@ -1,8 +1,8 @@
 package top.focess.veto.agent.mcp;
 
 import java.util.UUID;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Thread-local holder for {@link ToolCallContext}. {@link top.focess.veto.agent.AgentRunner} sets
@@ -34,12 +34,12 @@ public final class ToolCallContextHolder {
     private ToolCallContextHolder() {}
 
     /** Sets the tool call context for the current thread. */
-    public static void set(@NotNull String agentId, @NotNull UUID userId) {
+    public static void set(@NonNull String agentId, @NonNull UUID userId) {
         CONTEXT.set(new ToolCallContext(agentId, userId));
     }
 
     /** Sets the tool call context for the current thread. */
-    public static void set(@NotNull ToolCallContext ctx) {
+    public static void set(@NonNull ToolCallContext ctx) {
         CONTEXT.set(ctx);
     }
 
@@ -49,8 +49,7 @@ public final class ToolCallContextHolder {
      * @return the context, or {@code null} if not set (e.g. when called outside AgentRunner's
      *     execute scope)
      */
-    @Nullable
-    public static ToolCallContext get() {
+    public static @Nullable ToolCallContext get() {
         return CONTEXT.get();
     }
 

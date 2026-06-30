@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -13,7 +14,7 @@ import org.slf4j.LoggerFactory;
  * in root order. Read at compile time by the PromptCompiler (config, bypasses tool-call screening).
  * A root with neither contributes nothing.
  */
-public record VetoMdResolver(List<WorkspaceRoot> roots) {
+public record VetoMdResolver(@NonNull List<WorkspaceRoot> roots) {
 
     private static final Logger log = LoggerFactory.getLogger(VetoMdResolver.class);
 

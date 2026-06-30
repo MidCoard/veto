@@ -4,6 +4,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import org.jspecify.annotations.NonNull;
 
 /**
  * A permission grant — the cached match key from an {@code accept_*_like_this} approval. Grants
@@ -59,7 +60,10 @@ public sealed interface PermissionGrant
      * file path is under {@link #directoryPrefix}. Flag-shape is a positional list of present flag
      * names (order is significant; presence-only, values wildcarded).
      */
-    record ReadGrant(String toolFamily, java.nio.file.Path directoryPrefix, List<String> flagShape)
+    record ReadGrant(
+            @NonNull String toolFamily,
+            java.nio.file.@NonNull Path directoryPrefix,
+            @NonNull List<String> flagShape)
             implements PermissionGrant {
 
         public ReadGrant {
@@ -70,7 +74,7 @@ public sealed interface PermissionGrant
         }
 
         @Override
-        public boolean matches(ToolCallSpec call) {
+        public boolean matches(@NonNull ToolCallSpec call) {
             if (!toolFamily.equals(call.toolName())
                     && !READ_TOOL_FAMILY.contains(call.toolName())) {
                 return false;
@@ -89,7 +93,10 @@ public sealed interface PermissionGrant
      * Write grant: matches future write tools whose canonical file path is under {@link
      * #directoryPrefix}.
      */
-    record WriteGrant(String toolName, java.nio.file.Path directoryPrefix, List<String> flagShape)
+    record WriteGrant(
+            @NonNull String toolName,
+            java.nio.file.@NonNull Path directoryPrefix,
+            @NonNull List<String> flagShape)
             implements PermissionGrant {
 
         public WriteGrant {
@@ -105,7 +112,7 @@ public sealed interface PermissionGrant
         }
 
         @Override
-        public boolean matches(ToolCallSpec call) {
+        public boolean matches(@NonNull ToolCallSpec call) {
             if (!toolName.equals(call.toolName())) {
                 return false;
             }
@@ -124,7 +131,10 @@ public sealed interface PermissionGrant
      * never wildcarded — re-screened every call (this happens at the danger floor; matching here
      * confirms the structural shape only).
      */
-    record CommandGrant(String executable, List<String> subcommands, List<String> flagShape)
+    record CommandGrant(
+            @NonNull String executable,
+            @NonNull List<String> subcommands,
+            @NonNull List<String> flagShape)
             implements PermissionGrant {
 
         public CommandGrant {
@@ -139,7 +149,7 @@ public sealed interface PermissionGrant
         }
 
         @Override
-        public boolean matches(ToolCallSpec call) {
+        public boolean matches(@NonNull ToolCallSpec call) {
             if (!"run_command".equals(call.toolName())) {
                 return false;
             }
@@ -202,7 +212,7 @@ public sealed interface PermissionGrant
      * tool. Distinct from {@link ReadGrant}/{@link WriteGrant}/{@link CommandGrant} (no per-tool
      * shape) — kept so the old code path still works until callers migrate.
      */
-    record LegacySessionRule(String toolName, java.util.Map<String, Object> args)
+    record LegacySessionRule(@NonNull String toolName, java.util.@NonNull Map<String, Object> args)
             implements PermissionGrant {
 
         @Override
@@ -211,7 +221,7 @@ public sealed interface PermissionGrant
         }
 
         @Override
-        public boolean matches(ToolCallSpec call) {
+        public boolean matches(@NonNull ToolCallSpec call) {
             return toolName.equals(call.toolName()) && args.equals(call.args());
         }
     }

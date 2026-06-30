@@ -4,8 +4,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -56,7 +56,7 @@ public final class IpcCodec {
      * @throws IpcCodecException if serialization fails (indicates a programming error, not bad
      *     input)
      */
-    public static byte @NotNull [] encode(@NotNull IpcFrame frame) {
+    public static byte[] encode(@NonNull IpcFrame frame) {
         try {
             return JSON.writeValueAsBytes(frame);
         } catch (JsonProcessingException e) {
@@ -72,7 +72,7 @@ public final class IpcCodec {
      * @return the serialized JSON string
      * @throws IpcCodecException if serialization fails
      */
-    public static @NotNull String encodeString(@NotNull IpcFrame frame) {
+    public static @NonNull String encodeString(@NonNull IpcFrame frame) {
         return new String(encode(frame), StandardCharsets.UTF_8);
     }
 
@@ -84,8 +84,7 @@ public final class IpcCodec {
      * @param payload the JSON bytes; must not be null
      * @return the deserialized frame, or {@code null} if the payload is malformed
      */
-    @Nullable
-    public static IpcFrame decode(byte @NotNull [] payload) {
+    public static @Nullable IpcFrame decode(byte @NonNull [] payload) {
         try {
             return JSON.readValue(payload, IpcFrame.class);
         } catch (Exception e) {
@@ -100,8 +99,7 @@ public final class IpcCodec {
      * @param payload the JSON string; must not be null
      * @return the deserialized frame, or {@code null} if the payload is malformed
      */
-    @Nullable
-    public static IpcFrame decode(@NotNull String payload) {
+    public static @Nullable IpcFrame decode(@NonNull String payload) {
         return decode(payload.getBytes(StandardCharsets.UTF_8));
     }
 }

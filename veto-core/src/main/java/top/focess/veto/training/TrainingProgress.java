@@ -1,6 +1,7 @@
 package top.focess.veto.training;
 
 import java.time.Instant;
+import org.jspecify.annotations.NonNull;
 
 /**
  * Represents the current state of a model training run. Thread-safe; read by the REST controller
@@ -48,7 +49,7 @@ public class TrainingProgress {
         this.evaluation = null;
     }
 
-    public void complete(String modelPath) {
+    public void complete(@NonNull String modelPath) {
         this.status = Status.COMPLETED;
         this.progress = 1.0;
         this.currentPhase = "completed";
@@ -57,7 +58,7 @@ public class TrainingProgress {
         this.completedAt = Instant.now();
     }
 
-    public void fail(String error) {
+    public void fail(@NonNull String error) {
         this.status = Status.FAILED;
         this.currentPhase = "failed";
         this.message = "Training failed: " + error;
@@ -72,7 +73,7 @@ public class TrainingProgress {
         this.completedAt = Instant.now();
     }
 
-    public void updatePhase(String phase, double progress, String message) {
+    public void updatePhase(@NonNull String phase, double progress, @NonNull String message) {
         this.currentPhase = phase;
         this.progress = progress;
         this.message = message;
@@ -124,7 +125,7 @@ public class TrainingProgress {
         return evaluation;
     }
 
-    public void setEvaluation(EvaluationReport evaluation) {
+    public void setEvaluation(@NonNull EvaluationReport evaluation) {
         this.evaluation = evaluation;
     }
 

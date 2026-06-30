@@ -9,6 +9,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.agent.Agent;
@@ -43,20 +44,20 @@ public class MateAgent {
 
     private static final Logger log = LoggerFactory.getLogger(MateAgent.class);
 
-    private final String mateId;
-    private final UUID groupId;
-    private final Agent agent;
-    private final Blackboard blackboard;
-    private final MateBreakerRegistry breakers;
+    private final @NonNull String mateId;
+    private final @NonNull UUID groupId;
+    private final @NonNull Agent agent;
+    private final @NonNull Blackboard blackboard;
+    private final @NonNull MateBreakerRegistry breakers;
     private final long pollIntervalMs;
     private final long taskTimeoutMs;
-    private final String skillset;
+    private final @NonNull String skillset;
 
     /** Set of turnSeqs we have already processed (so we don't re-dispatch on each tick). */
     private final ConcurrentMap<String, Long> lastSeenSeqByReceiver = new ConcurrentHashMap<>();
 
     private final AtomicBoolean running = new AtomicBoolean(false);
-    private final ScheduledExecutorService scheduler;
+    private final @NonNull ScheduledExecutorService scheduler;
     private ScheduledFuture<?> pollTask;
     private final long maxCallsPerEpisode;
 

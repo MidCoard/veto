@@ -1,5 +1,6 @@
 package top.focess.veto.bus;
 
+import org.jspecify.annotations.NonNull;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 
@@ -15,7 +16,7 @@ public class BusConfiguration {
         return websocket;
     }
 
-    public void setWebsocket(WebSocketConfig websocket) {
+    public void setWebsocket(@NonNull WebSocketConfig websocket) {
         this.websocket = websocket;
     }
 
@@ -23,7 +24,7 @@ public class BusConfiguration {
         return grpc;
     }
 
-    public void setGrpc(GrpcConfig grpc) {
+    public void setGrpc(@NonNull GrpcConfig grpc) {
         this.grpc = grpc;
     }
 
@@ -46,7 +47,7 @@ public class BusConfiguration {
             return path;
         }
 
-        public void setPath(String path) {
+        public void setPath(@NonNull String path) {
             this.path = path;
         }
 

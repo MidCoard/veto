@@ -9,6 +9,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -41,10 +42,12 @@ public class PgvectorMemoryStore implements MemoryStore {
     private static final int EMBEDDING_DIM = 64;
     private static final String TABLE = "pgvector_memories";
 
-    private final EntityManager em;
+    private final @NonNull EntityManager em;
     private volatile boolean provisioned = false;
 
-    public PgvectorMemoryStore(EntityManager em) {
+    public
+    @NonNull
+    PgvectorMemoryStore(@NonNull EntityManager em) {
         this.em = em;
     }
 
@@ -91,7 +94,7 @@ public class PgvectorMemoryStore implements MemoryStore {
 
     @Override
     @SuppressWarnings("unchecked")
-    public List<ScoredMemory> search(MemoryQuery query) {
+    public @NonNull List<ScoredMemory> search(@NonNull MemoryQuery query) {
         String q = vecToString(embed(query.queryText()));
         // Over-fetch to absorb the post-filters (session/project) before trimming to topK.
         int limit = Math.max(query.topK() * 4, query.topK() + 8);
@@ -133,7 +136,7 @@ public class PgvectorMemoryStore implements MemoryStore {
     }
 
     @Override
-    public MemoryId add(Memory memory) {
+    public @NonNull MemoryId add(@NonNull Memory memory) {
         em.createNativeQuery(
                         "INSERT INTO "
                                 + TABLE
@@ -157,7 +160,7 @@ public class PgvectorMemoryStore implements MemoryStore {
     }
 
     @Override
-    public void capture(TurnRecord turn, UUID sessionId, UUID userId) {
+    public void capture(@NonNull TurnRecord turn, @NonNull UUID sessionId, @NonNull UUID userId) {
         if (turn == null || sessionId == null || userId == null) {
             return;
         }
@@ -180,7 +183,7 @@ public class PgvectorMemoryStore implements MemoryStore {
     }
 
     @Override
-    public void promote(MemoryId id) {
+    public void promote(@NonNull MemoryId id) {
         // Session → Cross-Session: strip sessionId, bump tier. (Re-inserts with a fresh id to
         // preserve the curating boundary, like the other backends.)
         Memory m = findById(id);
@@ -203,14 +206,14 @@ public class PgvectorMemoryStore implements MemoryStore {
     }
 
     @Override
-    public void forget(MemoryId id) {
+    public void forget(@NonNull MemoryId id) {
         em.createNativeQuery("DELETE FROM " + TABLE + " WHERE id = :id")
                 .setParameter("id", id.value().toString())
                 .executeUpdate();
     }
 
     @Override
-    public float[] embed(String text) {
+    public float[] embed(@NonNull String text) {
         byte[] bytes = text.getBytes();
         float[] vec = new float[EMBEDDING_DIM];
         for (int i = 0; i < bytes.length; i++) {

@@ -3,6 +3,7 @@ package top.focess.veto.bus;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -24,12 +25,17 @@ public class DeltaBusBridge {
 
     private static final Logger log = LoggerFactory.getLogger(DeltaBusBridge.class);
 
-    private final DeltaBroker broker;
-    private final VetoWebSocketHandler handler;
-    private final ObjectMapper mapper;
+    private final @NonNull DeltaBroker broker;
+    private final @NonNull VetoWebSocketHandler handler;
+    private final @NonNull ObjectMapper mapper;
     private AutoCloseable subscription;
 
-    public DeltaBusBridge(DeltaBroker broker, VetoWebSocketHandler handler, ObjectMapper mapper) {
+    public
+    @NonNull
+    DeltaBusBridge(
+            @NonNull DeltaBroker broker,
+            @NonNull VetoWebSocketHandler handler,
+            @NonNull ObjectMapper mapper) {
         this.broker = broker;
         this.handler = handler;
         this.mapper = mapper;

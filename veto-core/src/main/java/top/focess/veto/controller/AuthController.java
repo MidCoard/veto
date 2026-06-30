@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import javax.crypto.SecretKey;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
@@ -25,11 +26,11 @@ public class AuthController {
 
     private static final String TOKEN_HEADER = "X-Veto-Session-Token";
 
-    private final VaultKeyManager vaultKeyManager;
-    private final UserRegistry userRegistry;
-    private final SessionManager sessionManager;
-    private final CredentialVault credentialVault;
-    private final AuthLifecycleManager authLifecycleManager;
+    private final @NonNull VaultKeyManager vaultKeyManager;
+    private final @NonNull UserRegistry userRegistry;
+    private final @NonNull SessionManager sessionManager;
+    private final @NonNull CredentialVault credentialVault;
+    private final @NonNull AuthLifecycleManager authLifecycleManager;
 
     public AuthController(
             VaultKeyManager vaultKeyManager,
@@ -51,7 +52,8 @@ public class AuthController {
             value = "/setup",
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<Map<String, Object>> setup(@RequestBody Map<String, String> request) {
+    public ResponseEntity<Map<String, @NonNull Object>> setup(
+            @NonNull @RequestBody Map<String, String> request) {
         String username = request.get("username");
         String password = request.get("password");
 
@@ -125,7 +127,8 @@ public class AuthController {
             value = "/login",
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<Map<String, Object>> login(@RequestBody Map<String, String> request) {
+    public ResponseEntity<Map<String, @NonNull Object>> login(
+            @NonNull @RequestBody Map<String, String> request) {
         String username = request.get("username");
         String password = request.get("password");
 
@@ -185,7 +188,8 @@ public class AuthController {
 
     /** POST /api/auth/logout — Invalidate session and lock vault if no other sessions active. */
     @PostMapping(value = "/logout", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<Map<String, Object>> logout(@RequestHeader(TOKEN_HEADER) String token) {
+    public ResponseEntity<Map<String, @NonNull Object>> logout(
+            @RequestHeader(TOKEN_HEADER) String token) {
         var session = sessionManager.validate(token);
         if (session.isEmpty()) {
             return ResponseEntity.status(401)

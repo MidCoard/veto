@@ -1,5 +1,7 @@
 package top.focess.veto.llm.core;
 
+import org.jspecify.annotations.Nullable;
+
 /**
  * Thread-local store for LLM token usage. Set by client implementations after a call, and read by
  * the runner loop to calibrate the token estimation.
@@ -13,7 +15,7 @@ public final class LlmSystemUsage {
         currentUsage.set(new Usage(prompt, completion));
     }
 
-    public static Usage getAndClear() {
+    public static @Nullable Usage getAndClear() {
         Usage u = currentUsage.get();
         currentUsage.remove();
         return u;

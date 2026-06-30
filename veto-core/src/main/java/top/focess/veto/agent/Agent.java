@@ -6,8 +6,8 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.identity.AgentPersona;
 
@@ -19,38 +19,32 @@ import top.focess.veto.agent.identity.AgentPersona;
 public interface Agent {
 
     // --- Identity ---
-    @NotNull
-    String id();
+    @NonNull String id();
 
-    @NotNull
-    String name();
+    @NonNull String name();
 
-    @NotNull
-    AgentPersona persona();
+    @NonNull AgentPersona persona();
 
-    @NotNull
-    Set<String> whitelistedTools();
+    @NonNull Set<String> whitelistedTools();
 
-    @NotNull
-    AgentState state();
+    @NonNull AgentState state();
 
     // --- Execution ---
 
     /** Submit a prompt for the agent to work on. Non-blocking — the virtual thread picks it up. */
-    void submit(@NotNull String prompt);
+    void submit(@NonNull String prompt);
 
     /**
      * Non-blocking submit with a callback fired on the agent's virtual thread when the task done.
      */
-    void submit(@NotNull String prompt, @Nullable Consumer<AgentResult> callback);
+    void submit(@NonNull String prompt, @Nullable Consumer<AgentResult> callback);
 
     /** Block the caller until the current task completes (or the timeout elapses). */
-    @NotNull
-    AgentResult await(@NotNull Duration timeout) throws TimeoutException, InterruptedException;
+    @NonNull AgentResult await(@NonNull Duration timeout)
+            throws TimeoutException, InterruptedException;
 
     /** The current task's result future, or a completed future if idle. */
-    @NotNull
-    CompletableFuture<AgentResult> result();
+    @NonNull CompletableFuture<AgentResult> result();
 
     // --- Lifecycle ---
     void pause(); // → PAUSED
@@ -60,12 +54,10 @@ public interface Agent {
     void terminate(); // → TERMINATED, virtual thread stopped
 
     // --- History ---
-    @NotNull
-    List<TurnRecord> history();
+    @NonNull List<TurnRecord> history();
 
     /** The read-history (for drift detection). */
-    @NotNull
-    ReadHistory readHistory();
+    @NonNull ReadHistory readHistory();
 
     /** Compact the agent's turn history segment. */
     void compact();

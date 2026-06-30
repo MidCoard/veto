@@ -2,6 +2,7 @@ package top.focess.veto.vault;
 
 import jakarta.persistence.*;
 import java.time.Instant;
+import org.jspecify.annotations.NonNull;
 
 /** JPA entity for the {@code users} table — replaces the old {@code users.json} file. */
 @Entity
@@ -39,7 +40,7 @@ public class UserEntity {
         this.createdAt = createdAt;
     }
 
-    public String getUsername() {
+    public @NonNull String getUsername() {
         return username;
     }
 
@@ -51,11 +52,11 @@ public class UserEntity {
         return passwordSalt;
     }
 
-    public String getRole() {
+    public @NonNull String getRole() {
         return role;
     }
 
-    public Instant getCreatedAt() {
+    public @NonNull Instant getCreatedAt() {
         return createdAt;
     }
 }

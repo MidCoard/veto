@@ -1,6 +1,6 @@
 package top.focess.veto.contract;
 
-import org.jetbrains.annotations.NotNull;
+import org.jspecify.annotations.NonNull;
 
 /**
  * Transport half that sends frames from the terminal (client) to the backend — e.g. a ZMQ DEALER
@@ -17,5 +17,5 @@ public non-sealed interface ClientTransport extends Transport {
      *
      * @param frame the frame to send
      */
-    void send(@NotNull IpcFrame.ClientFrame frame);
+    void send(IpcFrame.@NonNull ClientFrame frame);
 }

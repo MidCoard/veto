@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
+import org.jspecify.annotations.NonNull;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.TurnRecord;
@@ -23,14 +24,16 @@ import top.focess.veto.agent.TurnRecord;
 @ConditionalOnProperty(name = "veto.memory.store", havingValue = "jpa")
 public class JpaMemoryStore implements MemoryStore {
 
-    private final MemoryRepository repository;
+    private final @NonNull MemoryRepository repository;
 
-    public JpaMemoryStore(MemoryRepository repository) {
+    public
+    @NonNull
+    JpaMemoryStore(@NonNull MemoryRepository repository) {
         this.repository = repository;
     }
 
     @Override
-    public List<ScoredMemory> search(MemoryQuery query) {
+    public @NonNull List<ScoredMemory> search(@NonNull MemoryQuery query) {
         // 1. Fetch candidate rows from the DB (tenant-scoped via userId filter).
         List<MemoryEntity> candidates =
                 repository.findByUserIdAndTierIn(
@@ -61,13 +64,13 @@ public class JpaMemoryStore implements MemoryStore {
     }
 
     @Override
-    public MemoryId add(Memory memory) {
+    public @NonNull MemoryId add(@NonNull Memory memory) {
         repository.save(new MemoryEntity(memory));
         return memory.id();
     }
 
     @Override
-    public void capture(TurnRecord turn, UUID sessionId, UUID userId) {
+    public void capture(@NonNull TurnRecord turn, @NonNull UUID sessionId, @NonNull UUID userId) {
         if (turn == null || sessionId == null || userId == null) {
             return;
         }
@@ -91,7 +94,7 @@ public class JpaMemoryStore implements MemoryStore {
     }
 
     @Override
-    public void promote(MemoryId id) {
+    public void promote(@NonNull MemoryId id) {
         MemoryEntity e = repository.findById(id.value().toString()).orElse(null);
         if (e == null || !MemoryTier.SESSION.name().equals(e.getTier())) {
             return;
@@ -113,12 +116,12 @@ public class JpaMemoryStore implements MemoryStore {
     }
 
     @Override
-    public void forget(MemoryId id) {
+    public void forget(@NonNull MemoryId id) {
         repository.deleteById(id.value().toString());
     }
 
     @Override
-    public float[] embed(String text) {
+    public float[] embed(@NonNull String text) {
         // Same deterministic stub as InMemoryMemoryStore. Production would call a local
         // embedding model via the local model tier (Part 14.4).
         byte[] bytes = text.getBytes();

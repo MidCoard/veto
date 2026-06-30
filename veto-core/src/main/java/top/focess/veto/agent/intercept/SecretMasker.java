@@ -4,6 +4,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.NonNull;
 
 /**
  * Best-effort secret-pattern scrubber. Replaces common secret tokens in tool observation text with
@@ -65,7 +66,7 @@ public final class SecretMasker {
      * Scrubs secret patterns in the input. Each pattern's first match is replaced with its {@code
      * [REDACTED_*]} tag. Stable for testing (no randomness).
      */
-    public static String mask(String input) {
+    public static @NonNull String mask(@NonNull String input) {
         if (input == null || input.isEmpty()) {
             return input;
         }

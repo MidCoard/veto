@@ -1,6 +1,7 @@
 package top.focess.veto.llm.provider;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import top.focess.veto.llm.client.LlmClient;
@@ -13,7 +14,7 @@ import top.focess.veto.observability.AuditLogger;
 /** Gemini provider: delegates to {@code GeminiLlmClient} which uses native JSON mode. */
 @Component
 public class GeminiProvider extends AbstractLlmProvider {
-    private final LlmClientFactory clientFactory;
+    private final @NonNull LlmClientFactory clientFactory;
 
     public GeminiProvider(
             @Qualifier(LlmJacksonConfig.LLM_OBJECT_MAPPER) ObjectMapper objectMapper,
@@ -24,7 +25,7 @@ public class GeminiProvider extends AbstractLlmProvider {
     }
 
     @Override
-    public boolean supports(ProviderType providerType) {
+    public boolean supports(@NonNull ProviderType providerType) {
         return providerType == ProviderType.GEMINI;
     }
 
@@ -39,7 +40,8 @@ public class GeminiProvider extends AbstractLlmProvider {
     }
 
     @Override
-    protected LlmClient.RawCompletion invoke(ResolvedRequest resolved) throws Exception {
+    protected LlmClient.@NonNull RawCompletion invoke(@NonNull ResolvedRequest resolved)
+            throws Exception {
         return clientFactory.gemini(resolved.baseUrl(), resolved.apiKey()).complete(resolved);
     }
 }

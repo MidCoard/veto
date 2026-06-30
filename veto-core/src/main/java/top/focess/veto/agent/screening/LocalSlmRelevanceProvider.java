@@ -1,5 +1,6 @@
 package top.focess.veto.agent.screening;
 
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.agent.mcp.ToolDefinition;
@@ -22,14 +23,17 @@ public class LocalSlmRelevanceProvider implements SlmRelevanceProvider {
 
     private static final Logger log = LoggerFactory.getLogger(LocalSlmRelevanceProvider.class);
 
-    private final LlamaCppBridge bridge;
+    private final @NonNull LlamaCppBridge bridge;
 
-    public LocalSlmRelevanceProvider(LlamaCppBridge bridge) {
+    public
+    @NonNull
+    LocalSlmRelevanceProvider(@NonNull LlamaCppBridge bridge) {
         this.bridge = bridge;
     }
 
     @Override
-    public Relevance relevance(ToolCall call, ToolDefinition def, String thought) {
+    public @NonNull Relevance relevance(
+            @NonNull ToolCall call, @NonNull ToolDefinition def, @NonNull String thought) {
         if (bridge == null || !bridge.isAvailable()) {
             return Relevance.HIGH;
         }

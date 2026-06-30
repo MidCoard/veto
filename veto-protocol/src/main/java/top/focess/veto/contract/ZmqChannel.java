@@ -1,8 +1,8 @@
 package top.focess.veto.contract;
 
 import java.nio.charset.StandardCharsets;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.zeromq.SocketType;
@@ -40,7 +40,7 @@ public abstract class ZmqChannel {
     private final SocketType type;
 
     private ZmqChannel(
-            @NotNull ZMQ.Socket socket, @NotNull SocketType type, @NotNull ZContext ctx) {
+            ZMQ.@NonNull Socket socket, @NonNull SocketType type, @NonNull ZContext ctx) {
         this.socket = socket;
         this.type = type;
         this.poller = ctx.createPoller(1);
@@ -55,8 +55,7 @@ public abstract class ZmqChannel {
      * @param timeoutMillis {@code 0} non-blocking, {@code >0} up to N ms, {@code <0} infinite
      * @return the next message, or {@code null} on timeout or dropped malformed payload
      */
-    @Nullable
-    public Transport.FramedMsg recv(long timeoutMillis) {
+    public Transport.@Nullable FramedMsg recv(long timeoutMillis) {
         long rc = poller.poll(timeoutMillis < 0 ? -1 : timeoutMillis);
         if (rc <= 0 || !poller.pollin(0)) return null;
         ZMsg msg = ZMsg.recvMsg(socket, ZMQ.DONTWAIT);
@@ -83,8 +82,7 @@ public abstract class ZmqChannel {
 
     // ── envelope decode ──────────────────────────────────────────────────
 
-    @Nullable
-    private Transport.FramedMsg decode(@Nullable ZMsg msg) {
+    private Transport.@Nullable FramedMsg decode(@Nullable ZMsg msg) {
         if (msg == null || msg.isEmpty()) {
             if (msg != null) msg.destroy();
             return null;
@@ -118,7 +116,7 @@ public abstract class ZmqChannel {
     /** A DEALER-backed {@link ClientTransport}. */
     public static final class Client extends ZmqChannel implements ClientTransport {
 
-        private Client(@NotNull ZMQ.Socket socket, @NotNull ZContext ctx) {
+        private Client(ZMQ.@NonNull Socket socket, @NonNull ZContext ctx) {
             super(socket, SocketType.DEALER, ctx);
         }
 
@@ -130,9 +128,8 @@ public abstract class ZmqChannel {
          * @param identity the unique client identity used for ZMQ routing
          * @return a connected client channel
          */
-        @NotNull
-        public static Client connectDealer(
-                @NotNull ZContext ctx, @NotNull String addr, @NotNull String identity) {
+        public static @NonNull Client connectDealer(
+                @NonNull ZContext ctx, @NonNull String addr, @NonNull String identity) {
             ZMQ.Socket sock = ctx.createSocket(SocketType.DEALER);
             sock.setIdentity(identity.getBytes(ZMQ.CHARSET));
             sock.connect(addr);
@@ -140,7 +137,7 @@ public abstract class ZmqChannel {
         }
 
         @Override
-        public void send(@NotNull IpcFrame.ClientFrame frame) {
+        public void send(IpcFrame.@NonNull ClientFrame frame) {
             // DEALER sockets automatically prepend the identity frame and send the bare payload.
             socket.send(IpcCodec.encode(frame));
         }
@@ -149,7 +146,7 @@ public abstract class ZmqChannel {
     /** A ROUTER-backed {@link ServerTransport}. */
     public static final class Server extends ZmqChannel implements ServerTransport {
 
-        private Server(@NotNull ZMQ.Socket socket, @NotNull ZContext ctx) {
+        private Server(ZMQ.@NonNull Socket socket, @NonNull ZContext ctx) {
             super(socket, SocketType.ROUTER, ctx);
         }
 
@@ -160,15 +157,14 @@ public abstract class ZmqChannel {
          * @param addr the bind address (e.g. {@code tcp://*:5555})
          * @return a bound server channel
          */
-        @NotNull
-        public static Server bindRouter(@NotNull ZContext ctx, @NotNull String addr) {
+        public static @NonNull Server bindRouter(@NonNull ZContext ctx, @NonNull String addr) {
             ZMQ.Socket sock = ctx.createSocket(SocketType.ROUTER);
             sock.bind(addr);
             return new Server(sock, ctx);
         }
 
         @Override
-        public void send(@NotNull String identity, @NotNull IpcFrame frame) {
+        public void send(@NonNull String identity, @NonNull IpcFrame frame) {
             // ROUTER sockets expect [identity][payload].
             socket.sendMore(identity.getBytes(ZMQ.CHARSET));
             socket.send(IpcCodec.encode(frame));

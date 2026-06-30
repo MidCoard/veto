@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.mcp.AgentToolDefinition;
 import top.focess.veto.agent.mcp.NativeToolDefinition;
 import top.focess.veto.agent.mcp.RemoteToolDefinition;
@@ -28,14 +29,16 @@ import top.focess.veto.agent.mcp.ToolDefinition;
  */
 public class DefaultCapabilityTranslator implements CapabilityTranslator {
 
-    private final ObjectMapper objectMapper;
+    private final @NonNull ObjectMapper objectMapper;
 
-    public DefaultCapabilityTranslator(ObjectMapper objectMapper) {
+    public
+    @NonNull
+    DefaultCapabilityTranslator(@NonNull ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
     }
 
     @Override
-    public JsonNode vetoResponseSchema(boolean thoughtRequired, boolean guidedSwitch) {
+    public @NonNull JsonNode vetoResponseSchema(boolean thoughtRequired, boolean guidedSwitch) {
         Map<String, Object> properties = new LinkedHashMap<>();
 
         if (thoughtRequired) {
@@ -168,7 +171,7 @@ public class DefaultCapabilityTranslator implements CapabilityTranslator {
     }
 
     /** Convenience: the schema as an ObjectNode (for tests). */
-    public ObjectNode schemaAsObject(boolean thoughtRequired, boolean guidedSwitch) {
+    public @NonNull ObjectNode schemaAsObject(boolean thoughtRequired, boolean guidedSwitch) {
         return (ObjectNode) vetoResponseSchema(thoughtRequired, guidedSwitch);
     }
 }

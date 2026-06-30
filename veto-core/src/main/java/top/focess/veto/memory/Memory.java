@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import org.jspecify.annotations.NonNull;
 
 /**
  * A single memory entry stored by the {@link MemoryStore}. Carries the captured content (already
@@ -43,7 +44,7 @@ public record Memory(
     /**
      * Reference to the source of this memory (e.g. the originating turn range or insight origin).
      */
-    public record SourceRef(String kind, Map<String, Object> attrs) {
+    public record SourceRef(@NonNull String kind, @NonNull Map<String, Object> attrs) {
         public SourceRef {
             if (attrs == null) {
                 attrs = Map.of();
@@ -52,15 +53,15 @@ public record Memory(
             }
         }
 
-        public static SourceRef callId(String callId) {
+        public static @NonNull SourceRef callId(@NonNull String callId) {
             return new SourceRef("call_id", Map.of("call_id", callId));
         }
 
-        public static SourceRef turnRange(int from, int to) {
+        public static @NonNull SourceRef turnRange(int from, int to) {
             return new SourceRef("turn_range", Map.of("from", from, "to", to));
         }
 
-        public static SourceRef insightOrigin(String origin) {
+        public static @NonNull SourceRef insightOrigin(@NonNull String origin) {
             return new SourceRef("insight_origin", Map.of("origin", origin));
         }
     }

@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import top.focess.veto.agent.mcp.McpToolResult;
 import top.focess.veto.llm.core.VetoResponse;
 
@@ -23,20 +25,24 @@ public class Scope {
     public static final Object UNDEFINED = new Object();
 
     private final Map<String, Object> bindings = new HashMap<>();
-    private final Scope parent;
-    private final ObjectMapper objectMapper;
+    private final @NonNull Scope parent;
+    private final @NonNull ObjectMapper objectMapper;
 
-    public Scope(ObjectMapper objectMapper) {
+    public
+    @NonNull
+    Scope(@NonNull ObjectMapper objectMapper) {
         this(objectMapper, null);
     }
 
-    public Scope(ObjectMapper objectMapper, Scope parent) {
+    public
+    @NonNull
+    Scope(@NonNull ObjectMapper objectMapper, @NonNull Scope parent) {
         this.objectMapper = objectMapper;
         this.parent = parent;
     }
 
     /** Read-through to parent. Missing key returns {@link #UNDEFINED}, not an error. */
-    public Object get(String var) {
+    public @NonNull Object get(@NonNull String var) {
         if (var == null) {
             return UNDEFINED;
         }
@@ -50,12 +56,12 @@ public class Scope {
         return UNDEFINED;
     }
 
-    public boolean contains(String var) {
+    public boolean contains(@NonNull String var) {
         String key = var == null ? "" : (var.startsWith("$") ? var.substring(1) : var);
         return bindings.containsKey(key) || (parent != null && parent.contains(var));
     }
 
-    public void put(String var, Object value) {
+    public void put(@NonNull String var, @NonNull Object value) {
         String key = var.startsWith("$") ? var.substring(1) : var;
         bindings.put(key, value);
     }
@@ -63,7 +69,7 @@ public class Scope {
     /**
      * Resolves a {@code $var|literal} spec to a concrete value (literal if no {@code $} prefix).
      */
-    public Object resolveValue(String spec) {
+    public @NonNull Object resolveValue(@NonNull String spec) {
         if (spec == null) {
             return UNDEFINED;
         }
@@ -75,7 +81,7 @@ public class Scope {
     }
 
     /** Resolves {@code $var} references inside a text against the scope (stringified). */
-    public String resolveVars(String text) {
+    public @NonNull String resolveVars(@NonNull String text) {
         if (text == null) {
             return "";
         }
@@ -91,7 +97,7 @@ public class Scope {
     }
 
     /** Binds a tool result's fields to {@code $var}s per the output bindings map. */
-    public void bindTool(Map<String, String> outputs, McpToolResult result) {
+    public void bindTool(@NonNull Map<String, String> outputs, @NonNull McpToolResult result) {
         if (outputs == null || result == null) {
             return;
         }
@@ -105,7 +111,7 @@ public class Scope {
     }
 
     /** Binds a generate result's fields to {@code $var}s per the output bindings map. */
-    public void bindGenerate(Map<String, String> outputs, VetoResponse response) {
+    public void bindGenerate(@NonNull Map<String, String> outputs, @NonNull VetoResponse response) {
         if (outputs == null || response == null) {
             return;
         }
@@ -172,7 +178,7 @@ public class Scope {
         return sb.toString();
     }
 
-    public Optional<Object> opt(String var) {
+    public @Nullable Optional<Object> opt(@NonNull String var) {
         Object v = get(var);
         return v == UNDEFINED ? Optional.empty() : Optional.of(v);
     }

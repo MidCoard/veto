@@ -2,6 +2,7 @@ package top.focess.veto.agent.mcp;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.Map;
+import org.jspecify.annotations.NonNull;
 
 /**
  * The parameter contract for a tool. Two flavours.
@@ -21,12 +22,12 @@ public sealed interface ParameterSchema permits ParameterSchema.Structured, Para
      * @param argsClass the Java record class used for JSON deserialization and execution
      * @param hints param name → {@link ParamCategory}, derived from {@code @SecurityHint}
      */
-    record Structured(Class<?> argsClass, Map<String, ParamCategory> hints)
+    record Structured(@NonNull Class<?> argsClass, @NonNull Map<String, ParamCategory> hints)
             implements ParameterSchema {}
 
     /**
      * Raw JSON Schema from an external MCP server. No parameter-level hints; the Gateway treats
      * every parameter as {@link ParamCategory#GENERIC}.
      */
-    record Raw(JsonNode jsonSchema) implements ParameterSchema {}
+    record Raw(@NonNull JsonNode jsonSchema) implements ParameterSchema {}
 }

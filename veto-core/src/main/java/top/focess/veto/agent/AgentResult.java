@@ -1,7 +1,7 @@
 package top.focess.veto.agent;
 
 import java.util.Map;
-import org.jetbrains.annotations.NotNull;
+import org.jspecify.annotations.NonNull;
 
 /**
  * The outcome of an agent task. Returned by {@code Agent.await} / {@code Agent.result} when the
@@ -12,19 +12,17 @@ import org.jetbrains.annotations.NotNull;
  * @param metadata auxiliary info (turn count, breaker trip, etc.)
  */
 public record AgentResult(
-        boolean success, @NotNull String message, @NotNull Map<String, Object> metadata) {
+        boolean success, @NonNull String message, @NonNull Map<String, Object> metadata) {
 
     /** Convenience factory for a successful completion. */
-    @NotNull
-    public static AgentResult success(
-            @NotNull String message, @NotNull Map<String, Object> metadata) {
+    public static @NonNull AgentResult success(
+            @NonNull String message, @NonNull Map<String, Object> metadata) {
         return new AgentResult(true, message, metadata);
     }
 
     /** Convenience factory for a failure / breaker trip. */
-    @NotNull
-    public static AgentResult failure(
-            @NotNull String message, @NotNull Map<String, Object> metadata) {
+    public static @NonNull AgentResult failure(
+            @NonNull String message, @NonNull Map<String, Object> metadata) {
         return new AgentResult(false, message, metadata);
     }
 }

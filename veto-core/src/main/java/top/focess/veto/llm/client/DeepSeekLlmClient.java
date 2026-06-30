@@ -10,6 +10,7 @@ import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.translation.CapabilityTranslator;
 import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.llm.core.ResolvedRequest;
@@ -28,11 +29,11 @@ final class DeepSeekLlmClient extends LlmClient {
     private static final HttpClient HTTP =
             HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
 
-    private final String baseUrl;
-    private final String apiKey;
-    private final String providerName;
-    private final ObjectMapper objectMapper;
-    private final CapabilityTranslator capabilityTranslator;
+    private final @NonNull String baseUrl;
+    private final @NonNull String apiKey;
+    private final @NonNull String providerName;
+    private final @NonNull ObjectMapper objectMapper;
+    private final @NonNull CapabilityTranslator capabilityTranslator;
 
     DeepSeekLlmClient(
             String baseUrl,
@@ -48,7 +49,7 @@ final class DeepSeekLlmClient extends LlmClient {
     }
 
     @Override
-    public RawCompletion complete(ResolvedRequest resolved) {
+    public @NonNull RawCompletion complete(@NonNull ResolvedRequest resolved) {
         VetoRequest request = resolved.request();
         JsonNode responseSchema =
                 request.responseSchema() != null

@@ -1,5 +1,6 @@
 package top.focess.veto.agent.loop;
 
+import org.jspecify.annotations.NonNull;
 import top.focess.veto.llm.core.VetoResponse;
 import top.focess.veto.llm.exceptions.ModelSchemaException;
 
@@ -25,8 +26,8 @@ public final class ResponseEnforcer {
     private ResponseEnforcer() {}
 
     /** Enforces; returns the (possibly thought-stripped) response, or throws for a retry. */
-    public static VetoResponse enforce(
-            VetoResponse r, boolean effectiveThought, boolean guidedSwitch) {
+    public static @NonNull VetoResponse enforce(
+            @NonNull VetoResponse r, boolean effectiveThought, boolean guidedSwitch) {
         if (r == null) {
             throw new ModelSchemaException("null VetoResponse");
         }

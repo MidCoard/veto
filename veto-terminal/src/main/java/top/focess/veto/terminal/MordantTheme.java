@@ -1,7 +1,7 @@
 package top.focess.veto.terminal;
 
 import com.github.ajalt.mordant.terminal.Terminal;
-import org.jetbrains.annotations.NotNull;
+import org.jspecify.annotations.NonNull;
 import top.focess.veto.client.core.StyleToken;
 import top.focess.veto.client.core.Theme;
 
@@ -16,13 +16,12 @@ public final class MordantTheme implements Theme {
 
     private final Terminal terminal;
 
-    public MordantTheme(@NotNull Terminal terminal) {
+    public MordantTheme(@NonNull Terminal terminal) {
         this.terminal = terminal;
     }
 
     @Override
-    @NotNull
-    public String style(@NotNull StyleToken token, @NotNull String text) {
+    public @NonNull String style(@NonNull StyleToken token, @NonNull String text) {
         return switch (token) {
             case ACCENT -> MordantTerminal.cyan(terminal, text);
             case MUTED, BORDER -> MordantTerminal.dim(terminal, text);
@@ -35,8 +34,7 @@ public final class MordantTheme implements Theme {
     }
 
     @Override
-    @NotNull
-    public String styleBold(@NotNull StyleToken token, @NotNull String text) {
+    public @NonNull String styleBold(@NonNull StyleToken token, @NonNull String text) {
         return MordantTerminal.bold(terminal, style(token, text));
     }
 }

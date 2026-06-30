@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeSet;
+import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.mcp.NativeToolDefinition;
 import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RiskCategory;
@@ -28,8 +29,8 @@ public final class MatchKeyExtractor {
      * run_command} the flag shape is taken from the first command's args, skipping the executable
      * and positional subcommand(s).
      */
-    public static PermissionGrant.ToolCallSpec extract(
-            ToolCall call, ToolDefinition def, Workspace workspace) {
+    public static PermissionGrant.@NonNull ToolCallSpec extract(
+            @NonNull ToolCall call, @NonNull ToolDefinition def, @NonNull Workspace workspace) {
         Map<String, Object> args = call.args() == null ? Map.of() : call.args();
         Path canonical = canonicalPathArg(call, def, workspace);
         List<String> flagShape = flagShape(call, def);

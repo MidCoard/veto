@@ -6,6 +6,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import javax.crypto.SecretKey;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -23,12 +24,16 @@ public class CredentialVault {
 
     private static final Logger log = LoggerFactory.getLogger(CredentialVault.class);
 
-    private final CredentialVaultConfiguration config;
-    private final InjectionService injectionService;
+    private final @NonNull CredentialVaultConfiguration config;
+    private final @NonNull InjectionService injectionService;
 
     private final ConcurrentHashMap<String, SecureStore> activeStores = new ConcurrentHashMap<>();
 
-    public CredentialVault(CredentialVaultConfiguration config, InjectionService injectionService) {
+    public
+    @NonNull
+    CredentialVault(
+            @NonNull CredentialVaultConfiguration config,
+            @NonNull InjectionService injectionService) {
         this.config = config;
         this.injectionService = injectionService;
     }
@@ -50,7 +55,7 @@ public class CredentialVault {
     // ── Lock / Unlock ───────────────────────────────────────────────────────
 
     /** Unlocks the vault for a specific user with their Vault Key. */
-    public synchronized void unlock(SecretKey vaultKey, String username) {
+    public synchronized void unlock(@NonNull SecretKey vaultKey, @NonNull String username) {
         SecureStore store = new SecureStore(config, username);
         store.initialize();
         store.unlock(vaultKey);
@@ -74,7 +79,7 @@ public class CredentialVault {
     }
 
     /** Locks the vault for a specific user. */
-    public synchronized void lock(String username) {
+    public synchronized void lock(@NonNull String username) {
         SecureStore store = activeStores.remove(username);
         if (store != null) {
             store.lock();
@@ -90,7 +95,7 @@ public class CredentialVault {
         return !activeStores.isEmpty();
     }
 
-    public boolean isUnlocked(String username) {
+    public boolean isUnlocked(@NonNull String username) {
         SecureStore store = activeStores.get(username);
         return store != null && store.isUnlocked();
     }
@@ -108,15 +113,15 @@ public class CredentialVault {
 
     // ── Credential operations ───────────────────────────────────────────────
 
-    public void store(String key, String value) {
+    public void store(@NonNull String key, @NonNull String value) {
         requireStore().store(key, value);
     }
 
-    public Optional<String> retrieve(String key) {
+    public @NonNull Optional<String> retrieve(@NonNull String key) {
         return requireStore().retrieve(key);
     }
 
-    public void delete(String key) {
+    public void delete(@NonNull String key) {
         requireStore().delete(key);
     }
 

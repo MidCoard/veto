@@ -1,6 +1,7 @@
 package top.focess.veto.agent.intercept;
 
 import java.util.List;
+import org.jspecify.annotations.NonNull;
 
 /**
  * The {@link HitlRegistry}'s decision for one tool call, computed from the {@link GatewayResult}
@@ -29,10 +30,11 @@ public sealed interface ApprovalDecision
     record AutoApprove() implements ApprovalDecision {}
 
     /** Refuse outright with a refusal notice. */
-    record Refused(String reason) implements ApprovalDecision {}
+    record Refused(@NonNull String reason) implements ApprovalDecision {}
 
     /** Park the virtual thread on a HITL future; the user must resolve via the veto endpoint. */
-    record Prompt(VetoScenario scenario, List<VetoOption> options) implements ApprovalDecision {
+    record Prompt(@NonNull VetoScenario scenario, @NonNull List<VetoOption> options)
+            implements ApprovalDecision {
         public Prompt {
             if (scenario == null) {
                 throw new IllegalArgumentException("scenario");
@@ -45,5 +47,5 @@ public sealed interface ApprovalDecision
      * Refuse outright (a hard deterministic refusal); the agent gets a synthesized error
      * observation.
      */
-    record AutoBlock(String reason) implements ApprovalDecision {}
+    record AutoBlock(@NonNull String reason) implements ApprovalDecision {}
 }

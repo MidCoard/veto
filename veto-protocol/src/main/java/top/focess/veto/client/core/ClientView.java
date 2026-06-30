@@ -1,6 +1,6 @@
 package top.focess.veto.client.core;
 
-import org.jetbrains.annotations.NotNull;
+import org.jspecify.annotations.NonNull;
 import top.focess.veto.contract.IpcFrame;
 
 /**
@@ -21,23 +21,23 @@ import top.focess.veto.contract.IpcFrame;
 public interface ClientView {
 
     /** Streaming content chunk (plain text — styling is the view's job). */
-    void onDelta(@NotNull String content);
+    void onDelta(@NonNull String content);
 
     /**
      * Progress hint, already wrapped in a {@link StyledText} (typically {@link StyleToken#MUTED}).
      */
-    void onProgress(@NotNull StyledText content);
+    void onProgress(@NonNull StyledText content);
 
     /** Backend requests input. The view should swap its prompt to the prompted shape. */
-    void onPrompt(@NotNull IpcFrame.Prompt prompt);
+    void onPrompt(IpcFrame.@NonNull Prompt prompt);
 
     /**
      * Fatal error, already wrapped in a {@link StyledText} (typically {@link StyleToken#ERROR}).
      */
-    void onError(@NotNull StyledText content);
+    void onError(@NonNull StyledText content);
 
     /** Server-forced termination, already wrapped in a {@link StyledText}. */
-    void onTerminate(@NotNull StyledText content);
+    void onTerminate(@NonNull StyledText content);
 
     /** State-transition signal: the session went idle (no in-flight or queued request). */
     default void onIdle() {}
@@ -65,8 +65,8 @@ public interface ClientView {
      *
      * @param line the dispatched command line (already trimmed)
      */
-    default void onCommandDispatched(@NotNull String line) {}
+    default void onCommandDispatched(@NonNull String line) {}
 
     /** Session metadata changed (username / turn count / session id, possibly cleared). */
-    default void onMetaChanged(@NotNull ClientSession.SessionMeta meta) {}
+    default void onMetaChanged(ClientSession.@NonNull SessionMeta meta) {}
 }

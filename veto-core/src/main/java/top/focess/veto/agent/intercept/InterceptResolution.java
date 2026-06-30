@@ -1,6 +1,7 @@
 package top.focess.veto.agent.intercept;
 
 import java.util.Map;
+import org.jspecify.annotations.NonNull;
 
 /**
  * The user's resolution of a veto pause, delivered via the veto endpoint and used to complete the
@@ -22,7 +23,9 @@ public record InterceptResolution(
         VetoOption option, Map<String, Object> editedArgs, boolean maskObservation) {
 
     /** Compact constructor — back-compat for callers that do not specify masking. */
-    public InterceptResolution(VetoOption option, Map<String, Object> editedArgs) {
+    public
+    @NonNull
+    InterceptResolution(@NonNull VetoOption option, @NonNull Map<String, Object> editedArgs) {
         this(option, editedArgs, true);
     }
 

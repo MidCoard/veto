@@ -1,6 +1,6 @@
 package top.focess.veto.agent.mcp;
 
-import org.jetbrains.annotations.NotNull;
+import org.jspecify.annotations.NonNull;
 
 /**
  * Unified tool definition — the capability manifest element. Every tool exposes its name,
@@ -28,15 +28,11 @@ import org.jetbrains.annotations.NotNull;
 public sealed interface ToolDefinition
         permits NativeToolDefinition, RemoteToolDefinition, AgentToolDefinition {
 
-    @NotNull
-    String name();
+    @NonNull String name();
 
-    @NotNull
-    String description();
+    @NonNull String description();
 
-    @NotNull
-    RiskCategory risk();
+    @NonNull RiskCategory risk();
 
-    @NotNull
-    ParameterSchema parameters();
+    @NonNull ParameterSchema parameters();
 }

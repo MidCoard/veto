@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -27,7 +28,9 @@ public class SkillRegistry {
     private final MarkdownSkillLoader loader = new MarkdownSkillLoader();
     private final ConcurrentHashMap<String, Skill> skills = new ConcurrentHashMap<>();
 
-    public SkillRegistry(@Value("${veto.skills.project-dir:}") String projectSkillsDir) {
+    public
+    @NonNull
+    SkillRegistry(@Value("${veto.skills.project-dir:}") String projectSkillsDir) {
         register(loadSkillsFrom(homeSkillsDir(), SkillSourceType.PERSONAL));
         if (projectSkillsDir != null && !projectSkillsDir.isBlank()) {
             register(loadSkillsFrom(Path.of(projectSkillsDir), SkillSourceType.PROJECT));
@@ -36,12 +39,13 @@ public class SkillRegistry {
     }
 
     /** Lookup by name. Used by persona resolution and the {@code load_skill} tool. */
-    public Optional<Skill> get(String name) {
+    public @NonNull Optional<Skill> get(@NonNull String name) {
         return Optional.ofNullable(skills.get(name));
     }
 
     /** Verify integrity hash. Returns empty if the file was tampered. */
-    public Optional<Skill> verifyAndLoad(String name, Path skillDirectory) {
+    public @NonNull Optional<Skill> verifyAndLoad(
+            @NonNull String name, @NonNull Path skillDirectory) {
         Skill skill = skills.get(name);
         if (skill == null) {
             return Optional.empty();
@@ -53,7 +57,7 @@ public class SkillRegistry {
      * For {@code load_skill}: lookup + verify integrity, returning the full body. Returns empty if
      * not found or tampered.
      */
-    public Optional<Skill> loadVerified(String name) {
+    public @NonNull Optional<Skill> loadVerified(@NonNull String name) {
         Skill skill = skills.get(name);
         if (skill == null) {
             return Optional.empty();

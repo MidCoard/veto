@@ -1,5 +1,7 @@
 package top.focess.veto.llm.exceptions;
 
+import org.jspecify.annotations.NonNull;
+
 /**
  * Thrown when an LLM provider or specific model does not support the required capabilities (e.g.,
  * Strict JSON Mode, Constrained Sampling), or when no provider matches the request. Permanent — not
@@ -11,7 +13,9 @@ public class ModelCapabilityException extends LlmException {
      *
      * @param message the detail message
      */
-    public ModelCapabilityException(String message) {
+    public
+    @NonNull
+    ModelCapabilityException(@NonNull String message) {
         super(message, false);
     }
 
@@ -21,7 +25,9 @@ public class ModelCapabilityException extends LlmException {
      * @param message the detail message
      * @param cause the cause of the exception
      */
-    public ModelCapabilityException(String message, Throwable cause) {
+    public
+    @NonNull
+    ModelCapabilityException(@NonNull String message, @NonNull Throwable cause) {
         super(message, cause, false);
     }
 }

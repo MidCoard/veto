@@ -8,6 +8,7 @@ import javax.crypto.*;
 import javax.crypto.spec.*;
 import org.bouncycastle.crypto.generators.Argon2BytesGenerator;
 import org.bouncycastle.crypto.params.Argon2Parameters;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -38,10 +39,12 @@ public class VaultKeyManager {
     private static final int ARGON2_PARALLELISM = 4;
     private static final String KEY_FILE_HEADER = "VETO_VAULT_KEY_V1";
 
-    private final CredentialVaultConfiguration config;
-    private final Path vaultDir;
+    private final @NonNull CredentialVaultConfiguration config;
+    private final @NonNull Path vaultDir;
 
-    public VaultKeyManager(CredentialVaultConfiguration config) {
+    public
+    @NonNull
+    VaultKeyManager(@NonNull CredentialVaultConfiguration config) {
         this.config = config;
         this.vaultDir = Path.of(config.getVaultHome(), "vault");
     }
@@ -53,7 +56,8 @@ public class VaultKeyManager {
      * Both the salt and the username provide isolation: even with identical passwords, different
      * usernames produce different keys.
      */
-    public SecretKey deriveMasterKey(String username, String password, byte[] userSalt) {
+    public @NonNull SecretKey deriveMasterKey(
+            @NonNull String username, @NonNull String password, byte[] userSalt) {
         String material = username + ":" + password;
         Argon2Parameters params =
                 new Argon2Parameters.Builder(Argon2Parameters.ARGON2_id)
@@ -110,7 +114,8 @@ public class VaultKeyManager {
      * Unwraps (decrypts) the Vault Key using a user's Master Key. Returns {@code null} if the user
      * has no entry in the key file (should not happen after setup, but handled gracefully).
      */
-    public synchronized SecretKey unwrapVaultKey(SecretKey masterKey, String username) {
+    public synchronized @NonNull SecretKey unwrapVaultKey(
+            @NonNull SecretKey masterKey, @NonNull String username) {
         Map<String, String> entries = loadKeyFile();
         String wrapped = entries.get(username);
         if (wrapped == null) {

@@ -1,5 +1,6 @@
 package top.focess.veto.training;
 
+import org.jspecify.annotations.NonNull;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 
@@ -44,7 +45,7 @@ public class TrainingConfiguration {
         return pythonPath;
     }
 
-    public void setPythonPath(String pythonPath) {
+    public void setPythonPath(@NonNull String pythonPath) {
         this.pythonPath = pythonPath;
     }
 
@@ -52,7 +53,7 @@ public class TrainingConfiguration {
         return trainingDir;
     }
 
-    public void setTrainingDir(String trainingDir) {
+    public void setTrainingDir(@NonNull String trainingDir) {
         this.trainingDir = trainingDir;
     }
 
@@ -60,7 +61,7 @@ public class TrainingConfiguration {
         return modelOutputDir;
     }
 
-    public void setModelOutputDir(String modelOutputDir) {
+    public void setModelOutputDir(@NonNull String modelOutputDir) {
         this.modelOutputDir = modelOutputDir;
     }
 
@@ -68,7 +69,7 @@ public class TrainingConfiguration {
         return baseModel;
     }
 
-    public void setBaseModel(String baseModel) {
+    public void setBaseModel(@NonNull String baseModel) {
         this.baseModel = baseModel;
     }
 
@@ -76,7 +77,7 @@ public class TrainingConfiguration {
         return defaultGgufName;
     }
 
-    public void setDefaultGgufName(String defaultGgufName) {
+    public void setDefaultGgufName(@NonNull String defaultGgufName) {
         this.defaultGgufName = defaultGgufName;
     }
 
@@ -100,7 +101,7 @@ public class TrainingConfiguration {
         return venvPath;
     }
 
-    public void setVenvPath(String venvPath) {
+    public void setVenvPath(@NonNull String venvPath) {
         this.venvPath = venvPath;
     }
 

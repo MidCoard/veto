@@ -1,5 +1,6 @@
 package top.focess.veto.command;
 
+import org.jspecify.annotations.NonNull;
 import top.focess.veto.contract.IpcFrame;
 
 /**
@@ -15,14 +16,16 @@ import top.focess.veto.contract.IpcFrame;
 public class TerminateException extends RuntimeException {
 
     /** Human-readable explanation shown to the terminal user before the connection is closed. */
-    private final String reason;
+    private final @NonNull String reason;
 
     /**
      * Constructs a new {@code TerminateException} with the given termination reason.
      *
      * @param reason the message to display to the user; must not be {@code null}
      */
-    public TerminateException(String reason) {
+    public
+    @NonNull
+    TerminateException(@NonNull String reason) {
         super(reason);
         this.reason = reason;
     }

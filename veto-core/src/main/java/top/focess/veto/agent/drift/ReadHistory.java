@@ -4,6 +4,7 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.workspace.Workspace;
 
 /**
@@ -20,20 +21,25 @@ public class ReadHistory {
     private final ConcurrentHashMap<String, Snapshot> history = new ConcurrentHashMap<>();
 
     /** A recorded file state at read time. */
-    public record Snapshot(String path, long fileSize, Instant lastModified, String sha256Hash) {}
+    public record Snapshot(
+            @NonNull String path,
+            long fileSize,
+            @NonNull Instant lastModified,
+            @NonNull String sha256Hash) {}
 
     /** Called by the sandbox wrapper after every file read. */
-    public void record(String path, long size, Instant mtime, String hash) {
+    public void record(
+            @NonNull String path, long size, @NonNull Instant mtime, @NonNull String hash) {
         history.put(path, new Snapshot(path, size, mtime, hash));
     }
 
     /** Called by the Gateway before every file write. */
-    public Optional<Snapshot> lookup(String path) {
+    public @NonNull Optional<Snapshot> lookup(@NonNull String path) {
         return Optional.ofNullable(history.get(path));
     }
 
     /** Called when the agent successfully writes — the recorded snapshot is now stale. */
-    public void invalidate(String path) {
+    public void invalidate(@NonNull String path) {
         history.remove(path);
     }
 
@@ -43,7 +49,8 @@ public class ReadHistory {
     }
 
     /** Resolves an agent path string against the workspace's path resolver. */
-    public static Path resolveHostPath(Workspace workspace, String agentPath) {
+    public static @NonNull Path resolveHostPath(
+            @NonNull Workspace workspace, @NonNull String agentPath) {
         return workspace.pathResolver().resolveToHost(agentPath).hostPath();
     }
 }

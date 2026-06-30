@@ -1,6 +1,8 @@
 package top.focess.veto.llm.core;
 
 import java.time.Duration;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Typed sampling / transport options for an LLM call. Replaces the old untyped {@code
@@ -13,7 +15,11 @@ import java.time.Duration;
  * @param maxTokens the maximum number of tokens to generate
  * @param timeout the timeout duration for the call
  */
-public record LlmOptions(Double temperature, Double topP, Integer maxTokens, Duration timeout) {
+public record LlmOptions(
+        @Nullable Double temperature,
+        @Nullable Double topP,
+        @Nullable Integer maxTokens,
+        @NonNull Duration timeout) {
     private static final LlmOptions DEFAULTS =
             new LlmOptions(null, null, 4096, Duration.ofSeconds(60));
 

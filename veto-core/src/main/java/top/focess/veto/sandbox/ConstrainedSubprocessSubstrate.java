@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -53,7 +54,7 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
      * the {@link KernelSandboxSubstrate} bean in production so the wall applies to spawned
      * commands.
      */
-    private final KernelSandboxSubstrate kernelWall;
+    private final @NonNull KernelSandboxSubstrate kernelWall;
 
     /** No-arg constructor (tests): no kernel wall — attach is skipped. */
     public ConstrainedSubprocessSubstrate() {
@@ -64,12 +65,14 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
      * Spring constructor: injects the kernel wall so spawned processes are attached in production.
      */
     @Autowired
-    public ConstrainedSubprocessSubstrate(KernelSandboxSubstrate kernelWall) {
+    public
+    @NonNull
+    ConstrainedSubprocessSubstrate(@NonNull KernelSandboxSubstrate kernelWall) {
         this.kernelWall = kernelWall;
     }
 
     @Override
-    public SandboxHandle provision(SandboxProfile profile) {
+    public @NonNull SandboxHandle provision(@NonNull SandboxProfile profile) {
         Path root = profile.workspaceRoot();
         try {
             Files.createDirectories(root);
@@ -173,7 +176,7 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
     }
 
     @Override
-    public byte[] readFile(SandboxHandle h, Path rel) {
+    public byte[] readFile(@NonNull SandboxHandle h, @NonNull Path rel) {
         try {
             return Files.readAllBytes(resolveUnderWorkspace(h, rel));
         } catch (IOException e) {
@@ -182,7 +185,7 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
     }
 
     @Override
-    public void writeFile(SandboxHandle h, Path rel, byte[] content) {
+    public void writeFile(@NonNull SandboxHandle h, @NonNull Path rel, byte[] content) {
         try {
             Path resolved = resolveUnderWorkspace(h, rel);
             Files.createDirectories(resolved.getParent());
@@ -193,7 +196,7 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
     }
 
     @Override
-    public void patchFile(SandboxHandle h, Path rel, PatchSpec patch) {
+    public void patchFile(@NonNull SandboxHandle h, @NonNull Path rel, @NonNull PatchSpec patch) {
         Path resolved = resolveUnderWorkspace(h, rel);
         try {
             String content = Files.readString(resolved, StandardCharsets.UTF_8);
@@ -205,7 +208,7 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
     }
 
     @Override
-    public List<Entry> listDir(SandboxHandle h, Path rel) {
+    public @NonNull List<Entry> listDir(@NonNull SandboxHandle h, @NonNull Path rel) {
         Path resolved = resolveUnderWorkspace(h, rel);
         try (Stream<Path> stream = Files.list(resolved)) {
             return stream.map(
@@ -222,7 +225,8 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
     }
 
     @Override
-    public List<Match> grep(SandboxHandle h, Path rel, GrepSpec spec) {
+    public @NonNull List<Match> grep(
+            @NonNull SandboxHandle h, @NonNull Path rel, @NonNull GrepSpec spec) {
         Path resolved = resolveUnderWorkspace(h, rel);
         List<Match> matches = new ArrayList<>();
         String query = spec.caseInsensitive() ? spec.query().toLowerCase() : spec.query();
@@ -251,7 +255,7 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
     }
 
     @Override
-    public Stat stat(SandboxHandle h, Path rel) {
+    public @NonNull Stat stat(@NonNull SandboxHandle h, @NonNull Path rel) {
         Path resolved = resolveUnderWorkspace(h, rel);
         boolean exists = Files.exists(resolved);
         try {
@@ -265,7 +269,7 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
     }
 
     @Override
-    public void deprovision(SandboxHandle h) {
+    public void deprovision(@NonNull SandboxHandle h) {
         log.debug("Sandbox deprovisioned: {}", h.sessionId());
     }
 

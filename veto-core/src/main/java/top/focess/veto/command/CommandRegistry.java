@@ -2,8 +2,8 @@ package top.focess.veto.command;
 
 import java.util.List;
 import java.util.Map;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.command.*;
@@ -54,7 +54,7 @@ public class CommandRegistry {
      *
      * @param c the command to register; must not be {@code null}
      */
-    public void register(@NotNull Command c) {
+    public void register(@NonNull Command c) {
         manager.register(c);
     }
 
@@ -63,8 +63,7 @@ public class CommandRegistry {
      *
      * @return an unmodifiable list of registered commands; never {@code null}
      */
-    @NotNull
-    public List<Command> getCommands() {
+    public @NonNull List<Command> getCommands() {
         return manager.getCommands();
     }
 
@@ -82,9 +81,8 @@ public class CommandRegistry {
      * @return a {@link IpcFrame.TerminalResponse} ({@link IpcFrame.Done}, {@link IpcFrame.Error},
      *     or {@link IpcFrame.Terminate}); never {@code null}
      */
-    @NotNull
-    public IpcFrame.TerminalResponse dispatch(
-            @NotNull VetoCommandSender sender, @Nullable String raw) {
+    public IpcFrame.@NonNull TerminalResponse dispatch(
+            @NonNull VetoCommandSender sender, @Nullable String raw) {
         if (raw == null || raw.isEmpty()) {
             return new IpcFrame.Done(Map.of(), null);
         }
@@ -101,9 +99,8 @@ public class CommandRegistry {
         }
     }
 
-    @NotNull
-    private IpcFrame.TerminalResponse dispatchAgentPrompt(
-            @NotNull VetoCommandSender sender, @NotNull String prompt) {
+    private IpcFrame.@NonNull TerminalResponse dispatchAgentPrompt(
+            @NonNull VetoCommandSender sender, @NonNull String prompt) {
         if (promptHandler == null) {
             return IpcFrame.Error.ofError("Agent not available.");
         }
@@ -111,7 +108,7 @@ public class CommandRegistry {
     }
 
     private IpcFrame.TerminalResponse dispatchSlashCommand(
-            @NotNull VetoCommandSender sender, @NotNull String commandLine) {
+            @NonNull VetoCommandSender sender, @NonNull String commandLine) {
 
         String input = commandLine.substring(1);
         try {
@@ -144,7 +141,7 @@ public class CommandRegistry {
     }
 
     private Map<String, Object> buildDoneMeta(
-            @NotNull VetoCommandSender sender, boolean wasLogout) {
+            @NonNull VetoCommandSender sender, boolean wasLogout) {
         Map<String, Object> meta = new java.util.HashMap<>();
         if (wasLogout) {
             meta.put(IpcMeta.CLEAR_SESSION, true);
@@ -175,8 +172,7 @@ public class CommandRegistry {
      * @return a {@link HintInfo} describing the next argument, or {@link HintInfo#EMPTY} if no hint
      *     is available; never {@code null}
      */
-    @NotNull
-    public HintInfo hint(@NotNull VetoCommandSender sender, @Nullable String raw) {
+    public @NonNull HintInfo hint(@NonNull VetoCommandSender sender, @Nullable String raw) {
         if (raw == null || raw.isEmpty()) return HintInfo.EMPTY;
 
         String input = raw.stripLeading();
@@ -233,9 +229,8 @@ public class CommandRegistry {
      *     null} or empty
      * @return a list of {@link IpcFrame.Completion} candidates; never {@code null}, may be empty
      */
-    @NotNull
-    public List<IpcFrame.Completion> complete(
-            @NotNull VetoCommandSender sender, @Nullable String partial) {
+    public @NonNull List<IpcFrame.Completion> complete(
+            @NonNull VetoCommandSender sender, @Nullable String partial) {
         if (partial == null || partial.isEmpty()) return List.of();
 
         String input = partial.stripLeading();
@@ -271,8 +266,7 @@ public class CommandRegistry {
      *
      * @return the {@link CommandManager}; never {@code null}
      */
-    @NotNull
-    public CommandManager manager() {
+    public @NonNull CommandManager manager() {
         return manager;
     }
 }

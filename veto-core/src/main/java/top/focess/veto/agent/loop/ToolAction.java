@@ -2,6 +2,7 @@ package top.focess.veto.agent.loop;
 
 import java.util.HashMap;
 import java.util.Map;
+import org.jspecify.annotations.NonNull;
 
 /**
  * A fully-bound deterministic tool action. Runs with <b>no model call</b> — the harness has the
@@ -24,7 +25,7 @@ public record ToolAction(
     }
 
     @Override
-    public Map<String, Object> resolveInputs(Scope scope) {
+    public Map<String, @NonNull Object> resolveInputs(@NonNull Scope scope) {
         Map<String, Object> resolved = new HashMap<>();
         for (var entry : inputs.entrySet()) {
             resolved.put(entry.getKey(), scope.resolveValue(entry.getValue()));

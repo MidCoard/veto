@@ -10,6 +10,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 
 /**
@@ -44,7 +45,7 @@ public class HnswIndex {
     private volatile UUID entryPoint;
 
     /** Insert a vector at the given id. Replaces any existing vector at that id. */
-    public void insert(UUID id, float[] vector) {
+    public void insert(@NonNull UUID id, float[] vector) {
         if (vector == null || vector.length == 0) {
             return;
         }
@@ -124,7 +125,7 @@ public class HnswIndex {
     }
 
     /** Remove a vector by id. No-op if not present. */
-    public void remove(UUID id) {
+    public void remove(@NonNull UUID id) {
         lock.writeLock().lock();
         try {
             vectors.remove(id);
@@ -162,7 +163,7 @@ public class HnswIndex {
      * Approximate k-nearest-neighbor search. Returns up to {@code k} (id, score) pairs ranked by
      * descending similarity (higher = closer).
      */
-    public List<VectorIndex.Match> topK(float[] query, int k) {
+    public @NonNull List<VectorIndex.Match> topK(float[] query, int k) {
         if (query == null || query.length == 0 || k <= 0) {
             return List.of();
         }

@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.mcp.AgentToolDefinition;
 import top.focess.veto.agent.mcp.NativeToolDefinition;
@@ -117,12 +118,12 @@ public class HitlRegistry {
     }
 
     /** Sets the screening matrix (called by {@link top.focess.veto.agent.AgentService}). */
-    public void setScreeningMode(ScreeningMode screeningMode) {
+    public void setScreeningMode(@NonNull ScreeningMode screeningMode) {
         this.screeningMode = screeningMode;
     }
 
     /** Sets the workspace (called by {@link top.focess.veto.agent.AgentService}). */
-    public void setWorkspace(Workspace workspace) {
+    public void setWorkspace(@NonNull Workspace workspace) {
         this.workspace = workspace;
     }
 
@@ -133,7 +134,8 @@ public class HitlRegistry {
      * (or WRITE_DRIFT handled earlier); shell-exec/network → EXEC_DETERMINISTIC / EXEC_SEMANTIC /
      * EXEC_FIRST_TIME based on danger; external MCP tools → GENERIC.
      */
-    public VetoScenario scenarioFor(ToolCall call, ToolDefinition def, Screening screening) {
+    public @NonNull VetoScenario scenarioFor(
+            @NonNull ToolCall call, @NonNull ToolDefinition def, @NonNull Screening screening) {
         if (def == null) {
             return VetoScenario.GENERIC;
         }
@@ -163,7 +165,7 @@ public class HitlRegistry {
      * The option set for a {@link VetoScenario} (screening_model.md §8). R/W/E1/E2/E3/generic per
      * the LLD table.
      */
-    public List<VetoOption> optionsFor(VetoScenario scenario) {
+    public @NonNull List<VetoOption> optionsFor(@NonNull VetoScenario scenario) {
         return switch (scenario) {
             case READ -> R_OPTIONS;
             case WRITE -> W_OPTIONS;
@@ -246,14 +248,15 @@ public class HitlRegistry {
      * Registers a pending veto future keyed by {@code (agentId, callId)} and returns it. The
      * agent's virtual thread parks on it.
      */
-    public CompletableFuture<InterceptResolution> register(String agentId, String callId) {
+    public @NonNull CompletableFuture<InterceptResolution> register(
+            @NonNull String agentId, @NonNull String callId) {
         CompletableFuture<InterceptResolution> future = new CompletableFuture<>();
         pending.put(key(agentId, callId), future);
         return future;
     }
 
     /** Parks the calling (virtual) thread until the user resolves the veto. */
-    public InterceptResolution await(String agentId, String callId) {
+    public @NonNull InterceptResolution await(@NonNull String agentId, @NonNull String callId) {
         CompletableFuture<InterceptResolution> future = pending.get(key(agentId, callId));
         if (future == null) {
             throw new IllegalStateException("no pending veto for " + agentId + "/" + callId);
@@ -427,7 +430,7 @@ public class HitlRegistry {
      * Decline every pending veto for the agent (on session stop / new-prompt-while-held = decline).
      * The agent loop will synthesize the {@code ToolResponse(REFUSED)} observations.
      */
-    public void declineAll(String agentId) {
+    public void declineAll(@NonNull String agentId) {
         pending.forEach(
                 (k, future) -> {
                     if (k.startsWith(agentId + "|")) {
@@ -437,14 +440,14 @@ public class HitlRegistry {
     }
 
     /** Drops any pending veto + grants for the agent (on terminate). */
-    public void clear(String agentId) {
+    public void clear(@NonNull String agentId) {
         pending.keySet().removeIf(k -> k.startsWith(agentId + "|"));
         grants.remove(agentId);
         grantLog.remove(agentId);
     }
 
     /** Revoke a single grant (audited + revocable, screening_model.md §7.2 #5). */
-    public boolean revokeGrant(String agentId, PermissionGrant grant) {
+    public boolean revokeGrant(@NonNull String agentId, @NonNull PermissionGrant grant) {
         Set<PermissionGrant> agentGrants = grants.get(agentId);
         if (agentGrants == null) {
             return false;
@@ -453,7 +456,7 @@ public class HitlRegistry {
     }
 
     /** Returns the audit log of grants created for the agent (screening_model.md §7.2 #5). */
-    public List<PermissionGrant> grantLog(String agentId) {
+    public @NonNull List<PermissionGrant> grantLog(@NonNull String agentId) {
         List<PermissionGrant> log = grantLog.get(agentId);
         return log == null ? List.of() : List.copyOf(log);
     }

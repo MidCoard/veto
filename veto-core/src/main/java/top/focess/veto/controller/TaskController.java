@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
@@ -22,10 +23,12 @@ public class TaskController {
 
     private static final Logger log = LoggerFactory.getLogger(TaskController.class);
 
-    private final RoutingBusService routingBusService;
+    private final @NonNull RoutingBusService routingBusService;
     private final ConcurrentHashMap<String, DAGPayload> taskStore = new ConcurrentHashMap<>();
 
-    public TaskController(RoutingBusService routingBusService) {
+    public
+    @NonNull
+    TaskController(@NonNull RoutingBusService routingBusService) {
         this.routingBusService = routingBusService;
     }
 
@@ -81,7 +84,7 @@ public class TaskController {
 
     /** GET /api/tasks/{id} - Get DAG task status and details. */
     @GetMapping(value = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<Map<String, Object>> getTask(@PathVariable("id") String id) {
+    public ResponseEntity<Map<String, @NonNull Object>> getTask(@PathVariable("id") String id) {
         DAGPayload payload = taskStore.get(id);
         if (payload == null) {
             return ResponseEntity.notFound().build();
@@ -133,7 +136,7 @@ public class TaskController {
 
     /** DELETE /api/tasks/{id} - Cancel a task. */
     @DeleteMapping(value = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<Map<String, Object>> cancelTask(@PathVariable("id") String id) {
+    public ResponseEntity<Map<String, @NonNull Object>> cancelTask(@PathVariable("id") String id) {
         DAGPayload existing = taskStore.get(id);
         if (existing == null) {
             return ResponseEntity.notFound().build();

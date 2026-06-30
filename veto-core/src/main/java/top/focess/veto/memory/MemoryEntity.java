@@ -6,6 +6,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
+import org.jspecify.annotations.NonNull;
 
 /**
  * JPA persistence for a {@link Memory}. Stored in PostgreSQL with JSONB columns (Hibernate's {@code
@@ -49,7 +50,9 @@ public class MemoryEntity {
 
     protected MemoryEntity() {}
 
-    public MemoryEntity(Memory memory) {
+    public
+    @NonNull
+    MemoryEntity(@NonNull Memory memory) {
         this.id = memory.id().value().toString();
         this.userId = memory.userId().toString();
         this.sessionId = memory.sessionId() == null ? null : memory.sessionId().toString();
@@ -61,7 +64,7 @@ public class MemoryEntity {
         this.createdAt = memory.createdAt();
     }
 
-    public static Memory toMemory(MemoryEntity e) {
+    public static @NonNull Memory toMemory(@NonNull MemoryEntity e) {
         return new Memory(
                 new MemoryId(UUID.fromString(e.id)),
                 UUID.fromString(e.userId),

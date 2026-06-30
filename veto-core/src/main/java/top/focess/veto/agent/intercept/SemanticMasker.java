@@ -5,6 +5,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -48,19 +49,21 @@ public class SemanticMasker {
             Pattern.compile(
                     "(?i)\\b(secret|token|password|api[_-]?key|credential|private[_-]?key)\\b");
 
-    private final LlamaCppBridge bridge;
+    private final @NonNull LlamaCppBridge bridge;
 
     public SemanticMasker() {
         this(null);
     }
 
     @Autowired
-    public SemanticMasker(@Autowired(required = false) LlamaCppBridge bridge) {
+    public
+    @NonNull
+    SemanticMasker(@NonNull @Autowired(required = false) LlamaCppBridge bridge) {
         this.bridge = bridge;
     }
 
     /** A signal returned alongside the masked observation when the SLM rated the call high-risk. */
-    public record HighRiskSignal(String toolName, String reason) {}
+    public record HighRiskSignal(@NonNull String toolName, @NonNull String reason) {}
 
     /**
      * Apply semantic masking: ask the SLM whether the call is a likely exfiltration vector. Returns
@@ -68,7 +71,8 @@ public class SemanticMasker {
      * side-channel means the SLM said "high" — the caller can still reject the call independently
      * of the redaction.
      */
-    public MaskResult maskWithSignal(String observation, ToolCall call, ToolDefinition def) {
+    public @NonNull MaskResult maskWithSignal(
+            @NonNull String observation, @NonNull ToolCall call, @NonNull ToolDefinition def) {
         if (observation == null || observation.isBlank()) {
             return new MaskResult(observation, null);
         }
@@ -131,13 +135,14 @@ public class SemanticMasker {
      * signal is logged and discarded. Prefer {@link #maskWithSignal} so the caller can act on the
      * signal.
      */
-    public String mask(String observation, ToolCall call, ToolDefinition def) {
+    public @NonNull String mask(
+            @NonNull String observation, @NonNull ToolCall call, @NonNull ToolDefinition def) {
         MaskResult r = maskWithSignal(observation, call, def);
         return r.masked();
     }
 
     /** The masker's output: a redacted observation plus an optional high-risk signal. */
-    public record MaskResult(String masked, HighRiskSignal highRisk) {}
+    public record MaskResult(@NonNull String masked, @NonNull HighRiskSignal highRisk) {}
 
     private static String buildPrompt(String observation, ToolCall call, ToolDefinition def) {
         StringBuilder sb = new StringBuilder();

@@ -1,5 +1,6 @@
 package top.focess.veto.group;
 
+import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
@@ -24,11 +25,11 @@ import top.focess.veto.llm.core.ProviderType;
 @Component
 public class GroupAgentFactory implements GroupSpawner.AgentFactory {
 
-    private final AgentService agentService;
-    private final ProviderType provider;
-    private final String modelId;
-    private final String credentialKey;
-    private final String systemPromptBase;
+    private final @NonNull AgentService agentService;
+    private final @NonNull ProviderType provider;
+    private final @NonNull String modelId;
+    private final @NonNull String credentialKey;
+    private final @NonNull String systemPromptBase;
 
     public GroupAgentFactory(
             @Lazy AgentService agentService,
@@ -46,7 +47,7 @@ public class GroupAgentFactory implements GroupSpawner.AgentFactory {
     }
 
     @Override
-    public Agent create(AgentPersona persona) {
+    public @NonNull Agent create(@NonNull AgentPersona persona) {
         String model = modelId != null ? modelId : persona.topModel();
         AgentRunner.LlmBinding binding =
                 new AgentRunner.LlmBinding(

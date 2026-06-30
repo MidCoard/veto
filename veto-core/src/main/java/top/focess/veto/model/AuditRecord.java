@@ -5,6 +5,7 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.HexFormat;
 import java.util.UUID;
+import org.jspecify.annotations.NonNull;
 
 /**
  * A tamper-proof audit record capturing pre/post redaction diffs for observability Observability.
@@ -12,17 +13,17 @@ import java.util.UUID;
  */
 public class AuditRecord {
 
-    private final String id;
-    private final String dagPayloadId;
-    private final String requestId;
-    private final String componentSource;
-    private final String rawPayloadHash;
-    private final String redactedPayloadHash;
-    private final String diffExcerpt;
-    private final String previousRecordHash;
-    private final String currentHash;
-    private final Instant timestamp;
-    private final AuditAction action;
+    private final @NonNull String id;
+    private final @NonNull String dagPayloadId;
+    private final @NonNull String requestId;
+    private final @NonNull String componentSource;
+    private final @NonNull String rawPayloadHash;
+    private final @NonNull String redactedPayloadHash;
+    private final @NonNull String diffExcerpt;
+    private final @NonNull String previousRecordHash;
+    private final @NonNull String currentHash;
+    private final @NonNull Instant timestamp;
+    private final @NonNull AuditAction action;
     private final boolean vetoApplied;
 
     public AuditRecord(
@@ -74,7 +75,7 @@ public class AuditRecord {
         }
     }
 
-    public boolean verifyIntegrity(String actualPreviousHash) {
+    public boolean verifyIntegrity(@NonNull String actualPreviousHash) {
         String recomputed = computeHash();
         return currentHash.equals(recomputed) && previousRecordHash.equals(actualPreviousHash);
     }

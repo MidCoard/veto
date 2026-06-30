@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
+import org.jspecify.annotations.NonNull;
 
 /**
  * JPA persistence for a skill's integrity hash (Part 5 "skill DB hash storage"). The hash is the
@@ -44,7 +45,9 @@ public class SkillEntity {
 
     protected SkillEntity() {}
 
-    public SkillEntity(Skill skill) {
+    public
+    @NonNull
+    SkillEntity(@NonNull Skill skill) {
         this.id = UUID.randomUUID().toString();
         this.name = skill.name();
         this.sourceType = skill.sourceType().name();
@@ -56,7 +59,7 @@ public class SkillEntity {
         this.description = skill.description();
     }
 
-    public static Skill toSkill(SkillEntity e) {
+    public static @NonNull Skill toSkill(@NonNull SkillEntity e) {
         return new Skill(
                 e.name,
                 e.description == null ? "" : e.description,
@@ -85,7 +88,7 @@ public class SkillEntity {
         return contentHash;
     }
 
-    public void setContentHash(String contentHash) {
+    public void setContentHash(@NonNull String contentHash) {
         this.contentHash = contentHash;
     }
 

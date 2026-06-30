@@ -6,8 +6,8 @@ import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.util.List;
 import java.util.Map;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Sealed hierarchy for all IPC protocol frames exchanged between the terminal (client) and the
@@ -107,7 +107,7 @@ public sealed interface IpcFrame
      * Because there is no single determined response, this frame does <b>not</b> carry a {@code
      * seq}.
      */
-    record Request(@NotNull String raw) implements ClientFrame {}
+    record Request(@NonNull String raw) implements ClientFrame {}
 
     /**
      * Tab-completion query. Backend responds with exactly one {@link CompleteResult} carrying
@@ -115,7 +115,7 @@ public sealed interface IpcFrame
      *
      * @param seq monotonic sequence number for correlating with the response
      */
-    record Complete(@NotNull String raw, long seq) implements SeqRequest {}
+    record Complete(@NonNull String raw, long seq) implements SeqRequest {}
 
     /**
      * Requests a placeholder hint for the next expected argument. The backend responds with exactly
@@ -124,12 +124,11 @@ public sealed interface IpcFrame
      *
      * @param seq monotonic sequence number for correlating with the hint response
      */
-    record Hint(@NotNull String raw, long seq) implements SeqRequest {}
+    record Hint(@NonNull String raw, long seq) implements SeqRequest {}
 
     /** User replied to a backend-issued {@link Prompt}. Fire-and-forget. */
-    record Input(@NotNull String raw) implements ClientFrame {
-        @NotNull
-        @Override
+    record Input(@NonNull String raw) implements ClientFrame {
+        @Override /* annotation was: @NonNull */
         public String toString() {
             return "Input[raw=********]";
         }
@@ -184,7 +183,7 @@ public sealed interface IpcFrame
      * @param group optional category/group name for JLine rendering grouping
      */
     record Completion(
-            @NotNull String value, @Nullable String description, @Nullable String group) {}
+            @NonNull String value, @Nullable String description, @Nullable String group) {}
 
     /**
      * Response containing autocomplete candidates.
@@ -192,7 +191,7 @@ public sealed interface IpcFrame
      * @param candidates structured list of completion candidates
      * @param seq echoed from the initiating {@link Complete} request
      */
-    record CompleteResult(@NotNull List<Completion> candidates, long seq) implements SeqResponse {}
+    record CompleteResult(@NonNull List<Completion> candidates, long seq) implements SeqResponse {}
 
     /**
      * Information about the autocomplete hint for the next expected argument.
@@ -209,8 +208,7 @@ public sealed interface IpcFrame
          *
          * @return the formatted hint display text
          */
-        @NotNull
-        @JsonIgnore
+        @JsonIgnore /* annotation was: @NonNull */
         public String displayText() {
             if (placeholder == null) {
                 return "";
@@ -225,7 +223,7 @@ public sealed interface IpcFrame
      * @param hint next argument details (placeholder and description)
      * @param seq echoed from the initiating {@link Hint} request
      */
-    record HintResult(@NotNull HintInfo hint, long seq) implements SeqResponse {}
+    record HintResult(@NonNull HintInfo hint, long seq) implements SeqResponse {}
 
     /**
      * Terminal frame — response complete.
@@ -236,7 +234,7 @@ public sealed interface IpcFrame
      * @param meta session metadata (username, turn number, flags, etc.)
      * @param content optional content string
      */
-    record Done(@NotNull Map<String, Object> meta, @Nullable String content)
+    record Done(@NonNull Map<String, Object> meta, @Nullable String content)
             implements TerminalResponse {
         /** Typed, null-safe accessor for {@link IpcMeta#USERNAME}. */
         public @Nullable String username() {
@@ -268,9 +266,8 @@ public sealed interface IpcFrame
      * @param content error description
      * @param seq echoed from the initiating frame; 0 when not correlated to a sequenced request
      */
-    record Error(@NotNull String content, long seq) implements SeqResponse, TerminalResponse {
-        @NotNull
-        public static Error ofError(@NotNull String content) {
+    record Error(@NonNull String content, long seq) implements SeqResponse, TerminalResponse {
+        public static @NonNull Error ofError(@NonNull String content) {
             return new Error(content, 0);
         }
     }
@@ -280,14 +277,14 @@ public sealed interface IpcFrame
      *
      * @param content the text chunk content
      */
-    record Delta(@NotNull String content) implements ServerFrame {}
+    record Delta(@NonNull String content) implements ServerFrame {}
 
     /**
      * Optional progress hint between deltas.
      *
      * @param percent completion percentage 0–100, or {@link #INDETERMINATE} when unknown
      */
-    record Progress(@NotNull String content, int percent) implements ServerFrame {
+    record Progress(@NonNull String content, int percent) implements ServerFrame {
         /** Value for {@link #percent} when progress cannot be expressed as a percentage. */
         public static final int INDETERMINATE = -1;
 
@@ -304,7 +301,7 @@ public sealed interface IpcFrame
      * @param content the prompt message content to display
      * @param meta prompt-related metadata options (such as masking input characters)
      */
-    record Prompt(@NotNull String content, @NotNull Map<String, Object> meta)
+    record Prompt(@NonNull String content, @NonNull Map<String, Object> meta)
             implements ServerFrame {
         /** Typed accessor for {@link IpcMeta#MASK} (whether to mask the user's input). */
         public boolean mask() {

@@ -10,8 +10,8 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -66,10 +66,10 @@ public class AgentService {
     private final ProtectedSet protectedSet;
     // The Part-8 Delta-broker — optional (nullable in tests); when present, threaded into each
     // AgentRunner so loop emissions publish per-session DeltaFrames for transports to stream.
-    @Nullable private final DeltaBroker deltaBroker;
+    private final @Nullable DeltaBroker deltaBroker;
     // The Part-4 per-turn memory-capture service — optional (nullable in tests); when present,
     // threaded into each AgentRunner so appendTurn captures into Session LTM + the raw-turn log.
-    @Nullable private final top.focess.veto.memory.MemoryCaptureService captureService;
+    private final top.focess.veto.memory.@Nullable MemoryCaptureService captureService;
 
     /**
      * The default user id for memory capture. Per-user identity is not yet wired at the transport
@@ -81,22 +81,22 @@ public class AgentService {
     private final ConcurrentHashMap<String, VetoAgent> agents = new ConcurrentHashMap<>();
 
     public AgentService(
-            @NotNull McpEngine mcpEngine,
-            @NotNull HitlRegistry hitlRegistry,
-            @NotNull IngressDefense ingressDefense,
-            @NotNull PromptCompiler promptCompiler,
-            @NotNull UniformLLMCaller caller,
-            @Qualifier(LlmJacksonConfig.LLM_OBJECT_MAPPER) @NotNull ObjectMapper objectMapper,
+            @NonNull McpEngine mcpEngine,
+            @NonNull HitlRegistry hitlRegistry,
+            @NonNull IngressDefense ingressDefense,
+            @NonNull PromptCompiler promptCompiler,
+            @NonNull UniformLLMCaller caller,
+            @Qualifier(LlmJacksonConfig.LLM_OBJECT_MAPPER) @NonNull ObjectMapper objectMapper,
             @Nullable List<LoopInterceptor> interceptors,
-            @Value("${veto.workspace.root:}") @NotNull String legacyRoot,
-            @Value("${veto.workspace.roots:}") @NotNull String rootsCsv,
-            @Value("${veto.workspace.path-mode:REAL}") @NotNull String pathMode,
+            @Value("${veto.workspace.root:}") @NonNull String legacyRoot,
+            @Value("${veto.workspace.roots:}") @NonNull String rootsCsv,
+            @Value("${veto.workspace.path-mode:REAL}") @NonNull String pathMode,
             @Value("${veto.breaker.max_calls_per_episode:50}") long maxCallsPerEpisode,
-            @Value("${veto.security.deployer-policy:FULL_ACCESS}") @NotNull
-                    String deployerPolicyRaw,
-            @Value("${veto.security.screening-mode:STRICT}") @NotNull String screeningModeRaw,
+            @Value("${veto.security.deployer-policy:FULL_ACCESS}")
+                    @NonNull String deployerPolicyRaw,
+            @Value("${veto.security.screening-mode:STRICT}") @NonNull String screeningModeRaw,
             @Nullable DeltaBroker deltaBroker,
-            @Nullable top.focess.veto.memory.MemoryCaptureService captureService) {
+            top.focess.veto.memory.@Nullable MemoryCaptureService captureService) {
         this.mcpEngine = mcpEngine;
         this.hitlRegistry = hitlRegistry;
         this.ingressDefense = ingressDefense;
@@ -124,9 +124,9 @@ public class AgentService {
      * the prompt, and blocks for the result. Returns the {@link AgentResult}.
      */
     public AgentResult submit(
-            @NotNull String agentKey,
-            @NotNull String prompt,
-            @NotNull AgentRunner.LlmBinding binding) {
+            @NonNull String agentKey,
+            @NonNull String prompt,
+            AgentRunner.@NonNull LlmBinding binding) {
         VetoAgent agent = agents.computeIfAbsent(agentKey, k -> createAgent(k, binding));
         agent.bind(binding);
         agent.submit(prompt);
@@ -143,10 +143,10 @@ public class AgentService {
 
     /** Synchronous submit with a live result message (for the terminal path). */
     public AgentResult submit(
-            @NotNull String agentKey,
-            @NotNull String prompt,
-            @NotNull AgentRunner.LlmBinding binding,
-            @NotNull Duration timeout)
+            @NonNull String agentKey,
+            @NonNull String prompt,
+            AgentRunner.@NonNull LlmBinding binding,
+            @NonNull Duration timeout)
             throws TimeoutException, InterruptedException {
         VetoAgent agent = agents.computeIfAbsent(agentKey, k -> createAgent(k, binding));
         agent.bind(binding);
@@ -163,10 +163,10 @@ public class AgentService {
      * handoff for the terminal path until then.
      */
     public AgentResult submit(
-            @NotNull String agentKey,
-            @NotNull String prompt,
-            @NotNull AgentRunner.LlmBinding binding,
-            @NotNull Duration timeout,
+            @NonNull String agentKey,
+            @NonNull String prompt,
+            AgentRunner.@NonNull LlmBinding binding,
+            @NonNull Duration timeout,
             @Nullable Consumer<String> messageSink)
             throws TimeoutException, InterruptedException {
         VetoAgent agent = agents.computeIfAbsent(agentKey, k -> createAgent(k, binding));
@@ -197,11 +197,11 @@ public class AgentService {
      * @return the agent result
      */
     public AgentResult submit(
-            @NotNull String agentKey,
-            @NotNull String prompt,
-            @NotNull AgentRunner.LlmBinding binding,
-            @NotNull Duration timeout,
-            @NotNull UUID userId)
+            @NonNull String agentKey,
+            @NonNull String prompt,
+            AgentRunner.@NonNull LlmBinding binding,
+            @NonNull Duration timeout,
+            @NonNull UUID userId)
             throws TimeoutException, InterruptedException {
         VetoAgent agent = agents.computeIfAbsent(agentKey, k -> createAgent(k, binding, userId));
         agent.bind(binding);
@@ -216,18 +216,17 @@ public class AgentService {
      * original call is not available (e.g. legacy veto endpoints).
      */
     public boolean resolveVeto(
-            @NotNull String agentId,
-            @NotNull String callId,
-            @NotNull InterceptResolution resolution,
-            @NotNull String toolName,
-            @Nullable top.focess.veto.llm.core.ToolCall originalCall,
-            @Nullable top.focess.veto.agent.mcp.ToolDefinition originalDef) {
+            @NonNull String agentId,
+            @NonNull String callId,
+            @NonNull InterceptResolution resolution,
+            @NonNull String toolName,
+            top.focess.veto.llm.core.@Nullable ToolCall originalCall,
+            top.focess.veto.agent.mcp.@Nullable ToolDefinition originalDef) {
         return hitlRegistry.resolve(agentId, callId, resolution, originalCall, originalDef);
     }
 
     /** The live agent for a transport id (for history / state inspection). */
-    @Nullable
-    public VetoAgent agent(@NotNull String agentKey) {
+    public @Nullable VetoAgent agent(@NonNull String agentKey) {
         return agents.get(agentKey);
     }
 
@@ -252,9 +251,9 @@ public class AgentService {
     }
 
     private VetoAgent createAgent(
-            @NotNull String agentKey,
-            @NotNull AgentRunner.LlmBinding binding,
-            @NotNull UUID userId) {
+            @NonNull String agentKey,
+            AgentRunner.@NonNull LlmBinding binding,
+            @NonNull UUID userId) {
         AgentPersona persona = buildPersona(agentKey, binding);
         ReadHistory readHistory = new ReadHistory();
         ProtectedSet userProtectedSet =
@@ -305,9 +304,9 @@ public class AgentService {
      * Mate inherits the Leader's userId so its memory capture is scoped to the same tenant.
      */
     public Agent createMate(
-            @NotNull AgentPersona persona,
-            @NotNull AgentRunner.LlmBinding binding,
-            @NotNull UUID userId) {
+            @NonNull AgentPersona persona,
+            AgentRunner.@NonNull LlmBinding binding,
+            @NonNull UUID userId) {
         ReadHistory readHistory = new ReadHistory();
         Gateway gateway =
                 new Gateway(

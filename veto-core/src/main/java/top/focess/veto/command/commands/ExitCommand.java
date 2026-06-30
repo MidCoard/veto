@@ -1,7 +1,7 @@
 package top.focess.veto.command.commands;
 
 import java.util.List;
-import org.jetbrains.annotations.NotNull;
+import org.jspecify.annotations.NonNull;
 import top.focess.command.CommandResult;
 import top.focess.command.CommandSender;
 import top.focess.veto.command.TerminateException;
@@ -25,8 +25,7 @@ public class ExitCommand extends VetoCommand {
     }
 
     @Override
-    @NotNull
-    public List<String> usage(@NotNull CommandSender s) {
+    public @NonNull List<String> usage(@NonNull CommandSender s) {
         return List.of("/exit — Quit the terminal");
     }
 }

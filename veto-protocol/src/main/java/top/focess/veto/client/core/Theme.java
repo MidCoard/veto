@@ -1,6 +1,6 @@
 package top.focess.veto.client.core;
 
-import org.jetbrains.annotations.NotNull;
+import org.jspecify.annotations.NonNull;
 
 /**
  * Maps a {@link StyleToken} + plain text to a styled, client-native string.
@@ -19,8 +19,7 @@ public interface Theme {
      * @param text the plain text
      * @return the styled string (ANSI for both clients)
      */
-    @NotNull
-    String style(@NotNull StyleToken token, @NotNull String text);
+    @NonNull String style(@NonNull StyleToken token, @NonNull String text);
 
     /**
      * Styles {@code text} with the token's color in bold weight.
@@ -29,6 +28,5 @@ public interface Theme {
      * @param text the plain text
      * @return the bold styled string
      */
-    @NotNull
-    String styleBold(@NotNull StyleToken token, @NotNull String text);
+    @NonNull String styleBold(@NonNull StyleToken token, @NonNull String text);
 }

@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -19,21 +20,21 @@ public class SessionManager {
 
     private final ConcurrentHashMap<String, Session> sessions = new ConcurrentHashMap<>();
 
-    public String createSession(String username) {
+    public @NonNull String createSession(@NonNull String username) {
         String token = UUID.randomUUID().toString();
         sessions.put(token, new Session(token, username, Instant.now()));
         log.info("Session created for user '{}'", username);
         return token;
     }
 
-    public Optional<Session> validate(String token) {
+    public @NonNull Optional<Session> validate(@NonNull String token) {
         if (token == null) {
             return Optional.empty();
         }
         return Optional.ofNullable(sessions.get(token));
     }
 
-    public void invalidate(String token) {
+    public void invalidate(@NonNull String token) {
         Session removed = sessions.remove(token);
         if (removed != null) {
             log.info("Session invalidated for user '{}'", removed.username);
@@ -44,5 +45,6 @@ public class SessionManager {
         return sessions.size();
     }
 
-    public record Session(String token, String username, Instant createdAt) {}
+    public record Session(
+            @NonNull String token, @NonNull String username, @NonNull Instant createdAt) {}
 }

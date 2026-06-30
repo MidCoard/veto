@@ -1,10 +1,10 @@
 package top.focess.veto.terminal;
 
 import java.util.concurrent.TimeUnit;
-import org.jetbrains.annotations.NotNull;
 import org.jline.reader.LineReader;
 import org.jline.reader.LineReader.SuggestionType;
 import org.jline.widget.Widgets;
+import org.jspecify.annotations.NonNull;
 import top.focess.veto.contract.IpcClient;
 import top.focess.veto.contract.IpcFrame;
 
@@ -44,7 +44,7 @@ public final class VetoHintWidgets extends Widgets {
      * @param reader the JLine LineReader instance
      * @param client the IpcClient used to fetch autocomplete/tail-tip hints from the backend
      */
-    public VetoHintWidgets(@NotNull LineReader reader, @NotNull IpcClient client) {
+    public VetoHintWidgets(@NonNull LineReader reader, @NonNull IpcClient client) {
         super(reader);
         this.client = client;
 
@@ -183,7 +183,7 @@ public final class VetoHintWidgets extends Widgets {
      *
      * @param widget the name of the delegate widget to execute first
      */
-    private void doHint(@NotNull String widget) {
+    private void doHint(@NonNull String widget) {
         // Execute JLine's original widget action first to update the buffer contents.
         callWidget(widget);
 

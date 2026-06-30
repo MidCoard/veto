@@ -1,6 +1,7 @@
 package top.focess.veto.llm.provider;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import top.focess.veto.llm.client.LlmClient;
@@ -16,7 +17,7 @@ import top.focess.veto.observability.AuditLogger;
  */
 @Component
 public class AnthropicProvider extends AbstractLlmProvider {
-    private final LlmClientFactory clientFactory;
+    private final @NonNull LlmClientFactory clientFactory;
 
     public AnthropicProvider(
             @Qualifier(LlmJacksonConfig.LLM_OBJECT_MAPPER) ObjectMapper objectMapper,
@@ -27,7 +28,7 @@ public class AnthropicProvider extends AbstractLlmProvider {
     }
 
     @Override
-    public boolean supports(ProviderType providerType) {
+    public boolean supports(@NonNull ProviderType providerType) {
         return providerType == ProviderType.ANTHROPIC;
     }
 
@@ -42,7 +43,8 @@ public class AnthropicProvider extends AbstractLlmProvider {
     }
 
     @Override
-    protected LlmClient.RawCompletion invoke(ResolvedRequest resolved) throws Exception {
+    protected LlmClient.@NonNull RawCompletion invoke(@NonNull ResolvedRequest resolved)
+            throws Exception {
         return clientFactory.anthropic(resolved.baseUrl(), resolved.apiKey()).complete(resolved);
     }
 }

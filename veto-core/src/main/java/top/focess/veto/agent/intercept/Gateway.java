@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.agent.drift.ReadHistory;
@@ -45,12 +46,12 @@ public class Gateway {
 
     private static final Logger log = LoggerFactory.getLogger(Gateway.class);
 
-    private final Workspace workspace;
-    private final DangerComputation dangerComputation;
-    private final SlmRelevanceProvider slmRelevance;
-    private final DeployerPolicy policy;
-    private final ProtectedSet protectedSet;
-    private final ReadHistory readHistory;
+    private final @NonNull Workspace workspace;
+    private final @NonNull DangerComputation dangerComputation;
+    private final @NonNull SlmRelevanceProvider slmRelevance;
+    private final @NonNull DeployerPolicy policy;
+    private final @NonNull ProtectedSet protectedSet;
+    private final @NonNull ReadHistory readHistory;
 
     /**
      * Constructs a per-agent Gateway wired to its screening dependencies. The caller ({@link
@@ -89,7 +90,7 @@ public class Gateway {
      * Danger}) via {@link DangerComputation} + {@link SlmRelevanceProvider}. The {@link
      * HitlRegistry} decides {@link ApprovalDecision} from the result.
      */
-    public GatewayResult screen(ToolCall call, ToolDefinition def) {
+    public @NonNull GatewayResult screen(@NonNull ToolCall call, @NonNull ToolDefinition def) {
         if (def instanceof AgentToolDefinition) {
             return new GatewayResult.NotScreened();
         }
@@ -218,7 +219,7 @@ public class Gateway {
     }
 
     /** Computes a SHA-256 hex hash of the given path (for read-time recording by the sandbox). */
-    public static String hashOf(Path path) {
+    public static @NonNull String hashOf(@NonNull Path path) {
         return computeHash(path);
     }
 }

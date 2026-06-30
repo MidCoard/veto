@@ -2,7 +2,7 @@ package top.focess.veto.command.commands;
 
 import java.util.List;
 import javax.crypto.SecretKey;
-import org.jetbrains.annotations.NotNull;
+import org.jspecify.annotations.NonNull;
 import top.focess.command.CommandResult;
 import top.focess.command.CommandSender;
 import top.focess.veto.command.VetoCommand;
@@ -16,9 +16,9 @@ public class LoginCommand extends VetoCommand {
     private final AuthLifecycleManager authLifecycleManager;
 
     public LoginCommand(
-            @NotNull UserRegistry users,
-            @NotNull VaultKeyManager keys,
-            @NotNull AuthLifecycleManager authLifecycleManager) {
+            @NonNull UserRegistry users,
+            @NonNull VaultKeyManager keys,
+            @NonNull AuthLifecycleManager authLifecycleManager) {
         super("login", "Sign in to your account");
         this.users = users;
         this.keys = keys;
@@ -71,8 +71,7 @@ public class LoginCommand extends VetoCommand {
     }
 
     @Override
-    @NotNull
-    public List<String> usage(@NotNull CommandSender s) {
+    public @NonNull List<String> usage(@NonNull CommandSender s) {
         return List.of("/login [user] — Sign in to your account (password is prompted)");
     }
 }

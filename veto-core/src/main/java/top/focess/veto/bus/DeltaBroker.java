@@ -9,6 +9,7 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
+import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 
 /**
@@ -22,7 +23,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class DeltaBroker {
 
-    private final ObjectMapper mapper;
+    private final @NonNull ObjectMapper mapper;
 
     /** Per-session listeners. */
     private final ConcurrentMap<UUID, List<Consumer<DeltaFrame>>> listeners =
@@ -34,12 +35,15 @@ public class DeltaBroker {
     /** Per-session monotonic sequence. */
     private final ConcurrentMap<UUID, AtomicLong> sequences = new ConcurrentHashMap<>();
 
-    public DeltaBroker(ObjectMapper mapper) {
+    public
+    @NonNull
+    DeltaBroker(@NonNull ObjectMapper mapper) {
         this.mapper = mapper;
     }
 
     /** Subscribe to a session's frame stream. Returns a handle that unsubscribes on close. */
-    public AutoCloseable subscribe(UUID sessionId, Consumer<DeltaFrame> listener) {
+    public @NonNull AutoCloseable subscribe(
+            @NonNull UUID sessionId, @NonNull Consumer<DeltaFrame> listener) {
         listeners.computeIfAbsent(sessionId, k -> new CopyOnWriteArrayList<>()).add(listener);
         return () -> {
             List<Consumer<DeltaFrame>> list = listeners.get(sessionId);
@@ -54,13 +58,13 @@ public class DeltaBroker {
      * (e.g. the WebSocket bus) that fan out to a single downstream client and don't care which
      * session each frame originated from. Returns a handle that unsubscribes on close.
      */
-    public AutoCloseable subscribeAll(Consumer<DeltaFrame> listener) {
+    public @NonNull AutoCloseable subscribeAll(@NonNull Consumer<DeltaFrame> listener) {
         wildcardListeners.add(listener);
         return () -> wildcardListeners.remove(listener);
     }
 
     /** Publish a frame: assigns a sequence, fans out to all subscribers of the session. */
-    public void publish(DeltaFrame frame) {
+    public void publish(@NonNull DeltaFrame frame) {
         long seq =
                 sequences
                         .computeIfAbsent(frame.sessionId(), k -> new AtomicLong(0))
@@ -107,7 +111,7 @@ public class DeltaBroker {
     }
 
     /** Convenience: publish + serialize to JSON. */
-    public void publishJson(DeltaFrame frame) {
+    public void publishJson(@NonNull DeltaFrame frame) {
         publish(frame);
         // Touch mapper so it stays referenced (the publish above fans out the structured frame;
         // JSON serialization happens at the transport).

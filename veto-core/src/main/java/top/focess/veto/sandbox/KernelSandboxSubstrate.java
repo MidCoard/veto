@@ -8,8 +8,8 @@ import com.sun.jna.platform.win32.Kernel32;
 import com.sun.jna.platform.win32.WinNT;
 import java.util.Arrays;
 import java.util.List;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -93,7 +93,7 @@ public class KernelSandboxSubstrate {
      * Attach the kernel-level wall to a spawned process. The base substrate has already started the
      * process. On unsupported platforms this is a no-op.
      */
-    public void attach(@NotNull Process process) {
+    public void attach(@NonNull Process process) {
         if (IS_WINDOWS && windowsKernel != null) {
             attachWindowsJobObject(process);
         } else if (IS_LINUX) {
@@ -125,8 +125,7 @@ public class KernelSandboxSubstrate {
      * @param process the spawned process to attach to; must not be null
      * @return a closeable handle, or null on unsupported platforms
      */
-    @Nullable
-    public AutoCloseable attachWithHandle(@NotNull Process process) {
+    public @Nullable AutoCloseable attachWithHandle(@NonNull Process process) {
         if (IS_WINDOWS && windowsKernel != null) {
             return attachWindowsJobObjectWithHandle(process);
         } else if (IS_LINUX) {
@@ -183,9 +182,9 @@ public class KernelSandboxSubstrate {
      * @return the wrapped command, or the original if systemd-run is unavailable
      */
     public static java.util.List<String> wrapWithSystemdRun(
-            @NotNull java.util.List<String> command,
+            java.util.@NonNull List<String> command,
             @Nullable String systemdRunPath,
-            @NotNull java.util.List<Integer> baselineSyscalls) {
+            java.util.@NonNull List<Integer> baselineSyscalls) {
         if (systemdRunPath == null || command.isEmpty()) {
             return command;
         }
@@ -257,7 +256,7 @@ public class KernelSandboxSubstrate {
         return null;
     }
 
-    private void attachLinuxCgroup(@NotNull Process process) {
+    private void attachLinuxCgroup(@NonNull Process process) {
         int pid = getProcessId(process);
         if (pid <= 0) {
             log.warn("KernelSandboxSubstrate: could not determine child pid for cgroup attach");
@@ -302,7 +301,7 @@ public class KernelSandboxSubstrate {
                 childCgroup);
     }
 
-    private void attachWindowsJobObject(@NotNull Process process) {
+    private void attachWindowsJobObject(@NonNull Process process) {
         // Delegate to attachWithHandle but don't track the handle (legacy API, leaks the handle)
         attachWindowsJobObjectWithHandle(process);
     }
@@ -311,8 +310,7 @@ public class KernelSandboxSubstrate {
      * Attach Windows Job Object and return a closeable handle. The handle should be closed after
      * the process exits to release the kernel Job Object resource.
      */
-    @Nullable
-    private AutoCloseable attachWindowsJobObjectWithHandle(@NotNull Process process) {
+    private @Nullable AutoCloseable attachWindowsJobObjectWithHandle(@NonNull Process process) {
         try {
             // 1. Create a Job Object with KILL_ON_JOB_CLOSE so the process is terminated
             //    if the parent (the Veto process) crashes.

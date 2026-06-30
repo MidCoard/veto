@@ -1,6 +1,7 @@
 package top.focess.veto.training;
 
 import java.util.Map;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
@@ -20,10 +21,13 @@ public class TrainingController {
 
     private static final Logger log = LoggerFactory.getLogger(TrainingController.class);
 
-    private final TrainingManager trainingManager;
-    private final TrainingConfiguration config;
+    private final @NonNull TrainingManager trainingManager;
+    private final @NonNull TrainingConfiguration config;
 
-    public TrainingController(TrainingManager trainingManager, TrainingConfiguration config) {
+    public
+    @NonNull
+    TrainingController(
+            @NonNull TrainingManager trainingManager, @NonNull TrainingConfiguration config) {
         this.trainingManager = trainingManager;
         this.config = config;
     }

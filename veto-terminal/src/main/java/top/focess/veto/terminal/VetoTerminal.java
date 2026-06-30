@@ -5,9 +5,9 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
-import org.jetbrains.annotations.NotNull;
 import org.jline.reader.*;
 import org.jline.terminal.TerminalBuilder;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.client.core.ClientSession;
@@ -114,7 +114,7 @@ public class VetoTerminal {
      * @param t the Mordant Terminal instance used for styled outputs
      * @param client the IpcClient used for IPC communications with the backend
      */
-    public VetoTerminal(@NotNull Terminal t, @NotNull IpcClient client) {
+    public VetoTerminal(@NonNull Terminal t, @NonNull IpcClient client) {
         this.t = t;
         this.client = client;
     }
@@ -125,7 +125,7 @@ public class VetoTerminal {
      *
      * @param reader the JLine LineReader instance to read inputs from
      */
-    public void start(@NotNull LineReader reader) {
+    public void start(@NonNull LineReader reader) {
         this.reader = reader;
         this.mainThread = Thread.currentThread();
         this.theme = new MordantTheme(t);
@@ -347,7 +347,7 @@ public class VetoTerminal {
      *
      * @param line the input text
      */
-    private void echoInput(@NotNull String line) {
+    private void echoInput(@NonNull String line) {
         int termWidth = reader.getTerminal().getWidth();
         int maxWidth = termWidth > 0 ? termWidth - 4 : 76;
         int borderLen = Math.max(0, Math.min(maxWidth, line.length() + 4));
@@ -378,17 +378,17 @@ public class VetoTerminal {
     private final class TerminalView implements ClientView {
 
         @Override
-        public void onDelta(@NotNull String content) {
+        public void onDelta(@NonNull String content) {
             renderer.println(content);
         }
 
         @Override
-        public void onProgress(@NotNull StyledText content) {
+        public void onProgress(@NonNull StyledText content) {
             renderer.println(theme.style(content.token(), content.text()));
         }
 
         @Override
-        public void onPrompt(@NotNull IpcFrame.Prompt prompt) {
+        public void onPrompt(IpcFrame.@NonNull Prompt prompt) {
             // The session already set state=PROMPTED. Signal the main thread to re-render with the
             // prompted prompt: set the flag FIRST, then interrupt readLine. The ordering matters —
             // "interrupt fired" must imply "flag was set" so the catch can distinguish this
@@ -399,12 +399,12 @@ public class VetoTerminal {
         }
 
         @Override
-        public void onError(@NotNull StyledText content) {
+        public void onError(@NonNull StyledText content) {
             renderer.println(theme.style(content.token(), content.text()));
         }
 
         @Override
-        public void onTerminate(@NotNull StyledText content) {
+        public void onTerminate(@NonNull StyledText content) {
             renderer.println(theme.style(content.token(), content.text()));
             running = false;
             // The main thread is blocked in readLine; setting running=false alone won't wake it, so
@@ -431,7 +431,7 @@ public class VetoTerminal {
         }
 
         @Override
-        public void onCommandDispatched(@NotNull String line) {
+        public void onCommandDispatched(@NonNull String line) {
             // Fires on whichever thread performed the dispatch: the main thread (a line typed at
             // IDLE) or the consumer thread (a queued command auto-dispatched from onFrame).
             // printAbove is thread-safe, so both paths render uniformly.
@@ -442,7 +442,7 @@ public class VetoTerminal {
         }
 
         @Override
-        public void onMetaChanged(@NotNull ClientSession.SessionMeta meta) {
+        public void onMetaChanged(ClientSession.@NonNull SessionMeta meta) {
             status.refresh();
         }
     }
@@ -460,7 +460,7 @@ public class VetoTerminal {
 
         @Override
         public void complete(
-                @NotNull LineReader r, @NotNull ParsedLine line, @NotNull List<Candidate> out) {
+                @NonNull LineReader r, @NonNull ParsedLine line, @NonNull List<Candidate> out) {
             String fullLine = line.line();
             // Completion is only requested for slash commands.
             if (!fullLine.startsWith("/")) return;
@@ -487,7 +487,7 @@ public class VetoTerminal {
      *
      * @param args command line arguments, supports --debug or -d to enable log file output
      */
-    public static void main(@NotNull String[] args) {
+    public static void main(@NonNull String[] args) {
         System.setProperty("file.encoding", "UTF-8");
 
         ClientOptions options = ClientOptions.parse(args);

@@ -1,5 +1,7 @@
 package top.focess.veto.llm.exceptions;
 
+import org.jspecify.annotations.NonNull;
+
 /** Network/read timeout talking to the provider. Retryable with backoff. */
 public class LlmTimeoutException extends LlmException {
     /**
@@ -8,7 +10,9 @@ public class LlmTimeoutException extends LlmException {
      * @param message the detail message
      * @param cause the cause of the exception
      */
-    public LlmTimeoutException(String message, Throwable cause) {
+    public
+    @NonNull
+    LlmTimeoutException(@NonNull String message, @NonNull Throwable cause) {
         super(message, cause, true);
     }
 }

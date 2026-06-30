@@ -2,6 +2,8 @@ package top.focess.veto.agent.loop;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.List;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import top.focess.veto.llm.core.ChatMessage;
 import top.focess.veto.llm.core.ToolDefinition;
 
@@ -19,9 +21,9 @@ import top.focess.veto.llm.core.ToolDefinition;
  * @param trimmedTurns how many oldest turns were dropped to fit the token budget
  */
 public record CompiledPrompt(
-        String systemMessage,
-        List<ChatMessage> messages,
-        List<ToolDefinition> tools,
-        JsonNode responseSchema,
+        @NonNull String systemMessage,
+        @NonNull List<ChatMessage> messages,
+        @NonNull List<ToolDefinition> tools,
+        @Nullable JsonNode responseSchema,
         int trimmedTurns,
         long estimatedTokens) {}

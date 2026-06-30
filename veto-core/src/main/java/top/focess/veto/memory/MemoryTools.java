@@ -3,6 +3,7 @@ package top.focess.veto.memory;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.mcp.Doc;
 import top.focess.veto.agent.mcp.NativeMcpTool;
@@ -52,7 +53,7 @@ public final class MemoryTools {
         }
 
         @Override
-        public String execute(Args args) {
+        public @NonNull String execute(@NonNull Args args) {
             return ""; // tool body is invoked via the agent's MCP engine + memory tool wrapper
         }
     }
@@ -87,7 +88,7 @@ public final class MemoryTools {
         }
 
         @Override
-        public String execute(Args args) {
+        public @NonNull String execute(@NonNull Args args) {
             return "";
         }
     }
@@ -127,7 +128,7 @@ public final class MemoryTools {
         }
 
         @Override
-        public String execute(Args args) {
+        public @NonNull String execute(@NonNull Args args) {
             return "";
         }
     }
@@ -157,7 +158,7 @@ public final class MemoryTools {
         }
 
         @Override
-        public String execute(Args args) {
+        public @NonNull String execute(@NonNull Args args) {
             return "";
         }
     }
@@ -166,7 +167,7 @@ public final class MemoryTools {
      * Helper to format scored-memory results for a tool observation (DATA — not instructions
      * framing is applied at ingress via {@code IngressDefense}).
      */
-    public static String formatResults(List<MemoryStore.ScoredMemory> results) {
+    public static @NonNull String formatResults(@NonNull List<MemoryStore.ScoredMemory> results) {
         if (results == null || results.isEmpty()) {
             return "no matching memories";
         }
@@ -195,7 +196,7 @@ public final class MemoryTools {
     }
 
     /** Helper to extract the userId from a context map (the agent's per-session user). */
-    public static UUID userIdFromContext(Map<String, Object> context) {
+    public static @NonNull UUID userIdFromContext(@NonNull Map<String, Object> context) {
         if (context == null) {
             return null;
         }

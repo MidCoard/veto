@@ -3,8 +3,8 @@ package top.focess.veto.command;
 import java.util.Map;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.command.AbstractCommandSender;
@@ -42,16 +42,16 @@ public final class VetoCommandSender extends AbstractCommandSender {
 
     private static final Logger log = LoggerFactory.getLogger(VetoCommandSender.class);
 
-    @NotNull private final IpcServer ipcServer;
-    @Nullable private volatile String username;
-    @NotNull private final String terminalId;
+    private final @NonNull IpcServer ipcServer;
+    private volatile @Nullable String username;
+    private final @NonNull String terminalId;
 
     /**
      * The currently-pending input future (the one a command is parked in {@code input.join} on), or
      * {@code null} when no command awaits input. Captured so {@link #cancelInput} can complete it
      * exceptionally to cooperatively unblock a cancel. Under 1:1 there is at most one at a time.
      */
-    @Nullable private volatile CompletableFuture<String> pendingInput;
+    private volatile @Nullable CompletableFuture<String> pendingInput;
 
     /**
      * Constructs a new {@code VetoCommandSender} for the given terminal session.
@@ -61,7 +61,7 @@ public final class VetoCommandSender extends AbstractCommandSender {
      * @param terminalId the ZMQ DEALER identity of the owning terminal
      */
     public VetoCommandSender(
-            @NotNull IpcServer ipcServer, @Nullable String username, @NotNull String terminalId) {
+            @NonNull IpcServer ipcServer, @Nullable String username, @NonNull String terminalId) {
         super(CommandPermission.EVERYONE);
         this.ipcServer = ipcServer;
         this.username = username;
@@ -75,8 +75,7 @@ public final class VetoCommandSender extends AbstractCommandSender {
      *
      * @return the username, or {@code null} if the terminal is not yet logged in
      */
-    @Nullable
-    public String username() {
+    public @Nullable String username() {
         return username;
     }
 
@@ -96,8 +95,7 @@ public final class VetoCommandSender extends AbstractCommandSender {
      *
      * @return the terminal ID string; never {@code null}
      */
-    @NotNull
-    public String terminalId() {
+    public @NonNull String terminalId() {
         return terminalId;
     }
 
@@ -138,7 +136,7 @@ public final class VetoCommandSender extends AbstractCommandSender {
      * @return the user's input string; never {@code null}
      */
     @Override
-    public @NotNull String input() {
+    public @NonNull String input() {
         return input("", false);
     }
 
@@ -152,7 +150,7 @@ public final class VetoCommandSender extends AbstractCommandSender {
      * @param mask {@code true} to mask input characters (e.g. for passwords)
      * @return the user's input string; never {@code null}
      */
-    public String input(@NotNull String text, boolean mask) {
+    public String input(@NonNull String text, boolean mask) {
         return inputAsync(text, mask, 90000).join();
     }
 
@@ -163,8 +161,7 @@ public final class VetoCommandSender extends AbstractCommandSender {
      * @return a {@link CompletableFuture} that completes with the user's input string
      */
     @Override
-    @NotNull
-    public CompletableFuture<String> inputAsync(long timeoutMillis) {
+    public @NonNull CompletableFuture<String> inputAsync(long timeoutMillis) {
         return inputAsync("", false, timeoutMillis);
     }
 
@@ -180,9 +177,8 @@ public final class VetoCommandSender extends AbstractCommandSender {
      * @param timeoutMillis maximum time to wait in milliseconds before the future times out
      * @return a {@link CompletableFuture} that completes with the user's reply
      */
-    @NotNull
-    public CompletableFuture<String> inputAsync(
-            @NotNull String text, boolean mask, long timeoutMillis) {
+    public @NonNull CompletableFuture<String> inputAsync(
+            @NonNull String text, boolean mask, long timeoutMillis) {
         ipcServer.send(
                 terminalId,
                 new IpcFrame.Prompt(text, Map.of(IpcMeta.PROMPT, text, IpcMeta.MASK, mask)));

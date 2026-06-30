@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import java.util.concurrent.*;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -19,9 +20,9 @@ public class RoutingBusService {
 
     private static final Logger log = LoggerFactory.getLogger(RoutingBusService.class);
 
-    private final WebSocketBus webSocketBus;
-    private final BusConfiguration config;
-    private final ObjectMapper objectMapper;
+    private final @NonNull WebSocketBus webSocketBus;
+    private final @NonNull BusConfiguration config;
+    private final @NonNull ObjectMapper objectMapper;
 
     private final ConcurrentMap<String, DAGPayload> activePayloads = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, CompletableFuture<DAGPayload>> pendingFutures =
@@ -56,7 +57,7 @@ public class RoutingBusService {
     }
 
     /** Submit a DAG payload to the cloud backend and return a future for the response. */
-    public CompletableFuture<DAGPayload> submitDAGPayload(DAGPayload payload) {
+    public @NonNull CompletableFuture<DAGPayload> submitDAGPayload(@NonNull DAGPayload payload) {
         CompletableFuture<DAGPayload> future = new CompletableFuture<>();
         activePayloads.put(payload.getId(), payload);
         pendingFutures.put(payload.getId(), future);
@@ -75,7 +76,7 @@ public class RoutingBusService {
     }
 
     /** Connect to the cloud backend. */
-    public CompletableFuture<Boolean> connect(String backendUrl) {
+    public @NonNull CompletableFuture<Boolean> connect(@NonNull String backendUrl) {
         return webSocketBus.connect(backendUrl);
     }
 

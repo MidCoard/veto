@@ -1,6 +1,7 @@
 package top.focess.veto.agent.mcp;
 
 import java.util.Map;
+import org.jspecify.annotations.NonNull;
 
 /**
  * An engine-provided control/meta tool — used directly inside the agent loop or workflows, not a
@@ -14,16 +15,19 @@ import java.util.Map;
  * ParameterSchema.Structured} with an empty hints map.
  */
 public record AgentToolDefinition(
-        String name, String description, Class<?> argsClass, Map<String, ParamCategory> paramHints)
+        @NonNull String name,
+        @NonNull String description,
+        @NonNull Class<?> argsClass,
+        @NonNull Map<String, ParamCategory> paramHints)
         implements ToolDefinition {
 
     @Override
-    public RiskCategory risk() {
+    public @NonNull RiskCategory risk() {
         return RiskCategory.AGENT;
     }
 
     @Override
-    public ParameterSchema parameters() {
+    public @NonNull ParameterSchema parameters() {
         return new ParameterSchema.Structured(argsClass, paramHints);
     }
 }

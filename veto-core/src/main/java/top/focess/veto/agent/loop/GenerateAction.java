@@ -2,6 +2,7 @@ package top.focess.veto.agent.loop;
 
 import java.util.HashMap;
 import java.util.Map;
+import org.jspecify.annotations.NonNull;
 
 /**
  * A model-invoked content action. The only action that calls the model — invoked within the same
@@ -29,7 +30,7 @@ public record GenerateAction(
     }
 
     @Override
-    public Map<String, Object> resolveInputs(Scope scope) {
+    public Map<String, @NonNull Object> resolveInputs(@NonNull Scope scope) {
         Map<String, Object> resolved = new HashMap<>();
         for (var entry : inputs.entrySet()) {
             resolved.put(entry.getKey(), scope.resolveValue(entry.getValue()));
@@ -38,7 +39,7 @@ public record GenerateAction(
     }
 
     /** Resolves {@code $var} references inside the prompt text against the scope. */
-    public String resolvePrompt(Scope scope) {
+    public @NonNull String resolvePrompt(@NonNull Scope scope) {
         return scope.resolveVars(prompt);
     }
 }

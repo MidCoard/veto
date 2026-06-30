@@ -2,6 +2,7 @@ package top.focess.veto.veto;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -22,11 +23,11 @@ public class VetoGateway {
 
     private static final Logger log = LoggerFactory.getLogger(VetoGateway.class);
 
-    private final VetoGatewayConfiguration config;
-    private final LlamaCppBridge llamaCppBridge;
-    private final SemanticRedactor semanticRedactor;
-    private final GBNFGrammarEngine grammarEngine;
-    private final AuditLogger auditLogger;
+    private final @NonNull VetoGatewayConfiguration config;
+    private final @NonNull LlamaCppBridge llamaCppBridge;
+    private final @NonNull SemanticRedactor semanticRedactor;
+    private final @NonNull GBNFGrammarEngine grammarEngine;
+    private final @NonNull AuditLogger auditLogger;
 
     private final java.util.concurrent.atomic.AtomicLong totalVetoes =
             new java.util.concurrent.atomic.AtomicLong(0);
@@ -265,11 +266,11 @@ public class VetoGateway {
     public record VetoResult(
             VetoDecision decision, String processedPayload, String reason, int redactionCount) {
 
-        public static VetoResult pass(String payload, String reason) {
+        public static @NonNull VetoResult pass(@NonNull String payload, @NonNull String reason) {
             return new VetoResult(VetoDecision.PASS, payload, reason, 0);
         }
 
-        public static VetoResult block(String reason) {
+        public static @NonNull VetoResult block(@NonNull String reason) {
             return new VetoResult(VetoDecision.BLOCK, "", reason, 0);
         }
 

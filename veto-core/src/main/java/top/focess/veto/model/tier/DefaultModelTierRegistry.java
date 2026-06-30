@@ -2,6 +2,7 @@ package top.focess.veto.model.tier;
 
 import java.util.List;
 import java.util.Optional;
+import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import top.focess.veto.model.AgentPatternEntity;
@@ -16,7 +17,7 @@ public class DefaultModelTierRegistry implements ModelTierRegistry {
     @Autowired private CredentialVault vault;
 
     @Override
-    public ModelBinding resolve(String patternName, ModelTier tier) {
+    public @NonNull ModelBinding resolve(@NonNull String patternName, @NonNull ModelTier tier) {
         if (tier == ModelTier.LOCAL) {
             return new ModelBinding(Provider.LOCAL_SLM, "local-slm", 0.1, 2048);
         }
@@ -45,7 +46,8 @@ public class DefaultModelTierRegistry implements ModelTierRegistry {
     }
 
     @Override
-    public VaultCredentialRef credential(String userId, Provider provider) {
+    public @NonNull VaultCredentialRef credential(
+            @NonNull String userId, @NonNull Provider provider) {
         String key = "credential-" + provider.name().toLowerCase();
         if (patternRepo != null) {
             List<AgentPatternEntity> patterns = patternRepo.findByOwner(userId);

@@ -7,6 +7,7 @@ import com.google.genai.types.HttpOptions;
 import com.openai.client.OpenAIClient;
 import com.openai.client.okhttp.OpenAIOkHttpClient;
 import jakarta.annotation.PostConstruct;
+import org.jspecify.annotations.NonNull;
 import org.springframework.context.annotation.Configuration;
 import top.focess.veto.llm.client.LlmClientFactory;
 
@@ -21,14 +22,16 @@ import top.focess.veto.llm.client.LlmClientFactory;
 @Configuration
 public class LlmClientRegistration {
 
-    private final LlmClientFactory factory;
+    private final @NonNull LlmClientFactory factory;
 
     /**
      * Constructs a new LlmClientRegistration with the specified factory.
      *
      * @param factory the factory to register builders with
      */
-    public LlmClientRegistration(LlmClientFactory factory) {
+    public
+    @NonNull
+    LlmClientRegistration(@NonNull LlmClientFactory factory) {
         this.factory = factory;
     }
 

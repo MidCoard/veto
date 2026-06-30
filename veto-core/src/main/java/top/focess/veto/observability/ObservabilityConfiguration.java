@@ -1,5 +1,6 @@
 package top.focess.veto.observability;
 
+import org.jspecify.annotations.NonNull;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 
@@ -18,7 +19,7 @@ public class ObservabilityConfiguration {
         return auditLogPath;
     }
 
-    public void setAuditLogPath(String auditLogPath) {
+    public void setAuditLogPath(@NonNull String auditLogPath) {
         this.auditLogPath = auditLogPath;
     }
 
@@ -42,7 +43,7 @@ public class ObservabilityConfiguration {
         return encryptionKey;
     }
 
-    public void setEncryptionKey(String encryptionKey) {
+    public void setEncryptionKey(@NonNull String encryptionKey) {
         this.encryptionKey = encryptionKey;
     }
 

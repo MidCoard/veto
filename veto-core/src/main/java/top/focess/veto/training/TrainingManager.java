@@ -10,6 +10,7 @@ import java.nio.file.StandardCopyOption;
 import java.util.Map;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -24,8 +25,8 @@ public class TrainingManager {
 
     private static final Logger log = LoggerFactory.getLogger(TrainingManager.class);
 
-    private final TrainingConfiguration config;
-    private final ObjectMapper objectMapper;
+    private final @NonNull TrainingConfiguration config;
+    private final @NonNull ObjectMapper objectMapper;
 
     private final TrainingProgress progress = new TrainingProgress();
     private final AtomicBoolean running = new AtomicBoolean(false);
@@ -47,7 +48,9 @@ public class TrainingManager {
 
     private ModelDeployCallback deployCallback = null;
 
-    public TrainingManager(TrainingConfiguration config, ObjectMapper objectMapper) {
+    public
+    @NonNull
+    TrainingManager(@NonNull TrainingConfiguration config, @NonNull ObjectMapper objectMapper) {
         this.config = config;
         this.objectMapper = objectMapper;
     }
@@ -72,7 +75,7 @@ public class TrainingManager {
      * Register a callback that fires when deployment is needed. Typically wired to {@code
      * LlamaCppBridge::restartWithModel}.
      */
-    public void setDeployCallback(ModelDeployCallback callback) {
+    public void setDeployCallback(@NonNull ModelDeployCallback callback) {
         this.deployCallback = callback;
     }
 
@@ -241,7 +244,7 @@ public class TrainingManager {
      * @param modelPath path to the GGUF model file
      * @return true if deployment succeeded
      */
-    public boolean deployModel(String modelPath) {
+    public boolean deployModel(@NonNull String modelPath) {
         Path source = Path.of(modelPath);
         if (!Files.exists(source)) {
             log.error("Model file not found: {}", modelPath);

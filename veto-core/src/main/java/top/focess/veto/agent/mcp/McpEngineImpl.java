@@ -11,6 +11,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -52,10 +54,10 @@ public class McpEngineImpl implements McpEngine {
 
     private static final Logger log = LoggerFactory.getLogger(McpEngineImpl.class);
 
-    private final ObjectMapper mapper;
-    private final List<NativeMcpTool<?>> nativeToolBeans;
-    private final SandboxManager sandboxManager;
-    private final SkillRegistry skillRegistry;
+    private final @NonNull ObjectMapper mapper;
+    private final @NonNull List<NativeMcpTool<?>> nativeToolBeans;
+    private final @NonNull SandboxManager sandboxManager;
+    private final @NonNull SkillRegistry skillRegistry;
 
     private final Map<String, NativeToolDefinition> nativeDefs = new ConcurrentHashMap<>();
     private final Map<String, NativeMcpTool<?>> nativeByName = new ConcurrentHashMap<>();
@@ -97,7 +99,8 @@ public class McpEngineImpl implements McpEngine {
     }
 
     /** Discover tools from a remote MCP server via JSON-RPC tools/list and register them. */
-    public java.util.List<RemoteToolDefinition> discoverAndRegister(McpTransport transport) {
+    public java.util.@NonNull List<RemoteToolDefinition> discoverAndRegister(
+            @NonNull McpTransport transport) {
         try {
             java.util.List<RemoteToolDefinition> tools =
                     new McpJsonRpcClient(mapper).discoverTools(transport);
@@ -115,7 +118,7 @@ public class McpEngineImpl implements McpEngine {
     }
 
     @Override
-    public List<ToolDefinition> getActiveTools(Set<String> whitelist) {
+    public @NonNull List<ToolDefinition> getActiveTools(@NonNull Set<String> whitelist) {
         List<ToolDefinition> active = new ArrayList<>();
         for (NativeToolDefinition def : nativeDefs.values()) {
             if (whitelist == null || whitelist.contains(def.name())) {
@@ -133,7 +136,7 @@ public class McpEngineImpl implements McpEngine {
     }
 
     @Override
-    public ToolDefinition resolveDefinition(String toolName) {
+    public @Nullable ToolDefinition resolveDefinition(@NonNull String toolName) {
         ToolDefinition def = nativeDefs.get(toolName);
         if (def != null) return def;
         def = agentDefs.get(toolName);
@@ -142,7 +145,7 @@ public class McpEngineImpl implements McpEngine {
     }
 
     @Override
-    public McpToolResult execute(ToolCall call, ToolDefinition def) {
+    public @NonNull McpToolResult execute(@NonNull ToolCall call, @NonNull ToolDefinition def) {
         String callId = call.callId();
         try {
             return switch (def) {
@@ -160,7 +163,7 @@ public class McpEngineImpl implements McpEngine {
     // ── Implementation-detail API (not on the shared interface) ──────────────
 
     /** Registers a new MCP server transport. Stores it keyed by {@code serverName}. */
-    public void registerServer(String serverName, McpTransport transport) {
+    public void registerServer(@NonNull String serverName, @NonNull McpTransport transport) {
         transports.put(serverName, transport);
         log.info("McpEngine: registered server transport '{}'.", serverName);
     }
@@ -184,7 +187,8 @@ public class McpEngineImpl implements McpEngine {
     }
 
     /** Low-level dispatch by tool name + raw arguments. */
-    public McpToolResult executeTool(String toolName, Map<String, Object> arguments) {
+    public @NonNull McpToolResult executeTool(
+            @NonNull String toolName, @NonNull Map<String, Object> arguments) {
         ToolDefinition def = resolveDefinition(toolName);
         if (def == null) {
             return new McpToolResult(toolName, null, false, "Unknown tool: " + toolName);

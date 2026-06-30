@@ -2,6 +2,7 @@ package top.focess.veto.agent.skills;
 
 import java.nio.file.Path;
 import java.util.List;
+import org.jspecify.annotations.NonNull;
 
 /**
  * A Skill is a high-level agentic workflow — a sequence of tool-invocation guidelines loaded on
@@ -24,10 +25,10 @@ import java.util.List;
  * @param contentHash SHA-256, verified by the harness on every {@code load_skill} call
  */
 public record Skill(
-        String name,
-        String description,
-        String promptInstructions,
-        SkillSourceType sourceType,
-        Path skillDirectory,
-        List<String> requiredTools,
-        String contentHash) {}
+        @NonNull String name,
+        @NonNull String description,
+        @NonNull String promptInstructions,
+        @NonNull SkillSourceType sourceType,
+        @NonNull Path skillDirectory,
+        @NonNull List<String> requiredTools,
+        @NonNull String contentHash) {}

@@ -6,8 +6,8 @@ import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.contract.IpcFrame;
@@ -84,8 +84,8 @@ public final class ClientSession {
      * {@code state} and an {@code activePrompt} that never coexisted.
      */
     public record PromptView(
-            @NotNull State state,
-            @Nullable IpcFrame.Prompt activePrompt,
+            @NonNull State state,
+            IpcFrame.@Nullable Prompt activePrompt,
             @Nullable String username) {}
 
     /**
@@ -99,7 +99,7 @@ public final class ClientSession {
      * queue that never coexisted.
      */
     public record StatusView(
-            @Nullable String username, int turnCount, @NotNull List<String> pending) {}
+            @Nullable String username, int turnCount, @NonNull List<String> pending) {}
 
     private final ClientView view;
     private final Object lock = new Object();
@@ -111,7 +111,7 @@ public final class ClientSession {
     private int turnCount;
     private String sessionId;
 
-    public ClientSession(@NotNull ClientView view) {
+    public ClientSession(@NonNull ClientView view) {
         this.view = view;
     }
 
@@ -135,8 +135,7 @@ public final class ClientSession {
      * @param line the submitted line
      * @return the client frame to send, or {@code null} if only enqueued
      */
-    @Nullable
-    public IpcFrame.ClientFrame submit(@NotNull String line) {
+    public IpcFrame.@Nullable ClientFrame submit(@NonNull String line) {
         List<Runnable> events = new ArrayList<>();
         IpcFrame.ClientFrame frame;
         synchronized (lock) {
@@ -177,8 +176,7 @@ public final class ClientSession {
      *
      * @return the Cancel frame, or {@code null} to signal shutdown
      */
-    @Nullable
-    public IpcFrame.Cancel cancel() {
+    public IpcFrame.@Nullable Cancel cancel() {
         List<Runnable> events = new ArrayList<>();
         IpcFrame.Cancel frame;
         synchronized (lock) {
@@ -210,8 +208,7 @@ public final class ClientSession {
      * @return the client frame to send (a dispatched next {@link IpcFrame.Request}), or {@code
      *     null}
      */
-    @Nullable
-    public IpcFrame.ClientFrame onFrame(@NotNull IpcFrame.ServerFrame frame) {
+    public IpcFrame.@Nullable ClientFrame onFrame(IpcFrame.@NonNull ServerFrame frame) {
         List<Runnable> events = new ArrayList<>();
         IpcFrame.ClientFrame reply = null;
         synchronized (lock) {
@@ -295,7 +292,7 @@ public final class ClientSession {
      * Logs an orphan streaming frame that arrived at {@code IDLE} (a protocol violation under 1:1)
      * and drops it — never displayed. Must hold {@link #lock}.
      */
-    private void rejectOrphan(@NotNull IpcFrame.ServerFrame frame, @NotNull String kind) {
+    private void rejectOrphan(IpcFrame.@NonNull ServerFrame frame, @NonNull String kind) {
         log.warn(
                 "Orphan {} frame at IDLE — no command in flight; dropping (protocol violation)",
                 kind);
@@ -308,8 +305,7 @@ public final class ClientSession {
      * @param events the event list to append a state-transition signal to
      * @return the next Request to send, or {@code null} if idle
      */
-    @Nullable
-    private IpcFrame.ClientFrame dispatchNextOrIdle(@NotNull List<Runnable> events) {
+    private IpcFrame.@Nullable ClientFrame dispatchNextOrIdle(@NonNull List<Runnable> events) {
         if (!pendingRequests.isEmpty()) {
             String next = pendingRequests.removeFirst();
             state = State.RUNNING;
@@ -329,8 +325,7 @@ public final class ClientSession {
      * @return a {@link SessionMeta} snapshot if anything changed (so the view can refresh), or
      *     {@code null} if unchanged
      */
-    @Nullable
-    private SessionMeta applyMeta(@NotNull Map<String, Object> meta) {
+    private @Nullable SessionMeta applyMeta(@NonNull Map<String, Object> meta) {
         boolean changed = false;
         if (meta.containsKey(IpcMeta.USERNAME)) {
             String u = IpcMeta.username(meta);
@@ -368,7 +363,7 @@ public final class ClientSession {
      * Fires collected view callbacks outside the monitor; a throwing callback is logged, not
      * propagated.
      */
-    private void fire(@NotNull List<Runnable> events) {
+    private void fire(@NonNull List<Runnable> events) {
         for (Runnable r : events) {
             try {
                 r.run();
@@ -378,8 +373,7 @@ public final class ClientSession {
         }
     }
 
-    @NotNull
-    public State state() {
+    public @NonNull State state() {
         synchronized (lock) {
             return state;
         }
@@ -390,15 +384,13 @@ public final class ClientSession {
      * {@code state} / {@code activePrompt} reads when the caller renders a prompt from the session
      * state, so the state and the active prompt describe the same moment.
      */
-    @NotNull
-    public PromptView promptView() {
+    public @NonNull PromptView promptView() {
         synchronized (lock) {
             return new PromptView(state, activePrompt, username);
         }
     }
 
-    @NotNull
-    public SessionMeta snapshot() {
+    public @NonNull SessionMeta snapshot() {
         synchronized (lock) {
             return new SessionMeta(username, turnCount, sessionId);
         }
@@ -409,16 +401,14 @@ public final class ClientSession {
      * separate {@code snapshot} / {@code pendingQueue} reads so the username and the queue describe
      * the same moment.
      */
-    @NotNull
-    public StatusView statusView() {
+    public @NonNull StatusView statusView() {
         synchronized (lock) {
             return new StatusView(username, turnCount, List.copyOf(pendingRequests));
         }
     }
 
     /** An immutable snapshot of the pending-request queue (for status-bar rendering). */
-    @NotNull
-    public List<String> pendingQueue() {
+    public @NonNull List<String> pendingQueue() {
         synchronized (lock) {
             return List.copyOf(pendingRequests);
         }

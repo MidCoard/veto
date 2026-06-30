@@ -7,6 +7,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 
 /**
@@ -28,7 +29,7 @@ public class VectorIndex {
     private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
 
     /** Insert a vector at the given id. Replaces any existing vector at that id. */
-    public void insert(UUID id, float[] vector) {
+    public void insert(@NonNull UUID id, float[] vector) {
         lock.writeLock().lock();
         try {
             vectors.put(id, vector == null ? new float[0] : vector.clone());
@@ -38,7 +39,7 @@ public class VectorIndex {
     }
 
     /** Remove a vector by id. No-op if not present. */
-    public void remove(UUID id) {
+    public void remove(@NonNull UUID id) {
         lock.writeLock().lock();
         try {
             vectors.remove(id);
@@ -51,7 +52,7 @@ public class VectorIndex {
      * Brute-force cosine-similarity search. Returns the top-K (id, score) pairs ranked by
      * descending score. Vectors with zero norm (or zero overlap with the query) are skipped.
      */
-    public List<Match> topK(float[] query, int k) {
+    public @NonNull List<Match> topK(float[] query, int k) {
         if (query == null || query.length == 0 || k <= 0) {
             return List.of();
         }
@@ -96,5 +97,5 @@ public class VectorIndex {
     }
 
     /** A single search result: the memory id + cosine similarity score. */
-    public record Match(UUID id, float score) {}
+    public record Match(@NonNull UUID id, float score) {}
 }

@@ -1,7 +1,7 @@
 package top.focess.veto.command.commands;
 
 import java.util.List;
-import org.jetbrains.annotations.NotNull;
+import org.jspecify.annotations.NonNull;
 import top.focess.command.CommandResult;
 import top.focess.command.CommandSender;
 import top.focess.veto.command.PromptHandler;
@@ -14,7 +14,7 @@ public class StatusCommand extends VetoCommand {
     private final CredentialVault vault;
     private final PromptHandler promptHandler;
 
-    public StatusCommand(@NotNull CredentialVault vault, @NotNull PromptHandler promptHandler) {
+    public StatusCommand(@NonNull CredentialVault vault, @NonNull PromptHandler promptHandler) {
         super("status", "Show session info");
         this.vault = vault;
         this.promptHandler = promptHandler;
@@ -49,8 +49,7 @@ public class StatusCommand extends VetoCommand {
     }
 
     @Override
-    @NotNull
-    public List<String> usage(@NotNull CommandSender s) {
+    public @NonNull List<String> usage(@NonNull CommandSender s) {
         return List.of("/status — Show session info");
     }
 }

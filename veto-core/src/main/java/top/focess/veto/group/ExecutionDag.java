@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import org.jspecify.annotations.NonNull;
 
 /**
  * The plan for a group's work (execution_dag.md). An ordered list of {@link DagNode}s with explicit
@@ -16,7 +17,7 @@ import java.util.UUID;
  * <p>Topological order is implicit in the dependency graph: a node is dispatchable iff all of its
  * {@code dependsOn} are in {@link DagNode.NodeState#VERIFIED}.
  */
-public record ExecutionDag(UUID groupId, List<DagNode> nodes) {
+public record ExecutionDag(@NonNull UUID groupId, @NonNull List<DagNode> nodes) {
 
     public ExecutionDag {
         Objects.requireNonNull(groupId, "groupId");
@@ -28,7 +29,7 @@ public record ExecutionDag(UUID groupId, List<DagNode> nodes) {
      * Return the nodes currently dispatchable (all deps VERIFIED) and not yet dispatched or
      * terminal. A node is dispatchable when every node in {@code dependsOn} is VERIFIED.
      */
-    public List<DagNode> dispatchable() {
+    public @NonNull List<DagNode> dispatchable() {
         Map<String, DagNode> byId = index();
         List<DagNode> out = new ArrayList<>();
         for (DagNode n : nodes) {
@@ -51,12 +52,12 @@ public record ExecutionDag(UUID groupId, List<DagNode> nodes) {
     }
 
     /** Nodes currently in {@code RUNNING} state. */
-    public List<DagNode> running() {
+    public @NonNull List<DagNode> running() {
         return nodes.stream().filter(n -> n.state() == DagNode.NodeState.RUNNING).toList();
     }
 
     /** Returns a copy of the DAG with the given node updated. */
-    public ExecutionDag withNode(String nodeId, DagNode updated) {
+    public @NonNull ExecutionDag withNode(@NonNull String nodeId, @NonNull DagNode updated) {
         List<DagNode> next = new ArrayList<>();
         for (DagNode n : nodes) {
             if (n.nodeId().equals(nodeId)) {
@@ -69,12 +70,12 @@ public record ExecutionDag(UUID groupId, List<DagNode> nodes) {
     }
 
     /** Returns a copy of the DAG with the given node list (for bulk updates from the Leader). */
-    public ExecutionDag withNodes(List<DagNode> newNodes) {
+    public @NonNull ExecutionDag withNodes(@NonNull List<DagNode> newNodes) {
         return new ExecutionDag(groupId, newNodes);
     }
 
     /** Returns the set of node ids in the DAG. */
-    public Set<String> nodeIds() {
+    public @NonNull Set<String> nodeIds() {
         return index().keySet();
     }
 
@@ -87,7 +88,8 @@ public record ExecutionDag(UUID groupId, List<DagNode> nodes) {
     }
 
     /** Convenience: build a DAG from a list of node ids + dependencies. */
-    public static ExecutionDag linear(UUID groupId, List<String> nodeIds) {
+    public static @NonNull ExecutionDag linear(
+            @NonNull UUID groupId, @NonNull List<String> nodeIds) {
         if (nodeIds.isEmpty()) {
             return new ExecutionDag(groupId, List.of());
         }

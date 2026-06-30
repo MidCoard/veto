@@ -25,8 +25,8 @@ val slf4jVersion: String by rootProject.extra
 val logbackVersion: String by rootProject.extra
 
 dependencies {
-    // Jetbrains nullability annotations
-    compileOnly("org.jetbrains:annotations:26.1.0")
+    // JSpecify nullability annotations
+    compileOnly("org.jspecify:jspecify:1.0.0")
 
     // veto-protocol (wire types + shared interaction protocol + palette + logging).
     // Deliberately NOT veto-core (no Spring).

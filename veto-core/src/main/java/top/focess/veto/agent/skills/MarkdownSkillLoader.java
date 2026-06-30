@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Stream;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -30,7 +31,8 @@ public class MarkdownSkillLoader {
     private final YAMLMapper yamlMapper = new YAMLMapper();
 
     /** Scans the base skills directory and parses all {@code SKILL.md} files. */
-    public Map<String, Skill> loadSkillsFromDir(Path skillsDir, SkillSourceType sourceType) {
+    public Map<String, @NonNull Skill> loadSkillsFromDir(
+            @NonNull Path skillsDir, @NonNull SkillSourceType sourceType) {
         Map<String, Skill> skillsMap = new HashMap<>();
         if (!Files.exists(skillsDir) || !Files.isDirectory(skillsDir)) {
             return skillsMap;
@@ -47,7 +49,8 @@ public class MarkdownSkillLoader {
     }
 
     /** Splits YAML frontmatter from Markdown body and deserializes the Skill. */
-    public Optional<Skill> parseSkillFile(Path path, SkillSourceType sourceType) {
+    public @NonNull Optional<Skill> parseSkillFile(
+            @NonNull Path path, @NonNull SkillSourceType sourceType) {
         try {
             String content = Files.readString(path, StandardCharsets.UTF_8);
             String[] parts = content.split("(?m)^---$");
@@ -86,7 +89,7 @@ public class MarkdownSkillLoader {
     }
 
     /** Recomputes the SHA-256 of the on-disk SKILL.md body and compares it to the stored hash. */
-    public boolean verifyIntegrity(Skill skill) {
+    public boolean verifyIntegrity(@NonNull Skill skill) {
         Path skillFile = skill.skillDirectory().resolve("SKILL.md");
         try {
             String content = Files.readString(skillFile, StandardCharsets.UTF_8);

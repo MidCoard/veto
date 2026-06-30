@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import org.jspecify.annotations.NonNull;
 
 /**
  * Resolves agent paths to host paths (VIRTUAL: virtual-under-`/` by root prefix; REAL: canonicalize
@@ -21,18 +22,21 @@ import java.util.List;
  */
 public class PathResolver {
 
-    private final List<WorkspaceRoot> roots;
-    private final PathMode pathMode;
+    private final @NonNull List<WorkspaceRoot> roots;
+    private final @NonNull PathMode pathMode;
     private final int currentRootIndex;
 
-    public PathResolver(List<WorkspaceRoot> roots, PathMode pathMode, int currentRootIndex) {
+    public
+    @NonNull
+    PathResolver(
+            @NonNull List<WorkspaceRoot> roots, @NonNull PathMode pathMode, int currentRootIndex) {
         this.roots = roots;
         this.pathMode = pathMode;
         this.currentRootIndex = currentRootIndex;
     }
 
     /** Resolves an agent path to a host path + which root, or out-of-scope. */
-    public Resolution resolveToHost(String agentPath) {
+    public @NonNull Resolution resolveToHost(@NonNull String agentPath) {
         if (agentPath == null || agentPath.isBlank()) {
             return Resolution.outOfScope(null);
         }

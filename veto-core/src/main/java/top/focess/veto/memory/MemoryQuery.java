@@ -3,6 +3,7 @@ package top.focess.veto.memory;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import org.jspecify.annotations.NonNull;
 
 /**
  * A query against the {@link MemoryStore}. Carries the query text (to be embedded at search time),
@@ -32,13 +33,15 @@ public record MemoryQuery(
     }
 
     /** A session-scoped search across the given tiers. */
-    public static MemoryQuery session(String queryText, UUID userId, UUID sessionId) {
+    public static @NonNull MemoryQuery session(
+            @NonNull String queryText, @NonNull UUID userId, @NonNull UUID sessionId) {
         return new MemoryQuery(
                 queryText, List.of(MemoryTier.SESSION), sessionId, null, userId, 5, 0.5f);
     }
 
     /** A cross-session insights search. */
-    public static MemoryQuery crossSession(String queryText, UUID userId) {
+    public static @NonNull MemoryQuery crossSession(
+            @NonNull String queryText, @NonNull UUID userId) {
         return new MemoryQuery(
                 queryText, List.of(MemoryTier.CROSS_SESSION), null, null, userId, 5, 0.5f);
     }

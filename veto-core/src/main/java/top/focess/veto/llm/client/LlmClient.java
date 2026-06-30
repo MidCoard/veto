@@ -1,5 +1,6 @@
 package top.focess.veto.llm.client;
 
+import org.jspecify.annotations.NonNull;
 import top.focess.veto.llm.core.ResolvedRequest;
 
 /**
@@ -22,7 +23,8 @@ public abstract class LlmClient {
      * @return the raw completion from the provider
      * @throws Exception if the SDK call fails
      */
-    public abstract RawCompletion complete(ResolvedRequest request) throws Exception;
+    public abstract @NonNull RawCompletion complete(@NonNull ResolvedRequest request)
+            throws Exception;
 
     /**
      * Raw provider output plus a secret-free, audit-safe summary of the request that produced it.
@@ -30,5 +32,5 @@ public abstract class LlmClient {
      * @param requestSummary a non-sensitive summary of the request
      * @param rawResponse the raw response string from the provider
      */
-    public record RawCompletion(String requestSummary, String rawResponse) {}
+    public record RawCompletion(@NonNull String requestSummary, @NonNull String rawResponse) {}
 }

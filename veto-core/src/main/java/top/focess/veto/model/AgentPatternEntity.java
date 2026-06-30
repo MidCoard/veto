@@ -3,6 +3,7 @@ package top.focess.veto.model;
 import jakarta.persistence.*;
 import java.time.Instant;
 import java.util.UUID;
+import org.jspecify.annotations.NonNull;
 
 @Entity
 @Table(name = "agent_patterns")
@@ -83,7 +84,7 @@ public class AgentPatternEntity {
         return name;
     }
 
-    public void setName(String name) {
+    public void setName(@NonNull String name) {
         this.name = name;
     }
 
@@ -91,7 +92,7 @@ public class AgentPatternEntity {
         return provider;
     }
 
-    public void setProvider(String provider) {
+    public void setProvider(@NonNull String provider) {
         this.provider = provider;
     }
 
@@ -99,7 +100,7 @@ public class AgentPatternEntity {
         return model;
     }
 
-    public void setModel(String model) {
+    public void setModel(@NonNull String model) {
         this.model = model;
     }
 
@@ -107,7 +108,7 @@ public class AgentPatternEntity {
         return credentialKey;
     }
 
-    public void setCredentialKey(String credentialKey) {
+    public void setCredentialKey(@NonNull String credentialKey) {
         this.credentialKey = credentialKey;
     }
 
@@ -115,7 +116,7 @@ public class AgentPatternEntity {
         return systemPrompt;
     }
 
-    public void setSystemPrompt(String systemPrompt) {
+    public void setSystemPrompt(@NonNull String systemPrompt) {
         this.systemPrompt = systemPrompt;
     }
 
@@ -123,7 +124,7 @@ public class AgentPatternEntity {
         return owner;
     }
 
-    public void setOwner(String owner) {
+    public void setOwner(@NonNull String owner) {
         this.owner = owner;
     }
 
@@ -131,7 +132,7 @@ public class AgentPatternEntity {
         return createdAt;
     }
 
-    public void setCreatedAt(Instant createdAt) {
+    public void setCreatedAt(@NonNull Instant createdAt) {
         this.createdAt = createdAt;
     }
 
@@ -139,7 +140,7 @@ public class AgentPatternEntity {
         return topModel;
     }
 
-    public void setTopModel(String topModel) {
+    public void setTopModel(@NonNull String topModel) {
         this.topModel = topModel;
     }
 
@@ -147,7 +148,7 @@ public class AgentPatternEntity {
         return midModel;
     }
 
-    public void setMidModel(String midModel) {
+    public void setMidModel(@NonNull String midModel) {
         this.midModel = midModel;
     }
 
@@ -155,7 +156,7 @@ public class AgentPatternEntity {
         return lowModel;
     }
 
-    public void setLowModel(String lowModel) {
+    public void setLowModel(@NonNull String lowModel) {
         this.lowModel = lowModel;
     }
 }

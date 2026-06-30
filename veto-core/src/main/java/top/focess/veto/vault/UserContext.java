@@ -1,5 +1,7 @@
 package top.focess.veto.vault;
 
+import org.jspecify.annotations.NonNull;
+
 /**
  * Thread-local context holder for the currently authenticated user in Veto. This enables multi-user
  * request threads (e.g. from REST API endpoints or specific ZMQ terminal identities) to access
@@ -16,7 +18,7 @@ public final class UserContext {
      *
      * @param username the username to set
      */
-    public static void set(String username) {
+    public static void set(@NonNull String username) {
         CURRENT_USER.set(username);
     }
 

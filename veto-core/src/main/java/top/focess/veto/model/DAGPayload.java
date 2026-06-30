@@ -2,6 +2,7 @@ package top.focess.veto.model;
 
 import java.time.Instant;
 import java.util.*;
+import org.jspecify.annotations.NonNull;
 
 /**
  * A DAG (Directed Acyclic Graph) task payload routed through bus Communication Bus. Each DAGPayload
@@ -9,15 +10,15 @@ import java.util.*;
  */
 public class DAGPayload {
 
-    private final String id;
-    private final String taskType;
-    private final Map<String, Object> parameters;
-    private final Set<String> dependencies;
-    private final DAGPayloadStatus status;
-    private final Instant createdAt;
-    private final Instant updatedAt;
-    private final String sourceComponent;
-    private final String targetComponent;
+    private final @NonNull String id;
+    private final @NonNull String taskType;
+    private final @NonNull Map<String, Object> parameters;
+    private final @NonNull Set<String> dependencies;
+    private final @NonNull DAGPayloadStatus status;
+    private final @NonNull Instant createdAt;
+    private final @NonNull Instant updatedAt;
+    private final @NonNull String sourceComponent;
+    private final @NonNull String targetComponent;
 
     public DAGPayload(
             String id,
@@ -101,7 +102,7 @@ public class DAGPayload {
         return targetComponent;
     }
 
-    public DAGPayload withStatus(DAGPayloadStatus newStatus) {
+    public @NonNull DAGPayload withStatus(@NonNull DAGPayloadStatus newStatus) {
         Map<String, Object> newParams = new HashMap<>(parameters);
         return new DAGPayload(
                 id,
@@ -115,7 +116,7 @@ public class DAGPayload {
                 targetComponent);
     }
 
-    public DAGPayload withUpdatedParameters(Map<String, Object> newParams) {
+    public @NonNull DAGPayload withUpdatedParameters(@NonNull Map<String, Object> newParams) {
         Map<String, Object> merged = new HashMap<>(this.parameters);
         merged.putAll(newParams);
         return new DAGPayload(
@@ -151,42 +152,42 @@ public class DAGPayload {
         private String sourceComponent;
         private String targetComponent;
 
-        public Builder id(String id) {
+        public @NonNull Builder id(@NonNull String id) {
             this.id = id;
             return this;
         }
 
-        public Builder taskType(String taskType) {
+        public @NonNull Builder taskType(@NonNull String taskType) {
             this.taskType = taskType;
             return this;
         }
 
-        public Builder parameter(String key, Object value) {
+        public @NonNull Builder parameter(@NonNull String key, @NonNull Object value) {
             this.parameters.put(key, value);
             return this;
         }
 
-        public Builder parameters(Map<String, Object> parameters) {
+        public @NonNull Builder parameters(@NonNull Map<String, Object> parameters) {
             this.parameters.putAll(parameters);
             return this;
         }
 
-        public Builder dependency(String depId) {
+        public @NonNull Builder dependency(@NonNull String depId) {
             this.dependencies.add(depId);
             return this;
         }
 
-        public Builder dependencies(Set<String> dependencies) {
+        public @NonNull Builder dependencies(@NonNull Set<String> dependencies) {
             this.dependencies.addAll(dependencies);
             return this;
         }
 
-        public Builder sourceComponent(String sourceComponent) {
+        public @NonNull Builder sourceComponent(@NonNull String sourceComponent) {
             this.sourceComponent = sourceComponent;
             return this;
         }
 
-        public Builder targetComponent(String targetComponent) {
+        public @NonNull Builder targetComponent(@NonNull String targetComponent) {
             this.targetComponent = targetComponent;
             return this;
         }
@@ -203,7 +204,7 @@ public class DAGPayload {
     }
 
     @Override
-    public boolean equals(Object o) {
+    public boolean equals(@NonNull Object o) {
         if (this == o) return true;
         if (!(o instanceof DAGPayload)) return false;
         DAGPayload that = (DAGPayload) o;

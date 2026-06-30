@@ -4,6 +4,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -14,7 +15,7 @@ public class ReconnectionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(ReconnectionHandler.class);
 
-    private final BusConfiguration config;
+    private final @NonNull BusConfiguration config;
     private final AtomicInteger reconnectAttempts = new AtomicInteger(0);
     private final ScheduledExecutorService scheduler =
             Executors.newSingleThreadScheduledExecutor(
@@ -27,12 +28,14 @@ public class ReconnectionHandler {
     private volatile String lastBackendUrl;
     private volatile boolean reconnecting = false;
 
-    public ReconnectionHandler(BusConfiguration config) {
+    public
+    @NonNull
+    ReconnectionHandler(@NonNull BusConfiguration config) {
         this.config = config;
     }
 
     /** Schedule an exponential-backoff reconnection attempt. */
-    public void scheduleReconnect(WebSocketBus bus, String backendUrl) {
+    public void scheduleReconnect(@NonNull WebSocketBus bus, @NonNull String backendUrl) {
         if (backendUrl == null || backendUrl.isEmpty()) {
             log.warn("bus Reconnect: No backend URL to reconnect to");
             return;

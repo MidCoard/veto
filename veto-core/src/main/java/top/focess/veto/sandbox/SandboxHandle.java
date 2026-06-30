@@ -1,6 +1,7 @@
 package top.focess.veto.sandbox;
 
 import java.nio.file.Path;
+import org.jspecify.annotations.NonNull;
 
 /**
  * An in-memory handle to a provisioned sandbox session. Held by {@link SandboxManager} keyed by
@@ -10,4 +11,5 @@ import java.nio.file.Path;
  * @param runtimeRef an opaque reference to the runtime resource (process/container/vm), substrate
  * @param workspaceRoot the canonical workspace root all relative paths resolve under
  */
-public record SandboxHandle(String sessionId, Object runtimeRef, Path workspaceRoot) {}
+public record SandboxHandle(
+        @NonNull String sessionId, @NonNull Object runtimeRef, @NonNull Path workspaceRoot) {}

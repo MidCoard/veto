@@ -5,11 +5,13 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /** A multi-root workspace entity. */
-public record Workspace(List<WorkspaceRoot> roots, PathMode pathMode, int currentRootIndex) {
+public record Workspace(
+        @NonNull List<WorkspaceRoot> roots, @NonNull PathMode pathMode, int currentRootIndex) {
 
     private static final Logger log = LoggerFactory.getLogger(Workspace.class);
 
@@ -62,7 +64,7 @@ public record Workspace(List<WorkspaceRoot> roots, PathMode pathMode, int curren
     }
 
     /** The N=1 case (today's single-root usage). */
-    public static Workspace single(Path hostPath, PathMode mode) {
+    public static @NonNull Workspace single(@NonNull Path hostPath, @NonNull PathMode mode) {
         return new Workspace(List.of(WorkspaceRoot.probe(hostPath, TrustMarker.OWNED)), mode, 0);
     }
 
@@ -72,7 +74,8 @@ public record Workspace(List<WorkspaceRoot> roots, PathMode pathMode, int curren
      * working dir). {@code pathMode} selects VIRTUAL vs REAL ("VIRTUAL" → VIRTUAL, anything else →
      * REAL).
      */
-    public static Workspace fromConfig(String legacyRoot, String rootsCsv, String pathMode) {
+    public static @NonNull Workspace fromConfig(
+            @NonNull String legacyRoot, @NonNull String rootsCsv, @NonNull String pathMode) {
         PathMode mode = "VIRTUAL".equalsIgnoreCase(pathMode) ? PathMode.VIRTUAL : PathMode.REAL;
         if (rootsCsv != null && !rootsCsv.isBlank()) {
             List<WorkspaceRoot> roots =

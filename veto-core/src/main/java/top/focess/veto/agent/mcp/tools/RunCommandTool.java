@@ -1,7 +1,7 @@
 package top.focess.veto.agent.mcp.tools;
 
-import jakarta.annotation.Nullable;
 import java.util.List;
+import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.mcp.Doc;
 import top.focess.veto.agent.mcp.NativeMcpTool;
@@ -41,8 +41,8 @@ public final class RunCommandTool implements NativeMcpTool<RunCommandTool.Args> 
             @SecurityHint(ParamCategory.FILESYSTEM_PATH)
                     @Doc("Working directory; must be under an allowed root (Gateway-checked).")
                     String cwd,
-            @Nullable
-                    @Doc(
+            @Doc(
+                            /* annotation was: @Nullable */
                             "How Veto connects the commands: STOP_ON_FAILURE (default), RUN_ALL, or PIPE.")
                     String connect) {}
 
@@ -63,7 +63,7 @@ public final class RunCommandTool implements NativeMcpTool<RunCommandTool.Args> 
     }
 
     @Override
-    public String execute(Args args) {
+    public @NonNull String execute(@NonNull Args args) {
         throw new UnsupportedOperationException(
                 "run_command execution is routed through the Sandbox substrate by McpEngine.execute, "
                         + "not through NativeMcpTool.execute.");

@@ -1,5 +1,7 @@
 package top.focess.veto.llm.exceptions;
 
+import org.jspecify.annotations.NonNull;
+
 /** Provider rate-limit (HTTP 429). Retryable with backoff. */
 public class LlmRateLimitException extends LlmException {
     /**
@@ -8,7 +10,9 @@ public class LlmRateLimitException extends LlmException {
      * @param message the detail message
      * @param cause the cause of the exception
      */
-    public LlmRateLimitException(String message, Throwable cause) {
+    public
+    @NonNull
+    LlmRateLimitException(@NonNull String message, @NonNull Throwable cause) {
         super(message, cause, true);
     }
 }

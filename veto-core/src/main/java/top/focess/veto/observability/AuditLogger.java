@@ -3,6 +3,7 @@ package top.focess.veto.observability;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import java.util.concurrent.atomic.AtomicLong;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -18,9 +19,9 @@ public class AuditLogger {
 
     private static final Logger log = LoggerFactory.getLogger(AuditLogger.class);
 
-    private final ObservabilityConfiguration config;
-    private final TamperProofStore tamperProofStore;
-    private final DiffCalculator diffCalculator;
+    private final @NonNull ObservabilityConfiguration config;
+    private final @NonNull TamperProofStore tamperProofStore;
+    private final @NonNull DiffCalculator diffCalculator;
 
     private final AtomicLong totalRecordsWritten = new AtomicLong(0);
 
@@ -127,7 +128,8 @@ public class AuditLogger {
     }
 
     /** Log a credential injection event (without the actual credential values). */
-    public void logCredentialInjection(String dagPayloadId, String requestId, String credKeys) {
+    public void logCredentialInjection(
+            @NonNull String dagPayloadId, @NonNull String requestId, @NonNull String credKeys) {
         AuditRecord record =
                 new AuditRecord(
                         dagPayloadId,

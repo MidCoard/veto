@@ -2,6 +2,7 @@ package top.focess.veto.veto;
 
 import java.util.*;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -94,7 +95,7 @@ public class SemanticRedactor {
      * Perform first-pass deterministic redaction on the payload. Returns a RedactionReport with all
      * findings and the redacted payload.
      */
-    public RedactionReport deterministicRedact(String originalPayload) {
+    public @NonNull RedactionReport deterministicRedact(@NonNull String originalPayload) {
         String redacted = originalPayload;
         List<RedactionEntry> entries = new ArrayList<>();
 
@@ -145,7 +146,7 @@ public class SemanticRedactor {
      * Perform semantic redaction using the local SLM for complex patterns. This enriches the
      * deterministic redaction with LLM-powered understanding.
      */
-    public String semanticRedact(String payload, String llmSuggestion) {
+    public @NonNull String semanticRedact(@NonNull String payload, @NonNull String llmSuggestion) {
         // Combine deterministic + SLM-guided redaction
         // The LLM (via LlamaCppBridge) provides structured suggestions about
         // what should be redacted based on semantic understanding.
@@ -177,7 +178,7 @@ public class SemanticRedactor {
     }
 
     /** Add a custom proprietary parameter pattern. */
-    public void addProprietaryPattern(String regex) {
+    public void addProprietaryPattern(@NonNull String regex) {
         proprietaryParameterPatterns.add(Pattern.compile(regex));
         log.info("gateway Redactor: Added proprietary pattern '{}'", regex);
     }
@@ -194,9 +195,13 @@ public class SemanticRedactor {
         }
     }
 
-    public record RedactionEntry(RedactionType type, String originalExcerpt, String replacement) {}
+    public record RedactionEntry(
+            @NonNull RedactionType type,
+            @NonNull String originalExcerpt,
+            @NonNull String replacement) {}
 
-    public record RedactionRule(Pattern pattern, String replacement, RedactionType type) {}
+    public record RedactionRule(
+            @NonNull Pattern pattern, @NonNull String replacement, @NonNull RedactionType type) {}
 
     public enum RedactionType {
         IP_ADDRESS,

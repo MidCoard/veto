@@ -1,5 +1,6 @@
 package top.focess.veto.llm.egress;
 
+import org.jspecify.annotations.NonNull;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import top.focess.veto.llm.core.ProviderType;
@@ -17,14 +18,16 @@ import top.focess.veto.llm.exceptions.ModelCapabilityException;
 @Component
 @ConditionalOnProperty(name = "veto.llm.egress.mode", havingValue = "proxy")
 public class ProxyEgress implements LlmEgress {
-    private final LlmEgressProperties properties;
+    private final @NonNull LlmEgressProperties properties;
 
     /**
      * Constructs a new ProxyEgress with the specified egress properties.
      *
      * @param properties the configuration properties for LLM egress
      */
-    public ProxyEgress(LlmEgressProperties properties) {
+    public
+    @NonNull
+    ProxyEgress(@NonNull LlmEgressProperties properties) {
         this.properties = properties;
     }
 

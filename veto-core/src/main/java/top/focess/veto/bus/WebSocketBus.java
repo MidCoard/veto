@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.*;
 import java.util.function.Consumer;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -24,10 +25,10 @@ public class WebSocketBus extends TextWebSocketHandler {
 
     private static final Logger log = LoggerFactory.getLogger(WebSocketBus.class);
 
-    private final BusConfiguration config;
-    private final ObjectMapper objectMapper;
-    private final HeartbeatManager heartbeatManager;
-    private final ReconnectionHandler reconnectionHandler;
+    private final @NonNull BusConfiguration config;
+    private final @NonNull ObjectMapper objectMapper;
+    private final @NonNull HeartbeatManager heartbeatManager;
+    private final @NonNull ReconnectionHandler reconnectionHandler;
 
     private volatile WebSocketSession session;
     private final Map<String, Consumer<DAGPayload>> dagRouteTable = new ConcurrentHashMap<>();
@@ -45,7 +46,7 @@ public class WebSocketBus extends TextWebSocketHandler {
     }
 
     /** Connect to the cloud backend WebSocket endpoint. */
-    public CompletableFuture<Boolean> connect(String backendUrl) {
+    public @NonNull CompletableFuture<Boolean> connect(@NonNull String backendUrl) {
         CompletableFuture<Boolean> future = new CompletableFuture<>();
         Thread.ofVirtual()
                 .start(
@@ -76,19 +77,20 @@ public class WebSocketBus extends TextWebSocketHandler {
     }
 
     /** Register a DAG payload route. */
-    public void registerDAGRoute(String taskType, Consumer<DAGPayload> handler) {
+    public void registerDAGRoute(@NonNull String taskType, @NonNull Consumer<DAGPayload> handler) {
         dagRouteTable.put(taskType, handler);
         log.debug("Bus: Registered DAG route for taskType={}", taskType);
     }
 
     /** Register a generic message route. */
-    public void registerMessageRoute(String messageType, Consumer<String> handler) {
+    public void registerMessageRoute(
+            @NonNull String messageType, @NonNull Consumer<String> handler) {
         messageRouteTable.put(messageType, handler);
         log.debug("Bus: Registered message route for type={}", messageType);
     }
 
     /** Send a DAG payload to the cloud backend. */
-    public synchronized void sendDAGPayload(DAGPayload payload) {
+    public synchronized void sendDAGPayload(@NonNull DAGPayload payload) {
         if (!isConnected()) {
             log.warn("Bus: Cannot send DAG payload, not connected");
             return;
@@ -104,7 +106,7 @@ public class WebSocketBus extends TextWebSocketHandler {
     }
 
     /** Send a raw message. */
-    public synchronized void sendMessage(String message) {
+    public synchronized void sendMessage(@NonNull String message) {
         if (!isConnected()) {
             log.warn("Bus: Cannot send message, not connected");
             return;
@@ -117,7 +119,8 @@ public class WebSocketBus extends TextWebSocketHandler {
     }
 
     @Override
-    protected void handleTextMessage(WebSocketSession session, TextMessage message) {
+    protected void handleTextMessage(
+            @NonNull WebSocketSession session, @NonNull TextMessage message) {
         String payload = message.getPayload();
         try {
             DAGPayload dagPayload = objectMapper.readValue(payload, DAGPayload.class);
@@ -139,7 +142,8 @@ public class WebSocketBus extends TextWebSocketHandler {
     }
 
     @Override
-    public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
+    public void afterConnectionClosed(
+            @NonNull WebSocketSession session, @NonNull CloseStatus status) {
         log.warn(
                 "Bus: Connection closed (code={}, reason={})",
                 status.getCode(),
@@ -150,7 +154,8 @@ public class WebSocketBus extends TextWebSocketHandler {
     }
 
     @Override
-    public void handleTransportError(WebSocketSession session, Throwable exception) {
+    public void handleTransportError(
+            @NonNull WebSocketSession session, @NonNull Throwable exception) {
         log.error("Bus: Transport error", exception);
     }
 

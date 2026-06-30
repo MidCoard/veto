@@ -1,10 +1,10 @@
 package top.focess.veto.terminal;
 
 import java.util.List;
-import org.jetbrains.annotations.NotNull;
 import org.jline.terminal.Terminal;
 import org.jline.utils.AttributedString;
 import org.jline.utils.Status;
+import org.jspecify.annotations.NonNull;
 import top.focess.veto.client.core.ClientSession;
 import top.focess.veto.client.core.StyleToken;
 import top.focess.veto.client.core.Theme;
@@ -24,7 +24,7 @@ public final class TerminalStatus {
     private final ClientSession session;
 
     public TerminalStatus(
-            @NotNull Terminal terminal, @NotNull ClientSession session, @NotNull Theme theme) {
+            @NonNull Terminal terminal, @NonNull ClientSession session, @NonNull Theme theme) {
         this.theme = theme;
         this.session = session;
         this.status = Status.getStatus(terminal);

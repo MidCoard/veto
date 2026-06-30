@@ -1,6 +1,7 @@
 package top.focess.veto.llm.core;
 
 import java.util.List;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -24,8 +25,8 @@ public class DefaultUniformLLMCaller implements UniformLLMCaller {
     private static final Logger log = LoggerFactory.getLogger(DefaultUniformLLMCaller.class);
     private static final int MAX_ATTEMPTS = 3;
     private static final long BASE_BACKOFF_MILLIS = 250L;
-    private final List<LLMProviderStrategy> strategies;
-    private final LlmEgress egress;
+    private final @NonNull List<LLMProviderStrategy> strategies;
+    private final @NonNull LlmEgress egress;
 
     /**
      * Constructs a new DefaultUniformLLMCaller with the specified strategies and egress.
@@ -33,13 +34,16 @@ public class DefaultUniformLLMCaller implements UniformLLMCaller {
      * @param strategies the list of available LLM provider strategies
      * @param egress the egress strategy for outgoing calls
      */
-    public DefaultUniformLLMCaller(List<LLMProviderStrategy> strategies, LlmEgress egress) {
+    public
+    @NonNull
+    DefaultUniformLLMCaller(
+            @NonNull List<LLMProviderStrategy> strategies, @NonNull LlmEgress egress) {
         this.strategies = strategies;
         this.egress = egress;
     }
 
     @Override
-    public VetoResponse call(VetoRequest request) {
+    public @NonNull VetoResponse call(@NonNull VetoRequest request) {
         LLMProviderStrategy provider =
                 strategies.stream()
                         .filter(s -> s.supports(request.providerType()))

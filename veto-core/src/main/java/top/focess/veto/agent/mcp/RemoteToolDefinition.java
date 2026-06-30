@@ -1,6 +1,7 @@
 package top.focess.veto.agent.mcp;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import org.jspecify.annotations.NonNull;
 
 /**
  * An external (user-configured) tool discovered from a registered MCP server. Carries a raw JSON
@@ -12,7 +13,7 @@ public record RemoteToolDefinition(
         implements ToolDefinition {
 
     @Override
-    public ParameterSchema parameters() {
+    public @NonNull ParameterSchema parameters() {
         return new ParameterSchema.Raw(inputSchema);
     }
 }

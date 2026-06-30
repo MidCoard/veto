@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -26,21 +27,23 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
 
     private static final Logger log = LoggerFactory.getLogger(VetoWebSocketHandler.class);
 
-    private final ObjectMapper objectMapper;
-    private final VetoGateway vetoGateway;
+    private final @NonNull ObjectMapper objectMapper;
+    private final @NonNull VetoGateway vetoGateway;
 
     private final CopyOnWriteArrayList<WebSocketSession> sessions = new CopyOnWriteArrayList<>();
     private final ConcurrentHashMap<String, String> sessionRoutes = new ConcurrentHashMap<>();
 
     private final AtomicLong messageCounter = new AtomicLong(0);
 
-    public VetoWebSocketHandler(ObjectMapper objectMapper, VetoGateway vetoGateway) {
+    public
+    @NonNull
+    VetoWebSocketHandler(@NonNull ObjectMapper objectMapper, @NonNull VetoGateway vetoGateway) {
         this.objectMapper = objectMapper;
         this.vetoGateway = vetoGateway;
     }
 
     @Override
-    public void afterConnectionEstablished(WebSocketSession session) {
+    public void afterConnectionEstablished(@NonNull WebSocketSession session) {
         sessions.add(session);
         URI uri = session.getUri();
         if (uri != null) {
@@ -75,7 +78,8 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
     }
 
     @Override
-    protected void handleTextMessage(WebSocketSession session, TextMessage message) {
+    protected void handleTextMessage(
+            @NonNull WebSocketSession session, @NonNull TextMessage message) {
         String payload = message.getPayload();
         long seq = messageCounter.incrementAndGet();
 
@@ -230,7 +234,8 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
     }
 
     @Override
-    public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
+    public void afterConnectionClosed(
+            @NonNull WebSocketSession session, @NonNull CloseStatus status) {
         sessions.remove(session);
         sessionRoutes.remove(session.getId());
         log.info(
@@ -241,14 +246,15 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
     }
 
     @Override
-    public void handleTransportError(WebSocketSession session, Throwable exception) {
+    public void handleTransportError(
+            @NonNull WebSocketSession session, @NonNull Throwable exception) {
         log.error("WS Bus: Transport error for '{}': {}", session.getId(), exception.getMessage());
         sessions.remove(session);
         sessionRoutes.remove(session.getId());
     }
 
     /** Broadcast a message to all connected clients except the sender. */
-    public void broadcast(Map<String, Object> message, String excludeSessionId) {
+    public void broadcast(@NonNull Map<String, Object> message, @NonNull String excludeSessionId) {
         String json;
         try {
             json = objectMapper.writeValueAsString(message);
@@ -269,7 +275,7 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
     }
 
     /** Send a DAGPayload result to all connected clients. */
-    public void streamDAGResult(DAGPayload payload) {
+    public void streamDAGResult(@NonNull DAGPayload payload) {
         try {
             String json =
                     objectMapper.writeValueAsString(
@@ -287,7 +293,8 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
     }
 
     /** Stream a veto result to all connected clients. */
-    public void streamVetoResult(VetoGateway.VetoResult result, String dagPayloadId) {
+    public void streamVetoResult(
+            VetoGateway.@NonNull VetoResult result, @NonNull String dagPayloadId) {
         try {
             String json =
                     objectMapper.writeValueAsString(
@@ -308,7 +315,7 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
      * Broadcast a raw JSON string to all connected clients. Public so the {@link DeltaBusBridge}
      * can forward serialized {@link DeltaFrame}s to every connected client.
      */
-    public void broadcastRaw(String json) {
+    public void broadcastRaw(@NonNull String json) {
         for (WebSocketSession s : sessions) {
             if (s.isOpen()) {
                 try {

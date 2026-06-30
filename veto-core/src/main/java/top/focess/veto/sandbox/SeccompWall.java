@@ -4,6 +4,7 @@ import com.sun.jna.Library;
 import com.sun.jna.Native;
 import com.sun.jna.Pointer;
 import java.util.List;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -32,7 +33,7 @@ public class SeccompWall {
     private static final Logger log = LoggerFactory.getLogger(SeccompWall.class);
 
     /** The loaded libseccomp binding, or {@code null} when libseccomp is unavailable. */
-    private final LinuxLibSeccomp lib;
+    private final @NonNull LinuxLibSeccomp lib;
 
     public SeccompWall() {
         LinuxLibSeccomp loaded = null;

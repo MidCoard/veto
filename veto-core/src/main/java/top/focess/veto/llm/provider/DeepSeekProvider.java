@@ -1,6 +1,7 @@
 package top.focess.veto.llm.provider;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import top.focess.veto.llm.client.LlmClient;
@@ -26,7 +27,7 @@ public class DeepSeekProvider extends OpenAiCompatibleProvider {
     }
 
     @Override
-    public boolean supports(ProviderType providerType) {
+    public boolean supports(@NonNull ProviderType providerType) {
         return providerType == ProviderType.DEEPSEEK;
     }
 
@@ -36,7 +37,8 @@ public class DeepSeekProvider extends OpenAiCompatibleProvider {
     }
 
     @Override
-    protected LlmClient.RawCompletion invoke(ResolvedRequest resolved) throws Exception {
+    protected LlmClient.@NonNull RawCompletion invoke(@NonNull ResolvedRequest resolved)
+            throws Exception {
         return clientFactory
                 .deepSeek(resolved.baseUrl(), resolved.apiKey(), providerName())
                 .complete(resolved);

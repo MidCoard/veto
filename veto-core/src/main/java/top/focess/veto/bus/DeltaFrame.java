@@ -6,6 +6,7 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
+import org.jspecify.annotations.NonNull;
 
 /**
  * The Part 8 Delta-frame broker abstraction. A {@code DeltaFrame} is a single streaming update
@@ -68,7 +69,7 @@ public record DeltaFrame(
     }
 
     /** Serialize to JSON via the shared Jackson {@link ObjectMapper}. */
-    public String toJson(ObjectMapper mapper) {
+    public @NonNull String toJson(@NonNull ObjectMapper mapper) {
         try {
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("sessionId", sessionId.toString());
@@ -84,7 +85,7 @@ public record DeltaFrame(
     }
 
     /** Parse a JSON payload back into a {@code DeltaFrame}. */
-    public static DeltaFrame fromJson(ObjectMapper mapper, String json) {
+    public static @NonNull DeltaFrame fromJson(@NonNull ObjectMapper mapper, @NonNull String json) {
         try {
             JsonNode node = mapper.readTree(json);
             return new DeltaFrame(
@@ -114,27 +115,27 @@ public record DeltaFrame(
         private String text = "";
         private final Map<String, JsonNode> attrs = new LinkedHashMap<>();
 
-        public Builder sessionId(UUID v) {
+        public @NonNull Builder sessionId(@NonNull UUID v) {
             this.sessionId = v;
             return this;
         }
 
-        public Builder sequence(long v) {
+        public @NonNull Builder sequence(long v) {
             this.sequence = v;
             return this;
         }
 
-        public Builder kind(Kind v) {
+        public @NonNull Builder kind(@NonNull Kind v) {
             this.kind = v;
             return this;
         }
 
-        public Builder text(String v) {
+        public @NonNull Builder text(@NonNull String v) {
             this.text = v;
             return this;
         }
 
-        public Builder attr(String key, JsonNode value) {
+        public @NonNull Builder attr(@NonNull String key, @NonNull JsonNode value) {
             this.attrs.put(key, value);
             return this;
         }

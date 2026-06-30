@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.mcp.Doc;
 import top.focess.veto.agent.mcp.NativeMcpTool;
@@ -43,7 +44,7 @@ public final class WriteToFileTool implements NativeMcpTool<WriteToFileTool.Args
     }
 
     @Override
-    public String execute(Args args) throws IOException {
+    public @NonNull String execute(@NonNull Args args) throws IOException {
         Path path = Path.of(args.targetFile());
         if (!args.overwrite() && Files.exists(path)) {
             return "{\"status\":\"error\",\"error\":\"File exists and overwrite=false: "

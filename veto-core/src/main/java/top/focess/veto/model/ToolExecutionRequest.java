@@ -2,22 +2,25 @@ package top.focess.veto.model;
 
 import java.time.Instant;
 import java.util.*;
+import org.jspecify.annotations.NonNull;
 
 /** A request to execute a specific atomic tool capability within sandbox Sandbox. */
 public class ToolExecutionRequest {
 
-    private final String id;
-    private final String capabilityName;
-    private final Map<String, Object> arguments;
-    private final Set<String> requiredCredentials;
-    private final String sessionId;
-    private final String workflowId;
-    private final Instant createdAt;
+    private final @NonNull String id;
+    private final @NonNull String capabilityName;
+    private final @NonNull Map<String, Object> arguments;
+    private final @NonNull Set<String> requiredCredentials;
+    private final @NonNull String sessionId;
+    private final @NonNull String workflowId;
+    private final @NonNull Instant createdAt;
     private volatile ToolExecutionStatus status;
     private volatile String resultPayload;
     private volatile String errorMessage;
 
-    public ToolExecutionRequest(String capabilityName, Map<String, Object> arguments) {
+    public
+    @NonNull
+    ToolExecutionRequest(@NonNull String capabilityName, @NonNull Map<String, Object> arguments) {
         this(UUID.randomUUID().toString(), capabilityName, arguments, Set.of(), "", "");
     }
 
@@ -86,12 +89,12 @@ public class ToolExecutionRequest {
         return errorMessage;
     }
 
-    public synchronized void markCompleted(String result) {
+    public synchronized void markCompleted(@NonNull String result) {
         this.status = ToolExecutionStatus.COMPLETED;
         this.resultPayload = result;
     }
 
-    public synchronized void markFailed(String error) {
+    public synchronized void markFailed(@NonNull String error) {
         this.status = ToolExecutionStatus.FAILED;
         this.errorMessage = error;
     }
@@ -100,7 +103,7 @@ public class ToolExecutionRequest {
         this.status = ToolExecutionStatus.RUNNING;
     }
 
-    public synchronized void markVetoed(String reason) {
+    public synchronized void markVetoed(@NonNull String reason) {
         this.status = ToolExecutionStatus.VETOED;
         this.errorMessage = reason;
     }
@@ -114,7 +117,7 @@ public class ToolExecutionRequest {
     }
 
     @Override
-    public boolean equals(Object o) {
+    public boolean equals(@NonNull Object o) {
         if (this == o) return true;
         if (!(o instanceof ToolExecutionRequest)) return false;
         ToolExecutionRequest that = (ToolExecutionRequest) o;

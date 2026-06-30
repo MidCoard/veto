@@ -1,7 +1,7 @@
 package top.focess.veto.agent.mcp;
 
 import java.util.UUID;
-import org.jetbrains.annotations.NotNull;
+import org.jspecify.annotations.NonNull;
 
 /**
  * The call context for a tool execution: the calling agent's id and the user id. Threaded from
@@ -14,4 +14,4 @@ import org.jetbrains.annotations.NotNull;
  * @param userId the user id of the agent's session (for multi-user tenant isolation); always
  *     non-null
  */
-public record ToolCallContext(@NotNull String agentId, @NotNull UUID userId) {}
+public record ToolCallContext(@NonNull String agentId, @NonNull UUID userId) {}

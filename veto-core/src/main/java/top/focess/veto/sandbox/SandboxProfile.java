@@ -2,6 +2,7 @@ package top.focess.veto.sandbox;
 
 import java.nio.file.Path;
 import java.time.Duration;
+import org.jspecify.annotations.NonNull;
 
 /**
  * Substrate configuration for a session — the workspace root + resource caps. This is the Sandbox's
@@ -17,7 +18,7 @@ public record SandboxProfile(
         Path workspaceRoot, long maxMemoryMb, int maxCpuPercent, Duration maxWallClock) {
 
     /** A permissive default profile for the local substrate. */
-    public static SandboxProfile defaults(Path workspaceRoot) {
+    public static @NonNull SandboxProfile defaults(@NonNull Path workspaceRoot) {
         return new SandboxProfile(workspaceRoot, 512, 100, Duration.ofMinutes(10));
     }
 }

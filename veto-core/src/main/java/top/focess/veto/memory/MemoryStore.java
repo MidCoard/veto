@@ -2,6 +2,7 @@ package top.focess.veto.memory;
 
 import java.util.List;
 import java.util.UUID;
+import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.TurnRecord;
 
 /**
@@ -45,5 +46,5 @@ public interface MemoryStore {
      * A search result: the memory + its similarity score (1.0 = identical embedding, 0.0 =
      * orthogonal).
      */
-    record ScoredMemory(Memory memory, float score) {}
+    record ScoredMemory(@NonNull Memory memory, float score) {}
 }

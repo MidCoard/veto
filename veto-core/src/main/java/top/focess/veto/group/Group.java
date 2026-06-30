@@ -5,6 +5,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A group is a Leader-Mate collaboration spawned via {@code create_group} (delegation_spawning.md).
@@ -21,16 +23,16 @@ import java.util.UUID;
  * </ol>
  */
 public record Group(
-        UUID groupId,
-        String leaderId,
-        String userId,
-        String contextBrief,
-        ExecutionDag dag,
-        Blackboard blackboard,
-        Map<String, String> mates, // mateId → skillset
-        GroupState state,
-        Instant createdAt,
-        Instant disbandedAt) {
+        @NonNull UUID groupId,
+        @NonNull String leaderId,
+        @NonNull String userId,
+        @NonNull String contextBrief,
+        @NonNull ExecutionDag dag,
+        @NonNull Blackboard blackboard,
+        @NonNull Map<String, String> mates, // mateId → skillset
+        @NonNull GroupState state,
+        @NonNull Instant createdAt,
+        @Nullable Instant disbandedAt) {
 
     public Group {
         Objects.requireNonNull(groupId, "groupId");
@@ -46,12 +48,12 @@ public record Group(
         DISBANDED
     }
 
-    public static Group create(
-            String leaderId,
-            String userId,
-            String contextBrief,
-            Blackboard blackboard,
-            ExecutionDag dag) {
+    public static @NonNull Group create(
+            @NonNull String leaderId,
+            @NonNull String userId,
+            @Nullable String contextBrief,
+            @NonNull Blackboard blackboard,
+            @NonNull ExecutionDag dag) {
         UUID id = UUID.randomUUID();
         return new Group(
                 id,
@@ -66,7 +68,7 @@ public record Group(
                 null);
     }
 
-    public Group withDag(ExecutionDag newDag) {
+    public @NonNull Group withDag(@NonNull ExecutionDag newDag) {
         return new Group(
                 groupId,
                 leaderId,
@@ -80,7 +82,7 @@ public record Group(
                 disbandedAt);
     }
 
-    public Group withState(GroupState newState, Instant when) {
+    public @NonNull Group withState(@NonNull GroupState newState, @NonNull Instant when) {
         return new Group(
                 groupId,
                 leaderId,
@@ -94,7 +96,7 @@ public record Group(
                 newState == GroupState.DISBANDED ? when : disbandedAt);
     }
 
-    public Group withMate(String mateId, String skillset) {
+    public @NonNull Group withMate(@NonNull String mateId, @NonNull String skillset) {
         Map<String, String> next = new LinkedHashMap<>(mates);
         next.put(mateId, skillset);
         return new Group(
@@ -110,7 +112,7 @@ public record Group(
                 disbandedAt);
     }
 
-    public Group withoutMate(String mateId) {
+    public @NonNull Group withoutMate(@NonNull String mateId) {
         if (!mates.containsKey(mateId)) {
             return this;
         }

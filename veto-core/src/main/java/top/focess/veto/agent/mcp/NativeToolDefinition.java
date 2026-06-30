@@ -1,6 +1,7 @@
 package top.focess.veto.agent.mcp;
 
 import java.util.Map;
+import org.jspecify.annotations.NonNull;
 
 /**
  * A native (shipped) tool. Defined by a Java class annotated with {@code @ToolSecurity}. {@link
@@ -17,7 +18,7 @@ public record NativeToolDefinition(
         implements ToolDefinition {
 
     @Override
-    public ParameterSchema parameters() {
+    public @NonNull ParameterSchema parameters() {
         return new ParameterSchema.Structured(argsClass, paramHints);
     }
 }

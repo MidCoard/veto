@@ -1,5 +1,7 @@
 package top.focess.veto.agent.screening;
 
+import org.jspecify.annotations.NonNull;
+
 /**
  * The user's runtime-tunable auto-approve cell set. CRITICAL is always REFUSED in every mode.
  * Otherwise: STRICT approves only (HIGH, SAFE); BALANCED approves (HIGH, SAFE), (HIGH, ELEVATED),
@@ -8,7 +10,7 @@ package top.focess.veto.agent.screening;
 public enum ScreeningMode {
     STRICT {
         @Override
-        public ScreeningOutcome cell(Relevance r, Danger d) {
+        public @NonNull ScreeningOutcome cell(@NonNull Relevance r, @NonNull Danger d) {
             if (d == Danger.CRITICAL) return ScreeningOutcome.REFUSED;
             if (r == Relevance.HIGH && d == Danger.SAFE) return ScreeningOutcome.APPROVE;
             return ScreeningOutcome.ASK;
@@ -16,7 +18,7 @@ public enum ScreeningMode {
     },
     BALANCED {
         @Override
-        public ScreeningOutcome cell(Relevance r, Danger d) {
+        public @NonNull ScreeningOutcome cell(@NonNull Relevance r, @NonNull Danger d) {
             if (d == Danger.CRITICAL) return ScreeningOutcome.REFUSED;
             if (r == Relevance.HIGH && (d == Danger.SAFE || d == Danger.ELEVATED))
                 return ScreeningOutcome.APPROVE;
@@ -26,7 +28,7 @@ public enum ScreeningMode {
     },
     BYPASS_ALL {
         @Override
-        public ScreeningOutcome cell(Relevance r, Danger d) {
+        public @NonNull ScreeningOutcome cell(@NonNull Relevance r, @NonNull Danger d) {
             if (d == Danger.CRITICAL) return ScreeningOutcome.REFUSED;
             return ScreeningOutcome.APPROVE;
         }

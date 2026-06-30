@@ -1,5 +1,7 @@
 package top.focess.veto.agent.loop;
 
+import org.jspecify.annotations.NonNull;
+
 /**
  * The single-agent circuit breaker. One metric: <b>model calls between two {@code
  * UserPromptAction}s</b> (a model call = one {@code VetoResponse} in autonomous mode, one {@code
@@ -20,7 +22,9 @@ public final class LoopBreaker {
      * @param maxCallsPerEpisode the model-call ceiling between two user prompts; {@code < 0} =
      *     infinite (never trips).
      */
-    public LoopBreaker(long maxCallsPerEpisode) {
+    public
+    @NonNull
+    LoopBreaker(long maxCallsPerEpisode) {
         this.maxCallsPerEpisode = maxCallsPerEpisode;
     }
 

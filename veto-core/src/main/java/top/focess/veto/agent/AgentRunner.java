@@ -16,8 +16,8 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.agent.drift.ReadHistory;
@@ -74,32 +74,32 @@ public class AgentRunner {
     private static final int MAX_SCHEMA_RETRIES = 2;
 
     // --- identity / deps ---
-    private final @NotNull String agentId;
-    private final @NotNull AgentPersona persona;
-    private final @NotNull Set<String> whitelistedTools;
-    private final @NotNull McpEngine mcpEngine;
-    private final @NotNull Gateway gateway;
-    private final @NotNull HitlRegistry hitlRegistry;
-    private final @NotNull IngressDefense ingressDefense;
-    private final @NotNull List<LoopInterceptor> interceptors;
-    private final @NotNull PromptCompiler promptCompiler;
-    private final @NotNull UniformLLMCaller caller;
-    private final @NotNull ObjectMapper objectMapper;
-    private final @NotNull LoopBreaker breaker;
-    private final @NotNull ReadHistory readHistory;
+    private final @NonNull String agentId;
+    private final @NonNull AgentPersona persona;
+    private final @NonNull Set<String> whitelistedTools;
+    private final @NonNull McpEngine mcpEngine;
+    private final @NonNull Gateway gateway;
+    private final @NonNull HitlRegistry hitlRegistry;
+    private final @NonNull IngressDefense ingressDefense;
+    private final @NonNull List<LoopInterceptor> interceptors;
+    private final @NonNull PromptCompiler promptCompiler;
+    private final @NonNull UniformLLMCaller caller;
+    private final @NonNull ObjectMapper objectMapper;
+    private final @NonNull LoopBreaker breaker;
+    private final @NonNull ReadHistory readHistory;
     // The Part-8 Delta-broker seam: when present, each loop emission is published as a DeltaFrame
     // (per-session, broker-assigned sequence) so transports (WebSocket) can stream it. Nullable so
     // non-Spring callers (tests) keep working without a broker.
     private final @Nullable DeltaBroker deltaBroker;
-    private final @NotNull UUID sessionId;
+    private final @NonNull UUID sessionId;
     // The per-turn memory-capture service (Part 4 §3.1). Nullable — when null (tests / no capture
     // configured), appendTurn only updates the in-memory history; when present, each turn is also
     // captured into Session LTM + the raw-turn audit log.
-    private final @Nullable top.focess.veto.memory.MemoryCaptureService captureService;
-    private final @NotNull UUID userId;
+    private final top.focess.veto.memory.@Nullable MemoryCaptureService captureService;
+    private final @NonNull UUID userId;
 
     // --- model binding (provider/model/credential), set per prompt ---
-    private volatile @NotNull LlmBinding binding;
+    private volatile @NonNull LlmBinding binding;
 
     // --- loop state (mutated only by the runner's virtual thread) ---
     private final BlockingQueue<AgentAction> actionQueue = new LinkedBlockingQueue<>();
@@ -112,7 +112,7 @@ public class AgentRunner {
     private ActionsProgram activeProgram = null;
     private int programCounter = 0;
     private int currentSteps = 0;
-    private @NotNull Scope scope;
+    private @NonNull Scope scope;
     private CompletableFuture<AgentResult> resultFuture = CompletableFuture.completedFuture(null);
     private @Nullable Consumer<AgentResult> callback;
     private volatile boolean sessionAlive = true;
@@ -128,21 +128,21 @@ public class AgentRunner {
             new CopyOnWriteArrayList<>();
 
     public AgentRunner(
-            @NotNull String agentId,
-            @NotNull AgentPersona persona,
-            @NotNull McpEngine mcpEngine,
-            @NotNull Gateway gateway,
-            @NotNull HitlRegistry hitlRegistry,
-            @NotNull IngressDefense ingressDefense,
+            @NonNull String agentId,
+            @NonNull AgentPersona persona,
+            @NonNull McpEngine mcpEngine,
+            @NonNull Gateway gateway,
+            @NonNull HitlRegistry hitlRegistry,
+            @NonNull IngressDefense ingressDefense,
             @Nullable List<LoopInterceptor> interceptors,
-            @NotNull PromptCompiler promptCompiler,
-            @NotNull UniformLLMCaller caller,
-            @NotNull ObjectMapper objectMapper,
+            @NonNull PromptCompiler promptCompiler,
+            @NonNull UniformLLMCaller caller,
+            @NonNull ObjectMapper objectMapper,
             long maxCallsPerEpisode,
-            @NotNull LlmBinding binding,
+            @NonNull LlmBinding binding,
             @Nullable DeltaBroker deltaBroker,
-            @NotNull UUID userId,
-            @Nullable top.focess.veto.memory.MemoryCaptureService captureService) {
+            @NonNull UUID userId,
+            top.focess.veto.memory.@Nullable MemoryCaptureService captureService) {
         this.agentId = agentId;
         this.persona = persona;
         this.whitelistedTools =
@@ -1033,7 +1033,7 @@ public class AgentRunner {
      * before enqueueing removes the submit→await race — await always snapshots the future this task
      * will complete, not the previous episode's already-completed one.
      */
-    public void startTask(@Nullable Consumer<AgentResult> callback, @NotNull AgentAction action) {
+    public void startTask(@Nullable Consumer<AgentResult> callback, @NonNull AgentAction action) {
         this.callback = callback;
         this.resultFuture = new CompletableFuture<>();
         if (this.state == AgentState.INTERCEPTED) {
@@ -1042,11 +1042,11 @@ public class AgentRunner {
         actionQueue.add(action);
     }
 
-    public void enqueue(@NotNull AgentAction action) {
+    public void enqueue(@NonNull AgentAction action) {
         actionQueue.add(action);
     }
 
-    public void bind(@NotNull LlmBinding binding) {
+    public void bind(@NonNull LlmBinding binding) {
         this.binding = binding;
     }
 
@@ -1054,21 +1054,20 @@ public class AgentRunner {
      * Subscribes a user-facing-message listener (the emission seam; forwarded in {@link
      * #emitMessage}).
      */
-    public void addMessageListener(@NotNull Consumer<String> listener) {
+    public void addMessageListener(@NonNull Consumer<String> listener) {
         if (listener != null) {
             messageListeners.add(listener);
         }
     }
 
     /** Unsubscribes a user-facing-message listener. */
-    public void removeMessageListener(@NotNull Consumer<String> listener) {
+    public void removeMessageListener(@NonNull Consumer<String> listener) {
         if (listener != null) {
             messageListeners.remove(listener);
         }
     }
 
-    @NotNull
-    public AgentResult await(@NotNull Duration timeout)
+    public @NonNull AgentResult await(@NonNull Duration timeout)
             throws TimeoutException, InterruptedException {
         CompletableFuture<AgentResult> f = resultFuture;
         try {
@@ -1081,34 +1080,28 @@ public class AgentRunner {
         }
     }
 
-    @NotNull
-    public CompletableFuture<AgentResult> result() {
+    public @NonNull CompletableFuture<AgentResult> result() {
         return resultFuture;
     }
 
-    @NotNull
-    public AgentState state() {
+    public @NonNull AgentState state() {
         return state;
     }
 
-    @NotNull
-    public synchronized List<TurnRecord> history() {
+    public synchronized @NonNull List<TurnRecord> history() {
         return List.copyOf(history);
     }
 
-    @NotNull
-    public ReadHistory readHistory() {
+    public @NonNull ReadHistory readHistory() {
         return readHistory;
     }
 
     /** The whitelisted tool-name view (immutable). */
-    @NotNull
-    public Set<String> whitelistedToolsView() {
+    public @NonNull Set<String> whitelistedToolsView() {
         return whitelistedTools;
     }
 
-    @NotNull
-    public String agentId() {
+    public @NonNull String agentId() {
         return agentId;
     }
 
@@ -1138,11 +1131,11 @@ public class AgentRunner {
 
     /** A model binding: provider/model/credential/options + the Layer-1 system-prompt base. */
     public record LlmBinding(
-            @NotNull ProviderType provider,
-            @NotNull String model,
-            @NotNull String credentialKey,
-            @NotNull LlmOptions options,
-            @NotNull String systemPromptBase) {}
+            @NonNull ProviderType provider,
+            @NonNull String model,
+            @NonNull String credentialKey,
+            @NonNull LlmOptions options,
+            @NonNull String systemPromptBase) {}
 
     /** Signals a breaker trip (caught at the action boundary → IDLE + notice). */
     private static final class BreakerTripException extends RuntimeException {}

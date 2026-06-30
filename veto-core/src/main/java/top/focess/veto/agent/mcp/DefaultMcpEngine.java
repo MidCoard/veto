@@ -2,6 +2,8 @@ package top.focess.veto.agent.mcp;
 
 import java.util.List;
 import java.util.Set;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import top.focess.veto.llm.core.ToolCall;
 
 /**
@@ -19,17 +21,17 @@ import top.focess.veto.llm.core.ToolCall;
 public class DefaultMcpEngine implements McpEngine {
 
     @Override
-    public List<ToolDefinition> getActiveTools(Set<String> whitelist) {
+    public @NonNull List<ToolDefinition> getActiveTools(@NonNull Set<String> whitelist) {
         return List.of();
     }
 
     @Override
-    public ToolDefinition resolveDefinition(String toolName) {
+    public @Nullable ToolDefinition resolveDefinition(@NonNull String toolName) {
         return null;
     }
 
     @Override
-    public McpToolResult execute(ToolCall call, ToolDefinition def) {
+    public @NonNull McpToolResult execute(@NonNull ToolCall call, @NonNull ToolDefinition def) {
         return new McpToolResult(call.toolName(), call.callId(), false, "no McpEngine registered");
     }
 }

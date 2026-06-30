@@ -1,5 +1,7 @@
 package top.focess.veto.llm.egress;
 
+import org.jspecify.annotations.NonNull;
+
 /**
  * The effective transport target for a single LLM call: the base URL the SDK should hit and the
  * credential value it should present.
@@ -10,4 +12,4 @@ package top.focess.veto.llm.egress;
  * @param baseUrl the effective base URL for the call
  * @param apiKey the API key or internal token to use
  */
-public record EgressEndpoint(String baseUrl, String apiKey) {}
+public record EgressEndpoint(@NonNull String baseUrl, @NonNull String apiKey) {}

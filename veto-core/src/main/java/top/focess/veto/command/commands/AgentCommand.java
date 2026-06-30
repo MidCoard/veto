@@ -1,7 +1,7 @@
 package top.focess.veto.command.commands;
 
 import java.util.List;
-import org.jetbrains.annotations.NotNull;
+import org.jspecify.annotations.NonNull;
 import top.focess.command.Command;
 import top.focess.command.CommandCompletion;
 import top.focess.command.CommandResult;
@@ -19,7 +19,7 @@ public class AgentCommand extends VetoCommand {
     private final PromptHandler promptHandler;
 
     public AgentCommand(
-            @NotNull AgentPatternRepository repo, @NotNull PromptHandler promptHandler) {
+            @NonNull AgentPatternRepository repo, @NonNull PromptHandler promptHandler) {
         super("agent", "Manage active agent");
         this.repo = repo;
         this.promptHandler = promptHandler;
@@ -133,9 +133,8 @@ public class AgentCommand extends VetoCommand {
                 fixed("status").description("Show current active agent details"));
     }
 
-    @NotNull
-    private List<CommandCompletion> completePatternName(
-            @NotNull CommandSender sender, @NotNull Command cmd, @NotNull String[] argv) {
+    private @NonNull List<CommandCompletion> completePatternName(
+            @NonNull CommandSender sender, @NonNull Command cmd, @NonNull String[] argv) {
         if (!LOGGED_IN.test(sender)) return List.of();
         String u = ((VetoCommandSender) sender).username();
         String prefix = argv.length > 0 ? argv[argv.length - 1].toLowerCase() : "";
@@ -146,8 +145,7 @@ public class AgentCommand extends VetoCommand {
     }
 
     @Override
-    @NotNull
-    public List<String> usage(@NotNull CommandSender s) {
+    public @NonNull List<String> usage(@NonNull CommandSender s) {
         return List.of(
                 "/agent use <name> — Select an agent pattern to use",
                 "/agent create <provider> <model> [sysprompt] — Create an ad-hoc agent directly without a pattern",

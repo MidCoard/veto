@@ -2,6 +2,7 @@ package top.focess.veto.llm.config;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.jspecify.annotations.NonNull;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -19,7 +20,7 @@ public class LlmJacksonConfig {
      * @return the configured ObjectMapper
      */
     @Bean(LLM_OBJECT_MAPPER)
-    public ObjectMapper llmObjectMapper() {
+    public @NonNull ObjectMapper llmObjectMapper() {
         return new ObjectMapper()
                 .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     }
