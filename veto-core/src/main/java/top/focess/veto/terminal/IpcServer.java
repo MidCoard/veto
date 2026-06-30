@@ -16,6 +16,7 @@ import org.springframework.stereotype.Component;
 import org.zeromq.ZContext;
 import top.focess.veto.command.CommandRegistry;
 import top.focess.veto.command.VetoCommandSender;
+import top.focess.veto.contract.IpcClient;
 import top.focess.veto.contract.IpcFrame;
 import top.focess.veto.contract.IpcFrame.HintInfo;
 import top.focess.veto.contract.IpcMeta;
@@ -362,13 +363,6 @@ public class IpcServer {
                                                                 session.sender, req.raw());
                                                 session.lastActivityMillis =
                                                         System.currentTimeMillis();
-                                                if (result == null) {
-                                                    // A Request must always be answered with
-                                                    // exactly one terminal frame; a null dispatch
-                                                    // becomes an empty Done so the terminal never
-                                                    // hangs waiting.
-                                                    result = new IpcFrame.Done(Map.of(), null);
-                                                }
                                                 // Claim the single terminal frame : a cancel
                                                 // may have already sent Done{cancelled}; if so,
                                                 // this
@@ -435,6 +429,10 @@ public class IpcServer {
                 case IpcFrame.Hint h -> {
                     log.trace("HINT {}: {}", identity.substring(0, 8), h.raw());
                     HintInfo hint = registry.hint(session.sender, h.raw());
+                    log.trace(
+                            "HINT {}: → {}",
+                            identity.substring(0, 8),
+                            hint == HintInfo.EMPTY ? "EMPTY" : hint.displayText());
                     send(identity, new IpcFrame.HintResult(hint, h.seq()));
                 }
 
@@ -481,10 +479,10 @@ public class IpcServer {
                         session.lastActivityMillis = System.currentTimeMillis();
 
                 default -> {
-                    if (frame instanceof IpcFrame.Unknown u) {
+                    if (frame instanceof IpcFrame.Unknown(String type)) {
                         log.warn(
                                 "Unknown frame type '{}' from {} — protocol version mismatch?",
-                                u.type(),
+                                type,
                                 identity.substring(0, 8));
                     }
                 }

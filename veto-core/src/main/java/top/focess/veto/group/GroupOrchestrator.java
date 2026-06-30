@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.locks.ReentrantLock;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,6 +49,13 @@ public class GroupOrchestrator {
     /** Per-group ledger of last-seen turnSeq so each tick only processes new messages. */
     private final ConcurrentMap<UUID, Long> lastSeenSeq = new ConcurrentHashMap<>();
 
+    /**
+     * Per-group tick lock (F4). Serializes concurrent {@link #tick} calls on the same groupId so
+     * the lastSeenSeq read-modify-write and the ingest/dispatch/maybeComplete sequence are atomic
+     * per-group. Different groups can tick concurrently; only same-group ticks are serialized.
+     */
+    private final ConcurrentMap<UUID, ReentrantLock> tickLocks = new ConcurrentHashMap<>();
+
     /** A simple Mate-execution simulator (real Mates are agent loops; this is the harness). */
     private final MateExecutor mateExecutor = new MateExecutor();
 
@@ -89,8 +97,23 @@ public class GroupOrchestrator {
      * Run one orchestration tick on the group: ingest new Blackboard messages, advance the DAG,
      * dispatch dispatchable nodes, and emit outbound Blackboard messages. The updated group is
      * persisted back into the registry. Returns the updated group.
+     *
+     * <p>Concurrent ticks on the same groupId are serialized via a per-group lock (F4) so the
+     * lastSeenSeq read-modify-write and the ingest/dispatch/maybeComplete sequence are atomic.
+     * Different groups can tick concurrently.
      */
     public @NonNull Group tick(@NonNull UUID groupId) {
+        ReentrantLock lock = tickLocks.computeIfAbsent(groupId, k -> new ReentrantLock());
+        lock.lock();
+        try {
+            return tickInner(groupId);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /** Inner tick logic — called under the per-group lock. */
+    private @NonNull Group tickInner(@NonNull UUID groupId) {
         Group group = registry.get(groupId);
         if (group == null) {
             return null;
