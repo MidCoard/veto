@@ -168,6 +168,11 @@ public class PromptHandler {
      * IpcFrame.Delta} frames via {@link VetoCommandSender#output(String)} while the episode runs;
      * the final {@link IpcFrame.Done} carries only session metadata (the text was already
      * streamed). On failure the message was not streamed, so the {@link IpcFrame.Error} carries it.
+     *
+     * <p><b>Contract — must not throw</b> for any recoverable failure: every {@link Exception}
+     * (timeout, interruption, generic) is caught and returned as an {@link IpcFrame.Error}, so
+     * callers can rely on always receiving a terminal frame without wrapping this call in their own
+     * {@code try/catch}. Only an unrecoverable JVM {@link Error} could escape.
      */
     public IpcFrame.@NonNull TerminalResponse handle(
             @NonNull String prompt, @NonNull String terminalId, @NonNull VetoCommandSender sender) {
