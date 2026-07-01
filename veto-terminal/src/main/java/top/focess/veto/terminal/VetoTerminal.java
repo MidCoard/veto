@@ -97,8 +97,8 @@ public class VetoTerminal {
      * The sole swap-wake signal: set by the consumer thread (via {@link TerminalView#onPrompt}) to
      * request that the main thread's next {@code readLine} wake be treated as a Prompt-swap
      * re-render rather than a genuine Ctrl+C. The consumer sets this <b>before</b> calling {@link
-     * Thread#interrupt} (which breaks the blocking {@code readLine}), so "an interrupt
-     * fired" implies "the flag was set."
+     * Thread#interrupt} (which breaks the blocking {@code readLine}), so "an interrupt fired"
+     * implies "the flag was set."
      *
      * <p>It is read and cleared in exactly one place: the {@code UserInterruptException} catch in
      * {@link #repl}, <b>after</b> {@code readLine} throws. Reading/clearing it after the throw (not

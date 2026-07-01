@@ -150,18 +150,19 @@ public final class IpcClient implements AutoCloseable {
                     negotiatedVersion = version;
                     return;
                 }
-                case IpcFrame.Error e -> throw new RuntimeException("Backend rejected handshake: " + e.content());
+                case IpcFrame.Error e ->
+                        throw new RuntimeException("Backend rejected handshake: " + e.content());
 
-
-                // An unrelated frame arrived during handshake — protocol violation.
+                    // An unrelated frame arrived during handshake — protocol violation.
                 case IpcFrame.Terminate t ->
-                        throw new RuntimeException("Backend terminated during handshake: " + t.reason());
+                        throw new RuntimeException(
+                                "Backend terminated during handshake: " + t.reason());
 
-                case IpcFrame.ServerFrame serverFrame -> log.warn(
-                        "Unexpected {} frame during handshake — discarding (protocol violation)",
-                        frame.getClass().getSimpleName());
-                default -> {
-                }
+                case IpcFrame.ServerFrame serverFrame ->
+                        log.warn(
+                                "Unexpected {} frame during handshake — discarding (protocol violation)",
+                                frame.getClass().getSimpleName());
+                default -> {}
             }
         }
     }
@@ -203,7 +204,9 @@ public final class IpcClient implements AutoCloseable {
             return;
         }
         // Non-sequenced frames, and seq=0 responses (e.g. a streaming Error), reach the caller.
-        incomingQueue.offer(frame);
+        if (!incomingQueue.offer(frame)) {
+            log.warn("Incoming queue full — dropping {}", frame.getClass().getSimpleName());
+        }
     }
 
     /** Sends every queued outbound frame; never throws — logs send failures and continues. */
@@ -355,7 +358,9 @@ public final class IpcClient implements AutoCloseable {
     public void close() {
         if (closed) return;
         // Enqueue Bye so the IO loop's final drain flushes it before teardown.
-        outbox.offer(new IpcFrame.Bye());
+        if (!outbox.offer(new IpcFrame.Bye())) {
+            log.warn("Outbox full during close — Bye frame dropped");
+        }
         closed = true;
         heartbeatThread.interrupt();
         try {

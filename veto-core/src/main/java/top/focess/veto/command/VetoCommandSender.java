@@ -28,14 +28,20 @@ import top.focess.veto.terminal.IpcServer;
  * #receiveInput(String)} when an {@link IpcFrame.Input} frame arrives — completing the future and
  * unblocking the dispatch worker. No extra threads are spawned.
  *
- * <h3>Cooperative cancel (IPC interaction )</h3>
+ * <h3>Two-level cancel</h3>
  *
- * A {@link IpcFrame.Cancel} while a command is parked in {@code input} must not let the command
- * linger waiting out its timeout. {@link #cancelInput} completes the pending input future
- * exceptionally (a {@link CancellationException}), so {@code input.join} throws immediately and the
- * command unwinds — its terminal frame ({@code Done{cancelled}}, sent by the server's cancel
- * handler) resolves the {@link IpcFrame.Request}. The future is captured here because {@code
- * AbstractCommandSender}'s input-future queue is private.
+ * A {@link IpcFrame.Cancel} has two levels:
+ *
+ * <ol>
+ *   <li><b>Prompted</b> — the command is parked in {@code input} awaiting a reply. Cancel dismisses
+ *       just the current prompt (via {@link #cancelCurrentPrompt()}); the command continues and may
+ *       issue another prompt.
+ *   <li><b>Running</b> — the command is executing (not awaiting input). Cancel aborts the entire
+ *       in-flight request (the server calls {@code task.cancel(true)}).
+ * </ol>
+ *
+ * <p>Whether the command is prompted is determined by {@link #isPrompted()}, which checks the
+ * {@code inputFutures} queue inherited from {@link AbstractCommandSender} for an incomplete future.
  */
 public final class VetoCommandSender extends AbstractCommandSender {
 
@@ -44,13 +50,6 @@ public final class VetoCommandSender extends AbstractCommandSender {
     private final @NonNull IpcServer ipcServer;
     private volatile @Nullable String username;
     private final @NonNull String terminalId;
-
-    /**
-     * The currently-pending input future (the one a command is parked in {@code input.join} on), or
-     * {@code null} when no command awaits input. Captured so {@link #cancelInput} can complete it
-     * exceptionally to cooperatively unblock a cancel. Under 1:1 there is at most one at a time.
-     */
-    private volatile @Nullable CompletableFuture<String> pendingInput;
 
     /**
      * Constructs a new {@code VetoCommandSender} for the given terminal session.
@@ -179,25 +178,33 @@ public final class VetoCommandSender extends AbstractCommandSender {
     public @NonNull CompletableFuture<String> inputAsync(
             @NonNull String text, boolean mask, long timeoutMillis) {
         ipcServer.send(terminalId, new IpcFrame.Prompt(text, mask));
-        CompletableFuture<String> future = super.inputAsync(timeoutMillis);
-        pendingInput = future; // capture so cancelInput() can cooperatively unblock it
-        return future;
+        return super.inputAsync(timeoutMillis);
     }
 
+    // ── cancel ───────────────────────────────────────────────────────────
+
     /**
-     * Cooperatively unblocks a command parked in {@code input} (IPC interaction ): completes the
-     * pending input future exceptionally with a {@link CancellationException}, so {@code
-     * input.join} throws immediately instead of waiting out its timeout. A no-op if no input is
-     * pending (the command is not blocked in {@code input}).
+     * Cancels the current prompt: completes the pending input future exceptionally with a {@link
+     * CancellationException}, so {@code input.join} throws immediately instead of waiting out its
+     * timeout. The command continues — it may issue another prompt or complete normally.
      *
-     * <p>The command's terminal frame ({@code Done{cancelled}}) is sent by the server's cancel
-     * handler — this method only unblocks the parked input so the command unwinds.
+     * <p>This is an atomic check-and-cancel: it returns {@code true} only if a prompt was actually
+     * pending and was cancelled, avoiding the time-of-check-to-time-of-use race between checking
+     * prompted state and calling cancel.
+     *
+     * @return {@code true} if a pending prompt was cancelled, {@code false} if no prompt was
+     *     pending
      */
-    public void cancelInput() {
-        CompletableFuture<String> f = pendingInput;
-        pendingInput = null;
-        if (f != null && !f.isDone()) {
-            f.completeExceptionally(new CancellationException("input cancelled by user"));
+    public boolean cancelCurrentPrompt() {
+        for (CompletableFuture<String> f : inputFutures) {
+            if (!f.isDone()) {
+                if (f.completeExceptionally(new CancellationException("input cancelled by user"))) {
+                    log.debug("Cancelled current prompt");
+                    return true;
+                }
+            }
         }
+        return false;
     }
+
 }

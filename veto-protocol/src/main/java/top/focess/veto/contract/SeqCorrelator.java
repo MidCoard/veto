@@ -74,7 +74,9 @@ public final class SeqCorrelator {
         if (seq == 0) return;
         BlockingQueue<IpcFrame.SeqResponse> queue = handlers.get(seq);
         if (queue != null) {
-            queue.offer(response);
+            if (!queue.offer(response)) {
+                log.warn("Handler queue full for seq={} — dropping {}", seq, response);
+            }
         } else {
             log.debug("No handler registered for seq={} — dropping {}", seq, response);
         }
