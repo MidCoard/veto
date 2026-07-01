@@ -413,14 +413,19 @@ public class IpcServer {
 
                 case IpcFrame.Cancel c -> {
                     // Two-level cancel:
-                    //   1. If a prompt is pending — cancelCurrentPrompt() dismisses it
-                    //      (returns true). The command continues; no terminal frame is sent.
-                    //   2. If no prompt is pending — cancel the entire in-flight request,
-                    //      send Done{cancelled}, and dispatch the next queued request.
-                    // If no request is in-flight at all, the terminal believes one is running
-                    // (it's in RUNNING state) and is blocked awaiting a terminal frame — send
-                    // an Error to unblock it so it doesn't hang.
-                    // The pending queue is preserved — queued requests should still run.
+                    //   1. If a prompt is pending — cancelCurrentPrompt() dismisses it (returns
+                    //      true). The command continues; no terminal frame is sent.
+                    //   2. If no prompt is pending — claim the terminal flag, send Done{cancelled},
+                    //      and cancel(true) the in-flight future. cancel(true) fires the future's
+                    //      whenComplete, which releases the slot and dispatches the next queued
+                    //      request — so the user's next command is not blocked behind this one. The
+                    //      body keeps running until it winds down; its late sendTerminal is
+                    //      suppressed by the identity guard (the slot no longer belongs to it). If
+                    //      the flag was already set, the body already sent its terminal frame
+                    //      (cancel raced a normal completion) — send nothing and don't cancel.
+                    // If no request is in-flight at all, the terminal believes one is running (it's
+                    // in RUNNING state) and is blocked awaiting a terminal frame — send an Error to
+                    // unblock it so it doesn't hang.
                     session.requestLock.lock();
                     try {
                         if (session.activeRequest != null) {
@@ -429,19 +434,24 @@ public class IpcServer {
                                 log.trace(
                                         "CANC {}: dismissed current prompt",
                                         identity.substring(0, 8));
-                            } else {
-                                // Level 2: no prompt pending — cancel the entire in-flight request.
+                            } else if (!session.terminalSent) {
+                                // Level 2: claim the single terminal frame, then complete the
+                                // future so its whenComplete releases the slot and dispatches the
+                                // next queued request — the user's next command is not blocked
+                                // behind this cancelled one. The body keeps running until it winds
+                                // down; its late sendTerminal is suppressed by the identity guard
+                                // (the slot no longer belongs to it), so exactly-one still holds.
                                 CompletableFuture<Void> task = session.activeRequest;
-                                task.cancel(true);
+                                session.terminalSent = true;
                                 send(
                                         identity,
                                         new IpcFrame.Done(Map.of(IpcMeta.CANCELLED, true), null));
-                                session.activeRequest = null;
+                                task.cancel(true);
                                 log.trace(
                                         "CANC {}: cancelled in-flight request",
                                         identity.substring(0, 8));
-                                dispatchNextOrIdleLocked(session);
                             }
+                            // else: the body already sent its terminal frame — send nothing.
                         } else {
                             // No in-flight request — the terminal thinks one is running and is
                             // blocked awaiting a terminal frame. Send an Error to unblock it.
@@ -489,28 +499,31 @@ public class IpcServer {
      * Dispatches a {@link IpcFrame.Request} to the request pool and wires up the completion
      * callback.
      *
-     * <p>Caller must hold {@link Session#requestLock}.</b> This method stores the future in {@code
-     * session.activeRequest}, and attaches a {@code whenComplete} callback that re-acquires the
-     * lock to release the in-flight slot and dispatch the next queued request.
+     * <p>Caller must hold {@link Session#requestLock}. This method stores the future in {@code
+     * session.activeRequest}, resets {@link Session#terminalSent} for the new request, attaches a
+     * {@code whenComplete} that is the <em>sole</em> owner of slot release and dispatch-next, then
+     * submits the body to {@link #requestPool}.
+     *
+     * <p>The future is built explicitly (rather than via {@code runAsync}) so the body can pass its
+     * own identity ({@code task}) to {@link #sendTerminal}. That identity check is what lets a
+     * cancelled body — whose slot was reassigned to the next request when cancel completed this
+     * future early — be suppressed. The body completes the future itself (normally, or
+     * exceptionally on throw); cancel and close force-complete it via {@code cancel(true)}, which
+     * fires this {@code whenComplete} exactly once.
      *
      * @param session the session that owns the request
      * @param req the request frame to dispatch
      */
     private void dispatchRequestLocked(@NonNull Session session, IpcFrame.@NonNull Request req) {
         // Caller holds requestLock.
-
-        CompletableFuture<Void> task =
-                CompletableFuture.runAsync(
-                        () -> {
-                            IpcFrame.TerminalResponse response =
-                                    registry.dispatch(session.sender, req.raw());
-                            sendTerminal(session, response);
-                        },
-                        requestPool);
+        CompletableFuture<Void> task = new CompletableFuture<>();
 
         session.activeRequest = task;
+        session.terminalSent = false; // fresh exactly-once slot for this request
         log.trace("REQ  {}: dispatched", session.identity.substring(0, 8));
 
+        // Sole owner of slot release + dispatch-next. Fires when the body completes normally, or
+        // synchronously when cancel/close calls task.cancel(true).
         task.whenComplete(
                 (unused, throwable) -> {
                     session.requestLock.lock();
@@ -521,6 +534,22 @@ public class IpcServer {
                         dispatchNextOrIdleLocked(session);
                     } finally {
                         session.requestLock.unlock();
+                    }
+                });
+
+        requestPool.execute(
+                () -> {
+                    try {
+                        IpcFrame.TerminalResponse response =
+                                registry.dispatch(session.sender, req.raw());
+                        sendTerminal(session, response, task);
+                        task.complete(null); // no-op if cancel(true) already completed it
+                    } catch (Throwable t) {
+                        // Complete exceptionally so whenComplete still releases the slot.
+                        // Translating
+                        // an exception into an Error terminal frame is a separate, still-open
+                        // concern.
+                        task.completeExceptionally(t);
                     }
                 });
     }
@@ -540,22 +569,34 @@ public class IpcServer {
     }
 
     /**
-     * Sends a command's terminal frame. If a cancel already sent {@code Done{cancelled}} for this
-     * request (indicated by {@code activeRequest} being {@code null}), this send is dropped — a
-     * Request resolves with exactly one terminal frame.
+     * Sends a command's terminal frame, claiming the request's exactly-once terminal slot first.
      *
-     * <p>This method acquires {@link Session#requestLock} to atomically check {@code
-     * activeRequest}, which ensures exactly-one-terminal-frame even when the dispatch task and a
-     * cancel race.
+     * <p>Two guards, both under {@link Session#requestLock}:
+     *
+     * <ul>
+     *   <li><b>Identity</b> — {@code session.activeRequest == owner}. A cancel completes the
+     *       in-flight future early to release the slot for the next request; the cancelled body
+     *       keeps running until it winds down, then calls this. By then the slot belongs to a later
+     *       request (or is null), so {@code owner} no longer matches and the stale frame is
+     *       suppressed. Without this, that orphaned frame would leak into the next request's slot.
+     *   <li><b>Flag</b> — {@code !terminalSent}. Mediates cancel vs normal completion for the
+     *       <em>same</em> request: whichever of this method or the cancel handler reaches the flag
+     *       first sends; the other finds it set and sends nothing.
+     * </ul>
      *
      * @param session the session owning the in-flight command
      * @param frame the terminal frame ({@link IpcFrame.Done}/{@link IpcFrame.Error}/{@link
      *     IpcFrame.Terminate}) to send
+     * @param owner the future owning this body — its own identity, to prove the slot is still its
      */
-    private void sendTerminal(@NonNull Session session, IpcFrame.@NonNull TerminalResponse frame) {
+    private void sendTerminal(
+            @NonNull Session session,
+            IpcFrame.@NonNull TerminalResponse frame,
+            CompletableFuture<Void> owner) {
         session.requestLock.lock();
         try {
-            if (session.activeRequest != null) {
+            if (session.activeRequest == owner && !session.terminalSent) {
+                session.terminalSent = true;
                 send(session.identity, frame);
             }
         } finally {
@@ -597,16 +638,25 @@ public class IpcServer {
     /**
      * Idempotently closes a session. Uses {@link AtomicBoolean#compareAndSet} so concurrent calls
      * from the session worker, heartbeat thread, or server shutdown are all safe.
+     *
+     * <p>The pending queue is cleared and the in-flight future (if any) is {@code cancel(true)}'d
+     * so its {@code whenComplete} clears the slot (and dispatches nothing — the queue is already
+     * empty). The body itself is not reliably interrupted by {@link CompletableFuture#cancel}, so
+     * it may wind down after close; its late {@link #sendTerminal} is suppressed by the identity
+     * guard (the slot is gone) plus the claimed flag.
      */
     private void closeSession(@NonNull Session session) {
         if (session.closed.compareAndSet(false, true)) {
             session.requestLock.lock();
             try {
                 CompletableFuture<Void> task = session.activeRequest;
+                session.terminalSent = true; // suppress the in-flight body's late terminal frame
+                session.pendingRequests.clear();
                 if (task != null) {
+                    // Clear the queue BEFORE cancelling so whenComplete's dispatch-next finds
+                    // nothing to dispatch on this dying session.
                     task.cancel(true);
                 }
-                session.pendingRequests.clear();
             } finally {
                 session.requestLock.unlock();
             }
@@ -658,9 +708,10 @@ public class IpcServer {
     /**
      * All mutable state for a single connected terminal session.
      *
-     * <p>The request lifecycle fields ({@link #activeRequest}, {@link #pendingRequests}) are
-     * protected by {@link #requestLock}. The lock is held only for brief state transitions — never
-     * during {@code registry.dispatch}, which runs outside the lock in the request pool.
+     * <p>The request lifecycle fields ({@link #activeRequest}, {@link #pendingRequests}, {@link
+     * #terminalSent}) are protected by {@link #requestLock}. The lock is held only for brief state
+     * transitions — never during {@code registry.dispatch}, which runs outside the lock in the
+     * request pool.
      */
     static class Session {
         @NonNull final String identity;
@@ -677,10 +728,10 @@ public class IpcServer {
 
         /**
          * Per-session lock protecting the request lifecycle fields: {@link #activeRequest}, {@link
-         * #pendingRequests}. The session worker and the request-pool {@code whenComplete} callback
-         * both acquire this lock for compound operations that must be atomic as a group (e.g.
-         * checking in-flight + enqueue, or clearing in-flight + polling next request). Different
-         * sessions do not contend — each has its own lock.
+         * #pendingRequests}, {@link #terminalSent}. The session worker and the request-pool {@code
+         * whenComplete} callback both acquire this lock for compound operations that must be atomic
+         * as a group (e.g. checking in-flight + enqueue, or clearing in-flight + polling next
+         * request). Different sessions do not contend — each has its own lock.
          */
         final ReentrantLock requestLock = new ReentrantLock();
 
@@ -696,15 +747,29 @@ public class IpcServer {
         final Deque<IpcFrame.Request> pendingRequests = new ArrayDeque<>();
 
         /**
-         * The in-flight request future, or {@code null} if no command is running. A non-null value
-         * means a request is in-flight; used for both routing decisions and cooperative
-         * cancellation ({@code task.cancel(true)}). Cancel sets this to {@code null} before sending
-         * {@code Done{cancelled}}, so {@link #sendTerminal} can check it to avoid sending a
-         * duplicate terminal frame.
+         * The in-flight request future, or {@code null} if no command is running. Used for routing
+         * decisions (whether to dispatch or queue an incoming {@link IpcFrame.Request}) and to gate
+         * the two-level cancel. The slot is released only by the future's {@code whenComplete}
+         * callback when the command body finishes — cancel and close never null it, so a lingering
+         * (uninterruptible) body always sees its own slot and the {@link #terminalSent} flag it
+         * set.
          *
          * <p>Protected by {@link #requestLock}.
          */
         CompletableFuture<Void> activeRequest;
+
+        /**
+         * Whether a terminal frame has been sent for the currently in-flight request. Claimed
+         * (false→true) under {@link #requestLock} by whichever of {@code sendTerminal} or the
+         * cancel handler wins the race — guaranteeing exactly one terminal frame per {@link
+         * IpcFrame.Request} (a cancel racing a normal completion produces only one). Reset to
+         * {@code false} when a new request is dispatched; set to {@code true} by {@code
+         * closeSession} to suppress a lingering body's frame after teardown.
+         *
+         * <p>Protected by {@link #requestLock} (a plain boolean — the lock serializes the
+         * check-and-set, so no {@link java.util.concurrent.atomic.AtomicBoolean} is needed).
+         */
+        boolean terminalSent;
 
         /**
          * Closed flag. Set via {@link AtomicBoolean#compareAndSet} to guarantee exactly-once

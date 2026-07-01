@@ -206,5 +206,4 @@ public final class VetoCommandSender extends AbstractCommandSender {
         }
         return false;
     }
-
 }
