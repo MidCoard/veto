@@ -141,25 +141,27 @@ public final class IpcClient implements AutoCloseable {
             Transport.FramedMsg msg = transport.recv(remaining);
             if (msg == null) continue;
             IpcFrame frame = msg.frame();
-            if (frame instanceof IpcFrame.Welcome(int version, long seq1) && seq1 == seq) {
-                if (version < 1) {
-                    throw new RuntimeException(
-                            "Backend negotiated unsupported protocol version " + version);
+            switch (frame) {
+                case IpcFrame.Welcome(int version, long seq1) when seq1 == seq -> {
+                    if (version < 1) {
+                        throw new RuntimeException(
+                                "Backend negotiated unsupported protocol version " + version);
+                    }
+                    negotiatedVersion = version;
+                    return;
                 }
-                negotiatedVersion = version;
-                return;
-            }
-            if (frame instanceof IpcFrame.Error e) {
-                throw new RuntimeException("Backend rejected handshake: " + e.content());
-            }
-            // An unrelated frame arrived during handshake — protocol violation.
-            if (frame instanceof IpcFrame.Terminate t) {
-                throw new RuntimeException("Backend terminated during handshake: " + t.reason());
-            }
-            if (frame instanceof IpcFrame.ServerFrame) {
-                log.warn(
+                case IpcFrame.Error e -> throw new RuntimeException("Backend rejected handshake: " + e.content());
+
+
+                // An unrelated frame arrived during handshake — protocol violation.
+                case IpcFrame.Terminate t ->
+                        throw new RuntimeException("Backend terminated during handshake: " + t.reason());
+
+                case IpcFrame.ServerFrame serverFrame -> log.warn(
                         "Unexpected {} frame during handshake — discarding (protocol violation)",
                         frame.getClass().getSimpleName());
+                default -> {
+                }
             }
         }
     }
