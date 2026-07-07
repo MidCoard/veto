@@ -176,12 +176,13 @@ public class VetoTerminal {
             // Enter the main interactive loop.
             repl();
         } finally {
-            // Teardown: stop loops, disable widgets, interrupt the consumer, clear the status bar,
-            // and close the connection (close flushes the Bye frame before teardown).
+            // Teardown: stop loops, disable widgets, interrupt the consumer, restore the terminal
+            // scroll region + clear the status bar, and close the connection (close flushes the Bye
+            // frame before teardown).
             running = false;
             hintWidgets.disable();
             consumerThread.interrupt();
-            status.clear();
+            status.close();
             client.close();
         }
     }
@@ -439,10 +440,10 @@ public class VetoTerminal {
         ClientOptions options = ClientOptions.parse(args);
         Logging.configure(options.debug());
 
+        org.jline.terminal.Terminal jt = null;
         try {
             // Build the system JLine Terminal and the Mordant Terminal.
-            org.jline.terminal.Terminal jt =
-                    TerminalBuilder.builder().system(true).jna(true).encoding("UTF-8").build();
+            jt = TerminalBuilder.builder().system(true).jna(true).encoding("UTF-8").build();
             Terminal mt = MordantTerminal.create();
             System.out.println("Connecting to backend at " + options.address() + " ...");
             IpcClient transport = new IpcClient(options.address());
@@ -454,6 +455,17 @@ public class VetoTerminal {
             vt.start(r);
         } catch (IOException e) {
             System.err.println("Terminal failed: " + e.getMessage());
+        } finally {
+            // Closing the JLine Terminal restores the original terminal mode (scroll region,
+            // echo, etc.) and flushes pending output — ensuring the status bar is cleaned up
+            // even on crash.
+            if (jt != null) {
+                try {
+                    jt.close();
+                } catch (IOException ignored) {
+                    // Best-effort cleanup on the way out.
+                }
+            }
         }
     }
 }

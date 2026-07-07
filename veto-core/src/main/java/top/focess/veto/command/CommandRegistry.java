@@ -127,6 +127,16 @@ public class CommandRegistry {
                 if (exc instanceof LogoutException) {
                     return new IpcFrame.Done(buildDoneMeta(sender, true), null);
                 }
+                if (exc instanceof CancelException) {
+                    // Level-1 cancel: the command's input was cancelled and it chose not to
+                    // continue.
+                    // Return Done{cancelled} — the same frame the level-2 cancel handler in
+                    // IpcServer
+                    // sends when cancelling an in-flight request.
+                    Map<String, Object> meta = new java.util.HashMap<>();
+                    meta.put(IpcMeta.CANCELLED, true);
+                    return new IpcFrame.Done(meta, null);
+                }
                 String msg = result.getMessage().orElse("Command failed.");
                 return IpcFrame.Error.ofError(msg);
             }

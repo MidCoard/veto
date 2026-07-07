@@ -9,6 +9,10 @@ version = "1.0.0-SNAPSHOT"
 
 application {
     mainClass = "top.focess.veto.terminal.VetoTerminal"
+    applicationDefaultJvmArgs = listOf(
+        "-Dfile.encoding=UTF-8",
+        "-Dslf4j.internal.verbosity=WARN",
+    )
 }
 
 java {
@@ -61,7 +65,6 @@ tasks.withType<JavaCompile> {
 
 tasks.named<JavaExec>("run") {
     standardInput = System.`in`
-    jvmArgs = listOf("-Dfile.encoding=UTF-8")
 }
 
 tasks.register<JavaExec>("runDebug") {
@@ -71,5 +74,4 @@ tasks.register<JavaExec>("runDebug") {
     classpath = sourceSets["main"].runtimeClasspath
     standardInput = System.`in`
     args = listOf("--debug")
-    jvmArgs = listOf("-Dfile.encoding=UTF-8")
 }

@@ -2,6 +2,7 @@ package top.focess.veto.command;
 
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
@@ -35,7 +36,11 @@ import top.focess.veto.terminal.IpcServer;
  * <ol>
  *   <li><b>Prompted</b> — the command is parked in {@code input} awaiting a reply. Cancel dismisses
  *       just the current prompt (via {@link #cancelCurrentPrompt()}); the command continues and may
- *       issue another prompt.
+ *       issue another prompt. If the command does <em>not</em> continue, the {@link
+ *       java.util.concurrent.CancellationException} from the completed future is translated to a
+ *       {@link CancelException} by the blocking {@code input} methods, which {@link
+ *       CommandRegistry} catches and converts to a {@link IpcFrame.Done} with {@code
+ *       IpcMeta.CANCELLED}.
  *   <li><b>Running</b> — the command is executing (not awaiting input). Cancel aborts the entire
  *       in-flight request (the server calls {@code task.cancel(true)}).
  * </ol>
@@ -132,6 +137,7 @@ public final class VetoCommandSender extends AbstractCommandSender {
      * timeout.
      *
      * @return the user's input string; never {@code null}
+     * @throws CancelException if the user cancels the prompt (via {@link IpcFrame.Cancel})
      */
     @Override
     public @NonNull String input() {
@@ -147,9 +153,14 @@ public final class VetoCommandSender extends AbstractCommandSender {
      * @param text the prompt text to display above the input field; use {@code ""} for none
      * @param mask {@code true} to mask input characters (e.g. for passwords)
      * @return the user's input string; never {@code null}
+     * @throws CancelException if the user cancels the prompt (via {@link IpcFrame.Cancel})
      */
     public String input(@NonNull String text, boolean mask) {
-        return inputAsync(text, mask, 90000).join();
+        try {
+            return inputAsync(text, mask, 90000).join();
+        } catch (CompletionException e) {
+            throw unwrapCancel(e);
+        }
     }
 
     /**
@@ -205,5 +216,32 @@ public final class VetoCommandSender extends AbstractCommandSender {
             }
         }
         return false;
+    }
+
+    // ── cancel-exception translation ─────────────────────────────────────
+
+    /**
+     * Unwraps a {@link CancellationException} from a {@link CompletionException} thrown by {@code
+     * join()}, and translates it to a {@link CancelException}.
+     *
+     * <p>When {@link #cancelCurrentPrompt()} completes the input future exceptionally with a {@link
+     * CancellationException}, {@code join()} wraps it in a {@link CompletionException}. This method
+     * detects that case and throws a {@link CancelException} instead — a control-flow signal that
+     * {@link CommandRegistry} handles by returning a {@link IpcFrame.Done} with {@code
+     * IpcMeta.CANCELLED}.
+     *
+     * <p>Non-cancellation causes are re-thrown as-is.
+     *
+     * @param e the {@link CompletionException} from {@code join()}
+     * @return never — always throws
+     * @throws CancelException if the cause is a {@link CancellationException}
+     * @throws CompletionException if the cause is something else
+     */
+    private static @NonNull RuntimeException unwrapCancel(@NonNull CompletionException e) {
+        Throwable cause = e.getCause();
+        if (cause instanceof CancellationException) {
+            throw new CancelException();
+        }
+        throw e;
     }
 }

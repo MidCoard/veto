@@ -35,6 +35,11 @@
         <appender-ref ref="CONSOLE"/>
     </logger>
 
+    <!-- Hibernate / Spring infra: INFO to suppress noisy DEBUG stack traces
+         (e.g. "JDBC transaction marked for rollback-only" during named-query lookup). -->
+    <logger name="org.hibernate" level="INFO"/>
+    <logger name="org.springframework" level="INFO"/>
+
     <logger name="top.focess.veto.terminal" level="DEBUG"/>
     <logger name="top.focess.veto.command" level="DEBUG"/>
 

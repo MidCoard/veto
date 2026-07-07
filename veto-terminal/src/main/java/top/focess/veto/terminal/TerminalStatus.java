@@ -85,9 +85,18 @@ public final class TerminalStatus {
         }
     }
 
-    /** Clears the status bar by removing any currently displayed text. */
-    public void clear() {
+    /**
+     * Restores the terminal scroll region and clears the status bar.
+     *
+     * <p>JLine's {@link Status#update} with an empty list clears the internal line buffer but does
+     * <b>not</b> restore the scroll region — the bottom row(s) remain pinned outside the scroll
+     * area, so the status bar content persists visually even after the process exits. Calling
+     * {@link Status#close} first restores the scroll region to the full terminal height; the
+     * subsequent empty update then erases any remaining content and flushes it.
+     */
+    public void close() {
         synchronized (statusLock) {
+            status.close();
             status.update(List.of());
         }
     }
