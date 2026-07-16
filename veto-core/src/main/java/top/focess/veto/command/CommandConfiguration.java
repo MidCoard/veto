@@ -78,7 +78,8 @@ public class CommandConfiguration {
             @NonNull UniformLLMCaller caller,
             @NonNull PromptHandler promptHandler,
             @NonNull AgentPatternRepository patternRepo,
-            @NonNull AuthLifecycleManager authLifecycleManager) {
+            @NonNull AuthLifecycleManager authLifecycleManager,
+            @NonNull SessionService sessionService) {
 
         CommandRegistry registry = new CommandRegistry(promptHandler);
 
@@ -88,6 +89,7 @@ public class CommandConfiguration {
         registry.register(new StatusCommand(vault, promptHandler));
         registry.register(new ExitCommand());
         registry.register(new PatternCommand(vault, patternRepo));
+        registry.register(new SessionCommand(sessionService, promptHandler));
         registry.register(new CompactCommand(promptHandler));
         registry.register(new HelpCommand(registry));
         return registry;
