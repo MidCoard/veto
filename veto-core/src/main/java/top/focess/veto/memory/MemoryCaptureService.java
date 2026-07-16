@@ -90,6 +90,7 @@ public class MemoryCaptureService {
 
     private static boolean isCapturable(TurnType type) {
         return type == TurnType.TOOL_RESPONSE
+                || type == TurnType.TOOL_CALL
                 || type == TurnType.ASSISTANT_THOUGHT
                 || type == TurnType.USER_PROMPT
                 || type == TurnType.ASSISTANT_RESPONSE

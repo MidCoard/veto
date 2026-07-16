@@ -986,6 +986,23 @@ public class AgentRunner {
         }
     }
 
+    /**
+     * Seeds the runner with replayed history (loaded from the durable turn log on session activate)
+     * so a re-activated session resumes its conversation. Must run before the loop processes its
+     * first action: {@link VetoAgent}'s ctor starts the virtual thread, but it parks on {@code
+     * actionQueue.take()} while IDLE and only touches {@code history} when compiling a submitted
+     * prompt - so seeding right after creation, before the first {@code submit}, is safe.
+     *
+     * <p>Idempotent: a no-op if {@code history} is already non-empty (or the replay is empty/null),
+     * so a second get-or-create on an already-live agent does not duplicate turns.
+     */
+    public synchronized void seedHistory(java.util.@NonNull List<TurnRecord> replayed) {
+        if (!history.isEmpty() || replayed == null || replayed.isEmpty()) {
+            return;
+        }
+        history.addAll(replayed);
+    }
+
     // ── completion ──────────────────────────────────────────────────────────
 
     private volatile String lastMessage = "";

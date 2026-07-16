@@ -210,6 +210,32 @@ public class AgentService {
     }
 
     /**
+     * Gets or creates the agent for a session id, seeding replayed history on first creation. The
+     * session id is the agent key (replacing terminal-id keying) so an agent is shared across any
+     * interface attached to the session. Seeding runs before the first {@code submit} (the loop
+     * parks on its action queue while IDLE), and is idempotent via {@link AgentRunner#seedHistory}.
+     */
+    public Agent getOrCreateAgent(
+            @NonNull String sessionId,
+            AgentRunner.@NonNull LlmBinding binding,
+            @NonNull List<TurnRecord> history,
+            @NonNull UUID userId) {
+        boolean[] created = {false};
+        VetoAgent agent =
+                agents.computeIfAbsent(
+                        sessionId,
+                        k -> {
+                            created[0] = true;
+                            return createAgent(k, binding, userId);
+                        });
+        agent.bind(binding);
+        if (created[0] && history != null && !history.isEmpty()) {
+            agent.seedHistory(history);
+        }
+        return agent;
+    }
+
+    /**
      * Resolves a pending veto for an agent's call. The {@code toolName} parameter is kept for
      * back-compat with the old API (the new {@code HitlRegistry.resolve} reads the tool name from
      * the supplied {@link ToolCall}). The caller can pass {@code null} for the call/def when the

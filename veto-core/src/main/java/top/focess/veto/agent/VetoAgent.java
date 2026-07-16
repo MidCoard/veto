@@ -120,6 +120,14 @@ public class VetoAgent implements Agent {
     }
 
     /**
+     * Seeds replayed history (from the durable turn log) into the runner on session activate.
+     * Idempotent; see {@link AgentRunner#seedHistory}.
+     */
+    public void seedHistory(java.util.@NonNull List<TurnRecord> history) {
+        runner.seedHistory(history);
+    }
+
+    /**
      * Subscribes a user-facing-message listener (the emission seam) for the duration a transport
      * cares about streaming. The listener fires on the agent's virtual thread as each {@code
      * response.message} is emitted.

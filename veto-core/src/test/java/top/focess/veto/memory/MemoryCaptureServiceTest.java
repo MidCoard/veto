@@ -51,4 +51,22 @@ class MemoryCaptureServiceTest {
         assertEquals("USER_PROMPT", saved.getType());
         assertTrue(saved.getPayload().contains("do the thing"));
     }
+
+    @Test
+    void toolCallIsCapturedForCoherentReplay() {
+        InMemoryMemoryStore store = new InMemoryMemoryStore();
+        TurnRecordRepository repo = mock(TurnRecordRepository.class);
+        MemoryCaptureService service = new MemoryCaptureService(store, repo, new ObjectMapper());
+
+        UUID session = UUID.randomUUID();
+        UUID user = UUID.randomUUID();
+        // A tool call must be logged so it pairs with its tool response on replay - otherwise the
+        // durable log holds an orphaned TOOL_RESPONSE that breaks PromptCompiler/the LLM API.
+        top.focess.veto.llm.core.ToolCall call =
+                new top.focess.veto.llm.core.ToolCall(
+                        "read_file", java.util.Map.of("path", "a.txt"), "call-1");
+        service.capture(top.focess.veto.agent.TurnRecord.toolCall(3, call), session, user);
+
+        verify(repo, times(1)).save(any(TurnRecordEntity.class));
+    }
 }
