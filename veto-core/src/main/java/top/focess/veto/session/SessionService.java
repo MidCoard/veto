@@ -7,6 +7,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import top.focess.veto.agent.Agent;
 import top.focess.veto.agent.AgentRunner;
 import top.focess.veto.agent.AgentService;
@@ -59,9 +60,26 @@ public class SessionService {
         this.historyLoader = historyLoader;
     }
 
-    /** Creates a session + its primary agent from a pattern. Does NOT auto-activate. */
+    /**
+     * Creates a session + its primary agent from a pattern, named after the pattern. Does NOT
+     * auto-activate. Equivalent to {@code createSession(owner, patternName, null)}.
+     */
+    @Transactional
     public @NonNull SessionEntity createSession(
             @NonNull String owner, @NonNull String patternName) {
+        return createSession(owner, patternName, null);
+    }
+
+    /**
+     * Creates a session + its primary agent from a pattern. Does NOT auto-activate.
+     *
+     * @param owner the session owner
+     * @param patternName the pattern to instantiate the primary agent from
+     * @param sessionName the desired session name; null/empty defaults to {@code patternName}
+     */
+    @Transactional
+    public @NonNull SessionEntity createSession(
+            @NonNull String owner, @NonNull String patternName, @Nullable String sessionName) {
         AgentPatternEntity pattern =
                 patterns.findByNameAndOwner(patternName, owner)
                         .orElseThrow(
@@ -69,19 +87,20 @@ public class SessionService {
                                         new IllegalArgumentException(
                                                 "Pattern not found: " + patternName));
 
-        String sessionName = patternName;
-        if (sessions.findByNameAndOwner(sessionName, owner).isPresent()) {
+        String resolvedName =
+                (sessionName == null || sessionName.isEmpty()) ? patternName : sessionName;
+        if (sessions.findByNameAndOwner(resolvedName, owner).isPresent()) {
             throw new IllegalArgumentException(
-                    "Session name '" + sessionName + "' already exists; provide a unique name");
+                    "Session name '" + resolvedName + "' already exists; provide a unique name");
         }
 
-        SessionEntity session = sessions.save(new SessionEntity(owner, sessionName));
+        SessionEntity session = sessions.save(new SessionEntity(owner, resolvedName));
         AgentEntity agent =
                 new AgentEntity(
                         session.getId(),
                         pattern.getId(),
                         AgentEntity.Role.PRIMARY,
-                        sessionName,
+                        resolvedName,
                         pattern.getProvider(),
                         pattern.getModel(),
                         pattern.getCredentialKey());
@@ -98,6 +117,7 @@ public class SessionService {
      * Attaches the terminal to an existing session. Get-or-creates the primary agent (seeding
      * replayed history) and returns its LLM config. Sets the terminal's active session on success.
      */
+    @Transactional
     public @NonNull Optional<LlmConfig> activate(
             @NonNull String terminalId, @NonNull String sessionName, @NonNull String owner) {
         SessionEntity session =
@@ -146,7 +166,7 @@ public class SessionService {
                 .removeIf(
                         e -> {
                             SessionEntity session = sessions.findById(e.getValue()).orElse(null);
-                            return session != null && username.equals(session.getOwner());
+                            return session == null || username.equals(session.getOwner());
                         });
     }
 

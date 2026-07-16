@@ -5,7 +5,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.command.commands.*;
-import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.model.AgentPatternRepository;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.vault.*;
@@ -20,10 +19,6 @@ import top.focess.veto.vault.*;
  *   <li>{@link CommandRegistry} — registers all slash-commands and delegates plain-text prompts to
  *       the {@code PromptHandler}.
  * </ul>
- *
- * <p>The {@code activePatterns} map tracks the per-user active LLM pattern name. It is shared
- * between {@link PromptHandler} (reads the active pattern) and {@code PatternCommand} (writes it),
- * both of which receive the same {@link ConcurrentHashMap} instance.
  */
 @Configuration
 public class CommandConfiguration {
@@ -64,7 +59,6 @@ public class CommandConfiguration {
      * @param vault the credential vault used by auth-related commands
      * @param users the user registry for signup/login lookups
      * @param keys the key manager for credential creation and rotation
-     * @param caller the LLM caller (passed through to commands that need it)
      * @param promptHandler the prompt handler bean; passed to logout/status commands so they can
      *     clear or inspect the agent session
      * @param patternRepo the pattern repository used by the pattern command
@@ -75,7 +69,6 @@ public class CommandConfiguration {
             @NonNull CredentialVault vault,
             @NonNull UserRegistry users,
             @NonNull VaultKeyManager keys,
-            @NonNull UniformLLMCaller caller,
             @NonNull PromptHandler promptHandler,
             @NonNull AgentPatternRepository patternRepo,
             @NonNull AuthLifecycleManager authLifecycleManager,

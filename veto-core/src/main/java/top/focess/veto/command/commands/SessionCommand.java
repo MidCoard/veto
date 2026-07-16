@@ -37,14 +37,10 @@ public class SessionCommand extends VetoCommand {
                     VetoCommandSender s = vetoSender(sender);
                     if (s == null) return CommandResult.REFUSE;
                     String pattern = args.get("pattern");
+                    String requestedName = args.get("name");
                     try {
-                        SessionEntity session = service.createSession(s.username(), pattern);
-                        String requestedName = args.get("name");
-                        if (requestedName != null
-                                && !requestedName.isEmpty()
-                                && !requestedName.equals(pattern)) {
-                            session.setName(requestedName);
-                        }
+                        SessionEntity session =
+                                service.createSession(s.username(), pattern, requestedName);
                         s.output(
                                 "Session '"
                                         + session.getName()

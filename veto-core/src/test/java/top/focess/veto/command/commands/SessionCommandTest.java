@@ -26,7 +26,7 @@ class SessionCommandTest {
         SessionService service = mock(SessionService.class);
         PromptHandler handler = mock(PromptHandler.class);
         SessionEntity session = new SessionEntity("alice", "coder");
-        when(service.createSession("alice", "coder")).thenReturn(session);
+        when(service.createSession("alice", "coder", null)).thenReturn(session);
         when(service.activeSession("term-1")).thenReturn(Optional.empty());
         when(service.activate("term-1", "coder", "alice"))
                 .thenReturn(Optional.of(new LlmConfig(ProviderType.DEEPSEEK, "deepseek-v4", "k")));
@@ -43,7 +43,7 @@ class SessionCommandTest {
         ExecutionResult result = manager.dispatch(sender, "session create coder");
 
         assertEquals(CommandResult.ALLOW, result.result());
-        verify(service).createSession("alice", "coder");
+        verify(service).createSession("alice", "coder", null);
         verify(service).activate("term-1", "coder", "alice");
     }
 
@@ -52,7 +52,7 @@ class SessionCommandTest {
         SessionService service = mock(SessionService.class);
         PromptHandler handler = mock(PromptHandler.class);
         SessionEntity session = new SessionEntity("alice", "coder");
-        when(service.createSession("alice", "coder")).thenReturn(session);
+        when(service.createSession("alice", "coder", null)).thenReturn(session);
         // A session is already active on this terminal -> do not auto-activate.
         when(service.activeSession("term-1")).thenReturn(Optional.of("existing-session-id"));
 
@@ -68,7 +68,7 @@ class SessionCommandTest {
         ExecutionResult result = manager.dispatch(sender, "session create coder");
 
         assertEquals(CommandResult.ALLOW, result.result());
-        verify(service).createSession("alice", "coder");
+        verify(service).createSession("alice", "coder", null);
         verify(service, never()).activate(anyString(), anyString(), anyString());
     }
 
@@ -76,7 +76,7 @@ class SessionCommandTest {
     void createRefusesUnknownPattern() {
         SessionService service = mock(SessionService.class);
         PromptHandler handler = mock(PromptHandler.class);
-        when(service.createSession("alice", "nope"))
+        when(service.createSession("alice", "nope", null))
                 .thenThrow(new IllegalArgumentException("Pattern not found: nope"));
 
         VetoCommandSender sender = mock(VetoCommandSender.class);
@@ -91,5 +91,31 @@ class SessionCommandTest {
         ExecutionResult result = manager.dispatch(sender, "session create nope");
         assertEquals(CommandResult.REFUSE, result.result());
         verify(sender).output("Pattern not found: nope");
+    }
+
+    @Test
+    void createWithCustomNamePersistsAndActivates() {
+        SessionService service = mock(SessionService.class);
+        PromptHandler handler = mock(PromptHandler.class);
+        SessionEntity session = new SessionEntity("alice", "mysession");
+        when(service.createSession("alice", "coder", "mysession")).thenReturn(session);
+        when(service.activeSession("term-1")).thenReturn(Optional.empty());
+        when(service.activate("term-1", "mysession", "alice"))
+                .thenReturn(Optional.of(new LlmConfig(ProviderType.DEEPSEEK, "deepseek-v4", "k")));
+
+        VetoCommandSender sender = mock(VetoCommandSender.class);
+        when(sender.hasPermission(any(CommandPermission.class))).thenReturn(true);
+        when(sender.isLoggedIn()).thenReturn(true);
+        when(sender.username()).thenReturn("alice");
+        when(sender.terminalId()).thenReturn("term-1");
+
+        CommandManager manager = new CommandManager();
+        manager.register(new SessionCommand(service, handler));
+
+        ExecutionResult result = manager.dispatch(sender, "session create coder mysession");
+
+        assertEquals(CommandResult.ALLOW, result.result());
+        verify(service).createSession("alice", "coder", "mysession");
+        verify(service).activate("term-1", "mysession", "alice");
     }
 }

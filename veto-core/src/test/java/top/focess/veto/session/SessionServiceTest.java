@@ -6,6 +6,7 @@ import static org.mockito.Mockito.*;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import top.focess.veto.agent.Agent;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.llm.core.ProviderType;
@@ -40,6 +41,56 @@ class SessionServiceTest {
         SessionEntity session = service.createSession("alice", "coder");
         assertNotNull(session.getPrimaryAgentId(), "primary agent created and linked");
         verify(agents).save(any(AgentEntity.class));
+    }
+
+    @Test
+    void createSessionWithCustomName() {
+        SessionRepository sessions = mock(SessionRepository.class);
+        AgentInstanceRepository agents = mock(AgentInstanceRepository.class);
+        AgentPatternRepository patterns = mock(AgentPatternRepository.class);
+        AgentService agentService = mock(AgentService.class);
+        SessionHistoryLoader loader = mock(SessionHistoryLoader.class);
+
+        AgentPatternEntity pattern =
+                new AgentPatternEntity(
+                        "coder", "DEEPSEEK", "deepseek-v4", "pattern-coder", "alice");
+        when(patterns.findByNameAndOwner("coder", "alice")).thenReturn(Optional.of(pattern));
+        when(sessions.findByNameAndOwner("mysession", "alice")).thenReturn(Optional.empty());
+        when(sessions.save(any(SessionEntity.class))).thenAnswer(i -> i.getArgument(0));
+        when(agents.save(any(AgentEntity.class))).thenAnswer(i -> i.getArgument(0));
+
+        SessionService service =
+                new SessionService(sessions, agents, patterns, agentService, loader);
+
+        SessionEntity session = service.createSession("alice", "coder", "mysession");
+        assertEquals("mysession", session.getName());
+
+        ArgumentCaptor<SessionEntity> captor = ArgumentCaptor.forClass(SessionEntity.class);
+        verify(sessions, atLeastOnce()).save(captor.capture());
+        assertEquals("mysession", captor.getAllValues().get(0).getName());
+    }
+
+    @Test
+    void createSessionDefaultsNameToPattern() {
+        SessionRepository sessions = mock(SessionRepository.class);
+        AgentInstanceRepository agents = mock(AgentInstanceRepository.class);
+        AgentPatternRepository patterns = mock(AgentPatternRepository.class);
+        AgentService agentService = mock(AgentService.class);
+        SessionHistoryLoader loader = mock(SessionHistoryLoader.class);
+
+        AgentPatternEntity pattern =
+                new AgentPatternEntity(
+                        "coder", "DEEPSEEK", "deepseek-v4", "pattern-coder", "alice");
+        when(patterns.findByNameAndOwner("coder", "alice")).thenReturn(Optional.of(pattern));
+        when(sessions.findByNameAndOwner("coder", "alice")).thenReturn(Optional.empty());
+        when(sessions.save(any(SessionEntity.class))).thenAnswer(i -> i.getArgument(0));
+        when(agents.save(any(AgentEntity.class))).thenAnswer(i -> i.getArgument(0));
+
+        SessionService service =
+                new SessionService(sessions, agents, patterns, agentService, loader);
+
+        SessionEntity session = service.createSession("alice", "coder", null);
+        assertEquals("coder", session.getName());
     }
 
     @Test
