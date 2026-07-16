@@ -135,6 +135,21 @@ public class SessionService {
         activeSessions.remove(terminalId);
     }
 
+    /**
+     * Detaches every terminal currently attached to one of {@code username}'s sessions. Used by the
+     * unified logout path ({@code AuthLifecycleManager}) - the sessions themselves persist in the
+     * DB and can be re-activated on re-login, but no terminal remains attached.
+     */
+    public void deactivateUser(@NonNull String username) {
+        activeSessions
+                .entrySet()
+                .removeIf(
+                        e -> {
+                            SessionEntity session = sessions.findById(e.getValue()).orElse(null);
+                            return session != null && username.equals(session.getOwner());
+                        });
+    }
+
     public @NonNull Optional<String> activeSession(@NonNull String terminalId) {
         return Optional.ofNullable(activeSessions.get(terminalId));
     }

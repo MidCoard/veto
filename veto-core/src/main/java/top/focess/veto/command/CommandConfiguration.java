@@ -1,6 +1,5 @@
 package top.focess.veto.command;
 
-import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.NonNull;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -8,6 +7,7 @@ import top.focess.veto.agent.AgentService;
 import top.focess.veto.command.commands.*;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.model.AgentPatternRepository;
+import top.focess.veto.session.SessionService;
 import top.focess.veto.vault.*;
 
 /**
@@ -29,26 +29,21 @@ import top.focess.veto.vault.*;
 public class CommandConfiguration {
 
     /**
-     * Per-user active LLM pattern name. Key = username, value = pattern name. Shared between the
-     * {@link PromptHandler} (reader) and {@code PatternCommand} (writer).
-     */
-    private final ConcurrentHashMap<String, String> activePatterns = new ConcurrentHashMap<>();
-
-    /**
-     * Creates the {@link PromptHandler} bean — the terminal transport facade that delegates loop
-     * execution to {@link AgentService}.
+     * Creates the {@link PromptHandler} bean - the terminal transport facade that delegates loop
+     * execution to {@link AgentService} and session/config resolution to {@link SessionService}.
      *
      * @param vault the credential vault used to look up the current logged-in user
      * @param agentService the shared agent service that owns loop execution + agent lifecycle
-     * @param patternRepo repository for user-defined agent patterns
+     * @param sessionService the session service that owns the active-session map + config
+     *     resolution
      * @return the configured {@link PromptHandler} singleton
      */
     @Bean
     public @NonNull PromptHandler promptHandler(
             @NonNull CredentialVault vault,
             @NonNull AgentService agentService,
-            @NonNull AgentPatternRepository patternRepo) {
-        return new PromptHandler(vault, agentService, activePatterns, patternRepo);
+            @NonNull SessionService sessionService) {
+        return new PromptHandler(vault, agentService, sessionService);
     }
 
     /**
@@ -93,7 +88,6 @@ public class CommandConfiguration {
         registry.register(new StatusCommand(vault, promptHandler));
         registry.register(new ExitCommand());
         registry.register(new PatternCommand(vault, patternRepo));
-        registry.register(new AgentCommand(patternRepo, promptHandler));
         registry.register(new CompactCommand(promptHandler));
         registry.register(new HelpCommand(registry));
         return registry;

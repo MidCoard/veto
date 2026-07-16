@@ -36,7 +36,7 @@ public class LogoutCommand extends VetoCommand {
                         authLifecycleManager.logout(user);
                     }
                     s.setUsername(null);
-                    promptHandler.removeSession(s.terminalId());
+                    promptHandler.deactivate(s.terminalId());
                     s.output("Logged out.");
                     throw new LogoutException();
                 });

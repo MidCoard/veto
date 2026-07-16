@@ -30,7 +30,7 @@ public class CompactCommand extends VetoCommand {
                     VetoCommandSender s = vetoSender(sender);
                     if (s == null) return CommandResult.REFUSE;
 
-                    VetoAgent agent = (VetoAgent) promptHandler.sessions().get(s.terminalId());
+                    VetoAgent agent = (VetoAgent) promptHandler.activeAgent(s.terminalId());
                     if (agent == null) {
                         s.output("No active agent session. Activate an agent first.");
                         return CommandResult.REFUSE;

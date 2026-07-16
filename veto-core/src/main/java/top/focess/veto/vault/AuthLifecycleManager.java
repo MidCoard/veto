@@ -45,7 +45,7 @@ public class AuthLifecycleManager {
     public synchronized void logout(@NonNull String username) {
         log.info("AuthLifecycleManager: Logging out user '{}'", username);
         try {
-            promptHandler.deactivateAgent(username);
+            promptHandler.deactivateUser(username);
         } catch (Exception e) {
             log.warn("Error deactivating agent for user '{}' during logout", username, e);
         }

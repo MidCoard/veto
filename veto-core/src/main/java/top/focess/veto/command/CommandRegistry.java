@@ -158,7 +158,7 @@ public class CommandRegistry {
             meta.put(IpcMeta.USERNAME, sender.username());
             meta.put(IpcMeta.SESSION, sender.terminalId());
             if (promptHandler != null) {
-                var agent = promptHandler.sessions().get(sender.terminalId());
+                var agent = promptHandler.activeAgent(sender.terminalId());
                 if (agent != null) {
                     meta.put(IpcMeta.TURN_NUMBER, agent.history().size());
                 }
