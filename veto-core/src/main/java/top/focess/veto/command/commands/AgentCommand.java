@@ -73,8 +73,12 @@ public class AgentCommand extends VetoCommand {
                                         "You are a helpful coding assistant. Be concise.");
 
                         String key = s.input("API Key for " + provider + ":", true);
-                        if (key == null || key.isEmpty()) {
+                        if (key == null) {
                             s.output("Agent creation cancelled.");
+                            return CommandResult.REFUSE;
+                        }
+                        if (key.isEmpty()) {
+                            s.output("API key cannot be empty.");
                             return CommandResult.REFUSE;
                         }
 
@@ -83,9 +87,6 @@ public class AgentCommand extends VetoCommand {
                         return CommandResult.ALLOW;
                     } catch (IllegalArgumentException e) {
                         s.output("Unknown provider: " + args.get("provider"));
-                        return CommandResult.REFUSE;
-                    } catch (Exception e) {
-                        s.output(e.getMessage());
                         return CommandResult.REFUSE;
                     }
                 },

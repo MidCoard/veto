@@ -61,6 +61,14 @@ application-local.yml
 *.tmp
 veto-grammar-*.gbnf
 
+## Python
+__pycache__/
+*.pyc
+
+## Generated training datasets (not source)
+veto-core/training/data/*.json
+veto-core/training/data/*.jsonl
+
 plans/
 
 ## Claude Code

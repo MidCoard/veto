@@ -39,6 +39,12 @@ public class TrainingConfiguration {
     /** Whether to automatically restart the LlamaCppBridge after deploy. */
     private boolean restartBridgeOnDeploy = true;
 
+    /** Whether to run the quality filter (Feature 6.3) before training. */
+    private boolean qualityFilterEnabled = true;
+
+    /** Directory for user-supplied custom training data. */
+    private String customDataDir = "";
+
     // ── Getters & Setters ──
 
     public String getPythonPath() {
@@ -111,5 +117,21 @@ public class TrainingConfiguration {
 
     public void setRestartBridgeOnDeploy(boolean restartBridgeOnDeploy) {
         this.restartBridgeOnDeploy = restartBridgeOnDeploy;
+    }
+
+    public boolean isQualityFilterEnabled() {
+        return qualityFilterEnabled;
+    }
+
+    public void setQualityFilterEnabled(boolean qualityFilterEnabled) {
+        this.qualityFilterEnabled = qualityFilterEnabled;
+    }
+
+    public String getCustomDataDir() {
+        return customDataDir;
+    }
+
+    public void setCustomDataDir(@NonNull String customDataDir) {
+        this.customDataDir = customDataDir;
     }
 }

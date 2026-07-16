@@ -36,16 +36,24 @@ public class LoginCommand extends VetoCommand {
 
                     if (u == null) {
                         u = s.input("Username:", false);
-                        if (u == null || u.isEmpty()) {
+                        if (u == null) {
                             s.output("Login cancelled.");
+                            return CommandResult.REFUSE;
+                        }
+                        if (u.isEmpty()) {
+                            s.output("Username cannot be empty.");
                             return CommandResult.REFUSE;
                         }
                     }
                     // Password is always prompted interactively with masking — never
                     // accepted as a command-line argument.
                     String p = s.input("Password:", true);
-                    if (p == null || p.isEmpty()) {
+                    if (p == null) {
                         s.output("Login cancelled.");
+                        return CommandResult.REFUSE;
+                    }
+                    if (p.isEmpty()) {
+                        s.output("Password cannot be empty.");
                         return CommandResult.REFUSE;
                     }
 

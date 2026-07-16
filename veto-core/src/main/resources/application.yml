@@ -9,12 +9,10 @@ spring:
     password: ""
     driver-class-name: org.postgresql.Driver
   jpa:
+    open-in-view: false
     hibernate:
       ddl-auto: update
     show-sql: false
-    properties:
-      hibernate:
-        dialect: org.hibernate.dialect.PostgreSQLDialect
 
 veto:
   bus:
@@ -86,6 +84,8 @@ veto:
     auto-deploy-on-completion: true
     venv-path: ./training/.venv
     restart-bridge-on-deploy: true
+    quality-filter-enabled: true
+    custom-data-dir: ""
 
   mcp:
     server-registry-path: ./mcp/servers/

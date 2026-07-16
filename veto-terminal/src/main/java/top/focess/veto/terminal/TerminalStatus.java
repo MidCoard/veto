@@ -93,10 +93,20 @@ public final class TerminalStatus {
      * area, so the status bar content persists visually even after the process exits. Calling
      * {@link Status#close} first restores the scroll region to the full terminal height; the
      * subsequent empty update then erases any remaining content and flushes it.
+     *
+     * <p>JLine's {@link Status#close()} does not guard against unsupported terminals — it
+     * unconditionally accesses {@code display.rows}, which is null when the terminal lacks the
+     * required capabilities. The null check here prevents that NPE during cleanup.
      */
     public void close() {
         synchronized (statusLock) {
-            status.close();
+            // Status.close() NPEs when the terminal doesn't support the status bar (display ==
+            // null). Only call it when the bar is actually active.
+            try {
+                status.close();
+            } catch (NullPointerException ignored) {
+                // Terminal doesn't support the status bar — nothing to restore.
+            }
             status.update(List.of());
         }
     }

@@ -11,6 +11,7 @@ All output conforms to the GBNF grammar in grammars/veto-output.gbnf.
 import json
 import os
 import random as _random
+import sys
 from typing import Any
 from datetime import datetime
 
@@ -460,7 +461,18 @@ def generate_structural_constraint_samples() -> list[dict]:
     return samples
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="Veto Training Data Generator")
+    parser.add_argument("--quality-check", type=bool, default=True,
+                        help="Run quality filter after generation (default: True)")
+    parser.add_argument("--skip-quality-check", action="store_true", default=False,
+                        help="Skip quality filter (for development)")
+    return parser.parse_args()
+
+
 def main():
+    args = parse_args()
+    run_quality_check = args.quality_check and not args.skip_quality_check
     all_samples = []
     all_samples += generate_veto_decision_samples()
     all_samples += generate_redaction_samples()
@@ -522,6 +534,30 @@ def main():
     print(f"  Train: {len(train_set)}, Eval: {len(eval_set)}")
     print(f"  Tasks: {task_counts}")
     print(f"  Written to {OUT_DIR}")
+
+    # ── Quality Filter (Feature 6.3) ──
+    if run_quality_check:
+        print("\nRunning quality filter on generated data...")
+        import subprocess
+        filter_script = os.path.join(os.path.dirname(__file__), "quality_filter.py")
+        if os.path.isfile(filter_script):
+            result = subprocess.run(
+                [sys.executable, filter_script, "--data", train_path,
+                 "--fail-on-invalid"],
+                capture_output=True, text=True,
+            )
+            print(result.stdout)
+            if result.stderr:
+                print(result.stderr, file=sys.stderr)
+            if result.returncode != 0:
+                print("[WARN] Quality filter found invalid records. "
+                      "Use --skip-quality-check to bypass.")
+            else:
+                print("[OK] Quality filter passed — all training records are valid")
+        else:
+            print("[WARN] quality_filter.py not found, skipping quality check")
+    else:
+        print("[INFO] Quality check skipped (--skip-quality-check)")
 
 
 if __name__ == "__main__":

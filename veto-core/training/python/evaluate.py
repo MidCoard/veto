@@ -43,6 +43,8 @@ def parse_args():
                         help="Path to write evaluation report JSON")
     parser.add_argument("--max-samples", type=int, default=None,
                         help="Limit samples for faster testing")
+    parser.add_argument("--json-output", action="store_true", default=True,
+                        help="Write machine-readable JSON report (maps to Java EvaluationReport)")
     return parser.parse_args()
 
 
@@ -284,36 +286,37 @@ def main():
     recall = total_tp / (total_tp + total_fn) if (total_tp + total_fn) > 0 else 0
     f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0
 
-    # ── Build report ──
+    # ── Build report (structure mirrors Java TrainingProgress.EvaluationReport) ──
     report = {
-        "model_path": args.model,
-        "dataset_path": args.data,
+        "modelPath": args.model,
+        "datasetPath": args.data,
         "timestamp": datetime.utcnow().isoformat(),
-        "total_samples": n,
-        "elapsed_seconds": round(elapsed, 1),
-        "gbnf_compliance": {
-            "valid_json_count": total_gbnf_valid,
-            "valid_json_rate": round(gbnf_rate, 4),
+        "totalSamples": n,
+        "elapsedSeconds": round(elapsed, 1),
+        "gbnfCompliance": {
+            "validJsonCount": total_gbnf_valid,
+            "validJsonRate": round(gbnf_rate, 4),
         },
-        "decision_accuracy": {
+        "decisionAccuracy": {
             "correct": total_decision_correct,
             "total": total_decision_count,
             "accuracy": round(decision_acc, 4),
         },
-        "redaction_accuracy": {
-            "true_positives": total_tp,
-            "false_positives": total_fp,
-            "false_negatives": total_fn,
+        "redactionAccuracy": {
+            "truePositives": total_tp,
+            "falsePositives": total_fp,
+            "falseNegatives": total_fn,
             "precision": round(precision, 4),
             "recall": round(recall, 4),
             "f1": round(f1, 4),
         },
-        "structural_validation": {
+        "structuralValidation": {
             "correct": total_structural_correct,
             "total": total_structural_count,
             "accuracy": round(structural_acc, 4),
         },
-        "per_sample": results,
+        # Per-sample details omitted from machine-readable output (too large for Java ingestion)
+        # Kept only in the full human-readable report
     }
 
     # ── Print summary ──

@@ -51,8 +51,12 @@ public class PatternCommand extends VetoCommand {
                         ProviderType.valueOf(provider);
 
                         String key = s.input("API Key for " + provider + ":", true);
-                        if (key == null || key.isEmpty()) {
+                        if (key == null) {
                             s.output("Pattern creation cancelled.");
+                            return CommandResult.REFUSE;
+                        }
+                        if (key.isEmpty()) {
+                            s.output("API key cannot be empty.");
                             return CommandResult.REFUSE;
                         }
 
@@ -70,9 +74,6 @@ public class PatternCommand extends VetoCommand {
                         return CommandResult.ALLOW;
                     } catch (IllegalArgumentException e) {
                         s.output("Unknown provider: " + e.getMessage());
-                        return CommandResult.REFUSE;
-                    } catch (Exception e) {
-                        s.output(e.getMessage());
                         return CommandResult.REFUSE;
                     }
                 },

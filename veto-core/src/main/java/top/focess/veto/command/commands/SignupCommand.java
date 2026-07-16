@@ -42,15 +42,23 @@ public class SignupCommand extends VetoCommand {
 
                     if (u == null) {
                         u = s.input("Choose a username:", false);
-                        if (u.isEmpty()) {
+                        if (u == null) {
                             s.output("Signup cancelled.");
+                            return CommandResult.REFUSE;
+                        }
+                        if (u.isEmpty()) {
+                            s.output("Username cannot be empty.");
                             return CommandResult.REFUSE;
                         }
                     }
                     if (p == null) {
                         p = s.input("Choose a password:", true);
-                        if (p.isEmpty()) {
+                        if (p == null) {
                             s.output("Signup cancelled.");
+                            return CommandResult.REFUSE;
+                        }
+                        if (p.isEmpty()) {
+                            s.output("Password cannot be empty.");
                             return CommandResult.REFUSE;
                         }
                     }

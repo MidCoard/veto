@@ -128,11 +128,9 @@ public class CommandRegistry {
                     return new IpcFrame.Done(buildDoneMeta(sender, true), null);
                 }
                 if (exc instanceof CancelException) {
-                    // Level-1 cancel: the command's input was cancelled and it chose not to
-                    // continue.
-                    // Return Done{cancelled} — the same frame the level-2 cancel handler in
-                    // IpcServer
-                    // sends when cancelling an in-flight request.
+                    // Safety net: input() now returns null on cancel, so commands handle it
+                    // directly. This catch is only reached if a command calls
+                    // inputAsync().join() without handling CancellationException.
                     Map<String, Object> meta = new java.util.HashMap<>();
                     meta.put(IpcMeta.CANCELLED, true);
                     return new IpcFrame.Done(meta, null);

@@ -36,11 +36,10 @@ import top.focess.veto.terminal.IpcServer;
  * <ol>
  *   <li><b>Prompted</b> — the command is parked in {@code input} awaiting a reply. Cancel dismisses
  *       just the current prompt (via {@link #cancelCurrentPrompt()}); the command continues and may
- *       issue another prompt. If the command does <em>not</em> continue, the {@link
- *       java.util.concurrent.CancellationException} from the completed future is translated to a
- *       {@link CancelException} by the blocking {@code input} methods, which {@link
- *       CommandRegistry} catches and converts to a {@link IpcFrame.Done} with {@code
- *       IpcMeta.CANCELLED}.
+ *       issue another prompt. The blocking {@code input} methods return {@code null} on cancel —
+ *       the command checks for null and decides how to proceed. {@link CancelException} is retained
+ *       only as a safety net: if a command calls {@code inputAsync().join()} directly without
+ *       handling {@link CancellationException}, the registry catches it.
  *   <li><b>Running</b> — the command is executing (not awaiting input). Cancel aborts the entire
  *       in-flight request (the server calls {@code task.cancel(true)}).
  * </ol>
@@ -136,11 +135,10 @@ public final class VetoCommandSender extends AbstractCommandSender {
      * <p>Convenience override that delegates to {@link #input(String, boolean)} with a 90-second
      * timeout.
      *
-     * @return the user's input string; never {@code null}
-     * @throws CancelException if the user cancels the prompt (via {@link IpcFrame.Cancel})
+     * @return the user's input string, or {@code null} if the prompt was cancelled
      */
     @Override
-    public @NonNull String input() {
+    public @Nullable String input() {
         return input("", false);
     }
 
@@ -149,17 +147,22 @@ public final class VetoCommandSender extends AbstractCommandSender {
      *
      * <p>Sends a {@link IpcFrame.Prompt} frame to the terminal with the given text and mask flag,
      * then waits up to 90 seconds for the terminal to respond with an {@link IpcFrame.Input} frame.
+     * If the user cancels the prompt (via {@link IpcFrame.Cancel}), returns {@code null} instead of
+     * throwing — the command checks for null and decides how to proceed (re-prompt, abort, etc.).
      *
      * @param text the prompt text to display above the input field; use {@code ""} for none
      * @param mask {@code true} to mask input characters (e.g. for passwords)
-     * @return the user's input string; never {@code null}
-     * @throws CancelException if the user cancels the prompt (via {@link IpcFrame.Cancel})
+     * @return the user's input string, or {@code null} if the prompt was cancelled
      */
-    public String input(@NonNull String text, boolean mask) {
+    public @Nullable String input(@NonNull String text, boolean mask) {
         try {
             return inputAsync(text, mask, 90000).join();
         } catch (CompletionException e) {
-            throw unwrapCancel(e);
+            if (e.getCause() instanceof CancellationException) {
+                // Cancelled — return null so the command can handle it gracefully.
+                return null;
+            }
+            throw e;
         }
     }
 
@@ -218,30 +221,10 @@ public final class VetoCommandSender extends AbstractCommandSender {
         return false;
     }
 
-    // ── cancel-exception translation ─────────────────────────────────────
+    // ── cancel-exception safety net ──────────────────────────────────────
 
-    /**
-     * Unwraps a {@link CancellationException} from a {@link CompletionException} thrown by {@code
-     * join()}, and translates it to a {@link CancelException}.
-     *
-     * <p>When {@link #cancelCurrentPrompt()} completes the input future exceptionally with a {@link
-     * CancellationException}, {@code join()} wraps it in a {@link CompletionException}. This method
-     * detects that case and throws a {@link CancelException} instead — a control-flow signal that
-     * {@link CommandRegistry} handles by returning a {@link IpcFrame.Done} with {@code
-     * IpcMeta.CANCELLED}.
-     *
-     * <p>Non-cancellation causes are re-thrown as-is.
-     *
-     * @param e the {@link CompletionException} from {@code join()}
-     * @return never — always throws
-     * @throws CancelException if the cause is a {@link CancellationException}
-     * @throws CompletionException if the cause is something else
-     */
-    private static @NonNull RuntimeException unwrapCancel(@NonNull CompletionException e) {
-        Throwable cause = e.getCause();
-        if (cause instanceof CancellationException) {
-            throw new CancelException();
-        }
-        throw e;
-    }
+    // CancelException is retained as a safety net: CommandRegistry catches it in
+    // dispatchSlashCommand and converts it to Done{cancelled}. It should only escape
+    // if a command calls inputAsync().join() directly without handling
+    // CancellationException. The primary path is input() returning null on cancel.
 }

@@ -2,6 +2,7 @@ package top.focess.veto.training;
 
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
@@ -10,10 +11,17 @@ import org.springframework.web.bind.annotation.*;
 /**
  * REST API for managing the Veto SLM model training pipeline.
  *
- * <p>Endpoints: POST /api/v1/training/start - Start a training run POST /api/v1/training/cancel -
- * Cancel current training GET /api/v1/training/progress - Get training progress POST
- * /api/v1/training/deploy - Deploy a trained model to the gateway GET /api/v1/training/status - Get
- * overall training system status
+ * <p>Endpoints:
+ *
+ * <ul>
+ *   <li>POST /api/v1/training/start - Start a training run (accepts optional {@link
+ *       TrainingRequest} body)
+ *   <li>POST /api/v1/training/cancel - Cancel current training
+ *   <li>GET /api/v1/training/progress - Get training progress
+ *   <li>POST /api/v1/training/deploy - Deploy a trained model to the gateway
+ *   <li>GET /api/v1/training/status - Get overall training system status
+ *   <li>POST /api/v1/training/quality-check - Run quality filter on training data (Feature 6.3)
+ *   <li>GET /api/v1/training/evaluation - Get the latest evaluation report
  */
 @RestController
 @RequestMapping("/api/v1/training")
@@ -33,11 +41,16 @@ public class TrainingController {
     }
 
     /**
-     * Start the full training pipeline. Generates data -> fine-tunes -> converts to GGUF ->
-     * evaluates -> auto-deploys.
+     * Start the full training pipeline. Generates data → quality filter → fine-tunes → converts to
+     * GGUF → evaluates → auto-deploys. Accepts optional JSON body with custom training parameters.
+     *
+     * <p>Request body (all fields optional): {@code { "baseModel": "Qwen/Qwen2.5-0.5B-Instruct",
+     * "epochs": 1, "learningRate": 2e-4, "batchSize": 2, "loraRank": 16, "dataPath":
+     * "/path/to/custom_data.jsonl", "skipQualityFilter": false }}
      */
     @PostMapping("/start")
-    public ResponseEntity<Map<String, Object>> startTraining() {
+    public ResponseEntity<Map<String, Object>> startTraining(
+            @Nullable @RequestBody(required = false) TrainingRequest request) {
         if (trainingManager.isRunning()) {
             return ResponseEntity.status(409)
                     .body(
@@ -50,7 +63,7 @@ public class TrainingController {
                                     trainingManager.getProgress()));
         }
 
-        boolean started = trainingManager.startTraining();
+        boolean started = trainingManager.startTraining(request);
         if (started) {
             log.info("Training pipeline started");
             return ResponseEntity.ok(
@@ -171,7 +184,51 @@ public class TrainingController {
                         "modelOutputDir", config.getModelOutputDir(),
                         "defaultGgufName", config.getDefaultGgufName(),
                         "autoDeployOnCompletion", config.isAutoDeployOnCompletion(),
+                        "qualityFilterEnabled", config.isQualityFilterEnabled(),
                         "maxTrainingHours", config.getMaxTrainingHours(),
                         "progress", trainingManager.getProgress()));
+    }
+
+    /**
+     * Run the quality filter (Feature 6.3) on existing training data without starting a training
+     * run. Returns the filter report.
+     */
+    @PostMapping("/quality-check")
+    public ResponseEntity<Map<String, Object>> runQualityCheck() {
+        Map<String, Object> report = trainingManager.runStandaloneQualityCheck();
+        if (report != null) {
+            return ResponseEntity.ok(
+                    Map.of(
+                            "success",
+                            true,
+                            "message",
+                            "Quality check completed",
+                            "report",
+                            report));
+        } else {
+            return ResponseEntity.status(500)
+                    .body(
+                            Map.of(
+                                    "success",
+                                    false,
+                                    "message",
+                                    "Quality check failed. Training data may not exist yet."));
+        }
+    }
+
+    /** Get the latest evaluation report from the most recent training run. */
+    @GetMapping("/evaluation")
+    public ResponseEntity<Map<String, Object>> getEvaluation() {
+        TrainingProgress.EvaluationReport eval = trainingManager.getProgress().getEvaluation();
+        if (eval != null) {
+            return ResponseEntity.ok(Map.of("success", true, "evaluation", eval));
+        } else {
+            return ResponseEntity.ok(
+                    Map.of(
+                            "success",
+                            false,
+                            "message",
+                            "No evaluation report available. Run training first."));
+        }
     }
 }

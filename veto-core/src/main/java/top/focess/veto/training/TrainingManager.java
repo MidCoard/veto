@@ -10,7 +10,9 @@ import java.nio.file.StandardCopyOption;
 import java.util.Map;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -19,11 +21,18 @@ import org.springframework.stereotype.Service;
  * Orchestrates the model training lifecycle. Launches Python training scripts as subprocesses (same
  * pattern as LlamaCppBridge). Monitors progress, handles cancellation, and auto-deploys trained
  * models.
+ *
+ * <p>Supports structured JSON progress output from train.py (Feature 6.2) and the quality filter
+ * gate (Feature 6.3).
  */
 @Service
 public class TrainingManager {
 
     private static final Logger log = LoggerFactory.getLogger(TrainingManager.class);
+
+    /** Pattern for structured JSON progress lines emitted by train.py. */
+    private static final Pattern STRUCTURED_PROGRESS_PATTERN =
+            Pattern.compile("^\\{\"type\"\\s*:\\s*\"(\\w+)\".*}$");
 
     private final @NonNull TrainingConfiguration config;
     private final @NonNull ObjectMapper objectMapper;
@@ -80,16 +89,39 @@ public class TrainingManager {
     }
 
     /**
-     * Start the full training pipeline as a Python subprocess. Generates data -> trains -> converts
-     * -> evaluates.
+     * Start the full training pipeline with default configuration.
      *
      * @return true if training was successfully started
      */
     public synchronized boolean startTraining() {
+        return startTraining(TrainingRequest.defaults());
+    }
+
+    /**
+     * Start the full training pipeline as a Python subprocess. Generates data → quality filter →
+     * trains → converts → evaluates. Accepts optional {@link TrainingRequest} to override defaults.
+     *
+     * @return true if training was successfully started
+     */
+    public synchronized boolean startTraining(@Nullable TrainingRequest request) {
         if (running.get()) {
             log.warn("Training already in progress");
             return false;
         }
+
+        if (request == null) {
+            request = TrainingRequest.defaults();
+        }
+
+        // Resolve effective parameters (request overrides config)
+        String effectiveBaseModel =
+                request.baseModel() != null ? request.baseModel() : config.getBaseModel();
+        int effectiveEpochs = request.epochs() != null ? request.epochs() : 3;
+        double effectiveLr = request.learningRate() != null ? request.learningRate() : 2e-4;
+        int effectiveBatchSize = request.batchSize() != null ? request.batchSize() : 4;
+        int effectiveLoraRank = request.loraRank() != null ? request.loraRank() : 16;
+        boolean effectiveSkipQualityFilter =
+                request.skipQualityFilter() != null ? request.skipQualityFilter() : false;
 
         // Validate training directory
         Path trainingDir = Path.of(config.getTrainingDir()).toAbsolutePath();
@@ -118,21 +150,44 @@ public class TrainingManager {
         progress.start();
         running.set(true);
 
+        // Capture request-scoped values for the async lambda
+        final String baseModel = effectiveBaseModel;
+        final int epochs = effectiveEpochs;
+        final double lr = effectiveLr;
+        final int batchSize = effectiveBatchSize;
+        final int loraRank = effectiveLoraRank;
+        final boolean skipQualityFilter = effectiveSkipQualityFilter;
+        final String requestDataPath = request.dataPath();
+
         processExecutor.submit(
                 () -> {
                     try {
                         // Step 1: Generate training data
-                        progress.updatePhase("preparing_data", 0.1, "Generating training data...");
-                        if (!runPythonScript(pythonDir, "prepare_data.py")) {
+                        progress.updatePhase("preparing_data", 0.05, "Generating training data...");
+                        if (!runPythonScript(pythonDir, "prepare_data.py --skip-quality-check")) {
                             progress.fail("Data preparation failed");
                             running.set(false);
                             return;
                         }
 
-                        // Step 2: Train model
-                        progress.updatePhase("training", 0.3, "Fine-tuning model (QLoRA)...");
-                        Path dataPath =
-                                trainingDir.resolve("data").resolve("veto_training_data.jsonl");
+                        // Step 2: Quality filter (Feature 6.3)
+                        if (config.isQualityFilterEnabled() && !skipQualityFilter) {
+                            progress.updatePhase(
+                                    "quality_filter",
+                                    0.1,
+                                    "Running quality filter on training data...");
+                            Path dataPath = resolveTrainingDataPath(trainingDir, requestDataPath);
+                            if (!runQualityFilter(pythonDir, dataPath)) {
+                                progress.fail(
+                                        "Quality filter failed — training data contains invalid records");
+                                running.set(false);
+                                return;
+                            }
+                        }
+
+                        // Step 3: Train model
+                        progress.updatePhase("training", 0.15, "Fine-tuning model (QLoRA)...");
+                        Path dataPath = resolveTrainingDataPath(trainingDir, requestDataPath);
                         Path outputDir =
                                 config.getModelOutputDir().isEmpty()
                                         ? trainingDir.resolve("models").resolve("fine-tuned")
@@ -142,17 +197,23 @@ public class TrainingManager {
 
                         String trainArgs =
                                 String.format(
-                                        "train.py --base-model %s --data-path %s --output-dir %s --epochs 3",
-                                        config.getBaseModel(),
+                                        "train.py --base-model %s --data-path %s --output-dir %s "
+                                                + "--epochs %d --lr %s --batch-size %d --lora-r %d"
+                                                + " --structured-output",
+                                        baseModel,
                                         dataPath.toAbsolutePath(),
-                                        outputDir);
+                                        outputDir,
+                                        epochs,
+                                        lr,
+                                        batchSize,
+                                        loraRank);
                         if (!runPythonScript(pythonDir, trainArgs)) {
                             progress.fail("Training failed");
                             running.set(false);
                             return;
                         }
 
-                        // Step 3: Convert to GGUF
+                        // Step 4: Convert to GGUF
                         progress.updatePhase("converting", 0.8, "Converting to GGUF Q4_K_M...");
                         Path mergedDir = outputDir.resolve("merged");
                         String convertArgs =
@@ -165,31 +226,25 @@ public class TrainingManager {
                             return;
                         }
 
-                        // Step 4: Evaluate
+                        // Step 5: Evaluate
                         progress.updatePhase("evaluating", 0.9, "Evaluating trained model...");
                         Path evalDataPath =
                                 trainingDir.resolve("data").resolve("veto_eval_data.jsonl");
-                        Path ggufModelPath =
-                                Path.of(config.getModelOutputDir())
-                                        .resolve("veto-slm-q4_k_m.gguf")
-                                        .toAbsolutePath();
-                        if (!Files.exists(ggufModelPath)) {
-                            // Fallback: look in training/models/
-                            ggufModelPath =
-                                    trainingDir.resolve("models").resolve("veto-slm-q4_k_m.gguf");
-                        }
+                        Path ggufModelPath = resolveGgufModelPath(outputDir, trainingDir);
 
                         if (Files.exists(evalDataPath) && Files.exists(ggufModelPath)) {
+                            Path evalReportPath =
+                                    outputDir.resolve("eval_report_java.json").toAbsolutePath();
                             String evalArgs =
                                     String.format(
-                                            "evaluate.py --model %s --data %s --output %s",
+                                            "evaluate.py --model %s --data %s --output %s --json-output",
                                             ggufModelPath.toAbsolutePath(),
                                             evalDataPath.toAbsolutePath(),
-                                            trainingDir
-                                                    .resolve("models")
-                                                    .resolve("eval_report.json")
-                                                    .toAbsolutePath());
+                                            evalReportPath);
                             runPythonScript(pythonDir, evalArgs);
+
+                            // Parse evaluation report into TrainingProgress.EvaluationReport
+                            parseEvaluationReport(evalReportPath);
                         }
 
                         // Determine final model path
@@ -198,7 +253,6 @@ public class TrainingManager {
                                         .resolve(config.getDefaultGgufName())
                                         .toAbsolutePath();
                         if (!Files.exists(finalGguf)) {
-                            // Try q4_k_m variant
                             Path q4Gguf =
                                     Path.of(config.getModelOutputDir())
                                             .resolve("veto-slm-q4_k_m.gguf")
@@ -238,6 +292,72 @@ public class TrainingManager {
     }
 
     /**
+     * Run the quality filter on existing training data without starting a training run.
+     *
+     * @return the quality filter report as a Map, or null on failure
+     */
+    public @Nullable Map<String, Object> runStandaloneQualityCheck() {
+        Path trainingDir = Path.of(config.getTrainingDir()).toAbsolutePath();
+        Path pythonDir = trainingDir.resolve("python");
+        Path dataPath = trainingDir.resolve("data").resolve("veto_training_data.jsonl");
+
+        if (!Files.exists(dataPath)) {
+            log.error("Training data not found: {}", dataPath);
+            return null;
+        }
+
+        Path reportPath = trainingDir.resolve("data").resolve("quality_report_standalone.json");
+
+        String filterArgs =
+                String.format(
+                        "quality_filter.py --data %s --report %s --fail-on-invalid",
+                        dataPath.toAbsolutePath(), reportPath.toAbsolutePath());
+
+        String python = resolvePythonPath();
+        String[] cmd =
+                new String[] {
+                    python,
+                    "quality_filter.py",
+                    "--data",
+                    dataPath.toAbsolutePath().toString(),
+                    "--report",
+                    reportPath.toAbsolutePath().toString(),
+                    "--fail-on-invalid"
+                };
+
+        ProcessBuilder pb = new ProcessBuilder(cmd);
+        pb.directory(pythonDir.toFile());
+        pb.redirectErrorStream(true);
+
+        try {
+            Process process = pb.start();
+            try (BufferedReader reader =
+                    new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                while (reader.readLine() != null) {
+                    // Drain output
+                }
+            }
+            boolean finished = process.waitFor(5, TimeUnit.MINUTES);
+            if (!finished) {
+                process.destroyForcibly();
+                return null;
+            }
+            if (process.exitValue() != 0) {
+                log.warn("Quality filter reported invalid records");
+            }
+
+            if (Files.exists(reportPath)) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> report = objectMapper.readValue(reportPath.toFile(), Map.class);
+                return report;
+            }
+        } catch (Exception e) {
+            log.error("Quality filter failed", e);
+        }
+        return null;
+    }
+
+    /**
      * Deploy a trained GGUF model to the path expected by LlamaCppBridge. Optionally triggers the
      * bridge restart callback.
      *
@@ -269,6 +389,129 @@ public class TrainingManager {
             log.error("Failed to deploy model", e);
             return false;
         }
+    }
+
+    // ── Internal helpers ──
+
+    /** Run the quality filter Python script on the given data path. */
+    private boolean runQualityFilter(Path pythonDir, Path dataPath) {
+        String python = resolvePythonPath();
+        Path reportPath = dataPath.getParent().resolve("quality_report.json");
+
+        String[] cmd =
+                new String[] {
+                    python,
+                    "quality_filter.py",
+                    "--data",
+                    dataPath.toAbsolutePath().toString(),
+                    "--report",
+                    reportPath.toAbsolutePath().toString(),
+                    "--fail-on-invalid"
+                };
+
+        ProcessBuilder pb = new ProcessBuilder(cmd);
+        pb.directory(pythonDir.toFile());
+        pb.redirectErrorStream(true);
+
+        try {
+            Process process = pb.start();
+            try (BufferedReader reader =
+                    new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    log.info("[QUALITY-FILTER] {}", line);
+                }
+            }
+            boolean finished = process.waitFor(5, TimeUnit.MINUTES);
+            if (!finished) {
+                process.destroyForcibly();
+                return false;
+            }
+            return process.exitValue() == 0;
+        } catch (Exception e) {
+            log.error("Quality filter execution failed", e);
+            return false;
+        }
+    }
+
+    /**
+     * Parse the evaluation report JSON (produced by evaluate.py --json-output) into a
+     * TrainingProgress.EvaluationReport and attach it to the progress.
+     */
+    private void parseEvaluationReport(Path reportPath) {
+        if (!Files.exists(reportPath)) {
+            log.warn("Evaluation report not found: {}", reportPath);
+            return;
+        }
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> report = objectMapper.readValue(reportPath.toFile(), Map.class);
+
+            @SuppressWarnings("unchecked")
+            Map<String, Object> gbnf = (Map<String, Object>) report.get("gbnfCompliance");
+            @SuppressWarnings("unchecked")
+            Map<String, Object> decision = (Map<String, Object>) report.get("decisionAccuracy");
+            @SuppressWarnings("unchecked")
+            Map<String, Object> redaction = (Map<String, Object>) report.get("redactionAccuracy");
+            @SuppressWarnings("unchecked")
+            Map<String, Object> structural =
+                    (Map<String, Object>) report.get("structuralValidation");
+
+            TrainingProgress.EvaluationReport evalReport =
+                    new TrainingProgress.EvaluationReport(
+                            (String) report.get("modelPath"),
+                            (String) report.get("datasetPath"),
+                            (String) report.get("timestamp"),
+                            ((Number) report.get("totalSamples")).intValue(),
+                            ((Number) report.get("elapsedSeconds")).doubleValue(),
+                            new TrainingProgress.EvaluationReport.GbnfCompliance(
+                                    ((Number) gbnf.get("validJsonCount")).intValue(),
+                                    ((Number) gbnf.get("validJsonRate")).doubleValue()),
+                            new TrainingProgress.EvaluationReport.DecisionAccuracy(
+                                    ((Number) decision.get("correct")).intValue(),
+                                    ((Number) decision.get("total")).intValue(),
+                                    ((Number) decision.get("accuracy")).doubleValue()),
+                            new TrainingProgress.EvaluationReport.RedactionAccuracy(
+                                    ((Number) redaction.get("truePositives")).intValue(),
+                                    ((Number) redaction.get("falsePositives")).intValue(),
+                                    ((Number) redaction.get("falseNegatives")).intValue(),
+                                    ((Number) redaction.get("precision")).doubleValue(),
+                                    ((Number) redaction.get("recall")).doubleValue(),
+                                    ((Number) redaction.get("f1")).doubleValue()),
+                            new TrainingProgress.EvaluationReport.StructuralValidation(
+                                    ((Number) structural.get("correct")).intValue(),
+                                    ((Number) structural.get("total")).intValue(),
+                                    ((Number) structural.get("accuracy")).doubleValue()));
+
+            progress.setEvaluation(evalReport);
+            log.info(
+                    "Evaluation report parsed: GBNF compliance={:.1%}, decision accuracy={:.1%}",
+                    evalReport.gbnfCompliance().validJsonRate(),
+                    evalReport.decisionAccuracy().accuracy());
+        } catch (Exception e) {
+            log.warn("Failed to parse evaluation report: {}", e.getMessage());
+        }
+    }
+
+    private Path resolveTrainingDataPath(Path trainingDir, @Nullable String requestDataPath) {
+        if (requestDataPath != null && !requestDataPath.isEmpty()) {
+            Path custom = Path.of(requestDataPath);
+            if (Files.exists(custom)) {
+                return custom;
+            }
+            log.warn("Custom data path does not exist: {}, using default", requestDataPath);
+        }
+        return trainingDir.resolve("data").resolve("veto_training_data.jsonl");
+    }
+
+    private Path resolveGgufModelPath(Path outputDir, Path trainingDir) {
+        // Try the output dir first
+        Path candidate = outputDir.resolve("veto-slm-q4_k_m.gguf");
+        if (Files.exists(candidate)) {
+            return candidate;
+        }
+        // Fallback: training/models/
+        return trainingDir.resolve("models").resolve("veto-slm-q4_k_m.gguf");
     }
 
     /**
@@ -315,14 +558,9 @@ public class TrainingManager {
                 String line;
                 while ((line = reader.readLine()) != null) {
                     log.info("[TRAINING] {}", line);
-                    // Parse progress indicators from output
-                    if (line.contains("Training complete!")) {
-                        progress.updatePhase(
-                                "converting", 0.7, "Training complete, starting conversion...");
-                    } else if (line.contains("Conversion complete!")) {
-                        progress.updatePhase(
-                                "evaluating", 0.85, "Conversion complete, evaluating...");
-                    }
+
+                    // Try parsing as structured JSON progress
+                    parseProgressLine(line);
                 }
             }
 
@@ -353,9 +591,79 @@ public class TrainingManager {
         }
     }
 
+    /**
+     * Parse a structured JSON progress line from train.py stdout. Lines like: {@code
+     * {"type":"progress","epoch":1,"step":50,"loss":0.45}} {@code
+     * {"type":"phase","phase":"training","message":"Starting QLoRA fine-tuning..."}}
+     */
+    private void parseProgressLine(String line) {
+        if (line == null || line.isBlank()) {
+            return;
+        }
+        String trimmed = line.trim();
+        if (!STRUCTURED_PROGRESS_PATTERN.matcher(trimmed).matches()) {
+            // Not structured JSON — fall back to string-matching for legacy output
+            if (trimmed.contains("Training complete!")) {
+                progress.updatePhase(
+                        "converting", 0.7, "Training complete, starting conversion...");
+            } else if (trimmed.contains("Conversion complete!")) {
+                progress.updatePhase("evaluating", 0.85, "Conversion complete, evaluating...");
+            }
+            return;
+        }
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> parsed = objectMapper.readValue(trimmed, Map.class);
+            String type = (String) parsed.get("type");
+
+            switch (type) {
+                case "phase" -> {
+                    String phase = (String) parsed.get("phase");
+                    String message = (String) parsed.get("message");
+                    if (phase != null && message != null) {
+                        double progressVal =
+                                switch (phase) {
+                                    case "quality_filter" -> 0.1;
+                                    case "training" -> 0.15;
+                                    case "converting" -> 0.8;
+                                    case "evaluating" -> 0.9;
+                                    default -> progress.getProgress();
+                                };
+                        progress.updatePhase(phase, progressVal, message);
+                    }
+                }
+                case "progress" -> {
+                    // Fine-grained step progress during training
+                    Object stepObj = parsed.get("step");
+                    Object maxStepsObj = parsed.get("maxSteps");
+                    if (stepObj != null && maxStepsObj != null) {
+                        int step = ((Number) stepObj).intValue();
+                        int maxSteps = ((Number) maxStepsObj).intValue();
+                        if (maxSteps > 0) {
+                            // Map training steps to the 0.15–0.75 progress range
+                            double trainingProgress = 0.15 + 0.60 * ((double) step / maxSteps);
+                            progress.updatePhase(
+                                    "training",
+                                    trainingProgress,
+                                    String.format(
+                                            "Training step %d/%d (loss=%s)",
+                                            step, maxSteps, parsed.getOrDefault("loss", "N/A")));
+                        }
+                    }
+                }
+                case "epoch_start" -> log.info("Epoch {} started", parsed.get("epoch"));
+                case "epoch_end" -> log.info("Epoch {} ended", parsed.get("epoch"));
+                case "phase_complete" -> log.info("Phase {} complete", parsed.get("phase"));
+                case "error" -> log.error("Training error: {}", parsed.get("message"));
+                default -> log.debug("Unknown progress type: {}", type);
+            }
+        } catch (Exception e) {
+            // Not valid JSON or unexpected structure — ignore silently
+        }
+    }
+
     /** Resolve the Python interpreter path, preferring the venv if it exists. */
     private String resolvePythonPath() {
-        // If a venv is configured and exists, use its Python
         if (!config.getVenvPath().isEmpty()) {
             Path venvPython;
             String os = System.getProperty("os.name").toLowerCase();
@@ -368,8 +676,6 @@ public class TrainingManager {
                 return venvPython.toAbsolutePath().toString();
             }
         }
-
-        // Fall back to configured python path
         return config.getPythonPath();
     }
 

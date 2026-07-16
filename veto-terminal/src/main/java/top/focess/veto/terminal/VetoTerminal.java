@@ -458,11 +458,12 @@ public class VetoTerminal {
         } finally {
             // Closing the JLine Terminal restores the original terminal mode (scroll region,
             // echo, etc.) and flushes pending output — ensuring the status bar is cleaned up
-            // even on crash.
+            // even on crash.  JLine's Status.close() can throw NPE on terminals that don't
+            // support the status bar (display == null), so we catch that here.
             if (jt != null) {
                 try {
                     jt.close();
-                } catch (IOException ignored) {
+                } catch (IOException | NullPointerException ignored) {
                     // Best-effort cleanup on the way out.
                 }
             }

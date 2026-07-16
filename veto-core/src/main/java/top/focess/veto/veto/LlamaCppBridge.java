@@ -1,35 +1,50 @@
 package top.focess.veto.veto;
 
 import java.io.*;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.concurrent.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * gateway LlamaCpp Bridge �?interface to llama.cpp for local SLM inference. Manages the llama.cpp
+ * gateway LlamaCpp Bridge — interface to llama.cpp for local SLM inference. Manages the llama.cpp
  * subprocess lifecycle and provides grammar-constrained decoding using GBNF grammars. The SLM
  * (quantized 1B-3B model) acts as the intent firewall and semantic redactor.
+ *
+ * <p>Uses llama-server's OpenAI-compatible HTTP API ({@code POST /v1/completions}) for inference,
+ * which is more reliable than raw stdin/stdout and supports concurrent requests.
  */
 @Component
 public class LlamaCppBridge {
 
     private static final Logger log = LoggerFactory.getLogger(LlamaCppBridge.class);
 
+    /** Pattern to extract the port from llama-server startup output. */
+    private static final Pattern PORT_PATTERN =
+            Pattern.compile("llama server listening at .*:(\\d+)");
+
     private final @NonNull VetoGatewayConfiguration config;
     private final @NonNull GBNFGrammarEngine grammarEngine;
 
     private Process llamaProcess;
-    private PrintWriter processInput;
-    private BufferedReader processOutput;
     private Path grammarTempFile;
-    private final ExecutorService inferenceExecutor =
+    private volatile int serverPort = -1;
+    private final HttpClient httpClient =
+            HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
+    private final ExecutorService startupExecutor =
             Executors.newSingleThreadExecutor(
                     r -> {
-                        Thread t = new Thread(r, "veto-llamacpp");
+                        Thread t = new Thread(r, "veto-llamacpp-startup");
                         t.setDaemon(true);
                         return t;
                     });
@@ -46,7 +61,7 @@ public class LlamaCppBridge {
 
     /**
      * Start the llama.cpp subprocess with the configured model. The process is started with GBNF
-     * grammar-constrained decoding.
+     * grammar-constrained decoding. Parses the server port from startup output for HTTP API access.
      */
     public synchronized boolean start() {
         if (available) {
@@ -72,6 +87,9 @@ public class LlamaCppBridge {
             this.grammarTempFile.toFile().deleteOnExit();
             Files.writeString(this.grammarTempFile, gbnfGrammar);
 
+            // Use a fixed port for reliability (0 = random, but we need to discover it)
+            int port = findAvailablePort();
+
             ProcessBuilder pb =
                     new ProcessBuilder(
                             "llama-server",
@@ -86,24 +104,24 @@ public class LlamaCppBridge {
                             "--grammar-file",
                             this.grammarTempFile.toAbsolutePath().toString(),
                             "--port",
-                            "0", // Random port
+                            String.valueOf(port),
                             "--embedding",
                             "false",
                             "--cont-batching");
 
             pb.redirectErrorStream(true);
             llamaProcess = pb.start();
-            processInput =
-                    new PrintWriter(new OutputStreamWriter(llamaProcess.getOutputStream()), true);
-            processOutput =
-                    new BufferedReader(new InputStreamReader(llamaProcess.getInputStream()));
+
+            // Parse the port from startup output
+            this.serverPort = parsePortFromStartup(llamaProcess, port);
 
             available = true;
             log.info(
-                    "gateway LlamaCpp: Started llama.cpp with model '{}' (ctx={}, temp={})",
+                    "gateway LlamaCpp: Started llama.cpp with model '{}' (ctx={}, temp={}, port={})",
                     modelPath,
                     config.getLlamaCpp().getNCtx(),
-                    config.getLlamaCpp().getTemperature());
+                    config.getLlamaCpp().getTemperature(),
+                    serverPort);
 
             // Start health monitor
             startHealthMonitor();
@@ -118,12 +136,12 @@ public class LlamaCppBridge {
     }
 
     /**
-     * Perform SLM inference with grammar-constrained output. Returns the model's structured
-     * response.
+     * Perform SLM inference with grammar-constrained output via the HTTP API. Returns the model's
+     * structured response.
      */
     public @NonNull CompletableFuture<String> infer(
             @NonNull String prompt, @NonNull String grammarName) {
-        if (!available) {
+        if (!available || serverPort <= 0) {
             return CompletableFuture.completedFuture(
                     "{\"veto_decision\":\"pass\",\"data\":{\"note\":\"SLM unavailable, passed without analysis\"}}");
         }
@@ -131,61 +149,59 @@ public class LlamaCppBridge {
         return CompletableFuture.supplyAsync(
                 () -> {
                     try {
-                        String request =
+                        // Build the OpenAI-compatible completions request
+                        String requestBody =
                                 String.format(
-                                        "{\"prompt\":\"%s\",\"grammar\":\"%s\",\"n_predict\":1024}",
+                                        "{\"prompt\":\"%s\",\"n_predict\":512,\"temperature\":%s,"
+                                                + "\"stop\":[\"###\"],\"grammar\":\"%s\"}",
                                         escapeJson(prompt),
-                                        grammarName != null ? grammarName : "veto-output");
+                                        config.getLlamaCpp().getTemperature(),
+                                        escapeJson(
+                                                grammarName != null ? grammarName : "veto-output"));
 
-                        processInput.println(request);
-                        processInput.flush();
+                        HttpRequest request =
+                                HttpRequest.newBuilder()
+                                        .uri(
+                                                URI.create(
+                                                        String.format(
+                                                                "http://127.0.0.1:%d/v1/completions",
+                                                                serverPort)))
+                                        .timeout(Duration.ofSeconds(30))
+                                        .header("Content-Type", "application/json")
+                                        .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                                        .build();
 
-                        StringBuilder response = new StringBuilder();
-                        int openBraces = 0;
-                        boolean jsonStarted = false;
-                        String line;
-                        long deadline = System.currentTimeMillis() + 30_000; // 30s timeout
+                        HttpResponse<String> response =
+                                httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
-                        while (System.currentTimeMillis() < deadline) {
-                            line = processOutput.readLine();
-                            if (line == null) break;
-
-                            response.append(line);
-                            for (char c : line.toCharArray()) {
-                                if (c == '{') {
-                                    openBraces++;
-                                    jsonStarted = true;
-                                } else if (c == '}') {
-                                    openBraces--;
-                                }
-                            }
-
-                            if (jsonStarted && openBraces == 0) {
-                                break; // Complete JSON object detected
-                            }
+                        if (response.statusCode() == 200) {
+                            return extractContentFromResponse(response.body());
+                        } else {
+                            log.warn(
+                                    "gateway LlamaCpp: Inference returned status {}",
+                                    response.statusCode());
+                            return "{\"veto_decision\":\"pass\",\"data\":{\"note\":\"SLM inference error\"}}";
                         }
 
-                        return response.toString();
-
-                    } catch (IOException e) {
+                    } catch (Exception e) {
                         log.error("gateway LlamaCpp: Inference failed", e);
                         return "{\"veto_decision\":\"pass\",\"data\":{\"error\":\""
                                 + escapeJson(e.getMessage())
                                 + "\"}}";
                     }
-                },
-                inferenceExecutor);
+                });
     }
 
     /** Kill request for priority interruption. */
     public void killCurrentInference() {
-        // Implementation would send SIGINT or use llama.cpp's interrupt API
+        // With HTTP API, we can cancel pending requests by closing connections
         log.warn("gateway LlamaCpp: Kill current inference requested");
     }
 
     /** Gracefully stop the llama.cpp subprocess. */
     public synchronized void stop() {
         available = false;
+        serverPort = -1;
         if (llamaProcess != null && llamaProcess.isAlive()) {
             llamaProcess.destroy();
             try {
@@ -199,25 +215,6 @@ public class LlamaCppBridge {
             }
         }
         log.info("gateway LlamaCpp: Stopped");
-    }
-
-    private void startHealthMonitor() {
-        inferenceExecutor.submit(
-                () -> {
-                    while (available) {
-                        if (llamaProcess != null && !llamaProcess.isAlive()) {
-                            log.warn("gateway LlamaCpp: Process died unexpectedly");
-                            available = false;
-                            break;
-                        }
-                        try {
-                            Thread.sleep(30_000);
-                        } catch (InterruptedException e) {
-                            Thread.currentThread().interrupt();
-                            break;
-                        }
-                    }
-                });
     }
 
     /**
@@ -248,6 +245,108 @@ public class LlamaCppBridge {
         return available;
     }
 
+    // ── Internal helpers ──
+
+    /** Find an available port for llama-server. */
+    private int findAvailablePort() throws IOException {
+        try (java.net.ServerSocket socket = new java.net.ServerSocket(0)) {
+            return socket.getLocalPort();
+        }
+    }
+
+    /**
+     * Parse the server port from llama-server startup output. Falls back to the requested port if
+     * the pattern is not found.
+     */
+    private int parsePortFromStartup(Process process, int fallbackPort) {
+        try (BufferedReader reader =
+                new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+            // Read startup output for up to 30 seconds looking for the port line
+            long deadline = System.currentTimeMillis() + 30_000;
+            StringBuilder startupOutput = new StringBuilder();
+
+            while (System.currentTimeMillis() < deadline) {
+                String line = reader.readLine();
+                if (line == null) break;
+
+                startupOutput.append(line).append("\n");
+                Matcher m = PORT_PATTERN.matcher(line);
+                if (m.find()) {
+                    int parsedPort = Integer.parseInt(m.group(1));
+                    log.debug("gateway LlamaCpp: Parsed port {} from startup output", parsedPort);
+                    return parsedPort;
+                }
+
+                // Also check for "HTTP server listening" format
+                if (line.contains("listening") && line.contains(":")) {
+                    // Try to extract port from various formats
+                    Pattern altPort = Pattern.compile(":(\\d+)\\s");
+                    Matcher altM = altPort.matcher(line);
+                    if (altM.find()) {
+                        int p = Integer.parseInt(altM.group(1));
+                        if (p > 1024 && p < 65536) {
+                            log.debug("gateway LlamaCpp: Parsed port {} from alt format", p);
+                            return p;
+                        }
+                    }
+                }
+            }
+
+            // Log what we saw for debugging
+            String output = startupOutput.toString();
+            if (output.length() > 500) {
+                output = output.substring(0, 500) + "...";
+            }
+            log.debug("gateway LlamaCpp: Startup output (no port pattern found): {}", output);
+
+        } catch (IOException e) {
+            log.warn("gateway LlamaCpp: Failed to parse startup output", e);
+        }
+        log.info("gateway LlamaCpp: Using fallback port {}", fallbackPort);
+        return fallbackPort;
+    }
+
+    /** Extract the generated content from the OpenAI completions response JSON. */
+    private String extractContentFromResponse(String responseBody) {
+        // Parse the OpenAI-format response: {"content":[{"text":"..."}]}
+        try {
+            Pattern textPattern = Pattern.compile("\"text\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"");
+            Matcher m = textPattern.matcher(responseBody);
+            if (m.find()) {
+                return unescapeJson(m.group(1));
+            }
+            // Fallback: try "content" field
+            Pattern contentPattern =
+                    Pattern.compile("\"content\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"");
+            Matcher cm = contentPattern.matcher(responseBody);
+            if (cm.find()) {
+                return unescapeJson(cm.group(1));
+            }
+        } catch (Exception e) {
+            log.warn("gateway LlamaCpp: Failed to parse response body", e);
+        }
+        return responseBody;
+    }
+
+    private void startHealthMonitor() {
+        startupExecutor.submit(
+                () -> {
+                    while (available) {
+                        if (llamaProcess != null && !llamaProcess.isAlive()) {
+                            log.warn("gateway LlamaCpp: Process died unexpectedly");
+                            available = false;
+                            break;
+                        }
+                        try {
+                            Thread.sleep(30_000);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            break;
+                        }
+                    }
+                });
+    }
+
     private String escapeJson(String s) {
         if (s == null) return "";
         return s.replace("\\", "\\\\")
@@ -255,5 +354,14 @@ public class LlamaCppBridge {
                 .replace("\n", "\\n")
                 .replace("\r", "\\r")
                 .replace("\t", "\\t");
+    }
+
+    private String unescapeJson(String s) {
+        if (s == null) return "";
+        return s.replace("\\n", "\n")
+                .replace("\\r", "\r")
+                .replace("\\t", "\t")
+                .replace("\\\"", "\"")
+                .replace("\\\\", "\\");
     }
 }

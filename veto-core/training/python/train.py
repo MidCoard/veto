@@ -48,7 +48,38 @@ def parse_args():
     parser.add_argument("--hf-token", type=str, default=None,
                         help="HuggingFace token for gated models")
     parser.add_argument("--log-file", type=str, default="training_log.jsonl")
+    parser.add_argument("--quality-filter", action="store_true", default=False,
+                        help="Run quality filter on input data before training")
+    parser.add_argument("--structured-output", action="store_true", default=True,
+                        help="Emit structured JSON progress lines to stdout (for Java parser)")
     return parser.parse_args()
+
+
+def emit_progress(event_type: str, **kwargs):
+    """Emit a structured JSON progress line to stdout (parseable by TrainingManager)."""
+    import time as _time
+    msg = {"type": event_type, "timestamp": _time.time()}
+    msg.update(kwargs)
+    print(json.dumps(msg), flush=True)
+
+
+def run_quality_filter(data_path: str) -> bool:
+    """Run quality_filter.py on the training data. Returns True if data passes."""
+    filter_script = Path(__file__).parent / "quality_filter.py"
+    if not filter_script.exists():
+        print("[WARN] quality_filter.py not found, skipping quality filter")
+        return True
+
+    import subprocess
+    result = subprocess.run(
+        [sys.executable, str(filter_script), "--data", data_path, "--fail-on-invalid"],
+        capture_output=True, text=True,
+    )
+    print(result.stdout)
+    if result.returncode != 0:
+        print(f"[ERROR] Quality filter failed:\n{result.stderr}")
+        return False
+    return True
 
 
 def setup_environment(args):
@@ -152,12 +183,42 @@ def train(args):
     """Main training loop."""
     out_dir = setup_environment(args)
 
+    # ── Quality Filter (Feature 6.3) ──
+    if args.quality_filter:
+        emit_progress("phase", phase="quality_filter", message="Running quality filter on training data...")
+        if not run_quality_filter(args.data_path):
+            emit_progress("error", message="Quality filter failed — training data contains invalid records")
+            sys.exit(1)
+        emit_progress("phase_complete", phase="quality_filter", message="Quality filter passed")
+
     import torch
     from transformers import (
         AutoModelForCausalLM, AutoTokenizer, TrainingArguments, Trainer,
         BitsAndBytesConfig
     )
     from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+
+    # ── Structured progress callback ──
+    from transformers import TrainerCallback
+
+    class StructuredProgressCallback(TrainerCallback):
+        """Emits structured JSON progress lines during training (for Java TrainingManager parser)."""
+        def on_log(self, args, state, control, logs=None, **kwargs):
+            if logs and args.structured_output:
+                emit_progress("progress",
+                              epoch=state.epoch or 0,
+                              step=state.global_step,
+                              max_steps=state.max_steps,
+                              loss=logs.get("loss", logs.get("eval_loss", None)),
+                              learning_rate=logs.get("learning_rate", None))
+
+        def on_epoch_begin(self, args, state, control, **kwargs):
+            if args.structured_output:
+                emit_progress("epoch_start", epoch=int(state.epoch or 0) + 1)
+
+        def on_epoch_end(self, args, state, control, **kwargs):
+            if args.structured_output:
+                emit_progress("epoch_end", epoch=int(state.epoch or 0) + 1)
 
     # ── Quantization config (4-bit QLoRA) ──
     bnb_config = BitsAndBytesConfig(
@@ -243,6 +304,7 @@ def train(args):
         train_dataset=tokenized_datasets["train"],
         eval_dataset=tokenized_datasets.get("eval"),
         tokenizer=tokenizer,
+        callbacks=[StructuredProgressCallback()] if args.structured_output else [],
     )
 
     # ── Train ──
@@ -253,7 +315,9 @@ def train(args):
     print(f"  Output: {out_dir}")
     print(f"{'='*60}\n")
 
+    emit_progress("phase", phase="training", message="Starting QLoRA fine-tuning...")
     trainer.train()
+    emit_progress("phase_complete", phase="training", message="Training complete")
 
     # ── Save ──
     model.save_pretrained(str(out_dir / "lora-adapter"))
