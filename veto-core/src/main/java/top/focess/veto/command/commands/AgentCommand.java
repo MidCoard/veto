@@ -58,7 +58,9 @@ public class AgentCommand extends VetoCommand {
                 fixed("use").description("Select an agent pattern to use"),
                 nameArg);
 
-        // /agent create <provider> <model> [sysprompt]
+        // /agent create <provider> <model>
+        // The system prompt is persona-derived in PromptCompiler; commands must not set or store
+        // it.
         addExecutor(
                 (sender, args) -> {
                     VetoCommandSender s = vetoSender(sender);
@@ -67,10 +69,6 @@ public class AgentCommand extends VetoCommand {
                         String providerStr = args.get("provider");
                         ProviderType provider = ProviderType.valueOf(providerStr.toUpperCase());
                         String model = args.get("model");
-                        String sp =
-                                args.getOrDefault(
-                                        "sysprompt",
-                                        "You are a helpful coding assistant. Be concise.");
 
                         String key = s.input("API Key for " + provider + ":", true);
                         if (key == null) {
@@ -82,7 +80,7 @@ public class AgentCommand extends VetoCommand {
                             return CommandResult.REFUSE;
                         }
 
-                        promptHandler.setAdhocConfig(s.username(), provider, model, sp, key);
+                        promptHandler.setAdhocConfig(s.username(), provider, model, key);
                         s.output("Ad-hoc agent created (" + provider + "/" + model + ").");
                         return CommandResult.ALLOW;
                     } catch (IllegalArgumentException e) {
@@ -92,8 +90,7 @@ public class AgentCommand extends VetoCommand {
                 },
                 fixed("create").description("Create an ad-hoc agent directly without a pattern"),
                 arg("provider").description("LLM provider (e.g. DEEPSEEK, OPENAI)"),
-                arg("model").description("Model name"),
-                opt("sysprompt").description("Custom system prompt"));
+                arg("model").description("Model name"));
 
         // /agent stop
         addExecutor(
@@ -120,15 +117,13 @@ public class AgentCommand extends VetoCommand {
                     }
                     s.output("Active Agent Info:");
                     boolean isAdhoc = config.credKey().startsWith("agent-adhoc-");
-                    s.output(
-                            "  Type:          " + (isAdhoc ? "Ad-hoc (One-off)" : "Pattern-based"));
+                    s.output("  Type:     " + (isAdhoc ? "Ad-hoc (One-off)" : "Pattern-based"));
                     if (!isAdhoc) {
                         String patName = promptHandler.getActivePatternName(s.username());
-                        s.output("  Pattern Name:  " + patName);
+                        s.output("  Pattern:  " + patName);
                     }
-                    s.output("  Provider:      " + config.provider());
-                    s.output("  Model:         " + config.model());
-                    s.output("  System Prompt: " + config.systemPrompt());
+                    s.output("  Provider: " + config.provider());
+                    s.output("  Model:    " + config.model());
                     return CommandResult.ALLOW;
                 },
                 fixed("status").description("Show current active agent details"));
@@ -148,9 +143,9 @@ public class AgentCommand extends VetoCommand {
     @Override
     public @NonNull List<String> usage(@NonNull CommandSender s) {
         return List.of(
-                "/agent use <name> — Select an agent pattern to use",
-                "/agent create <provider> <model> [sysprompt] — Create an ad-hoc agent directly without a pattern",
-                "/agent stop — Deactivate the active agent",
-                "/agent status — Show current active agent details");
+                "/agent use <name> - Select an agent pattern to use",
+                "/agent create <provider> <model> - Create an ad-hoc agent directly without a pattern",
+                "/agent stop - Deactivate the active agent",
+                "/agent status - Show current active agent details");
     }
 }

@@ -1135,7 +1135,7 @@ public class AgentRunner {
             @NonNull String model,
             @NonNull String credentialKey,
             @NonNull LlmOptions options,
-            @NonNull String systemPromptBase) {}
+            @Nullable String systemPromptBase) {}
 
     /** Signals a breaker trip (caught at the action boundary → IDLE + notice). */
     private static final class BreakerTripException extends RuntimeException {}

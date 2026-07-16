@@ -42,7 +42,6 @@ public class PatternController {
                         body.get("provider").toUpperCase(),
                         body.get("model"),
                         "pattern-" + body.get("name"),
-                        body.getOrDefault("systemPrompt", "You are a helpful assistant."),
                         user,
                         topModel,
                         midModel,

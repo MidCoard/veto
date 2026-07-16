@@ -33,8 +33,10 @@ public class PatternCommand extends VetoCommand {
         setExecutorPermission(LOGGED_IN);
         var nameArg = arg("name").completer(this::completePatternName).description("Pattern name");
 
-        // /pattern create <name> <provider> <model> [sysprompt]
-        // API key is prompted interactively with masked input — never in the clear.
+        // /pattern create <name> <provider> <model>
+        // API key is prompted interactively with masked input - never in the clear.
+        // The system prompt is persona-derived in PromptCompiler; commands must not set or store
+        // it.
         addExecutor(
                 (sender, args) -> {
                     VetoCommandSender s = vetoSender(sender);
@@ -44,10 +46,6 @@ public class PatternCommand extends VetoCommand {
                         String provider = args.get("provider");
                         provider = provider.toUpperCase();
                         String model = args.get("model");
-                        String sp =
-                                args.getOrDefault(
-                                        "sysprompt",
-                                        "You are a helpful coding assistant. Be concise.");
                         ProviderType.valueOf(provider);
 
                         String key = s.input("API Key for " + provider + ":", true);
@@ -62,7 +60,7 @@ public class PatternCommand extends VetoCommand {
 
                         AgentPatternEntity entity =
                                 new AgentPatternEntity(
-                                        n, provider, model, "pattern-" + n, sp, s.username());
+                                        n, provider, model, "pattern-" + n, s.username());
                         repo.save(entity);
                         try {
                             vault.store("pattern-" + n, key);
@@ -80,8 +78,7 @@ public class PatternCommand extends VetoCommand {
                 fixed("create").description("Create a new agent pattern"),
                 arg("name"),
                 arg("provider").description("LLM provider (e.g. DEEPSEEK, OPENAI)"),
-                arg("model").description("Model name"),
-                opt("sysprompt").description("Custom system prompt"));
+                arg("model").description("Model name"));
 
         // /pattern list
         addExecutor(
@@ -142,9 +139,8 @@ public class PatternCommand extends VetoCommand {
                     }
                     var p = found.get();
                     s.output("Pattern: " + p.getName());
-                    s.output("  Provider:      " + p.getProvider());
-                    s.output("  Model:         " + p.getModel());
-                    s.output("  System Prompt: " + p.getSystemPrompt());
+                    s.output("  Provider: " + p.getProvider());
+                    s.output("  Model:    " + p.getModel());
                     return CommandResult.ALLOW;
                 },
                 fixed("show").description("Show pattern details"),
@@ -166,10 +162,9 @@ public class PatternCommand extends VetoCommand {
     public @NonNull List<String> usage(@NonNull CommandSender s) {
         log.info("PatternCommand.usage() called");
         return List.of(
-                "/pattern create <name> <provider> <model> [sysprompt] — Create a pattern (API key"
-                        + " is prompted)",
-                "/pattern list — List your patterns",
-                "/pattern delete <name> — Delete a pattern",
-                "/pattern show <name> — Show pattern details");
+                "/pattern create <name> <provider> <model> - Create a pattern (API key is prompted)",
+                "/pattern list - List your patterns",
+                "/pattern delete <name> - Delete a pattern",
+                "/pattern show <name> - Show pattern details");
     }
 }

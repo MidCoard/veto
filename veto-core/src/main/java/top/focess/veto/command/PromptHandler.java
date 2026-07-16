@@ -30,7 +30,7 @@ import top.focess.veto.vault.CredentialVault;
  *
  * <ol>
  *   <li>Authenticates the caller via {@link CredentialVault} and rejects empty prompts.
- *   <li>Resolves the active LLM configuration (provider, model, system prompt) for the user into an
+ *   <li>Resolves the active LLM configuration (provider, model, credential) for the user into an
  *       {@link AgentRunner.LlmBinding}.
  *   <li>Delegates to {@link AgentService#submit(String, String, AgentRunner.LlmBinding, Duration,
  *       java.util.function.Consumer) AgentService.submit(...)}, forwarding each user-facing message
@@ -121,18 +121,14 @@ public class PromptHandler {
     }
 
     public void setAdhocConfig(
-            String username,
-            ProviderType provider,
-            String model,
-            String systemPrompt,
-            String apiKey) {
+            String username, ProviderType provider, String model, String apiKey) {
         String credKey = "agent-adhoc-" + username;
         try {
             vault.store(credKey, apiKey);
         } catch (Exception e) {
             throw new RuntimeException("Failed to store ad-hoc API key: " + e.getMessage(), e);
         }
-        adhocConfigs.put(username, new LlmConfig(provider, model, credKey, systemPrompt));
+        adhocConfigs.put(username, new LlmConfig(provider, model, credKey));
         activePatterns.remove(username);
     }
 
@@ -196,7 +192,7 @@ public class PromptHandler {
                         config.model(),
                         config.credKey(),
                         LlmOptions.defaults(),
-                        config.systemPrompt());
+                        null); // systemPromptBase - persona-derived in PromptCompiler
 
         try {
             // Stream each user-facing message the agent emits ( seam) while the episode runs,
@@ -246,8 +242,7 @@ public class PromptHandler {
     // ── LLM config resolution ─────────────────────────────────────────────
 
     /** Resolved LLM configuration — either the active pattern or defaults. */
-    public record LlmConfig(
-            ProviderType provider, String model, String credKey, String systemPrompt) {}
+    public record LlmConfig(ProviderType provider, String model, String credKey) {}
 
     public String getActivePatternName(String username) {
         return activePatterns.get(username);
@@ -269,8 +264,7 @@ public class PromptHandler {
                         return new LlmConfig(
                                 ProviderType.valueOf(p.getProvider()),
                                 p.getModel(),
-                                p.getCredentialKey(),
-                                p.getSystemPrompt());
+                                p.getCredentialKey());
                     } catch (IllegalArgumentException e) {
                         log.warn(
                                 "Unknown provider '{}' in pattern '{}', falling back",

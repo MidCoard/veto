@@ -32,9 +32,6 @@ public class AgentPatternEntity {
     @Column(name = "credential_key", nullable = false)
     private String credentialKey;
 
-    @Column(name = "system_prompt", columnDefinition = "TEXT")
-    private String systemPrompt;
-
     @Column(name = "owner", nullable = false)
     private String owner;
 
@@ -48,7 +45,6 @@ public class AgentPatternEntity {
             String provider,
             String model,
             String credentialKey,
-            String systemPrompt,
             String owner,
             String topModel,
             String midModel,
@@ -58,7 +54,6 @@ public class AgentPatternEntity {
         this.provider = provider;
         this.model = model;
         this.credentialKey = credentialKey;
-        this.systemPrompt = systemPrompt;
         this.owner = owner;
         this.createdAt = Instant.now();
         this.topModel = topModel;
@@ -67,13 +62,8 @@ public class AgentPatternEntity {
     }
 
     public AgentPatternEntity(
-            String name,
-            String provider,
-            String model,
-            String credentialKey,
-            String systemPrompt,
-            String owner) {
-        this(name, provider, model, credentialKey, systemPrompt, owner, model, null, null);
+            String name, String provider, String model, String credentialKey, String owner) {
+        this(name, provider, model, credentialKey, owner, model, null, null);
     }
 
     public String getId() {
@@ -110,14 +100,6 @@ public class AgentPatternEntity {
 
     public void setCredentialKey(@NonNull String credentialKey) {
         this.credentialKey = credentialKey;
-    }
-
-    public String getSystemPrompt() {
-        return systemPrompt;
-    }
-
-    public void setSystemPrompt(@NonNull String systemPrompt) {
-        this.systemPrompt = systemPrompt;
     }
 
     public String getOwner() {
