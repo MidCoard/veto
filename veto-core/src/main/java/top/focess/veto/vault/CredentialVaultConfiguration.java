@@ -4,16 +4,15 @@ import org.jspecify.annotations.NonNull;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 
-/** Configuration for vault Local Credential Vault. */
+/** Configuration for the keystead-backed credential vault. */
 @Configuration
 @ConfigurationProperties(prefix = "veto.vault")
 public class CredentialVaultConfiguration {
 
-    /** Base directory for all vault files. */
+    /**
+     * Base directory for all vault files (keystead vaults live under {@code {vaultHome}/keystead}).
+     */
     private String vaultHome = expandTilde("~/.veto");
-
-    /** Number of iterations for key derivation (Argon2id). */
-    private int keyDerivationIterations = 3;
 
     /** Returns the base directory for all vault files. */
     public String getVaultHome() {
@@ -23,21 +22,6 @@ public class CredentialVaultConfiguration {
     /** Sets the base directory for all vault files. */
     public void setVaultHome(@NonNull String vaultHome) {
         this.vaultHome = expandTilde(vaultHome);
-    }
-
-    /** Returns the number of iterations for key derivation (Argon2id). */
-    public int getKeyDerivationIterations() {
-        return keyDerivationIterations;
-    }
-
-    /** Sets the number of iterations for key derivation (Argon2id). */
-    public void setKeyDerivationIterations(int keyDerivationIterations) {
-        this.keyDerivationIterations = keyDerivationIterations;
-    }
-
-    /** Derives the path to the encrypted credentials store. */
-    public String getStorePath() {
-        return vaultHome + "/vault/credentials.enc";
     }
 
     private static String expandTilde(String path) {

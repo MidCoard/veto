@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * In-memory session manager. Maps opaque UUID tokens to active sessions. The Vault Key is managed
- * by {@link CredentialVault} — this class only tracks which user is authenticated.
+ * by {@link KeysteadVault} — this class only tracks which user is authenticated.
  */
 @Component
 public class SessionManager {
