@@ -7,14 +7,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import top.focess.veto.model.AgentPatternEntity;
 import top.focess.veto.model.AgentPatternRepository;
-import top.focess.veto.vault.CredentialVault;
+import top.focess.veto.vault.KeysteadVault;
 
 @Service
 public class DefaultModelTierRegistry implements ModelTierRegistry {
 
     @Autowired private AgentPatternRepository patternRepo;
 
-    @Autowired private CredentialVault vault;
+    @Autowired private KeysteadVault vault;
 
     @Override
     public @NonNull ModelBinding resolve(@NonNull String patternName, @NonNull ModelTier tier) {
@@ -22,7 +22,7 @@ public class DefaultModelTierRegistry implements ModelTierRegistry {
             return new ModelBinding(Provider.LOCAL_SLM, "local-slm", 0.1, 2048);
         }
 
-        String user = vault.getCurrentUser();
+        String user = vault.currentUser();
         if (user != null && patternName != null) {
             Optional<AgentPatternEntity> patternOpt =
                     patternRepo.findByNameAndOwner(patternName, user);

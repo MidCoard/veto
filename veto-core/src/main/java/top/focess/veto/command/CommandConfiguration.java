@@ -35,7 +35,7 @@ public class CommandConfiguration {
      */
     @Bean
     public @NonNull PromptHandler promptHandler(
-            @NonNull CredentialVault vault,
+            @NonNull KeysteadVault vault,
             @NonNull AgentService agentService,
             @NonNull SessionService sessionService) {
         return new PromptHandler(vault, agentService, sessionService);
@@ -66,7 +66,6 @@ public class CommandConfiguration {
      */
     @Bean
     public @NonNull CommandRegistry commandRegistry(
-            @NonNull CredentialVault vault,
             @NonNull UserRegistry users,
             @NonNull PromptHandler promptHandler,
             @NonNull AgentPatternRepository patternRepo,
@@ -79,7 +78,7 @@ public class CommandConfiguration {
         registry.register(new LoginCommand(users, authLifecycleManager));
         registry.register(new LogoutCommand(authLifecycleManager, promptHandler));
         registry.register(new SignupCommand(users, authLifecycleManager));
-        registry.register(new StatusCommand(vault, promptHandler));
+        registry.register(new StatusCommand(keysteadVault, promptHandler));
         registry.register(new ExitCommand());
         registry.register(new PatternCommand(keysteadVault, patternRepo));
         registry.register(new SessionCommand(sessionService, promptHandler));

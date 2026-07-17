@@ -7,14 +7,14 @@ import top.focess.command.CommandSender;
 import top.focess.veto.command.PromptHandler;
 import top.focess.veto.command.VetoCommand;
 import top.focess.veto.command.VetoCommandSender;
-import top.focess.veto.vault.CredentialVault;
+import top.focess.veto.vault.KeysteadVault;
 
 public class StatusCommand extends VetoCommand {
 
-    private final CredentialVault vault;
+    private final KeysteadVault vault;
     private final PromptHandler promptHandler;
 
-    public StatusCommand(@NonNull CredentialVault vault, @NonNull PromptHandler promptHandler) {
+    public StatusCommand(@NonNull KeysteadVault vault, @NonNull PromptHandler promptHandler) {
         super("status", "Show session info");
         this.vault = vault;
         this.promptHandler = promptHandler;
@@ -28,7 +28,7 @@ public class StatusCommand extends VetoCommand {
                     VetoCommandSender s = vetoSender(sender);
                     if (s == null) return CommandResult.REFUSE;
 
-                    String user = vault.getCurrentUser();
+                    String user = vault.currentUser();
                     if (user == null) {
                         s.output("Not logged in.");
                         return CommandResult.REFUSE;

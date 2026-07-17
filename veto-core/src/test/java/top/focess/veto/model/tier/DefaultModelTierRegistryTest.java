@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.model.AgentPatternEntity;
 import top.focess.veto.model.AgentPatternRepository;
-import top.focess.veto.vault.CredentialVault;
+import top.focess.veto.vault.KeysteadVault;
 
 class DefaultModelTierRegistryTest {
 
@@ -16,14 +16,14 @@ class DefaultModelTierRegistryTest {
     void resolveModelTiersCorrectly() {
         DefaultModelTierRegistry registry = new DefaultModelTierRegistry();
         AgentPatternRepository patternRepo = mock(AgentPatternRepository.class);
-        CredentialVault vault = mock(CredentialVault.class);
+        KeysteadVault vault = mock(KeysteadVault.class);
 
         ReflectionTestUtils.setField(registry, "patternRepo", patternRepo);
         ReflectionTestUtils.setField(registry, "vault", vault);
 
         String patternName = "test-pattern";
         String user = "test-user";
-        when(vault.getCurrentUser()).thenReturn(user);
+        when(vault.currentUser()).thenReturn(user);
 
         // Case 1: All model tiers configured
         AgentPatternEntity p1 =

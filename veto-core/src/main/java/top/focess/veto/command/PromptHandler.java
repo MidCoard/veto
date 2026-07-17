@@ -17,7 +17,7 @@ import top.focess.veto.contract.IpcMeta;
 import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.session.LlmConfig;
 import top.focess.veto.session.SessionService;
-import top.focess.veto.vault.CredentialVault;
+import top.focess.veto.vault.KeysteadVault;
 
 /**
  * The terminal transport facade for plain-text (non-slash) prompts.
@@ -39,7 +39,7 @@ public class PromptHandler {
     /** How long to block for one agent episode before timing the terminal out. */
     private static final Duration EPISODE_TIMEOUT = Duration.ofMinutes(5);
 
-    private final CredentialVault vault;
+    private final KeysteadVault vault;
     private final AgentService agentService;
     private final SessionService sessionService;
 
@@ -52,7 +52,7 @@ public class PromptHandler {
      *     resolution
      */
     public PromptHandler(
-            @NonNull CredentialVault vault,
+            @NonNull KeysteadVault vault,
             @NonNull AgentService agentService,
             @NonNull SessionService sessionService) {
         this.vault = vault;
@@ -104,7 +104,7 @@ public class PromptHandler {
      */
     public IpcFrame.@NonNull TerminalResponse handle(
             @NonNull String prompt, @NonNull String terminalId, @NonNull VetoCommandSender sender) {
-        String user = vault.getCurrentUser();
+        String user = vault.currentUser();
         if (user == null) {
             return IpcFrame.Error.ofError("Not logged in. Use /login.");
         }

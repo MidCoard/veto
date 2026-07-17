@@ -7,31 +7,31 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import top.focess.veto.model.AgentPatternEntity;
 import top.focess.veto.model.AgentPatternRepository;
-import top.focess.veto.vault.CredentialVault;
+import top.focess.veto.vault.KeysteadVault;
 
 @RestController
 @RequestMapping("/api/patterns")
 public class PatternController {
 
     private final @NonNull AgentPatternRepository repo;
-    private final @NonNull CredentialVault vault;
+    private final @NonNull KeysteadVault vault;
 
     public
     @NonNull
-    PatternController(@NonNull AgentPatternRepository repo, @NonNull CredentialVault vault) {
+    PatternController(@NonNull AgentPatternRepository repo, @NonNull KeysteadVault vault) {
         this.repo = repo;
         this.vault = vault;
     }
 
     @GetMapping
     public List<AgentPatternEntity> list() {
-        String user = vault.getCurrentUser();
+        String user = vault.currentUser();
         return user != null ? repo.findByOwner(user) : List.of();
     }
 
     @PostMapping
     public @NonNull AgentPatternEntity create(@NonNull @RequestBody Map<String, String> body) {
-        String user = vault.getCurrentUser();
+        String user = vault.currentUser();
         if (user == null) throw new IllegalStateException("Not logged in");
         String topModel = body.getOrDefault("topModel", body.get("model"));
         String midModel = body.get("midModel");
@@ -46,17 +46,17 @@ public class PatternController {
                         topModel,
                         midModel,
                         lowModel);
-        vault.store(p.getCredentialKey(), body.get("apiKey"));
+        vault.saveNote(p.getCredentialKey(), body.get("apiKey"));
         return repo.save(p);
     }
 
     @DeleteMapping("/{name}")
     public @NonNull ResponseEntity<Void> delete(@NonNull @PathVariable String name) {
-        String user = vault.getCurrentUser();
+        String user = vault.currentUser();
         if (user == null) return ResponseEntity.status(401).build();
         repo.deleteByNameAndOwner(name, user);
         try {
-            vault.delete("pattern-" + name);
+            vault.deleteNote("pattern-" + name);
         } catch (Exception ignored) {
         }
         return ResponseEntity.noContent().build();
