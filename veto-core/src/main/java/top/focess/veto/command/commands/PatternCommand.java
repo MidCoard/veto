@@ -13,16 +13,16 @@ import top.focess.veto.command.VetoCommandSender;
 import top.focess.veto.llm.core.ProviderType;
 import top.focess.veto.model.AgentPatternEntity;
 import top.focess.veto.model.AgentPatternRepository;
-import top.focess.veto.vault.CredentialVault;
+import top.focess.veto.vault.KeysteadVault;
 
 public class PatternCommand extends VetoCommand {
 
     private static final Logger log = LoggerFactory.getLogger(PatternCommand.class);
 
-    private final CredentialVault vault;
+    private final KeysteadVault vault;
     private final AgentPatternRepository repo;
 
-    public PatternCommand(@NonNull CredentialVault v, @NonNull AgentPatternRepository repo) {
+    public PatternCommand(@NonNull KeysteadVault v, @NonNull AgentPatternRepository repo) {
         super("pattern", "Manage agent patterns", "ap");
         this.vault = v;
         this.repo = repo;
@@ -63,7 +63,7 @@ public class PatternCommand extends VetoCommand {
                                         n, provider, model, "pattern-" + n, s.username());
                         repo.save(entity);
                         try {
-                            vault.store("pattern-" + n, key);
+                            vault.saveNote("pattern-" + n, key);
                         } catch (Exception e) {
                             repo.delete(entity);
                             throw e;
@@ -114,7 +114,7 @@ public class PatternCommand extends VetoCommand {
                     }
                     repo.deleteByNameAndOwner(n, s.username());
                     try {
-                        vault.delete("pattern-" + n);
+                        vault.deleteNote("pattern-" + n);
                     } catch (Exception ignored) {
                     }
                     s.output("Pattern '" + n + "' deleted.");

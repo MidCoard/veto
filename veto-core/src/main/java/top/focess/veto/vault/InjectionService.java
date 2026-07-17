@@ -4,7 +4,6 @@ import java.util.*;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 import top.focess.veto.model.ToolExecutionRequest;
 
@@ -13,22 +12,20 @@ import top.focess.veto.model.ToolExecutionRequest;
  * Credentials are injected only for the duration of the tool execution and are never exposed to bus
  * (Communication Bus).
  *
- * <p>Resolves credentials via {@link CredentialVault}, which delegates to the current user's
- * per-user {@link SecureStore}.
+ * <p>Resolves credentials via {@link KeysteadVault}, which delegates to the current user's open
+ * keystead vault handle.
  */
 @Component
 public class InjectionService {
 
     private static final Logger log = LoggerFactory.getLogger(InjectionService.class);
 
-    private final @NonNull CredentialVault vault;
+    private final @NonNull KeysteadVault vault;
 
     // Active injection sessions - cleared after use
     private final Map<String, Map<String, String>> activeInjections = new HashMap<>();
 
-    public
-    @NonNull
-    InjectionService(@NonNull @Lazy CredentialVault vault) {
+    public InjectionService(@NonNull KeysteadVault vault) {
         this.vault = vault;
     }
 
@@ -44,7 +41,7 @@ public class InjectionService {
         List<String> missing = new ArrayList<>();
 
         for (String credKey : requiredCreds) {
-            Optional<String> value = vault.retrieve(credKey);
+            Optional<String> value = vault.readNoteBody(credKey);
             if (value.isPresent()) {
                 resolved.put(credKey, value.get());
             } else {
@@ -92,7 +89,7 @@ public class InjectionService {
     public synchronized boolean validateCredentialsAvailable(@NonNull Set<String> credentialKeys) {
         for (String key : credentialKeys) {
             try {
-                if (vault.retrieve(key).isEmpty()) {
+                if (vault.readNoteBody(key).isEmpty()) {
                     return false;
                 }
             } catch (Exception e) {

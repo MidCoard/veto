@@ -12,7 +12,7 @@ import top.focess.command.ExecutionResult;
 import top.focess.veto.command.commands.PatternCommand;
 import top.focess.veto.model.AgentPatternEntity;
 import top.focess.veto.model.AgentPatternRepository;
-import top.focess.veto.vault.CredentialVault;
+import top.focess.veto.vault.KeysteadVault;
 
 /**
  * Verifies that {@code /pattern create} no longer accepts or stores a user-controllable system
@@ -24,7 +24,7 @@ class PatternCommandSystemPromptTest {
     @Test
     void createDoesNotStoreSystemPrompt() {
         AgentPatternRepository repo = mock(AgentPatternRepository.class);
-        CredentialVault vault = mock(CredentialVault.class);
+        KeysteadVault vault = mock(KeysteadVault.class);
         VetoCommandSender sender = mock(VetoCommandSender.class);
         when(sender.hasPermission(any(CommandPermission.class))).thenReturn(true);
         when(sender.isLoggedIn()).thenReturn(true);

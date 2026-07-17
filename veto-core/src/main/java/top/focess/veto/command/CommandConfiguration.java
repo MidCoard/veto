@@ -71,7 +71,8 @@ public class CommandConfiguration {
             @NonNull PromptHandler promptHandler,
             @NonNull AgentPatternRepository patternRepo,
             @NonNull AuthLifecycleManager authLifecycleManager,
-            @NonNull SessionService sessionService) {
+            @NonNull SessionService sessionService,
+            @NonNull KeysteadVault keysteadVault) {
 
         CommandRegistry registry = new CommandRegistry(promptHandler);
 
@@ -80,7 +81,7 @@ public class CommandConfiguration {
         registry.register(new SignupCommand(users, authLifecycleManager));
         registry.register(new StatusCommand(vault, promptHandler));
         registry.register(new ExitCommand());
-        registry.register(new PatternCommand(vault, patternRepo));
+        registry.register(new PatternCommand(keysteadVault, patternRepo));
         registry.register(new SessionCommand(sessionService, promptHandler));
         registry.register(new CompactCommand(promptHandler));
         registry.register(new HelpCommand(registry));

@@ -5,26 +5,23 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 import top.focess.veto.llm.core.ProviderType;
 import top.focess.veto.llm.exceptions.LlmAuthException;
-import top.focess.veto.vault.CredentialVault;
-import top.focess.veto.vault.SecureStore;
+import top.focess.veto.vault.KeysteadVault;
 
 /**
- * Resolves the API key for a request from the vault {@link CredentialVault}, keyed by {@code
- * VetoRequest.credentialKey}. Credentials are looked up at call time so they never live inside the
- * request object or the audit trail.
+ * Resolves the API key for a request from the {@link KeysteadVault}, keyed by {@code
+ * VetoRequest.credentialKey}. The credential is a keystead {@code SECURE_NOTE} titled by the key;
+ * it is looked up at call time so it never lives inside the request object or the audit trail.
  */
 @Service
 public class CredentialResolver {
-    private final @NonNull CredentialVault vault;
+    private final @NonNull KeysteadVault vault;
 
     /**
-     * Constructs a new CredentialResolver with the specified credential vault.
+     * Constructs a new CredentialResolver with the specified keystead vault.
      *
      * @param vault the vault used to retrieve credentials
      */
-    public
-    @NonNull
-    CredentialResolver(@NonNull CredentialVault vault) {
+    public CredentialResolver(@NonNull KeysteadVault vault) {
         this.vault = vault;
     }
 
@@ -32,7 +29,7 @@ public class CredentialResolver {
      * Resolves the API key for the given provider type and credential key.
      *
      * @param providerType the target provider type
-     * @param credentialKey the key used to look up the credential in the vault
+     * @param credentialKey the key (secure-note title) used to look up the credential in the vault
      * @return the resolved API key
      * @throws LlmAuthException if the credential key is missing or no credential is found
      */
@@ -42,14 +39,14 @@ public class CredentialResolver {
             throw new LlmAuthException("Credential key is missing for provider " + providerType);
         }
         try {
-            return vault.retrieve(credentialKey)
+            return vault.readNoteBody(credentialKey)
                     .orElseThrow(
                             () ->
                                     new LlmAuthException(
                                             "No credential registered in Vault under key: "
                                                     + credentialKey));
-        } catch (SecureStore.VaultLockedException e) {
-            throw new LlmAuthException("Vault is locked — authenticate before making LLM calls", e);
+        } catch (KeysteadVault.VaultLockedException e) {
+            throw new LlmAuthException("Vault is locked - authenticate before making LLM calls", e);
         }
     }
 }
