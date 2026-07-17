@@ -68,7 +68,6 @@ public class CommandConfiguration {
     public @NonNull CommandRegistry commandRegistry(
             @NonNull CredentialVault vault,
             @NonNull UserRegistry users,
-            @NonNull VaultKeyManager keys,
             @NonNull PromptHandler promptHandler,
             @NonNull AgentPatternRepository patternRepo,
             @NonNull AuthLifecycleManager authLifecycleManager,
@@ -76,9 +75,9 @@ public class CommandConfiguration {
 
         CommandRegistry registry = new CommandRegistry(promptHandler);
 
-        registry.register(new LoginCommand(users, keys, authLifecycleManager));
+        registry.register(new LoginCommand(users, authLifecycleManager));
         registry.register(new LogoutCommand(authLifecycleManager, promptHandler));
-        registry.register(new SignupCommand(users, keys, authLifecycleManager));
+        registry.register(new SignupCommand(users, authLifecycleManager));
         registry.register(new StatusCommand(vault, promptHandler));
         registry.register(new ExitCommand());
         registry.register(new PatternCommand(vault, patternRepo));

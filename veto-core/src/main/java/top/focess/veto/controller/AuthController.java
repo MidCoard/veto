@@ -3,7 +3,6 @@ package top.focess.veto.controller;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import javax.crypto.SecretKey;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,7 +15,8 @@ import top.focess.veto.vault.*;
  * REST controller for authentication and vault lifecycle. Provides endpoints for first-run setup,
  * login, logout, status, and admin user management.
  *
- * <p>Each user gets their own Vault Key and credential file — no user can read another's secrets.
+ * <p>The vault is keystead-backed: each user has their own vault, created and opened with their
+ * login password. No user can read another user's secrets.
  */
 @RestController
 @RequestMapping("/api/auth")
@@ -26,28 +26,25 @@ public class AuthController {
 
     private static final String TOKEN_HEADER = "X-Veto-Session-Token";
 
-    private final @NonNull VaultKeyManager vaultKeyManager;
     private final @NonNull UserRegistry userRegistry;
     private final @NonNull SessionManager sessionManager;
-    private final @NonNull CredentialVault credentialVault;
+    private final @NonNull KeysteadVault vault;
     private final @NonNull AuthLifecycleManager authLifecycleManager;
 
     public AuthController(
-            VaultKeyManager vaultKeyManager,
             UserRegistry userRegistry,
             SessionManager sessionManager,
-            CredentialVault credentialVault,
+            KeysteadVault vault,
             AuthLifecycleManager authLifecycleManager) {
-        this.vaultKeyManager = vaultKeyManager;
         this.userRegistry = userRegistry;
         this.sessionManager = sessionManager;
-        this.credentialVault = credentialVault;
+        this.vault = vault;
         this.authLifecycleManager = authLifecycleManager;
     }
 
     // ── Setup (first-run) ───────────────────────────────────────────────────
 
-    /** POST /api/auth/setup — First-run admin creation. Only works when no users exist. */
+    /** POST /api/auth/setup - First-run admin creation. Only works when no users exist. */
     @PostMapping(
             value = "/setup",
             consumes = MediaType.APPLICATION_JSON_VALUE,
@@ -82,25 +79,15 @@ public class AuthController {
                                     "status",
                                     "error",
                                     "message",
-                                    "Vault is already set up — use /login"));
+                                    "Vault is already set up - use /login"));
         }
 
         try {
-            // Create admin user
-            var userEntity = userRegistry.create(username, password, UserRegistry.Role.ADMIN);
-
-            // Generate admin's own Vault Key
-            SecretKey masterKey =
-                    vaultKeyManager.deriveMasterKey(
-                            username, password, userEntity.getPasswordSalt());
-            SecretKey vaultKey = vaultKeyManager.generateVaultKey();
-            vaultKeyManager.wrapVaultKey(vaultKey, masterKey, username);
-
-            // Unlock the vault for admin
-            authLifecycleManager.login(username, vaultKey);
+            userRegistry.create(username, password, UserRegistry.Role.ADMIN);
+            authLifecycleManager.signup(username, password);
             String token = sessionManager.createSession(username);
 
-            log.info("Vault setup complete — admin user '{}' created", username);
+            log.info("Vault setup complete - admin user '{}' created", username);
             return ResponseEntity.ok(
                     Map.of(
                             "status",
@@ -122,7 +109,7 @@ public class AuthController {
 
     // ── Login ───────────────────────────────────────────────────────────────
 
-    /** POST /api/auth/login — Authenticate and unlock the user's credential vault. */
+    /** POST /api/auth/login - Authenticate and unlock the user's credential vault. */
     @PostMapping(
             value = "/login",
             consumes = MediaType.APPLICATION_JSON_VALUE,
@@ -149,21 +136,7 @@ public class AuthController {
         }
 
         try {
-            SecretKey masterKey =
-                    vaultKeyManager.deriveMasterKey(
-                            username, password, user.get().getPasswordSalt());
-            SecretKey vaultKey = vaultKeyManager.unwrapVaultKey(masterKey, username);
-            if (vaultKey == null) {
-                return ResponseEntity.status(500)
-                        .body(
-                                Map.of(
-                                        "status",
-                                        "error",
-                                        "message",
-                                        "Failed to unwrap vault key — vault may be corrupted"));
-            }
-
-            authLifecycleManager.login(username, vaultKey);
+            authLifecycleManager.login(username, password);
             String token = sessionManager.createSession(username);
 
             log.info("User '{}' logged in", username);
@@ -186,7 +159,7 @@ public class AuthController {
 
     // ── Logout ──────────────────────────────────────────────────────────────
 
-    /** POST /api/auth/logout — Invalidate session and lock vault if no other sessions active. */
+    /** POST /api/auth/logout - Invalidate session and lock vault if no other sessions active. */
     @PostMapping(value = "/logout", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Map<String, @NonNull Object>> logout(
             @RequestHeader(TOKEN_HEADER) String token) {
@@ -212,20 +185,20 @@ public class AuthController {
                         session.get().username()));
     }
 
-    // ── Status ──────────────────────────────────────────────────────────────
+    // ── Status ─────────────────────────────────────────────────────────────
 
-    /** GET /api/auth/status — Returns vault and session state. */
+    /** GET /api/auth/status - Returns vault and session state. */
     @GetMapping(value = "/status", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Map<String, Object>> status(
             @RequestHeader(value = TOKEN_HEADER, required = false) String token) {
         boolean setupNeeded = !userRegistry.anyUserExists();
-        boolean vaultLocked = !credentialVault.isUnlocked();
+        boolean vaultLocked = !vault.isUnlocked();
 
         var result = new LinkedHashMap<String, Object>();
         result.put("setupNeeded", setupNeeded);
         result.put("vaultLocked", vaultLocked);
         result.put("activeSessions", sessionManager.activeSessionCount());
-        result.put("currentUser", credentialVault.getCurrentUser());
+        result.put("currentUser", vault.currentUser());
         result.put("timestamp", Instant.now().toString());
 
         if (token != null) {
@@ -241,7 +214,7 @@ public class AuthController {
 
     // ── User management (admin only) ────────────────────────────────────────
 
-    /** POST /api/auth/users — Add a new user with their own Vault Key. Requires admin session. */
+    /** POST /api/auth/users - Add a new user with their own vault. Requires admin session. */
     @PostMapping(
             value = "/users",
             consumes = MediaType.APPLICATION_JSON_VALUE,
@@ -286,13 +259,9 @@ public class AuthController {
         }
 
         try {
-            var newUser = userRegistry.create(username, password, role);
-
-            // Generate a NEW per-user Vault Key for this user — never share admin's key
-            SecretKey masterKey =
-                    vaultKeyManager.deriveMasterKey(username, password, newUser.getPasswordSalt());
-            SecretKey vaultKey = vaultKeyManager.generateVaultKey();
-            vaultKeyManager.wrapVaultKey(vaultKey, masterKey, username);
+            userRegistry.create(username, password, role);
+            // Provision the new user's vault (created closed; opened when they log in).
+            vault.createVault(username, password);
 
             log.info(
                     "Admin '{}' created user '{}' with role '{}'",

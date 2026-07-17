@@ -1,7 +1,6 @@
 package top.focess.veto.command.commands;
 
 import java.util.List;
-import javax.crypto.SecretKey;
 import org.jspecify.annotations.NonNull;
 import top.focess.command.CommandResult;
 import top.focess.command.CommandSender;
@@ -12,16 +11,12 @@ import top.focess.veto.vault.*;
 public class LoginCommand extends VetoCommand {
 
     private final UserRegistry users;
-    private final VaultKeyManager keys;
     private final AuthLifecycleManager authLifecycleManager;
 
     public LoginCommand(
-            @NonNull UserRegistry users,
-            @NonNull VaultKeyManager keys,
-            @NonNull AuthLifecycleManager authLifecycleManager) {
+            @NonNull UserRegistry users, @NonNull AuthLifecycleManager authLifecycleManager) {
         super("login", "Sign in to your account");
         this.users = users;
-        this.keys = keys;
         this.authLifecycleManager = authLifecycleManager;
     }
 
@@ -45,7 +40,7 @@ public class LoginCommand extends VetoCommand {
                             return CommandResult.REFUSE;
                         }
                     }
-                    // Password is always prompted interactively with masking — never
+                    // Password is always prompted interactively with masking - never
                     // accepted as a command-line argument.
                     String p = s.input("Password:", true);
                     if (p == null) {
@@ -57,20 +52,17 @@ public class LoginCommand extends VetoCommand {
                         return CommandResult.REFUSE;
                     }
 
-                    var userOpt = users.authenticate(u, p);
-                    if (userOpt.isEmpty()) {
+                    if (users.authenticate(u, p).isEmpty()) {
                         s.output("Invalid username or password.");
                         return CommandResult.REFUSE;
                     }
 
-                    SecretKey mk = keys.deriveMasterKey(u, p, userOpt.get().getPasswordSalt());
-                    SecretKey vk = keys.unwrapVaultKey(mk, u);
-                    if (vk == null) {
-                        s.output("Failed to unlock vault.");
+                    try {
+                        authLifecycleManager.login(u, p);
+                    } catch (Exception e) {
+                        s.output("Failed to unlock vault: " + e.getMessage());
                         return CommandResult.REFUSE;
                     }
-
-                    authLifecycleManager.login(u, vk);
                     s.setUsername(u);
                     s.output("Logged in as " + u + ".");
                     return CommandResult.ALLOW;
@@ -80,6 +72,6 @@ public class LoginCommand extends VetoCommand {
 
     @Override
     public @NonNull List<String> usage(@NonNull CommandSender s) {
-        return List.of("/login [user] — Sign in to your account (password is prompted)");
+        return List.of("/login [user] - Sign in to your account (password is prompted)");
     }
 }

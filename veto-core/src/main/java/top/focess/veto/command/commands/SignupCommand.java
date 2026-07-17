@@ -1,7 +1,6 @@
 package top.focess.veto.command.commands;
 
 import java.util.List;
-import javax.crypto.SecretKey;
 import org.jspecify.annotations.NonNull;
 import top.focess.command.CommandResult;
 import top.focess.command.CommandSender;
@@ -12,16 +11,12 @@ import top.focess.veto.vault.*;
 public class SignupCommand extends VetoCommand {
 
     private final UserRegistry users;
-    private final VaultKeyManager keys;
     private final AuthLifecycleManager authLifecycleManager;
 
     public SignupCommand(
-            @NonNull UserRegistry users,
-            @NonNull VaultKeyManager keys,
-            @NonNull AuthLifecycleManager authLifecycleManager) {
+            @NonNull UserRegistry users, @NonNull AuthLifecycleManager authLifecycleManager) {
         super("signup", "Create a new account");
         this.users = users;
-        this.keys = keys;
         this.authLifecycleManager = authLifecycleManager;
     }
 
@@ -33,7 +28,7 @@ public class SignupCommand extends VetoCommand {
                     if (s == null) return CommandResult.REFUSE;
 
                     if (users.anyUserExists()) {
-                        s.output("An account already exists — use /login.");
+                        s.output("An account already exists - use /login.");
                         return CommandResult.REFUSE;
                     }
 
@@ -63,13 +58,15 @@ public class SignupCommand extends VetoCommand {
                         }
                     }
 
-                    var entity = users.create(u, p, UserRegistry.Role.ADMIN);
-                    SecretKey mk = keys.deriveMasterKey(u, p, entity.getPasswordSalt());
-                    SecretKey vk = keys.generateVaultKey();
-                    keys.wrapVaultKey(vk, mk, u);
-                    authLifecycleManager.login(u, vk);
+                    users.create(u, p, UserRegistry.Role.ADMIN);
+                    try {
+                        authLifecycleManager.signup(u, p);
+                    } catch (Exception e) {
+                        s.output("Account created but vault setup failed: " + e.getMessage());
+                        return CommandResult.REFUSE;
+                    }
                     s.setUsername(u);
-                    s.output("Account created — welcome, " + u + ".");
+                    s.output("Account created - welcome, " + u + ".");
                     return CommandResult.ALLOW;
                 },
                 opt("user"),
@@ -78,6 +75,6 @@ public class SignupCommand extends VetoCommand {
 
     @Override
     public @NonNull List<String> usage(@NonNull CommandSender s) {
-        return List.of("/signup [user] [pass] — Create a new account");
+        return List.of("/signup [user] [pass] - Create a new account");
     }
 }

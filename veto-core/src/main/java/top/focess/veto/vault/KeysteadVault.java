@@ -70,6 +70,23 @@ public class KeysteadVault {
         }
     }
 
+    /**
+     * Creates a new vault for the user without opening it (the handle is closed immediately). Used
+     * when an admin provisions another user's vault - the vault exists on disk but is not unlocked
+     * until that user logs in.
+     */
+    public void createVault(@NonNull String username, @NonNull String password) {
+        char[] pw = password.toCharArray();
+        try {
+            VaultHandle handle =
+                    serviceFor(username).createVault(new CreateVaultRequest(vaultId(username)), pw);
+            handle.close();
+            log.info("KeysteadVault: vault created (closed) for user '{}'", username);
+        } finally {
+            wipe(pw);
+        }
+    }
+
     /** Opens an existing vault and caches its unlocked handle (login). Reuses an open handle. */
     public void login(@NonNull String username, @NonNull String password) {
         VaultHandle existing = handles.get(username);
