@@ -127,14 +127,6 @@ public class CommandRegistry {
                 if (exc instanceof LogoutException) {
                     return new IpcFrame.Done(buildDoneMeta(sender, true), null);
                 }
-                if (exc instanceof CancelException) {
-                    // Safety net: input() now returns null on cancel, so commands handle it
-                    // directly. This catch is only reached if a command calls
-                    // inputAsync().join() without handling CancellationException.
-                    Map<String, Object> meta = new java.util.HashMap<>();
-                    meta.put(IpcMeta.CANCELLED, true);
-                    return new IpcFrame.Done(meta, null);
-                }
                 String msg = result.getMessage().orElse("Command failed.");
                 return IpcFrame.Error.ofError(msg);
             }

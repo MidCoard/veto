@@ -63,7 +63,8 @@ public class GBNFGrammarEngine {
      * Get the default veto output grammar. Enforces structured JSON output with redaction markers.
      */
     public String getDefaultVetoGrammar() {
-        return """
+        return
+"""
 root ::= veto-response
 veto-response ::= "{" ws "veto_decision" ws ":" ws decision ws "," ws "data" ws ":" ws data-block ws "}"
 decision ::= "\"pass\"" | "\"redact\"" | "\"block\""
@@ -81,7 +82,8 @@ number ::= [0-9]+ ("." [0-9]+)?
      * to project rules (e.g., normalized physics values).
      */
     public String getCodeConstraintGrammar() {
-        return """
+        return
+"""
 root ::= code-constraint-response
 code-constraint-response ::= "{" ws "valid" ws ":" ws boolean ws "," ws "violations" ws ":" ws violations-list ws "," ws "redacted" ws ":" ws redacted-block ws "}"
 boolean ::= "true" | "false"
@@ -97,7 +99,8 @@ string ::= "\\"" [^"]* "\\""
 
     /** Get the secrets redaction grammar. */
     public String getSecretsRedactionGrammar() {
-        return """
+        return
+"""
 root ::= redaction-response
 redaction-response ::= "{" ws "secrets_found" ws ":" ws boolean ws "," ws "redacted_fields" ws ":" ws redacted-fields ws "," ws "safe_payload" ws ":" ws string ws "}"
 redacted-fields ::= "[" ws (redacted-field ("," ws redacted-field)*)? ws "]"

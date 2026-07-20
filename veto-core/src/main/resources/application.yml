@@ -59,6 +59,15 @@ veto:
     # Runtime screening matrix: STRICT | BALANCED | BYPASS_ALL.
     deployer-policy: FULL_ACCESS
     screening-mode: STRICT
+    # How accounts may be created:
+    #   solo   - single-user: first /signup wins (ADMIN), then blocked.
+    #   public - multi-user: anonymous self-signup (first ADMIN, rest USER).
+    #   invite - multi-user: no anonymous signup; bootstrap admin provisions the rest via /user create.
+    # TENANT deployer-policy requires public or invite. The first admin is always created in-app via
+    # /signup (no plaintext credential in this file). Under non-FULL_ACCESS policies the agent is
+    # blocked from reading application.yml/config/audit via the ProtectedSet.
+    signup:
+      mode: ${VETO_SIGNUP_MODE:public}
 
   terminal:
     max-concurrent-connections: 16

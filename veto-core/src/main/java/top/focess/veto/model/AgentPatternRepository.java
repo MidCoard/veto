@@ -12,4 +12,7 @@ public interface AgentPatternRepository extends JpaRepository<AgentPatternEntity
     java.util.Optional<AgentPatternEntity> findByNameAndOwner(String name, String owner);
 
     void deleteByNameAndOwner(String name, String owner);
+
+    /** Bulk-delete every pattern owned by {@code owner} (used by user-deletion cascade). */
+    void deleteByOwner(String owner);
 }

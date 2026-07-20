@@ -214,7 +214,7 @@ public final class ClientSession {
         IpcFrame.ClientFrame reply = null;
         synchronized (lock) {
             switch (frame) {
-                    // ── streaming ───────────────────────────────────────────────────
+                // ── streaming ───────────────────────────────────────────────────
                 case IpcFrame.Delta d -> {
                     if (state == State.IDLE) {
                         rejectOrphan(d, "Delta");
@@ -245,7 +245,7 @@ public final class ClientSession {
                     }
                 }
 
-                    // ── terminal ────────────────────────────────────────────────────
+                // ── terminal ────────────────────────────────────────────────────
                 case IpcFrame.Done done -> {
                     SessionMeta snap = applyMeta(done.meta());
                     if (snap != null) {

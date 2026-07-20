@@ -1,6 +1,8 @@
 package top.focess.veto.agent.screening;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -77,6 +79,42 @@ public record ProtectedSet(@NonNull Set<Path> paths) {
             paths.add(g.rootPath());
         }
         return new ProtectedSet(paths);
+    }
+
+    /**
+     * Returns a copy of this set with additional system-protected paths merged in. Used to shield
+     * the application's own config/audit material (application.yml, ./config/, ./audit/) from the
+     * agent under every non-{@code FULL_ACCESS} policy - see {@link
+     * #standardSystemProtected(Path)}.
+     */
+    public @NonNull ProtectedSet withSystemProtected(@NonNull Collection<Path> systemPaths) {
+        if (systemPaths == null || systemPaths.isEmpty()) {
+            return this;
+        }
+        Set<Path> merged = new HashSet<>(this.paths);
+        for (Path p : systemPaths) {
+            if (p != null) {
+                merged.add(p);
+            }
+        }
+        return new ProtectedSet(merged);
+    }
+
+    /**
+     * The standard system-protected paths relative to the application launch directory: {@code
+     * application.yml} / {@code application.yaml} / {@code application.properties}, the {@code
+     * config/} directory, and the {@code audit/} directory. These hold deployer config and audit
+     * logs the agent must never read. Listed as specific subpaths (not the whole launch dir) so the
+     * agent's workspace - if nested under the launch dir - is unaffected.
+     */
+    public static @NonNull List<Path> standardSystemProtected(@NonNull Path launchDir) {
+        List<Path> paths = new ArrayList<>();
+        paths.add(launchDir.resolve("application.yml"));
+        paths.add(launchDir.resolve("application.yaml"));
+        paths.add(launchDir.resolve("application.properties"));
+        paths.add(launchDir.resolve("config"));
+        paths.add(launchDir.resolve("audit"));
+        return paths;
     }
 
     /**

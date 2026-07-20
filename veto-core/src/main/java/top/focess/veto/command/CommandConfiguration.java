@@ -6,6 +6,8 @@ import org.springframework.context.annotation.Configuration;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.command.commands.*;
 import top.focess.veto.model.AgentPatternRepository;
+import top.focess.veto.security.SignupPolicy;
+import top.focess.veto.security.UserAdminService;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.vault.*;
 
@@ -51,6 +53,7 @@ public class CommandConfiguration {
      *   <li>{@code /logout} — clear the active session
      *   <li>{@code /signup} — create a new user account
      *   <li>{@code /status} — display current session and agent state
+     *   <li>{@code /version} — show veto-core and veto-terminal versions
      *   <li>{@code /exit} — terminate the terminal session
      *   <li>{@code /pattern} — manage LLM agent patterns
      *   <li>{@code /help} — list available commands
@@ -71,18 +74,22 @@ public class CommandConfiguration {
             @NonNull AgentPatternRepository patternRepo,
             @NonNull AuthLifecycleManager authLifecycleManager,
             @NonNull SessionService sessionService,
-            @NonNull KeysteadVault keysteadVault) {
+            @NonNull KeysteadVault keysteadVault,
+            @NonNull SignupPolicy signupPolicy,
+            @NonNull UserAdminService userAdminService) {
 
         CommandRegistry registry = new CommandRegistry(promptHandler);
 
         registry.register(new LoginCommand(users, authLifecycleManager));
         registry.register(new LogoutCommand(authLifecycleManager, promptHandler));
-        registry.register(new SignupCommand(users, authLifecycleManager));
+        registry.register(new SignupCommand(users, authLifecycleManager, signupPolicy));
         registry.register(new StatusCommand(keysteadVault, promptHandler));
+        registry.register(new VersionCommand());
         registry.register(new ExitCommand());
         registry.register(new PatternCommand(keysteadVault, patternRepo));
         registry.register(new SessionCommand(sessionService, promptHandler));
         registry.register(new CompactCommand(promptHandler));
+        registry.register(new UserAdminCommand(userAdminService, signupPolicy));
         registry.register(new HelpCommand(registry));
         return registry;
     }

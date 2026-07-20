@@ -1,6 +1,6 @@
 plugins {
     application
-    kotlin("jvm") version "2.0.21"
+    kotlin("jvm") version "2.3.0"
     id("com.diffplug.spotless") version "6.25.0"
 }
 
@@ -12,12 +12,13 @@ application {
     applicationDefaultJvmArgs = listOf(
         "-Dfile.encoding=UTF-8",
         "-Dslf4j.internal.verbosity=WARN",
+        "--enable-native-access=ALL-UNNAMED",
     )
 }
 
 java {
-    sourceCompatibility = JavaVersion.VERSION_21
-    targetCompatibility = JavaVersion.VERSION_21
+    sourceCompatibility = JavaVersion.VERSION_25
+    targetCompatibility = JavaVersion.VERSION_25
 }
 
 repositories {
@@ -47,9 +48,49 @@ dependencies {
     implementation("org.slf4j:jul-to-slf4j:$slf4jVersion")
 }
 
+// ── Build-time version source ──────────────────────────────────────────
+// Generates top.focess.veto.terminal.VetoVersion (COMPONENT + VERSION) from project.version so the
+// runtime can report its build version (sent to the backend in the IPC Hello handshake). Spotless
+// targets src/** only, so generated sources under build/ are exempt from formatting.
+val generatedVersionDir = layout.buildDirectory.dir("generated/sources/vetoVersion/java")
+val generateVersion by tasks.registering {
+    val pkg = "top.focess.veto.terminal"
+    val component = project.name
+    val versionStr = project.version.toString()
+    inputs.property("component", component)
+    inputs.property("version", versionStr)
+    outputs.dir(generatedVersionDir)
+    doLast {
+        val pkgDir = generatedVersionDir.get().asFile.resolve(pkg.replace('.', '/'))
+        pkgDir.mkdirs()
+        val sb = StringBuilder()
+        sb.append("package ").append(pkg).append(";\n\n")
+        sb.append("/** Build-time generated version descriptor. Do not edit by hand. */\n")
+        sb.append("public final class VetoVersion {\n")
+        sb.append("    private VetoVersion() {}\n\n")
+        sb.append("    public static final String COMPONENT = \"").append(component).append("\";\n\n")
+        sb.append("    public static final String VERSION = \"").append(versionStr).append("\";\n")
+        sb.append("}\n")
+        pkgDir.resolve("VetoVersion.java").writeText(sb.toString())
+    }
+}
+sourceSets {
+    main {
+        java.srcDir(generatedVersionDir)
+    }
+}
+tasks.named<JavaCompile>("compileJava") {
+    dependsOn(generateVersion)
+}
+// The Kotlin plugin (applied for the terminal) also scans the main java source set, so its
+// compile task must depend on the generator too - otherwise Gradle flags an implicit dependency.
+tasks.named("compileKotlin") {
+    dependsOn(generateVersion)
+}
+
 spotless {
     java {
-        googleJavaFormat("1.19.2").aosp()
+        googleJavaFormat("1.28.0").aosp()
         target("src/main/java/**/*.java", "src/test/java/**/*.java")
         removeUnusedImports()
         trimTrailingWhitespace()

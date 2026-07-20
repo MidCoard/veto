@@ -7,8 +7,8 @@ group = "top.focess"
 version = "1.0.0-SNAPSHOT"
 
 java {
-    sourceCompatibility = JavaVersion.VERSION_21
-    targetCompatibility = JavaVersion.VERSION_21
+    sourceCompatibility = JavaVersion.VERSION_25
+    targetCompatibility = JavaVersion.VERSION_25
 }
 
 repositories {
@@ -36,6 +36,9 @@ dependencies {
     compileOnly("org.slf4j:jul-to-slf4j:$slf4jVersion")
 
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
+    // Gradle 9 requires the JUnit Platform Launcher on the test runtime classpath; it is no longer
+    // auto-resolved. Pin to the platform version matching junit-jupiter 5.10.2.
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.10.2")
     // Logback + JUL→SLF4J at test runtime so this module's own tests have a backend.
     testRuntimeOnly("ch.qos.logback:logback-classic:$logbackVersion")
     testRuntimeOnly("org.slf4j:jul-to-slf4j:$slf4jVersion")
@@ -43,7 +46,7 @@ dependencies {
 
 spotless {
     java {
-        googleJavaFormat("1.19.2").aosp()
+        googleJavaFormat("1.28.0").aosp()
         target("src/main/java/**/*.java", "src/test/java/**/*.java")
         removeUnusedImports()
         trimTrailingWhitespace()

@@ -1,6 +1,6 @@
 plugins {
     java
-    id("org.springframework.boot") version "3.4.0"
+    id("org.springframework.boot") version "3.5.16"
     id("io.spring.dependency-management") version "1.1.6"
     id("com.google.protobuf") version "0.9.4"
     id("com.diffplug.spotless") version "6.25.0"
@@ -11,8 +11,8 @@ group = "top.focess"
 version = "1.0.0-SNAPSHOT"
 
 java {
-    sourceCompatibility = JavaVersion.VERSION_21
-    targetCompatibility = JavaVersion.VERSION_21
+    sourceCompatibility = JavaVersion.VERSION_25
+    targetCompatibility = JavaVersion.VERSION_25
 }
 
 repositories {
@@ -58,7 +58,7 @@ dependencies {
     implementation("org.bouncycastle:bcprov-jdk18on:1.84")
 
     // Keystead credential vault (local mavenLocal snapshot)
-    implementation("top.focess:keystead-core:0.1.0-SNAPSHOT")
+    implementation("top.focess:keystead-core:0.2.0-SNAPSHOT")
 
     // JNA (Java Native Access) for kernel-level sandbox substrate
     implementation("net.java.dev.jna:jna:5.14.0")
@@ -102,9 +102,44 @@ protobuf {
     }
 }
 
+// ── Build-time version source ──────────────────────────────────────────
+// Generates top.focess.veto.VetoVersion (COMPONENT + VERSION) from project.version so the runtime
+// can report its build version (e.g. in /version and the IPC handshake). Spotless targets src/**
+// only, so generated sources under build/ are exempt from formatting.
+val generatedVersionDir = layout.buildDirectory.dir("generated/sources/vetoVersion/java")
+val generateVersion by tasks.registering {
+    val pkg = "top.focess.veto"
+    val component = project.name
+    val versionStr = project.version.toString()
+    inputs.property("component", component)
+    inputs.property("version", versionStr)
+    outputs.dir(generatedVersionDir)
+    doLast {
+        val pkgDir = generatedVersionDir.get().asFile.resolve(pkg.replace('.', '/'))
+        pkgDir.mkdirs()
+        val sb = StringBuilder()
+        sb.append("package ").append(pkg).append(";\n\n")
+        sb.append("/** Build-time generated version descriptor. Do not edit by hand. */\n")
+        sb.append("public final class VetoVersion {\n")
+        sb.append("    private VetoVersion() {}\n\n")
+        sb.append("    public static final String COMPONENT = \"").append(component).append("\";\n\n")
+        sb.append("    public static final String VERSION = \"").append(versionStr).append("\";\n")
+        sb.append("}\n")
+        pkgDir.resolve("VetoVersion.java").writeText(sb.toString())
+    }
+}
+sourceSets {
+    main {
+        java.srcDir(generatedVersionDir)
+    }
+}
+tasks.named<JavaCompile>("compileJava") {
+    dependsOn(generateVersion)
+}
+
 spotless {
     java {
-        googleJavaFormat("1.19.2").aosp()
+        googleJavaFormat("1.28.0").aosp()
         target("src/main/java/**/*.java", "src/test/java/**/*.java")
         removeUnusedImports()
         trimTrailingWhitespace()
@@ -116,6 +151,10 @@ springBoot {
     mainClass = "top.focess.veto.VetoApplication"
 }
 
+tasks.named<org.springframework.boot.gradle.tasks.run.BootRun>("bootRun") {
+    jvmArgs("--enable-native-access=ALL-UNNAMED")
+}
+
 tasks.withType<JavaCompile> {
     options.encoding = "UTF-8"
     options.compilerArgs.add("-encoding")
@@ -124,4 +163,7 @@ tasks.withType<JavaCompile> {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+    // Byte Buddy (Mockito) does not officially support Java 25 yet; allow experimental support.
+    systemProperty("net.bytebuddy.experimental", "true")
+    jvmArgs("--enable-native-access=ALL-UNNAMED")
 }

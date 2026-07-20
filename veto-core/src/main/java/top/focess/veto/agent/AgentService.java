@@ -1,6 +1,7 @@
 package top.focess.veto.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
@@ -107,10 +108,13 @@ public class AgentService {
         this.workspace = Workspace.fromConfig(legacyRoot, rootsCsv, pathMode);
         this.maxCallsPerEpisode = maxCallsPerEpisode;
         this.deployerPolicy = parseDeployerPolicy(deployerPolicyRaw);
-        this.protectedSet =
-                this.deployerPolicy == DeployerPolicy.PROTECTED
-                        ? ProtectedSet.withDeployerDefaults(this.workspace.hostRoots())
-                        : ProtectedSet.empty();
+        if (this.deployerPolicy == DeployerPolicy.FULL_ACCESS) {
+            log.warn(
+                    "deployer-policy=FULL_ACCESS: the agent can read application.yml and any secrets"
+                            + " stored in it. Do not store high-value secrets in application.yml under"
+                            + " this policy; use env vars or the keystead vault.");
+        }
+        this.protectedSet = protectedSetFor("default");
         // Thread the runtime screening matrix + workspace to the (shared) HITL registry. The
         // workspace is needed for canonical-path arg extraction when matching permission grants.
         this.hitlRegistry.setScreeningMode(parseScreeningMode(screeningModeRaw));
@@ -282,10 +286,7 @@ public class AgentService {
             @NonNull UUID userId) {
         AgentPersona persona = buildPersona(agentKey, binding);
         ReadHistory readHistory = new ReadHistory();
-        ProtectedSet userProtectedSet =
-                this.deployerPolicy == DeployerPolicy.PROTECTED
-                        ? ProtectedSet.withDeployerDefaults(agentKey, this.workspace.hostRoots())
-                        : ProtectedSet.empty();
+        ProtectedSet userProtectedSet = protectedSetFor(agentKey);
         Gateway gateway =
                 new Gateway(
                         workspace,
@@ -334,13 +335,20 @@ public class AgentService {
             AgentRunner.@NonNull LlmBinding binding,
             @NonNull UUID userId) {
         ReadHistory readHistory = new ReadHistory();
+        // Mates are not wired with per-user deployer defaults (see createMate javadoc), but the
+        // app's own config/audit material is system-wide and must be shielded under
+        // non-FULL_ACCESS.
+        ProtectedSet mateProtectedSet =
+                this.deployerPolicy == DeployerPolicy.FULL_ACCESS
+                        ? ProtectedSet.empty()
+                        : ProtectedSet.empty().withSystemProtected(systemProtectedPaths());
         Gateway gateway =
                 new Gateway(
                         workspace,
                         new DangerComputation(),
                         SlmRelevanceProvider.degraded(),
                         deployerPolicy,
-                        ProtectedSet.empty(),
+                        mateProtectedSet,
                         readHistory);
         AgentRunner runner =
                 new AgentRunner(
@@ -380,6 +388,29 @@ public class AgentService {
     /** The workspace agents resolve paths against (for tests). */
     public Workspace workspace() {
         return workspace;
+    }
+
+    /**
+     * The app's own config/audit paths the agent must never read (shielded under non-FULL_ACCESS).
+     */
+    private static List<Path> systemProtectedPaths() {
+        return ProtectedSet.standardSystemProtected(Path.of(System.getProperty("user.dir", ".")));
+    }
+
+    /**
+     * The protected set for an agent under the configured deployer policy: empty under FULL_ACCESS;
+     * otherwise the deployer defaults (per {@code vetoUserId}) plus the app's own config/audit
+     * material, so the agent cannot read {@code application.yml} / {@code config/} / {@code
+     * audit/}. {@link DangerComputation} checks the set before scoping, so this applies under every
+     * non-FULL_ACCESS policy. Listed as specific subpaths so a workspace nested under the launch
+     * dir is unaffected.
+     */
+    private ProtectedSet protectedSetFor(String vetoUserId) {
+        if (this.deployerPolicy == DeployerPolicy.FULL_ACCESS) {
+            return ProtectedSet.empty();
+        }
+        return ProtectedSet.withDeployerDefaults(vetoUserId, this.workspace.hostRoots())
+                .withSystemProtected(systemProtectedPaths());
     }
 
     private static DeployerPolicy parseDeployerPolicy(String raw) {

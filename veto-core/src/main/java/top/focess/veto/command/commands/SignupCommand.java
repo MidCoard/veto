@@ -6,18 +6,24 @@ import top.focess.command.CommandResult;
 import top.focess.command.CommandSender;
 import top.focess.veto.command.VetoCommand;
 import top.focess.veto.command.VetoCommandSender;
+import top.focess.veto.security.SignupMode;
+import top.focess.veto.security.SignupPolicy;
 import top.focess.veto.vault.*;
 
 public class SignupCommand extends VetoCommand {
 
     private final UserRegistry users;
     private final AuthLifecycleManager authLifecycleManager;
+    private final SignupPolicy policy;
 
     public SignupCommand(
-            @NonNull UserRegistry users, @NonNull AuthLifecycleManager authLifecycleManager) {
+            @NonNull UserRegistry users,
+            @NonNull AuthLifecycleManager authLifecycleManager,
+            @NonNull SignupPolicy policy) {
         super("signup", "Create a new account");
         this.users = users;
         this.authLifecycleManager = authLifecycleManager;
+        this.policy = policy;
     }
 
     @Override
@@ -27,9 +33,37 @@ public class SignupCommand extends VetoCommand {
                     VetoCommandSender s = vetoSender(sender);
                     if (s == null) return CommandResult.REFUSE;
 
-                    if (users.anyUserExists()) {
-                        s.output("An account already exists - use /login.");
+                    // Signup is an unauthenticated entry point. Once a session is logged in it must
+                    // not create further accounts; the caller logs out first (or, in multi-user
+                    // modes, an admin provisions the account via /user create).
+                    if (s.isLoggedIn()) {
+                        s.output(
+                                "You are already logged in as "
+                                        + s.username()
+                                        + "; log out before signing up as a different user.");
                         return CommandResult.REFUSE;
+                    }
+
+                    // The first account is always the bootstrap admin (created in-app, any mode).
+                    // After an admin exists, the signup mode governs further self-signup.
+                    boolean bootstrap = users.adminCount() == 0;
+                    SignupMode mode = policy.mode();
+                    if (!bootstrap) {
+                        switch (mode) {
+                            case SOLO -> {
+                                s.output("An account already exists - use /login.");
+                                return CommandResult.REFUSE;
+                            }
+                            case INVITE -> {
+                                s.output(
+                                        "Self-signup is disabled; ask an administrator to create your"
+                                                + " account.");
+                                return CommandResult.REFUSE;
+                            }
+                            case PUBLIC -> {
+                                // allowed; users after the bootstrap admin are USERs.
+                            }
+                        }
                     }
 
                     String u = args.get("user");
@@ -58,7 +92,13 @@ public class SignupCommand extends VetoCommand {
                         }
                     }
 
-                    users.create(u, p, UserRegistry.Role.ADMIN);
+                    String role = bootstrap ? UserRegistry.Role.ADMIN : UserRegistry.Role.USER;
+                    try {
+                        users.create(u, p, role);
+                    } catch (IllegalArgumentException e) {
+                        s.output(e.getMessage());
+                        return CommandResult.REFUSE;
+                    }
                     try {
                         authLifecycleManager.signup(u, p);
                     } catch (Exception e) {
@@ -66,7 +106,10 @@ public class SignupCommand extends VetoCommand {
                         return CommandResult.REFUSE;
                     }
                     s.setUsername(u);
-                    s.output("Account created - welcome, " + u + ".");
+                    s.output(
+                            bootstrap
+                                    ? "Administrator account created - welcome, " + u + "."
+                                    : "Account created - welcome, " + u + ".");
                     return CommandResult.ALLOW;
                 },
                 opt("user"),
@@ -75,6 +118,6 @@ public class SignupCommand extends VetoCommand {
 
     @Override
     public @NonNull List<String> usage(@NonNull CommandSender s) {
-        return List.of("/signup [user] [pass] - Create a new account");
+        return List.of("/signup [user] [pass] - Create a new account (password is prompted)");
     }
 }

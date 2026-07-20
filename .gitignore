@@ -70,6 +70,7 @@ veto-core/training/data/*.json
 veto-core/training/data/*.jsonl
 
 plans/
+scripts/
 
 ## Claude Code
 .claude/

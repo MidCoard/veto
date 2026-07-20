@@ -8,4 +8,7 @@ import org.springframework.stereotype.Repository;
 public interface AgentInstanceRepository extends JpaRepository<AgentEntity, String> {
 
     List<AgentEntity> findBySessionId(String sessionId);
+
+    /** Bulk-delete every agent belonging to {@code sessionId} (used by user-deletion cascade). */
+    void deleteBySessionId(String sessionId);
 }

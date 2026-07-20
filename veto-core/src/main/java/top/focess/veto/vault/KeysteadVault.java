@@ -1,8 +1,13 @@
 package top.focess.veto.vault;
 
 import jakarta.annotation.PreDestroy;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileVisitResult;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Arrays;
 import java.util.Optional;
 import java.util.Set;
@@ -116,6 +121,49 @@ public class KeysteadVault {
     public void logoutAll() {
         handles.forEach((u, h) -> h.close());
         handles.clear();
+    }
+
+    /**
+     * Deletes the user's vault store from disk (used by user-deletion cascade). Closes any open
+     * handle and drops the cached service first. Best-effort: if a file is locked the store may be
+     * partially left, but the user row and DB-owned data are already removed by the caller.
+     */
+    public void deleteVaultStore(@NonNull String username) {
+        logout(username);
+        services.remove(username);
+        Path path = vaultBase.resolve(username);
+        if (!Files.exists(path)) {
+            return;
+        }
+        try {
+            if (Files.isDirectory(path)) {
+                Files.walkFileTree(
+                        path,
+                        new SimpleFileVisitor<>() {
+                            @Override
+                            public FileVisitResult visitFile(Path f, BasicFileAttributes a)
+                                    throws IOException {
+                                Files.delete(f);
+                                return FileVisitResult.CONTINUE;
+                            }
+
+                            @Override
+                            public FileVisitResult postVisitDirectory(Path d, IOException exc)
+                                    throws IOException {
+                                Files.delete(d);
+                                return FileVisitResult.CONTINUE;
+                            }
+                        });
+            } else {
+                Files.delete(path);
+            }
+            log.info("KeysteadVault: deleted vault store for user '{}'", username);
+        } catch (IOException e) {
+            log.warn(
+                    "KeysteadVault: could not fully delete vault store for '{}': {}",
+                    username,
+                    e.getMessage());
+        }
     }
 
     @PreDestroy

@@ -3,6 +3,7 @@ package top.focess.veto.vault;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import org.bouncycastle.crypto.generators.Argon2BytesGenerator;
 import org.bouncycastle.crypto.params.Argon2Parameters;
@@ -78,6 +79,46 @@ public class UserRegistry {
     @Transactional(readOnly = true)
     public @NonNull Optional<UserEntity> findByUsername(@NonNull String username) {
         return repo.findById(username);
+    }
+
+    /** Deletes the user row by username (no cascade - see UserAdminService.deleteUser). */
+    public void deleteByUsername(@NonNull String username) {
+        repo.findById(username).ifPresent(repo::delete);
+    }
+
+    /** Number of users with the ADMIN role (for the last-admin guard on /user delete). */
+    @Transactional(readOnly = true)
+    public long adminCount() {
+        return repo.countByRole(Role.ADMIN);
+    }
+
+    /** Whether the user exists and has the ADMIN role. */
+    @Transactional(readOnly = true)
+    public boolean isAdmin(@NonNull String username) {
+        return repo.findById(username).map(u -> Role.ADMIN.equals(u.getRole())).orElse(false);
+    }
+
+    /** Lists every user (admin only). */
+    @Transactional(readOnly = true)
+    public @NonNull List<UserEntity> listAll() {
+        return repo.findAll();
+    }
+
+    /**
+     * Resets the password: new salt + Argon2id hash, preserving role and {@code created_at}. The
+     * password is also the keystead vault master password, so a reset invalidates the existing
+     * vault (the user must re-provision credentials after re-login).
+     */
+    public void setPassword(@NonNull String username, @NonNull String password) {
+        UserEntity user =
+                repo.findById(username)
+                        .orElseThrow(
+                                () -> new IllegalArgumentException("User not found: " + username));
+        byte[] salt = new byte[SALT_LENGTH];
+        newSecureRandom().nextBytes(salt);
+        byte[] hash = hashPassword(password, salt);
+        repo.save(new UserEntity(username, hash, salt, user.getRole(), user.getCreatedAt()));
+        log.info("Password reset for user '{}'", username);
     }
 
     // ── Crypto ──────────────────────────────────────────────────────────────
