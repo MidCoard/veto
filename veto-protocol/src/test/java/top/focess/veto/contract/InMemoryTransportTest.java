@@ -137,7 +137,9 @@ class InMemoryTransportTest {
             if (frame instanceof IpcFrame.Hello h) {
                 inbox.offer(
                         new Transport.FramedMsg(
-                                "", new IpcFrame.Welcome(IpcFrame.PROTOCOL_VERSION, h.seq())));
+                                "",
+                                new IpcFrame.Welcome(
+                                        IpcFrame.PROTOCOL_VERSION, h.seq(), Version.UNKNOWN)));
             }
         }
 

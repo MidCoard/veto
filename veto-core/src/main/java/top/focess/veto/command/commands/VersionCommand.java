@@ -7,6 +7,7 @@ import top.focess.command.CommandSender;
 import top.focess.veto.VetoVersion;
 import top.focess.veto.command.VetoCommand;
 import top.focess.veto.command.VetoCommandSender;
+import top.focess.veto.contract.Version;
 
 /**
  * Reports the product versions of the connected components.
@@ -28,13 +29,9 @@ public class VersionCommand extends VetoCommand {
                 (sender, args) -> {
                     VetoCommandSender s = vetoSender(sender);
                     if (s == null) return CommandResult.REFUSE;
-                    String client = s.clientProductVersion();
+                    Version client = s.clientProductVersion();
                     s.output("veto-core: " + VetoVersion.VERSION);
-                    s.output(
-                            "veto-terminal: "
-                                    + (client != null
-                                            ? client
-                                            : "unknown (terminal did not report a version)"));
+                    s.output("veto-terminal: " + client);
                     return CommandResult.ALLOW;
                 });
     }

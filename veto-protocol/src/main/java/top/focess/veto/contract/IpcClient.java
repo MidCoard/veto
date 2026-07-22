@@ -78,20 +78,56 @@ public final class IpcClient implements AutoCloseable {
     private volatile boolean closed;
     private volatile int negotiatedVersion = IpcFrame.PROTOCOL_VERSION;
 
+    /** The product version this client reports in the {@link IpcFrame.Hello} handshake. */
+    private final @NonNull Version productVersion;
+
+    /** The backend's product version received in {@link IpcFrame.Welcome}. */
+    private volatile @NonNull Version serverProductVersion = Version.UNKNOWN;
+
     // ── construction ───────────────────────────────────────────────────────
 
     /**
      * Connects to the backend, performs the handshake, and starts the IO and heartbeat threads.
+     * Equivalent to {@link #IpcClient(String, Version) IpcClient(address, Version.UNKNOWN)} - the
+     * client reports {@link Version#UNKNOWN}.
      *
      * @param address the transport connect address (e.g. {@code tcp://127.0.0.1:5555})
      * @throws RuntimeException if the handshake times out or is rejected
      */
     public IpcClient(@NonNull String address) {
+        this(address, Version.UNKNOWN);
+    }
+
+    /**
+     * Connects to the backend, performs the handshake, and starts the IO and heartbeat threads.
+     *
+     * @param address the transport connect address (e.g. {@code tcp://127.0.0.1:5555})
+     * @param productVersion the product version to report in the {@link IpcFrame.Hello} handshake;
+     *     never {@code null} - use {@link Version#UNKNOWN} when none is known
+     * @throws RuntimeException if the handshake times out or is rejected
+     */
+    public IpcClient(@NonNull String address, @NonNull Version productVersion) {
         this.identity = UUID.randomUUID().toString();
         this.ctx = new ZContext();
         this.ownsContext = true;
         this.transport = ZmqChannel.Client.connectDealer(ctx, address, identity);
+        this.productVersion = productVersion;
         start();
+    }
+
+    /**
+     * Constructor for testing with an injected transport (e.g. an in-memory {@link
+     * ClientTransport}), bypassing ZMQ entirely. The connection does not own a {@link ZContext}.
+     * Equivalent to {@link #IpcClient(ClientTransport, Version) IpcClient(transport,
+     * Version.UNKNOWN)}.
+     *
+     * <p>Public so a reusable in-memory transport in a downstream client module can drive a
+     * connection without ZMQ.
+     *
+     * @param transport the transport to drive
+     */
+    public IpcClient(@NonNull ClientTransport transport) {
+        this(transport, Version.UNKNOWN);
     }
 
     /**
@@ -102,12 +138,15 @@ public final class IpcClient implements AutoCloseable {
      * connection without ZMQ.
      *
      * @param transport the transport to drive
+     * @param productVersion the product version to report in the {@link IpcFrame.Hello} handshake;
+     *     never {@code null} - use {@link Version#UNKNOWN} when none is known
      */
-    public IpcClient(@NonNull ClientTransport transport) {
+    public IpcClient(@NonNull ClientTransport transport, @NonNull Version productVersion) {
         this.identity = UUID.randomUUID().toString();
         this.ctx = null;
         this.ownsContext = false;
         this.transport = transport;
+        this.productVersion = productVersion;
         start();
     }
 
@@ -130,7 +169,7 @@ public final class IpcClient implements AutoCloseable {
      */
     private void handshake() {
         long seq = correlator.next();
-        transport.send(new IpcFrame.Hello(IpcFrame.PROTOCOL_VERSION, seq));
+        transport.send(new IpcFrame.Hello(IpcFrame.PROTOCOL_VERSION, seq, productVersion));
 
         long deadline = System.currentTimeMillis() + HANDSHAKE_TIMEOUT_MS;
         while (true) {
@@ -142,18 +181,19 @@ public final class IpcClient implements AutoCloseable {
             if (msg == null) continue;
             IpcFrame frame = msg.frame();
             switch (frame) {
-                case IpcFrame.Welcome(int version, long seq1) when seq1 == seq -> {
+                case IpcFrame.Welcome(int version, long seq1, Version pv) when seq1 == seq -> {
                     if (version < 1) {
                         throw new RuntimeException(
                                 "Backend negotiated unsupported protocol version " + version);
                     }
                     negotiatedVersion = version;
+                    serverProductVersion = pv;
                     return;
                 }
                 case IpcFrame.Error e ->
                         throw new RuntimeException("Backend rejected handshake: " + e.content());
 
-                    // An unrelated frame arrived during handshake — protocol violation.
+                // An unrelated frame arrived during handshake — protocol violation.
                 case IpcFrame.Terminate t ->
                         throw new RuntimeException(
                                 "Backend terminated during handshake: " + t.reason());
@@ -376,6 +416,14 @@ public final class IpcClient implements AutoCloseable {
     /** The negotiated protocol version from the handshake. */
     public int negotiatedVersion() {
         return negotiatedVersion;
+    }
+
+    /**
+     * The backend's product version received in the {@link IpcFrame.Welcome} handshake; never
+     * {@code null} - {@link Version#UNKNOWN} when the backend did not report a meaningful version.
+     */
+    public @NonNull Version serverProductVersion() {
+        return serverProductVersion;
     }
 
     /** The unique UUID identity of this connection. */

@@ -68,12 +68,7 @@ public class UserAdminCommand extends VetoCommand {
                         s.output(e.getMessage());
                         return CommandResult.REFUSE;
                     }
-                    s.output(
-                            "User '"
-                                    + name
-                                    + "' created ("
-                                    + (asAdmin ? "ADMIN" : "USER")
-                                    + "); vault provisioned (opens on first login).");
+                    s.output("User '" + name + "' created (" + (asAdmin ? "ADMIN" : "USER") + ").");
                     return CommandResult.ALLOW;
                 },
                 fixed("create").description("Create a user account"),
@@ -101,14 +96,21 @@ public class UserAdminCommand extends VetoCommand {
                         s.output("Cannot delete the last administrator account.");
                         return CommandResult.REFUSE;
                     }
+                    String confirm =
+                            s.input(
+                                    "Delete '"
+                                            + name
+                                            + "' and all their data? Type 'yes' to confirm:",
+                                    false);
+                    if (confirm == null || !"yes".equalsIgnoreCase(confirm.trim())) {
+                        s.output("Cancelled.");
+                        return CommandResult.REFUSE;
+                    }
                     admin.deleteUser(name);
-                    s.output(
-                            "User '"
-                                    + name
-                                    + "' deleted (patterns/sessions/agents/vault cascaded).");
+                    s.output("User '" + name + "' deleted.");
                     return CommandResult.ALLOW;
                 },
-                fixed("delete").description("Delete a user and cascade their data"),
+                fixed("delete").description("Delete a user and their data"),
                 arg("name"));
 
         // /user list
@@ -165,8 +167,8 @@ public class UserAdminCommand extends VetoCommand {
     @Override
     public @NonNull List<String> usage(@NonNull CommandSender s) {
         return List.of(
-                "/user create <name> [admin] - Create a user (admin provisions, vault opens on first login)",
-                "/user delete <name> - Delete a user and cascade their data",
+                "/user create <name> [admin] - Create a user account",
+                "/user delete <name> - Delete a user and their data",
                 "/user list - List all users",
                 "/user password <name> - Reset a user's password");
     }

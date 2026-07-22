@@ -40,6 +40,10 @@
     <logger name="org.hibernate" level="INFO"/>
     <logger name="org.springframework" level="INFO"/>
 
+    <!-- HikariCP keepalive/pool-stats/connection-adder chatter is DEBUG under root=DEBUG and
+         floods the log every few seconds. WARN keeps genuine pool problems visible. -->
+    <logger name="com.zaxxer.hikari" level="WARN"/>
+
     <logger name="top.focess.veto.terminal" level="DEBUG"/>
     <logger name="top.focess.veto.command" level="DEBUG"/>
 

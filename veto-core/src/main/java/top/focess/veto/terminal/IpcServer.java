@@ -16,6 +16,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import org.zeromq.ZContext;
+import top.focess.veto.VetoVersion;
 import top.focess.veto.command.CommandRegistry;
 import top.focess.veto.command.VetoCommandSender;
 import top.focess.veto.contract.IpcClient;
@@ -24,6 +25,7 @@ import top.focess.veto.contract.IpcFrame.HintInfo;
 import top.focess.veto.contract.IpcMeta;
 import top.focess.veto.contract.ServerTransport;
 import top.focess.veto.contract.Transport;
+import top.focess.veto.contract.Version;
 import top.focess.veto.contract.ZmqChannel;
 import top.focess.veto.vault.UserContext;
 
@@ -288,10 +290,20 @@ public class IpcServer {
 
         Session session = sessions.get(identity);
         if (session == null || session.closed.get()) {
+            // The peer is sending on a session we don't know (the server restarted, dropping all
+            // in-memory sessions) or one already closed. Silently ignoring leaves the terminal
+            // hung forever — it keeps heartbeating a dead session with no feedback. Send a
+            // Terminate so the terminal's onTerminate surfaces the reason and exits cleanly; the
+            // terminal is connect-once by design, so the user re-runs it to reconnect. Bounded:
+            // the terminal stops sending once it processes the Terminate.
             log.warn(
-                    "Received {} from unknown or closed session {} — ignoring",
+                    "Received {} from unknown or closed session {} — terminating stale peer",
                     frame.getClass().getSimpleName(),
                     identity.substring(0, 8));
+            send(
+                    identity,
+                    new IpcFrame.Terminate(
+                            "Session no longer valid (server restarted?) — please reconnect."));
             return;
         }
         // Enqueue to the session mailbox; the session worker consumes frames in order.
@@ -319,18 +331,20 @@ public class IpcServer {
             send(identity, new IpcFrame.Error("Duplicate identity connected.", hello.seq()));
             return;
         }
-        Session session = new Session(identity, createSender(identity));
+        Version clientProductVersion = hello.productVersion();
+        Session session = new Session(identity, createSender(identity, clientProductVersion));
         sessions.put(identity, session);
         // Spawn the session worker — virtual thread parks on mailbox.take between frames.
         sessionPool.submit(() -> sessionLoop(session));
 
         int negotiated = Math.min(hello.version(), IpcFrame.PROTOCOL_VERSION);
         log.debug(
-                "HELLO {}: v{} → negotiated v{}",
+                "HELLO {}: v{} → negotiated v{} (client product {})",
                 identity.substring(0, 8),
                 hello.version(),
-                negotiated);
-        send(identity, new IpcFrame.Welcome(negotiated, hello.seq()));
+                negotiated,
+                clientProductVersion);
+        send(identity, new IpcFrame.Welcome(negotiated, hello.seq(), VetoVersion.VERSION));
     }
 
     // ── Pool 2 — Session worker loop ─────────────────────────────────────
@@ -566,6 +580,24 @@ public class IpcServer {
                                         registry.dispatch(session.sender, req.raw());
                                 sendTerminal(session, response, holder[0]);
                                 return null;
+                            } catch (Throwable t) {
+                                // Last line of defense. A command may throw an Error (e.g. a native
+                                // vault KDF failure) that escapes every catch(Exception) above.
+                                // FutureTask.run() would swallow it silently, leaving the terminal
+                                // hung with no diagnostic. Log the full trace and surface an error
+                                // response so the user sees the failure; sendTerminal's
+                                // exactly-once
+                                // guard (terminalSent) suppresses it if the session is already
+                                // closing/cancelled, so this never races the cancel path.
+                                log.error(
+                                        "REQ  {}: dispatch threw",
+                                        session.identity.substring(0, 8),
+                                        t);
+                                sendTerminal(
+                                        session,
+                                        IpcFrame.Error.ofError("Internal error: " + t),
+                                        holder[0]);
+                                return null;
                             } finally {
                                 UserContext.clear();
                             }
@@ -737,8 +769,9 @@ public class IpcServer {
      * @param identity the ZMQ DEALER identity of the connecting terminal
      * @return a new, unauthenticated {@link VetoCommandSender}; never {@code null}
      */
-    private @NonNull VetoCommandSender createSender(@NonNull String identity) {
-        return new VetoCommandSender(this, null, identity);
+    private @NonNull VetoCommandSender createSender(
+            @NonNull String identity, @NonNull Version clientProductVersion) {
+        return new VetoCommandSender(this, null, identity, clientProductVersion);
     }
 
     // ── Types ─────────────────────────────────────────────────────────────

@@ -11,6 +11,7 @@ import top.focess.command.AbstractCommandSender;
 import top.focess.command.CommandPermission;
 import top.focess.command.CommandSender;
 import top.focess.veto.contract.IpcFrame;
+import top.focess.veto.contract.Version;
 import top.focess.veto.terminal.IpcServer;
 
 /**
@@ -52,7 +53,7 @@ public final class VetoCommandSender extends AbstractCommandSender {
     private final @NonNull IpcServer ipcServer;
     private volatile @Nullable String username;
     private final @NonNull String terminalId;
-    private final @Nullable String clientProductVersion;
+    private final @NonNull Version clientProductVersion;
 
     /**
      * Constructs a new {@code VetoCommandSender} for the given terminal session.
@@ -63,7 +64,7 @@ public final class VetoCommandSender extends AbstractCommandSender {
      */
     public VetoCommandSender(
             @NonNull IpcServer ipcServer, @Nullable String username, @NonNull String terminalId) {
-        this(ipcServer, username, terminalId, null);
+        this(ipcServer, username, terminalId, Version.UNKNOWN);
     }
 
     /**
@@ -73,13 +74,14 @@ public final class VetoCommandSender extends AbstractCommandSender {
      * @param username the initially authenticated username, or {@code null} if not yet logged in
      * @param terminalId the ZMQ DEALER identity of the owning terminal
      * @param clientProductVersion the product version the connecting terminal reported in its
-     *     {@link IpcFrame.Hello} handshake, or {@code null} if it did not report one
+     *     {@link IpcFrame.Hello} handshake; never {@code null} - {@link Version#UNKNOWN} when the
+     *     terminal did not report a meaningful version
      */
     public VetoCommandSender(
             @NonNull IpcServer ipcServer,
             @Nullable String username,
             @NonNull String terminalId,
-            @Nullable String clientProductVersion) {
+            @NonNull Version clientProductVersion) {
         super(CommandPermission.EVERYONE);
         this.ipcServer = ipcServer;
         this.username = username;
@@ -122,9 +124,10 @@ public final class VetoCommandSender extends AbstractCommandSender {
      * Returns the product version the connecting terminal reported in its {@link IpcFrame.Hello}
      * handshake.
      *
-     * @return the terminal's product version, or {@code null} if it did not report one
+     * @return the terminal's product version; never {@code null} - {@link Version#UNKNOWN} when the
+     *     terminal did not report a meaningful version
      */
-    public @Nullable String clientProductVersion() {
+    public @NonNull Version clientProductVersion() {
         return clientProductVersion;
     }
 

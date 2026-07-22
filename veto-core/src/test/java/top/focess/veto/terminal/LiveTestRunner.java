@@ -10,6 +10,7 @@ import org.zeromq.ZMQ;
 import org.zeromq.ZMsg;
 import top.focess.veto.contract.IpcCodec;
 import top.focess.veto.contract.IpcFrame;
+import top.focess.veto.contract.Version;
 
 /**
  * Live production-path test: boots the full backend with IpcServer on a real TCP port, connects a
@@ -40,7 +41,7 @@ class LiveTestRunner {
         dealer.setIdentity(UUID.randomUUID().toString().getBytes(StandardCharsets.UTF_8));
         dealer.connect(ADDR);
         Thread.sleep(500);
-        send(new IpcFrame.Hello(IpcFrame.PROTOCOL_VERSION, 1));
+        send(new IpcFrame.Hello(IpcFrame.PROTOCOL_VERSION, 1, Version.UNKNOWN));
         IpcFrame welcome = recv();
         assert welcome instanceof IpcFrame.Welcome && ((IpcFrame.Welcome) welcome).seq() == 1;
     }

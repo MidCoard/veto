@@ -17,8 +17,8 @@ class IpcCodecTest {
     @Test
     void roundTripsEveryFrameType() {
         IpcFrame[] frames = {
-            new IpcFrame.Hello(IpcFrame.PROTOCOL_VERSION, 7L),
-            new IpcFrame.Welcome(IpcFrame.PROTOCOL_VERSION, 7L),
+            new IpcFrame.Hello(IpcFrame.PROTOCOL_VERSION, 7L, Version.parse("1.0.0-SNAPSHOT")),
+            new IpcFrame.Welcome(IpcFrame.PROTOCOL_VERSION, 7L, Version.parse("1.2.3")),
             new IpcFrame.Request("do the thing"),
             new IpcFrame.Complete("/log", 11L),
             new IpcFrame.Hint("/login ", 12L),
@@ -91,16 +91,22 @@ class IpcCodecTest {
     void handshakeFramesRoundTripWithOnlyVersionAndSeq() {
         // Handshake frames are pure: version + seq, no auth (auth is a transport/tunnel concern,
         // not a frame concern).
-        String helloJson = IpcCodec.encodeString(new IpcFrame.Hello(IpcFrame.PROTOCOL_VERSION, 1L));
+        String helloJson =
+                IpcCodec.encodeString(
+                        new IpcFrame.Hello(
+                                IpcFrame.PROTOCOL_VERSION, 1L, Version.parse("1.0.0-SNAPSHOT")));
         assertFalse(helloJson.contains("\"auth\""));
         IpcFrame.Hello helloBack = (IpcFrame.Hello) IpcCodec.decode(helloJson);
         assertEquals(IpcFrame.PROTOCOL_VERSION, helloBack.version());
         assertEquals(1L, helloBack.seq());
+        assertEquals(Version.parse("1.0.0-SNAPSHOT"), helloBack.productVersion());
 
-        IpcFrame.Welcome w = new IpcFrame.Welcome(IpcFrame.PROTOCOL_VERSION, 9L);
+        IpcFrame.Welcome w =
+                new IpcFrame.Welcome(IpcFrame.PROTOCOL_VERSION, 9L, Version.parse("1.2.3"));
         IpcFrame.Welcome back = (IpcFrame.Welcome) IpcCodec.decode(IpcCodec.encode(w));
         assertEquals(IpcFrame.PROTOCOL_VERSION, back.version());
         assertEquals(9L, back.seq());
+        assertEquals(Version.parse("1.2.3"), back.productVersion());
     }
 
     @Test

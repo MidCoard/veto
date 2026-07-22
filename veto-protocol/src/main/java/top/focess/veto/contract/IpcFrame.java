@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
@@ -95,8 +96,16 @@ public sealed interface IpcFrame
      *
      * @param version the highest protocol version the client supports
      * @param seq monotonic sequence number for correlating with the {@link Welcome} response
+     * @param productVersion the connecting client's product version; never {@code null} - a client
+     *     that genuinely cannot report a version passes {@link Version#UNKNOWN}. The server echoes
+     *     its own in {@link Welcome}.
      */
-    record Hello(int version, long seq) implements SeqRequest {}
+    record Hello(int version, long seq, @NonNull Version productVersion) implements SeqRequest {
+        /** Compact constructor: a version is always required. */
+        public Hello {
+            Objects.requireNonNull(productVersion, "productVersion");
+        }
+    }
 
     /**
      * User typed a command or plain-text prompt.
@@ -172,8 +181,14 @@ public sealed interface IpcFrame
      *
      * @param version the negotiated protocol version
      * @param seq the sequence number echoed from the handshake request
+     * @param productVersion the server's product version; never {@code null}
      */
-    record Welcome(int version, long seq) implements SeqResponse {}
+    record Welcome(int version, long seq, @NonNull Version productVersion) implements SeqResponse {
+        /** Compact constructor: a version is always required. */
+        public Welcome {
+            Objects.requireNonNull(productVersion, "productVersion");
+        }
+    }
 
     /**
      * An autocomplete candidate returned in a {@link CompleteResult}.

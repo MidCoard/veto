@@ -67,7 +67,7 @@ veto:
     # /signup (no plaintext credential in this file). Under non-FULL_ACCESS policies the agent is
     # blocked from reading application.yml/config/audit via the ProtectedSet.
     signup:
-      mode: ${VETO_SIGNUP_MODE:public}
+      mode: ${VETO_SIGNUP_MODE:invite}
 
   terminal:
     max-concurrent-connections: 16

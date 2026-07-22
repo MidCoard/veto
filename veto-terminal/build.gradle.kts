@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "top.focess"
-version = "1.0.0-SNAPSHOT"
+version = "1.0.3"
 
 application {
     mainClass = "top.focess.veto.terminal.VetoTerminal"
@@ -65,11 +65,14 @@ val generateVersion by tasks.registering {
         pkgDir.mkdirs()
         val sb = StringBuilder()
         sb.append("package ").append(pkg).append(";\n\n")
+        sb.append("import top.focess.veto.contract.Version;\n\n")
         sb.append("/** Build-time generated version descriptor. Do not edit by hand. */\n")
         sb.append("public final class VetoVersion {\n")
         sb.append("    private VetoVersion() {}\n\n")
         sb.append("    public static final String COMPONENT = \"").append(component).append("\";\n\n")
-        sb.append("    public static final String VERSION = \"").append(versionStr).append("\";\n")
+        sb.append("    public static final Version VERSION = Version.parse(\"")
+                .append(versionStr)
+                .append("\");\n")
         sb.append("}\n")
         pkgDir.resolve("VetoVersion.java").writeText(sb.toString())
     }

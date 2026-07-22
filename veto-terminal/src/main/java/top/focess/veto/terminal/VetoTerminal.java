@@ -18,6 +18,7 @@ import top.focess.veto.client.core.StyledText;
 import top.focess.veto.contract.ClientOptions;
 import top.focess.veto.contract.IpcClient;
 import top.focess.veto.contract.IpcFrame;
+import top.focess.veto.contract.Version;
 
 /**
  * Main interactive REPL terminal controller for Veto Core.
@@ -311,7 +312,7 @@ public class VetoTerminal {
         for (String line : HEADER.split("\n")) {
             renderer.println(theme.styleBold(StyleToken.ACCENT, line));
         }
-        renderer.println(theme.style(StyleToken.MUTED, "  terminal v3.0"));
+        renderer.println(theme.style(StyleToken.MUTED, "  terminal " + VetoVersion.VERSION));
         renderer.println("");
     }
 
@@ -446,8 +447,14 @@ public class VetoTerminal {
             jt = TerminalBuilder.builder().system(true).jna(true).encoding("UTF-8").build();
             Terminal mt = MordantTerminal.create();
             System.out.println("Connecting to backend at " + options.address() + " ...");
-            IpcClient transport = new IpcClient(options.address());
-            System.out.println("Connected.");
+            IpcClient transport = new IpcClient(options.address(), VetoVersion.VERSION);
+            Version serverVersion = transport.serverProductVersion();
+            System.out.println(
+                    "Connected to veto-core "
+                            + serverVersion
+                            + " (veto-terminal "
+                            + VetoVersion.VERSION
+                            + ").");
             VetoTerminal vt = new VetoTerminal(mt, transport);
             Completer completer = vt.new VetoCompleter();
             LineReader r = LineReaderBuilder.builder().terminal(jt).completer(completer).build();
