@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "name": "veto",
+  "preset": "java-gradle",
+  "provider": {
+    "name": "local"
+  },
+  "components": [
+    "local/ai-claude",
+    "local/assistant-artifacts",
+    "language/python"
+  ],
+  "exclude": [],
+  "custom": [
+    "*.md",
+    "!README.md",
+    "target/",
+    "/vault/",
+    "/work/",
+    "/audit/",
+    "/models/",
+    "/veto-core/audit/",
+    "*.pyc",
+    "veto-core/training/data/*.json",
+    "veto-core/training/data/*.jsonl",
+    "plans/",
+    "scripts/",
+    "docs/"
+  ],
+  "addons": {}
+}

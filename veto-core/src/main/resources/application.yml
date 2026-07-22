@@ -57,7 +57,7 @@ veto:
   security:
     # Install-time deployer policy: FULL_ACCESS (no path is CRITICAL) | PROTECTED (deny-list) | SANDBOXED (scoped to root) | TENANT (multi-user workspace).
     # Runtime screening matrix: STRICT | BALANCED | BYPASS_ALL.
-    deployer-policy: FULL_ACCESS
+    deployer-policy: ${VETO_DEPLOYER_POLICY:FULL_ACCESS}
     screening-mode: STRICT
     # How accounts may be created:
     #   solo   - single-user: first /signup wins (ADMIN), then blocked.
