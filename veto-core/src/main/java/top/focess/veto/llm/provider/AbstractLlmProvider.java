@@ -3,6 +3,8 @@ package top.focess.veto.llm.provider;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import top.focess.veto.llm.client.LlmClient;
 import top.focess.veto.llm.core.ResolvedRequest;
 import top.focess.veto.llm.core.VetoResponse;
@@ -23,6 +25,8 @@ import top.focess.veto.observability.AuditLogger;
 public abstract class AbstractLlmProvider implements LLMProviderStrategy {
     protected final ObjectMapper objectMapper;
     protected final AuditLogger auditLogger;
+
+    private static final Logger log = LoggerFactory.getLogger(AbstractLlmProvider.class);
 
     /**
      * Constructs a new AbstractLlmProvider with the specified dependencies.
@@ -64,14 +68,84 @@ public abstract class AbstractLlmProvider implements LLMProviderStrategy {
     @Override
     public final @NonNull VetoResponse execute(@NonNull ResolvedRequest request) {
         String requestId = UUID.randomUUID().toString();
+        log.debug(
+                "LLM call start requestId={} provider={} model={}",
+                requestId,
+                providerName(),
+                request.modelName());
+        // Full logical request (system prompt + role-mapped message flow) so the exact prompt
+        // handed
+        // to the provider is visible in the spring log. This is the universal chokepoint - every
+        // provider (OpenAI, DeepSeek, Anthropic, Gemini) flows through here, so logging here fires
+        // regardless of which LlmClient adapter the provider picks. Provider clients may further
+        // augment the system prompt (e.g. append the veto_pulse schema for non-json_schema
+        // providers); this is the pre-augment compiled prompt. No secrets live on VetoRequest -
+        // apiKey is on ResolvedRequest and is never logged.
+        var vetoRequest = request.request();
+        log.debug(
+                "LLM raw request requestId={} systemPrompt ({} chars):\n{}",
+                requestId,
+                vetoRequest.systemPrompt() == null ? 0 : vetoRequest.systemPrompt().length(),
+                vetoRequest.systemPrompt());
+        if (vetoRequest.hasMessages()) {
+            log.debug(
+                    "LLM raw request requestId={} message flow ({} msgs):",
+                    requestId,
+                    vetoRequest.messages().size());
+            for (int i = 0; i < vetoRequest.messages().size(); i++) {
+                var message = vetoRequest.messages().get(i);
+                log.debug("  [{}] role={} | {}", i, message.role(), message.content());
+            }
+        } else {
+            log.debug(
+                    "LLM raw request requestId={} userPrompt:\n{}",
+                    requestId,
+                    vetoRequest.userPrompt());
+        }
+        if (vetoRequest.responseSchema() != null) {
+            log.debug(
+                    "LLM raw request requestId={} responseSchema (veto_pulse):\n{}",
+                    requestId,
+                    vetoRequest.responseSchema().toPrettyString());
+        }
         try {
             LlmClient.RawCompletion raw = invoke(request);
+            log.debug(
+                    "LLM raw response requestId={} ({} chars):\n{}",
+                    requestId,
+                    raw.rawResponse() == null ? 0 : raw.rawResponse().length(),
+                    raw.rawResponse());
             auditLogger.logLLMExchange(
                     requestId, request.modelName(), raw.requestSummary(), raw.rawResponse());
-            return parse(raw.rawResponse());
+            VetoResponse response = parse(raw.rawResponse());
+            // Parsed-field summary only (no raw payloads / no secrets). The calls count is the
+            // loop signature: calls=0 means the turn stops (the runAutonomous no-calls
+            // termination). is_finished was removed - termination routes on call presence.
+            log.debug(
+                    "LLM call done requestId={} model={} calls={} msgLen={} thoughtLen={}"
+                            + " guided={}",
+                    requestId,
+                    request.modelName(),
+                    response.hasCalls() ? response.calls().size() : 0,
+                    response.message() != null ? response.message().length() : 0,
+                    response.thought() != null ? response.thought().length() : 0,
+                    response.features() != null ? response.features().guided() : null);
+            return response;
         } catch (LlmException e) {
+            log.debug(
+                    "LLM call failed requestId={} model={} {}: {}",
+                    requestId,
+                    request.modelName(),
+                    e.getClass().getSimpleName(),
+                    e.getMessage());
             throw e;
         } catch (Exception e) {
+            log.debug(
+                    "LLM call failed requestId={} model={} {}: {}",
+                    requestId,
+                    request.modelName(),
+                    e.getClass().getSimpleName(),
+                    e.getMessage());
             throw classify(e, request.modelName());
         }
     }

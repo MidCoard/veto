@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import top.focess.veto.agent.Agent;
 import top.focess.veto.agent.identity.AgentPersona;
+import top.focess.veto.agent.identity.Role;
 
 /**
  * The Spring-orchestrated entry point for spawning a Group with auto-starting Mates. The {@link
@@ -103,7 +104,8 @@ public class GroupSpawner {
                             java.util.List.of(),
                             resolvedModelId,
                             null,
-                            null);
+                            null,
+                            Role.MATE);
             Agent agent = agentFactory.create(persona);
             MateAgent mate =
                     new MateAgent(
@@ -190,7 +192,8 @@ public class GroupSpawner {
                         java.util.List.of(),
                         mateModelId,
                         null,
-                        null);
+                        null,
+                        Role.MATE);
         Agent agent = agentFactory.create(persona);
         MateAgent mate =
                 new MateAgent(

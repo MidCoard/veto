@@ -14,72 +14,49 @@ import top.focess.veto.agent.mcp.tools.LoadSkillArgs;
 
 /**
  * Validates {@link VetoCapabilityTranslator} against the per-turn veto_pulse variant matrix and the
- * manifest→flat tool translation.
+ * manifest to flat tool translation.
  */
 class VetoCapabilityTranslatorTest {
 
     private final VetoCapabilityTranslator translator = new VetoCapabilityTranslator();
 
     @Test
-    void thoughtOnAutonomousHasThoughtCallsNoActionsProgram() {
-        JsonNode schema = translator.vetoResponseSchema(true, false);
+    void autonomousHasOptionalThoughtCallsNoActions() {
+        JsonNode schema = translator.vetoResponseSchema(false);
         JsonNode props = schema.get("properties");
         JsonNode required = schema.get("required");
-        assertTrue(props.has("thought"), "thought present when thoughtRequired");
+        assertTrue(props.has("thought"), "thought always present (optional)");
         assertTrue(props.has("calls"), "calls present when autonomous");
-        assertFalse(props.has("actionsProgram"), "actionsProgram absent when not guided");
-        assertTrue(contains(required, "thought"), "thought required when thoughtRequired");
+        assertFalse(props.has("actions"), "actions absent when not guided");
+        assertFalse(contains(required, "thought"), "thought never required");
         assertFalse(
                 contains(required, "message"),
-                "message optional when thoughtRequired (not finished)");
-        assertTrue(contains(required, "is_finished"));
+                "message not schema-required (enforcer handles stop)");
         assertTrue(contains(required, "features"));
     }
 
     @Test
-    void thoughtOffAutonomousForbidsThoughtRequiresMessage() {
-        JsonNode schema = translator.vetoResponseSchema(false, false);
-        JsonNode props = schema.get("properties");
-        JsonNode required = schema.get("required");
-        assertFalse(props.has("thought"), "thought forbidden (absent) when !thoughtRequired");
-        assertTrue(props.has("calls"));
-        assertFalse(props.has("actionsProgram"));
-        assertTrue(contains(required, "message"), "message required when !thoughtRequired");
-        assertFalse(contains(required, "thought"));
-    }
-
-    @Test
-    void guidedSwitchRequiresActionsProgramForbidsCalls() {
-        JsonNode schema = translator.vetoResponseSchema(true, true);
+    void guidedSwitchRequiresActionsForbidsCalls() {
+        JsonNode schema = translator.vetoResponseSchema(true);
         JsonNode props = schema.get("properties");
         JsonNode required = schema.get("required");
         assertFalse(props.has("calls"), "calls forbidden when guided");
-        assertTrue(props.has("actionsProgram"), "actionsProgram present when guided");
-        assertTrue(contains(required, "actionsProgram"), "actionsProgram required when guided");
+        assertTrue(props.has("actions"), "actions present when guided");
+        assertEquals("array", props.get("actions").get("type").asText(), "actions is a flat array");
+        assertTrue(contains(required, "actions"), "actions required when guided");
+        assertTrue(contains(required, "features"));
+        assertFalse(contains(required, "thought"), "thought never required");
     }
 
     @Test
-    void thoughtOffGuidedForbidsThoughtRequiresMessageAndActionsProgram() {
-        JsonNode schema = translator.vetoResponseSchema(false, true);
-        JsonNode props = schema.get("properties");
-        JsonNode required = schema.get("required");
-        assertFalse(props.has("thought"));
-        assertFalse(props.has("calls"));
-        assertTrue(props.has("actionsProgram"));
-        assertTrue(contains(required, "message"));
-        assertTrue(contains(required, "actionsProgram"));
-    }
-
-    @Test
-    void featuresAlwaysRequiredAndClosed() {
-        for (boolean thought : new boolean[] {true, false}) {
-            for (boolean guided : new boolean[] {true, false}) {
-                JsonNode schema = translator.vetoResponseSchema(thought, guided);
-                JsonNode features = schema.get("properties").get("features");
-                assertEquals(false, features.get("additionalProperties").asBoolean());
-                assertTrue(contains(features.get("required"), "guided"));
-                assertTrue(contains(features.get("required"), "thought"));
-            }
+    void featuresAlwaysRequiredClosedAndGuidedOnly() {
+        for (boolean guided : new boolean[] {true, false}) {
+            JsonNode schema = translator.vetoResponseSchema(guided);
+            JsonNode features = schema.get("properties").get("features");
+            assertEquals(false, features.get("additionalProperties").asBoolean());
+            assertTrue(contains(features.get("required"), "guided"));
+            assertFalse(contains(features.get("required"), "thought"), "features.thought removed");
+            assertFalse(features.get("properties").has("thought"), "features.thought removed");
         }
     }
 
@@ -106,6 +83,18 @@ class VetoCapabilityTranslatorTest {
         assertEquals("Read a file.", flat.get(0).description());
         assertNotNull(flat.get(0).inputSchema());
         assertEquals("object", flat.get(0).inputSchema().get("type"));
+        assertFalse(
+                flat.get(0).examples().isEmpty(),
+                "native tool @ToolDoc examples flow through translateTools");
+        assertFalse(
+                flat.get(1).examples().isEmpty(),
+                "agent tool @ToolDoc examples flow through translateTools");
+        assertFalse(
+                flat.get(0).longDescription().isEmpty(),
+                "native tool @ToolDoc longDescription flows through translateTools");
+        assertFalse(
+                flat.get(1).longDescription().isEmpty(),
+                "agent tool @ToolDoc longDescription flows through translateTools");
     }
 
     private static boolean contains(JsonNode array, String value) {

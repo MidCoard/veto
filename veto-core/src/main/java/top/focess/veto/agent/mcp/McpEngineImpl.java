@@ -19,6 +19,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import top.focess.veto.agent.mcp.tools.LoadSkillArgs;
 import top.focess.veto.agent.mcp.tools.RunCommandTool;
+import top.focess.veto.agent.mcp.tools.ThinkArgs;
 import top.focess.veto.agent.skills.Skill;
 import top.focess.veto.agent.skills.SkillRegistry;
 import top.focess.veto.llm.config.LlmJacksonConfig;
@@ -93,10 +94,22 @@ public class McpEngineImpl implements McpEngine {
                                 + "Returns the full SKILL.md body in the observation.",
                         LoadSkillArgs.class,
                         Map.of("skillName", ParamCategory.GENERIC)));
+        agentDefs.put(
+                "think",
+                new AgentToolDefinition(
+                        "think",
+                        "A no-op tool to continue the thought flow for another step. Call this when "
+                                + "you have no concrete tool to invoke but are not ready to conclude; the "
+                                + "loop continues to your next turn.",
+                        ThinkArgs.class,
+                        Map.of()));
         // create_group is a NATIVE tool (GroupTools.CreateGroup, @ToolSecurity) — not an agent
         // tool. The duplicate agent-tool entry here was dead code: resolveDefinition checks
         // nativeDefs first, so the native GroupTools.CreateGroup (stub) always won. Removed.
-        log.info("McpEngine: initialized. {} native tool(s), 1 agent tool(s).", nativeDefs.size());
+        log.info(
+                "McpEngine: initialized. {} native tool(s), {} agent tool(s).",
+                nativeDefs.size(),
+                agentDefs.size());
     }
 
     /** Discover tools from a remote MCP server via JSON-RPC tools/list and register them. */
@@ -126,8 +139,8 @@ public class McpEngineImpl implements McpEngine {
                 active.add(def);
             }
         }
-        active.addAll(agentDefs.values()); // agent tools are always-on (runtime-excluded from the
-        // persona whitelist)
+        active.addAll(agentDefs.values()); // agent tools are always-on (included in every agent's
+        // manifest via AgentService.buildPersona)
         for (RemoteToolDefinition def : remoteDefs.values()) {
             if (whitelist == null || whitelist.contains(def.name())) {
                 active.add(def);
@@ -242,6 +255,7 @@ public class McpEngineImpl implements McpEngine {
     private McpToolResult executeAgent(ToolCall call, AgentToolDefinition def) {
         return switch (def.name()) {
             case "load_skill" -> executeLoadSkill(call);
+            case "think" -> executeThink(call);
             default ->
                     new McpToolResult(
                             call.toolName(),
@@ -249,6 +263,12 @@ public class McpEngineImpl implements McpEngine {
                             false,
                             "Unknown agent tool: " + def.name());
         };
+    }
+
+    private McpToolResult executeThink(ToolCall call) {
+        // No-op: the agent called `think` to continue its thought flow. Return a neutral
+        // observation; the loop continues to the next turn (the call keeps the episode alive).
+        return new McpToolResult(call.toolName(), call.callId(), true, "Continuing thought flow.");
     }
 
     private McpToolResult executeLoadSkill(ToolCall call) {

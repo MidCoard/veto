@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
+import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.loop.PromptCompiler;
@@ -73,7 +74,8 @@ class PersonaToolWhitelistTest {
                 new PromptCompiler(
                         new DefaultCapabilityTranslator(mapper),
                         Workspace.single(
-                                Path.of(System.getProperty("user.dir", ".")), PathMode.REAL));
+                                Path.of(System.getProperty("user.dir", ".")), PathMode.REAL),
+                        new SystemPromptResolver());
         ReflectionTestUtils.setField(compiler, "maxInputTokens", 32000);
         ReflectionTestUtils.setField(compiler, "contextFillRatio", 0.9);
         return new AgentService(
@@ -84,8 +86,7 @@ class PersonaToolWhitelistTest {
                 caller,
                 mapper,
                 List.of(),
-                System.getProperty("user.dir", "."),
-                "",
+                new top.focess.veto.agent.identity.RoleToolFilter(engine),
                 "REAL",
                 50L,
                 "FULL_ACCESS",
@@ -106,12 +107,7 @@ class PersonaToolWhitelistTest {
                 request -> {
                     seen.add(request);
                     return new VetoResponse(
-                            "done",
-                            List.of(),
-                            "ok",
-                            true,
-                            new VetoResponse.Features(false, true),
-                            null);
+                            "done", List.of(), "ok", new VetoResponse.Features(false), null);
                 };
         AgentService service = serviceWith(engineWithReadFile(), caller);
         service.submit("whitelist-test", "hi", binding(), EPISODE_TIMEOUT);
@@ -133,12 +129,7 @@ class PersonaToolWhitelistTest {
                 request -> {
                     seen.add(request);
                     return new VetoResponse(
-                            "done",
-                            List.of(),
-                            "ok",
-                            true,
-                            new VetoResponse.Features(false, true),
-                            null);
+                            "done", List.of(), "ok", new VetoResponse.Features(false), null);
                 };
         AgentService service = serviceWith(new DefaultMcpEngine(), caller);
         assertDoesNotThrow(() -> service.submit("empty-test", "hi", binding(), EPISODE_TIMEOUT));

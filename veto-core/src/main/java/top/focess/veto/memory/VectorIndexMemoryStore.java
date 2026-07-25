@@ -9,6 +9,7 @@ import org.jspecify.annotations.NonNull;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.TurnRecord;
+import top.focess.veto.memory.embedder.Embedder;
 
 /**
  * A {@link MemoryStore} backed by the in-memory {@link VectorIndex} (a brute-force cosine
@@ -24,6 +25,7 @@ import top.focess.veto.agent.TurnRecord;
 public class VectorIndexMemoryStore implements MemoryStore {
 
     private final @NonNull VectorIndex index;
+    private final @NonNull Embedder embedder;
 
     /** Memories are stored separately so we can attach metadata for the search result. */
     private final java.util.concurrent.ConcurrentMap<UUID, Memory> store =
@@ -31,8 +33,9 @@ public class VectorIndexMemoryStore implements MemoryStore {
 
     public
     @NonNull
-    VectorIndexMemoryStore(@NonNull VectorIndex index) {
+    VectorIndexMemoryStore(@NonNull VectorIndex index, @NonNull Embedder embedder) {
         this.index = index;
+        this.embedder = embedder;
     }
 
     @Override
@@ -43,7 +46,7 @@ public class VectorIndexMemoryStore implements MemoryStore {
         // (capped at QUERY_WIDENING_CAP× to bound the worst-case cost). Without the re-query
         // a sparse user in a multi-tenant corpus could silently receive zero results even
         // when highly relevant memories exist outside the original window.
-        final float[] queryVec = embed(query.queryText());
+        final float[] queryVec = embedder.embed(query.queryText());
         final int initialBudget = query.topK() * 4;
         final int cap = query.topK() * QUERY_WIDENING_CAP;
         int budget = initialBudget;
@@ -108,7 +111,7 @@ public class VectorIndexMemoryStore implements MemoryStore {
         if (content == null || content.isBlank()) {
             return;
         }
-        float[] embedding = embed(content);
+        float[] embedding = embedder.embed(content);
         Memory m =
                 new Memory(
                         MemoryId.random(),
@@ -154,27 +157,6 @@ public class VectorIndexMemoryStore implements MemoryStore {
         UUID key = idOf(id);
         store.remove(key);
         index.remove(key);
-    }
-
-    @Override
-    public float[] embed(@NonNull String text) {
-        // Same deterministic stub. Production would call a local embedding model (Part 14.4).
-        byte[] bytes = text.getBytes();
-        float[] vec = new float[64];
-        for (int i = 0; i < bytes.length; i++) {
-            vec[i % 64] += (bytes[i] & 0xff) / 255f;
-        }
-        float norm = 0f;
-        for (float v : vec) {
-            norm += v * v;
-        }
-        norm = (float) Math.sqrt(norm);
-        if (norm > 0f) {
-            for (int i = 0; i < vec.length; i++) {
-                vec[i] /= norm;
-            }
-        }
-        return vec;
     }
 
     /** Test-only inspection of the store contents. */

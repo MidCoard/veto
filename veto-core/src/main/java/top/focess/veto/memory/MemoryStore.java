@@ -39,9 +39,6 @@ public interface MemoryStore {
     /** Explicitly drop a memory (user- or agent-initiated). */
     void forget(MemoryId id);
 
-    /** Embed a chunk of text using the configured local embedding model (Part 14.4). */
-    float[] embed(String text);
-
     /**
      * A search result: the memory + its similarity score (1.0 = identical embedding, 0.0 =
      * orthogonal).

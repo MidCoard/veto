@@ -447,7 +447,9 @@ public class VetoTerminal {
             jt = TerminalBuilder.builder().system(true).jna(true).encoding("UTF-8").build();
             Terminal mt = MordantTerminal.create();
             System.out.println("Connecting to backend at " + options.address() + " ...");
-            IpcClient transport = new IpcClient(options.address(), VetoVersion.VERSION);
+            IpcClient transport =
+                    new IpcClient(
+                            options.address(), VetoVersion.VERSION, System.getProperty("user.dir"));
             Version serverVersion = transport.serverProductVersion();
             System.out.println(
                     "Connected to veto-core "

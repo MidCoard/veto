@@ -117,7 +117,7 @@ class SessionServiceTest {
         when(sessions.findById(session.getId())).thenReturn(Optional.of(session));
         when(agents.findById(agent.getId())).thenReturn(Optional.of(agent));
         when(loader.load(session.getId())).thenReturn(List.of());
-        when(agentService.getOrCreateAgent(anyString(), any(), anyList(), any()))
+        when(agentService.getOrCreateAgent(anyString(), any(), anyList(), any(), any()))
                 .thenReturn(mock(Agent.class));
 
         SessionService service =
@@ -153,7 +153,7 @@ class SessionServiceTest {
         when(sessions.findByNameAndOwner("coder", "alice")).thenReturn(Optional.of(session));
         when(agents.findById(agent.getId())).thenReturn(Optional.of(agent));
         when(loader.load(session.getId())).thenReturn(List.of());
-        when(agentService.getOrCreateAgent(anyString(), any(), anyList(), any()))
+        when(agentService.getOrCreateAgent(anyString(), any(), anyList(), any(), any()))
                 .thenReturn(mock(Agent.class));
 
         SessionService service =
@@ -187,7 +187,7 @@ class SessionServiceTest {
         when(sessions.findById(session.getId())).thenReturn(Optional.of(session));
         when(agents.findById(agent.getId())).thenReturn(Optional.of(agent));
         when(loader.load(session.getId())).thenReturn(List.of());
-        when(agentService.getOrCreateAgent(anyString(), any(), anyList(), any()))
+        when(agentService.getOrCreateAgent(anyString(), any(), anyList(), any(), any()))
                 .thenReturn(mock(Agent.class));
 
         SessionService service =
@@ -199,6 +199,60 @@ class SessionServiceTest {
         assertTrue(
                 service.activeSession("term-1").isEmpty(),
                 "unified logout detaches the user's terminals");
+    }
+
+    @Test
+    void resumeLastSessionActivatesOwnersMostRecent() {
+        SessionRepository sessions = mock(SessionRepository.class);
+        AgentInstanceRepository agents = mock(AgentInstanceRepository.class);
+        AgentPatternRepository patterns = mock(AgentPatternRepository.class);
+        AgentService agentService = mock(AgentService.class);
+        SessionHistoryLoader loader = mock(SessionHistoryLoader.class);
+
+        SessionEntity session = new SessionEntity("alice", "coder");
+        AgentEntity agent =
+                new AgentEntity(
+                        session.getId(),
+                        "pat-id",
+                        AgentEntity.Role.PRIMARY,
+                        "coder",
+                        "DEEPSEEK",
+                        "deepseek-v4",
+                        "pattern-coder");
+        session.setPrimaryAgentId(agent.getId());
+
+        when(sessions.findFirstByOwnerOrderByLastActiveAtDesc("alice"))
+                .thenReturn(Optional.of(session));
+        when(sessions.findByNameAndOwner("coder", "alice")).thenReturn(Optional.of(session));
+        when(sessions.findById(session.getId())).thenReturn(Optional.of(session));
+        when(agents.findById(agent.getId())).thenReturn(Optional.of(agent));
+        when(loader.load(session.getId())).thenReturn(List.of());
+        when(agentService.getOrCreateAgent(anyString(), any(), anyList(), any(), any()))
+                .thenReturn(mock(Agent.class));
+
+        SessionService service =
+                new SessionService(sessions, agents, patterns, agentService, loader);
+
+        Optional<LlmConfig> cfg = service.resumeLastSession("term-1", "alice");
+        assertTrue(cfg.isPresent(), "last session auto-resumed");
+        assertEquals(Optional.of(session.getId()), service.activeSession("term-1"));
+    }
+
+    @Test
+    void resumeLastSessionEmptyWhenOwnerHasNoSessions() {
+        SessionRepository sessions = mock(SessionRepository.class);
+        AgentInstanceRepository agents = mock(AgentInstanceRepository.class);
+        AgentPatternRepository patterns = mock(AgentPatternRepository.class);
+        AgentService agentService = mock(AgentService.class);
+        SessionHistoryLoader loader = mock(SessionHistoryLoader.class);
+
+        when(sessions.findFirstByOwnerOrderByLastActiveAtDesc("alice"))
+                .thenReturn(Optional.empty());
+
+        SessionService service =
+                new SessionService(sessions, agents, patterns, agentService, loader);
+        assertTrue(service.resumeLastSession("term-1", "alice").isEmpty());
+        assertTrue(service.activeSession("term-1").isEmpty());
     }
 
     @Test

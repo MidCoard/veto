@@ -77,6 +77,24 @@ veto:
   vault:
     vault-home: ${VETO_VAULT_HOME:~/.veto}
 
+  memory:
+    # Persist long-term memory across restarts. Backends: memory (in-process, lost on restart),
+    # jpa (PostgreSQL via MemoryRepository), vector (in-process VectorIndex), pgvector (Postgres
+    # + pgvector extension). Default jpa so the agent is not "totally new" each run; uses the
+    # Postgres datasource above.
+    store: ${VETO_MEMORY_STORE:jpa}
+    # Hybrid embedder (see top.focess.veto.memory.embedder). Default: local HashEmbedder stub
+    # (deterministic 64-dim hash; weak semantic recall but no dependency). Activate a
+    # ProviderEmbedder by setting VETO_MEMORY_EMBEDDER_PROVIDER (openai|gemini) plus model,
+    # dimension, and a vault credential-key holding the API key. When store=pgvector the
+    # vector(N) column tracks the active embedder's dimension.
+    # embedder:
+    #   provider: openai
+    #   model: text-embedding-3-small
+    #   dimension: 1536
+    #   base-url: https://api.openai.com   # optional; defaults per provider
+    #   credential-key: openai-embeddings  # vault SECURE_NOTE title
+
   observability:
     audit-log-path: ./audit/
     log-rotation-days: 365

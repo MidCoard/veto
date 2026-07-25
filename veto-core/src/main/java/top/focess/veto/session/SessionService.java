@@ -62,16 +62,18 @@ public class SessionService {
 
     /**
      * Creates a session + its primary agent from a pattern, named after the pattern. Does NOT
-     * auto-activate. Equivalent to {@code createSession(owner, patternName, null)}.
+     * auto-activate. Equivalent to {@code createSession(owner, patternName, null,
+     * System.getProperty("user.dir"))} - the session's workspace defaults to the JVM working dir.
      */
     @Transactional
     public @NonNull SessionEntity createSession(
             @NonNull String owner, @NonNull String patternName) {
-        return createSession(owner, patternName, null);
+        return createSession(owner, patternName, null, System.getProperty("user.dir"));
     }
 
     /**
-     * Creates a session + its primary agent from a pattern. Does NOT auto-activate.
+     * Creates a session + its primary agent from a pattern. Does NOT auto-activate. The session's
+     * workspace defaults to the JVM working dir.
      *
      * @param owner the session owner
      * @param patternName the pattern to instantiate the primary agent from
@@ -80,6 +82,27 @@ public class SessionService {
     @Transactional
     public @NonNull SessionEntity createSession(
             @NonNull String owner, @NonNull String patternName, @Nullable String sessionName) {
+        return createSession(owner, patternName, sessionName, System.getProperty("user.dir"));
+    }
+
+    /**
+     * Creates a session + its primary agent from a pattern with the session's workspace. Does NOT
+     * auto-activate. The {@code workspaceRoots} (CSV of host paths) is persisted on the session so
+     * every agent the session spawns resolves paths against these roots. Never {@code null} - the
+     * terminal path supplies its cwd and a remote UI must declare roots explicitly; a blank value
+     * falls back to the JVM working dir at activation.
+     *
+     * @param owner the session owner
+     * @param patternName the pattern to instantiate the primary agent from
+     * @param sessionName the desired session name; null/empty defaults to {@code patternName}
+     * @param workspaceRoots CSV of host paths backing the session's workspace; never {@code null}
+     */
+    @Transactional
+    public @NonNull SessionEntity createSession(
+            @NonNull String owner,
+            @NonNull String patternName,
+            @Nullable String sessionName,
+            @NonNull String workspaceRoots) {
         AgentPatternEntity pattern =
                 patterns.findByNameAndOwner(patternName, owner)
                         .orElseThrow(
@@ -94,7 +117,8 @@ public class SessionService {
                     "Session name '" + resolvedName + "' already exists; provide a unique name");
         }
 
-        SessionEntity session = sessions.save(new SessionEntity(owner, resolvedName));
+        SessionEntity session =
+                sessions.save(new SessionEntity(owner, resolvedName, workspaceRoots));
         AgentEntity agent =
                 new AgentEntity(
                         session.getId(),
@@ -139,7 +163,8 @@ public class SessionService {
                         LlmOptions.defaults(),
                         null);
         List<TurnRecord> history = historyLoader.load(session.getId());
-        agentService.getOrCreateAgent(session.getId(), binding, history, DEFAULT_USER_ID);
+        agentService.getOrCreateAgent(
+                session.getId(), binding, history, DEFAULT_USER_ID, session.getWorkspaceRoots());
         session.touch();
         sessions.save(session);
         activeSessions.put(terminalId, session.getId());
@@ -149,6 +174,19 @@ public class SessionService {
                         ProviderType.valueOf(agent.getProvider()),
                         agent.getModel(),
                         agent.getCredentialKey()));
+    }
+
+    /**
+     * Auto-resumes the owner's most-recently-active session after a server restart or terminal
+     * reconnect (the in-memory active-session map is wiped on restart). Replays durable history by
+     * delegating to {@link #activate}. Returns empty if the owner has no sessions or the last one
+     * has no primary agent.
+     */
+    @Transactional
+    public @NonNull Optional<LlmConfig> resumeLastSession(
+            @NonNull String terminalId, @NonNull String owner) {
+        return sessions.findFirstByOwnerOrderByLastActiveAtDesc(owner)
+                .flatMap(session -> activate(terminalId, session.getName(), owner));
     }
 
     public void deactivate(@NonNull String terminalId) {

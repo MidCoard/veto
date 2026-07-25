@@ -30,7 +30,8 @@ public record AgentPersona(
         List<Skill> registeredSkills,
         String topModel,
         String midModel,
-        String lowModel) {
+        String lowModel,
+        Role role) {
 
     public AgentPersona(
             String id,
@@ -46,7 +47,8 @@ public record AgentPersona(
                 registeredSkills,
                 "gemini-3.5-flash",
                 null,
-                null);
+                null,
+                Role.STANDALONE);
     }
 
     public @NonNull String midModelOrDefault() {
@@ -55,5 +57,17 @@ public record AgentPersona(
 
     public @NonNull String lowModelOrDefault() {
         return lowModel != null ? lowModel : topModel;
+    }
+
+    /**
+     * Returns a copy of this persona with {@code whitelistedTools} replaced by the given set.
+     *
+     * <p>Used by {@link top.focess.veto.agent.AgentService#createMate} to re-scope a Mate/Leader
+     * persona's tools to its {@link Role} (the persona may have been built with the full STANDALONE
+     * manifest before its role was known).
+     */
+    public @NonNull AgentPersona withWhitelistedTools(@NonNull Set<ToolDefinition> tools) {
+        return new AgentPersona(
+                id, name, description, tools, registeredSkills, topModel, midModel, lowModel, role);
     }
 }

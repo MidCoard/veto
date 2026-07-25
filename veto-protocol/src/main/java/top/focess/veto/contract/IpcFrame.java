@@ -99,11 +99,17 @@ public sealed interface IpcFrame
      * @param productVersion the connecting client's product version; never {@code null} - a client
      *     that genuinely cannot report a version passes {@link Version#UNKNOWN}. The server echoes
      *     its own in {@link Welcome}.
+     * @param cwd the connecting terminal's current working directory, mapped to the session's
+     *     workspace at {@code /session create} time; never {@code null} - the terminal always
+     *     reports its JVM working dir. A remote UI does not send Hello and supplies workspace roots
+     *     explicitly via REST, so this field is terminal-only.
      */
-    record Hello(int version, long seq, @NonNull Version productVersion) implements SeqRequest {
-        /** Compact constructor: a version is always required. */
+    record Hello(int version, long seq, @NonNull Version productVersion, @NonNull String cwd)
+            implements SeqRequest {
+        /** Compact constructor: a version and cwd are always required. */
         public Hello {
             Objects.requireNonNull(productVersion, "productVersion");
+            Objects.requireNonNull(cwd, "cwd");
         }
     }
 

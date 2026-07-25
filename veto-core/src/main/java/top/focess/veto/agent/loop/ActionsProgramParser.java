@@ -8,9 +8,9 @@ import java.util.Map;
 import org.jspecify.annotations.NonNull;
 
 /**
- * Parses the raw {@code actionsProgram} {@link JsonNode} (emitted by the agent) into a typed {@link
- * ActionsProgram}. Each action element carries a {@code type} discriminator. The result is
- * validated by {@link ProgramValidator} before guided mode loads it.
+ * Parses the raw {@code actions} {@link JsonNode} - a flat, ordered array emitted by the agent -
+ * into a typed {@link ActionsProgram}. Each action element carries a {@code type} discriminator.
+ * The result is validated by {@link ProgramValidator} before guided mode loads it.
  */
 public final class ActionsProgramParser {
 
@@ -18,12 +18,11 @@ public final class ActionsProgramParser {
 
     /** Parses; throws {@link ProgramValidator.InvalidProgramException} on a malformed program. */
     public static @NonNull ActionsProgram parse(@NonNull JsonNode node) {
-        if (node == null || !node.has("actions") || !node.get("actions").isArray()) {
-            throw new ProgramValidator.InvalidProgramException(
-                    "actionsProgram missing 'actions' array");
+        if (node == null || !node.isArray()) {
+            throw new ProgramValidator.InvalidProgramException("actions must be an array");
         }
         List<Action> actions = new ArrayList<>();
-        for (JsonNode a : node.get("actions")) {
+        for (JsonNode a : node) {
             actions.add(parseAction(a));
         }
         return new ActionsProgram(actions);

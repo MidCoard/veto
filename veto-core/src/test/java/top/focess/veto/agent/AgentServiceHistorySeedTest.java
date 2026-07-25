@@ -8,6 +8,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.loop.PromptCompiler;
@@ -64,13 +65,40 @@ class AgentServiceHistorySeedTest {
         assertTrue(a.history().isEmpty(), "empty replay history leaves the agent's history empty");
     }
 
+    @Test
+    void seedHistoryAdvancesTurnNumberPastReplayedTurns() {
+        UniformLLMCaller caller = request -> null;
+        AgentService service = serviceWith(caller);
+        UUID sessionId = UUID.randomUUID();
+        AgentRunner.LlmBinding binding = binding();
+        // Replayed history with a gap (1, 2, 5) so the max is 5, not the turn count.
+        List<TurnRecord> history =
+                List.of(
+                        TurnRecord.userPrompt(1, "a"),
+                        TurnRecord.assistantResponse(2, "b"),
+                        TurnRecord.userPrompt(5, "c"));
+
+        Agent a =
+                service.getOrCreateAgent(sessionId.toString(), binding, history, UUID.randomUUID());
+        AgentRunner runner =
+                (AgentRunner)
+                        org.springframework.test.util.ReflectionTestUtils.getField(a, "runner");
+        assertNotNull(runner);
+        int turnNumber =
+                (int)
+                        org.springframework.test.util.ReflectionTestUtils.getField(
+                                runner, "turnNumber");
+        assertEquals(5, turnNumber, "seedHistory advances turnNumber to the max replayed turn");
+    }
+
     private static AgentService serviceWith(UniformLLMCaller caller) {
         ObjectMapper mapper = new ObjectMapper();
         PromptCompiler compiler =
                 new PromptCompiler(
                         new DefaultCapabilityTranslator(mapper),
                         Workspace.single(
-                                Path.of(System.getProperty("user.dir", ".")), PathMode.REAL));
+                                Path.of(System.getProperty("user.dir", ".")), PathMode.REAL),
+                        new SystemPromptResolver());
         org.springframework.test.util.ReflectionTestUtils.setField(
                 compiler, "maxInputTokens", 32000);
         org.springframework.test.util.ReflectionTestUtils.setField(
@@ -83,15 +111,17 @@ class AgentServiceHistorySeedTest {
                 caller,
                 mapper,
                 List.of(),
-                System.getProperty("user.dir", "."),
-                "",
+                new top.focess.veto.agent.identity.RoleToolFilter(new DefaultMcpEngine()),
                 "REAL",
                 50L,
                 "FULL_ACCESS",
                 "STRICT",
                 null,
                 new MemoryCaptureService(
-                        new top.focess.veto.memory.InMemoryMemoryStore(), null, mapper));
+                        new top.focess.veto.memory.InMemoryMemoryStore(
+                                new top.focess.veto.memory.embedder.HashEmbedder()),
+                        null,
+                        mapper));
     }
 
     private static AgentRunner.LlmBinding binding() {

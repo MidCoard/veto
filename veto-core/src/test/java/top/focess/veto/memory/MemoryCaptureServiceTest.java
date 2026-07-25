@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.TurnRecord;
+import top.focess.veto.memory.embedder.HashEmbedder;
 
 /**
  * Verifies {@link MemoryCaptureService} captures a turn into BOTH sinks: the semantic Session LTM
@@ -17,7 +18,7 @@ class MemoryCaptureServiceTest {
 
     @Test
     void captureWritesSemanticLtmAndRawTurnLog() {
-        InMemoryMemoryStore store = new InMemoryMemoryStore();
+        InMemoryMemoryStore store = new InMemoryMemoryStore(new HashEmbedder());
         TurnRecordRepository repo = mock(TurnRecordRepository.class);
         MemoryCaptureService service = new MemoryCaptureService(store, repo, new ObjectMapper());
 
@@ -33,7 +34,7 @@ class MemoryCaptureServiceTest {
 
     @Test
     void rawTurnLogCarriesTenantAndPayload() {
-        InMemoryMemoryStore store = new InMemoryMemoryStore();
+        InMemoryMemoryStore store = new InMemoryMemoryStore(new HashEmbedder());
         TurnRecordRepository repo = mock(TurnRecordRepository.class);
         MemoryCaptureService service = new MemoryCaptureService(store, repo, new ObjectMapper());
 
@@ -54,7 +55,7 @@ class MemoryCaptureServiceTest {
 
     @Test
     void toolCallIsCapturedForCoherentReplay() {
-        InMemoryMemoryStore store = new InMemoryMemoryStore();
+        InMemoryMemoryStore store = new InMemoryMemoryStore(new HashEmbedder());
         TurnRecordRepository repo = mock(TurnRecordRepository.class);
         MemoryCaptureService service = new MemoryCaptureService(store, repo, new ObjectMapper());
 

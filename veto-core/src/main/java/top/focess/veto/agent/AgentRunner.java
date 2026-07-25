@@ -107,8 +107,6 @@ public class AgentRunner {
     private final List<TurnRecord> history = new ArrayList<>();
     private int turnNumber = 0;
     private boolean guided = false;
-    private boolean thought = true;
-    private boolean freshEpisode = true; // effective thought ON at a user-prompt turn
     private ActionsProgram activeProgram = null;
     private int programCounter = 0;
     private int currentSteps = 0;
@@ -225,12 +223,11 @@ public class AgentRunner {
     // ── Episode setup + autonomous loop ─────────────────────────────────────
 
     private void processUserPrompt(String prompt) {
-        // Fresh UserPromptAction: reset guided/features, force effective thought ON.
+        // Fresh UserPromptAction: reset guided state and program counter.
         appendTurn(TurnRecord.userPrompt(++turnNumber, prompt));
         this.guided = false;
         this.activeProgram = null;
         this.programCounter = 0;
-        this.freshEpisode = true;
         this.breaker.newEpisode();
         this.scope = new Scope(objectMapper);
 
@@ -365,21 +362,18 @@ public class AgentRunner {
                 emitMessage(LoopBreaker.tripNotice());
                 throw new BreakerTripException();
             }
-            boolean effectiveThought = freshEpisode || this.thought;
             boolean guidedSwitch = false;
-            VetoResponse response = callModel(effectiveThought, guidedSwitch);
+            VetoResponse response = callModel(guidedSwitch);
             breaker.recordModelCall();
-            freshEpisode = false;
 
             // Read NEXT-status features (the mode the NEXT iteration enters).
             if (response.features() != null) {
                 this.guided = response.features().guided();
-                this.thought = response.features().thought();
             }
 
             // Agent requested guided mode for the next iteration → load + validate program.
-            if (this.guided && response.actionsProgram() != null) {
-                if (loadProgram(response.actionsProgram())) {
+            if (this.guided && response.actions() != null) {
+                if (loadProgram(response.actions())) {
                     appendThought(response);
                     if (response.message() != null && !response.message().isBlank()) {
                         emitMessage(response.message());
@@ -390,7 +384,7 @@ public class AgentRunner {
                 // invalid program → stay autonomous (rejection fed back as observation)
                 appendObservation(
                         "guided_program_rejected",
-                        "actionsProgram failed validation; staying autonomous.");
+                        "actions failed validation; staying autonomous.");
                 continue;
             }
 
@@ -398,11 +392,15 @@ public class AgentRunner {
             if (response.message() != null && !response.message().isBlank()) {
                 emitMessage(response.message());
             }
-            if (response.isFinished()) {
-                return;
-            }
             if (response.hasCalls()) {
                 executeToolCalls(assignCallIds(response.calls()));
+            } else {
+                // No tool calls: the agent has emitted its answer with nothing further to act
+                // on. Termination routes on call presence - calls absent means stop. The agent
+                // can call `think` to continue its thought flow for another step when it wants
+                // to reason more without a concrete action. Stop the episode here; the emitted
+                // message is the final answer.
+                return;
             }
         }
     }
@@ -431,13 +429,9 @@ public class AgentRunner {
                         emitMessage(LoopBreaker.tripNotice());
                         throw new BreakerTripException();
                     }
-                    boolean useThought = gen.thought() != null ? gen.thought() : this.thought;
-                    VetoResponse response = callGenerate(gen, useThought);
+                    VetoResponse response = callGenerate(gen);
                     breaker.recordModelCall();
                     scope.bindGenerate(gen.outputs(), response);
-                    if (useThought) {
-                        appendThought(response);
-                    }
                     programCounter++;
                 }
                 case top.focess.veto.agent.loop.GotoAction gt -> programCounter = gt.index();
@@ -469,14 +463,15 @@ public class AgentRunner {
         }
     }
 
-    private VetoResponse callGenerate(GenerateAction gen, boolean useThought) {
+    private VetoResponse callGenerate(GenerateAction gen) {
         // A generate action invokes the model within the shared conversation with its scoped
         // prompt.
         // The generate prompt is fed as a user turn; the model responds in veto_pulse.
         appendTurn(TurnRecord.userPrompt(++turnNumber, gen.resolvePrompt(scope)));
-        boolean effectiveThought = useThought;
-        VetoResponse response = callModel(effectiveThought, false);
-        appendThought(response);
+        VetoResponse response = callModel(false);
+        if (gen.thought() == null || gen.thought()) {
+            appendThought(response);
+        }
         return response;
     }
 
@@ -509,13 +504,12 @@ public class AgentRunner {
 
     // ── The model call (compile + dispatch + enforce, with schema retry) ────
 
-    private VetoResponse callModel(boolean effectiveThought, boolean guidedSwitch) {
+    private VetoResponse callModel(boolean guidedSwitch) {
         CompiledPrompt compiled =
                 promptCompiler.compile(
                         persona,
                         binding.systemPromptBase(),
                         List.copyOf(history),
-                        effectiveThought,
                         guidedSwitch,
                         this.correctionFactor);
         this.lastEstimatedTokens = compiled.estimatedTokens();
@@ -538,7 +532,7 @@ public class AgentRunner {
                 throw e;
             }
             try {
-                return ResponseEnforcer.enforce(response, effectiveThought, guidedSwitch);
+                return ResponseEnforcer.enforce(response, guidedSwitch);
             } catch (ModelSchemaException e) {
                 last = e;
                 log.warn(
@@ -607,25 +601,16 @@ public class AgentRunner {
      */
     private String getExpectedDescription(ModelSchemaException e) {
         String msg = e.getMessage();
-        if (msg.contains("thought ON")) {
-            return "thought field must be present and non-empty when the effective thought flag is ON";
-        }
-        // NOTE: "message required" must be matched before "thought OFF" — the message-required
-        // exception string is "message required (thought OFF or is_finished)", which contains the
-        // substring "thought OFF"; checking "thought OFF" first would mis-map it.
         if (msg.contains("message required")) {
-            return "message field is required when thought is OFF or is_finished is true";
-        }
-        if (msg.contains("thought OFF")) {
-            return "thought field must not be present when the effective thought flag is OFF";
+            return "message field is required when stopping (no tool calls or actions)";
         }
         if (msg.contains("mutually exclusive")) {
-            return "either calls or actionsProgram, not both";
+            return "either calls or actions, not both";
         }
-        if (msg.contains("empty turn")) {
-            return "at least one of thought, message, calls, or actionsProgram";
+        if (msg.contains("guided-switch")) {
+            return "actions field is required on a guided-switch turn";
         }
-        if (msg.contains("features")) {
+        if (msg.contains("features is required")) {
             return "features field is always required";
         }
         return "valid JSON matching the veto_pulse schema";
@@ -789,6 +774,14 @@ public class AgentRunner {
             appendTurn(
                     TurnRecord.toolResponse(
                             ++turnNumber, call.callId(), observation, transformed.success()));
+            // Drain any turn directives the tool requested during execution (e.g. a RECALL seeded
+            // by create_group to re-inject the authored brief). Each is appended with a
+            // runner-assigned turn number; the pending record's placeholder turnNumber is rewritten
+            // (type + payload preserved). Drained here, before clear() in the finally, so a tool
+            // that threw never leaks a directive to the next call on this thread.
+            for (TurnRecord pending : ToolCallContextHolder.drainPendingTurns()) {
+                appendTurn(new TurnRecord(++turnNumber, pending.type(), pending.payload(), null));
+            }
             return transformed;
         } finally {
             ToolCallContextHolder.clear();
@@ -869,6 +862,14 @@ public class AgentRunner {
             appendTurn(
                     TurnRecord.toolResponse(
                             ++turnNumber, call.callId(), observation, transformed.success()));
+            // Drain any turn directives the tool requested during execution (e.g. a RECALL seeded
+            // by create_group to re-inject the authored brief). Each is appended with a
+            // runner-assigned turn number; the pending record's placeholder turnNumber is rewritten
+            // (type + payload preserved). Drained here, before clear() in the finally, so a tool
+            // that threw never leaks a directive to the next call on this thread.
+            for (TurnRecord pending : ToolCallContextHolder.drainPendingTurns()) {
+                appendTurn(new TurnRecord(++turnNumber, pending.type(), pending.payload(), null));
+            }
             return transformed;
         } finally {
             ToolCallContextHolder.clear();
@@ -1001,6 +1002,16 @@ public class AgentRunner {
             return;
         }
         history.addAll(replayed);
+        // Advance the turn counter past the replayed turns so the next live turn does not reuse a
+        // replayed turn number. Turn number is the durable key in turn_records, so a collision
+        // would violate the unique constraint or shadow the replayed turn.
+        int max = 0;
+        for (TurnRecord t : replayed) {
+            if (t.turnNumber() > max) {
+                max = t.turnNumber();
+            }
+        }
+        turnNumber = max;
     }
 
     // ── completion ──────────────────────────────────────────────────────────

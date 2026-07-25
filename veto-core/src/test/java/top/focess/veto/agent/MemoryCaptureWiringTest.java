@@ -9,6 +9,7 @@ import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
+import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.loop.PromptCompiler;
@@ -24,6 +25,7 @@ import top.focess.veto.memory.InMemoryMemoryStore;
 import top.focess.veto.memory.MemoryCaptureService;
 import top.focess.veto.memory.TurnRecordEntity;
 import top.focess.veto.memory.TurnRecordRepository;
+import top.focess.veto.memory.embedder.HashEmbedder;
 
 /**
  * Verifies the capture wiring end-to-end: an agent's {@code appendTurn} (driven by a submitted
@@ -36,7 +38,7 @@ class MemoryCaptureWiringTest {
 
     @Test
     void submittedEpisodeCapturesTurnsIntoStoreAndRawLog() throws Exception {
-        InMemoryMemoryStore store = new InMemoryMemoryStore();
+        InMemoryMemoryStore store = new InMemoryMemoryStore(new HashEmbedder());
         TurnRecordRepository repo = mock(TurnRecordRepository.class);
         MemoryCaptureService capture = new MemoryCaptureService(store, repo, new ObjectMapper());
 
@@ -45,7 +47,8 @@ class MemoryCaptureWiringTest {
                 new PromptCompiler(
                         new DefaultCapabilityTranslator(mapper),
                         Workspace.single(
-                                Path.of(System.getProperty("user.dir", ".")), PathMode.REAL));
+                                Path.of(System.getProperty("user.dir", ".")), PathMode.REAL),
+                        new SystemPromptResolver());
         ReflectionTestUtils.setField(compiler, "maxInputTokens", 32000);
         ReflectionTestUtils.setField(compiler, "contextFillRatio", 0.9);
         AgentService service =
@@ -57,8 +60,7 @@ class MemoryCaptureWiringTest {
                         callerFinishingImmediately(),
                         mapper,
                         List.of(),
-                        System.getProperty("user.dir", "."),
-                        "",
+                        new top.focess.veto.agent.identity.RoleToolFilter(new DefaultMcpEngine()),
                         "REAL",
                         50L,
                         "FULL_ACCESS",
@@ -85,7 +87,6 @@ class MemoryCaptureWiringTest {
 
     private static UniformLLMCaller callerFinishingImmediately() {
         return request ->
-                new VetoResponse(
-                        "done", List.of(), "4", true, new VetoResponse.Features(false, true), null);
+                new VetoResponse("done", List.of(), "4", new VetoResponse.Features(false), null);
     }
 }

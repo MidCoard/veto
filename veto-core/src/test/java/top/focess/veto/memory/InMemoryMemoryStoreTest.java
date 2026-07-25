@@ -7,9 +7,11 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.TurnRecord;
+import top.focess.veto.memory.embedder.HashEmbedder;
 
 class InMemoryMemoryStoreTest {
 
+    private final HashEmbedder embedder = new HashEmbedder();
     private InMemoryMemoryStore store;
     private UUID alice;
     private UUID bob;
@@ -17,7 +19,7 @@ class InMemoryMemoryStoreTest {
 
     @BeforeEach
     void setUp() {
-        store = new InMemoryMemoryStore();
+        store = new InMemoryMemoryStore(embedder);
         alice = UUID.randomUUID();
         bob = UUID.randomUUID();
         sessionId = UUID.randomUUID();
@@ -130,9 +132,9 @@ class InMemoryMemoryStoreTest {
 
     @Test
     void embeddingIsDeterministic() {
-        float[] a = store.embed("hello world");
-        float[] b = store.embed("hello world");
-        assertEquals(InMemoryMemoryStore.embeddingDim(), a.length);
+        float[] a = embedder.embed("hello world");
+        float[] b = embedder.embed("hello world");
+        assertEquals(HashEmbedder.DIMENSION, a.length);
         for (int i = 0; i < a.length; i++) {
             assertEquals(a[i], b[i], 1e-6f);
         }
@@ -146,7 +148,7 @@ class InMemoryMemoryStoreTest {
                 tier,
                 null,
                 content,
-                store.embed(content),
+                embedder.embed(content),
                 Memory.SourceRef.insightOrigin("test"),
                 java.time.Instant.now());
     }

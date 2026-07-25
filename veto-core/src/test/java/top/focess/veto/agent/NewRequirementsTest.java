@@ -17,6 +17,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.test.util.ReflectionTestUtils;
+import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.intercept.InterceptResolution;
@@ -106,12 +107,7 @@ class NewRequirementsTest {
 
     private static VetoResponse thoughtOnWithCall(String thought, String message, ToolCall call) {
         return new VetoResponse(
-                thought,
-                List.of(call),
-                message,
-                false,
-                new VetoResponse.Features(false, true),
-                null);
+                thought, List.of(call), message, new VetoResponse.Features(false), null);
     }
 
     @Test
@@ -138,7 +134,8 @@ class NewRequirementsTest {
         PromptCompiler compiler =
                 new PromptCompiler(
                         new DefaultCapabilityTranslator(mapper),
-                        Workspace.single(root, PathMode.REAL));
+                        Workspace.single(root, PathMode.REAL),
+                        new SystemPromptResolver());
         ReflectionTestUtils.setField(compiler, "maxInputTokens", 32000);
         ReflectionTestUtils.setField(compiler, "contextFillRatio", 0.9);
 
@@ -151,8 +148,7 @@ class NewRequirementsTest {
                         caller,
                         mapper,
                         List.of(),
-                        root.toString(),
-                        "",
+                        new top.focess.veto.agent.identity.RoleToolFilter(mcpEngine),
                         "REAL",
                         50L,
                         "FULL_ACCESS",
@@ -284,7 +280,8 @@ class NewRequirementsTest {
         PromptCompiler compiler =
                 new PromptCompiler(
                         new DefaultCapabilityTranslator(mapper),
-                        Workspace.single(root, PathMode.REAL));
+                        Workspace.single(root, PathMode.REAL),
+                        new SystemPromptResolver());
         ReflectionTestUtils.setField(compiler, "maxInputTokens", 32000);
         ReflectionTestUtils.setField(compiler, "contextFillRatio", 0.9);
 
@@ -297,8 +294,7 @@ class NewRequirementsTest {
                         caller,
                         mapper,
                         List.of(),
-                        root.toString(),
-                        "",
+                        new top.focess.veto.agent.identity.RoleToolFilter(mcpEngine),
                         "REAL",
                         50L,
                         "FULL_ACCESS",

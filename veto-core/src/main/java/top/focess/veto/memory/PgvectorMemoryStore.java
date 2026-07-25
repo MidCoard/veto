@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.TurnRecord;
+import top.focess.veto.memory.embedder.Embedder;
 
 /**
  * The pgvector-backed {@link MemoryStore} — the production LTM backend (long_term_memory_tiers.md
@@ -30,25 +31,26 @@ import top.focess.veto.agent.TurnRecord;
  * exercised by the H2 test suite</b>, consistent with {@link JpaMemoryStore} (also untested); it is
  * verified against a real Postgres+pgvector in deployment.
  *
- * <p>The {@link #embed(String)} stub is the same 64-dim deterministic hash the other backends use;
- * production plugs into the local embedding model (Part 14.4) and the {@code vector(64)} column
- * dimension tracks that.
+ * <p>Embedding is delegated to the injected {@link Embedder} (the local hash stub by default, a
+ * provider embedder when configured); the {@code vector(N)} column dimension tracks {@link
+ * Embedder#dimension()}.
  */
 @Component
 @ConditionalOnProperty(name = "veto.memory.store", havingValue = "pgvector")
 public class PgvectorMemoryStore implements MemoryStore {
 
     private static final Logger log = LoggerFactory.getLogger(PgvectorMemoryStore.class);
-    private static final int EMBEDDING_DIM = 64;
     private static final String TABLE = "pgvector_memories";
 
     private final @NonNull EntityManager em;
+    private final @NonNull Embedder embedder;
     private volatile boolean provisioned = false;
 
     public
     @NonNull
-    PgvectorMemoryStore(@NonNull EntityManager em) {
+    PgvectorMemoryStore(@NonNull EntityManager em, @NonNull Embedder embedder) {
         this.em = em;
+        this.embedder = embedder;
     }
 
     /** Self-provision the extension + table (guarded; never fails the context load). */
@@ -67,7 +69,7 @@ public class PgvectorMemoryStore implements MemoryStore {
                                     + "  project_id VARCHAR,"
                                     + "  content TEXT NOT NULL,"
                                     + "  embedding vector("
-                                    + EMBEDDING_DIM
+                                    + embedder.dimension()
                                     + ") NOT NULL,"
                                     + "  source_ref TEXT,"
                                     + "  created_at TIMESTAMP NOT NULL)")
@@ -95,7 +97,7 @@ public class PgvectorMemoryStore implements MemoryStore {
     @Override
     @SuppressWarnings("unchecked")
     public @NonNull List<ScoredMemory> search(@NonNull MemoryQuery query) {
-        String q = vecToString(embed(query.queryText()));
+        String q = vecToString(embedder.embed(query.queryText()));
         // Over-fetch to absorb the post-filters (session/project) before trimming to topK.
         int limit = Math.max(query.topK() * 4, query.topK() + 8);
         List<Object[]> rows =
@@ -176,7 +178,7 @@ public class PgvectorMemoryStore implements MemoryStore {
                         MemoryTier.SESSION,
                         null,
                         content,
-                        embed(content),
+                        embedder.embed(content),
                         Memory.SourceRef.turnRange(turn.turnNumber(), turn.turnNumber()),
                         Instant.now());
         add(m);
@@ -210,26 +212,6 @@ public class PgvectorMemoryStore implements MemoryStore {
         em.createNativeQuery("DELETE FROM " + TABLE + " WHERE id = :id")
                 .setParameter("id", id.value().toString())
                 .executeUpdate();
-    }
-
-    @Override
-    public float[] embed(@NonNull String text) {
-        byte[] bytes = text.getBytes();
-        float[] vec = new float[EMBEDDING_DIM];
-        for (int i = 0; i < bytes.length; i++) {
-            vec[i % EMBEDDING_DIM] += (bytes[i] & 0xff) / 255f;
-        }
-        float norm = 0f;
-        for (float v : vec) {
-            norm += v * v;
-        }
-        norm = (float) Math.sqrt(norm);
-        if (norm > 0f) {
-            for (int i = 0; i < vec.length; i++) {
-                vec[i] /= norm;
-            }
-        }
-        return vec;
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────

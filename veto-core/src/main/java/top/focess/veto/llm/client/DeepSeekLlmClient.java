@@ -54,7 +54,7 @@ final class DeepSeekLlmClient extends LlmClient {
         JsonNode responseSchema =
                 request.responseSchema() != null
                         ? request.responseSchema()
-                        : capabilityTranslator.vetoResponseSchema(true, false);
+                        : capabilityTranslator.vetoResponseSchema(false);
 
         try {
             Map<String, Object> body = new LinkedHashMap<>();

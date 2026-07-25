@@ -9,6 +9,7 @@ import org.jspecify.annotations.NonNull;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.TurnRecord;
+import top.focess.veto.memory.embedder.Embedder;
 
 /**
  * The JPA-backed {@link MemoryStore} — the production path. Persists memories in PostgreSQL via
@@ -25,11 +26,13 @@ import top.focess.veto.agent.TurnRecord;
 public class JpaMemoryStore implements MemoryStore {
 
     private final @NonNull MemoryRepository repository;
+    private final @NonNull Embedder embedder;
 
     public
     @NonNull
-    JpaMemoryStore(@NonNull MemoryRepository repository) {
+    JpaMemoryStore(@NonNull MemoryRepository repository, @NonNull Embedder embedder) {
         this.repository = repository;
+        this.embedder = embedder;
     }
 
     @Override
@@ -39,7 +42,7 @@ public class JpaMemoryStore implements MemoryStore {
                 repository.findByUserIdAndTierIn(
                         query.userId().toString(), query.tiers().stream().map(Enum::name).toList());
         // 2. Compute cosine similarity in Java (production: pgvector).
-        float[] queryVec = embed(query.queryText());
+        float[] queryVec = embedder.embed(query.queryText());
         List<ScoredMemory> matches = new ArrayList<>();
         for (MemoryEntity e : candidates) {
             Memory m = MemoryEntity.toMemory(e);
@@ -78,7 +81,7 @@ public class JpaMemoryStore implements MemoryStore {
         if (content == null || content.isBlank()) {
             return;
         }
-        float[] embedding = embed(content);
+        float[] embedding = embedder.embed(content);
         Memory m =
                 new Memory(
                         MemoryId.random(),
@@ -118,28 +121,6 @@ public class JpaMemoryStore implements MemoryStore {
     @Override
     public void forget(@NonNull MemoryId id) {
         repository.deleteById(id.value().toString());
-    }
-
-    @Override
-    public float[] embed(@NonNull String text) {
-        // Same deterministic stub as InMemoryMemoryStore. Production would call a local
-        // embedding model via the local model tier (Part 14.4).
-        byte[] bytes = text.getBytes();
-        float[] vec = new float[64];
-        for (int i = 0; i < bytes.length; i++) {
-            vec[i % 64] += (bytes[i] & 0xff) / 255f;
-        }
-        float norm = 0f;
-        for (float v : vec) {
-            norm += v * v;
-        }
-        norm = (float) Math.sqrt(norm);
-        if (norm > 0f) {
-            for (int i = 0; i < vec.length; i++) {
-                vec[i] /= norm;
-            }
-        }
-        return vec;
     }
 
     private static float cosineSimilarity(float[] a, float[] b) {

@@ -57,10 +57,19 @@ public class HitlRegistry {
     private ScreeningMode screeningMode = ScreeningMode.STRICT;
 
     /**
-     * The agent's workspace (needed to canonicalize path args for grant matching). Set by {@link
-     * AgentService}.
+     * Per-agent workspaces (needed to canonicalize path args for grant matching). Registered by
+     * {@link AgentService} under the agent's {@code persona.id()} when the agent is created, so
+     * each session's grants match against its own workspace - not a process-global one. Cleared by
+     * {@link #clear}.
      */
-    private volatile Workspace workspace;
+    private final ConcurrentHashMap<String, Workspace> workspaces = new ConcurrentHashMap<>();
+
+    /**
+     * The fallback workspace for agents without a registered entry (e.g. a legacy call path that
+     * did not flow through {@link AgentService#createAgent}). Set by {@link AgentService} from the
+     * process-wide {@code veto.workspace.path-mode} + the JVM working dir.
+     */
+    private volatile Workspace defaultWorkspace;
 
     /** Pending veto futures keyed by {@code agentId + "|" + callId}. */
     private final ConcurrentHashMap<String, CompletableFuture<InterceptResolution>> pending =
@@ -123,9 +132,30 @@ public class HitlRegistry {
         this.screeningMode = screeningMode;
     }
 
-    /** Sets the workspace (called by {@link AgentService}). */
-    public void setWorkspace(@NonNull Workspace workspace) {
-        this.workspace = workspace;
+    /**
+     * Registers the workspace for an agent (called by {@link AgentService} under the agent's {@code
+     * persona.id()} when the agent is created).
+     */
+    public void setWorkspace(@NonNull String agentId, @NonNull Workspace workspace) {
+        workspaces.put(agentId, workspace);
+    }
+
+    /**
+     * Sets the fallback workspace for agents without a registered entry (called by {@link
+     * AgentService}).
+     */
+    public void setDefaultWorkspace(@NonNull Workspace workspace) {
+        this.defaultWorkspace = workspace;
+    }
+
+    /**
+     * The workspace registered for the agent, or the fallback default if none. Never null in
+     * production ({@link AgentService} sets the default at startup); tests must set it via {@link
+     * #setWorkspace(String, Workspace)} or {@link #setDefaultWorkspace}.
+     */
+    public @NonNull Workspace workspace(@NonNull String agentId) {
+        Workspace ws = workspaces.get(agentId);
+        return ws != null ? ws : defaultWorkspace;
     }
 
     // ── Tool-declared scenarios + option sets (screening_model.md §8) ────────
@@ -234,7 +264,8 @@ public class HitlRegistry {
         if (agentGrants == null || agentGrants.isEmpty()) {
             return false;
         }
-        PermissionGrant.ToolCallSpec spec = MatchKeyExtractor.extract(call, def, workspace);
+        PermissionGrant.ToolCallSpec spec =
+                MatchKeyExtractor.extract(call, def, workspace(agentId));
         for (PermissionGrant g : agentGrants) {
             if (g.matches(spec)) {
                 return true;
@@ -287,7 +318,7 @@ public class HitlRegistry {
             return false;
         }
         if (resolution.createsGrant() && originalCall != null && originalDef != null) {
-            PermissionGrant grant = buildGrant(originalCall, originalDef, resolution);
+            PermissionGrant grant = buildGrant(agentId, originalCall, originalDef, resolution);
             if (grant != null) {
                 grants.computeIfAbsent(agentId, k -> ConcurrentHashMap.newKeySet()).add(grant);
                 grantLog.computeIfAbsent(
@@ -305,7 +336,8 @@ public class HitlRegistry {
      * (executable + subcommand + flag shape). The grant is keyed on the call's canonicalized path
      * arg or the first command's executable+subcommands.
      */
-    PermissionGrant buildGrant(ToolCall call, ToolDefinition def, InterceptResolution resolution) {
+    PermissionGrant buildGrant(
+            String agentId, ToolCall call, ToolDefinition def, InterceptResolution resolution) {
         VetoOption opt = resolution.option();
         if (def == null) {
             return null;
@@ -316,7 +348,7 @@ public class HitlRegistry {
                 || opt == VetoOption.ACCEPT_AS_SESSION_RULE) {
             // Synthesize a generic command-equivalent grant from the call's args if run_command.
             if ("run_command".equals(call.toolName())) {
-                return buildCommandGrant(call);
+                return buildCommandGrant(agentId, call);
             }
             // Fall back to a per-tool record grant (legacy "session rule" semantics).
             Map<String, Object> args =
@@ -325,32 +357,36 @@ public class HitlRegistry {
         }
         // Per-tool shape: read / write / command.
         if (def.risk() == RiskCategory.READ_ONLY) {
-            return buildReadGrant(call, def);
+            return buildReadGrant(agentId, call, def);
         }
         if (def.risk() == RiskCategory.FILE_WRITE) {
-            return buildWriteGrant(call, def);
+            return buildWriteGrant(agentId, call, def);
         }
         if (def.risk() == RiskCategory.SHELL_EXEC || def.risk() == RiskCategory.NETWORK) {
-            return buildCommandGrant(call);
+            return buildCommandGrant(agentId, call);
         }
         return null;
     }
 
-    private PermissionGrant.ReadGrant buildReadGrant(ToolCall call, ToolDefinition def) {
-        Path dir = directoryOfFirstPathArg(call, def);
-        List<String> flagShape = MatchKeyExtractor.extract(call, def, workspace).flagShape();
+    private PermissionGrant.ReadGrant buildReadGrant(
+            String agentId, ToolCall call, ToolDefinition def) {
+        Path dir = directoryOfFirstPathArg(agentId, call, def);
+        List<String> flagShape =
+                MatchKeyExtractor.extract(call, def, workspace(agentId)).flagShape();
         String family = "read";
         return new PermissionGrant.ReadGrant(family, dir == null ? Path.of(".") : dir, flagShape);
     }
 
-    private PermissionGrant.WriteGrant buildWriteGrant(ToolCall call, ToolDefinition def) {
-        Path dir = directoryOfFirstPathArg(call, def);
-        List<String> flagShape = MatchKeyExtractor.extract(call, def, workspace).flagShape();
+    private PermissionGrant.WriteGrant buildWriteGrant(
+            String agentId, ToolCall call, ToolDefinition def) {
+        Path dir = directoryOfFirstPathArg(agentId, call, def);
+        List<String> flagShape =
+                MatchKeyExtractor.extract(call, def, workspace(agentId)).flagShape();
         return new PermissionGrant.WriteGrant(
                 call.toolName(), dir == null ? Path.of(".") : dir, flagShape);
     }
 
-    private PermissionGrant.CommandGrant buildCommandGrant(ToolCall call) {
+    private PermissionGrant.CommandGrant buildCommandGrant(String agentId, ToolCall call) {
         Map<String, Object> args = call.args();
         if (args == null) {
             return new PermissionGrant.CommandGrant("", List.of(), List.of());
@@ -376,12 +412,14 @@ public class HitlRegistry {
                 }
             }
         }
-        List<String> flagShape = MatchKeyExtractor.extract(call, null, workspace).flagShape();
+        List<String> flagShape =
+                MatchKeyExtractor.extract(call, null, workspace(agentId)).flagShape();
         return new PermissionGrant.CommandGrant(executable, subcommands, flagShape);
     }
 
-    private Path directoryOfFirstPathArg(ToolCall call, ToolDefinition def) {
-        if (def == null || workspace == null) {
+    private Path directoryOfFirstPathArg(String agentId, ToolCall call, ToolDefinition def) {
+        Workspace ws = workspace(agentId);
+        if (def == null || ws == null) {
             return null;
         }
         Map<String, top.focess.veto.agent.mcp.ParamCategory> hints = paramHints(def);
@@ -401,8 +439,7 @@ public class HitlRegistry {
                 continue;
             }
             try {
-                top.focess.veto.agent.workspace.Resolution res =
-                        workspace.pathResolver().resolveToHost(s);
+                top.focess.veto.agent.workspace.Resolution res = ws.pathResolver().resolveToHost(s);
                 Path host =
                         res.inScope() ? res.hostPath() : Path.of(s).toAbsolutePath().normalize();
                 Path parent = host.getParent();
@@ -445,6 +482,7 @@ public class HitlRegistry {
         pending.keySet().removeIf(k -> k.startsWith(agentId + "|"));
         grants.remove(agentId);
         grantLog.remove(agentId);
+        workspaces.remove(agentId);
     }
 
     /** Revoke a single grant (audited + revocable, screening_model.md §7.2 #5). */

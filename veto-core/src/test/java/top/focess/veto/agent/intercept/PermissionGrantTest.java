@@ -161,8 +161,8 @@ class PermissionGrantTest {
         HitlRegistry registry = new HitlRegistry();
         Path root = tmp.resolve("svc");
         Workspace ws = Workspace.single(root, PathMode.REAL);
-        registry.setWorkspace(ws);
         String agentId = "agent-1";
+        registry.setWorkspace(agentId, ws);
 
         NativeToolDefinition readDef =
                 new NativeToolDefinition(
@@ -177,7 +177,7 @@ class PermissionGrantTest {
         InterceptResolution res =
                 new InterceptResolution(VetoOption.ACCEPT_READ_LIKE_THIS, call.args());
         // resolve requires a registered future; simulate by direct buildGrant path
-        PermissionGrant grant = registry.buildGrant(call, readDef, res);
+        PermissionGrant grant = registry.buildGrant(agentId, call, readDef, res);
         assertNotNull(grant);
         assertTrue(grant instanceof PermissionGrant.ReadGrant);
     }

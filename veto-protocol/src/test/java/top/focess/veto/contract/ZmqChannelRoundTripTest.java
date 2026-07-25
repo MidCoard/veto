@@ -40,7 +40,12 @@ class ZmqChannelRoundTripTest {
                         + "/pattern use <name> — Activate a pattern";
 
         // 1. DEALER sends Hello so the ROUTER learns its identity.
-        dealer.send(new IpcFrame.Hello(IpcFrame.PROTOCOL_VERSION, 1L, Version.UNKNOWN));
+        dealer.send(
+                new IpcFrame.Hello(
+                        IpcFrame.PROTOCOL_VERSION,
+                        1L,
+                        Version.UNKNOWN,
+                        System.getProperty("user.dir")));
 
         // 2. ROUTER receives Hello, capturing the DEALER identity.
         Transport.FramedMsg hello = router.recv(2_000);

@@ -10,12 +10,12 @@ import top.focess.veto.llm.core.VetoResponse;
  * implementation; the {@code PromptCompiler} calls it. The translator owns two responsibilities:
  *
  * <ol>
- *   <li>{@link #translateTools} — manifest {@link ToolDefinition} (sealed) → flat {@code
+ *   <li>{@link #translateTools} - manifest {@link ToolDefinition} (sealed) -> flat {@code
  *       llm.core.ToolDefinition} (name / description / inputSchema) for the {@code
  *       VetoRequest.tools} list the providers consume.
- *   <li>{@link #vetoResponseSchema} — the per-turn {@code veto_pulse} response schema variant that
- *       constrains the model to emit a {@link VetoResponse}. The variant is governed by the
- *       effective thought flag and guided state (the four-cell matrix).
+ *   <li>{@link #vetoResponseSchema} - the per-turn {@code veto_pulse} response schema variant that
+ *       constrains the model to emit a {@link VetoResponse}. The variant is governed by the guided
+ *       state (autonomous vs guided-switch). {@code thought} is always optional.
  * </ol>
  *
  * <p><b>Note:</b> the spec names this {@code ProviderSchemaTranslator<T>} with a single {@code T
@@ -38,10 +38,9 @@ public interface CapabilityTranslator {
      * Builds the per-turn {@code veto_pulse} response schema that constrains the model to a {@link
      * top.focess.veto.llm.core.VetoResponse}.
      *
-     * @param thoughtRequired whether the effective thought flag is ON (thought present &amp;
-     *     required) or OFF (thought forbidden — removed from properties).
-     * @param guidedSwitch whether this is the guided-switch turn (emits {@code actionsProgram} +
-     *     {@code features.guided=true}; {@code calls} forbidden) vs an autonomous turn.
+     * @param guidedSwitch whether this is the guided-switch turn (emits {@code actions} + {@code
+     *     features.guided=true}; {@code calls} forbidden) vs an autonomous turn ({@code calls}
+     *     allowed, {@code actions} forbidden). {@code thought} is always an optional property.
      */
-    JsonNode vetoResponseSchema(boolean thoughtRequired, boolean guidedSwitch);
+    JsonNode vetoResponseSchema(boolean guidedSwitch);
 }

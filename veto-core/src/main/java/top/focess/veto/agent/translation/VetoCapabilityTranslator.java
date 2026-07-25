@@ -23,12 +23,12 @@ import top.focess.veto.llm.core.VetoResponse;
  * SchemaNormalizerService}):
  *
  * <ol>
- *   <li>{@link #translateTools} — manifest {@link ToolDefinition} (sealed) → flat {@link
+ *   <li>{@link #translateTools} - manifest {@link ToolDefinition} (sealed) -> flat {@link
  *       top.focess.veto.llm.core.ToolDefinition} (name/description/inputSchema) for {@code
  *       VetoRequest.tools}.
- *   <li>{@link #vetoResponseSchema} — the per-turn {@code veto_pulse} schema variant that
- *       constrains the model to a {@link VetoResponse}, governed by the effective thought flag and
- *       guided state (the four-cell matrix).
+ *   <li>{@link #vetoResponseSchema} - the per-turn {@code veto_pulse} schema variant that
+ *       constrains the model to a {@link VetoResponse}, governed by the guided state. {@code
+ *       thought} is always optional.
  * </ol>
  *
  * <p>The emitted schema is provider-agnostic JSON Schema (Draft 7). Provider-specific strictness
@@ -50,32 +50,38 @@ public class VetoCapabilityTranslator implements CapabilityTranslator {
             Map<String, Object> inputSchema = inputSchemaOf(def);
             flat.add(
                     new top.focess.veto.llm.core.ToolDefinition(
-                            def.name(), def.description(), inputSchema));
+                            def.name(),
+                            def.description(),
+                            inputSchema,
+                            def.examples(),
+                            def.longDescription()));
         }
         return flat;
     }
 
     @Override
-    public @NonNull JsonNode vetoResponseSchema(boolean thoughtRequired, boolean guidedSwitch) {
+    public @NonNull JsonNode vetoResponseSchema(boolean guidedSwitch) {
         ObjectNode root = MAPPER.createObjectNode();
         root.put("type", "object");
         ObjectNode properties = MAPPER.createObjectNode();
         ArrayNode required = MAPPER.createArrayNode();
 
-        if (thoughtRequired) {
-            properties.set(
-                    "thought",
-                    stringNode("Deep step-by-step reasoning explaining the plan and actions."));
-            required.add("thought");
-        }
-        // thought OFF → thought absent from properties; additionalProperties:false forbids it.
+        // thought is always optional: present as a property, never required, never forbidden.
+        properties.set(
+                "thought",
+                stringNode("Optional internal reasoning before acting. Include when useful."));
 
         if (!guidedSwitch) {
             ObjectNode callItem = MAPPER.createObjectNode();
             callItem.put("type", "object");
             ObjectNode itemProps = MAPPER.createObjectNode();
-            itemProps.set("tool_name", stringNode(null));
-            itemProps.set("args", MAPPER.createObjectNode().put("type", "object"));
+            itemProps.set(
+                    "tool_name", stringNode("The tool name, exactly as listed in the manifest."));
+            itemProps.set(
+                    "args",
+                    typedSchemaNode(
+                            "object",
+                            "The tool arguments as a JSON object matching the tool's input schema."));
             callItem.set("properties", itemProps);
             ArrayNode itemRequired = MAPPER.createArrayNode();
             itemRequired.add("tool_name");
@@ -86,45 +92,42 @@ public class VetoCapabilityTranslator implements CapabilityTranslator {
             calls.set("items", callItem);
             calls.put(
                     "description",
-                    "The list of parallel tool calls to execute. Mutually exclusive with actionsProgram.");
+                    "The list of parallel tool calls to execute. Mutually exclusive with actions.");
             properties.set("calls", calls);
         }
-        // guidedSwitch → calls absent; additionalProperties:false forbids it.
+        // guidedSwitch -> calls absent; additionalProperties:false forbids it.
 
         properties.set(
                 "message",
                 stringNode(
-                        "User-facing text. Required when thought is OFF or when is_finished is true."));
-        if (!thoughtRequired) {
-            required.add("message"); // Rule 1: message required ⇔ thought OFF (or is_finished,
-            // harness-enforced)
-        }
-
-        properties.set("is_finished", MAPPER.createObjectNode().put("type", "boolean"));
-        required.add("is_finished");
+                        "User-facing text. Required when stopping (no tool calls and no actions)."));
 
         ObjectNode features = MAPPER.createObjectNode();
         features.put("type", "object");
         ObjectNode featureProps = MAPPER.createObjectNode();
-        featureProps.set("guided", MAPPER.createObjectNode().put("type", "boolean"));
-        featureProps.set("thought", MAPPER.createObjectNode().put("type", "boolean"));
+        featureProps.set(
+                "guided",
+                typedSchemaNode(
+                        "boolean",
+                        "Selects guided (true) vs autonomous (false) for the NEXT iteration."));
         features.set("properties", featureProps);
         ArrayNode featureRequired = MAPPER.createArrayNode();
         featureRequired.add("guided");
-        featureRequired.add("thought");
         features.set("required", featureRequired);
         features.put("additionalProperties", false);
         properties.set("features", features);
         required.add("features");
 
         if (guidedSwitch) {
-            ObjectNode actionsProgram = MAPPER.createObjectNode();
-            actionsProgram.put("type", "object");
-            actionsProgram.put(
+            ObjectNode actions = MAPPER.createObjectNode();
+            actions.put("type", "array");
+            actions.set("items", typedSchemaNode("object", null));
+            actions.put(
                     "description",
-                    "The guided-mode IR. Present only when features.guided=true. Mutually exclusive with calls.");
-            properties.set("actionsProgram", actionsProgram);
-            required.add("actionsProgram");
+                    "The guided-mode IR: an ordered list of actions. Present only when"
+                            + " features.guided=true. Mutually exclusive with calls.");
+            properties.set("actions", actions);
+            required.add("actions");
         }
 
         root.set("properties", properties);
@@ -147,8 +150,13 @@ public class VetoCapabilityTranslator implements CapabilityTranslator {
     }
 
     private static ObjectNode stringNode(String description) {
+        return typedSchemaNode("string", description);
+    }
+
+    /** Builds a typed schema node (boolean/object/...) with an optional description. */
+    private static ObjectNode typedSchemaNode(String type, String description) {
         ObjectNode node = MAPPER.createObjectNode();
-        node.put("type", "string");
+        node.put("type", type);
         if (description != null) {
             node.put("description", description);
         }

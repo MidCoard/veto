@@ -22,6 +22,15 @@ public class SessionEntity {
     @Column(nullable = false)
     private String name;
 
+    /**
+     * CSV of host paths backing the session's workspace (the roots the session's agents resolve
+     * paths against). Nullable in the schema so existing rows survive a {@code ddl-auto=update}
+     * add-column; {@link top.focess.veto.session.SessionService#createSession} enforces it
+     * non-blank at creation (the "path required" contract).
+     */
+    @Column(name = "workspace_roots")
+    private @Nullable String workspaceRoots;
+
     @Column(name = "primary_agent_id")
     private String primaryAgentId;
 
@@ -34,9 +43,22 @@ public class SessionEntity {
     protected SessionEntity() {}
 
     public SessionEntity(@NonNull String owner, @NonNull String name) {
+        this(owner, name, null);
+    }
+
+    /**
+     * @param owner the session owner
+     * @param name the session name
+     * @param workspaceRoots CSV of host paths backing the session's workspace; null/blank falls
+     *     back to the JVM working dir at activation (see {@link
+     *     top.focess.veto.agent.AgentService})
+     */
+    public SessionEntity(
+            @NonNull String owner, @NonNull String name, @Nullable String workspaceRoots) {
         this.id = UUID.randomUUID().toString();
         this.owner = owner;
         this.name = name;
+        this.workspaceRoots = workspaceRoots;
         this.createdAt = Instant.now();
         this.lastActiveAt = this.createdAt;
     }
@@ -55,6 +77,14 @@ public class SessionEntity {
 
     public void setName(@NonNull String name) {
         this.name = name;
+    }
+
+    public @Nullable String getWorkspaceRoots() {
+        return workspaceRoots;
+    }
+
+    public void setWorkspaceRoots(@Nullable String workspaceRoots) {
+        this.workspaceRoots = workspaceRoots;
     }
 
     public @Nullable String getPrimaryAgentId() {

@@ -56,16 +56,11 @@ public final class VetoCommandSender extends AbstractCommandSender {
     private final @NonNull Version clientProductVersion;
 
     /**
-     * Constructs a new {@code VetoCommandSender} for the given terminal session.
-     *
-     * @param ipcServer the IPC server used to enqueue outbound frames
-     * @param username the initially authenticated username, or {@code null} if not yet logged in
-     * @param terminalId the ZMQ DEALER identity of the owning terminal
+     * The current working directory the terminal reported in its {@link IpcFrame.Hello} handshake,
+     * used as the session's workspace root when {@code /session create} does not name one
+     * explicitly. Never {@code null} - the terminal always reports its JVM working dir.
      */
-    public VetoCommandSender(
-            @NonNull IpcServer ipcServer, @Nullable String username, @NonNull String terminalId) {
-        this(ipcServer, username, terminalId, Version.UNKNOWN);
-    }
+    private final @NonNull String cwd;
 
     /**
      * Constructs a new {@code VetoCommandSender} for the given terminal session.
@@ -76,17 +71,22 @@ public final class VetoCommandSender extends AbstractCommandSender {
      * @param clientProductVersion the product version the connecting terminal reported in its
      *     {@link IpcFrame.Hello} handshake; never {@code null} - {@link Version#UNKNOWN} when the
      *     terminal did not report a meaningful version
+     * @param cwd the current working directory the terminal reported in its {@link IpcFrame.Hello}
+     *     handshake, mapped to the session's workspace at {@code /session create} time; never
+     *     {@code null} - the terminal always reports its JVM working dir
      */
     public VetoCommandSender(
             @NonNull IpcServer ipcServer,
             @Nullable String username,
             @NonNull String terminalId,
-            @NonNull Version clientProductVersion) {
+            @NonNull Version clientProductVersion,
+            @NonNull String cwd) {
         super(CommandPermission.EVERYONE);
         this.ipcServer = ipcServer;
         this.username = username;
         this.terminalId = terminalId;
         this.clientProductVersion = clientProductVersion;
+        this.cwd = cwd;
     }
 
     // ── identity ──────────────────────────────────────────────────────────
@@ -129,6 +129,17 @@ public final class VetoCommandSender extends AbstractCommandSender {
      */
     public @NonNull Version clientProductVersion() {
         return clientProductVersion;
+    }
+
+    /**
+     * Returns the current working directory the connecting terminal reported in its {@link
+     * IpcFrame.Hello} handshake, mapped to the session's workspace at {@code /session create} time.
+     *
+     * @return the terminal's cwd; never {@code null} - the terminal always reports its JVM working
+     *     dir
+     */
+    public @NonNull String cwd() {
+        return cwd;
     }
 
     /**

@@ -46,7 +46,7 @@ final class AnthropicLlmClient extends LlmClient {
         JsonNode responseSchema =
                 request.responseSchema() != null
                         ? request.responseSchema()
-                        : capabilityTranslator.vetoResponseSchema(true, false);
+                        : capabilityTranslator.vetoResponseSchema(false);
         Map<String, Object> inputSchema =
                 objectMapper.convertValue(
                         responseSchema, new TypeReference<Map<String, Object>>() {});

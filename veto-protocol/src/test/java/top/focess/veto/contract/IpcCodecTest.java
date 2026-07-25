@@ -17,7 +17,11 @@ class IpcCodecTest {
     @Test
     void roundTripsEveryFrameType() {
         IpcFrame[] frames = {
-            new IpcFrame.Hello(IpcFrame.PROTOCOL_VERSION, 7L, Version.parse("1.0.0-SNAPSHOT")),
+            new IpcFrame.Hello(
+                    IpcFrame.PROTOCOL_VERSION,
+                    7L,
+                    Version.parse("1.0.0-SNAPSHOT"),
+                    System.getProperty("user.dir")),
             new IpcFrame.Welcome(IpcFrame.PROTOCOL_VERSION, 7L, Version.parse("1.2.3")),
             new IpcFrame.Request("do the thing"),
             new IpcFrame.Complete("/log", 11L),
@@ -94,7 +98,10 @@ class IpcCodecTest {
         String helloJson =
                 IpcCodec.encodeString(
                         new IpcFrame.Hello(
-                                IpcFrame.PROTOCOL_VERSION, 1L, Version.parse("1.0.0-SNAPSHOT")));
+                                IpcFrame.PROTOCOL_VERSION,
+                                1L,
+                                Version.parse("1.0.0-SNAPSHOT"),
+                                System.getProperty("user.dir")));
         assertFalse(helloJson.contains("\"auth\""));
         IpcFrame.Hello helloBack = (IpcFrame.Hello) IpcCodec.decode(helloJson);
         assertEquals(IpcFrame.PROTOCOL_VERSION, helloBack.version());

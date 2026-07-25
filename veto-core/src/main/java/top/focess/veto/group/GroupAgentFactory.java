@@ -8,6 +8,9 @@ import top.focess.veto.agent.Agent;
 import top.focess.veto.agent.AgentRunner;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.identity.AgentPersona;
+import top.focess.veto.agent.mcp.ToolCallContext;
+import top.focess.veto.agent.mcp.ToolCallContextHolder;
+import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.llm.core.ProviderType;
 
@@ -52,7 +55,14 @@ public class GroupAgentFactory implements GroupSpawner.AgentFactory {
         AgentRunner.LlmBinding binding =
                 new AgentRunner.LlmBinding(
                         provider, model, credentialKey, LlmOptions.defaults(), systemPromptBase);
-        return agentService.createMate(persona, binding);
+        // Inherit the calling session's workspace so the Mate / one-shot Leader resolves paths +
+        // matches grants against the same roots as the delegating agent. The calling agent's
+        // persona id is available on the tool-call thread-local (set by AgentRunner around each
+        // tool execute); fall back to the process default outside a tool-call scope.
+        ToolCallContext ctx = ToolCallContextHolder.get();
+        Workspace workspace =
+                ctx != null ? agentService.workspaceOf(ctx.agentId()) : agentService.workspace();
+        return agentService.createMate(persona, binding, workspace);
     }
 
     private static ProviderType parseProvider(String s) {

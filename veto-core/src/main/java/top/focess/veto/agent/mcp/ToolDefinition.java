@@ -1,5 +1,6 @@
 package top.focess.veto.agent.mcp;
 
+import java.util.List;
 import org.jspecify.annotations.NonNull;
 
 /**
@@ -35,4 +36,21 @@ public sealed interface ToolDefinition
     @NonNull RiskCategory risk();
 
     @NonNull ParameterSchema parameters();
+
+    /**
+     * Concrete usage examples (args-object strings) reflected from a {@link ToolDoc} on the tool's
+     * args record; rendered under the tool entry by the prompt compiler. Empty by default.
+     */
+    default @NonNull List<String> examples() {
+        return List.of();
+    }
+
+    /**
+     * Long-form, LLM-facing usage doc reflected from a {@link ToolDoc} on the tool's args record;
+     * rendered verbatim as the body of the tool's catalog entry by the prompt compiler. Empty by
+     * default (the short {@link #description()} is rendered alone).
+     */
+    default @NonNull String longDescription() {
+        return "";
+    }
 }

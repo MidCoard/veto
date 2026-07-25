@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "top.focess"
-version = "1.0.3"
+version = "1.0.20"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_25
@@ -57,8 +57,8 @@ dependencies {
     // Encryption
     implementation("org.bouncycastle:bcprov-jdk18on:1.84")
 
-    // Keystead credential vault (local mavenLocal snapshot)
-    implementation("top.focess:keystead-core:0.2.0-SNAPSHOT")
+    // Keystead credential vault (Maven Central release)
+    implementation("top.focess:keystead-core:0.2.0")
 
     // JNA (Java Native Access) for kernel-level sandbox substrate
     implementation("net.java.dev.jna:jna:5.14.0")

@@ -5,9 +5,9 @@ import org.jspecify.annotations.NonNull;
 
 /**
  * One step of a guided-mode {@link ActionsProgram} (the IR).. The agent authors this directly in
- * its {@code VetoResponse.actionsProgram} (no {@code plan} tool); the harness parses and validates
- * it before loading into guided mode. Every element carries an {@code id} + {@code label}; the
- * {@code type} discriminator is realized as the record type.
+ * its {@code VetoResponse.actions} (no {@code plan} tool); the harness parses and validates it
+ * before loading into guided mode. Every element carries an {@code id} + {@code label}; the {@code
+ * type} discriminator is realized as the record type.
  *
  * <p>Three families:
  *

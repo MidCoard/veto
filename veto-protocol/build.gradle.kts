@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "top.focess"
-version = "1.0.3"
+version = "1.0.20"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_25

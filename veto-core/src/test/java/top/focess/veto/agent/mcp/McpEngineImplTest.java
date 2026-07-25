@@ -54,19 +54,20 @@ class McpEngineImplTest {
     void activeToolsIncludesNativesAndAlwaysOnAgents() {
         McpEngineImpl engine = newEngine();
         List<ToolDefinition> active = engine.getActiveTools(null);
-        // 6 native + load_skill (create_group is now a native GroupTools bean, registered
+        // 6 native + load_skill + think (create_group is now a native GroupTools bean, registered
         // separately
         // by Spring component-scan — not in this hand-built engine).
-        assertEquals(7, active.size());
+        assertEquals(8, active.size());
         assertTrue(active.stream().anyMatch(d -> d.name().equals("load_skill")));
+        assertTrue(active.stream().anyMatch(d -> d.name().equals("think")));
     }
 
     @Test
     void whitelistFiltersNativesKeepsAgents() {
         McpEngineImpl engine = newEngine();
         List<ToolDefinition> active = engine.getActiveTools(Set.of("view_file"));
-        // view_file (native, whitelisted) + load_skill (always-on agent)
-        assertEquals(2, active.size());
+        // view_file (native, whitelisted) + load_skill + think (always-on agent tools)
+        assertEquals(3, active.size());
     }
 
     @Test

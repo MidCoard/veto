@@ -94,7 +94,13 @@ public final class ToolSchemaCompiler {
 
             properties.set(name, paramNode);
 
-            boolean nullable = component.isAnnotationPresent(Nullable.class);
+            // JSpecify @Nullable is @Target(TYPE_USE) only, so it lives on the component's
+            // annotated type, not as a declaration annotation on the component itself
+            // (RecordComponent.isAnnotationPresent would miss it). Check both surfaces so any
+            // nullability marker - declaration or type-use - makes the param optional.
+            boolean nullable =
+                    component.isAnnotationPresent(Nullable.class)
+                            || component.getAnnotatedType().isAnnotationPresent(Nullable.class);
             if (type.isPrimitive() || !nullable) {
                 required.add(name);
             }

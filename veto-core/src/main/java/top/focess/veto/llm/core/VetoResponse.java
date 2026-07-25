@@ -7,23 +7,23 @@ import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The universal ReAct response record — every model response conforms to this shape. Transcribed
- * from (the {@code veto_pulse} schema).
+ * The universal ReAct response record—every model response conforms to this shape. Transcribed from
+ * (the {@code veto_pulse} schema).
  *
  * <p>Fields:
  *
  * <ul>
- *   <li>{@code thought} — optional; strictly controlled by this turn's effective thought flag (ON →
- *       present &amp; non-empty; OFF → absent, forbidden by {@code additionalProperties:false}).
- *   <li>{@code calls} — optional; the parallel tool calls to execute. Mutually exclusive with
- *       {@code actionsProgram}. Populated in autonomous mode.
- *   <li>{@code message} — optional user-facing text; required when thought is OFF or when finished.
- *   <li>{@code is_finished} — required; true when the model cannot proceed without user input.
- *   <li>{@code features} — required; describes the NEXT iteration's status ({@code guided}, {@code
- *       thought}).
- *   <li>{@code actionsProgram} — optional; the guided-mode IR, present only when {@code
- *       features.guided=true}. Held as a raw {@link JsonNode} — the harness validates and parses it
- *       into the guided driver's typed program; the translator emits its schema.
+ *   <li>{@code thought}—optional; the model's internal reasoning before acting. Never required,
+ *       never forbidden: include it when it helps, omit it when it does not.
+ *   <li>{@code calls}—optional; the parallel tool calls to execute. Mutually exclusive with {@code
+ *       actions}. Populated in autonomous mode.
+ *   <li>{@code message}—optional user-facing text; required when stopping (no calls and no
+ *       actions).
+ *   <li>{@code features}—required; describes the NEXT iteration's status ({@code guided}).
+ *   <li>{@code actions}—optional; the guided-mode IR (a flat, ordered list of actions), present
+ *       only when {@code features.guided=true}. Held as a raw {@link JsonNode}—the harness
+ *       validates and parses it into the guided driver's typed program; the translator emits its
+ *       schema.
  * </ul>
  *
  * <p>Per-turn schema variants and harness enforcement are the {@code PromptCompiler} / loop's
@@ -34,9 +34,8 @@ public record VetoResponse(
         @Nullable String thought,
         @Nullable List<ToolCall> calls,
         @Nullable String message,
-        @JsonProperty("is_finished") boolean isFinished,
         @Nullable Features features,
-        @Nullable JsonNode actionsProgram) {
+        @Nullable JsonNode actions) {
 
     /** Convenience: whether this response carries any tool calls. */
     @JsonIgnore
@@ -46,9 +45,7 @@ public record VetoResponse(
 
     /**
      * The NEXT-iteration status. Always present in a compliant response. {@code guided} selects
-     * guided vs autonomous for the next iteration; {@code thought} sets the effective thought flag
-     * for the following turn..
+     * guided vs autonomous for the next iteration.
      */
-    public record Features(
-            @JsonProperty("guided") boolean guided, @JsonProperty("thought") boolean thought) {}
+    public record Features(@JsonProperty("guided") boolean guided) {}
 }

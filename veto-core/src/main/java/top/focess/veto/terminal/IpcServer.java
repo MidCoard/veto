@@ -332,7 +332,8 @@ public class IpcServer {
             return;
         }
         Version clientProductVersion = hello.productVersion();
-        Session session = new Session(identity, createSender(identity, clientProductVersion));
+        Session session =
+                new Session(identity, createSender(identity, clientProductVersion, hello.cwd()));
         sessions.put(identity, session);
         // Spawn the session worker — virtual thread parks on mailbox.take between frames.
         sessionPool.submit(() -> sessionLoop(session));
@@ -767,11 +768,16 @@ public class IpcServer {
      * authenticated user after a successful {@code /login} command.
      *
      * @param identity the ZMQ DEALER identity of the connecting terminal
+     * @param clientProductVersion the product version the terminal reported in its {@link
+     *     IpcFrame.Hello} handshake
+     * @param cwd the current working directory the terminal reported in its {@link IpcFrame.Hello}
+     *     handshake, mapped to the session's workspace at {@code /session create} time; never
+     *     {@code null} - the terminal always reports its JVM working dir
      * @return a new, unauthenticated {@link VetoCommandSender}; never {@code null}
      */
     private @NonNull VetoCommandSender createSender(
-            @NonNull String identity, @NonNull Version clientProductVersion) {
-        return new VetoCommandSender(this, null, identity, clientProductVersion);
+            @NonNull String identity, @NonNull Version clientProductVersion, @NonNull String cwd) {
+        return new VetoCommandSender(this, null, identity, clientProductVersion, cwd);
     }
 
     // ── Types ─────────────────────────────────────────────────────────────

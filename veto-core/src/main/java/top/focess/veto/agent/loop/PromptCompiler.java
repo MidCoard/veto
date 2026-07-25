@@ -1,14 +1,18 @@
 package top.focess.veto.agent.loop;
 
+import jakarta.annotation.PostConstruct;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.TurnType;
 import top.focess.veto.agent.identity.AgentPersona;
-import top.focess.veto.agent.skills.Skill;
+import top.focess.veto.agent.identity.SystemPromptResolver;
+import top.focess.veto.agent.screening.DeployerPolicy;
 import top.focess.veto.agent.translation.CapabilityTranslator;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.ChatMessage;
@@ -20,13 +24,16 @@ import top.focess.veto.llm.core.ChatMessage;
  * <p>Three responsibilities:
  *
  * <ol>
- *   <li><b>System message</b> = Layer 1 (The Law / VETO.md resolved per-root + cross-root, then
- *       persona identity + role + response-format rules + native tool usage) + Layer 2 (skill
- *       name+description catalog) + Layer 3 (per-turn JSON-constraint reminder, picking the
- *       variant-ON/OFF schema by the effective thought flag).
- *   <li><b>messages[]</b> — raw history newest→oldest, role-mapped per, REWIND-resolved per ,
+ *   <li><b>System message</b> - compiled ("linked") by substituting dynamic blocks into the
+ *       template at {@code default-system-prompt.md}. Blocks: {@code {{LAW}}} (VETO.md, resolved
+ *       per-root + cross-root), {@code {{IDENTITY}}} (persona name+description, or a caller base),
+ *       {@code {{ROLE}}} (STANDALONE/LEADER/MATE - drives the tool set), {@code {{TOOLS}}}
+ *       (role-scoped catalog, from the SAME flat tools that build {@code tools[]}), {@code
+ *       {{BOUNDARIES}}} (deployer-policy "not-do" fence), {@code {{SKILLS}}} (name+desc catalog).
+ *       See {@link PromptTemplate} + {@link PromptBlocks}.
+ *   <li><b>messages[]</b> - raw history newest->oldest, role-mapped per, REWIND-resolved per ,
  *       token-budgeted with pair-safe truncation (system never trimmed).
- *   <li><b>tools[]</b> + <b>response_schema</b> — via the {@link CapabilityTranslator} (flat tools
+ *   <li><b>tools[]</b> + <b>response_schema</b> - via the {@link CapabilityTranslator} (flat tools
  *       + the per-turn {@code veto_pulse} schema variant).
  * </ol>
  */
@@ -35,6 +42,7 @@ public class PromptCompiler {
 
     private final @NonNull CapabilityTranslator translator;
     private final @NonNull Workspace workspace;
+    private final @NonNull SystemPromptResolver systemPromptResolver;
 
     @Value("${veto.context.max_input_tokens:32000}")
     private int maxInputTokens;
@@ -42,39 +50,52 @@ public class PromptCompiler {
     @Value("${veto.context.context_fill_ratio:0.9}")
     private double contextFillRatio;
 
+    @Value("${veto.security.deployer-policy:FULL_ACCESS}")
+    private String deployerPolicyRaw;
+
+    private @NonNull DeployerPolicy deployerPolicy = DeployerPolicy.FULL_ACCESS;
+
     public
     @NonNull
-    PromptCompiler(@NonNull CapabilityTranslator translator, @NonNull Workspace workspace) {
+    PromptCompiler(
+            @NonNull CapabilityTranslator translator,
+            @NonNull Workspace workspace,
+            @NonNull SystemPromptResolver systemPromptResolver) {
         this.translator = translator;
         this.workspace = workspace;
+        this.systemPromptResolver = systemPromptResolver;
+    }
+
+    @PostConstruct
+    void initDeployerPolicy() {
+        this.deployerPolicy = DeployerPolicy.parse(deployerPolicyRaw);
     }
 
     /**
      * Compiles the payload for one loop cycle.
      *
      * @param persona the agent's identity + resolved manifest + registered skills
-     * @param systemPromptBase the Layer-1 base (persona identity + role + response-format rules) —
-     *     resolved from the LLM config or {@code ~/.veto/}
-     * @param history the raw, append-only turn history (oldest→newest)
-     * @param effectiveThoughtFlag the effective thought flag for THIS turn (ON at a user-prompt
-     *     turn)
-     * @param guidedSwitch whether this is the guided-switch turn (emits {@code actionsProgram})
+     * @param systemPromptBase optional identity override (e.g. the Mate base from {@code
+     *     veto.group.mate.system-prompt-base}); null/blank -> the persona name+description is used.
+     *     Role/tools/boundaries are persona-driven.
+     * @param history the raw, append-only turn history (oldest->newest)
+     * @param guidedSwitch whether this is the guided-switch turn (emits {@code actions})
      */
     public CompiledPrompt compile(
             AgentPersona persona,
             String systemPromptBase,
             List<TurnRecord> history,
-            boolean effectiveThoughtFlag,
             boolean guidedSwitch,
             double correctionFactor) {
 
+        List<top.focess.veto.llm.core.ToolDefinition> flatTools =
+                translator.translateTools(List.copyOf(persona.whitelistedTools()));
         String systemMessage =
-                buildSystemMessage(persona, systemPromptBase, effectiveThoughtFlag, guidedSwitch);
+                buildSystemMessage(persona, systemPromptBase, flatTools, guidedSwitch);
         List<ChatMessage> conversation = resolveRewinds(history);
         List<ChatMessage> budgeted = fitBudget(systemMessage, conversation, correctionFactor);
 
-        var tools = translator.translateTools(List.copyOf(persona.whitelistedTools()));
-        var responseSchema = translator.vetoResponseSchema(effectiveThoughtFlag, guidedSwitch);
+        var responseSchema = translator.vetoResponseSchema(guidedSwitch);
 
         int trimmed = conversation.size() - budgeted.size();
         long estimate = Math.round(ceilChars(systemMessage.length()) * correctionFactor);
@@ -85,55 +106,32 @@ public class PromptCompiler {
                                     * correctionFactor);
         }
         return new CompiledPrompt(
-                systemMessage, budgeted, tools, responseSchema, trimmed, estimate);
+                systemMessage, budgeted, flatTools, responseSchema, trimmed, estimate);
     }
 
-    // ── System message (3 layers) ───────────────────────────────────────────
+    // ── System message (compile/link) ───────────────────────────────────────────
 
     private String buildSystemMessage(
-            AgentPersona persona, String base, boolean thoughtFlag, boolean guidedSwitch) {
-        StringBuilder sb = new StringBuilder();
-        // Layer 1 — The Law (VETO.md, resolved per-root + cross-root) + persona identity + role +
-        // response-format rules + native tool usage. The Law is reserved (never truncated).
+            AgentPersona persona,
+            String base,
+            List<top.focess.veto.llm.core.ToolDefinition> flatTools,
+            boolean guidedSwitch) {
         String law = workspace.vetoMdResolver().resolve();
-        if (law != null && !law.isBlank()) {
-            sb.append(law).append("\n\n");
-        }
-        sb.append(base == null || base.isBlank() ? defaultPersonaBase(persona) : base);
-        // Layer 2 — skill catalog (name + description only; bodies via load_skill).
-        List<Skill> skills = persona.registeredSkills();
-        if (skills != null && !skills.isEmpty()) {
-            sb.append(
-                    "\n\n=== Available Skills (call load_skill(skillName) to load full instructions) ===\n");
-            for (Skill s : skills) {
-                sb.append("- ").append(s.name()).append(": ").append(s.description()).append('\n');
-            }
-        }
-        // Layer 3 — per-turn JSON-constraint reminder.
-        sb.append("\n\n=== Response Format (veto_pulse) ===\n");
-        sb.append("You must always respond with valid JSON matching the veto_pulse schema.\n");
-        sb.append("Required fields: is_finished, features.\n");
-        sb.append("features = {guided (bool), thought (bool)} — describes the NEXT iteration.\n");
-        sb.append("thought field: STRICTLY controlled by this turn's effective thought flag — ");
-        sb.append(
-                thoughtFlag
-                        ? "ON → thought is REQUIRED (present, non-empty).\n"
-                        : "OFF → thought is FORBIDDEN (the field is removed from the schema).\n");
-        sb.append("Effective thought flag for THIS turn: ")
-                .append(thoughtFlag ? "ON" : "OFF")
-                .append(".\n");
-        sb.append("Optional fields: calls (array), message (string), ");
-        sb.append("actionsProgram (object, only when features.guided is true).\n");
-        sb.append("(No delegationSpawn field — delegations are create_group tool calls.)\n");
-        return sb.toString();
-    }
-
-    private String defaultPersonaBase(AgentPersona persona) {
-        return "You are "
-                + (persona == null ? "a Veto agent" : persona.name())
-                + ". "
-                + (persona != null && persona.description() != null ? persona.description() : "")
-                + "\nRespond in the veto_pulse JSON schema.";
+        // A caller-supplied base (e.g. veto.group.mate.system-prompt-base) overrides the persona
+        // identity line; role, tools, boundaries, skills, and the response format are all
+        // persona/config-driven via the template markers (see PromptBlocks).
+        String identity =
+                (base != null && !base.isBlank())
+                        ? base.strip()
+                        : PromptBlocks.identity(persona.name(), persona.description());
+        Map<String, String> blocks = new LinkedHashMap<>();
+        blocks.put("LAW", PromptBlocks.law(law));
+        blocks.put("IDENTITY", identity);
+        blocks.put("ROLE", PromptBlocks.role(persona.role()));
+        blocks.put("TOOLS", PromptBlocks.tools(flatTools));
+        blocks.put("BOUNDARIES", PromptBlocks.boundaries(deployerPolicy));
+        blocks.put("SKILLS", PromptBlocks.skills(persona.registeredSkills()));
+        return PromptTemplate.render(systemPromptResolver.defaultPrompt(), blocks);
     }
 
     // ── REWIND resolution ────────────────────────────────────────────
@@ -150,6 +148,14 @@ public class PromptCompiler {
             if (turn.type() == TurnType.REWIND) {
                 int fromIndex = (Integer) turn.payload().get("from_index");
                 truncate(compiled, fromIndex);
+                continue;
+            }
+            if (turn.type() == TurnType.RECALL) {
+                // Composite directive: suffix-drop to from_index (keep the seed turns, e.g.
+                // AGENT_INIT), then re-inject the recalled brief as a user message.
+                int fromIndex = (Integer) turn.payload().get("from_index");
+                truncate(compiled, fromIndex);
+                compiled.add(ChatMessage.user(str(turn.payload(), "content")));
                 continue;
             }
             ChatMessage msg = mapRole(turn);
@@ -186,6 +192,7 @@ public class PromptCompiler {
             case AGENT_INIT -> ChatMessage.system(str(turn.payload(), "content"));
             case COMPACTION_SUMMARY -> ChatMessage.user(str(turn.payload(), "content"));
             case REWIND -> null; // directive, not a message
+            case RECALL -> null; // directive, handled in resolveRewinds
         };
     }
 
@@ -206,7 +213,7 @@ public class PromptCompiler {
 
     // ── Token budget ──────────────────────────────────────────────────
 
-    /** Walks newest→oldest, keeping turns until the budget is exceeded (system never trimmed). */
+    /** Walks newest->oldest, keeping turns until the budget is exceeded (system never trimmed). */
     private List<ChatMessage> fitBudget(
             String systemMessage, List<ChatMessage> conversation, double correctionFactor) {
         long budget = (long) (maxInputTokens * contextFillRatio);
@@ -219,7 +226,7 @@ public class PromptCompiler {
                             ceilChars(msg.content() == null ? 0 : msg.content().length())
                                     * correctionFactor);
             if (estimate + turnEstimate > budget && !kept.isEmpty()) {
-                break; // stop adding — these old turns won't fit
+                break; // stop adding - these old turns won't fit
             }
             kept.add(0, msg);
             estimate += turnEstimate;

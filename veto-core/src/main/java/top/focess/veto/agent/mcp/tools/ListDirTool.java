@@ -11,6 +11,7 @@ import top.focess.veto.agent.mcp.NativeMcpTool;
 import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.SecurityHint;
+import top.focess.veto.agent.mcp.ToolDoc;
 import top.focess.veto.agent.mcp.ToolSecurity;
 
 /**
@@ -21,6 +22,60 @@ import top.focess.veto.agent.mcp.ToolSecurity;
 @ToolSecurity(risk = RiskCategory.READ_ONLY)
 public final class ListDirTool implements NativeMcpTool<ListDirTool.Args> {
 
+    @ToolDoc(
+            description =
+                    """
+                    #### When to use
+                    Use `list_dir` to discover the immediate contents of a directory - enumerating a project's \
+                    top-level layout, finding what files a module contains, or locating a subdirectory before \
+                    reading a specific file. It returns the names of files and child directories in the given \
+                    directory (one level deep, non-recursive).
+
+                    It is the right first step when you know a directory but not its contents.
+
+                    #### When NOT to use
+                    - Do not use `list_dir` to read a file's contents - use `view_file`.
+                    - Do not use it to search for text across files - use `grep_search`.
+                    - Do not use it expecting a recursive tree; it lists one level only. To descend, call \
+                    `list_dir` on each child directory you care about.
+                    - Do not use it to check whether a single specific file exists; `view_file` on that path \
+                    tells you directly.
+
+                    #### Behavior
+                    Lists the direct children of `directoryPath` (files and subdirectories, one level deep). \
+                    Entries are sorted lexicographically. Subdirectory names are suffixed with `/` so you can \
+                    distinguish folders from files at a glance. Hidden files (dotfiles) are included. The \
+                    listing is not recursive.
+
+                    #### Return format
+                    Plain text, one entry per line, sorted. Directory entries end with `/`; file entries do not. \
+                    There is no JSON envelope. An empty directory yields no output lines.
+
+                    #### Errors & edge cases
+                    - `directoryPath` does not exist or is not a directory -> \
+                    `{"status":"error","error":"Not a directory: <path>"}`.
+                    - Passing a file path -> "Not a directory" error.
+                    - A directory with many entries returns them all; there is no pagination - narrow by \
+                    descending into specific subdirectories if the listing is large.
+                    - Permissions gaps may hide entries the process cannot read; the tool lists what the \
+                    filesystem exposes.
+
+                    #### Security
+                    `directoryPath` is a FILESYSTEM_PATH parameter: the Gateway screens it against the deployer \
+                    policy and allowed roots before the listing. The operation is read-only \
+                    (`RiskCategory.READ_ONLY`); nothing is modified. Returned names are subject to ingress \
+                    masking. Do not attempt to list deployer-fenced roots - the call is blocked upstream; \
+                    change scope instead.
+                    """,
+            examples = {
+                "{\"directoryPath\": \"/abs/src\"}",
+                "{\"directoryPath\": \"/abs\"}",
+                "{\"directoryPath\": \"/abs/src/main/java\"}",
+                "{\"directoryPath\": \"/abs/src/test\"}",
+                "{\"directoryPath\": \"/abs/config\"}",
+                "{\"directoryPath\": \"/abs/src/util\"}",
+                "{\"directoryPath\": \"/abs/notes\"}"
+            })
     public record Args(
             @SecurityHint(ParamCategory.FILESYSTEM_PATH) @Doc("Absolute path to list contents of.")
                     String directoryPath) {}

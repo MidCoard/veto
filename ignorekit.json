@@ -6,26 +6,24 @@
     "name": "local"
   },
   "components": [
+    "language/python",
     "local/ai-claude",
-    "local/assistant-artifacts",
-    "language/python"
+    "local/assistant-artifacts"
   ],
   "exclude": [],
   "custom": [
-    "*.md",
-    "!README.md",
     "target/",
     "/vault/",
     "/work/",
     "/audit/",
     "/models/",
     "/veto-core/audit/",
-    "*.pyc",
     "veto-core/training/data/*.json",
     "veto-core/training/data/*.jsonl",
     "plans/",
     "scripts/",
-    "docs/"
+    "docs/",
+    "ARCHITECTURE.md"
   ],
   "addons": {}
 }

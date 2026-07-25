@@ -103,4 +103,18 @@ public record TurnRecord(
         return new TurnRecord(
                 turnNumber, TurnType.COMPACTION_SUMMARY, Map.of("content", content), null);
     }
+
+    /**
+     * A recall directive - a composite of a suffix-drop + a re-injected brief. The compiler drops
+     * compiled positions {@code from_index..end} (keeping {@code 0..from_index-1}, typically the
+     * AGENT_INIT seed), then appends {@code content} as a user message. Never emitted as an
+     * assistant message.
+     */
+    public static @NonNull TurnRecord recall(
+            int turnNumber, int fromIndex, @NonNull String content) {
+        Map<String, Object> p = new LinkedHashMap<>();
+        p.put("from_index", fromIndex);
+        p.put("content", content);
+        return new TurnRecord(turnNumber, TurnType.RECALL, p, null);
+    }
 }

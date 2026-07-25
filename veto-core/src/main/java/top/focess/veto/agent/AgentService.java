@@ -20,13 +20,15 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.identity.AgentPersona;
+import top.focess.veto.agent.identity.Role;
+import top.focess.veto.agent.identity.RoleToolFilter;
+import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.Gateway;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.intercept.InterceptResolution;
 import top.focess.veto.agent.intercept.LoopInterceptor;
 import top.focess.veto.agent.loop.PromptCompiler;
-import top.focess.veto.agent.mcp.AgentToolDefinition;
 import top.focess.veto.agent.mcp.McpEngine;
 import top.focess.veto.agent.mcp.ToolDefinition;
 import top.focess.veto.agent.screening.DangerComputation;
@@ -61,10 +63,11 @@ public class AgentService {
     private final UniformLLMCaller caller;
     private final ObjectMapper objectMapper;
     private final List<LoopInterceptor> interceptors;
-    private final Workspace workspace;
+    private final Workspace defaultWorkspace;
+    private final String pathMode;
+    private final RoleToolFilter roleToolFilter;
     private final long maxCallsPerEpisode;
     private final DeployerPolicy deployerPolicy;
-    private final ProtectedSet protectedSet;
     // The Part-8 Delta-broker — optional (nullable in tests); when present, threaded into each
     // AgentRunner so loop emissions publish per-session DeltaFrames for transports to stream.
     private final @Nullable DeltaBroker deltaBroker;
@@ -89,8 +92,7 @@ public class AgentService {
             @NonNull UniformLLMCaller caller,
             @Qualifier(LlmJacksonConfig.LLM_OBJECT_MAPPER) @NonNull ObjectMapper objectMapper,
             @Nullable List<LoopInterceptor> interceptors,
-            @Value("${veto.workspace.root:}") @NonNull String legacyRoot,
-            @Value("${veto.workspace.roots:}") @NonNull String rootsCsv,
+            @NonNull RoleToolFilter roleToolFilter,
             @Value("${veto.workspace.path-mode:REAL}") @NonNull String pathMode,
             @Value("${veto.breaker.max_calls_per_episode:50}") long maxCallsPerEpisode,
             @Value("${veto.security.deployer-policy:FULL_ACCESS}")
@@ -105,7 +107,9 @@ public class AgentService {
         this.caller = caller;
         this.objectMapper = objectMapper;
         this.interceptors = interceptors == null ? List.of() : interceptors;
-        this.workspace = Workspace.fromConfig(legacyRoot, rootsCsv, pathMode);
+        this.pathMode = pathMode;
+        this.defaultWorkspace = Workspace.fromConfig("", "", pathMode);
+        this.roleToolFilter = roleToolFilter;
         this.maxCallsPerEpisode = maxCallsPerEpisode;
         this.deployerPolicy = parseDeployerPolicy(deployerPolicyRaw);
         if (this.deployerPolicy == DeployerPolicy.FULL_ACCESS) {
@@ -114,11 +118,11 @@ public class AgentService {
                             + " stored in it. Do not store high-value secrets in application.yml under"
                             + " this policy; use env vars or the keystead vault.");
         }
-        this.protectedSet = protectedSetFor("default");
-        // Thread the runtime screening matrix + workspace to the (shared) HITL registry. The
-        // workspace is needed for canonical-path arg extraction when matching permission grants.
+        // Thread the runtime screening matrix + a fallback workspace to the (shared) HITL registry.
+        // Each session registers its own workspace per-agentId at create time (see createAgent /
+        // createMate); the default here covers legacy call paths that bypass session creation.
         this.hitlRegistry.setScreeningMode(parseScreeningMode(screeningModeRaw));
-        this.hitlRegistry.setWorkspace(this.workspace);
+        this.hitlRegistry.setDefaultWorkspace(this.defaultWorkspace);
         this.deltaBroker = deltaBroker;
         this.captureService = captureService;
     }
@@ -224,13 +228,35 @@ public class AgentService {
             AgentRunner.@NonNull LlmBinding binding,
             @NonNull List<TurnRecord> history,
             @NonNull UUID userId) {
+        return getOrCreateAgent(sessionId, binding, history, userId, null);
+    }
+
+    /**
+     * Gets or creates the agent for a session id with the session's workspace, seeding replayed
+     * history on first creation. The workspace is resolved from {@code workspaceRoots} (CSV of host
+     * paths; null/blank falls back to the JVM working dir) so each session's grants + path
+     * resolution scope to its own workspace rather than a process-global root.
+     *
+     * <p>The session id is the agent key (replacing terminal-id keying) so an agent is shared
+     * across any interface attached to the session. Seeding runs before the first {@code submit}
+     * (the loop parks on its action queue while IDLE), and is idempotent via {@link
+     * AgentRunner#seedHistory}. The workspace is fixed at first creation; later calls with a
+     * different {@code workspaceRoots} reuse the existing agent (and its original workspace).
+     */
+    public Agent getOrCreateAgent(
+            @NonNull String sessionId,
+            AgentRunner.@NonNull LlmBinding binding,
+            @NonNull List<TurnRecord> history,
+            @NonNull UUID userId,
+            @Nullable String workspaceRoots) {
         boolean[] created = {false};
+        Workspace workspace = buildWorkspace(workspaceRoots);
         VetoAgent agent =
                 agents.computeIfAbsent(
                         sessionId,
                         k -> {
                             created[0] = true;
-                            return createAgent(k, binding, userId);
+                            return createAgent(k, binding, userId, workspace);
                         });
         agent.bind(binding);
         if (created[0] && history != null && !history.isEmpty()) {
@@ -277,16 +303,27 @@ public class AgentService {
     }
 
     private VetoAgent createAgent(String agentKey, AgentRunner.LlmBinding binding) {
-        return createAgent(agentKey, binding, DEFAULT_USER_ID);
+        return createAgent(agentKey, binding, DEFAULT_USER_ID, defaultWorkspace);
     }
 
     private VetoAgent createAgent(
             @NonNull String agentKey,
             AgentRunner.@NonNull LlmBinding binding,
             @NonNull UUID userId) {
+        return createAgent(agentKey, binding, userId, defaultWorkspace);
+    }
+
+    private VetoAgent createAgent(
+            @NonNull String agentKey,
+            AgentRunner.@NonNull LlmBinding binding,
+            @NonNull UUID userId,
+            @NonNull Workspace workspace) {
         AgentPersona persona = buildPersona(agentKey, binding);
+        // Register this agent's workspace on the HITL registry under its persona id so grant
+        // matching + path canonicalization scope to this session's workspace.
+        hitlRegistry.setWorkspace(persona.id(), workspace);
         ReadHistory readHistory = new ReadHistory();
-        ProtectedSet userProtectedSet = protectedSetFor(agentKey);
+        ProtectedSet userProtectedSet = protectedSetFor(agentKey, workspace);
         Gateway gateway =
                 new Gateway(
                         workspace,
@@ -323,7 +360,19 @@ public class AgentService {
      * spawned Mates yet).
      */
     public Agent createMate(AgentPersona persona, AgentRunner.LlmBinding binding) {
-        return createMate(persona, binding, DEFAULT_USER_ID);
+        return createMate(persona, binding, DEFAULT_USER_ID, defaultWorkspace);
+    }
+
+    /**
+     * Builds a Mate {@link Agent} bound to the given workspace, inheriting the default user id.
+     * Used by the group engine to spawn a Mate / one-shot Leader in the calling session's
+     * workspace.
+     */
+    public Agent createMate(
+            @NonNull AgentPersona persona,
+            AgentRunner.@NonNull LlmBinding binding,
+            @NonNull Workspace workspace) {
+        return createMate(persona, binding, DEFAULT_USER_ID, workspace);
     }
 
     /**
@@ -334,6 +383,24 @@ public class AgentService {
             @NonNull AgentPersona persona,
             AgentRunner.@NonNull LlmBinding binding,
             @NonNull UUID userId) {
+        return createMate(persona, binding, userId, defaultWorkspace);
+    }
+
+    /**
+     * Builds a Mate {@link Agent} bound to the given workspace (the calling session's). The Mate
+     * inherits the session's workspace so its tool calls resolve paths + match grants against the
+     * same roots as the delegating agent.
+     */
+    public Agent createMate(
+            @NonNull AgentPersona persona,
+            AgentRunner.@NonNull LlmBinding binding,
+            @NonNull UUID userId,
+            @NonNull Workspace workspace) {
+        // Re-scope the persona's tools to its role. The persona may have been built with the full
+        // standalone manifest before its role (MATE/LEADER) was known; the RoleToolFilter narrows
+        // it to the role's allow-list (MATE: no group tools; LEADER: read + arrange only).
+        AgentPersona scoped = persona.withWhitelistedTools(roleToolFilter.resolve(persona.role()));
+        hitlRegistry.setWorkspace(scoped.id(), workspace);
         ReadHistory readHistory = new ReadHistory();
         // Mates are not wired with per-user deployer defaults (see createMate javadoc), but the
         // app's own config/audit material is system-wide and must be shielded under
@@ -352,8 +419,8 @@ public class AgentService {
                         readHistory);
         AgentRunner runner =
                 new AgentRunner(
-                        persona.id(),
-                        persona,
+                        scoped.id(),
+                        scoped,
                         mcpEngine,
                         gateway,
                         hitlRegistry,
@@ -367,27 +434,53 @@ public class AgentService {
                         deltaBroker,
                         userId,
                         captureService);
-        return new VetoAgent(persona, runner);
+        return new VetoAgent(scoped, runner);
     }
 
     /**
-     * Builds the agent persona. Resolves the tool whitelist from the {@link McpEngine}'s active
-     * native + remote tools (agent tools like {@code load_skill} are always-on, runtime-excluded
-     * from the stored set per {@link AgentPersona}). Full {@code ~/.veto/} persona resolution
-     * (skills, per-agent tool grants) is not yet wired — the default grants all registered tools.
+     * Builds the agent persona. Resolves the tool set from the {@link McpEngine}'s active native +
+     * remote + agent tools (agent tools like {@code load_skill} and {@code think} are always-on
+     * control/meta tools, included in every agent's manifest). Full {@code ~/.veto/} persona
+     * resolution (skills, per-agent tool grants) is not yet wired — the default grants all
+     * registered tools.
      */
     private AgentPersona buildPersona(String agentKey, AgentRunner.LlmBinding binding) {
-        Set<ToolDefinition> tools =
-                mcpEngine.getActiveTools(null).stream()
-                        .filter(d -> !(d instanceof AgentToolDefinition))
-                        .collect(java.util.stream.Collectors.toUnmodifiableSet());
+        Set<ToolDefinition> tools = roleToolFilter.resolve(Role.STANDALONE);
         return new AgentPersona(
-                UUID.randomUUID().toString(), "agent-" + agentKey, "Veto agent", tools, List.of());
+                UUID.randomUUID().toString(),
+                SystemPromptResolver.NAME,
+                SystemPromptResolver.DESCRIPTION,
+                tools,
+                List.of());
     }
 
-    /** The workspace agents resolve paths against (for tests). */
+    /**
+     * The fallback workspace agents resolve paths against when no session workspace is set (for
+     * tests).
+     */
     public Workspace workspace() {
-        return workspace;
+        return defaultWorkspace;
+    }
+
+    /**
+     * The workspace registered for the agent (by persona id), or the fallback default. Used by the
+     * group engine to inherit the calling session's workspace when spawning Mates / a one-shot
+     * Leader (the calling agent's persona id is read from the {@link
+     * top.focess.veto.agent.mcp.ToolCallContextHolder}).
+     */
+    public Workspace workspaceOf(@NonNull String agentId) {
+        return hitlRegistry.workspace(agentId);
+    }
+
+    /**
+     * Builds a per-session workspace from a CSV of host paths. Null/blank falls back to the default
+     * (JVM working dir) to avoid re-probing the filesystem on every call.
+     */
+    public Workspace buildWorkspace(@Nullable String workspaceRoots) {
+        if (workspaceRoots == null || workspaceRoots.isBlank()) {
+            return defaultWorkspace;
+        }
+        return Workspace.fromConfig("", workspaceRoots, pathMode);
     }
 
     /**
@@ -405,28 +498,16 @@ public class AgentService {
      * non-FULL_ACCESS policy. Listed as specific subpaths so a workspace nested under the launch
      * dir is unaffected.
      */
-    private ProtectedSet protectedSetFor(String vetoUserId) {
+    private ProtectedSet protectedSetFor(String vetoUserId, Workspace workspace) {
         if (this.deployerPolicy == DeployerPolicy.FULL_ACCESS) {
             return ProtectedSet.empty();
         }
-        return ProtectedSet.withDeployerDefaults(vetoUserId, this.workspace.hostRoots())
+        return ProtectedSet.withDeployerDefaults(vetoUserId, workspace.hostRoots())
                 .withSystemProtected(systemProtectedPaths());
     }
 
     private static DeployerPolicy parseDeployerPolicy(String raw) {
-        if (raw == null || raw.isBlank()) {
-            return DeployerPolicy.FULL_ACCESS;
-        }
-        for (DeployerPolicy p : DeployerPolicy.values()) {
-            if (p.name().equalsIgnoreCase(raw.trim())) {
-                return p;
-            }
-        }
-        throw new IllegalArgumentException(
-                "Unknown veto.security.deployer-policy '"
-                        + raw
-                        + "'; expected one of "
-                        + java.util.Arrays.toString(DeployerPolicy.values()));
+        return DeployerPolicy.parse(raw);
     }
 
     /** Parses the screening mode (case-insensitive; defaults to STRICT on blank/unknown). */

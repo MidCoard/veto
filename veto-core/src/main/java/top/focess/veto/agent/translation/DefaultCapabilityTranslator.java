@@ -14,7 +14,7 @@ import top.focess.veto.agent.mcp.RemoteToolDefinition;
 import top.focess.veto.agent.mcp.ToolDefinition;
 
 /**
- * The default {@link CapabilityTranslator} — the deterministic {@code veto_pulse} schema builder +
+ * The default {@link CapabilityTranslator} - the deterministic {@code veto_pulse} schema builder +
  * flat-tool translator. Registered as a {@code @ConditionalOnMissingBean} so a richer
  * implementation (provider-specific schema nuances, native-tool reflection via {@code
  * ToolSchemaCompiler}) overrides it when present.
@@ -38,52 +38,54 @@ public class DefaultCapabilityTranslator implements CapabilityTranslator {
     }
 
     @Override
-    public @NonNull JsonNode vetoResponseSchema(boolean thoughtRequired, boolean guidedSwitch) {
+    public @NonNull JsonNode vetoResponseSchema(boolean guidedSwitch) {
         Map<String, Object> properties = new LinkedHashMap<>();
 
-        if (thoughtRequired) {
-            properties.put(
-                    "thought",
-                    orderedMap(
-                            "type", "string",
-                            "description",
-                                    "Deep step-by-step reasoning explaining the plan and actions."));
-        }
+        // thought is always optional: present as a property, never required, never forbidden.
+        properties.put(
+                "thought",
+                orderedMap(
+                        "type", "string",
+                        "description",
+                                "Optional internal reasoning before acting. Include when useful."));
+
         if (!guidedSwitch) {
-            // autonomous: calls allowed (optional), actionsProgram forbidden (absent).
+            // autonomous: calls allowed (optional), actions forbidden (absent).
             properties.put(
                     "calls",
                     orderedMap(
-                            "type", "array",
-                            "description", "The parallel tool calls to execute. Empty if none.",
-                            "items",
-                                    orderedMap(
-                                            "type",
-                                            "object",
-                                            "properties",
-                                            orderedMap(
-                                                    "tool_name", orderedMap("type", "string"),
-                                                    "args", orderedMap("type", "object")),
-                                            "required",
-                                            List.of("tool_name", "args"),
-                                            "additionalProperties",
-                                            false)));
-        } else {
-            // guided-switch: actionsProgram required, calls forbidden (absent).
-            properties.put(
-                    "actionsProgram",
-                    orderedMap(
-                            "type", "object",
+                            "type",
+                            "array",
                             "description",
-                                    "The typed actions program (IR) to drive in guided mode."));
+                            "The parallel tool calls to execute. Empty if none.",
+                            "items",
+                            orderedMap(
+                                    "type",
+                                    "object",
+                                    "properties",
+                                    orderedMap(
+                                            "tool_name", orderedMap("type", "string"),
+                                            "args", orderedMap("type", "object")),
+                                    "required",
+                                    List.of("tool_name", "args"),
+                                    "additionalProperties",
+                                    false)));
+        } else {
+            // guided-switch: actions required, calls forbidden (absent).
+            properties.put(
+                    "actions",
+                    orderedMap(
+                            "type", "array",
+                            "description",
+                                    "The typed actions program (IR) to drive in guided mode.",
+                            "items", orderedMap("type", "object")));
         }
         properties.put(
                 "message",
                 orderedMap(
                         "type", "string",
                         "description",
-                                "User-facing text. Required when thought is OFF or when is_finished."));
-        properties.put("is_finished", orderedMap("type", "boolean"));
+                                "User-facing text. Required when stopping (no tool calls and no actions)."));
         properties.put(
                 "features",
                 orderedMap(
@@ -92,25 +94,16 @@ public class DefaultCapabilityTranslator implements CapabilityTranslator {
                         "description",
                         "Describes the NEXT iteration's status.",
                         "properties",
-                        orderedMap(
-                                "guided", orderedMap("type", "boolean"),
-                                "thought", orderedMap("type", "boolean")),
+                        orderedMap("guided", orderedMap("type", "boolean")),
                         "required",
-                        List.of("guided", "thought"),
+                        List.of("guided"),
                         "additionalProperties",
                         false));
 
         List<String> required = new ArrayList<>();
-        required.add("is_finished");
         required.add("features");
-        if (thoughtRequired) {
-            required.add("thought");
-        }
-        if (!thoughtRequired) {
-            required.add("message");
-        }
         if (guidedSwitch) {
-            required.add("actionsProgram");
+            required.add("actions");
         }
 
         Map<String, Object> schema =
@@ -171,7 +164,7 @@ public class DefaultCapabilityTranslator implements CapabilityTranslator {
     }
 
     /** Convenience: the schema as an ObjectNode (for tests). */
-    public @NonNull ObjectNode schemaAsObject(boolean thoughtRequired, boolean guidedSwitch) {
-        return (ObjectNode) vetoResponseSchema(thoughtRequired, guidedSwitch);
+    public @NonNull ObjectNode schemaAsObject(boolean guidedSwitch) {
+        return (ObjectNode) vetoResponseSchema(guidedSwitch);
     }
 }

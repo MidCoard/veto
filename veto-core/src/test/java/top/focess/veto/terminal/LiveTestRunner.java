@@ -41,7 +41,12 @@ class LiveTestRunner {
         dealer.setIdentity(UUID.randomUUID().toString().getBytes(StandardCharsets.UTF_8));
         dealer.connect(ADDR);
         Thread.sleep(500);
-        send(new IpcFrame.Hello(IpcFrame.PROTOCOL_VERSION, 1, Version.UNKNOWN));
+        send(
+                new IpcFrame.Hello(
+                        IpcFrame.PROTOCOL_VERSION,
+                        1,
+                        Version.UNKNOWN,
+                        System.getProperty("user.dir")));
         IpcFrame welcome = recv();
         assert welcome instanceof IpcFrame.Welcome && ((IpcFrame.Welcome) welcome).seq() == 1;
     }

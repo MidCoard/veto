@@ -114,6 +114,12 @@ public class PromptHandler {
 
         Optional<LlmConfig> opt = sessionService.resolveLlmConfig(terminalId);
         if (opt.isEmpty()) {
+            // Server restart or fresh reconnect wiped the in-memory active-session map: auto-resume
+            // the user's most-recently-active session (replays durable history, continues
+            // seamlessly).
+            opt = sessionService.resumeLastSession(terminalId, user);
+        }
+        if (opt.isEmpty()) {
             return IpcFrame.Error.ofError(
                     "No active session. Use /session create <pattern> or /session activate <name>.");
         }

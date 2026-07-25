@@ -68,7 +68,8 @@ public class PersonaEntity {
                 parseSkillList(e.skills),
                 e.topModel == null ? "gemini-3.5-flash" : e.topModel,
                 e.midModel,
-                e.lowModel);
+                e.lowModel,
+                Role.STANDALONE);
     }
 
     private static java.util.List<Skill> parseSkillList(String s) {

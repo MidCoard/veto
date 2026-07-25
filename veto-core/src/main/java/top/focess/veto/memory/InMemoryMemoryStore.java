@@ -12,6 +12,7 @@ import org.jspecify.annotations.NonNull;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.TurnRecord;
+import top.focess.veto.memory.embedder.Embedder;
 
 /**
  * A simple in-process {@link MemoryStore} for the MVP path. Stores all memories in a {@link
@@ -22,7 +23,7 @@ import top.focess.veto.agent.TurnRecord;
  * implementation gives us a working memory stack without the operational complexity of standing up
  * PostgreSQL + pgvector for tests and the local CLI path.
  *
- * <p>The {@link #embed(String)} method is a deterministic stub — it hashes the text to produce a
+ * <p>The embed(String) method is a deterministic stub — it hashes the text to produce a
  * fixed-length vector so similarity is meaningful (identical texts → 1.0; very different texts →
  * ~0). The production backend plugs into the local embedding model (Part 14.4).
  */
@@ -30,13 +31,16 @@ import top.focess.veto.agent.TurnRecord;
 @ConditionalOnProperty(name = "veto.memory.store", havingValue = "memory", matchIfMissing = true)
 public class InMemoryMemoryStore implements MemoryStore {
 
-    private static final int EMBEDDING_DIM = 64;
-
+    private final @NonNull Embedder embedder;
     private final ConcurrentMap<MemoryId, Memory> store = new ConcurrentHashMap<>();
+
+    public InMemoryMemoryStore(@NonNull Embedder embedder) {
+        this.embedder = embedder;
+    }
 
     @Override
     public @NonNull List<ScoredMemory> search(@NonNull MemoryQuery query) {
-        float[] queryVec = embed(query.queryText());
+        float[] queryVec = embedder.embed(query.queryText());
         List<ScoredMemory> matches = new ArrayList<>();
         for (Memory m : store.values()) {
             // Tenant isolation: only the requesting user can see their memories.
@@ -85,7 +89,7 @@ public class InMemoryMemoryStore implements MemoryStore {
         if (content == null || content.isBlank()) {
             return;
         }
-        float[] embedding = embed(content);
+        float[] embedding = embedder.embed(content);
         Memory m =
                 new Memory(
                         MemoryId.random(),
@@ -124,31 +128,6 @@ public class InMemoryMemoryStore implements MemoryStore {
     @Override
     public void forget(@NonNull MemoryId id) {
         store.remove(id);
-    }
-
-    @Override
-    public float[] embed(@NonNull String text) {
-        // Deterministic stub: hash the text, fold into a fixed-length vector. Identical texts
-        // produce identical vectors; very different texts produce very different vectors. The
-        // semantics are not great for semantic recall (the production model wins there) but it
-        // is enough to demonstrate the architecture.
-        byte[] bytes = text.getBytes();
-        float[] vec = new float[EMBEDDING_DIM];
-        for (int i = 0; i < bytes.length; i++) {
-            vec[i % EMBEDDING_DIM] += (bytes[i] & 0xff) / 255f;
-        }
-        // Normalize.
-        float norm = 0f;
-        for (float v : vec) {
-            norm += v * v;
-        }
-        norm = (float) Math.sqrt(norm);
-        if (norm > 0f) {
-            for (int i = 0; i < vec.length; i++) {
-                vec[i] /= norm;
-            }
-        }
-        return vec;
     }
 
     private static float cosineSimilarity(float[] a, float[] b) {
@@ -194,11 +173,6 @@ public class InMemoryMemoryStore implements MemoryStore {
     /** Total memory count — for tests + diagnostics. */
     public int size() {
         return store.size();
-    }
-
-    /** Test-only: the embedding dimension this stub produces. */
-    public static int embeddingDim() {
-        return EMBEDDING_DIM;
     }
 
     /** Test-only: clear all memories. */

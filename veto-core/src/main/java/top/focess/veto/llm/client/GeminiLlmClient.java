@@ -38,7 +38,7 @@ final class GeminiLlmClient extends LlmClient {
         JsonNode rawSchema =
                 request.responseSchema() != null
                         ? request.responseSchema()
-                        : capabilityTranslator.vetoResponseSchema(true, false);
+                        : capabilityTranslator.vetoResponseSchema(false);
         Schema responseSchema = objectMapper.convertValue(rawSchema, Schema.class);
 
         GenerateContentConfig.Builder configBuilder =

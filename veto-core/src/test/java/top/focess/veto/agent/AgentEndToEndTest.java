@@ -12,6 +12,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
+import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.loop.PromptCompiler;
@@ -43,7 +44,8 @@ class AgentEndToEndTest {
                 new PromptCompiler(
                         new DefaultCapabilityTranslator(mapper),
                         Workspace.single(
-                                Path.of(System.getProperty("user.dir", ".")), PathMode.REAL));
+                                Path.of(System.getProperty("user.dir", ".")), PathMode.REAL),
+                        new SystemPromptResolver());
         // The @Value defaults are only injected by Spring; set sensible budgets for the unit test.
         ReflectionTestUtils.setField(compiler, "maxInputTokens", 32000);
         ReflectionTestUtils.setField(compiler, "contextFillRatio", 0.9);
@@ -55,8 +57,7 @@ class AgentEndToEndTest {
                 caller,
                 mapper,
                 List.of(),
-                System.getProperty("user.dir", "."),
-                "",
+                new top.focess.veto.agent.identity.RoleToolFilter(new DefaultMcpEngine()),
                 "REAL",
                 50L,
                 "FULL_ACCESS",
@@ -86,31 +87,20 @@ class AgentEndToEndTest {
         };
     }
 
-    private static VetoResponse thoughtOn(String thought, String message, boolean finished) {
+    private static VetoResponse thoughtOn(String thought, String message) {
         return new VetoResponse(
-                thought,
-                List.of(),
-                message,
-                finished,
-                new VetoResponse.Features(false, true),
-                null);
+                thought, List.of(), message, new VetoResponse.Features(false), null);
     }
 
     private static VetoResponse thoughtOnWithCall(String thought, String message, ToolCall call) {
         return new VetoResponse(
-                thought,
-                List.of(call),
-                message,
-                false,
-                new VetoResponse.Features(false, true),
-                null);
+                thought, List.of(call), message, new VetoResponse.Features(false), null);
     }
 
     @Test
     void autonomousLoopFinishesAndStreamsMessage() throws Exception {
         AtomicReference<String> streamed = new AtomicReference<>();
-        AgentService service =
-                serviceWith(scripted(thoughtOn("2 + 2 = 4.", "The answer is 4.", true)));
+        AgentService service = serviceWith(scripted(thoughtOn("2 + 2 = 4.", "The answer is 4.")));
 
         AgentResult result =
                 service.submit(
@@ -144,7 +134,7 @@ class AgentEndToEndTest {
                                         "I'll compute 2+2 via calc.",
                                         "Let me check.",
                                         new ToolCall("calc", Map.of("expr", "2+2"))),
-                                thoughtOn("calc says 4.", "The answer is 4.", true)));
+                                thoughtOn("calc says 4.", "The answer is 4.")));
 
         AgentResult result =
                 service.submit(

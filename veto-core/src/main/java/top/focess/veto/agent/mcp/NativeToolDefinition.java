@@ -1,5 +1,6 @@
 package top.focess.veto.agent.mcp;
 
+import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
 
@@ -20,5 +21,15 @@ public record NativeToolDefinition(
     @Override
     public @NonNull ParameterSchema parameters() {
         return new ParameterSchema.Structured(argsClass, paramHints);
+    }
+
+    @Override
+    public @NonNull List<String> examples() {
+        return ToolDocs.examplesOf(argsClass);
+    }
+
+    @Override
+    public @NonNull String longDescription() {
+        return ToolDocs.descriptionOf(argsClass);
     }
 }

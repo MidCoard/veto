@@ -81,6 +81,13 @@ public final class IpcClient implements AutoCloseable {
     /** The product version this client reports in the {@link IpcFrame.Hello} handshake. */
     private final @NonNull Version productVersion;
 
+    /**
+     * The current working directory this client reports in the {@link IpcFrame.Hello} handshake, so
+     * the server can map it to the session's workspace. Defaults to the JVM working dir, so it is
+     * never {@code null}.
+     */
+    private final @NonNull String cwd;
+
     /** The backend's product version received in {@link IpcFrame.Welcome}. */
     private volatile @NonNull Version serverProductVersion = Version.UNKNOWN;
 
@@ -88,14 +95,29 @@ public final class IpcClient implements AutoCloseable {
 
     /**
      * Connects to the backend, performs the handshake, and starts the IO and heartbeat threads.
-     * Equivalent to {@link #IpcClient(String, Version) IpcClient(address, Version.UNKNOWN)} - the
-     * client reports {@link Version#UNKNOWN}.
+     * Equivalent to {@link #IpcClient(String, Version, String) IpcClient(address, Version.UNKNOWN,
+     * System.getProperty("user.dir"))} - the client reports {@link Version#UNKNOWN} and the JVM
+     * working dir as cwd.
      *
      * @param address the transport connect address (e.g. {@code tcp://127.0.0.1:5555})
      * @throws RuntimeException if the handshake times out or is rejected
      */
     public IpcClient(@NonNull String address) {
-        this(address, Version.UNKNOWN);
+        this(address, Version.UNKNOWN, System.getProperty("user.dir"));
+    }
+
+    /**
+     * Connects to the backend, performs the handshake, and starts the IO and heartbeat threads.
+     * Equivalent to {@link #IpcClient(String, Version, String) IpcClient(address, productVersion,
+     * System.getProperty("user.dir"))} - the client reports the JVM working dir as cwd.
+     *
+     * @param address the transport connect address (e.g. {@code tcp://127.0.0.1:5555})
+     * @param productVersion the product version to report in the {@link IpcFrame.Hello} handshake;
+     *     never {@code null} - use {@link Version#UNKNOWN} when none is known
+     * @throws RuntimeException if the handshake times out or is rejected
+     */
+    public IpcClient(@NonNull String address, @NonNull Version productVersion) {
+        this(address, productVersion, System.getProperty("user.dir"));
     }
 
     /**
@@ -104,22 +126,27 @@ public final class IpcClient implements AutoCloseable {
      * @param address the transport connect address (e.g. {@code tcp://127.0.0.1:5555})
      * @param productVersion the product version to report in the {@link IpcFrame.Hello} handshake;
      *     never {@code null} - use {@link Version#UNKNOWN} when none is known
+     * @param cwd the terminal's current working directory to report in the {@link IpcFrame.Hello}
+     *     handshake, mapped to the session's workspace at {@code /session create} time; never
+     *     {@code null} - the terminal always has a cwd to report
      * @throws RuntimeException if the handshake times out or is rejected
      */
-    public IpcClient(@NonNull String address, @NonNull Version productVersion) {
+    public IpcClient(
+            @NonNull String address, @NonNull Version productVersion, @NonNull String cwd) {
         this.identity = UUID.randomUUID().toString();
         this.ctx = new ZContext();
         this.ownsContext = true;
         this.transport = ZmqChannel.Client.connectDealer(ctx, address, identity);
         this.productVersion = productVersion;
+        this.cwd = cwd;
         start();
     }
 
     /**
      * Constructor for testing with an injected transport (e.g. an in-memory {@link
      * ClientTransport}), bypassing ZMQ entirely. The connection does not own a {@link ZContext}.
-     * Equivalent to {@link #IpcClient(ClientTransport, Version) IpcClient(transport,
-     * Version.UNKNOWN)}.
+     * Equivalent to {@link #IpcClient(ClientTransport, Version, String) IpcClient(transport,
+     * Version.UNKNOWN, System.getProperty("user.dir"))}.
      *
      * <p>Public so a reusable in-memory transport in a downstream client module can drive a
      * connection without ZMQ.
@@ -127,12 +154,14 @@ public final class IpcClient implements AutoCloseable {
      * @param transport the transport to drive
      */
     public IpcClient(@NonNull ClientTransport transport) {
-        this(transport, Version.UNKNOWN);
+        this(transport, Version.UNKNOWN, System.getProperty("user.dir"));
     }
 
     /**
      * Constructor for testing with an injected transport (e.g. an in-memory {@link
      * ClientTransport}), bypassing ZMQ entirely. The connection does not own a {@link ZContext}.
+     * Equivalent to {@link #IpcClient(ClientTransport, Version, String) IpcClient(transport,
+     * Version.UNKNOWN, System.getProperty("user.dir"))}.
      *
      * <p>Public so a reusable in-memory transport in a downstream client module can drive a
      * connection without ZMQ.
@@ -142,11 +171,33 @@ public final class IpcClient implements AutoCloseable {
      *     never {@code null} - use {@link Version#UNKNOWN} when none is known
      */
     public IpcClient(@NonNull ClientTransport transport, @NonNull Version productVersion) {
+        this(transport, productVersion, System.getProperty("user.dir"));
+    }
+
+    /**
+     * Constructor for testing with an injected transport (e.g. an in-memory {@link
+     * ClientTransport}), bypassing ZMQ entirely. The connection does not own a {@link ZContext}.
+     *
+     * <p>Public so a reusable in-memory transport in a downstream client module can drive a
+     * connection without ZMQ.
+     *
+     * @param transport the transport to drive
+     * @param productVersion the product version to report in the {@link IpcFrame.Hello} handshake;
+     *     never {@code null} - use {@link Version#UNKNOWN} when none is known
+     * @param cwd the terminal's current working directory to report in the {@link IpcFrame.Hello}
+     *     handshake; never {@code null} - pass {@code System.getProperty("user.dir")} when the test
+     *     has no specific cwd
+     */
+    public IpcClient(
+            @NonNull ClientTransport transport,
+            @NonNull Version productVersion,
+            @NonNull String cwd) {
         this.identity = UUID.randomUUID().toString();
         this.ctx = null;
         this.ownsContext = false;
         this.transport = transport;
         this.productVersion = productVersion;
+        this.cwd = cwd;
         start();
     }
 
@@ -169,7 +220,7 @@ public final class IpcClient implements AutoCloseable {
      */
     private void handshake() {
         long seq = correlator.next();
-        transport.send(new IpcFrame.Hello(IpcFrame.PROTOCOL_VERSION, seq, productVersion));
+        transport.send(new IpcFrame.Hello(IpcFrame.PROTOCOL_VERSION, seq, productVersion, cwd));
 
         long deadline = System.currentTimeMillis() + HANDSHAKE_TIMEOUT_MS;
         while (true) {

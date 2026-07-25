@@ -54,7 +54,7 @@ final class OpenAiLlmClient extends LlmClient {
         JsonNode rawSchema =
                 request.responseSchema() != null
                         ? request.responseSchema()
-                        : capabilityTranslator.vetoResponseSchema(true, false);
+                        : capabilityTranslator.vetoResponseSchema(false);
         Map<String, Object> responseSchema =
                 objectMapper.convertValue(rawSchema, new TypeReference<Map<String, Object>>() {});
         String systemPrompt = request.systemPrompt();
