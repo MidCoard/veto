@@ -13,7 +13,7 @@ import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.loop.PromptCompiler;
-import top.focess.veto.agent.mcp.DefaultMcpEngine;
+import top.focess.veto.agent.mcp.DefaultToolEngine;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
@@ -48,14 +48,14 @@ class AgentRunnerTest {
         ReflectionTestUtils.setField(compiler, "maxInputTokens", 32000);
         ReflectionTestUtils.setField(compiler, "contextFillRatio", 0.9);
         return new AgentService(
-                new DefaultMcpEngine(),
+                new DefaultToolEngine(),
                 new HitlRegistry(),
                 new IngressDefense(),
                 compiler,
                 caller,
                 mapper,
                 List.of(),
-                new top.focess.veto.agent.identity.RoleToolFilter(new DefaultMcpEngine()),
+                new top.focess.veto.agent.identity.RoleToolFilter(new DefaultToolEngine()),
                 "REAL",
                 50L,
                 "FULL_ACCESS",

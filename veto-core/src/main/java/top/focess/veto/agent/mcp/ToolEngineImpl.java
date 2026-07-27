@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -16,12 +17,9 @@ import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Service;
-import top.focess.veto.agent.mcp.tools.LoadSkillArgs;
 import top.focess.veto.agent.mcp.tools.RunCommandTool;
-import top.focess.veto.agent.mcp.tools.ThinkArgs;
-import top.focess.veto.agent.skills.Skill;
-import top.focess.veto.agent.skills.SkillRegistry;
 import top.focess.veto.llm.config.LlmJacksonConfig;
 import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.sandbox.ChainMode;
@@ -31,83 +29,75 @@ import top.focess.veto.sandbox.SandboxManager;
 import top.focess.veto.sandbox.SandboxSubstrate;
 
 /**
- * The MCP engine implementation — manages server registrations, schema discovery, and tool
- * dispatching. The loop calls {@link McpEngine}'s three loop-facing methods.
+ * The tool engine implementation — manages server registrations, schema discovery, and tool
+ * dispatching. The loop calls {@link ToolEngine}'s three loop-facing methods.
  *
  * <p>Dispatch by definition flavour:
  *
  * <ul>
- *   <li><b>Native</b> — in-process {@link NativeMcpTool#execute}, EXCEPT {@code run_command} which
+ *   <li><b>Native</b> — in-process {@link NativeTool#execute}, EXCEPT {@code run_command} which
  *       routes through the session's {@link SandboxSubstrate}.
- *   <li><b>Agent</b> — engine handler ({@code load_skill} → {@link SkillRegistry} hash-verify +
- *       body). {@code create_group} and the other group tools are <b>native</b> tools ({@code
- *       GroupTools}, component-scanned) — not agent tools.
+ *   <li><b>Agent</b> — bean dispatch via {@link AgentTool#executeFromJson}. Each agent tool is a
+ *       self-contained {@link AgentTool} bean — just like native tools are self-contained {@link
+ *       NativeTool} beans.
  *   <li><b>External</b> — forwarded over the registered {@link McpTransport}.
  * </ul>
  *
  * <p>{@code registerServer} + {@code McpTransport} + {@code executeTool} are implementation
- * details, intentionally absent from the shared {@link McpEngine} interface. Remote tool
+ * details, intentionally absent from the shared {@link ToolEngine} interface. Remote tool
  * <i>discovery</i> (JSON-RPC {@code tools/list} over a transport) is beyond the schema
  * representation and is not implemented; remote tools are registered explicitly via {@link
  * #registerRemoteTool}.
  */
 @Service
-public class McpEngineImpl implements McpEngine {
+public class ToolEngineImpl implements ToolEngine {
 
-    private static final Logger log = LoggerFactory.getLogger(McpEngineImpl.class);
+    private static final Logger log = LoggerFactory.getLogger(ToolEngineImpl.class);
 
     private final @NonNull ObjectMapper mapper;
-    private final @NonNull List<NativeMcpTool<?>> nativeToolBeans;
+    private final @NonNull List<NativeTool<?>> nativeToolBeans;
     private final @NonNull SandboxManager sandboxManager;
-    private final @NonNull SkillRegistry skillRegistry;
+    private final @NonNull ApplicationContext applicationContext;
 
     private final Map<String, NativeToolDefinition> nativeDefs = new ConcurrentHashMap<>();
-    private final Map<String, NativeMcpTool<?>> nativeByName = new ConcurrentHashMap<>();
+    private final Map<String, NativeTool<?>> nativeByName = new ConcurrentHashMap<>();
     private final Map<String, AgentToolDefinition> agentDefs = new ConcurrentHashMap<>();
+    private final Map<String, AgentTool<?>> agentBeans = new LinkedHashMap<>();
     private final Map<String, RemoteToolDefinition> remoteDefs = new ConcurrentHashMap<>();
     private final Map<String, McpTransport> transports = new ConcurrentHashMap<>();
 
-    public McpEngineImpl(
+    public ToolEngineImpl(
             @Qualifier(LlmJacksonConfig.LLM_OBJECT_MAPPER) ObjectMapper mapper,
-            List<NativeMcpTool<?>> nativeToolBeans,
+            List<NativeTool<?>> nativeToolBeans,
             SandboxManager sandboxManager,
-            SkillRegistry skillRegistry) {
+            ApplicationContext applicationContext) {
         this.mapper = mapper;
         this.nativeToolBeans = nativeToolBeans;
         this.sandboxManager = sandboxManager;
-        this.skillRegistry = skillRegistry;
+        this.applicationContext = applicationContext;
     }
 
     @PostConstruct
     void init() {
-        for (NativeMcpTool<?> bean : nativeToolBeans) {
+        // Register native tools
+        for (NativeTool<?> bean : nativeToolBeans) {
             NativeToolDefinition def = ToolSchemaCompiler.compileNative(bean);
             nativeDefs.put(def.name(), def);
             nativeByName.put(def.name(), bean);
-            log.info("McpEngine: registered native tool '{}'.", def.name());
+            log.info("ToolEngine: registered native tool '{}'.", def.name());
         }
-        agentDefs.put(
-                "load_skill",
-                new AgentToolDefinition(
-                        "load_skill",
-                        "Loads the detailed guidelines and instruction steps for a specific skill. "
-                                + "Returns the full SKILL.md body in the observation.",
-                        LoadSkillArgs.class,
-                        Map.of("skillName", ParamCategory.GENERIC)));
-        agentDefs.put(
-                "think",
-                new AgentToolDefinition(
-                        "think",
-                        "A no-op tool to continue the thought flow for another step. Call this when "
-                                + "you have no concrete tool to invoke but are not ready to conclude; the "
-                                + "loop continues to your next turn.",
-                        ThinkArgs.class,
-                        Map.of()));
-        // create_group is a NATIVE tool (GroupTools.CreateGroup, @ToolSecurity) — not an agent
-        // tool. The duplicate agent-tool entry here was dead code: resolveDefinition checks
-        // nativeDefs first, so the native GroupTools.CreateGroup (stub) always won. Removed.
+
+        // Discover and register agent tools via Spring
+        for (AgentTool<?> bean : applicationContext.getBeansOfType(AgentTool.class).values()) {
+            String toolName = bean.getName();
+            agentBeans.put(toolName, bean);
+            AgentToolDefinition def = AgentToolDefinition.from(toolName, bean.getArgsClass());
+            agentDefs.put(def.name(), def);
+            log.info("ToolEngine: registered agent tool '{}'.", def.name());
+        }
+
         log.info(
-                "McpEngine: initialized. {} native tool(s), {} agent tool(s).",
+                "ToolEngine: initialized. {} native tool(s), {} agent tool(s).",
                 nativeDefs.size(),
                 agentDefs.size());
     }
@@ -122,11 +112,13 @@ public class McpEngineImpl implements McpEngine {
                 remoteDefs.put(t.name(), t);
                 transports.put(t.name(), transport);
             }
-            log.info("McpEngine: discovered {} tool(s) from {}.", tools.size(), transport);
+            log.info("ToolEngine: discovered {} tool(s) from {}.", tools.size(), transport);
             return tools;
         } catch (IOException e) {
             log.warn(
-                    "McpEngine: tools/list discovery failed for {}: {}", transport, e.getMessage());
+                    "ToolEngine: tools/list discovery failed for {}: {}",
+                    transport,
+                    e.getMessage());
             return java.util.List.of();
         }
     }
@@ -159,7 +151,7 @@ public class McpEngineImpl implements McpEngine {
     }
 
     @Override
-    public @NonNull McpToolResult execute(@NonNull ToolCall call, @NonNull ToolDefinition def) {
+    public @NonNull ToolResult execute(@NonNull ToolCall call, @NonNull ToolDefinition def) {
         String callId = call.callId();
         try {
             return switch (def) {
@@ -169,7 +161,7 @@ public class McpEngineImpl implements McpEngine {
             };
         } catch (Exception e) {
             log.warn("Tool '{}' execution failed.", call.toolName(), e);
-            return new McpToolResult(
+            return new ToolResult(
                     call.toolName(), callId, false, "Tool execution failed: " + e.getMessage());
         }
     }
@@ -179,7 +171,7 @@ public class McpEngineImpl implements McpEngine {
     /** Registers a new MCP server transport. Stores it keyed by {@code serverName}. */
     public void registerServer(@NonNull String serverName, @NonNull McpTransport transport) {
         transports.put(serverName, transport);
-        log.info("McpEngine: registered server transport '{}'.", serverName);
+        log.info("ToolEngine: registered server transport '{}'.", serverName);
     }
 
     /**
@@ -196,29 +188,29 @@ public class McpEngineImpl implements McpEngine {
         RemoteToolDefinition def =
                 new RemoteToolDefinition(prefixed, description, risk, serverName, inputSchema);
         remoteDefs.put(prefixed, def);
-        log.info("McpEngine: registered remote tool '{}'.", prefixed);
+        log.info("ToolEngine: registered remote tool '{}'.", prefixed);
         return def;
     }
 
     /** Low-level dispatch by tool name + raw arguments. */
-    public @NonNull McpToolResult executeTool(
+    public @NonNull ToolResult executeTool(
             @NonNull String toolName, @NonNull Map<String, Object> arguments) {
         ToolDefinition def = resolveDefinition(toolName);
         if (def == null) {
-            return new McpToolResult(toolName, null, false, "Unknown tool: " + toolName);
+            return new ToolResult(toolName, null, false, "Unknown tool: " + toolName);
         }
         return execute(new ToolCall(toolName, arguments, null), def);
     }
 
     // ── Flavour dispatch ───────────────────────────────────────────────────────
 
-    private McpToolResult executeNative(ToolCall call, NativeToolDefinition def) throws Exception {
+    private ToolResult executeNative(ToolCall call, NativeToolDefinition def) throws Exception {
         if ("run_command".equals(def.name())) {
             return executeRunCommand(call);
         }
-        NativeMcpTool<?> bean = nativeByName.get(def.name());
+        NativeTool<?> bean = nativeByName.get(def.name());
         if (bean == null) {
-            return new McpToolResult(
+            return new ToolResult(
                     call.toolName(),
                     call.callId(),
                     false,
@@ -226,13 +218,13 @@ public class McpEngineImpl implements McpEngine {
         }
         JsonNode jsonArgs = mapper.valueToTree(call.args());
         String result = bean.executeFromJson(jsonArgs, mapper);
-        return new McpToolResult(call.toolName(), call.callId(), true, result);
+        return new ToolResult(call.toolName(), call.callId(), true, result);
     }
 
     /**
      * {@code run_command} — routes through the Sandbox substrate (no shell, argv[] direct exec).
      */
-    private McpToolResult executeRunCommand(ToolCall call) {
+    private ToolResult executeRunCommand(ToolCall call) {
         RunCommandTool.Args args = mapper.convertValue(call.args(), RunCommandTool.Args.class);
         List<Command> commands =
                 args.commands().stream().map(c -> new Command(c.executable(), c.args())).toList();
@@ -249,40 +241,23 @@ public class McpEngineImpl implements McpEngine {
         String content =
                 (result.stdout().isEmpty() ? "" : result.stdout())
                         + (result.stderr().isEmpty() ? "" : "\n[stderr]\n" + result.stderr());
-        return new McpToolResult(call.toolName(), call.callId(), result.success(), content);
+        return new ToolResult(call.toolName(), call.callId(), result.success(), content);
     }
 
-    private McpToolResult executeAgent(ToolCall call, AgentToolDefinition def) {
-        return switch (def.name()) {
-            case "load_skill" -> executeLoadSkill(call);
-            case "think" -> executeThink(call);
-            default ->
-                    new McpToolResult(
-                            call.toolName(),
-                            call.callId(),
-                            false,
-                            "Unknown agent tool: " + def.name());
-        };
-    }
-
-    private McpToolResult executeThink(ToolCall call) {
-        // No-op: the agent called `think` to continue its thought flow. Return a neutral
-        // observation; the loop continues to the next turn (the call keeps the episode alive).
-        return new McpToolResult(call.toolName(), call.callId(), true, "Continuing thought flow.");
-    }
-
-    private McpToolResult executeLoadSkill(ToolCall call) {
-        LoadSkillArgs args = mapper.convertValue(call.args(), LoadSkillArgs.class);
-        var skill = skillRegistry.loadVerified(args.skillName());
-        if (skill.isEmpty()) {
-            return new McpToolResult(
-                    call.toolName(),
-                    call.callId(),
-                    false,
-                    "Skill '" + args.skillName() + "' not found or tampered.");
+    private ToolResult executeAgent(ToolCall call, AgentToolDefinition def) {
+        AgentTool<?> bean = agentBeans.get(def.name());
+        if (bean == null) {
+            return new ToolResult(
+                    call.toolName(), call.callId(), false, "Unknown agent tool: " + def.name());
         }
-        Skill s = skill.get();
-        return new McpToolResult(call.toolName(), call.callId(), true, s.promptInstructions());
+        try {
+            JsonNode jsonArgs = mapper.valueToTree(call.args());
+            String result = bean.executeFromJson(jsonArgs, mapper);
+            return new ToolResult(call.toolName(), call.callId(), true, result);
+        } catch (Exception e) {
+            return new ToolResult(
+                    call.toolName(), call.callId(), false, "Agent tool error: " + e.getMessage());
+        }
     }
 
     /**
@@ -290,16 +265,16 @@ public class McpEngineImpl implements McpEngine {
      * types but the JSON-RPC {@code tools/call} I/O over stdio/SSE/socket is beyond the schema
      * representation — not implemented.
      */
-    private McpToolResult executeRemote(ToolCall call, RemoteToolDefinition def) {
+    private ToolResult executeRemote(ToolCall call, RemoteToolDefinition def) {
         McpTransport transport = transports.get(def.serverName());
         if (transport == null) {
-            return new McpToolResult(
+            return new ToolResult(
                     call.toolName(),
                     call.callId(),
                     false,
                     "No transport registered for server: " + def.serverName());
         }
-        return new McpToolResult(
+        return new ToolResult(
                 call.toolName(),
                 call.callId(),
                 false,

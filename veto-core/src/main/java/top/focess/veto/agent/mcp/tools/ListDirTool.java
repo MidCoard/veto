@@ -7,23 +7,21 @@ import java.util.stream.Stream;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.mcp.Doc;
-import top.focess.veto.agent.mcp.NativeMcpTool;
+import top.focess.veto.agent.mcp.NativeTool;
 import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.SecurityHint;
 import top.focess.veto.agent.mcp.ToolDoc;
 import top.focess.veto.agent.mcp.ToolSecurity;
 
-/**
- * {@code list_dir} — list contents of a directory (files and child subdirectories). Transcribed
- * from.
- */
+/** {@code list_dir} — list contents of a directory (files and child subdirectories). */
 @Component
 @ToolSecurity(risk = RiskCategory.READ_ONLY)
-public final class ListDirTool implements NativeMcpTool<ListDirTool.Args> {
+public final class ListDirTool implements NativeTool<ListDirTool.Args> {
 
     @ToolDoc(
-            description =
+            description = "List contents of a directory (files and child subdirectories).",
+            usage =
                     """
                     #### When to use
                     Use `list_dir` to discover the immediate contents of a directory - enumerating a project's \

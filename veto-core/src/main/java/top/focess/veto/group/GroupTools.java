@@ -8,30 +8,28 @@ import org.springframework.stereotype.Component;
 import top.focess.veto.agent.Agent;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.Role;
+import top.focess.veto.agent.mcp.AgentTool;
 import top.focess.veto.agent.mcp.Doc;
-import top.focess.veto.agent.mcp.NativeMcpTool;
 import top.focess.veto.agent.mcp.ParamCategory;
-import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.SecurityHint;
 import top.focess.veto.agent.mcp.ToolCallContext;
 import top.focess.veto.agent.mcp.ToolCallContextHolder;
 import top.focess.veto.agent.mcp.ToolDoc;
-import top.focess.veto.agent.mcp.ToolSecurity;
 
 /**
  * The agent-facing group management tools (delegation_spawning.md). The Leader uses these to create
  * / disband groups, add / remove Mates, and dispatch tasks. Mates use {@code postMessage} to send
  * messages to the Leader (blackboard.md §3.2).
  *
- * <p>These are native tools — they pass through the Gateway (read of own data is SAFE, writes are
- * ELEVATED + audited). Each tool's {@code execute(...)} body is wired to the group runtime ({@link
- * GroupSpawner} / {@link Blackboard} / {@link GroupRegistry}); the {@code create_group} path spawns
- * a registered group + DAG that {@link GroupOrchestrator#tick} (driven by {@link
- * GroupTickScheduler}) advances once Mates are added via {@code create_mate}.
+ * <p>These are agent tools — they carry {@link top.focess.veto.agent.mcp.RiskCategory#AGENT}; the
+ * Gateway returns {@code NotScreened}. Each tool's {@code execute(...)} body is wired to the group
+ * runtime ({@link GroupSpawner} / {@link Blackboard} / {@link GroupRegistry}); the {@code
+ * create_group} path spawns a registered group + DAG that {@link GroupOrchestrator#tick} (driven by
+ * {@link GroupTickScheduler}) advances once Mates are added via {@code create_mate}.
  *
- * <p><b>Tool call-context gap:</b> the {@code NativeMcpTool.execute(Args)} contract carries no
- * caller identity, so the tools use placeholder {@code leaderId}/{@code userId}/{@code senderId}
- * values until per-call context (the calling agent's id) is threaded through tool execution.
+ * <p><b>Tool call-context gap:</b> the {@code AgentTool.execute(Args)} contract carries no caller
+ * identity, so the tools use placeholder {@code leaderId}/{@code userId}/{@code senderId} values
+ * until per-call context (the calling agent's id) is threaded through tool execution.
  */
 public final class GroupTools {
 
@@ -39,8 +37,43 @@ public final class GroupTools {
 
     /** {@code create_group} — spawn a delegation. The Leader calls this on the top-tier model. */
     @Component
-    @ToolSecurity(risk = RiskCategory.FILE_WRITE)
-    public static final class CreateGroup implements NativeMcpTool<CreateGroup.Args> {
+    @ToolDoc(
+            description = "Spawn a delegation group. The calling agent transforms into the Leader.",
+            usage =
+                    """
+                    #### When to use
+                    Use `create_group` when the task is large enough to decompose into parallel \
+                    sub-tasks that can be assigned to specialized Mate agents. The calling agent \
+                    becomes the Leader and authors an Execution DAG.
+
+                    #### When NOT to use
+                    - Do not use `create_group` for tasks you can complete alone - stay autonomous.
+                    - Do not use it when only one step is needed - a single agent is faster.
+                    - Only STANDALONE and LEADER can call this; MATE cannot.
+
+                    #### Behavior
+                    The calling agent transforms into the Leader (context rewound to 0, AGENT_INIT \
+                    with Leader system prompt, promoted to top-tier model). The `task` brief seeds \
+                    the Leader's investigation. The Leader then authors the Execution DAG and spawns \
+                    Mates via `create_mate`. Resource gate is checked before spawning (max concurrent \
+                    Mates, per-agent breaker budget).
+
+                    #### Return format
+                    `{"status": "ok", "groupId": "group-abc123"}`
+
+                    #### Errors & edge cases
+                    If resource limits are exceeded, user confirmation is required. Only the calling \
+                    agent can become Leader - you cannot create a group on behalf of another agent.
+
+                    #### Security
+                    Agent tool (`RiskCategory.AGENT`). The Gateway does not screen it. Bounded by \
+                    resource gate at spawn time. Safe to call when role permits.
+                    """,
+            examples = {
+                "{\"task\": \"Fix the authentication bug in UserService\"}",
+                "{\"task\": \"Refactor the data layer\", \"dag\": \"{\\\"nodes\\\": [...]}\"}"
+            })
+    public static final class CreateGroup implements AgentTool<CreateGroup.Args> {
 
         private final GroupSpawner spawner;
         private final GroupSpawner.AgentFactory agentFactory;
@@ -50,59 +83,6 @@ public final class GroupTools {
             this.agentFactory = agentFactory;
         }
 
-        @ToolDoc(
-                description =
-                        """
-                        #### When to use
-                        Use `create_group` to spawn a delegation - a group of agents (a Leader + Mates) to \
-                        accomplish a goal that decomposes into parallel or specialized sub-tasks. The Leader \
-                        authors the DAG and dispatches nodes to Mates. Call this as a STANDALONE agent when a \
-                        task is large enough to benefit from decomposition.
-
-                        #### When NOT to use
-                        - Do not call `create_group` if you are already a Leader or a Mate - only the top-tier \
-                        standalone agent spawns groups (Mates do not delegate further).
-                        - Do not spawn a group for a single, self-contained task - just do it directly with the \
-                        file/command tools.
-                        - Do not call it without a clear `task` brief; the Leader investigates from that brief.
-
-                        #### Behavior
-                        Spawns a one-shot Leader-role agent that analyzes `task` (and `dag` if given) \
-                        and authors the execution DAG - it investigates the codebase via `view_file` / \
-                        `grep_search`, decomposes the work, and arranges dependencies. The group is then \
-                        registered with the authored DAG and one Mate per distinct skillset is spawned so \
-                        the orchestrator can assign + dispatch nodes. Nothing is returned to the caller - \
-                        the delegation runs autonomously and a RECALL brief replaces the caller's prior \
-                        turns with the authored plan. The leaderId and userId are resolved from the tool \
-                        call context.
-
-                        #### Return format
-                        The string `delegated`. No group id is returned - the caller does not drive the \
-                        group; the orchestrator does.
-
-                        #### Errors & edge cases
-                        - `dag` present but malformed -> ignored; the Leader authors the DAG from `task` alone.
-                        - `task` empty/blank -> the group is created but the Leader has no brief; provide a \
-                        concrete task.
-                        - If the Leader agent cannot reach its model (no `veto.group.mate.*` configured) or \
-                        times out (30s), authoring falls back to a single-node DAG seeded with `task` - the \
-                        group still spawns and runs.
-                        - One Mate per distinct DAG skillset is spawned automatically; the orchestrator ticks \
-                        once Mates exist.
-
-                        #### Security
-                        `create_group` is `RiskCategory.FILE_WRITE` (elevated + audited) - it mutates group \
-                        runtime state. Its parameters are GENERIC. The Leader/Mates it spawns inherit the \
-                        deployer policy and gateway screening. Use for legitimate decomposition only.
-                        """,
-                examples = {
-                    "{\"task\": \"refactor the auth module\"}",
-                    "{\"task\": \"add integration tests for the vault layer\"}",
-                    "{\"task\": \"migrate config to the new schema\"}",
-                    "{\"task\": \"fix the flaky test suite\"}",
-                    "{\"task\": \"implement and document the new tool\"}",
-                    "{\"task\": \"audit all file-write tools for path screening\"}"
-                })
         public record Args(
                 @SecurityHint(ParamCategory.GENERIC)
                         @Doc(
@@ -120,9 +100,7 @@ public final class GroupTools {
 
         @Override
         public String getDescription() {
-            return "Spawn a delegation: a one-shot Leader agent analyzes the task and authors the DAG, "
-                    + "Mates are spawned per skillset, and the orchestrator drives execution. "
-                    + "Returns 'delegated' (no group id).";
+            return "Spawn a delegation group. The calling agent transforms into the Leader.";
         }
 
         @Override
@@ -221,8 +199,38 @@ public final class GroupTools {
 
     /** {@code disband_group} — tear down an active group. */
     @Component
-    @ToolSecurity(risk = RiskCategory.FILE_WRITE)
-    public static final class DisbandGroup implements NativeMcpTool<DisbandGroup.Args> {
+    @ToolDoc(
+            description =
+                    "Tear down an active group and return the agent to single-agent autonomous mode.",
+            usage =
+                    """
+                    #### When to use
+                    Use `disband_group` when the delegated work is complete or the user explicitly requests it. \
+                    Returns the Leader to autonomous mode.
+
+                    #### When NOT to use
+                    - Do not disband while Mates are still running - wait for their status.
+                    - Do not disband without user request unless all DAG nodes are VERIFIED.
+                    - Only Leader can call this.
+
+                    #### Behavior
+                    Rewinds context to 0 + AGENT_INIT with autonomous persona. Blackboard is \
+                    persisted for audit. All Mates are deprovisioned. DAG is marked as closed and \
+                    persisted.
+
+                    #### Return format
+                    `{"status": "ok", "groupId": "group-abc123"}`
+
+                    #### Errors & edge cases
+                    Group not found -> error. Not Leader -> error. Mates still RUNNING -> warn \
+                    (may lose in-flight work).
+
+                    #### Security
+                    Agent tool (`RiskCategory.AGENT`). The Gateway does not screen it. Safe to call \
+                    when role permits.
+                    """,
+            examples = {"{\"groupId\": \"group-abc123\"}"})
+    public static final class DisbandGroup implements AgentTool<DisbandGroup.Args> {
 
         private final GroupSpawner spawner;
 
@@ -230,45 +238,6 @@ public final class GroupTools {
             this.spawner = spawner;
         }
 
-        @ToolDoc(
-                description =
-                        """
-                        #### When to use
-                        Use `disband_group` to tear down an active delegation group once its goal is achieved, \
-                        abandoned, or no longer needed. Frees the group's runtime state. The Blackboard is \
-                        retained for audit.
-
-                        #### When NOT to use
-                        - Do not disband a group that still has in-flight work; let Mates finish or remove \
-                        individual Mates via `remove_mate` first.
-                        - Do not disband a group whose results you have not yet collected from the Blackboard.
-                        - Do not call it with an unverified `groupId`; confirm the group exists.
-
-                        #### Behavior
-                        Disbands the group identified by `groupId` via the spawner. Returns "disbanded". The \
-                        Blackboard (messages) is retained for audit.
-
-                        #### Return format
-                        The string `disbanded`.
-
-                        #### Errors & edge cases
-                        - `groupId` does not exist / not a valid UUID -> an exception is raised (UUID parsing \
-                        fails).
-                        - Disbanding a group with running Mates does not gracefully drain them; remove Mates \
-                        first if order matters.
-                        - The Blackboard survives disband for audit.
-
-                        #### Security
-                        `disband_group` is `RiskCategory.FILE_WRITE` (elevated + audited). Its parameter is \
-                        GENERIC. It mutates group runtime state. Confirm the `groupId` before calling.
-                        """,
-                examples = {
-                    "{\"groupId\": \"grp-1\"}",
-                    "{\"groupId\": \"550e8400-e29b-41d4-a716-446655440000\"}",
-                    "{\"groupId\": \"grp-7\"}",
-                    "{\"groupId\": \"grp-leader-2\"}",
-                    "{\"groupId\": \"grp-migration\"}"
-                })
         public record Args(
                 @SecurityHint(ParamCategory.GENERIC) @Doc("The group id to disband.")
                         String groupId) {}
@@ -280,7 +249,7 @@ public final class GroupTools {
 
         @Override
         public String getDescription() {
-            return "Tear down an active group. The Blackboard is retained for audit.";
+            return "Tear down an active group and return the agent to single-agent autonomous mode.";
         }
 
         @Override
@@ -297,8 +266,39 @@ public final class GroupTools {
 
     /** {@code create_mate} — add a Mate to a group. */
     @Component
-    @ToolSecurity(risk = RiskCategory.FILE_WRITE)
-    public static final class CreateMate implements NativeMcpTool<CreateMate.Args> {
+    @ToolDoc(
+            description = "Add a Mate (worker agent) to an active group.",
+            usage =
+                    """
+                    #### When to use
+                    Use `create_mate` as the Leader when authoring the Execution DAG - each Mate is \
+                    assigned to DAG nodes requiring its skillset. Only Leader can call this.
+
+                    #### When NOT to use
+                    - Do not call from MATE or STANDALONE role.
+                    - Do not exceed max concurrent Mates.
+                    - Do not create a Mate with a duplicate `mateId` within the group.
+
+                    #### Behavior
+                    Provisions a new Mate agent with a specialized persona based on `skillset`. \
+                    Assigned to DAG nodes requiring that skillset. Resource count is checked against \
+                    max concurrent Mates limit.
+
+                    #### Return format
+                    `{"status": "ok", "groupId": "group-abc123", "mateId": "mate-tester"}`
+
+                    #### Errors & edge cases
+                    Duplicate `mateId` -> error. Max Mate count reached -> tool refused. Unknown \
+                    `groupId` -> error.
+
+                    #### Security
+                    Agent tool (`RiskCategory.AGENT`). The Gateway does not screen it. Bounded by \
+                    resource gate. Safe to call when role permits.
+                    """,
+            examples = {
+                "{\"groupId\": \"group-abc123\", \"mateId\": \"mate-tester\", \"skillset\": \"testing\"}"
+            })
+    public static final class CreateMate implements AgentTool<CreateMate.Args> {
 
         private final GroupSpawner spawner;
         private final GroupSpawner.AgentFactory agentFactory;
@@ -308,47 +308,6 @@ public final class GroupTools {
             this.agentFactory = agentFactory;
         }
 
-        @ToolDoc(
-                description =
-                        """
-                        #### When to use
-                        Use `create_mate` to add a Mate (worker) to an active group, under a skillset tag (e.g. \
-                        "coding", "testing"). The Leader calls this after `create_group` to populate the group \
-                        with workers that will execute DAG nodes.
-
-                        #### When NOT to use
-                        - Do not call `create_mate` as a Mate (only the Leader adds Mates).
-                        - Do not add Mates before `create_group` has returned a `groupId`.
-                        - Do not reuse a `mateId` that already exists in the group.
-                        - Do not add Mates without a plan to dispatch work to them.
-
-                        #### Behavior
-                        Adds a Mate with id `mateId` and skillset `skillset` to the group `groupId` via the \
-                        spawner's AgentFactory. Returns "mate added". The Mate joins the Blackboard and becomes \
-                        eligible for `dispatchTask`.
-
-                        #### Return format
-                        The string `mate added`.
-
-                        #### Errors & edge cases
-                        - `groupId` not found / invalid UUID -> exception.
-                        - `mateId` already exists in the group -> spawner-dependent (likely rejected or \
-                        overwritten); use unique ids.
-                        - `skillset` should match a recognized specialization; an unrecognized skillset still \
-                        creates the Mate but it may not be selected for typed nodes.
-
-                        #### Security
-                        `create_mate` is `RiskCategory.FILE_WRITE` (elevated + audited). Its parameters are \
-                        GENERIC. The spawned Mate inherits the deployer policy and gateway screening. The \
-                        Leader is responsible for the Mates it creates.
-                        """,
-                examples = {
-                    "{\"groupId\": \"grp-1\", \"mateId\": \"coder-1\", \"skillset\": \"coding\"}",
-                    "{\"groupId\": \"grp-1\", \"mateId\": \"tester-1\", \"skillset\": \"testing\"}",
-                    "{\"groupId\": \"grp-1\", \"mateId\": \"reviewer-1\", \"skillset\": \"review\"}",
-                    "{\"groupId\": \"grp-7\", \"mateId\": \"coder-2\", \"skillset\": \"coding\"}",
-                    "{\"groupId\": \"grp-1\", \"mateId\": \"docs-1\", \"skillset\": \"docs\"}"
-                })
         public record Args(
                 @SecurityHint(ParamCategory.GENERIC) @Doc("Group id.") String groupId,
                 @SecurityHint(ParamCategory.GENERIC)
@@ -365,7 +324,7 @@ public final class GroupTools {
 
         @Override
         public String getDescription() {
-            return "Add a Mate to an active group. The Mate joins under a skillset tag.";
+            return "Add a Mate (worker agent) to an active group.";
         }
 
         @Override
@@ -383,8 +342,38 @@ public final class GroupTools {
 
     /** {@code remove_mate} — remove a Mate from a group. */
     @Component
-    @ToolSecurity(risk = RiskCategory.FILE_WRITE)
-    public static final class RemoveMate implements NativeMcpTool<RemoveMate.Args> {
+    @ToolDoc(
+            description =
+                    "Remove a Mate from an active group. In-flight nodes go back to PENDING "
+                            + "for re-assignment.",
+            usage =
+                    """
+                    #### When to use
+                    Use `remove_mate` when re-planning - a Mate is underperforming, a strategic \
+                    pivot is needed, or the Mate's skillset is no longer required. Only Leader can \
+                    call this.
+
+                    #### When NOT to use
+                    - Do not remove a Mate while it is making progress unless re-planning.
+                    - Do not remove the last Mate if work remains.
+                    - Not callable from MATE or STANDALONE.
+
+                    #### Behavior
+                    Deprovisions the Mate. In-flight DAG nodes revert to PENDING (not FAILED) for \
+                    re-assignment to other Mates. Resources are freed.
+
+                    #### Return format
+                    `{"status": "ok", "groupId": "group-abc123", "mateId": "mate-coder-1"}`
+
+                    #### Errors & edge cases
+                    Mate not found in group -> error. Unknown `groupId` -> error.
+
+                    #### Security
+                    Agent tool (`RiskCategory.AGENT`). The Gateway does not screen it. Safe to call \
+                    when role permits.
+                    """,
+            examples = {"{\"groupId\": \"group-abc123\", \"mateId\": \"mate-coder-1\"}"})
+    public static final class RemoveMate implements AgentTool<RemoveMate.Args> {
 
         private final GroupSpawner spawner;
 
@@ -392,43 +381,6 @@ public final class GroupTools {
             this.spawner = spawner;
         }
 
-        @ToolDoc(
-                description =
-                        """
-                        #### When to use
-                        Use `remove_mate` to remove a Mate from an active group - when the Mate's work is done, \
-                        it is misbehaving, or the group is being scaled down. In-flight nodes assigned to the \
-                        removed Mate go to PENDING for re-assignment.
-
-                        #### When NOT to use
-                        - Do not remove a Mate with in-flight work you cannot re-assign; the nodes go PENDING \
-                        but may stall.
-                        - Do not remove the last Mate if work remains; either finish or disband.
-                        - Do not call it with an unverified `groupId`/`mateId`.
-
-                        #### Behavior
-                        Removes the Mate `mateId` from group `groupId` via the spawner. Returns "mate removed". \
-                        Any DAG nodes assigned to that Mate revert to PENDING for re-assignment.
-
-                        #### Return format
-                        The string `mate removed`.
-
-                        #### Errors & edge cases
-                        - `groupId`/`mateId` not found / invalid UUID -> exception.
-                        - Removing a non-existent Mate -> spawner-dependent; confirm the id first.
-                        - In-flight nodes revert to PENDING; re-dispatch them via `dispatchTask`.
-
-                        #### Security
-                        `remove_mate` is `RiskCategory.FILE_WRITE` (elevated + audited). Its parameters are \
-                        GENERIC. It mutates group runtime state. Confirm ids before calling.
-                        """,
-                examples = {
-                    "{\"groupId\": \"grp-1\", \"mateId\": \"coder-1\"}",
-                    "{\"groupId\": \"grp-1\", \"mateId\": \"tester-1\"}",
-                    "{\"groupId\": \"grp-7\", \"mateId\": \"coder-2\"}",
-                    "{\"groupId\": \"grp-1\", \"mateId\": \"docs-1\"}",
-                    "{\"groupId\": \"grp-1\", \"mateId\": \"reviewer-1\"}"
-                })
         public record Args(
                 @SecurityHint(ParamCategory.GENERIC) @Doc("Group id.") String groupId,
                 @SecurityHint(ParamCategory.GENERIC) @Doc("Mate id to remove.") String mateId) {}
@@ -440,7 +392,8 @@ public final class GroupTools {
 
         @Override
         public String getDescription() {
-            return "Remove a Mate from an active group. In-flight nodes go to PENDING for re-assignment.";
+            return "Remove a Mate from an active group. In-flight nodes go back to PENDING "
+                    + "for re-assignment.";
         }
 
         @Override
@@ -455,10 +408,40 @@ public final class GroupTools {
         }
     }
 
-    /** {@code dispatchTask} — Leader → Mate: a task or revision instruction. */
+    /** {@code dispatchTask} — Leader -> Mate: a task or revision instruction. */
     @Component
-    @ToolSecurity(risk = RiskCategory.FILE_WRITE)
-    public static final class DispatchTask implements NativeMcpTool<DispatchTask.Args> {
+    @ToolDoc(
+            description = "Push a task or revision instruction from Leader to Mate.",
+            usage =
+                    """
+                    #### When to use
+                    Use `dispatchTask` when the Leader has reasoned over Mate feedback and authored \
+                    a new instruction for the next step. Only Leader can call this.
+
+                    #### When NOT to use
+                    - Do not echo Mate messages back - Leader decides, doesn't pass-through.
+                    - Do not dispatch to a Mate that is not in the group.
+                    - Do not dispatch without reasoning over prior feedback first.
+
+                    #### Behavior
+                    Posts the Leader's authored instruction to the Blackboard as TASK_DISPATCH \
+                    message type. The Mate receives the instruction in its next turn. Leader \
+                    reasons over messages, then writes its own dispatch (not echoing Mate's message).
+
+                    #### Return format
+                    `{"status": "ok", "groupId": "group-abc123", "mateId": "mate-coder"}`
+
+                    #### Errors & edge cases
+                    Mate not found in group -> error. Unknown `groupId` -> error.
+
+                    #### Security
+                    Agent tool (`RiskCategory.AGENT`). The Gateway does not screen it. \
+                    Leader-authored content (no pass-through). Safe to call when role permits.
+                    """,
+            examples = {
+                "{\"groupId\": \"group-abc123\", \"mateId\": \"mate-coder\", \"instruction\": \"Implement the UserService.login() method with JWT validation\"}"
+            })
+    public static final class DispatchTask implements AgentTool<DispatchTask.Args> {
 
         private final Blackboard blackboard;
 
@@ -466,56 +449,10 @@ public final class GroupTools {
             this.blackboard = blackboard;
         }
 
-        @ToolDoc(
-                description =
-                        """
-                        #### When to use
-                        Use `dispatchTask` (Leader -> Mate) to push a Leader-authored task or revision \
-                        instruction to a Mate. The Leader reasons over incoming messages and composes the \
-                        instruction itself; this is not a pass-through. Posted to the Blackboard as \
-                        TASK_DISPATCH.
-
-                        #### When NOT to use
-                        - Do not call `dispatchTask` as a Mate (only the Leader dispatches).
-                        - Do not pass through user input verbatim as `instruction`; the Leader authors it.
-                        - Do not dispatch to a Mate id that does not exist in the group.
-                        - Do not use it for Mate -> Leader messages; use `postMessage`.
-
-                        #### Behavior
-                        Posts a TASK_DISPATCH message to the group's Blackboard, addressed to `mateId`. The \
-                        payload is `<mateId>:<instruction>` (the mateId stands in as the nodeId for ad-hoc \
-                        dispatch). Returns "dispatched". The target Mate picks it up on its next tick.
-
-                        #### Return format
-                        The string `dispatched`.
-
-                        #### Errors & edge cases
-                        - `groupId`/`mateId` not found / invalid UUID -> the post may still succeed against a \
-                        valid group but the Mate will not exist; confirm ids first.
-                        - The instruction should be self-contained; the Mate has only the Blackboard, not the \
-                        Leader's full context.
-                        - For DAG-tied dispatch, the payload's nodeId prefix is what the Mate parses; ad-hoc \
-                        dispatch uses mateId as nodeId.
-
-                        #### Security
-                        `dispatchTask` is `RiskCategory.FILE_WRITE` (elevated + audited). Its parameters are \
-                        GENERIC. The instruction is Leader-authored (not raw user input), reducing injection \
-                        risk, but it is still audited. Do not embed secrets in instructions.
-                        """,
-                examples = {
-                    "{\"groupId\": \"grp-1\", \"mateId\": \"coder-1\", \"instruction\": \"Implement X\"}",
-                    "{\"groupId\": \"grp-1\", \"mateId\": \"tester-1\", \"instruction\": \"Write tests for the auth module\"}",
-                    "{\"groupId\": \"grp-1\", \"mateId\": \"coder-1\", \"instruction\": \"Revise node-3: handle the null case\"}",
-                    "{\"groupId\": \"grp-7\", \"mateId\": \"coder-2\", \"instruction\": \"Refactor the vault store\"}",
-                    "{\"groupId\": \"grp-1\", \"mateId\": \"reviewer-1\", \"instruction\": \"Review the diff in src/auth\"}"
-                })
         public record Args(
                 @SecurityHint(ParamCategory.GENERIC) @Doc("Group id.") String groupId,
                 @SecurityHint(ParamCategory.GENERIC) @Doc("Target Mate id.") String mateId,
-                @SecurityHint(ParamCategory.GENERIC)
-                        @Doc(
-                                "The Leader's authored instruction (the Leader reasons over any "
-                                        + "incoming messages and composes this itself; no pass-through).")
+                @SecurityHint(ParamCategory.GENERIC) @Doc("The Leader's authored instruction.")
                         String instruction) {}
 
         @Override
@@ -525,8 +462,7 @@ public final class GroupTools {
 
         @Override
         public String getDescription() {
-            return "Push a Leader-authored task or revision instruction to a Mate. "
-                    + "Posted to the Blackboard as TASK_DISPATCH.";
+            return "Push a task or revision instruction from Leader to Mate.";
         }
 
         @Override
@@ -537,8 +473,7 @@ public final class GroupTools {
         @Override
         public String execute(@NonNull Args args) {
             // Payload shape "<nodeId>:<instruction>" is what MateAgent.handleDispatch parses; for
-            // an
-            // ad-hoc dispatch (not tied to a DAG node) the mateId stands in as the nodeId.
+            // an ad-hoc dispatch (not tied to a DAG node) the mateId stands in as the nodeId.
             String payload = args.mateId() + ":" + args.instruction();
             blackboard.post(
                     new BlackboardMessage(
@@ -553,10 +488,47 @@ public final class GroupTools {
         }
     }
 
-    /** {@code postMessage} — Mate → Leader: ARTIFACT_REF / LOG_REF / FEEDBACK / STATUS / ACCEPT. */
+    /**
+     * {@code postMessage} — Mate -> Leader: ARTIFACT_REF / LOG_REF / FEEDBACK / STATUS / ACCEPT.
+     */
     @Component
-    @ToolSecurity(risk = RiskCategory.FILE_WRITE)
-    public static final class PostMessage implements NativeMcpTool<PostMessage.Args> {
+    @ToolDoc(
+            description = "Post a message from Mate to Leader via the Blackboard.",
+            usage =
+                    """
+                    #### When to use
+                    Use `postMessage` when a Mate needs to communicate results, errors, or status to \
+                    the Leader - posting an artifact reference, a log reference, feedback, or an \
+                    acceptance. Only Mate can call this.
+
+                    #### When NOT to use
+                    - Do not post full file contents - only paths.
+                    - Do not post from Leader role - Leaders dispatch, Mates report.
+                    - Do not use for Mate-to-Mate communication - hub-and-spoke only (Mate knows \
+                    only Leader).
+
+                    #### Behavior
+                    Posts a message to the Blackboard with the given type and payload. Message types: \
+                    ARTIFACT_REF (completed work, path only), LOG_REF (error logs, path only), \
+                    FEEDBACK (task feedback, short), STATUS (status update), ACCEPT (node verified). \
+                    Payloads must be small - no file contents, paths only for artifacts/logs.
+
+                    #### Return format
+                    `{"status": "ok", "groupId": "group-abc123", "type": "ARTIFACT_REF"}`
+
+                    #### Errors & edge cases
+                    Unknown `groupId` -> error. Not Mate role -> error. Oversized payload -> warn \
+                    (context saturation risk).
+
+                    #### Security
+                    Agent tool (`RiskCategory.AGENT`). The Gateway does not screen it. Hub-and-spoke: \
+                    Mate knows only Leader. Safe to call when role permits.
+                    """,
+            examples = {
+                "{\"groupId\": \"group-abc123\", \"type\": \"ARTIFACT_REF\", \"payload\": \"/output/UserServiceImpl.java\"}",
+                "{\"groupId\": \"group-abc123\", \"type\": \"FEEDBACK\", \"payload\": \"node-5: Tests failed. See log.\"}"
+            })
+    public static final class PostMessage implements AgentTool<PostMessage.Args> {
 
         private final Blackboard blackboard;
 
@@ -564,50 +536,6 @@ public final class GroupTools {
             this.blackboard = blackboard;
         }
 
-        @ToolDoc(
-                description =
-                        """
-                        #### When to use
-                        Use `postMessage` (Mate -> Leader) to send a typed message to the Leader: \
-                        `ARTIFACT_REF` (point at a created/changed file), `LOG_REF` (point at a log/build \
-                        output), `FEEDBACK` (report a blocker or result), `STATUS` (progress), or `ACCEPT` \
-                        (accept a node). The receiver is always the Leader (hub-and-spoke).
-
-                        #### When NOT to use
-                        - Do not call `postMessage` as the Leader to a Mate; use `dispatchTask`.
-                        - Do not post file CONTENTS in `payload` - paths or short summaries only. Mates must \
-                        not exfiltrate large content through the Blackboard.
-                        - Do not use an unknown `type`; it must be one of the enum values.
-                        - Do not use it to update a DAG node's status; use `postStatus`.
-
-                        #### Behavior
-                        Posts a Blackboard message of the given `type` from the calling Mate (senderId from \
-                        tool call context) to "LEADER", with `payload`. Returns "posted". The Leader reads it \
-                        on its next tick.
-
-                        #### Return format
-                        The string `posted`.
-
-                        #### Errors & edge cases
-                        - `type` not a valid MessageType enum -> exception (valueOf fails). Valid: \
-                        ARTIFACT_REF, LOG_REF, FEEDBACK, STATUS, ACCEPT.
-                        - `groupId` invalid UUID -> exception.
-                        - `payload` must be small (path/status/short feedback) - never file contents.
-                        - senderId defaults to "mate" if tool call context is absent.
-
-                        #### Security
-                        `postMessage` is `RiskCategory.FILE_WRITE` (elevated + audited). Its parameters are \
-                        GENERIC. The payload is subject to screening; never post secrets or full file contents \
-                        - paths only. The Blackboard is retained for audit.
-                        """,
-                examples = {
-                    "{\"groupId\": \"grp-1\", \"type\": \"FEEDBACK\", \"payload\": \"node-3 blocked on config\"}",
-                    "{\"groupId\": \"grp-1\", \"type\": \"ARTIFACT_REF\", \"payload\": \"src/auth/Login.java\"}",
-                    "{\"groupId\": \"grp-1\", \"type\": \"LOG_REF\", \"payload\": \"build/auth.log:42\"}",
-                    "{\"groupId\": \"grp-1\", \"type\": \"STATUS\", \"payload\": \"node-1 50% done\"}",
-                    "{\"groupId\": \"grp-1\", \"type\": \"ACCEPT\", \"payload\": \"node-2 accepted\"}",
-                    "{\"groupId\": \"grp-7\", \"type\": \"FEEDBACK\", \"payload\": \"tests green for node-5\"}"
-                })
         public record Args(
                 @SecurityHint(ParamCategory.GENERIC) @Doc("Group id.") String groupId,
                 @SecurityHint(ParamCategory.GENERIC)
@@ -615,8 +543,7 @@ public final class GroupTools {
                         String type,
                 @SecurityHint(ParamCategory.GENERIC)
                         @Doc(
-                                "Small payload (path / status / short feedback / node-task instruction). "
-                                        + "Mates must NOT post file contents — paths only.")
+                                "Small payload (path / status / short feedback). Mates must NOT post file contents - paths only.")
                         String payload) {}
 
         @Override
@@ -626,8 +553,7 @@ public final class GroupTools {
 
         @Override
         public String getDescription() {
-            return "Mate → Leader message (ARTIFACT_REF / LOG_REF / FEEDBACK / STATUS / ACCEPT). "
-                    + "Receiver is always the Leader (hub-and-spoke).";
+            return "Post a message from Mate to Leader via the Blackboard.";
         }
 
         @Override
@@ -657,8 +583,43 @@ public final class GroupTools {
 
     /** {@code postStatus} — Leader/Mate: update a DAG node's status (PENDING/ASSIGNED/...). */
     @Component
-    @ToolSecurity(risk = RiskCategory.FILE_WRITE)
-    public static final class PostStatus implements NativeMcpTool<PostStatus.Args> {
+    @ToolDoc(
+            description = "Update a DAG node's execution status.",
+            usage =
+                    """
+                    #### When to use
+                    Use `postStatus` to advance a DAG node through its lifecycle - ASSIGNING to a \
+                    Mate, marking RUNNING, reporting VERIFIED or FAILED. Both Leader and Mate can \
+                    call this.
+
+                    #### When NOT to use
+                    - Do not set a status that violates the state machine (e.g. PENDING -> VERIFIED \
+                    without RUNNING).
+                    - Do not post status for a node that does not exist in the DAG.
+
+                    #### Behavior
+                    Updates the DAG node identified by `nodeId` to `status`. State machine: \
+                    PENDING -> ASSIGNED -> RUNNING -> VERIFIED; any stage can transition to FAILED; \
+                    FAILED triggers re-plan; STALE invalidates the node (Strategic Pivot). Persisted \
+                    in group record for audit.
+
+                    #### Return format
+                    `{"status": "ok", "groupId": "group-abc123", "nodeId": "node-5", \
+                    "nodeStatus": "VERIFIED"}`
+
+                    #### Errors & edge cases
+                    Unknown `groupId` or `nodeId` -> error. Invalid status transition -> error. \
+                    Invalid status value -> error.
+
+                    #### Security
+                    Agent tool (`RiskCategory.AGENT`). The Gateway does not screen it. Persisted \
+                    for audit. Safe to call when role permits.
+                    """,
+            examples = {
+                "{\"groupId\": \"group-abc123\", \"nodeId\": \"node-5\", \"status\": \"VERIFIED\"}",
+                "{\"groupId\": \"group-abc123\", \"nodeId\": \"node-5\", \"status\": \"FAILED\"}"
+            })
+    public static final class PostStatus implements AgentTool<PostStatus.Args> {
 
         private final GroupRegistry registry;
 
@@ -666,48 +627,6 @@ public final class GroupTools {
             this.registry = registry;
         }
 
-        @ToolDoc(
-                description =
-                        """
-                        #### When to use
-                        Use `postStatus` to update a DAG node's status: `PENDING`, `ASSIGNED`, `RUNNING`, \
-                        `VERIFIED`, `FAILED`, or `STALE`. Persists in the group record. Used by Leader or Mate \
-                        to reflect node progress.
-
-                        #### When NOT to use
-                        - Do not use `postStatus` to send a message; use `postMessage`.
-                        - Do not use an unknown `status`; it must be a valid NodeState.
-                        - Do not update a node you do not own without coordination.
-                        - Do not call it with an unverified `groupId`/`nodeId`.
-
-                        #### Behavior
-                        Looks up the group `groupId`, finds the DAG node `nodeId`, and updates its state to \
-                        `status` (persisted via the registry). Returns "ok" on success, "unknown group" or \
-                        "node not found" otherwise.
-
-                        #### Return format
-                        `ok` on success. `unknown group` if the group id is not found. `node not found` if the \
-                        node id is not in the group's DAG.
-
-                        #### Errors & edge cases
-                        - `groupId` invalid UUID or not in registry -> "unknown group".
-                        - `nodeId` not in the DAG -> "node not found".
-                        - `status` not a valid NodeState -> exception (valueOf fails). Valid: PENDING, \
-                        ASSIGNED, RUNNING, VERIFIED, FAILED, STALE.
-                        - Only the matching node's state changes; other fields are preserved.
-
-                        #### Security
-                        `postStatus` is `RiskCategory.FILE_WRITE` (elevated + audited). Its parameters are \
-                        GENERIC. It mutates the group's DAG record. Confirm ids before calling.
-                        """,
-                examples = {
-                    "{\"groupId\": \"grp-1\", \"nodeId\": \"node-3\", \"status\": \"VERIFIED\"}",
-                    "{\"groupId\": \"grp-1\", \"nodeId\": \"node-1\", \"status\": \"RUNNING\"}",
-                    "{\"groupId\": \"grp-1\", \"nodeId\": \"node-2\", \"status\": \"FAILED\"}",
-                    "{\"groupId\": \"grp-1\", \"nodeId\": \"node-5\", \"status\": \"ASSIGNED\"}",
-                    "{\"groupId\": \"grp-7\", \"nodeId\": \"node-1\", \"status\": \"PENDING\"}",
-                    "{\"groupId\": \"grp-1\", \"nodeId\": \"node-4\", \"status\": \"STALE\"}"
-                })
         public record Args(
                 @SecurityHint(ParamCategory.GENERIC) @Doc("Group id.") String groupId,
                 @SecurityHint(ParamCategory.GENERIC) @Doc("DAG node id.") String nodeId,
@@ -723,7 +642,7 @@ public final class GroupTools {
 
         @Override
         public String getDescription() {
-            return "Update a DAG node's status. Persists in the group record.";
+            return "Update a DAG node's execution status.";
         }
 
         @Override

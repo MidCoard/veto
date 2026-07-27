@@ -69,7 +69,7 @@ public class IngressDefense {
     public String maskAndFrame(
             ToolCall call,
             ToolDefinition def,
-            top.focess.veto.agent.mcp.McpToolResult result,
+            top.focess.veto.agent.mcp.ToolResult result,
             boolean maskObservation,
             ReadHistory readHistory) {
         String source = sourceLabel(def);
@@ -126,7 +126,7 @@ public class IngressDefense {
     public String maskAndFrame(
             ToolCall call,
             ToolDefinition def,
-            top.focess.veto.agent.mcp.McpToolResult result,
+            top.focess.veto.agent.mcp.ToolResult result,
             ApprovalDecision decision,
             ReadHistory readHistory) {
         boolean mask = true;

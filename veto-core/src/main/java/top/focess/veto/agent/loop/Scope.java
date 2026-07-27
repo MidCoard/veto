@@ -7,7 +7,7 @@ import java.util.Map;
 import java.util.Optional;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
-import top.focess.veto.agent.mcp.McpToolResult;
+import top.focess.veto.agent.mcp.ToolResult;
 import top.focess.veto.llm.core.VetoResponse;
 
 /**
@@ -97,7 +97,7 @@ public class Scope {
     }
 
     /** Binds a tool result's fields to {@code $var}s per the output bindings map. */
-    public void bindTool(@NonNull Map<String, String> outputs, @NonNull McpToolResult result) {
+    public void bindTool(@NonNull Map<String, String> outputs, @NonNull ToolResult result) {
         if (outputs == null || result == null) {
             return;
         }

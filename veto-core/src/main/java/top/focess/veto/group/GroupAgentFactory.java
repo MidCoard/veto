@@ -17,7 +17,7 @@ import top.focess.veto.llm.core.ProviderType;
 /**
  * The production {@link GroupSpawner.AgentFactory} — builds a Mate's {@link Agent} via {@link
  * AgentService#createMate}. {@code @Lazy}-injects {@link AgentService} to break the cycle ({@code
- * GroupTools → GroupSpawner → AgentFactory → AgentService → McpEngine → GroupTools}).
+ * GroupTools → GroupSpawner → AgentFactory → AgentService → ToolEngine → GroupTools}).
  *
  * <p>The Mate's {@link AgentRunner.LlmBinding} is resolved from {@code veto.group.mate.*} config
  * (provider / model / credential-key / system-prompt-base). When the model or credential is unset,

@@ -26,8 +26,8 @@ public final class ToolDocs {
     }
 
     /**
-     * Returns the long-form {@link ToolDoc#description()} for the given args class, or an empty
-     * string when the class is null or has no {@code @ToolDoc}.
+     * Returns the long-form {@link ToolDoc#usage()} for the given args class, or an empty string
+     * when the class is null or has no {@code @ToolDoc}.
      */
     public static @NonNull String descriptionOf(@Nullable Class<?> argsClass) {
         if (argsClass == null) {
@@ -37,6 +37,31 @@ public final class ToolDocs {
         if (doc == null) {
             return "";
         }
-        return doc.description();
+        return doc.usage();
+    }
+
+    /**
+     * Derives the tool name from an args class: strips the {@code Args} suffix and converts
+     * CamelCase to snake_case. E.g. {@code ThinkArgs} -> {@code "think"}, {@code LoadSkillArgs} ->
+     * {@code "load_skill"}.
+     */
+    public static @NonNull String toolNameOf(@NonNull Class<?> argsClass) {
+        String simple = argsClass.getSimpleName();
+        if (simple.endsWith("Args")) {
+            simple = simple.substring(0, simple.length() - 4);
+        }
+        return simple.replaceAll("([a-z])([A-Z])", "$1_$2").toLowerCase();
+    }
+
+    /**
+     * Fallback description when {@link ToolDoc#description()} is empty: extracts the first sentence
+     * (up to and including the first period) from the usage text.
+     */
+    public static @NonNull String firstSentenceOf(@NonNull String text) {
+        if (text == null || text.isEmpty()) {
+            return "";
+        }
+        int dot = text.indexOf('.');
+        return (dot >= 0) ? text.substring(0, dot + 1) : text;
     }
 }

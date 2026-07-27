@@ -5,24 +5,21 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
+import top.focess.veto.agent.mcp.AgentTool;
 import top.focess.veto.agent.mcp.Doc;
-import top.focess.veto.agent.mcp.NativeMcpTool;
 import top.focess.veto.agent.mcp.ParamCategory;
-import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.SecurityHint;
 import top.focess.veto.agent.mcp.ToolCallContext;
 import top.focess.veto.agent.mcp.ToolCallContextHolder;
 import top.focess.veto.agent.mcp.ToolDoc;
-import top.focess.veto.agent.mcp.ToolSecurity;
 import top.focess.veto.memory.embedder.Embedder;
 
 /**
- * The agent-facing memory tools (long_term_memory_tiers.md §6). These are native tools, exactly
- * like {@code view_file} or {@code run_command}, so they pass through the Gateway (read tools are
- * {@code SAFE}; write tools are {@code ELEVATED} and audited). They are not host-path tools so they
- * carry no path-class danger; the screening model treats them per the generic/tool-declared option
- * set.
+ * The agent-facing memory tools (long_term_memory_tiers.md §6). These are agent tools — they carry
+ * {@link top.focess.veto.agent.mcp.RiskCategory#AGENT}; the Gateway returns {@code NotScreened}.
+ * They still flow through the LoopInterceptor chain for audit.
  */
 public final class MemoryTools {
 
@@ -30,8 +27,47 @@ public final class MemoryTools {
 
     /** {@code recall_session} — search captured chunks from the current Session LTM. */
     @Component
-    @ToolSecurity(risk = RiskCategory.READ_ONLY)
-    public static final class RecallSession implements NativeMcpTool<RecallSession.Args> {
+    @ToolDoc(
+            description =
+                    "Search the current session's captured long-term memory (Session LTM) "
+                            + "for relevant context.",
+            usage =
+                    """
+                    #### When to use
+                    Use `recall_session` when you need to recover context from earlier in this session \
+                    - a previous tool result, a decision made, or an observation that is no longer in \
+                    the active context window. The vector search returns the most similar memories \
+                    ranked by embedding distance.
+
+                    #### When NOT to use
+                    - Do not use `recall_session` for cross-session knowledge - use `recall_insights`.
+                    - Do not use it when the information is still in your active context - just \
+                    reference it directly.
+                    - Do not use it as a substitute for `view_file` or `grep_search` for finding code.
+
+                    #### Behavior
+                    Embeds `query` using the local embedding model, performs cosine similarity search \
+                    in Session LTM, filters results by `scoreFloor`, and returns the top-K matches \
+                    ranked by similarity. Source attribution is included.
+
+                    #### Return format
+                    A numbered list of memories, each with id, score, source type, and content snippet.
+
+                    #### Errors & edge cases
+                    If `scoreFloor` is too high, returns empty (not hallucinated matches). Empty query \
+                    returns empty. Fuzzy matching prevents exact-match limitations. If no memories \
+                    exist for this session, returns empty.
+
+                    #### Security
+                    Agent tool (`RiskCategory.AGENT`). The Gateway does not screen it. Tenant \
+                    isolation enforced - the agent can only see memories belonging to its user. \
+                    Safe to call any time.
+                    """,
+            examples = {
+                "{\"query\": \"UserService authentication\"}",
+                "{\"query\": \"build configuration\", \"topK\": 3, \"scoreFloor\": 0.6}"
+            })
+    public static final class RecallSession implements AgentTool<RecallSession.Args> {
 
         private final MemoryStore store;
 
@@ -39,64 +75,11 @@ public final class MemoryTools {
             this.store = store;
         }
 
-        @ToolDoc(
-                description =
-                        """
-                        #### When to use
-                        Use `recall_session` to search the current session's captured long-term memory (Session \
-                        LTM) - the running log of facts, decisions, and intermediate results captured during \
-                        THIS session. Reach for it when you need to recover something established earlier in the \
-                        session that has scrolled out of your immediate context: a prior decision, a file you \
-                        already inspected, a fix you already applied, or a constraint the user stated.
-
-                        #### When NOT to use
-                        - Do not use `recall_session` for cross-session/distilled knowledge - use \
-                        `recall_insights` instead.
-                        - Do not use it to read the live filesystem - use `view_file`/`grep_search`.
-                        - Do not use it to record a new memory - use `write_insight`.
-                        - Do not call it with an empty/vague query; a precise query ranks better.
-
-                        #### Behavior
-                        Embeds the free-text `query` and searches the Session LTM store for the current \
-                        session/user by vector similarity. Returns up to `topK` memories (default 5) whose \
-                        similarity score meets `scoreFloor` (default 0.5), ranked descending. Each result \
-                        carries source attribution (where the memory was captured from).
-
-                        #### Return format
-                        A formatted list: `<count> memories:` header followed by one entry per memory: \
-                        `- [tier] id=<id> score=<score> src=<sourceKind> <attrs>` and the (truncated) content \
-                        on the next line. `no matching memories` when nothing meets the floor.
-
-                        #### Errors & edge cases
-                        - `topK` omitted -> defaults to 5. `scoreFloor` omitted -> defaults to 0.5.
-                        - A floor too high returns fewer/no results; lower it to broaden.
-                        - Content longer than 240 chars is truncated in the listing (`...` suffix) - the full \
-                        memory is stored, only the preview is cut.
-                        - An empty Session LTM (nothing captured yet this session) returns "no matching \
-                        memories".
-
-                        #### Security
-                        `recall_session` is read-only (`RiskCategory.READ_ONLY`). Its parameters are GENERIC \
-                        (no path/content danger). It reads only the current session/user's memories - no \
-                        cross-tenant access. Returned memory content is subject to ingress masking. Safe to \
-                        call freely.
-                        """,
-                examples = {
-                    "{\"query\": \"how did we fix the auth bug\", \"topK\": 5}",
-                    "{\"query\": \"deployment steps\"}",
-                    "{\"query\": \"what files did we inspect\", \"topK\": 3}",
-                    "{\"query\": \"user constraints\", \"scoreFloor\": 0.4}",
-                    "{\"query\": \"the earlier refactor decision\", \"topK\": 10}",
-                    "{\"query\": \"config change\"}",
-                    "{\"query\": \"test failures\", \"topK\": 8, \"scoreFloor\": 0.6}"
-                })
         public record Args(
                 @SecurityHint(ParamCategory.GENERIC) @Doc("Free-text query to embed + search.")
                         String query,
-                @SecurityHint(ParamCategory.GENERIC) @Doc("Optional top-K; defaults to 5.")
-                        Integer topK,
-                @SecurityHint(ParamCategory.GENERIC)
-                        @Doc("Optional score floor in [0,1]; defaults to 0.5.")
+                @Nullable @Doc("Optional top-K; defaults to 5.") Integer topK,
+                @Nullable @Doc("Optional score floor in [0,1]; defaults to 0.5.")
                         Float scoreFloor) {}
 
         @Override
@@ -106,7 +89,8 @@ public final class MemoryTools {
 
         @Override
         public String getDescription() {
-            return "Search the current session's captured long-term memory (Session LTM). Returns up to top-K memories ranked by similarity, with source attribution.";
+            return "Search the current session's captured long-term memory (Session LTM) "
+                    + "for relevant context.";
         }
 
         @Override
@@ -139,8 +123,44 @@ public final class MemoryTools {
 
     /** {@code recall_insights} — search distilled insights from Cross-Session LTM. */
     @Component
-    @ToolSecurity(risk = RiskCategory.READ_ONLY)
-    public static final class RecallInsights implements NativeMcpTool<RecallInsights.Args> {
+    @ToolDoc(
+            description =
+                    "Search the user's distilled insights (Cross-Session LTM) for knowledge "
+                            + "that spans multiple sessions.",
+            usage =
+                    """
+                    #### When to use
+                    Use `recall_insights` when you need knowledge that persists across sessions - \
+                    project conventions, recurring patterns, lessons learned, or architectural \
+                    decisions that were previously captured as insights.
+
+                    #### When NOT to use
+                    - Do not use `recall_insights` for current-session context - use `recall_session`.
+                    - Do not use it when the information is in your active context.
+                    - Do not use it to read files - use `view_file`.
+
+                    #### Behavior
+                    Embeds `query` and performs cosine similarity search in Cross-Session LTM \
+                    (curated insights promoted from Session LTM). Returns top-K matches ranked by \
+                    similarity, filtered by `scoreFloor`. Cross-session visibility is user-specific.
+
+                    #### Return format
+                    A numbered list of insights, each with id, score, source type, and content.
+
+                    #### Errors & edge cases
+                    Unknown query returns empty. If no insights have been written for this user, \
+                    returns empty. `scoreFloor` too high returns empty.
+
+                    #### Security
+                    Agent tool (`RiskCategory.AGENT`). The Gateway does not screen it. Tenant \
+                    isolation enforced - only the owning user's insights are visible. Safe to call \
+                    any time.
+                    """,
+            examples = {
+                "{\"query\": \"project configuration patterns\"}",
+                "{\"query\": \"authentication\", \"topK\": 3}"
+            })
+    public static final class RecallInsights implements AgentTool<RecallInsights.Args> {
 
         private final MemoryStore store;
 
@@ -148,61 +168,11 @@ public final class MemoryTools {
             this.store = store;
         }
 
-        @ToolDoc(
-                description =
-                        """
-                        #### When to use
-                        Use `recall_insights` to search the user's distilled insights (Cross-Session LTM) - \
-                        durable, cross-session lessons the user has promoted or that were distilled from prior \
-                        sessions: "deploy via gradle bootRun", "the auth module uses JWT", "tests run under H2". \
-                        Reach for it at the start of a task to recover knowledge that is NOT in the current \
-                        session's context but was learned before.
-
-                        #### When NOT to use
-                        - Do not use `recall_insights` for things captured in THIS session only - use \
-                        `recall_session`.
-                        - Do not use it to read the live filesystem - use `view_file`/`grep_search`.
-                        - Do not use it to create an insight - use `write_insight`.
-                        - Do not use it to drop a memory - use `forget`.
-
-                        #### Behavior
-                        Embeds the free-text `query` and searches the Cross-Session LTM (insights) store for the \
-                        current user by vector similarity. Returns up to `topK` memories (default 5) whose \
-                        similarity score meets `scoreFloor` (default 0.5), ranked descending. Each result \
-                        carries source attribution.
-
-                        #### Return format
-                        A formatted list: `<count> memories:` header followed by one entry per memory: \
-                        `- [tier] id=<id> score=<score> src=<sourceKind> <attrs>` and the (truncated) content \
-                        on the next line. `no matching memories` when nothing meets the floor.
-
-                        #### Errors & edge cases
-                        - `topK` omitted -> defaults to 5. `scoreFloor` omitted -> defaults to 0.5.
-                        - A floor too high returns fewer/no results; lower it to broaden.
-                        - Content longer than 240 chars is truncated in the listing (`...` suffix).
-                        - A user with no distilled insights returns "no matching memories".
-
-                        #### Security
-                        `recall_insights` is read-only (`RiskCategory.READ_ONLY`). Its parameters are GENERIC. \
-                        It reads only the current user's insights - no cross-tenant access. Returned content is \
-                        subject to ingress masking. Safe to call freely.
-                        """,
-                examples = {
-                    "{\"query\": \"deployment steps\", \"topK\": 3}",
-                    "{\"query\": \"how does auth work\"}",
-                    "{\"query\": \"build commands\", \"topK\": 5}",
-                    "{\"query\": \"known gotchas\", \"scoreFloor\": 0.4}",
-                    "{\"query\": \"test setup\", \"topK\": 10}",
-                    "{\"query\": \"database config\"}",
-                    "{\"query\": \"prior incident\", \"topK\": 8, \"scoreFloor\": 0.6}"
-                })
         public record Args(
                 @SecurityHint(ParamCategory.GENERIC) @Doc("Free-text query to embed + search.")
                         String query,
-                @SecurityHint(ParamCategory.GENERIC) @Doc("Optional top-K; defaults to 5.")
-                        Integer topK,
-                @SecurityHint(ParamCategory.GENERIC)
-                        @Doc("Optional score floor in [0,1]; defaults to 0.5.")
+                @Nullable @Doc("Optional top-K; defaults to 5.") Integer topK,
+                @Nullable @Doc("Optional score floor in [0,1]; defaults to 0.5.")
                         Float scoreFloor) {}
 
         @Override
@@ -212,7 +182,8 @@ public final class MemoryTools {
 
         @Override
         public String getDescription() {
-            return "Search the user's distilled insights (Cross-Session LTM). Returns up to top-K memories ranked by similarity.";
+            return "Search the user's distilled insights (Cross-Session LTM) for knowledge "
+                    + "that spans multiple sessions.";
         }
 
         @Override
@@ -247,8 +218,49 @@ public final class MemoryTools {
      * item.
      */
     @Component
-    @ToolSecurity(risk = RiskCategory.FILE_WRITE)
-    public static final class WriteInsight implements NativeMcpTool<WriteInsight.Args> {
+    @ToolDoc(
+            description =
+                    "Write a new insight to Cross-Session LTM, or promote a Session LTM memory "
+                            + "to cross-session visibility.",
+            usage =
+                    """
+                    #### When to use
+                    Use `write_insight` to persist knowledge that will be useful in future sessions - \
+                    project conventions, recurring patterns, architectural decisions, or lessons \
+                    learned. Also use it to promote a Session LTM memory to Cross-Session LTM when \
+                    its value extends beyond this session.
+
+                    #### When NOT to use
+                    - Do not use `write_insight` for transient context that only matters this session - \
+                    Session LTM captures automatically.
+                    - Do not use it to record verbatim file contents - reference the file path instead.
+                    - Do not write trivial or obvious facts; insights should be non-obvious, reusable \
+                    knowledge.
+
+                    #### Behavior
+                    Two modes: (1) Direct write - stores `content` as a new insight in Cross-Session \
+                    LTM, tagged with `projectId` if provided. Content is masked (secrets removed). \
+                    (2) Promotion - if `promoteMemoryId` is given, promotes that Session LTM memory \
+                    to Cross-Session LTM, expanding its visibility to all sessions.
+
+                    #### Return format
+                    `{"status": "ok", "memoryId": "insight-abc123"}`
+
+                    #### Errors & edge cases
+                    Empty `content` is rejected. If `promoteMemoryId` does not exist, returns error. \
+                    Content is masked before storage - secrets are stripped.
+
+                    #### Security
+                    Agent tool (`RiskCategory.AGENT`). The Gateway does not screen it. Self-edit \
+                    operation (audited). Content is already masked at capture point. Safe to call \
+                    any time.
+                    """,
+            examples = {
+                "{\"content\": \"This project uses Gradle 8.5 with Kotlin DSL. Custom task: compileKotlin\"}",
+                "{\"content\": \"Auth middleware in application.yml\", \"projectId\": \"project-xyz\"}",
+                "{\"content\": \"...\", \"promoteMemoryId\": \"session-mem-456\"}"
+            })
+    public static final class WriteInsight implements AgentTool<WriteInsight.Args> {
 
         private final MemoryStore store;
         private final Embedder embedder;
@@ -258,67 +270,13 @@ public final class MemoryTools {
             this.embedder = embedder;
         }
 
-        @ToolDoc(
-                description =
-                        """
-                        #### When to use
-                        Use `write_insight` to record a durable, cross-session lesson into Cross-Session LTM - \
-                        something worth remembering beyond this session: a deployment step, a project \
-                        convention, a gotcha, or a confirmed fact about the codebase. Also use it to promote a \
-                        Session-LTM memory (a captured chunk) into a distilled insight via `promoteMemoryId`.
-
-                        Write insights that are generalizable and reusable, not transient session state.
-
-                        #### When NOT to use
-                        - Do not use `write_insight` for transient session facts - leave those in Session LTM \
-                        (they are captured automatically).
-                        - Do not use it to recall - use `recall_insights`/`recall_session`.
-                        - Do not use it to drop a memory - use `forget`.
-                        - Do not write low-value or duplicative insights; curate.
-
-                        #### Behavior
-                        Writes `content` as a new insight in the Cross-Session LTM for the current user. When \
-                        `promoteMemoryId` is given, the insight is created by promoting that Session-LTM memory \
-                        across the curating boundary (rather than from raw text). When `projectId` is given, the \
-                        insight is tagged with that project so it can be scoped on recall. The content is stored \
-                        verbatim (it should already be masked of secrets at ingress).
-
-                        #### Return format
-                        An acknowledgement / the new insight's id (tool-body dependent). The write is audited.
-
-                        #### Errors & edge cases
-                        - `promoteMemoryId` pointing at a non-existent Session-LTM memory -> promotion fails; \
-                        write the insight as raw text instead (omit `promoteMemoryId`).
-                        - `content` should be concise and self-contained; long rambling insights recall poorly.
-                        - `projectId` is optional; omit it for a global insight.
-                        - This is a self-edit operation; it is audited and elevated.
-
-                        #### Security
-                        `write_insight` is `RiskCategory.FILE_WRITE` (elevated + audited) - it mutates durable \
-                        user memory. `content` is CODE_CONTENT-class (semantically screened) so \
-                        secrets/instructions cannot be smuggled into long-term memory. Write only the current \
-                        user's store - no cross-tenant writes. Mask secrets before writing; do not store \
-                        credentials.
-                        """,
-                examples = {
-                    "{\"content\": \"Deploy via gradle bootRun\", \"projectId\": \"veto\"}",
-                    "{\"content\": \"Auth uses JWT with 15min expiry\"}",
-                    "{\"content\": \"Tests run under H2 in-memory; prod is Postgres\", \"projectId\": \"veto\"}",
-                    "{\"content\": \"Never commit application.yml with real secrets\"}",
-                    "{\"promoteMemoryId\": \"mem-42\", \"projectId\": \"veto\"}",
-                    "{\"content\": \"The build requires JDK 25\", \"projectId\": \"veto\"}",
-                    "{\"content\": \"run_command is sandboxed; no shell\"}"
-                })
         public record Args(
-                @SecurityHint(ParamCategory.CODE_CONTENT)
+                @SecurityHint(ParamCategory.GENERIC)
                         @Doc("The insight text to remember (already masked).")
                         String content,
-                @SecurityHint(ParamCategory.GENERIC)
-                        @Doc("Optional Session-LTM memory id to promote (curating boundary).")
+                @Nullable @Doc("Optional Session-LTM memory id to promote (curating boundary).")
                         String promoteMemoryId,
-                @SecurityHint(ParamCategory.GENERIC)
-                        @Doc("Optional project id to tag the insight with.")
-                        String projectId) {}
+                @Nullable @Doc("Optional project id to tag the insight with.") String projectId) {}
 
         @Override
         public String getName() {
@@ -327,7 +285,8 @@ public final class MemoryTools {
 
         @Override
         public String getDescription() {
-            return "Write a new insight to Cross-Session LTM, or promote a Session-LTM memory to Cross-Session LTM. Self-edit, audited.";
+            return "Write a new insight to Cross-Session LTM, or promote a Session LTM memory "
+                    + "to cross-session visibility.";
         }
 
         @Override
@@ -374,8 +333,36 @@ public final class MemoryTools {
 
     /** {@code forget} — explicitly drop a memory. */
     @Component
-    @ToolSecurity(risk = RiskCategory.FILE_WRITE)
-    public static final class Forget implements NativeMcpTool<Forget.Args> {
+    @ToolDoc(
+            description = "Explicitly drop a memory from the agent's long-term store.",
+            usage =
+                    """
+                    #### When to use
+                    Use `forget` when a previously captured memory or insight is wrong, outdated, or \
+                    no longer relevant - correcting stale knowledge before it misleads future reasoning.
+
+                    #### When NOT to use
+                    - Do not use `forget` to clear session context - that is automatic.
+                    - Do not use it speculatively; only forget what you know is wrong.
+                    - Do not forget memories you have not verified are incorrect.
+
+                    #### Behavior
+                    Permanently deletes the memory identified by `memoryId` from the store. Cannot be \
+                    recovered. Audited for compliance.
+
+                    #### Return format
+                    `{"status": "ok", "memoryId": "abc123", "forgotten": true}`
+
+                    #### Errors & edge cases
+                    Memory not found -> `{"error": "Memory not found"}`. Not owner (cross-user) -> \
+                    blocked by tenant isolation.
+
+                    #### Security
+                    Agent tool (`RiskCategory.AGENT`). The Gateway does not screen it. Permanent \
+                    deletion, audited. Safe to call any time.
+                    """,
+            examples = {"{\"memoryId\": \"insight-abc123\"}"})
+    public static final class Forget implements AgentTool<Forget.Args> {
 
         private final MemoryStore store;
 
@@ -383,49 +370,6 @@ public final class MemoryTools {
             this.store = store;
         }
 
-        @ToolDoc(
-                description =
-                        """
-                        #### When to use
-                        Use `forget` to explicitly drop a memory by id - when a memory is wrong, stale, \
-                        duplicated, or the user asked to remove it. Works on Session-LTM or Cross-Session LTM \
-                        memories. Use it for curation hygiene: keeping the memory store clean improves recall \
-                        quality.
-
-                        #### When NOT to use
-                        - Do not use `forget` to "recall" - use `recall_session`/`recall_insights`.
-                        - Do not use it to overwrite - use `write_insight` (forget + re-write if needed).
-                        - Do not forget a memory you may need; forgetting is irreversible from the model's view.
-                        - Do not forget a memory id you have not confirmed exists; recall first to get the id.
-
-                        #### Behavior
-                        Removes the memory identified by `memoryId` from the store (Session or Cross-Session, \
-                        whichever owns it). The removal is audited. Other memories are untouched.
-
-                        #### Return format
-                        An acknowledgement (the memory was dropped). The write is audited.
-
-                        #### Errors & edge cases
-                        - `memoryId` does not exist -> typically a no-op / not-found acknowledgement; no error \
-                        thrown.
-                        - `memoryId` is case-sensitive and must match exactly (recall to confirm the id first).
-                        - Forgetting is durable; the memory will not resurface unless re-captured/re-written.
-                        - This is a self-edit operation; it is audited and elevated.
-
-                        #### Security
-                        `forget` is `RiskCategory.FILE_WRITE` (elevated + audited) - it mutates durable user \
-                        memory. It operates only on the current user's store - no cross-tenant deletion. \
-                        `memoryId` is GENERIC (no path/content danger). The deletion is logged for audit. Do \
-                        not forget audit-relevant memories without reason.
-                        """,
-                examples = {
-                    "{\"memoryId\": \"mem-42\"}",
-                    "{\"memoryId\": \"insight-7\"}",
-                    "{\"memoryId\": \"session-101\"}",
-                    "{\"memoryId\": \"mem-99\"}",
-                    "{\"memoryId\": \"insight-promoted-3\"}",
-                    "{\"memoryId\": \"mem-1\"}"
-                })
         public record Args(
                 @SecurityHint(ParamCategory.GENERIC) @Doc("The memory id to forget.")
                         String memoryId) {}
@@ -437,7 +381,7 @@ public final class MemoryTools {
 
         @Override
         public String getDescription() {
-            return "Explicitly drop a memory (user- or agent-initiated). Self-edit, audited.";
+            return "Explicitly drop a memory from the agent's long-term store.";
         }
 
         @Override
@@ -513,8 +457,7 @@ public final class MemoryTools {
     }
 
     /** Parses a UUID string, returning null on blank/invalid input (for optional id args). */
-    static @org.jspecify.annotations.Nullable UUID parseUuidOrNull(
-            @org.jspecify.annotations.Nullable String s) {
+    static @Nullable UUID parseUuidOrNull(@Nullable String s) {
         if (s == null || s.isBlank()) {
             return null;
         }

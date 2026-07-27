@@ -7,22 +7,21 @@ import java.nio.file.Path;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.mcp.Doc;
-import top.focess.veto.agent.mcp.NativeMcpTool;
+import top.focess.veto.agent.mcp.NativeTool;
 import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.SecurityHint;
 import top.focess.veto.agent.mcp.ToolDoc;
 import top.focess.veto.agent.mcp.ToolSecurity;
 
-/**
- * {@code replace_file_content} — replace a single contiguous block of text in an existing file..
- */
+/** {@code replace_file_content} — replace a single contiguous block of text in an existing file. */
 @Component
 @ToolSecurity(risk = RiskCategory.FILE_WRITE)
-public final class ReplaceFileContentTool implements NativeMcpTool<ReplaceFileContentTool.Args> {
+public final class ReplaceFileContentTool implements NativeTool<ReplaceFileContentTool.Args> {
 
     @ToolDoc(
-            description =
+            description = "Replace a single contiguous block of code in an existing file.",
+            usage =
                     """
                     #### When to use
                     Use `replace_file_content` to make a localized, surgical edit to an existing file - renaming \

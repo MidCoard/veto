@@ -8,8 +8,8 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import top.focess.veto.agent.loop.PromptCompiler;
-import top.focess.veto.agent.mcp.DefaultMcpEngine;
-import top.focess.veto.agent.mcp.McpEngine;
+import top.focess.veto.agent.mcp.DefaultToolEngine;
+import top.focess.veto.agent.mcp.ToolEngine;
 import top.focess.veto.agent.translation.CapabilityTranslator;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.agent.workspace.Workspace;
@@ -17,7 +17,7 @@ import top.focess.veto.llm.config.LlmJacksonConfig;
 
 /**
  * Registers the default (replaceable) beans the loop depends on: a {@link CapabilityTranslator}
- * (the deterministic {@code veto_pulse} schema + flat-tool builder) and a {@link McpEngine} (no-op
+ * (the deterministic {@code veto_pulse} schema + flat-tool builder) and a {@link ToolEngine} (no-op
  * scaffold). Both are {@code @ConditionalOnMissingBean} — richer implementations override them when
  * present.
  *
@@ -36,9 +36,9 @@ public class AgentLoopDefaultsConfiguration {
     }
 
     @Bean
-    @ConditionalOnMissingBean(McpEngine.class)
-    public @NonNull McpEngine defaultMcpEngine() {
-        return new DefaultMcpEngine();
+    @ConditionalOnMissingBean(ToolEngine.class)
+    public @NonNull ToolEngine defaultToolEngine() {
+        return new DefaultToolEngine();
     }
 
     /**

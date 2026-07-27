@@ -42,10 +42,10 @@ import top.focess.veto.agent.loop.ResponseEnforcer;
 import top.focess.veto.agent.loop.Scope;
 import top.focess.veto.agent.loop.StopAction;
 import top.focess.veto.agent.mcp.AgentToolDefinition;
-import top.focess.veto.agent.mcp.McpEngine;
-import top.focess.veto.agent.mcp.McpToolResult;
 import top.focess.veto.agent.mcp.ToolCallContextHolder;
 import top.focess.veto.agent.mcp.ToolDefinition;
+import top.focess.veto.agent.mcp.ToolEngine;
+import top.focess.veto.agent.mcp.ToolResult;
 import top.focess.veto.agent.screening.Danger;
 import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.bus.DeltaFrame;
@@ -77,7 +77,7 @@ public class AgentRunner {
     private final @NonNull String agentId;
     private final @NonNull AgentPersona persona;
     private final @NonNull Set<String> whitelistedTools;
-    private final @NonNull McpEngine mcpEngine;
+    private final @NonNull ToolEngine mcpEngine;
     private final @NonNull Gateway gateway;
     private final @NonNull HitlRegistry hitlRegistry;
     private final @NonNull IngressDefense ingressDefense;
@@ -128,7 +128,7 @@ public class AgentRunner {
     public AgentRunner(
             @NonNull String agentId,
             @NonNull AgentPersona persona,
-            @NonNull McpEngine mcpEngine,
+            @NonNull ToolEngine mcpEngine,
             @NonNull Gateway gateway,
             @NonNull HitlRegistry hitlRegistry,
             @NonNull IngressDefense ingressDefense,
@@ -420,7 +420,7 @@ public class AgentRunner {
                 case top.focess.veto.agent.loop.ToolAction tool -> {
                     ToolCall call =
                             new ToolCall(tool.tool(), tool.resolveInputs(scope), nextCallId());
-                    McpToolResult result = executeOneCall(call);
+                    ToolResult result = executeOneCall(call);
                     scope.bindTool(tool.outputs(), result);
                     programCounter++;
                 }
@@ -730,13 +730,13 @@ public class AgentRunner {
         }
     }
 
-    private McpToolResult executeOneConfirmedCall(ToolCall call) {
+    private ToolResult executeOneConfirmedCall(ToolCall call) {
         ToolDefinition def = mcpEngine.resolveDefinition(call.toolName());
         if (def == null) {
             String obs = "Tool not found: " + call.toolName();
             appendTurn(TurnRecord.toolCall(turnNumber, call));
             appendObservation(call.toolName(), obs);
-            return new McpToolResult(call.toolName(), call.callId(), false, obs);
+            return new ToolResult(call.toolName(), call.callId(), false, obs);
         }
 
         appendTurn(TurnRecord.toolCall(turnNumber, call));
@@ -745,18 +745,17 @@ public class AgentRunner {
         for (LoopInterceptor plugin : interceptors) {
             if (!plugin.preAction(agentId, call)) {
                 appendObservation(call.toolName(), "Blocked by plugin.");
-                return new McpToolResult(
-                        call.toolName(), call.callId(), false, "blocked by plugin");
+                return new ToolResult(call.toolName(), call.callId(), false, "blocked by plugin");
             }
         }
 
         // (d) execute with tool call context (agentId + userId) threaded through.
         ToolCallContextHolder.set(agentId, userId);
         try {
-            McpToolResult result = mcpEngine.execute(call, def);
+            ToolResult result = mcpEngine.execute(call, def);
 
             // (e) plugin postAction chain
-            McpToolResult transformed = result;
+            ToolResult transformed = result;
             for (LoopInterceptor plugin : interceptors) {
                 transformed = plugin.postAction(agentId, call, transformed);
             }
@@ -788,13 +787,13 @@ public class AgentRunner {
         }
     }
 
-    private McpToolResult executeOneCall(ToolCall call) {
+    private ToolResult executeOneCall(ToolCall call) {
         ToolDefinition def = mcpEngine.resolveDefinition(call.toolName());
         if (def == null) {
             String obs = "Tool not found: " + call.toolName();
             appendTurn(TurnRecord.toolCall(++turnNumber, call));
             appendObservation(call.toolName(), obs);
-            return new McpToolResult(call.toolName(), call.callId(), false, obs);
+            return new ToolResult(call.toolName(), call.callId(), false, obs);
         }
 
         // (a) early-route agent tools past the Gateway + HITL.
@@ -805,7 +804,7 @@ public class AgentRunner {
             if (decision instanceof ApprovalDecision.AutoBlock ab) {
                 appendTurn(TurnRecord.toolCall(++turnNumber, call));
                 appendObservation(call.toolName(), "Blocked: " + ab.reason());
-                return new McpToolResult(
+                return new ToolResult(
                         call.toolName(), call.callId(), false, "blocked: " + ab.reason());
             }
             if (decision instanceof ApprovalDecision.Refused r) {
@@ -817,13 +816,13 @@ public class AgentRunner {
                 appendTurn(TurnRecord.toolCall(turnNumber, call));
                 appendTurn(TurnRecord.toolResponse(++turnNumber, call.callId(), "REFUSED", false));
                 this.state = AgentState.IDLE;
-                return new McpToolResult(call.toolName(), call.callId(), false, "REFUSED");
+                return new ToolResult(call.toolName(), call.callId(), false, "REFUSED");
             }
             if (decision instanceof ApprovalDecision.Prompt p) {
                 call = awaitVeto(call, def, p);
                 if (call == null) {
                     this.state = AgentState.IDLE;
-                    return new McpToolResult("", "", false, "declined");
+                    return new ToolResult("", "", false, "declined");
                 }
             }
         }
@@ -834,18 +833,17 @@ public class AgentRunner {
         for (LoopInterceptor plugin : interceptors) {
             if (!plugin.preAction(agentId, call)) {
                 appendObservation(call.toolName(), "Blocked by plugin.");
-                return new McpToolResult(
-                        call.toolName(), call.callId(), false, "blocked by plugin");
+                return new ToolResult(call.toolName(), call.callId(), false, "blocked by plugin");
             }
         }
 
         // (d) execute with tool call context (agentId + userId) threaded through.
         ToolCallContextHolder.set(agentId, userId);
         try {
-            McpToolResult result = mcpEngine.execute(call, def);
+            ToolResult result = mcpEngine.execute(call, def);
 
             // (e) plugin postAction chain.
-            McpToolResult transformed = result;
+            ToolResult transformed = result;
             for (LoopInterceptor plugin : interceptors) {
                 transformed = plugin.postAction(agentId, call, transformed);
             }

@@ -7,7 +7,7 @@ import org.jspecify.annotations.NonNull;
  * The transport a registered MCP server speaks. Four modes, selected at server registration time..
  *
  * <p>Only <b>external</b> tools cross a real {@code McpTransport}. Native and agent tools are
- * dispatched directly in-process by the {@link McpEngine} — there is no self-referential local MCP
+ * dispatched directly in-process by the {@link ToolEngine} — there is no self-referential local MCP
  * server.
  */
 public sealed interface McpTransport {

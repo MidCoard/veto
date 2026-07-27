@@ -7,10 +7,10 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.drift.ReadHistory;
-import top.focess.veto.agent.mcp.McpToolResult;
 import top.focess.veto.agent.mcp.NativeToolDefinition;
 import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RiskCategory;
+import top.focess.veto.agent.mcp.ToolResult;
 import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.veto.LlamaCppBridge;
 
@@ -32,8 +32,8 @@ class IngressDefenseMaskingTest {
                 Map.of("path", ParamCategory.FILESYSTEM_PATH));
     }
 
-    private static McpToolResult result(String content) {
-        return new McpToolResult("read_file", "c1", true, content);
+    private static ToolResult result(String content) {
+        return new ToolResult("read_file", "c1", true, content);
     }
 
     private static ToolCall call() {

@@ -11,7 +11,7 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>The model emits {@code tool_name} + {@code args} (the {@code calls[]} item schema has no
  * {@code call_id}). {@code callId} is <b>harness-assigned</b> after parsing — it pairs the call
- * with the returned {@code McpToolResult.callId} and the HITL future keyed by {@code (agentId,
+ * with the returned {@code ToolResult.callId} and the HITL future keyed by {@code (agentId,
  * callId)}. It is absent from the model-facing schema; the two-argument convenience constructor
  * leaves it null for the harness to assign.
  *

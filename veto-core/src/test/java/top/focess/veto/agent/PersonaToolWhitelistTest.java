@@ -14,13 +14,13 @@ import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.loop.PromptCompiler;
-import top.focess.veto.agent.mcp.DefaultMcpEngine;
-import top.focess.veto.agent.mcp.McpEngine;
-import top.focess.veto.agent.mcp.McpToolResult;
+import top.focess.veto.agent.mcp.DefaultToolEngine;
 import top.focess.veto.agent.mcp.NativeToolDefinition;
 import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.ToolDefinition;
+import top.focess.veto.agent.mcp.ToolEngine;
+import top.focess.veto.agent.mcp.ToolResult;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
@@ -32,7 +32,7 @@ import top.focess.veto.llm.core.VetoRequest;
 import top.focess.veto.llm.core.VetoResponse;
 
 /**
- * Verifies the production agent persona resolves a real tool whitelist from the {@link McpEngine}
+ * Verifies the production agent persona resolves a real tool whitelist from the {@link ToolEngine}
  * (so the agent is advertised tools it can call). Previously {@code buildPersona} returned an empty
  * whitelist ({@code Set.of()}) — the agent was advertised ZERO tools and could call nothing.
  */
@@ -40,8 +40,8 @@ class PersonaToolWhitelistTest {
 
     private static final Duration EPISODE_TIMEOUT = Duration.ofSeconds(10);
 
-    /** A McpEngine stub that advertises one native tool (read_file). */
-    private static McpEngine engineWithReadFile() {
+    /** A ToolEngine stub that advertises one native tool (read_file). */
+    private static ToolEngine engineWithReadFile() {
         NativeToolDefinition read =
                 new NativeToolDefinition(
                         "read_file",
@@ -50,7 +50,7 @@ class PersonaToolWhitelistTest {
                         false,
                         Void.class,
                         Map.of("path", ParamCategory.FILESYSTEM_PATH));
-        return new McpEngine() {
+        return new ToolEngine() {
             @Override
             public List<ToolDefinition> getActiveTools(java.util.Set<String> whitelist) {
                 return List.of(read);
@@ -62,13 +62,13 @@ class PersonaToolWhitelistTest {
             }
 
             @Override
-            public McpToolResult execute(ToolCall call, ToolDefinition def) {
-                return new McpToolResult(call.toolName(), call.callId(), true, "");
+            public ToolResult execute(ToolCall call, ToolDefinition def) {
+                return new ToolResult(call.toolName(), call.callId(), true, "");
             }
         };
     }
 
-    private static AgentService serviceWith(McpEngine engine, UniformLLMCaller caller) {
+    private static AgentService serviceWith(ToolEngine engine, UniformLLMCaller caller) {
         ObjectMapper mapper = new ObjectMapper();
         PromptCompiler compiler =
                 new PromptCompiler(
@@ -123,7 +123,7 @@ class PersonaToolWhitelistTest {
 
     @Test
     void emptyEngineAdvertisesNoTools() {
-        // A no-op engine (DefaultMcpEngine returns empty) → no tools advertised (no regression).
+        // A no-op engine (DefaultToolEngine returns empty) → no tools advertised (no regression).
         List<VetoRequest> seen = new CopyOnWriteArrayList<>();
         UniformLLMCaller caller =
                 request -> {
@@ -131,7 +131,7 @@ class PersonaToolWhitelistTest {
                     return new VetoResponse(
                             "done", List.of(), "ok", new VetoResponse.Features(false), null);
                 };
-        AgentService service = serviceWith(new DefaultMcpEngine(), caller);
+        AgentService service = serviceWith(new DefaultToolEngine(), caller);
         assertDoesNotThrow(() -> service.submit("empty-test", "hi", binding(), EPISODE_TIMEOUT));
         assertFalse(seen.isEmpty());
         assertTrue(seen.get(0).tools().isEmpty(), "an empty engine advertises no tools");

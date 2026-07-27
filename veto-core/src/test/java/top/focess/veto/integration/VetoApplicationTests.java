@@ -11,8 +11,8 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.http.*;
 import org.springframework.web.client.RestTemplate;
 import top.focess.veto.VetoApplication;
-import top.focess.veto.agent.mcp.McpEngine;
-import top.focess.veto.agent.mcp.McpEngineImpl;
+import top.focess.veto.agent.mcp.ToolEngine;
+import top.focess.veto.agent.mcp.ToolEngineImpl;
 import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.memory.MemoryCaptureService;
 import top.focess.veto.observability.AuditLogger;
@@ -74,10 +74,10 @@ class VetoApplicationTests {
 
     @Test
     void mcpEngineImplIsActive() {
-        McpEngine engine = context.getBean(McpEngine.class);
-        assertNotNull(engine, "McpEngine bean should exist");
+        ToolEngine engine = context.getBean(ToolEngine.class);
+        assertNotNull(engine, "ToolEngine bean should exist");
         assertInstanceOf(
-                McpEngineImpl.class, engine, "McpEngineImpl should win over DefaultMcpEngine");
+                ToolEngineImpl.class, engine, "ToolEngineImpl should win over DefaultToolEngine");
     }
 
     @Test

@@ -5,14 +5,15 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
-import top.focess.veto.agent.mcp.McpEngine;
 import top.focess.veto.agent.mcp.ToolDefinition;
+import top.focess.veto.agent.mcp.ToolEngine;
 
 /**
  * Resolves the role-scoped tool manifest for an {@link AgentPersona}. The raw {@link
- * McpEngine#getActiveTools} set is the union of every registered native + agent + remote tool; that
- * full set is correct only for a top-level STANDALONE agent. A Leader (decomposes + arranges, never
- * executes task nodes itself) and a Mate (executes, never delegates) each see a different slice:
+ * ToolEngine#getActiveTools} set is the union of every registered native + agent + remote tool;
+ * that full set is correct only for a top-level STANDALONE agent. A Leader (decomposes + arranges,
+ * never executes task nodes itself) and a Mate (executes, never delegates) each see a different
+ * slice:
  *
  * <ul>
  *   <li><b>STANDALONE</b> - everything <em>except</em> the Leader-only arrangement tools ({@code
@@ -33,7 +34,7 @@ import top.focess.veto.agent.mcp.ToolDefinition;
  * </ul>
  *
  * <p>Filtering the <em>resolved</em> {@link ToolDefinition} list (post-{@code getActiveTools}) -
- * not the name-whitelist param - is deliberate: {@link McpEngine#getActiveTools} always includes
+ * not the name-whitelist param - is deliberate: {@link ToolEngine#getActiveTools} always includes
  * the agent tools ({@code load_skill}, {@code think}) regardless of the whitelist, so only a
  * post-resolution filter can scope them.
  */
@@ -79,9 +80,9 @@ public class RoleToolFilter {
                     "load_skill",
                     "think");
 
-    private final @NonNull McpEngine mcpEngine;
+    private final @NonNull ToolEngine mcpEngine;
 
-    public RoleToolFilter(@NonNull McpEngine mcpEngine) {
+    public RoleToolFilter(@NonNull ToolEngine mcpEngine) {
         this.mcpEngine = mcpEngine;
     }
 

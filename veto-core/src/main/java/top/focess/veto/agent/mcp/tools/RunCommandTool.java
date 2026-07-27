@@ -4,7 +4,7 @@ import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.mcp.Doc;
-import top.focess.veto.agent.mcp.NativeMcpTool;
+import top.focess.veto.agent.mcp.NativeTool;
 import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.SecurityHint;
@@ -13,19 +13,18 @@ import top.focess.veto.agent.mcp.ToolSecurity;
 import top.focess.veto.sandbox.SandboxSubstrate;
 
 /**
- * {@code run_command} — the special tool that executes arbitrary external processes. Transcribed
- * from.
+ * {@code run_command} — the special tool that executes arbitrary external processes.
  *
- * <p>This tool is registered as a {@link NativeMcpTool} so its schema is advertised in the
- * manifest, but its execution does <b>not</b> run a process in the host JVM: {@link
- * top.focess.veto.agent.mcp.McpEngine#execute} special-cases {@code run_command} and routes it
+ * <p>This tool is registered as a {@link NativeTool} so its schema is advertised in the manifest,
+ * but its execution does <b>not</b> run a process in the host JVM: {@link
+ * top.focess.veto.agent.mcp.ToolEngine#execute} special-cases {@code run_command} and routes it
  * through the session's {@link SandboxSubstrate} (no shell, argv[] direct exec, cwd locked,
  * Veto-controlled chaining). Consequently {@link #execute} is never invoked by the engine and
  * throws to make the special-casing explicit.
  */
 @Component
 @ToolSecurity(risk = RiskCategory.SHELL_EXEC)
-public final class RunCommandTool implements NativeMcpTool<RunCommandTool.Args> {
+public final class RunCommandTool implements NativeTool<RunCommandTool.Args> {
 
     /** A single discrete command in the chain. */
     public record CommandInput(
@@ -37,6 +36,9 @@ public final class RunCommandTool implements NativeMcpTool<RunCommandTool.Args> 
 
     @ToolDoc(
             description =
+                    "Run one or more commands inside the sandbox. The model lists discrete commands; "
+                            + "Veto connects them per `connect`.",
+            usage =
                     """
                     #### When to use
                     Use `run_command` to execute one or more discrete external programs inside the sandbox - \
@@ -56,7 +58,7 @@ public final class RunCommandTool implements NativeMcpTool<RunCommandTool.Args> 
                     Each `commands` entry is `{executable, args}` where `executable` is a bare binary name \
                     resolved against the exec allowlist (e.g. "gradle", "git") and `args` is an argv array of \
                     literal strings - no shell, no shell-driven glob/env expansion (Veto performs any expansion \
-                    itself). Execution does NOT run in the host JVM: McpEngine special-cases `run_command` and \
+                    itself). Execution does NOT run in the host JVM: ToolEngine special-cases `run_command` and \
                     routes it through the session's SandboxSubstrate - direct argv[] exec, cwd locked to `cwd`, \
                     no shell, Veto-controlled chaining. The `connect` mode decides how entries relate: \
                     `STOP_ON_FAILURE` (default) runs them in order and halts at the first non-zero exit; `RUN_ALL` \
@@ -129,7 +131,7 @@ public final class RunCommandTool implements NativeMcpTool<RunCommandTool.Args> 
     @Override
     public @NonNull String execute(@NonNull Args args) {
         throw new UnsupportedOperationException(
-                "run_command execution is routed through the Sandbox substrate by McpEngine.execute, "
-                        + "not through NativeMcpTool.execute.");
+                "run_command execution is routed through the Sandbox substrate by ToolEngine.execute, "
+                        + "not through NativeTool.execute.");
     }
 }

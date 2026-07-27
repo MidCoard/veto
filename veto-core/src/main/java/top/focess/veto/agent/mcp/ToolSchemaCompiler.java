@@ -15,10 +15,10 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Compiles the two human-friendly input-schema formats into canonical {@link ToolDefinition}
- * instances and Draft-7 JSON Schema..
+ * instances and Draft-7 JSON Schema.
  *
- * <p>This is the home of the {@code ToolDefinition.of(NativeMcpTool)} factory logic: the static
- * {@code of} convenience factories are intentionally absent from the shared {@link ToolDefinition}
+ * <p>This is the home of the {@code ToolDefinition.of(NativeTool)} factory logic: the static {@code
+ * of} convenience factories are intentionally absent from the shared {@link ToolDefinition}
  * interface (they are builders, not read surface); callers use {@link #compileNative} here to build
  * {@link NativeToolDefinition} instances.
  */
@@ -32,11 +32,11 @@ public final class ToolSchemaCompiler {
 
     /**
      * Compiles an already-instantiated Spring-managed native tool bean into a {@link
-     * NativeToolDefinition}. Native tools are Spring beans , so the bean instance is passed in —
+     * NativeToolDefinition}. Native tools are Spring beans, so the bean instance is passed in —
      * this method never {@code newInstance}s the tool (that would bypass Spring DI). It only
      * reflects over the class to derive the schema + security hints.
      */
-    public static @NonNull NativeToolDefinition compileNative(@NonNull NativeMcpTool<?> toolBean) {
+    public static @NonNull NativeToolDefinition compileNative(@NonNull NativeTool<?> toolBean) {
         Class<?> toolClass = toolBean.getClass();
         ToolSecurity security = toolClass.getAnnotation(ToolSecurity.class);
         if (security == null) {
@@ -46,11 +46,7 @@ public final class ToolSchemaCompiler {
 
         Class<?> argsClass = findArgsClass(toolClass);
 
-        Map<String, ParamCategory> hints = new LinkedHashMap<>();
-        for (RecordComponent component : argsClass.getRecordComponents()) {
-            SecurityHint hint = component.getAnnotation(SecurityHint.class);
-            hints.put(component.getName(), hint != null ? hint.value() : ParamCategory.GENERIC);
-        }
+        Map<String, ParamCategory> hints = hintsOf(argsClass);
 
         return new NativeToolDefinition(
                 toolBean.getName(),
@@ -59,6 +55,20 @@ public final class ToolSchemaCompiler {
                 security.requiresSemanticScreening(),
                 argsClass,
                 hints);
+    }
+
+    /**
+     * Reflects {@link SecurityHint} annotations off an args record's components into a map of
+     * parameter name to {@link ParamCategory}. Extracted from {@link #compileNative}'s inline loop
+     * so it can be reused by {@link AgentToolDefinition#from(Class)}.
+     */
+    public static @NonNull Map<String, ParamCategory> hintsOf(@NonNull Class<?> argsClass) {
+        Map<String, ParamCategory> hints = new LinkedHashMap<>();
+        for (RecordComponent c : argsClass.getRecordComponents()) {
+            SecurityHint h = c.getAnnotation(SecurityHint.class);
+            hints.put(c.getName(), h != null ? h.value() : ParamCategory.GENERIC);
+        }
+        return hints;
     }
 
     /**
@@ -154,16 +164,21 @@ public final class ToolSchemaCompiler {
         return schema;
     }
 
-    /** Walks the {@link NativeMcpTool} interface to find the type parameter (the args record). */
+    /**
+     * Walks the {@link NativeTool} or {@link AgentTool} interface to find the type parameter (the
+     * args record).
+     */
     static Class<?> findArgsClass(Class<?> toolClass) {
         for (var iface : toolClass.getGenericInterfaces()) {
-            if (iface instanceof java.lang.reflect.ParameterizedType pt
-                    && pt.getRawType() == NativeMcpTool.class) {
-                return (Class<?>) pt.getActualTypeArguments()[0];
+            if (iface instanceof java.lang.reflect.ParameterizedType pt) {
+                var rawType = pt.getRawType();
+                if (rawType == NativeTool.class || rawType == AgentTool.class) {
+                    return (Class<?>) pt.getActualTypeArguments()[0];
+                }
             }
         }
         throw new IllegalArgumentException(
-                toolClass.getName() + " must implement NativeMcpTool<T>");
+                toolClass.getName() + " must implement NativeTool<T> or AgentTool<T>");
     }
 
     private static String mapJavaTypeToSchemaType(Class<?> type) {

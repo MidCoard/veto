@@ -1,53 +1,73 @@
 package top.focess.veto.agent.mcp.tools;
 
+import org.jspecify.annotations.NonNull;
+import org.springframework.stereotype.Component;
+import top.focess.veto.agent.mcp.AgentTool;
 import top.focess.veto.agent.mcp.ToolDoc;
 
 /**
- * Parameter container for the {@code think} agent tool. {@code think} is an {@link
- * top.focess.veto.agent.mcp.AgentToolDefinition} (engine-provided, always-on, frictionless - the
- * Gateway returns {@code NotScreened} for agent tools). It is a no-op the agent calls to continue
- * its thought flow for another step when it has no concrete tool to invoke but is not ready to
- * conclude; the loop routes termination on call presence, so emitting {@code think} (a call) keeps
- * the episode alive. Carries no arguments.
+ * {@code think} — no-op placeholder call. Occupies a {@code calls[]} slot so the loop continues
+ * when the agent has no concrete tool to invoke but is not done.
+ *
+ * <p>Implements {@link AgentTool} — the record is both the args container and the tool bean. Agent
+ * tools carry {@link top.focess.veto.agent.mcp.RiskCategory#AGENT}; the Gateway returns {@code
+ * NotScreened}.
  */
+@Component
 @ToolDoc(
         description =
+                "No-op placeholder call. Occupies a calls[] slot so the loop continues "
+                        + "when you have no concrete tool to invoke but are not done.",
+        usage =
                 """
                 #### When to use
-                Use `think` to continue your reasoning for another step when you have no concrete tool to invoke \
-                but are not yet ready to conclude the turn - e.g. you have gathered partial information and want \
-                a step to consolidate it before acting, or you are mid-plan and want to lay out the next \
-                sub-goal before reaching for a tool.
-
-                It is a frictionless, always-available no-op: the Gateway returns `NotScreened` for agent tools, \
-                so it never blocks. Emitting `think` (a call) keeps the episode alive for one more step, because \
-                the loop keys termination off whether you emitted any call.
+                Use `think` when you want another turn but have no tool to call. The loop decides \
+                continue vs. stop by whether `calls` is non-empty. If you need another turn to \
+                reason, plan, or compose a message - and no real tool fits - call `think` as a \
+                placeholder. It keeps the episode alive.
 
                 #### When NOT to use
-                - Do not use `think` as a substitute for a real tool call when a tool would make progress - if you \
-                can read, search, or edit, do that instead.
-                - Do not use it to stall indefinitely; each `think` is a full round-trip. If you have enough to \
-                answer, produce your final message instead.
-                - Do not use it expecting a side effect; it changes nothing in the workspace or session state.
+                - Do not call `think` when a real tool would make progress - read, search, or edit \
+                instead.
+                - Do not call it when you are done - just omit `calls` and the episode stops.
+                - Do not call it expecting it to do anything - it is purely a placeholder.
 
                 #### Behavior
-                A pure no-op. It takes no arguments and performs no action. Its only effect is procedural: by \
-                occupying a `calls[]` slot it signals "keep going" to the agent loop, buying another reasoning \
-                step. The observation returned is an acknowledgement.
+                Does nothing. Returns nothing. Its only purpose is to make `calls` non-empty so the \
+                loop continues for one more turn.
 
                 #### Return format
-                An acknowledgement observation (no data). The value is the extra reasoning step, not the returned \
-                text.
+                Empty.
 
                 #### Errors & edge cases
-                - `think` cannot fail at the tool level (it does nothing). The only "error" is wasting a turn - \
-                use it sparingly.
-                - It carries no args; pass `{}`.
+                Cannot fail. The only cost is a wasted round-trip - use it only when you genuinely \
+                need another turn.
 
                 #### Security
-                `think` is an `AgentToolDefinition` (engine-provided, always-on). The Gateway returns \
-                `NotScreened` - no path, no content, no semantic screening. It touches nothing on the host. Safe \
-                to call any time.
+                Agent tool (`RiskCategory.AGENT`). The Gateway does not screen it. It touches \
+                nothing. Safe to call any time.
                 """,
         examples = {"{}"})
-public record ThinkArgs() {}
+public record ThinkArgs() implements AgentTool<ThinkArgs> {
+
+    @Override
+    public @NonNull String getName() {
+        return "think";
+    }
+
+    @Override
+    public @NonNull String getDescription() {
+        ToolDoc doc = ThinkArgs.class.getAnnotation(ToolDoc.class);
+        return (doc != null && !doc.description().isEmpty()) ? doc.description() : "";
+    }
+
+    @Override
+    public @NonNull Class<ThinkArgs> getArgsClass() {
+        return ThinkArgs.class;
+    }
+
+    @Override
+    public @NonNull String execute(@NonNull ThinkArgs args) {
+        return "";
+    }
+}

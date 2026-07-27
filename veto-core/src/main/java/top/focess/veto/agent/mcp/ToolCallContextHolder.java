@@ -10,21 +10,21 @@ import top.focess.veto.agent.TurnRecord;
 
 /**
  * Thread-local holder for {@link ToolCallContext}. {@link AgentRunner} sets the context before
- * calling {@link McpEngine#execute}, and {@link NativeMcpTool} implementations read it during
- * execution. This avoids changing the {@link NativeMcpTool} interface.
+ * calling {@link ToolEngine#execute}, and {@link NativeTool} / {@link AgentTool} implementations
+ * read it during execution. This avoids changing the tool interface contracts.
  *
  * <p><b>Usage in AgentRunner:</b>
  *
  * <pre>{@code
  * ToolCallContextHolder.set(agentId, userId);
  * try {
- *     McpToolResult result = mcpEngine.execute(call, def);
+ *     ToolResult result = toolEngine.execute(call, def);
  * } finally {
  *     ToolCallContextHolder.clear();
  * }
  * }</pre>
  *
- * <p><b>Usage in NativeMcpTool:</b>
+ * <p><b>Usage in a tool:</b>
  *
  * <pre>{@code
  * ToolCallContext ctx = ToolCallContextHolder.get();

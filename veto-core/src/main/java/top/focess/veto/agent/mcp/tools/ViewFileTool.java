@@ -9,7 +9,7 @@ import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.mcp.Doc;
-import top.focess.veto.agent.mcp.NativeMcpTool;
+import top.focess.veto.agent.mcp.NativeTool;
 import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.SecurityHint;
@@ -19,11 +19,12 @@ import top.focess.veto.agent.mcp.ToolSecurity;
 /** {@code view_file} — read lines of a text file from the local filesystem. */
 @Component
 @ToolSecurity(risk = RiskCategory.READ_ONLY)
-public final class ViewFileTool implements NativeMcpTool<ViewFileTool.Args> {
+public final class ViewFileTool implements NativeTool<ViewFileTool.Args> {
 
     /** Parameter container for {@code view_file}. */
     @ToolDoc(
-            description =
+            description = "Read lines of a text file from the local filesystem.",
+            usage =
                     """
                     #### When to use
                     Use `view_file` to read the contents of a text file from the local filesystem - to inspect \

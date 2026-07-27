@@ -1,6 +1,6 @@
 package top.focess.veto.agent.intercept;
 
-import top.focess.veto.agent.mcp.McpToolResult;
+import top.focess.veto.agent.mcp.ToolResult;
 import top.focess.veto.llm.core.ToolCall;
 
 /**
@@ -28,7 +28,7 @@ public interface LoopInterceptor {
      * Fired after tool execution but before the observation is masked/framed. Each plugin may
      * transform or redact the result.
      */
-    McpToolResult postAction(String agentId, ToolCall call, McpToolResult result);
+    ToolResult postAction(String agentId, ToolCall call, ToolResult result);
 
     /**
      * Fired before an observation enters the prompt compiler (after ingress defense has

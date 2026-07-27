@@ -29,8 +29,8 @@ import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.intercept.InterceptResolution;
 import top.focess.veto.agent.intercept.LoopInterceptor;
 import top.focess.veto.agent.loop.PromptCompiler;
-import top.focess.veto.agent.mcp.McpEngine;
 import top.focess.veto.agent.mcp.ToolDefinition;
+import top.focess.veto.agent.mcp.ToolEngine;
 import top.focess.veto.agent.screening.DangerComputation;
 import top.focess.veto.agent.screening.DeployerPolicy;
 import top.focess.veto.agent.screening.ProtectedSet;
@@ -56,7 +56,7 @@ public class AgentService {
     private static final Logger log = LoggerFactory.getLogger(AgentService.class);
     private static final Duration DEFAULT_AWAIT = Duration.ofMinutes(5);
 
-    private final McpEngine mcpEngine;
+    private final ToolEngine mcpEngine;
     private final HitlRegistry hitlRegistry;
     private final IngressDefense ingressDefense;
     private final PromptCompiler promptCompiler;
@@ -85,7 +85,7 @@ public class AgentService {
     private final ConcurrentHashMap<String, VetoAgent> agents = new ConcurrentHashMap<>();
 
     public AgentService(
-            @NonNull McpEngine mcpEngine,
+            @NonNull ToolEngine mcpEngine,
             @NonNull HitlRegistry hitlRegistry,
             @NonNull IngressDefense ingressDefense,
             @NonNull PromptCompiler promptCompiler,
@@ -438,7 +438,7 @@ public class AgentService {
     }
 
     /**
-     * Builds the agent persona. Resolves the tool set from the {@link McpEngine}'s active native +
+     * Builds the agent persona. Resolves the tool set from the {@link ToolEngine}'s active native +
      * remote + agent tools (agent tools like {@code load_skill} and {@code think} are always-on
      * control/meta tools, included in every agent's manifest). Full {@code ~/.veto/} persona
      * resolution (skills, per-agent tool grants) is not yet wired — the default grants all

@@ -13,7 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import top.focess.veto.agent.identity.Role;
 import top.focess.veto.agent.identity.SystemPromptResolver;
-import top.focess.veto.agent.mcp.McpEngine;
+import top.focess.veto.agent.mcp.ToolEngine;
 import top.focess.veto.agent.screening.DeployerPolicy;
 import top.focess.veto.agent.translation.CapabilityTranslator;
 import top.focess.veto.agent.workspace.Workspace;
@@ -21,7 +21,7 @@ import top.focess.veto.llm.core.ToolDefinition;
 
 /**
  * Diagnostic dump: compiles the FULL system prompt for each role/policy combination using the REAL
- * tool catalog (from {@link McpEngine}), the REAL {@code default-system-prompt.md} template, and
+ * tool catalog (from {@link ToolEngine}), the REAL {@code default-system-prompt.md} template, and
  * the REAL resolved {@code VETO.md} law - then writes each rendered prompt to {@code
  * veto-core/build/prompt-dump/} for human inspection.
  *
@@ -36,7 +36,7 @@ import top.focess.veto.llm.core.ToolDefinition;
  * {@link PromptTemplate}), so what you read is exactly what a real agent turn would receive.
  *
  * <p><b>Note:</b> tools are the FULL registered set for every role today - {@link
- * McpEngine#getActiveTools} is called with a {@code null} whitelist, matching current {@code
+ * ToolEngine#getActiveTools} is called with a {@code null} whitelist, matching current {@code
  * AgentService.buildPersona} behavior. That the {@code ## Your Tools} block is identical across
  * STANDALONE/LEADER/MATE is itself one of the issues this dump exists to surface (role-based tool
  * scoping is not yet implemented).
@@ -46,7 +46,7 @@ class SystemPromptDumpTest {
 
     private static final Path DUMP_DIR = Path.of("build", "prompt-dump");
 
-    @Autowired private McpEngine mcpEngine;
+    @Autowired private ToolEngine mcpEngine;
     @Autowired private CapabilityTranslator translator;
     @Autowired private Workspace workspace;
 

@@ -5,25 +5,25 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jspecify.annotations.NonNull;
 
 /**
- * Contract for a native in-process MCP tool. The implementing class (a Java record carrying the
- * tool's structured parameters) must be annotated with {@link ToolSecurity} to declare its risk
- * category, and each parameter record component may carry a {@link SecurityHint} so the Gateway
- * knows how to screen individual arguments.
- *
- * <p>The implementing record is both the parameter container and the tool bean: {@link
+ * Contract for an agent-internal control/meta tool. The implementing class (a Java record carrying
+ * the tool's structured parameters) is both the parameter container and the tool bean: {@link
  * #getArgsClass} returns the record itself, and {@link #execute(Object)} runs the tool's typed
- * logic. The {@link ToolSchemaCompiler#compileNative} factory reflects over the bean to derive its
- * {@link NativeToolDefinition} (schema + security hints) without ever instantiating it — the bean
- * instance is Spring-managed.
+ * logic.
+ *
+ * <p>Agent tools carry {@link RiskCategory#AGENT} — the Gateway does not path/semantic-screen them.
+ * They still flow through the LoopInterceptor chain for audit.
+ *
+ * <p>Registration: {@link ToolEngineImpl} discovers all {@code AgentTool<?>} beans via Spring and
+ * builds an {@link AgentToolDefinition} from each via {@link AgentToolDefinition#from(Class)}.
  *
  * @param <T> the Java record representing the tool's structured parameters
  */
-public interface NativeMcpTool<T> {
+public interface AgentTool<T> {
 
-    /** The unique name of the tool (e.g. {@code "view_file"}). */
+    /** The unique name of the tool (e.g. {@code "think"}). */
     @NonNull String getName();
 
-    /** The description explaining when and how the LLM should invoke the tool. */
+    /** The one-liner description — what the tool is. */
     @NonNull String getDescription();
 
     /**

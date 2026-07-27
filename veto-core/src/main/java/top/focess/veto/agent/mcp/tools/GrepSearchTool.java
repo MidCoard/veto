@@ -10,7 +10,7 @@ import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.mcp.Doc;
-import top.focess.veto.agent.mcp.NativeMcpTool;
+import top.focess.veto.agent.mcp.NativeTool;
 import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.SecurityHint;
@@ -20,10 +20,11 @@ import top.focess.veto.agent.mcp.ToolSecurity;
 /** {@code grep_search} — search for exact pattern matches inside files. */
 @Component
 @ToolSecurity(risk = RiskCategory.READ_ONLY)
-public final class GrepSearchTool implements NativeMcpTool<GrepSearchTool.Args> {
+public final class GrepSearchTool implements NativeTool<GrepSearchTool.Args> {
 
     @ToolDoc(
-            description =
+            description = "Search for exact pattern matches inside files.",
+            usage =
                     """
                     #### When to use
                     Use `grep_search` to locate every occurrence of an exact text pattern across a tree of files \

@@ -7,23 +7,21 @@ import java.nio.file.Path;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.mcp.Doc;
-import top.focess.veto.agent.mcp.NativeMcpTool;
+import top.focess.veto.agent.mcp.NativeTool;
 import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.SecurityHint;
 import top.focess.veto.agent.mcp.ToolDoc;
 import top.focess.veto.agent.mcp.ToolSecurity;
 
-/**
- * {@code write_to_file} — create a new file or completely overwrite an existing file. Transcribed
- * from.
- */
+/** {@code write_to_file} — create a new file or completely overwrite an existing file. */
 @Component
 @ToolSecurity(risk = RiskCategory.FILE_WRITE)
-public final class WriteToFileTool implements NativeMcpTool<WriteToFileTool.Args> {
+public final class WriteToFileTool implements NativeTool<WriteToFileTool.Args> {
 
     @ToolDoc(
-            description =
+            description = "Create a new file or completely overwrite an existing file.",
+            usage =
                     """
                     #### When to use
                     Use `write_to_file` to create a new file or to completely replace an existing file's \

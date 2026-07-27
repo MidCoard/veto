@@ -23,12 +23,12 @@ import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.intercept.InterceptResolution;
 import top.focess.veto.agent.intercept.VetoOption;
 import top.focess.veto.agent.loop.PromptCompiler;
-import top.focess.veto.agent.mcp.McpEngine;
-import top.focess.veto.agent.mcp.McpToolResult;
 import top.focess.veto.agent.mcp.NativeToolDefinition;
 import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.ToolDefinition;
+import top.focess.veto.agent.mcp.ToolEngine;
+import top.focess.veto.agent.mcp.ToolResult;
 import top.focess.veto.agent.screening.Danger;
 import top.focess.veto.agent.screening.DangerComputation;
 import top.focess.veto.agent.screening.DeployerPolicy;
@@ -71,7 +71,7 @@ class NewRequirementsTest {
 
     public record ReadArgs(String path) {}
 
-    private static class TestMcpEngine implements McpEngine {
+    private static class TestToolEngine implements ToolEngine {
         private final Map<String, ToolDefinition> tools = new java.util.HashMap<>();
 
         public void register(ToolDefinition def) {
@@ -89,8 +89,8 @@ class NewRequirementsTest {
         }
 
         @Override
-        public McpToolResult execute(ToolCall call, ToolDefinition def) {
-            return new McpToolResult(call.toolName(), call.callId(), true, "success");
+        public ToolResult execute(ToolCall call, ToolDefinition def) {
+            return new ToolResult(call.toolName(), call.callId(), true, "success");
         }
     }
 
@@ -112,7 +112,7 @@ class NewRequirementsTest {
 
     @Test
     void refusedHoldsBatchAndDisplaysNotice() throws Exception {
-        TestMcpEngine mcpEngine = new TestMcpEngine();
+        TestToolEngine mcpEngine = new TestToolEngine();
         mcpEngine.register(execDef());
 
         AtomicReference<String> streamedMessage = new AtomicReference<>();
@@ -268,7 +268,7 @@ class NewRequirementsTest {
 
     @Test
     void nativeBridgeDisconnectTriggersIdle() throws Exception {
-        TestMcpEngine mcpEngine = new TestMcpEngine();
+        TestToolEngine mcpEngine = new TestToolEngine();
 
         UniformLLMCaller caller =
                 request -> {
