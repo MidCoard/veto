@@ -23,14 +23,13 @@ import top.focess.veto.llm.core.ProviderType;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.llm.core.VetoRequest;
 import top.focess.veto.llm.core.VetoResponse;
-import top.focess.veto.memory.InMemoryMemoryStore;
-import top.focess.veto.memory.Memory;
-import top.focess.veto.memory.MemoryCaptureService;
-import top.focess.veto.memory.embedder.HashEmbedder;
+import top.focess.veto.memory.TurnLogService;
+import top.focess.veto.memory.TurnRecordEntity;
+import top.focess.veto.memory.TurnRecordRepository;
 
 /**
  * Tests that per-user identity is threaded from the transport through {@link AgentService#submit}
- * to {@link AgentRunner}, ensuring memory capture and group ownership use the supplied userId
+ * to {@link AgentRunner}, ensuring the raw-turn log and group ownership use the supplied userId
  * instead of the default placeholder.
  */
 class PerUserIdentityTest {
@@ -39,7 +38,7 @@ class PerUserIdentityTest {
     private static final UUID TEST_USER_ID =
             UUID.fromString("12345678-1234-1234-1234-123456789abc");
 
-    private static AgentService serviceWith(UniformLLMCaller caller, MemoryCaptureService capture) {
+    private static AgentService serviceWith(UniformLLMCaller caller, TurnLogService turnLog) {
         ObjectMapper mapper = new ObjectMapper();
         PromptCompiler compiler =
                 new PromptCompiler(
@@ -63,7 +62,7 @@ class PerUserIdentityTest {
                 "FULL_ACCESS",
                 "STRICT",
                 null,
-                capture);
+                turnLog);
     }
 
     private static AgentRunner.LlmBinding binding() {
@@ -76,14 +75,13 @@ class PerUserIdentityTest {
     }
 
     /**
-     * RED: Verify that a supplied userId flows through submit → createAgent → AgentRunner → memory
-     * capture. The existing submit overload has no userId parameter, so this test will fail to
-     * compile until the new overload is added.
+     * Verify that a supplied userId flows through submit → createAgent → AgentRunner → the raw-turn
+     * log.
      */
     @Test
-    void suppliedUserIdFlowsToMemoryCapture() throws Exception {
-        InMemoryMemoryStore store = new InMemoryMemoryStore(new HashEmbedder());
-        MemoryCaptureService capture = new MemoryCaptureService(store, null, null);
+    void suppliedUserIdFlowsToTurnLog() throws Exception {
+        TurnRecordRepository repo = org.mockito.Mockito.mock(TurnRecordRepository.class);
+        TurnLogService turnLog = new TurnLogService(repo, new ObjectMapper());
 
         List<VetoRequest> seenRequests = new CopyOnWriteArrayList<>();
         UniformLLMCaller caller =
@@ -97,7 +95,7 @@ class PerUserIdentityTest {
                             null);
                 };
 
-        AgentService service = serviceWith(caller, capture);
+        AgentService service = serviceWith(caller, turnLog);
 
         // Submit with explicit userId (this is the new API we're testing)
         AgentResult result =
@@ -105,34 +103,29 @@ class PerUserIdentityTest {
 
         assertTrue(result.success(), "Episode should complete successfully");
 
-        // Verify memory was captured under the supplied userId, not DEFAULT_USER_ID
-        // The memory is captured under SESSION tier, so use snapshot for direct inspection
-        var snapshot = store.snapshot();
-        assertFalse(snapshot.isEmpty(), "Memory should be captured");
-
-        // Find a memory for our userId
-        Memory forOurUser =
-                snapshot.values().stream()
-                        .filter(m -> m.userId().equals(TEST_USER_ID))
-                        .findFirst()
-                        .orElse(null);
-        assertNotNull(forOurUser, "Memory should be captured for the supplied userId");
+        // Verify turns were logged under the supplied userId, not DEFAULT_USER_ID
+        org.mockito.ArgumentCaptor<TurnRecordEntity> captor =
+                org.mockito.ArgumentCaptor.forClass(TurnRecordEntity.class);
+        org.mockito.Mockito.verify(repo, org.mockito.Mockito.atLeastOnce()).save(captor.capture());
+        TurnRecordEntity first = captor.getAllValues().get(0);
         assertEquals(
-                TEST_USER_ID, forOurUser.userId(), "Captured memory should have supplied userId");
+                TEST_USER_ID.toString(),
+                first.getUserId(),
+                "Logged turn should carry the supplied userId");
         assertNotEquals(
-                AgentService.DEFAULT_USER_ID,
-                forOurUser.userId(),
-                "Captured userId should not be the default placeholder");
+                AgentService.DEFAULT_USER_ID.toString(),
+                first.getUserId(),
+                "Logged userId should not be the default placeholder");
     }
 
     /**
-     * GREEN path: the backwards-compatible overload (userId defaults to DEFAULT_USER_ID) still
-     * works and captures under the default.
+     * The backwards-compatible overload (userId defaults to DEFAULT_USER_ID) still works and logs
+     * under the default.
      */
     @Test
     void defaultUserIdUsedWhenNotSupplied() throws Exception {
-        InMemoryMemoryStore store = new InMemoryMemoryStore(new HashEmbedder());
-        MemoryCaptureService capture = new MemoryCaptureService(store, null, null);
+        TurnRecordRepository repo = org.mockito.Mockito.mock(TurnRecordRepository.class);
+        TurnLogService turnLog = new TurnLogService(repo, new ObjectMapper());
 
         UniformLLMCaller caller =
                 request ->
@@ -143,17 +136,18 @@ class PerUserIdentityTest {
                                 new VetoResponse.Features(false),
                                 null);
 
-        AgentService service = serviceWith(caller, capture);
+        AgentService service = serviceWith(caller, turnLog);
 
         // Use the existing overload (no userId parameter)
         AgentResult result = service.submit("test-agent-default", "Hello", binding());
 
         assertTrue(result.success());
 
-        // Memory captured under DEFAULT_USER_ID
-        var snapshot = store.snapshot();
-        assertFalse(snapshot.isEmpty());
-        Memory first = snapshot.values().iterator().next();
-        assertEquals(AgentService.DEFAULT_USER_ID, first.userId());
+        // Turns logged under DEFAULT_USER_ID
+        org.mockito.ArgumentCaptor<TurnRecordEntity> captor =
+                org.mockito.ArgumentCaptor.forClass(TurnRecordEntity.class);
+        org.mockito.Mockito.verify(repo, org.mockito.Mockito.atLeastOnce()).save(captor.capture());
+        TurnRecordEntity first = captor.getAllValues().get(0);
+        assertEquals(AgentService.DEFAULT_USER_ID.toString(), first.getUserId());
     }
 }

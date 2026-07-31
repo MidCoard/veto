@@ -21,26 +21,23 @@ import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.llm.core.ProviderType;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.llm.core.VetoResponse;
-import top.focess.veto.memory.InMemoryMemoryStore;
-import top.focess.veto.memory.MemoryCaptureService;
+import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.memory.TurnRecordEntity;
 import top.focess.veto.memory.TurnRecordRepository;
-import top.focess.veto.memory.embedder.HashEmbedder;
 
 /**
- * Verifies the capture wiring end-to-end: an agent's {@code appendTurn} (driven by a submitted
- * prompt) captures each turn into the Session LTM store AND the raw-turn repository via {@link
- * MemoryCaptureService}. Previously {@code MemoryCaptureService} was never called by the loop.
+ * Verifies the turn-log wiring end-to-end: an agent's {@code appendTurn} (driven by a submitted
+ * prompt) persists each turn to the raw-turn repository via {@link TurnLogService}. Turn
+ * persistence is session state - nothing feeds LTM (agent-written only, via {@code write_memory}).
  */
-class MemoryCaptureWiringTest {
+class TurnLogWiringTest {
 
     private static final Duration EPISODE_TIMEOUT = Duration.ofSeconds(10);
 
     @Test
-    void submittedEpisodeCapturesTurnsIntoStoreAndRawLog() throws Exception {
-        InMemoryMemoryStore store = new InMemoryMemoryStore(new HashEmbedder());
+    void submittedEpisodeLogsTurnsIntoRawLog() throws Exception {
         TurnRecordRepository repo = mock(TurnRecordRepository.class);
-        MemoryCaptureService capture = new MemoryCaptureService(store, repo, new ObjectMapper());
+        TurnLogService turnLog = new TurnLogService(repo, new ObjectMapper());
 
         ObjectMapper mapper = new ObjectMapper();
         PromptCompiler compiler =
@@ -66,11 +63,11 @@ class MemoryCaptureWiringTest {
                         "FULL_ACCESS",
                         "STRICT",
                         null,
-                        capture);
+                        turnLog);
 
         AgentResult result =
                 service.submit(
-                        "capture-test",
+                        "turn-log-test",
                         "What is 2 + 2?",
                         new AgentRunner.LlmBinding(
                                 ProviderType.DEEPSEEK,
@@ -81,7 +78,6 @@ class MemoryCaptureWiringTest {
                         EPISODE_TIMEOUT);
 
         assertTrue(result.success(), "the episode finishes");
-        assertFalse(store.size() == 0, "turns were captured into Session LTM");
         verify(repo, atLeastOnce()).save(any(TurnRecordEntity.class));
     }
 

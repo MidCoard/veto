@@ -41,4 +41,12 @@ public @interface ToolDoc {
 
     /** Concrete usage examples (args-object strings); empty by default. */
     String[] examples() default {};
+
+    /**
+     * Concrete return-value examples; the i-th entry corresponds to the i-th {@link #examples()}
+     * entry (and the counts must match). Each must obey the plaintext result format: {@code \n} as
+     * the line/record splitter, flat {@code key=value} inline fields, a short prose header, no
+     * pseudo-JSON and no truncation. Empty by default.
+     */
+    String[] returnExamples() default {};
 }

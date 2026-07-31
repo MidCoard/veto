@@ -3,14 +3,17 @@ package top.focess.veto.group;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.locks.ReentrantLock;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
 /**
@@ -46,6 +49,14 @@ public class GroupOrchestrator {
     private final @NonNull Blackboard blackboard;
     private final @NonNull HeuristicLeader leader;
 
+    /**
+     * Lazy Mate provisioning (Model B). When wired (production), the orchestrator provisions a Mate
+     * on demand for a dispatchable node whose skillset has no Mate yet - instead of the Leader
+     * spawning Mates upfront. Null in the test constructors, which fall back to {@link
+     * HeuristicLeader#assignMates} + pre-assigned Mates.
+     */
+    private final @Nullable MateProvisioner provisioner;
+
     /** Per-group ledger of last-seen turnSeq so each tick only processes new messages. */
     private final ConcurrentMap<UUID, Long> lastSeenSeq = new ConcurrentHashMap<>();
 
@@ -60,21 +71,25 @@ public class GroupOrchestrator {
     private final MateExecutor mateExecutor = new MateExecutor();
 
     public GroupOrchestrator() {
-        this(new GroupRegistry(), new Blackboard(), new HeuristicLeader());
+        this(new GroupRegistry(), new Blackboard(), new HeuristicLeader(), null);
     }
 
     public
     @NonNull
     GroupOrchestrator(@NonNull GroupRegistry registry, @NonNull Blackboard blackboard) {
-        this(registry, blackboard, new HeuristicLeader());
+        this(registry, blackboard, new HeuristicLeader(), null);
     }
 
     @Autowired
     public GroupOrchestrator(
-            GroupRegistry registry, Blackboard blackboard, HeuristicLeader leader) {
+            GroupRegistry registry,
+            Blackboard blackboard,
+            HeuristicLeader leader,
+            @Lazy @Nullable MateProvisioner provisioner) {
         this.registry = registry;
         this.blackboard = blackboard;
         this.leader = leader;
+        this.provisioner = provisioner;
     }
 
     /** Construct with an LlmLeader (extracts the heuristic fallback for direct calls). */
@@ -87,10 +102,174 @@ public class GroupOrchestrator {
         this.registry = registry;
         this.blackboard = blackboard;
         this.leader = llmLeader.heuristic();
+        this.provisioner = null;
     }
 
     public HeuristicLeader getLeader() {
         return leader;
+    }
+
+    /**
+     * Lazy Mate provisioning: create + start a Mate of the given skillset for the group and return
+     * its id. The orchestrator calls this in {@link #dispatch} for a dispatchable node whose
+     * skillset has no Mate yet. The provisioner must NOT update the group registry (the
+     * orchestrator owns that, atomically, after provisioning) - it only creates + starts the Mate
+     * agent.
+     */
+    @FunctionalInterface
+    public interface MateProvisioner {
+        @NonNull String provision(@NonNull UUID groupId, @NonNull String skillset);
+    }
+
+    /**
+     * The outcome of a {@code create_node} / {@code remove_node} structural edit. The orchestrator
+     * is the DAG's single authoritative writer: every edit is one atomic, validated change, and the
+     * tool routes on this return value (never on a state snapshot captured before the call).
+     */
+    public sealed interface NodeEdit {
+
+        /** The edit was applied. */
+        record Applied() implements NodeEdit {}
+
+        /** The edit was rejected; {@code reason} explains why and what to do next. */
+        record Rejected(@NonNull String reason) implements NodeEdit {}
+    }
+
+    /** Run {@code op} under the per-group lock (shared with {@link #tick}). */
+    private <T> T withGroupLock(@NonNull UUID groupId, java.util.function.Supplier<T> op) {
+        ReentrantLock lock = tickLocks.computeIfAbsent(groupId, k -> new ReentrantLock());
+        lock.lock();
+        try {
+            return op.get();
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * Add a node to the group's plan (the {@code create_node} op). Atomic and validated: the group
+     * must be active, the id unique, and every dependency must reference an existing, live (not
+     * STALE) node - so the plan stays acyclic by construction. The new node starts PENDING; the
+     * next tick dispatches it once its dependencies verify.
+     */
+    public @NonNull NodeEdit addNode(
+            @NonNull UUID groupId,
+            @NonNull String nodeId,
+            @NonNull String description,
+            @NonNull String skillset,
+            @NonNull Set<String> dependsOn) {
+        return withGroupLock(
+                groupId,
+                () -> {
+                    Group group = registry.get(groupId);
+                    if (group == null) {
+                        return new NodeEdit.Rejected("group not found: " + groupId);
+                    }
+                    if (!group.isActive()) {
+                        return new NodeEdit.Rejected("group is no longer active");
+                    }
+                    if (nodeId.isBlank()) {
+                        return new NodeEdit.Rejected("blank node id");
+                    }
+                    if (description.isBlank()) {
+                        return new NodeEdit.Rejected("blank description");
+                    }
+                    if (skillset.isBlank()) {
+                        return new NodeEdit.Rejected("blank skillset");
+                    }
+                    ExecutionDag dag = group.dag();
+                    if (dag.nodeIds().contains(nodeId)) {
+                        return new NodeEdit.Rejected(
+                                nodeId + " already exists. Choose a unique id.");
+                    }
+                    for (String dep : dependsOn) {
+                        DagNode d = null;
+                        for (DagNode n : dag.nodes()) {
+                            if (n.nodeId().equals(dep)) {
+                                d = n;
+                                break;
+                            }
+                        }
+                        if (d == null) {
+                            return new NodeEdit.Rejected(
+                                    "unknown dependency "
+                                            + dep
+                                            + ". Create dependencies before the nodes that need"
+                                            + " them.");
+                        }
+                        if (d.state() == DagNode.NodeState.STALE) {
+                            return new NodeEdit.Rejected(
+                                    "dependency "
+                                            + dep
+                                            + " was retired (stale). Re-plan around it.");
+                        }
+                    }
+                    DagNode node = DagNode.pending(nodeId, description, skillset, dependsOn);
+                    List<DagNode> next = new ArrayList<>(dag.nodes());
+                    next.add(node);
+                    registry.put(group.withDag(dag.withNodes(next)));
+                    return new NodeEdit.Applied();
+                });
+    }
+
+    /**
+     * Retire a node from the group's plan (the {@code remove_node} op): marks it STALE (kept in the
+     * plan record for audit; never dispatched again). Refused when the node is unknown, already
+     * STALE, VERIFIED (checkpointed), or still has live dependents (named in the rejection).
+     */
+    public @NonNull NodeEdit removeNode(@NonNull UUID groupId, @NonNull String nodeId) {
+        return withGroupLock(
+                groupId,
+                () -> {
+                    Group group = registry.get(groupId);
+                    if (group == null) {
+                        return new NodeEdit.Rejected("group not found: " + groupId);
+                    }
+                    if (!group.isActive()) {
+                        return new NodeEdit.Rejected("group is no longer active");
+                    }
+                    ExecutionDag dag = group.dag();
+                    DagNode target = null;
+                    List<String> liveDependents = new ArrayList<>();
+                    for (DagNode n : dag.nodes()) {
+                        if (n.nodeId().equals(nodeId)) {
+                            target = n;
+                        } else if (n.dependsOn().contains(nodeId)
+                                && n.state() != DagNode.NodeState.STALE
+                                && n.state() != DagNode.NodeState.VERIFIED) {
+                            liveDependents.add(n.nodeId());
+                        }
+                    }
+                    if (target == null) {
+                        return new NodeEdit.Rejected("node not found: " + nodeId);
+                    }
+                    if (target.state() == DagNode.NodeState.STALE) {
+                        return new NodeEdit.Rejected(nodeId + " is already retired (stale).");
+                    }
+                    if (target.state() == DagNode.NodeState.VERIFIED) {
+                        return new NodeEdit.Rejected(
+                                nodeId + " is verified; verified work is checkpointed and stays.");
+                    }
+                    if (!liveDependents.isEmpty()) {
+                        return new NodeEdit.Rejected(
+                                String.join(", ", liveDependents)
+                                        + " depends on "
+                                        + nodeId
+                                        + ". Remove or re-plan it first.");
+                    }
+                    DagNode stale =
+                            new DagNode(
+                                    target.nodeId(),
+                                    target.description(),
+                                    target.assignedMateId(),
+                                    target.requiredSkillset(),
+                                    target.dependsOn(),
+                                    DagNode.NodeState.STALE,
+                                    target.result(),
+                                    target.retryCount());
+                    registry.put(group.withDag(dag.withNode(nodeId, stale)));
+                    return new NodeEdit.Applied();
+                });
     }
 
     /**
@@ -103,13 +282,7 @@ public class GroupOrchestrator {
      * Different groups can tick concurrently.
      */
     public @NonNull Group tick(@NonNull UUID groupId) {
-        ReentrantLock lock = tickLocks.computeIfAbsent(groupId, k -> new ReentrantLock());
-        lock.lock();
-        try {
-            return tickInner(groupId);
-        } finally {
-            lock.unlock();
-        }
+        return withGroupLock(groupId, () -> tickInner(groupId));
     }
 
     /** Inner tick logic — called under the per-group lock. */
@@ -122,11 +295,16 @@ public class GroupOrchestrator {
             return group;
         }
 
-        // 0. Leader's "reasoning" step: assign Mates to PENDING nodes that have no Mate yet.
-        //    (A real LLM Leader would author the DAG + assignment upfront; the HeuristicLeader
-        //    assigns at tick time as a stand-in.)
-        group = leader.assignMates(group);
-        registry.put(group);
+        // 0. Leader's "reasoning" step: assign Mates to PENDING nodes that have no Mate yet. Only
+        //    used when no lazy provisioner is wired (the test path) - the HeuristicLeader assigns
+        // at
+        //    tick time as a stand-in. In production (provisioner wired), Mates are provisioned
+        // lazily
+        //    in dispatch() instead, so this step is skipped.
+        if (provisioner == null) {
+            group = leader.assignMates(group);
+            registry.put(group);
+        }
 
         // 1. Ingest new Blackboard messages addressed to the Leader.
         long seen = lastSeenSeq.getOrDefault(groupId, 0L);
@@ -256,11 +434,24 @@ public class GroupOrchestrator {
     private Group dispatch(Group group) {
         ExecutionDag dag = group.dag();
         for (DagNode n : dag.dispatchable()) {
-            if (n.assignedMateId() == null) {
-                // Leader hasn't assigned this node yet. For the MVP the orchestrator
-                // just marks it as STALE and expects the Leader to re-plan. A real Leader
-                // would assign a Mate based on skillset.
-                continue;
+            String mateId = n.assignedMateId();
+            if (mateId == null) {
+                if (provisioner == null) {
+                    // No lazy provisioning (test path); assignMates handles assignment, so an
+                    // unassigned dispatchable node just waits for the next tick.
+                    continue;
+                }
+                // Reuse an existing Mate of the required skillset if one exists; otherwise
+                // provision
+                // one lazily. The provisioner starts the Mate agent but does NOT touch the registry
+                // - the group update below (withMate + node assignment) is persisted atomically at
+                // the end of the tick, so no Mate registration is lost to a stale-snapshot write.
+                mateId = existingMateOfSkillset(group, n.requiredSkillset());
+                if (mateId == null) {
+                    mateId = provisioner.provision(group.groupId(), n.requiredSkillset());
+                    group = group.withMate(mateId, n.requiredSkillset());
+                    dag = group.dag();
+                }
             }
             String task = n.description();
             String dispatchPayload = n.nodeId() + ":" + task;
@@ -269,7 +460,7 @@ public class GroupOrchestrator {
                             UUID.randomUUID().toString(),
                             group.groupId(),
                             "LEADER",
-                            n.assignedMateId(),
+                            mateId,
                             BlackboardMessage.MessageType.TASK_DISPATCH,
                             dispatchPayload,
                             0);
@@ -280,14 +471,28 @@ public class GroupOrchestrator {
                             new DagNode(
                                     n.nodeId(),
                                     n.description(),
-                                    n.assignedMateId(),
+                                    mateId,
                                     n.requiredSkillset(),
                                     n.dependsOn(),
                                     DagNode.NodeState.RUNNING,
                                     new DagNode.ResultNone()));
             group = group.withDag(next);
+            dag = next;
         }
         return group;
+    }
+
+    /** Returns the id of any existing Mate of the given skillset, or null if none exists. */
+    private static @Nullable String existingMateOfSkillset(Group group, String skillset) {
+        if (skillset == null || skillset.isBlank()) {
+            return null;
+        }
+        for (var entry : group.mates().entrySet()) {
+            if (skillset.equals(entry.getValue())) {
+                return entry.getKey();
+            }
+        }
+        return null;
     }
 
     /**

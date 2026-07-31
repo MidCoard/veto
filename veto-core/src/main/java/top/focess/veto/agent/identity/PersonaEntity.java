@@ -11,7 +11,12 @@ import top.focess.veto.agent.skills.Skill;
 /**
  * JPA persistence for {@link AgentPersona} (Part 5 persona DB persistence). The persona's skills +
  * whitelisted tools are persisted as comma-separated values; the production wiring would resolve
- * tool names → {@link ToolDefinition} and skill names → {@link Skill} at load time.
+ * tool names -> {@link ToolDefinition} and skill names -> {@link Skill} at load time.
+ *
+ * <p>The model tier is not persisted here - it lives on the {@link
+ * top.focess.veto.model.AgentEntity} (sourced from the pattern) and is resolved to a concrete model
+ * by the {@link top.focess.veto.model.tier.ModelTierRegistry}. The persona row carries identity +
+ * manifest only.
  */
 @Entity
 @Table(name = "personas")
@@ -31,15 +36,6 @@ public class PersonaEntity {
     @Column(name = "skills", columnDefinition = "TEXT")
     private String skills;
 
-    @Column(name = "top_model")
-    private String topModel;
-
-    @Column(name = "mid_model")
-    private String midModel;
-
-    @Column(name = "low_model")
-    private String lowModel;
-
     protected PersonaEntity() {}
 
     public
@@ -54,9 +50,6 @@ public class PersonaEntity {
                         persona.whitelistedTools().stream().map(ToolDefinition::name).toList());
         this.skills =
                 String.join(",", persona.registeredSkills().stream().map(Skill::name).toList());
-        this.topModel = persona.topModel();
-        this.midModel = persona.midModel();
-        this.lowModel = persona.lowModel();
     }
 
     public static @NonNull AgentPersona toPersona(@NonNull PersonaEntity e) {
@@ -66,9 +59,6 @@ public class PersonaEntity {
                 e.description == null ? "" : e.description,
                 java.util.Set.of(), // tool resolution is a wiring concern
                 parseSkillList(e.skills),
-                e.topModel == null ? "gemini-3.5-flash" : e.topModel,
-                e.midModel,
-                e.lowModel,
                 Role.STANDALONE);
     }
 

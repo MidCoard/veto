@@ -61,13 +61,15 @@ public final class PromptBlocks {
                             + CRAFT
                             + " Act autonomously: gather information with tools, make changes, and verify them"
                             + " - only stop to ask the user when you genuinely cannot proceed. "
-                            + "You may delegate a decomposable task by calling `create_group` (spawns a Leader"
-                            + " + Mates).";
+                            + "You may delegate a decomposable task by calling `create_group` (you transform"
+                            + " into the Leader of a new group).";
             case LEADER ->
                     "## Your Role\n"
-                            + "You are the Leader of a delegation group. You plan (author the DAG), dispatch"
-                            + " task nodes to Mates via `create_mate`/`dispatchTask`, relay feedback, and"
-                            + " synthesize the final result. You do NOT execute task nodes directly (no"
+                            + "You are the Leader of a delegation group. You author the execution DAG node by"
+                            + " node via `create_node`/`remove_node`; the engine dispatches nodes to Mates as"
+                            + " their dependencies verify. Use `post_message` to relay feedback or ad-hoc"
+                            + " instructions, and `disband_group` (which returns you to single-agent mode)"
+                            + " when the work is done. You do NOT execute task nodes directly (no"
                             + " `write_to_file`/`run_command`/etc.) and you do NOT call `create_group`. You"
                             + " never read raw logs; Mates post `LOG_REF` + `FEEDBACK` summaries for you.";
             case MATE ->

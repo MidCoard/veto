@@ -189,7 +189,10 @@ public class PromptCompiler {
                                     ? str(turn.payload(), "response")
                                     : toolCallRepr(turn));
             case TOOL_RESPONSE -> ChatMessage.tool(str(turn.payload(), "content"));
-            case AGENT_INIT -> ChatMessage.system(str(turn.payload(), "content"));
+            // AGENT_INIT is a role-segment marker only - the front system message (rebuilt each
+            // compile from the persona's role) already carries the role, so emitting one here would
+            // duplicate it. Compaction still uses the raw AGENT_INIT turn as its segment anchor.
+            case AGENT_INIT -> null;
             case COMPACTION_SUMMARY -> ChatMessage.user(str(turn.payload(), "content"));
             case REWIND -> null; // directive, not a message
             case RECALL -> null; // directive, handled in resolveRewinds

@@ -6,6 +6,7 @@ import org.springframework.context.annotation.Configuration;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.command.commands.*;
 import top.focess.veto.model.AgentPatternRepository;
+import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.security.SignupPolicy;
 import top.focess.veto.security.UserAdminService;
 import top.focess.veto.session.SessionService;
@@ -65,6 +66,7 @@ public class CommandConfiguration {
      * @param promptHandler the prompt handler bean; passed to logout/status commands so they can
      *     clear or inspect the agent session
      * @param patternRepo the pattern repository used by the pattern command
+     * @param tierRegistry the model-tier registry used to resolve pattern tiers
      * @return the fully-configured {@link CommandRegistry} singleton
      */
     @Bean
@@ -76,7 +78,8 @@ public class CommandConfiguration {
             @NonNull SessionService sessionService,
             @NonNull KeysteadVault keysteadVault,
             @NonNull SignupPolicy signupPolicy,
-            @NonNull UserAdminService userAdminService) {
+            @NonNull UserAdminService userAdminService,
+            @NonNull ModelTierRegistry tierRegistry) {
 
         CommandRegistry registry = new CommandRegistry(promptHandler);
 
@@ -86,7 +89,8 @@ public class CommandConfiguration {
         registry.register(new StatusCommand(keysteadVault, promptHandler));
         registry.register(new VersionCommand());
         registry.register(new ExitCommand());
-        registry.register(new PatternCommand(keysteadVault, patternRepo));
+        registry.register(new PatternCommand(patternRepo, tierRegistry));
+        registry.register(new CredentialCommand(keysteadVault));
         registry.register(new SessionCommand(sessionService, promptHandler));
         registry.register(new CompactCommand(promptHandler));
         registry.register(new UserAdminCommand(userAdminService, signupPolicy));

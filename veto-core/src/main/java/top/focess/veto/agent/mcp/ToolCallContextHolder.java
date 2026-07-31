@@ -2,6 +2,7 @@ package top.focess.veto.agent.mcp;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
@@ -45,11 +46,45 @@ public final class ToolCallContextHolder {
     private static final ThreadLocal<List<TurnRecord>> PENDING_TURNS =
             ThreadLocal.withInitial(ArrayList::new);
 
+    /**
+     * A transform-to-Leader directive requested by {@code create_group} during its execution. The
+     * runner owns the turn counter + history, so it computes the compaction summary and appends the
+     * REWIND/AGENT_INIT/COMPACTION_SUMMARY/USER_PROMPT sequence itself; this directive carries only
+     * what the tool resolves (the brief, the registered group id, the Leader binding + Leader tool
+     * set). At most one per tool call - a transform supersedes any recall.
+     */
+    public record TransformDirective(
+            @NonNull String brief,
+            @NonNull UUID groupId,
+            AgentRunner.@NonNull LlmBinding leaderBinding,
+            @NonNull Set<ToolDefinition> leaderTools) {}
+
+    /**
+     * A delegation transform request: either the forward transform (STANDALONE -> Leader of a new
+     * group, requested by {@code create_group}) or the reverse (Leader -> STANDALONE, requested by
+     * {@code disband_group}). The runner drains and applies it in the same tool-call drain pass. At
+     * most one per tool call - the last request wins.
+     */
+    public sealed interface TransformRequest {
+        /** Transform the calling STANDALONE into the Leader of a new group. */
+        record ToLeader(@NonNull TransformDirective directive) implements TransformRequest {}
+
+        /** Reverse the transform: the Leader becomes STANDALONE again (the group was disbanded). */
+        record ToStandalone(@NonNull String brief) implements TransformRequest {}
+    }
+
+    private static final ThreadLocal<TransformRequest> PENDING_TRANSFORM = new ThreadLocal<>();
+
     private ToolCallContextHolder() {}
 
     /** Sets the tool call context for the current thread. */
     public static void set(@NonNull String agentId, @NonNull UUID userId) {
         CONTEXT.set(new ToolCallContext(agentId, userId));
+    }
+
+    /** Sets the tool call context for the current thread, including the caller's group. */
+    public static void set(@NonNull String agentId, @NonNull UUID userId, @Nullable UUID groupId) {
+        CONTEXT.set(new ToolCallContext(agentId, userId, groupId));
     }
 
     /** Sets the tool call context for the current thread. */
@@ -79,6 +114,42 @@ public final class ToolCallContextHolder {
     }
 
     /**
+     * Requests a forward transform (STANDALONE -> Leader) be applied after the current tool call
+     * returns. The runner drains and applies it in the same tool-call drain pass: it appends the
+     * transform turn sequence (REWIND + AGENT_INIT + COMPACTION_SUMMARY + USER_PROMPT) and mutates
+     * the persona / binding / group. Supersedes any pending recall - a transform is the stronger
+     * rewrite.
+     */
+    public static void requestTransform(@NonNull TransformDirective directive) {
+        PENDING_TRANSFORM.set(new TransformRequest.ToLeader(directive));
+    }
+
+    /**
+     * Requests a reverse transform (Leader -> STANDALONE) be applied after the current tool call
+     * returns - the group was disbanded. The runner rewinds, restores the stashed STANDALONE
+     * persona + binding, and re-injects {@code brief} (the group's outcome) so the agent continues
+     * autonomously.
+     */
+    public static void requestReverseTransform(@NonNull String brief) {
+        PENDING_TRANSFORM.set(new TransformRequest.ToStandalone(brief));
+    }
+
+    /**
+     * Drains and clears the transform request for the current thread, if one was requested. Called
+     * by {@link AgentRunner} after a tool call returns and after pending turn directives are
+     * drained.
+     *
+     * @return the request, or {@code null} if the tool requested no transform
+     */
+    public static @Nullable TransformRequest drainTransform() {
+        TransformRequest r = PENDING_TRANSFORM.get();
+        if (r != null) {
+            PENDING_TRANSFORM.remove();
+        }
+        return r;
+    }
+
+    /**
      * Drains and clears the pending turn directives for the current thread. Called by {@link
      * AgentRunner} after a tool call returns; each entry is appended with a runner-assigned turn
      * number.
@@ -99,5 +170,6 @@ public final class ToolCallContextHolder {
     public static void clear() {
         CONTEXT.remove();
         PENDING_TURNS.remove();
+        PENDING_TRANSFORM.remove();
     }
 }

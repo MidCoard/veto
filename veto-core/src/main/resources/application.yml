@@ -38,6 +38,50 @@ veto:
     redact-secrets: true
     enforce-structural-constraints: true
 
+  # Model tiers: the single source of truth for an agent's model. Patterns and agents bind to a
+  # tier name (TOP/MID/LOW/LOCAL); a named profile maps each tier to a concrete provider + model +
+  # credential-key + sampling defaults. Exactly one profile is active at a time; switching it
+  # (changing `active`) swaps the concrete model for every pattern and agent at once. A working
+  # `default` profile (DEEPSEEK deepseek-chat) is seeded in code, so the engine resolves even with
+  # this block absent. credential-key is a vault SECURE_NOTE title (per-user); store the secret via
+  # /credential set <key>.
+  model-tiers:
+    active: default
+    # profiles:
+    #   default:
+    #     tiers:
+    #       TOP: { provider: DEEPSEEK, model: deepseek-chat, credential-key: deepseek-default, temperature: 0.7, max-output-tokens: 4096 }
+    #       MID: { provider: DEEPSEEK, model: deepseek-chat, credential-key: deepseek-default, temperature: 0.7, max-output-tokens: 4096 }
+    #       LOW: { provider: DEEPSEEK, model: deepseek-chat, credential-key: deepseek-default, temperature: 0.7, max-output-tokens: 4096 }
+    #       LOCAL: { provider: DEEPSEEK, model: deepseek-chat, credential-key: deepseek-default, temperature: 0.1, max-output-tokens: 2048 }
+    #   premium:
+    #     tiers:
+    #       TOP: { provider: ANTHROPIC, model: claude-opus, credential-key: anthropic-default, temperature: 0.5, max-output-tokens: 8192 }
+
+  # Group roles (Leader / Mate) bind to a model tier, never a concrete model. The concrete
+  # provider + model + credential come from the active model-tier profile above, so switching
+  # profiles swaps every group role's model at once. Only the tier name and the role-specific
+  # system-prompt base live here. credential-key is a vault SECURE_NOTE title; store it via
+  # /credential set <key>.
+  group:
+    leader:
+      tier: TOP
+      # system-prompt-base: "You are a Leader agent. Decompose the task and arrange the execution DAG node by node."
+    mate:
+      tier: MID
+      max_calls_per_episode: 50
+      # system-prompt-base: "You are a Mate agent. Execute the assigned task."
+      # Per-skillset overrides: a skillset entry may set either field; unset fields fall back to
+      # the global mate.tier / mate.system-prompt-base above. A coding skillset can run on a
+      # stronger tier with a coding-focused prompt while a research skillset runs cheaper.
+      # skillsets:
+      #   coder:
+      #     tier: MID
+      #     system-prompt-base: "You are a coding Mate. Implement the assigned task."
+      #   researcher:
+      #     tier: LOW
+      #     system-prompt-base: "You are a research Mate. Gather and summarize."
+
   orchestrator:
     max-workers: 4
     worker-idle-timeout-ms: 60000

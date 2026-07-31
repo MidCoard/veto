@@ -13,13 +13,14 @@ import top.focess.veto.agent.AgentRunner;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.llm.core.LlmOptions;
-import top.focess.veto.llm.core.ProviderType;
 import top.focess.veto.model.AgentEntity;
 import top.focess.veto.model.AgentInstanceRepository;
 import top.focess.veto.model.AgentPatternEntity;
 import top.focess.veto.model.AgentPatternRepository;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
+import top.focess.veto.model.tier.ModelBinding;
+import top.focess.veto.model.tier.ModelTierRegistry;
 
 /**
  * Owns the session lifecycle: create/list/activate/deactivate, plus the per-terminal active-session
@@ -43,6 +44,7 @@ public class SessionService {
     private final AgentPatternRepository patterns;
     private final AgentService agentService;
     private final SessionHistoryLoader historyLoader;
+    private final ModelTierRegistry tierRegistry;
 
     /** Per-terminal active session id. Key = terminal id, value = session id. */
     private final ConcurrentHashMap<String, String> activeSessions = new ConcurrentHashMap<>();
@@ -52,12 +54,14 @@ public class SessionService {
             @NonNull AgentInstanceRepository agents,
             @NonNull AgentPatternRepository patterns,
             @NonNull AgentService agentService,
-            @NonNull SessionHistoryLoader historyLoader) {
+            @NonNull SessionHistoryLoader historyLoader,
+            @NonNull ModelTierRegistry tierRegistry) {
         this.sessions = sessions;
         this.agents = agents;
         this.patterns = patterns;
         this.agentService = agentService;
         this.historyLoader = historyLoader;
+        this.tierRegistry = tierRegistry;
     }
 
     /**
@@ -119,15 +123,15 @@ public class SessionService {
 
         SessionEntity session =
                 sessions.save(new SessionEntity(owner, resolvedName, workspaceRoots));
+        ModelBinding cache = tierRegistry.resolve(pattern.getTier());
         AgentEntity agent =
                 new AgentEntity(
                         session.getId(),
                         pattern.getId(),
                         AgentEntity.Role.PRIMARY,
                         resolvedName,
-                        pattern.getProvider(),
-                        pattern.getModel(),
-                        pattern.getCredentialKey());
+                        pattern.getTier(),
+                        cache);
         agent = agents.save(agent);
         session.setPrimaryAgentId(agent.getId());
         return sessions.save(session);
@@ -155,25 +159,21 @@ public class SessionService {
             return Optional.empty();
         }
 
-        AgentRunner.LlmBinding binding =
-                new AgentRunner.LlmBinding(
-                        ProviderType.valueOf(agent.getProvider()),
-                        agent.getModel(),
-                        agent.getCredentialKey(),
-                        LlmOptions.defaults(),
-                        null);
-        List<TurnRecord> history = historyLoader.load(session.getId());
+        ModelBinding resolved = tierRegistry.resolve(agent.getTier());
+        AgentRunner.LlmBinding binding = standaloneBinding(resolved);
+        List<TurnRecord> history = historyLoader.load(session.getId(), agent.getId());
         agentService.getOrCreateAgent(
-                session.getId(), binding, history, DEFAULT_USER_ID, session.getWorkspaceRoots());
+                session.getId(),
+                agent.getId(),
+                binding,
+                history,
+                DEFAULT_USER_ID,
+                session.getWorkspaceRoots());
         session.touch();
         sessions.save(session);
         activeSessions.put(terminalId, session.getId());
 
-        return Optional.of(
-                new LlmConfig(
-                        ProviderType.valueOf(agent.getProvider()),
-                        agent.getModel(),
-                        agent.getCredentialKey()));
+        return Optional.of(llmConfig(resolved));
     }
 
     /**
@@ -219,11 +219,27 @@ public class SessionService {
         if (session == null) return Optional.empty();
         AgentEntity agent = primaryAgent(session);
         if (agent == null) return Optional.empty();
-        return Optional.of(
-                new LlmConfig(
-                        ProviderType.valueOf(agent.getProvider()),
-                        agent.getModel(),
-                        agent.getCredentialKey()));
+        return Optional.of(llmConfig(tierRegistry.resolve(agent.getTier())));
+    }
+
+    /**
+     * Builds the standalone agent's binding from a resolved tier binding (no prompt-base override).
+     */
+    private AgentRunner.@NonNull LlmBinding standaloneBinding(@NonNull ModelBinding resolved) {
+        return new AgentRunner.LlmBinding(
+                resolved.provider(),
+                resolved.model(),
+                resolved.credentialKey(),
+                new LlmOptions(
+                        resolved.temperature(),
+                        null,
+                        resolved.maxOutputTokens(),
+                        LlmOptions.defaults().timeout()),
+                null);
+    }
+
+    private @NonNull LlmConfig llmConfig(@NonNull ModelBinding resolved) {
+        return new LlmConfig(resolved.provider(), resolved.model(), resolved.credentialKey());
     }
 
     public @NonNull Optional<Agent> activeAgent(@NonNull String terminalId) {

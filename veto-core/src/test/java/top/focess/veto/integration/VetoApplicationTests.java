@@ -14,7 +14,7 @@ import top.focess.veto.VetoApplication;
 import top.focess.veto.agent.mcp.ToolEngine;
 import top.focess.veto.agent.mcp.ToolEngineImpl;
 import top.focess.veto.bus.DeltaBroker;
-import top.focess.veto.memory.MemoryCaptureService;
+import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.observability.AuditLogger;
 import top.focess.veto.veto.GBNFGrammarEngine;
 import top.focess.veto.veto.LlamaCppBridge;
@@ -87,9 +87,9 @@ class VetoApplicationTests {
     }
 
     @Test
-    void memoryCaptureServiceIsInjected() {
-        MemoryCaptureService capture = context.getBean(MemoryCaptureService.class);
-        assertNotNull(capture, "MemoryCaptureService should be injected as a Spring bean");
+    void turnLogServiceIsInjected() {
+        TurnLogService turnLog = context.getBean(TurnLogService.class);
+        assertNotNull(turnLog, "TurnLogService should be injected as a Spring bean");
     }
 
     @Test

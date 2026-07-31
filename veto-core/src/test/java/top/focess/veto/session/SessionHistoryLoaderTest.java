@@ -17,17 +17,20 @@ class SessionHistoryLoaderTest {
     @Test
     void loadsTurnsInOrder() {
         UUID session = UUID.randomUUID();
+        String agent = UUID.randomUUID().toString();
         TurnRecordEntity row1 =
                 TurnRecordEntity.of(
                         TurnRecord.userPrompt(1, "hello"),
                         session,
                         UUID.randomUUID(),
+                        agent,
                         new ObjectMapper());
         TurnRecordEntity row2 =
                 TurnRecordEntity.of(
                         TurnRecord.assistantResponse(2, "hi there"),
                         session,
                         UUID.randomUUID(),
+                        agent,
                         new ObjectMapper());
 
         TurnRecordRepository repo = mock(TurnRecordRepository.class);
@@ -42,6 +45,41 @@ class SessionHistoryLoaderTest {
         assertEquals("hello", history.get(0).payload().get("content"));
         assertEquals(TurnType.ASSISTANT_RESPONSE, history.get(1).type());
         assertEquals(2, history.get(1).turnNumber());
+    }
+
+    @Test
+    void loadsOnlyTheRequestedAgentStream() {
+        UUID session = UUID.randomUUID();
+        String leader = UUID.randomUUID().toString();
+        String mate = UUID.randomUUID().toString();
+        TurnRecordEntity leaderTurn =
+                TurnRecordEntity.of(
+                        TurnRecord.userPrompt(1, "leader prompt"),
+                        session,
+                        UUID.randomUUID(),
+                        leader,
+                        new ObjectMapper());
+        TurnRecordEntity mateTurn =
+                TurnRecordEntity.of(
+                        TurnRecord.assistantResponse(1, "mate reply"),
+                        session,
+                        UUID.randomUUID(),
+                        mate,
+                        new ObjectMapper());
+
+        TurnRecordRepository repo = mock(TurnRecordRepository.class);
+        when(repo.findBySessionIdAndAgentIdOrderByTurnNumberAsc(session.toString(), mate))
+                .thenReturn(List.of(mateTurn));
+
+        SessionHistoryLoader loader = new SessionHistoryLoader(repo, new ObjectMapper());
+        List<TurnRecord> history = loader.load(session.toString(), mate);
+
+        assertEquals(1, history.size());
+        assertEquals("mate reply", history.get(0).payload().get("content"));
+        // The mate stream must not surface the leader's turn.
+        verify(repo, never())
+                .findBySessionIdAndAgentIdOrderByTurnNumberAsc(eq(session.toString()), eq(leader));
+        verify(repo, never()).findBySessionIdOrderByTurnNumberAsc(anyString());
     }
 
     @Test

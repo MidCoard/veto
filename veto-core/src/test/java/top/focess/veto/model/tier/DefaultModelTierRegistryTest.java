@@ -1,68 +1,84 @@
 package top.focess.veto.model.tier;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
 
-import java.util.Optional;
 import org.junit.jupiter.api.Test;
-import org.springframework.test.util.ReflectionTestUtils;
-import top.focess.veto.model.AgentPatternEntity;
-import top.focess.veto.model.AgentPatternRepository;
-import top.focess.veto.vault.KeysteadVault;
+import top.focess.veto.llm.core.ProviderType;
 
 class DefaultModelTierRegistryTest {
 
     @Test
-    void resolveModelTiersCorrectly() {
-        DefaultModelTierRegistry registry = new DefaultModelTierRegistry();
-        AgentPatternRepository patternRepo = mock(AgentPatternRepository.class);
-        KeysteadVault vault = mock(KeysteadVault.class);
+    void resolvesSeededDefaultProfile() {
+        ModelTierProperties properties = new ModelTierProperties();
+        DefaultModelTierRegistry registry = new DefaultModelTierRegistry(properties);
 
-        ReflectionTestUtils.setField(registry, "patternRepo", patternRepo);
-        ReflectionTestUtils.setField(registry, "vault", vault);
+        ModelBinding top = registry.resolve(ModelTier.TOP);
 
-        String patternName = "test-pattern";
-        String user = "test-user";
-        when(vault.currentUser()).thenReturn(user);
+        assertEquals(ProviderType.DEEPSEEK, top.provider());
+        assertEquals("deepseek-chat", top.model());
+        assertEquals("deepseek-default", top.credentialKey());
+        assertEquals("default", registry.activeProfile());
+    }
 
-        // Case 1: All model tiers configured
-        AgentPatternEntity p1 =
-                new AgentPatternEntity(
-                        patternName,
-                        "gemini",
-                        "gemini-model",
-                        "cred-key",
-                        user,
-                        "gemini-top",
-                        "gemini-mid",
-                        "gemini-low");
-        when(patternRepo.findByNameAndOwner(patternName, user)).thenReturn(Optional.of(p1));
+    @Test
+    void switchingActiveProfileSwapsBinding() {
+        ModelTierProperties properties = new ModelTierProperties();
+        ModelTierProperties.Profile premium = new ModelTierProperties.Profile();
+        ModelTierProperties.Binding top = new ModelTierProperties.Binding();
+        top.setProvider(ProviderType.ANTHROPIC);
+        top.setModel("claude-opus");
+        top.setCredentialKey("anthropic-default");
+        top.setTemperature(0.5);
+        top.setMaxOutputTokens(8192);
+        premium.getTiers().put(ModelTier.TOP, top);
+        properties.getProfiles().put("premium", premium);
+        properties.setActive("premium");
 
-        ModelBinding topResolved = registry.resolve(patternName, ModelTier.TOP);
-        ModelBinding midResolved = registry.resolve(patternName, ModelTier.MID);
-        ModelBinding lowResolved = registry.resolve(patternName, ModelTier.LOW);
+        DefaultModelTierRegistry registry = new DefaultModelTierRegistry(properties);
 
-        assertEquals("gemini-top", topResolved.modelId());
-        assertEquals("gemini-mid", midResolved.modelId());
-        assertEquals("gemini-low", lowResolved.modelId());
+        ModelBinding resolved = registry.resolve(ModelTier.TOP);
 
-        // Case 2: midModel and lowModel are null, should default to topModel
-        AgentPatternEntity p2 =
-                new AgentPatternEntity(
-                        patternName,
-                        "gemini",
-                        "gemini-model",
-                        "cred-key",
-                        user,
-                        "gemini-top",
-                        null,
-                        null);
-        when(patternRepo.findByNameAndOwner(patternName, user)).thenReturn(Optional.of(p2));
+        assertEquals(ProviderType.ANTHROPIC, resolved.provider());
+        assertEquals("claude-opus", resolved.model());
+        assertEquals("anthropic-default", resolved.credentialKey());
+        assertEquals(0.5, resolved.temperature());
+        assertEquals(8192, resolved.maxOutputTokens());
+        assertEquals("premium", registry.activeProfile());
+    }
 
-        ModelBinding midResolvedDefault = registry.resolve(patternName, ModelTier.MID);
-        ModelBinding lowResolvedDefault = registry.resolve(patternName, ModelTier.LOW);
+    @Test
+    void unsetTierFallsBackToTop() {
+        ModelTierProperties properties = new ModelTierProperties();
+        ModelTierProperties.Profile profile = new ModelTierProperties.Profile();
+        ModelTierProperties.Binding top = new ModelTierProperties.Binding();
+        top.setProvider(ProviderType.OPENAI);
+        top.setModel("gpt-4o");
+        top.setCredentialKey("openai-default");
+        top.setTemperature(0.7);
+        top.setMaxOutputTokens(4096);
+        profile.getTiers().put(ModelTier.TOP, top);
+        properties.getProfiles().put("default", profile);
 
-        assertEquals("gemini-top", midResolvedDefault.modelId());
-        assertEquals("gemini-top", lowResolvedDefault.modelId());
+        DefaultModelTierRegistry registry = new DefaultModelTierRegistry(properties);
+
+        // MID is unset in the profile -> falls back to the TOP binding.
+        ModelBinding mid = registry.resolve(ModelTier.MID);
+
+        assertEquals(ProviderType.OPENAI, mid.provider());
+        assertEquals("gpt-4o", mid.model());
+    }
+
+    @Test
+    void missingActiveProfileFallsBackToDefault() {
+        ModelTierProperties properties = new ModelTierProperties();
+        properties.setActive("does-not-exist");
+
+        DefaultModelTierRegistry registry = new DefaultModelTierRegistry(properties);
+
+        // The named active profile is absent, so the seeded "default" profile is used.
+        ModelBinding top = registry.resolve(ModelTier.TOP);
+
+        assertEquals(ProviderType.DEEPSEEK, top.provider());
+        assertEquals("deepseek-chat", top.model());
     }
 }

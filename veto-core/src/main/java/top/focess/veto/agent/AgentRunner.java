@@ -22,6 +22,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.identity.AgentPersona;
+import top.focess.veto.agent.identity.Role;
 import top.focess.veto.agent.intercept.ApprovalDecision;
 import top.focess.veto.agent.intercept.Gateway;
 import top.focess.veto.agent.intercept.GatewayResult;
@@ -75,8 +76,12 @@ public class AgentRunner {
 
     // --- identity / deps ---
     private final @NonNull String agentId;
-    private final @NonNull AgentPersona persona;
-    private final @NonNull Set<String> whitelistedTools;
+    // The persona + its tool-name view are mutable: the delegation transform re-scopes them from
+    // STANDALONE to LEADER (and back on disband) in place. Volatile - written once per transform on
+    // the loop thread, read on the same thread each compile; the volatile keeps the view consistent
+    // for inspection from other threads.
+    private volatile @NonNull AgentPersona persona;
+    private volatile @NonNull Set<String> whitelistedTools;
     private final @NonNull ToolEngine mcpEngine;
     private final @NonNull Gateway gateway;
     private final @NonNull HitlRegistry hitlRegistry;
@@ -91,15 +96,29 @@ public class AgentRunner {
     // (per-session, broker-assigned sequence) so transports (WebSocket) can stream it. Nullable so
     // non-Spring callers (tests) keep working without a broker.
     private final @Nullable DeltaBroker deltaBroker;
-    private final @NonNull UUID sessionId;
-    // The per-turn memory-capture service (Part 4 §3.1). Nullable — when null (tests / no capture
-    // configured), appendTurn only updates the in-memory history; when present, each turn is also
-    // captured into Session LTM + the raw-turn audit log.
-    private final top.focess.veto.memory.@Nullable MemoryCaptureService captureService;
+    // The session this agent's turns belong to. Defaults to the agent's own id (a UUID) at
+    // construction; the DB-backed create path overrides it with the real session id so the
+    // turn_records.session_id column groups a session's 1+N agent streams correctly. Volatile: set
+    // once at creation before the loop processes any turn.
+    private volatile @NonNull UUID sessionId;
+    // The raw-turn write-through log. Nullable — when null (tests / no durability configured),
+    // appendTurn only updates the in-memory history; when present, each turn is also persisted to
+    // the raw-turn audit/replay log.
+    private final top.focess.veto.memory.@Nullable TurnLogService turnLogService;
     private final @NonNull UUID userId;
+    // The group this agent belongs to (the group it leads, or the group it is a Mate of); null for
+    // a single-agent (STANDALONE) loop. Stamped by group-spawning code and threaded into each
+    // tool's ToolCallContext so group-scoped tools (create_node, post_message, ...) resolve the
+    // caller's group without a groupId argument.
+    private volatile @Nullable UUID groupId;
 
     // --- model binding (provider/model/credential), set per prompt ---
     private volatile @NonNull LlmBinding binding;
+
+    // The pre-transform STANDALONE persona + binding, stashed when the agent transforms into a
+    // Leader so disband_group can reverse the transform and restore them. Null when not leading.
+    private volatile @Nullable AgentPersona preTransformPersona;
+    private volatile @Nullable LlmBinding preTransformBinding;
 
     // --- loop state (mutated only by the runner's virtual thread) ---
     private final BlockingQueue<AgentAction> actionQueue = new LinkedBlockingQueue<>();
@@ -140,7 +159,7 @@ public class AgentRunner {
             @NonNull LlmBinding binding,
             @Nullable DeltaBroker deltaBroker,
             @NonNull UUID userId,
-            top.focess.veto.memory.@Nullable MemoryCaptureService captureService) {
+            top.focess.veto.memory.@Nullable TurnLogService turnLogService) {
         this.agentId = agentId;
         this.persona = persona;
         this.whitelistedTools =
@@ -164,8 +183,8 @@ public class AgentRunner {
         // per-session frame key once. Fail-fast if a non-UUID id ever reaches here.
         this.sessionId = UUID.fromString(agentId);
         this.userId = userId;
-        // Capture is nullable: non-Spring callers (tests) pass null so turns are not captured.
-        this.captureService = captureService;
+        // Nullable: non-Spring callers (tests) pass null so turns are not logged.
+        this.turnLogService = turnLogService;
     }
 
     // ── Virtual-thread loop ────────────────────────────────────────────────
@@ -261,6 +280,24 @@ public class AgentRunner {
             }
         }
 
+        String finalSummary = computeCompactionSummary(workTurns);
+
+        appendTurn(TurnRecord.rewind(++turnNumber, 1));
+        appendTurn(TurnRecord.compactionSummary(++turnNumber, finalSummary));
+        emitMessage("Compaction complete. Summarized " + workTurns.size() + " turns.");
+    }
+
+    /**
+     * Summarizes a slice of work turns into a structured JSON record (chunked, then combined).
+     * Shared by {@link #processCompaction} (the explicit compact action) and {@link
+     * #transformToLeader} (the delegation transform carries the essence of the prior standalone
+     * session forward as a COMPACTION_SUMMARY). Returns {@code "{}"} when there is nothing to
+     * summarize; never null.
+     */
+    private String computeCompactionSummary(List<TurnRecord> workTurns) {
+        if (workTurns == null || workTurns.isEmpty()) {
+            return "{}";
+        }
         StringBuilder sb = new StringBuilder();
         for (TurnRecord turn : workTurns) {
             sb.append("Turn ")
@@ -306,34 +343,28 @@ public class AgentRunner {
             summaries.add(rawSummary);
         }
 
-        String finalSummary = "";
         if (summaries.size() == 1) {
-            finalSummary = summaries.get(0);
-        } else {
-            StringBuilder combined = new StringBuilder();
-            for (int i = 0; i < summaries.size(); i++) {
-                combined.append("Summary ")
-                        .append(i + 1)
-                        .append(":\n")
-                        .append(summaries.get(i))
-                        .append("\n\n");
-            }
-            String systemPrompt =
-                    "Summarize the following combined conversation summaries into a single final structured record. Output ONLY valid JSON matching this schema:\n"
-                            + "{\n"
-                            + "  \"files_touched\": [\"paths\"],\n"
-                            + "  \"changes_made\": [\"specific edits with file paths\"],\n"
-                            + "  \"errors_encountered\": [{\"error\": \"...\", \"file\": \"...\", \"resolved\": true/false}],\n"
-                            + "  \"decisions\": [\"key decisions and why\"],\n"
-                            + "  \"pending\": [\"started but incomplete tasks\"],\n"
-                            + "  \"user_feedback\": [\"explicit instructions, vetoes, corrections\"]\n"
-                            + "}";
-            finalSummary = callCompactor(systemPrompt, combined.toString());
+            return summaries.get(0);
         }
-
-        appendTurn(TurnRecord.rewind(++turnNumber, 1));
-        appendTurn(TurnRecord.compactionSummary(++turnNumber, finalSummary));
-        emitMessage("Compaction complete. Summarized " + workTurns.size() + " turns.");
+        StringBuilder combined = new StringBuilder();
+        for (int i = 0; i < summaries.size(); i++) {
+            combined.append("Summary ")
+                    .append(i + 1)
+                    .append(":\n")
+                    .append(summaries.get(i))
+                    .append("\n\n");
+        }
+        String systemPrompt =
+                "Summarize the following combined conversation summaries into a single final structured record. Output ONLY valid JSON matching this schema:\n"
+                        + "{\n"
+                        + "  \"files_touched\": [\"paths\"],\n"
+                        + "  \"changes_made\": [\"specific edits with file paths\"],\n"
+                        + "  \"errors_encountered\": [{\"error\": \"...\", \"file\": \"...\", \"resolved\": true/false}],\n"
+                        + "  \"decisions\": [\"key decisions and why\"],\n"
+                        + "  \"pending\": [\"started but incomplete tasks\"],\n"
+                        + "  \"user_feedback\": [\"explicit instructions, vetoes, corrections\"]\n"
+                        + "}";
+        return callCompactor(systemPrompt, combined.toString());
     }
 
     private String callCompactor(String systemPrompt, String userPrompt) {
@@ -749,8 +780,8 @@ public class AgentRunner {
             }
         }
 
-        // (d) execute with tool call context (agentId + userId) threaded through.
-        ToolCallContextHolder.set(agentId, userId);
+        // (d) execute with tool call context (agentId + userId + groupId) threaded through.
+        ToolCallContextHolder.set(agentId, userId, groupId);
         try {
             ToolResult result = mcpEngine.execute(call, def);
 
@@ -780,6 +811,22 @@ public class AgentRunner {
             // that threw never leaks a directive to the next call on this thread.
             for (TurnRecord pending : ToolCallContextHolder.drainPendingTurns()) {
                 appendTurn(new TurnRecord(++turnNumber, pending.type(), pending.payload(), null));
+            }
+            // A tool may request a delegation transform (create_group) or its reverse
+            // (disband_group).
+            // Apply it after the pending turn directives: a forward transform's REWIND discards
+            // this
+            // call's response + prior turns, then re-seeds the Leader; a reverse transform restores
+            // the STANDALONE persona. Drained before clear() in the finally so a throwing tool
+            // leaks
+            // no transform to the next call on this thread.
+            ToolCallContextHolder.TransformRequest transformRequest =
+                    ToolCallContextHolder.drainTransform();
+            if (transformRequest instanceof ToolCallContextHolder.TransformRequest.ToLeader t) {
+                transformToLeader(t.directive());
+            } else if (transformRequest
+                    instanceof ToolCallContextHolder.TransformRequest.ToStandalone t) {
+                transformToStandalone(t.brief());
             }
             return transformed;
         } finally {
@@ -837,8 +884,8 @@ public class AgentRunner {
             }
         }
 
-        // (d) execute with tool call context (agentId + userId) threaded through.
-        ToolCallContextHolder.set(agentId, userId);
+        // (d) execute with tool call context (agentId + userId + groupId) threaded through.
+        ToolCallContextHolder.set(agentId, userId, groupId);
         try {
             ToolResult result = mcpEngine.execute(call, def);
 
@@ -867,6 +914,22 @@ public class AgentRunner {
             // that threw never leaks a directive to the next call on this thread.
             for (TurnRecord pending : ToolCallContextHolder.drainPendingTurns()) {
                 appendTurn(new TurnRecord(++turnNumber, pending.type(), pending.payload(), null));
+            }
+            // A tool may request a delegation transform (create_group) or its reverse
+            // (disband_group).
+            // Apply it after the pending turn directives: a forward transform's REWIND discards
+            // this
+            // call's response + prior turns, then re-seeds the Leader; a reverse transform restores
+            // the STANDALONE persona. Drained before clear() in the finally so a throwing tool
+            // leaks
+            // no transform to the next call on this thread.
+            ToolCallContextHolder.TransformRequest transformRequest =
+                    ToolCallContextHolder.drainTransform();
+            if (transformRequest instanceof ToolCallContextHolder.TransformRequest.ToLeader t) {
+                transformToLeader(t.directive());
+            } else if (transformRequest
+                    instanceof ToolCallContextHolder.TransformRequest.ToStandalone t) {
+                transformToStandalone(t.brief());
             }
             return transformed;
         } finally {
@@ -973,14 +1036,14 @@ public class AgentRunner {
         synchronized (this) {
             history.add(turn);
         }
-        // Capture the turn into Session LTM + the raw-turn audit log (Part 4 §3.1). Best-effort —
-        // done outside the history lock so a DB write doesn't block history readers, and the
-        // service swallows failures so the loop is never affected.
-        if (captureService != null) {
+        // Persist the turn to the raw-turn audit/replay log (session resume, Leader
+        // reconstruction). Best-effort — done outside the history lock so a DB write doesn't
+        // block history readers, and the service swallows failures so the loop is never affected.
+        if (turnLogService != null) {
             try {
-                captureService.capture(turn, sessionId, userId);
+                turnLogService.log(turn, sessionId, userId, agentId);
             } catch (RuntimeException e) {
-                log.warn("Agent {} turn capture failed", agentId, e);
+                log.warn("Agent {} turn log failed", agentId, e);
             }
         }
     }
@@ -1076,6 +1139,11 @@ public class AgentRunner {
         this.binding = binding;
     }
 
+    /** The current model binding (the transform stashes this before rebinding to the Leader). */
+    public @NonNull LlmBinding binding() {
+        return binding;
+    }
+
     /**
      * Subscribes a user-facing-message listener (the emission seam; forwarded in {@link
      * #emitMessage}).
@@ -1129,6 +1197,151 @@ public class AgentRunner {
 
     public @NonNull String agentId() {
         return agentId;
+    }
+
+    /** The group this agent belongs to, or null for a single-agent (STANDALONE) loop. */
+    public @Nullable UUID groupId() {
+        return groupId;
+    }
+
+    /** Stamps the group this agent belongs to (called by group-spawning code / the transform). */
+    public void setGroupId(@Nullable UUID groupId) {
+        this.groupId = groupId;
+    }
+
+    // Overwrites the default (agent-id-derived) session id with the real session id. Called by the
+    // DB-backed create path (AgentService.createAgent) before the loop starts, so persisted turns
+    // land under turn_records.session_id = session.getId() and group with their sibling agent
+    // streams.
+    public void setSessionId(@NonNull UUID sessionId) {
+        this.sessionId = sessionId;
+    }
+
+    /**
+     * Replaces the persona (and its tool-name view) in place. Used by the delegation transform /
+     * disband to flip the operational role + tool set without becoming a different agent (the id,
+     * session, and user stay; only the role-scoped identity changes). The next {@link #callModel}
+     * compiles against the new persona.
+     */
+    public void applyPersona(@NonNull AgentPersona persona) {
+        this.persona = persona;
+        this.whitelistedTools =
+                persona.whitelistedTools().stream()
+                        .map(ToolDefinition::name)
+                        .collect(java.util.stream.Collectors.toUnmodifiableSet());
+    }
+
+    /**
+     * The delegation transform: the calling STANDALONE agent becomes the Leader of a new group. Run
+     * on the loop thread inside the tool-call drain pass (after the {@code create_group} tool
+     * response is appended), so the transform's REWIND discards this call's response along with the
+     * prior standalone turns.
+     *
+     * <p>Append sequence (each its own turn, monotonic counter): REWIND to 0 (drop the compiled
+     * view), AGENT_INIT (Leader role-segment marker - maps to no message), COMPACTION_SUMMARY (the
+     * essence of the prior standalone session, carried forward), USER_PROMPT (the brief). Then
+     * mutate the persona to LEADER + the Leader tool set, bind the Leader (top-tier) model, stamp
+     * the group, and reset the episode so the Leader reasons fresh from the brief.
+     */
+    private void transformToLeader(ToolCallContextHolder.@NonNull TransformDirective directive) {
+        // Compaction summary of the prior standalone turns (defensive: a compactor failure yields
+        // an
+        // empty summary rather than aborting the transform).
+        List<TurnRecord> priorTurns;
+        synchronized (history) {
+            priorTurns = new ArrayList<>(history);
+        }
+        String summary;
+        try {
+            summary = computeCompactionSummary(priorTurns);
+        } catch (RuntimeException e) {
+            log.warn(
+                    "Agent {} transform compaction failed; continuing with empty summary",
+                    agentId,
+                    e);
+            summary = "{}";
+        }
+
+        appendTurn(TurnRecord.rewind(++turnNumber, 0));
+        appendTurn(TurnRecord.agentInit(++turnNumber, "leader"));
+        if (summary != null && !summary.isBlank() && !"{}".equals(summary)) {
+            appendTurn(TurnRecord.compactionSummary(++turnNumber, summary));
+        }
+        appendTurn(TurnRecord.userPrompt(++turnNumber, directive.brief()));
+
+        // Stash the pre-transform STANDALONE persona + binding so disband_group can restore them,
+        // then adopt the Leader persona + tool set + top-tier binding + group stamp.
+        this.preTransformPersona = this.persona;
+        this.preTransformBinding = this.binding;
+        applyPersona(persona.withRoleAndTools(Role.LEADER, directive.leaderTools()));
+        bind(directive.leaderBinding());
+        setGroupId(directive.groupId());
+
+        // Fresh reasoning episode from the brief: clear guided state + program, reset the breaker
+        // and scope so prior standalone state does not leak into the Leader's planning.
+        this.guided = false;
+        this.activeProgram = null;
+        this.programCounter = 0;
+        this.breaker.newEpisode();
+        this.scope = new Scope(objectMapper);
+        log.info(
+                "Agent {} transformed into Leader of group {} (Leader model={})",
+                agentId,
+                directive.groupId(),
+                directive.leaderBinding().model());
+    }
+
+    /**
+     * The reverse delegation transform: the Leader becomes STANDALONE again (the group was
+     * disbanded). Run on the loop thread inside the tool-call drain pass (after the {@code
+     * disband_group} tool response is appended). Append sequence: REWIND to 0, AGENT_INIT
+     * (STANDALONE role-segment marker), COMPACTION_SUMMARY (the essence of the Leader session),
+     * USER_PROMPT (the outcome brief). Then restore the stashed STANDALONE persona + binding, clear
+     * the group stamp, and reset the episode.
+     */
+    private void transformToStandalone(@NonNull String brief) {
+        List<TurnRecord> priorTurns;
+        synchronized (history) {
+            priorTurns = new ArrayList<>(history);
+        }
+        String summary;
+        try {
+            summary = computeCompactionSummary(priorTurns);
+        } catch (RuntimeException e) {
+            log.warn(
+                    "Agent {} reverse-transform compaction failed; continuing with empty summary",
+                    agentId,
+                    e);
+            summary = "{}";
+        }
+
+        appendTurn(TurnRecord.rewind(++turnNumber, 0));
+        appendTurn(TurnRecord.agentInit(++turnNumber, "standalone"));
+        if (summary != null && !summary.isBlank() && !"{}".equals(summary)) {
+            appendTurn(TurnRecord.compactionSummary(++turnNumber, summary));
+        }
+        appendTurn(TurnRecord.userPrompt(++turnNumber, brief));
+
+        // Restore the stashed STANDALONE persona + binding. Null-safe: if no transform was stashed
+        // (the agent never led a group), flip the role back to STANDALONE on the current persona.
+        AgentPersona restored =
+                preTransformPersona != null
+                        ? preTransformPersona
+                        : persona.withRole(Role.STANDALONE);
+        LlmBinding restoredBinding =
+                preTransformBinding != null ? preTransformBinding : this.binding;
+        applyPersona(restored);
+        bind(restoredBinding);
+        setGroupId(null);
+        this.preTransformPersona = null;
+        this.preTransformBinding = null;
+
+        this.guided = false;
+        this.activeProgram = null;
+        this.programCounter = 0;
+        this.breaker.newEpisode();
+        this.scope = new Scope(objectMapper);
+        log.info("Agent {} reversed transform back to STANDALONE (group disbanded)", agentId);
     }
 
     public void terminate() {

@@ -26,6 +26,21 @@ public final class ToolDocs {
     }
 
     /**
+     * Returns the {@link ToolDoc#returnExamples()} for the given args class, or an empty list when
+     * the class is null or has no {@code @ToolDoc}.
+     */
+    public static @NonNull List<String> returnExamplesOf(@Nullable Class<?> argsClass) {
+        if (argsClass == null) {
+            return List.of();
+        }
+        ToolDoc doc = argsClass.getAnnotation(ToolDoc.class);
+        if (doc == null) {
+            return List.of();
+        }
+        return List.of(doc.returnExamples());
+    }
+
+    /**
      * Returns the long-form {@link ToolDoc#usage()} for the given args class, or an empty string
      * when the class is null or has no {@code @ToolDoc}.
      */

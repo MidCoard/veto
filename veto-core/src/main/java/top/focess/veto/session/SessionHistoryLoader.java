@@ -16,8 +16,8 @@ import top.focess.veto.memory.TurnRecordRepository;
 
 /**
  * Loads a session's durable conversation log (the existing {@code turn_records} table, written on
- * every turn by {@code MemoryCaptureService}) back into {@link TurnRecord}s for replay into an
- * {@code AgentRunner} on session activate.
+ * every turn by {@code TurnLogService}) back into {@link TurnRecord}s for replay into an {@code
+ * AgentRunner} on session activate.
  */
 @Component
 public class SessionHistoryLoader {
@@ -35,6 +35,22 @@ public class SessionHistoryLoader {
 
     public @NonNull List<TurnRecord> load(@NonNull String sessionId) {
         List<TurnRecordEntity> rows = repo.findBySessionIdOrderByTurnNumberAsc(sessionId);
+        return mapRows(rows, sessionId);
+    }
+
+    /**
+     * Loads one agent's turn stream within a session (the per-agent replay path). A group's Leader
+     * and each Mate each own a distinct stream; the caller resolves the agent id (the {@code
+     * primary_agent_id} for a Leader) so only that agent's turns are replayed into its runner.
+     * Served by the composite index without a full-table scan.
+     */
+    public @NonNull List<TurnRecord> load(@NonNull String sessionId, @NonNull String agentId) {
+        List<TurnRecordEntity> rows =
+                repo.findBySessionIdAndAgentIdOrderByTurnNumberAsc(sessionId, agentId);
+        return mapRows(rows, sessionId);
+    }
+
+    private @NonNull List<TurnRecord> mapRows(List<TurnRecordEntity> rows, String sessionId) {
         List<TurnRecord> out = new ArrayList<>(rows.size());
         for (TurnRecordEntity row : rows) {
             try {

@@ -5,13 +5,16 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import top.focess.veto.agent.Agent;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.Role;
+import top.focess.veto.model.tier.ModelTier;
 
 /**
  * The Spring-orchestrated entry point for spawning a Group with auto-starting Mates. The {@link
@@ -24,18 +27,31 @@ import top.focess.veto.agent.identity.Role;
  * Blackboard messages addressed to its id. The spawner tracks every {@link MateAgent} it has
  * started so {@link #disband(UUID)} can stop them; previously, disband only flipped the group's
  * state in the registry and the Mate schedulers kept polling forever.
+ *
+ * <p>Model tier per Mate: a Mate runs on the tier chosen for its skillset. {@link
+ * #resolveMateBinding} looks up {@link SkillsetProperties} for the skillset and falls back to the
+ * global {@code veto.group.mate.tier} (default {@code MID}) + {@code
+ * veto.group.mate.system-prompt-base}. The concrete provider / model / credential are resolved from
+ * the active model-tier profile by the factory, so switching profiles swaps every Mate's model at
+ * once. The pattern / agent never name a concrete model - only the tier.
  */
 @Service
-public class GroupSpawner {
+public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
 
     private static final Logger log = LoggerFactory.getLogger(GroupSpawner.class);
+
+    private static final String DEFAULT_MATE_SYSTEM_PROMPT_BASE =
+            "You are a Mate agent. Execute the assigned task.";
 
     private final @NonNull Blackboard blackboard;
     private final @NonNull GroupRegistry registry;
     private final @NonNull GroupOrchestrator orchestrator;
     private final @NonNull MateBreakerRegistry breakers;
+    private final @NonNull SkillsetProperties skillsetProperties;
     private final long defaultMaxCallsPerEpisode;
-    private final @NonNull String mateModelId;
+    private final @NonNull ModelTier mateTier;
+    private final @NonNull String mateSystemPromptBase;
+    private final @Nullable AgentFactory agentFactory;
 
     /**
      * Live MateAgents per group. Used by {@link #disband(UUID)} to stop polling and shut down each
@@ -47,26 +63,67 @@ public class GroupSpawner {
     /** A factory for creating fresh {@link Agent} instances (one per Mate). */
     @FunctionalInterface
     public interface AgentFactory {
-        Agent create(AgentPersona persona);
+        Agent create(AgentPersona persona, MateBinding mateBinding);
     }
 
+    @Autowired
     public GroupSpawner(
             Blackboard blackboard,
             GroupRegistry registry,
             GroupOrchestrator orchestrator,
             MateBreakerRegistry breakers,
+            SkillsetProperties skillsetProperties,
             @Value("${veto.group.mate.max_calls_per_episode:50}") long defaultMaxCallsPerEpisode,
-            @Value("${veto.group.mate.model_id:#{null}}") String mateModelId) {
+            @Value("${veto.group.mate.tier:MID}") String mateTier,
+            @Value("${veto.group.mate.system-prompt-base:" + DEFAULT_MATE_SYSTEM_PROMPT_BASE + "}")
+                    String mateSystemPromptBase,
+            @Nullable AgentFactory agentFactory) {
         this.blackboard = blackboard;
         this.registry = registry;
         this.orchestrator = orchestrator;
         this.breakers = breakers;
+        this.skillsetProperties = skillsetProperties;
         this.defaultMaxCallsPerEpisode = defaultMaxCallsPerEpisode;
-        // Default to an empty/null model id rather than a vendor-specific literal. The persona's
-        // model binding flows through the Agent's LlmBinding — when this is null the Agent must
-        // be configured with a binding externally (e.g. via veto.llm.* properties) before any
-        // model call. The previous hardcoded "gemini-3.5-flash" broke non-Gemini deployments.
-        this.mateModelId = mateModelId;
+        this.mateTier = parseTier(mateTier);
+        this.mateSystemPromptBase = mateSystemPromptBase;
+        // Injected so GroupSpawner can both spawn whole groups (caller supplies a factory) and
+        // provision individual Mates on demand as the orchestrator dispatches DAG nodes. May be
+        // null in tests that only exercise the spawn/register paths; provision() then refuses.
+        this.agentFactory = agentFactory;
+    }
+
+    /** Test-only constructor: no agent factory, so {@link #provision} is unavailable. */
+    public GroupSpawner(
+            Blackboard blackboard,
+            GroupRegistry registry,
+            GroupOrchestrator orchestrator,
+            MateBreakerRegistry breakers,
+            long defaultMaxCallsPerEpisode) {
+        this(
+                blackboard,
+                registry,
+                orchestrator,
+                breakers,
+                new SkillsetProperties(),
+                defaultMaxCallsPerEpisode,
+                "MID",
+                DEFAULT_MATE_SYSTEM_PROMPT_BASE,
+                null);
+    }
+
+    /**
+     * Resolve a Mate's tier + system-prompt base for a skillset. A skillset entry in {@link
+     * SkillsetProperties} overrides either field individually; unset fields fall back to the global
+     * {@code veto.group.mate.tier} / {@code veto.group.mate.system-prompt-base}.
+     */
+    private @NonNull MateBinding resolveMateBinding(@NonNull String skillset) {
+        SkillsetProperties.SkillsetConfig cfg = skillsetProperties.forSkillset(skillset);
+        ModelTier tier = (cfg != null && cfg.getTier() != null) ? cfg.getTier() : mateTier;
+        String base =
+                (cfg != null && cfg.getSystemPromptBase() != null)
+                        ? cfg.getSystemPromptBase()
+                        : mateSystemPromptBase;
+        return new MateBinding(tier, base);
     }
 
     /**
@@ -91,40 +148,15 @@ public class GroupSpawner {
         // Allocate and start each Mate, tracking the live instances for disband().
         List<MateAgent> started = new java.util.ArrayList<>();
         for (MateSpec spec : mateSpecs) {
-            // Model id is now configurable (veto.group.mate.model_id). The previous hardcoded
-            // "gemini-3.5-flash" broke non-Gemini deployments — the spawned Mate would try to
-            // bind to a model the user has no credentials for and fail every tool call.
-            String resolvedModelId = mateModelId;
-            AgentPersona persona =
-                    new AgentPersona(
-                            spec.mateId,
-                            spec.mateId,
-                            "Mate " + spec.mateId + " (skillset: " + spec.skillset + ")",
-                            java.util.Set.of(),
-                            java.util.List.of(),
-                            resolvedModelId,
-                            null,
-                            null,
-                            Role.MATE);
-            Agent agent = agentFactory.create(persona);
-            MateAgent mate =
-                    new MateAgent(
-                            spec.mateId,
-                            groupId,
-                            spec.skillset,
-                            agent,
-                            blackboard,
-                            breakers,
-                            defaultMaxCallsPerEpisode);
-            mate.start();
+            MateAgent mate = startMate(groupId, spec.mateId(), spec.skillset(), agentFactory);
             started.add(mate);
             // Register the Mate on the group.
-            g = g.withMate(spec.mateId, spec.skillset);
+            g = g.withMate(spec.mateId(), spec.skillset());
             log.info(
                     "GroupSpawner: spawned group {} with Mate {} (skillset={})",
                     groupId,
-                    spec.mateId,
-                    spec.skillset);
+                    spec.mateId(),
+                    spec.skillset());
         }
         liveMates.put(groupId, started);
         registry.put(g);
@@ -142,7 +174,7 @@ public class GroupSpawner {
 
         // Use the same groupId for the linear DAG and the Group so we don't generate and discard
         // a UUID (the previous implementation did `ExecutionDag.linear(UUID.randomUUID(), ...)`
-        // and let Group.create() immediately rebase — wasteful and confusing).
+        // and let Group.create() immediately rebase - wasteful and confusing).
         UUID groupId = UUID.randomUUID();
         return spawn(
                 leaderId,
@@ -154,7 +186,7 @@ public class GroupSpawner {
     }
 
     /**
-     * Spawn a Group with a DAG but no Mates yet — the Leader adds Mates via {@code create_mate} (or
+     * Spawn a Group with a DAG but no Mates yet - the Leader adds Mates via {@code create_mate} (or
      * the orchestrator assigns existing ones). This is the {@code create_group} path: it registers
      * the group + DAG so {@link GroupOrchestrator#tick} can drive it once Mates exist.
      */
@@ -166,6 +198,28 @@ public class GroupSpawner {
         Group g = Group.create(leaderId, userId, contextBrief, blackboard, dag);
         registry.put(g);
         log.info("GroupSpawner: spawned group {} (no Mates yet)", g.groupId());
+        return g;
+    }
+
+    /**
+     * Register an empty group - no DAG, no Mates. This is the Model B {@code create_group} path:
+     * the calling agent transforms into the Leader and authors the execution DAG node by node via
+     * {@code create_node}; the orchestrator provisions Mates lazily on dispatch. Returns the
+     * registered group so the caller can stamp its id into the transform directive.
+     */
+    public @NonNull Group registerEmptyGroup(
+            @NonNull String leaderId, @NonNull String userId, @NonNull String contextBrief) {
+        Group g =
+                Group.create(
+                        leaderId,
+                        userId,
+                        contextBrief,
+                        blackboard,
+                        new ExecutionDag(UUID.randomUUID(), java.util.List.of()));
+        registry.put(g);
+        log.info(
+                "GroupSpawner: registered empty group {} (Leader will author the DAG)",
+                g.groupId());
         return g;
     }
 
@@ -183,6 +237,25 @@ public class GroupSpawner {
         if (g == null) {
             throw new IllegalArgumentException("unknown group: " + groupId);
         }
+        startMate(groupId, mateId, skillset, agentFactory);
+        registry.put(g.withMate(mateId, skillset));
+        log.info(
+                "GroupSpawner: added Mate {} (skillset={}) to group {}", mateId, skillset, groupId);
+    }
+
+    /**
+     * Build and start a single Mate's {@link Agent} + polling {@link MateAgent} and track it for
+     * {@link #disband(UUID)}. Does NOT touch the registry: the caller owns the atomic group update
+     * (the orchestrator stamps the mate onto the group together with the node assignment so a
+     * concurrent tick never observes a half-wired group). Shared by {@link #addMate} (which then
+     * writes the registry) and {@link #provision} (which leaves the registry to the orchestrator).
+     */
+    private MateAgent startMate(
+            @NonNull UUID groupId,
+            @NonNull String mateId,
+            @NonNull String skillset,
+            @NonNull AgentFactory agentFactory) {
+        MateBinding mateBinding = resolveMateBinding(skillset);
         AgentPersona persona =
                 new AgentPersona(
                         mateId,
@@ -190,11 +263,8 @@ public class GroupSpawner {
                         "Mate " + mateId + " (skillset: " + skillset + ")",
                         java.util.Set.of(),
                         java.util.List.of(),
-                        mateModelId,
-                        null,
-                        null,
                         Role.MATE);
-        Agent agent = agentFactory.create(persona);
+        Agent agent = agentFactory.create(persona, mateBinding);
         MateAgent mate =
                 new MateAgent(
                         mateId,
@@ -208,9 +278,30 @@ public class GroupSpawner {
         liveMates
                 .computeIfAbsent(groupId, k -> new java.util.concurrent.CopyOnWriteArrayList<>())
                 .add(mate);
-        registry.put(g.withMate(mateId, skillset));
+        return mate;
+    }
+
+    /**
+     * {@link GroupOrchestrator.MateProvisioner} entry point: lazily provision a Mate for a
+     * dispatchable DAG node that no existing Mate can serve. Generates a fresh mate id, starts the
+     * Mate, and returns its id. The orchestrator performs the registry write (stamping the Mate
+     * onto the group alongside the node assignment) so the group update stays atomic.
+     */
+    @Override
+    public @NonNull String provision(@NonNull UUID groupId, @NonNull String skillset) {
+        AgentFactory factory = agentFactory;
+        if (factory == null) {
+            throw new IllegalStateException(
+                    "GroupSpawner.provision called without an AgentFactory (test wiring only)");
+        }
+        String mateId = UUID.randomUUID().toString();
+        startMate(groupId, mateId, skillset, factory);
         log.info(
-                "GroupSpawner: added Mate {} (skillset={}) to group {}", mateId, skillset, groupId);
+                "GroupSpawner: provisioned Mate {} (skillset={}) for group {} on demand",
+                mateId,
+                skillset,
+                groupId);
+        return mateId;
     }
 
     /**
@@ -238,7 +329,7 @@ public class GroupSpawner {
     /**
      * Disband a group: stop every live MateAgent (cancel poll + shut down the executor), drop the
      * breaker registry entries, mark the group DISBANDED, and retain the Blackboard for audit.
-     * Idempotent — calling disband twice is a no-op.
+     * Idempotent - calling disband twice is a no-op.
      */
     public void disband(java.util.@NonNull UUID groupId) {
         Group g = registry.get(groupId);
@@ -271,6 +362,17 @@ public class GroupSpawner {
                 log.warn(
                         "GroupSpawner: failed to stop Mate {} in group {}", m.mateId(), groupId, e);
             }
+        }
+    }
+
+    private static ModelTier parseTier(String s) {
+        if (s == null || s.isBlank()) {
+            return ModelTier.MID;
+        }
+        try {
+            return ModelTier.valueOf(s);
+        } catch (IllegalArgumentException e) {
+            return ModelTier.MID;
         }
     }
 

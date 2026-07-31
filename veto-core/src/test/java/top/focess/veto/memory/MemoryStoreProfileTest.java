@@ -10,7 +10,7 @@ import org.springframework.boot.test.context.SpringBootTest;
  * Regression for the {@link MemoryStore} bean-conflict: {@link InMemoryMemoryStore} must be
  * conditional (default, {@code matchIfMissing}) so activating a non-default backend ({@code
  * veto.memory.store=vector}) resolves a <em>single</em> {@link MemoryStore} bean instead of two
- * (which previously made {@code MemoryCaptureService} fail with {@code
+ * (which previously made the turn-capture wiring fail with {@code
  * NoUniqueBeanDefinitionException}).
  */
 @SpringBootTest(properties = "veto.memory.store=vector")

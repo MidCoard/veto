@@ -7,6 +7,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import top.focess.veto.model.AgentPatternEntity;
 import top.focess.veto.model.AgentPatternRepository;
+import top.focess.veto.model.tier.ModelTier;
+import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.vault.KeysteadVault;
 
 @RestController
@@ -15,12 +17,17 @@ public class PatternController {
 
     private final @NonNull AgentPatternRepository repo;
     private final @NonNull KeysteadVault vault;
+    private final @NonNull ModelTierRegistry tierRegistry;
 
     public
     @NonNull
-    PatternController(@NonNull AgentPatternRepository repo, @NonNull KeysteadVault vault) {
+    PatternController(
+            @NonNull AgentPatternRepository repo,
+            @NonNull KeysteadVault vault,
+            @NonNull ModelTierRegistry tierRegistry) {
         this.repo = repo;
         this.vault = vault;
+        this.tierRegistry = tierRegistry;
     }
 
     @GetMapping
@@ -33,20 +40,8 @@ public class PatternController {
     public @NonNull AgentPatternEntity create(@NonNull @RequestBody Map<String, String> body) {
         String user = vault.currentUser();
         if (user == null) throw new IllegalStateException("Not logged in");
-        String topModel = body.getOrDefault("topModel", body.get("model"));
-        String midModel = body.get("midModel");
-        String lowModel = body.get("lowModel");
-        var p =
-                new AgentPatternEntity(
-                        body.get("name"),
-                        body.get("provider").toUpperCase(),
-                        body.get("model"),
-                        "pattern-" + body.get("name"),
-                        user,
-                        topModel,
-                        midModel,
-                        lowModel);
-        vault.saveNote(p.getCredentialKey(), body.get("apiKey"));
+        ModelTier tier = ModelTier.valueOf(body.get("tier").toUpperCase());
+        var p = new AgentPatternEntity(body.get("name"), tier, tierRegistry.resolve(tier), user);
         return repo.save(p);
     }
 
@@ -55,10 +50,6 @@ public class PatternController {
         String user = vault.currentUser();
         if (user == null) return ResponseEntity.status(401).build();
         repo.deleteByNameAndOwner(name, user);
-        try {
-            vault.deleteNote("pattern-" + name);
-        } catch (Exception ignored) {
-        }
         return ResponseEntity.noContent().build();
     }
 }

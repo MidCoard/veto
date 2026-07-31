@@ -7,40 +7,36 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.TurnRecord;
-import top.focess.veto.memory.embedder.HashEmbedder;
 
 /**
- * Verifies {@link MemoryCaptureService} captures a turn into BOTH sinks: the semantic Session LTM
- * ({@link MemoryStore}) and the durable raw-turn log ({@link TurnRecordRepository}). Previously
- * capture wrote only the semantic entry and was never called by the loop at all.
+ * Verifies {@link TurnLogService} persists turns to the raw-turn log ({@link TurnRecordRepository})
+ * only - turn persistence is session state; nothing feeds LTM (long-term memory is agent-written
+ * only, via {@code write_memory}).
  */
-class MemoryCaptureServiceTest {
+class TurnLogServiceTest {
 
     @Test
-    void captureWritesSemanticLtmAndRawTurnLog() {
-        InMemoryMemoryStore store = new InMemoryMemoryStore(new HashEmbedder());
+    void logWritesRawTurnLog() {
         TurnRecordRepository repo = mock(TurnRecordRepository.class);
-        MemoryCaptureService service = new MemoryCaptureService(store, repo, new ObjectMapper());
+        TurnLogService service = new TurnLogService(repo, new ObjectMapper());
 
         UUID session = UUID.randomUUID();
         UUID user = UUID.randomUUID();
-        service.capture(TurnRecord.userPrompt(1, "hello world"), session, user);
+        String agent = UUID.randomUUID().toString();
+        service.log(TurnRecord.userPrompt(1, "hello world"), session, user, agent);
 
-        // (a) semantic Session LTM.
-        assertEquals(1, store.size(), "the turn is captured into Session LTM");
-        // (b) raw-turn log.
         verify(repo, times(1)).save(any(TurnRecordEntity.class));
     }
 
     @Test
     void rawTurnLogCarriesTenantAndPayload() {
-        InMemoryMemoryStore store = new InMemoryMemoryStore(new HashEmbedder());
         TurnRecordRepository repo = mock(TurnRecordRepository.class);
-        MemoryCaptureService service = new MemoryCaptureService(store, repo, new ObjectMapper());
+        TurnLogService service = new TurnLogService(repo, new ObjectMapper());
 
         UUID session = UUID.randomUUID();
         UUID user = UUID.randomUUID();
-        service.capture(TurnRecord.userPrompt(7, "do the thing"), session, user);
+        String agent = UUID.randomUUID().toString();
+        service.log(TurnRecord.userPrompt(7, "do the thing"), session, user, agent);
 
         org.mockito.ArgumentCaptor<TurnRecordEntity> captor =
                 org.mockito.ArgumentCaptor.forClass(TurnRecordEntity.class);
@@ -48,16 +44,16 @@ class MemoryCaptureServiceTest {
         TurnRecordEntity saved = captor.getValue();
         assertEquals(user.toString(), saved.getUserId());
         assertEquals(session.toString(), saved.getSessionId());
+        assertEquals(agent, saved.getAgentId());
         assertEquals(7, saved.getTurnNumber());
         assertEquals("USER_PROMPT", saved.getType());
         assertTrue(saved.getPayload().contains("do the thing"));
     }
 
     @Test
-    void toolCallIsCapturedForCoherentReplay() {
-        InMemoryMemoryStore store = new InMemoryMemoryStore(new HashEmbedder());
+    void toolCallIsLoggedForCoherentReplay() {
         TurnRecordRepository repo = mock(TurnRecordRepository.class);
-        MemoryCaptureService service = new MemoryCaptureService(store, repo, new ObjectMapper());
+        TurnLogService service = new TurnLogService(repo, new ObjectMapper());
 
         UUID session = UUID.randomUUID();
         UUID user = UUID.randomUUID();
@@ -66,8 +62,23 @@ class MemoryCaptureServiceTest {
         top.focess.veto.llm.core.ToolCall call =
                 new top.focess.veto.llm.core.ToolCall(
                         "read_file", java.util.Map.of("path", "a.txt"), "call-1");
-        service.capture(top.focess.veto.agent.TurnRecord.toolCall(3, call), session, user);
+        service.log(
+                top.focess.veto.agent.TurnRecord.toolCall(3, call),
+                session,
+                user,
+                UUID.randomUUID().toString());
 
         verify(repo, times(1)).save(any(TurnRecordEntity.class));
+    }
+
+    @Test
+    void absentRepositoryIsANoOp() {
+        TurnLogService service = new TurnLogService(null, new ObjectMapper());
+        // Must not throw - deployments without durability simply skip logging.
+        service.log(
+                TurnRecord.userPrompt(1, "hello"),
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                UUID.randomUUID().toString());
     }
 }

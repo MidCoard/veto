@@ -105,6 +105,16 @@ public record TurnRecord(
     }
 
     /**
+     * A role-start marker (session start, delegation transform). Delimits a role-segment: {@link
+     * top.focess.veto.agent.loop.PromptCompiler} maps it to no message (the front system message
+     * already carries the role), and compaction uses it as the anchor for the current segment. The
+     * {@code content} is a label kept for the audit record.
+     */
+    public static @NonNull TurnRecord agentInit(int turnNumber, @NonNull String content) {
+        return new TurnRecord(turnNumber, TurnType.AGENT_INIT, Map.of("content", content), null);
+    }
+
+    /**
      * A recall directive - a composite of a suffix-drop + a re-injected brief. The compiler drops
      * compiled positions {@code from_index..end} (keeping {@code 0..from_index-1}, typically the
      * AGENT_INIT seed), then appends {@code content} as a user message. Never emitted as an

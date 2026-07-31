@@ -71,9 +71,9 @@ public class AgentService {
     // The Part-8 Delta-broker — optional (nullable in tests); when present, threaded into each
     // AgentRunner so loop emissions publish per-session DeltaFrames for transports to stream.
     private final @Nullable DeltaBroker deltaBroker;
-    // The Part-4 per-turn memory-capture service — optional (nullable in tests); when present,
-    // threaded into each AgentRunner so appendTurn captures into Session LTM + the raw-turn log.
-    private final top.focess.veto.memory.@Nullable MemoryCaptureService captureService;
+    // The raw-turn write-through log — optional (nullable in tests); when present, threaded into
+    // each AgentRunner so appendTurn persists to the raw-turn audit/replay log.
+    private final top.focess.veto.memory.@Nullable TurnLogService turnLogService;
 
     /**
      * The default user id for memory capture. Per-user identity is not yet wired at the transport
@@ -99,7 +99,7 @@ public class AgentService {
                     @NonNull String deployerPolicyRaw,
             @Value("${veto.security.screening-mode:STRICT}") @NonNull String screeningModeRaw,
             @Nullable DeltaBroker deltaBroker,
-            top.focess.veto.memory.@Nullable MemoryCaptureService captureService) {
+            top.focess.veto.memory.@Nullable TurnLogService turnLogService) {
         this.mcpEngine = mcpEngine;
         this.hitlRegistry = hitlRegistry;
         this.ingressDefense = ingressDefense;
@@ -124,7 +124,7 @@ public class AgentService {
         this.hitlRegistry.setScreeningMode(parseScreeningMode(screeningModeRaw));
         this.hitlRegistry.setDefaultWorkspace(this.defaultWorkspace);
         this.deltaBroker = deltaBroker;
-        this.captureService = captureService;
+        this.turnLogService = turnLogService;
     }
 
     /**
@@ -249,6 +249,23 @@ public class AgentService {
             @NonNull List<TurnRecord> history,
             @NonNull UUID userId,
             @Nullable String workspaceRoots) {
+        return getOrCreateAgent(sessionId, null, binding, history, userId, workspaceRoots);
+    }
+
+    /**
+     * Gets or creates the agent for a session id, threading the DB primary agent id so persisted
+     * turns land under the right agent stream. {@code primaryAgentId} is the {@code AgentEntity} id
+     * (a UUID); when present it becomes the persona id (and thus turn_records.agent_id) and the
+     * runner's session id is stamped to {@code sessionId} (session.getId()). When null the legacy
+     * behavior (mint a fresh persona UUID, session id = persona id) is preserved.
+     */
+    public Agent getOrCreateAgent(
+            @NonNull String sessionId,
+            @Nullable String primaryAgentId,
+            AgentRunner.@NonNull LlmBinding binding,
+            @NonNull List<TurnRecord> history,
+            @NonNull UUID userId,
+            @Nullable String workspaceRoots) {
         boolean[] created = {false};
         Workspace workspace = buildWorkspace(workspaceRoots);
         VetoAgent agent =
@@ -256,7 +273,7 @@ public class AgentService {
                         sessionId,
                         k -> {
                             created[0] = true;
-                            return createAgent(k, binding, userId, workspace);
+                            return createAgent(k, primaryAgentId, binding, userId, workspace);
                         });
         agent.bind(binding);
         if (created[0] && history != null && !history.isEmpty()) {
@@ -318,7 +335,22 @@ public class AgentService {
             AgentRunner.@NonNull LlmBinding binding,
             @NonNull UUID userId,
             @NonNull Workspace workspace) {
-        AgentPersona persona = buildPersona(agentKey, binding);
+        return createAgent(agentKey, null, binding, userId, workspace);
+    }
+
+    // The DB-backed create path: agentKey is session.getId() (a UUID) and primaryAgentId is the
+    // AgentEntity id (also a UUID). persona.id() becomes primaryAgentId so turn_records.agent_id
+    // names this agent's stream, while the runner's session id is stamped to session.getId() so the
+    // session_id column groups the session's 1+N agent streams. When primaryAgentId is null (legacy
+    // /
+    // test path) the runner keeps its constructor default (persona.id()) as the session id.
+    private VetoAgent createAgent(
+            @NonNull String agentKey,
+            @Nullable String primaryAgentId,
+            AgentRunner.@NonNull LlmBinding binding,
+            @NonNull UUID userId,
+            @NonNull Workspace workspace) {
+        AgentPersona persona = buildPersona(agentKey, primaryAgentId, binding);
         // Register this agent's workspace on the HITL registry under its persona id so grant
         // matching + path canonicalization scope to this session's workspace.
         hitlRegistry.setWorkspace(persona.id(), workspace);
@@ -348,7 +380,10 @@ public class AgentService {
                         binding,
                         deltaBroker,
                         userId,
-                        captureService);
+                        turnLogService);
+        if (primaryAgentId != null) {
+            runner.setSessionId(UUID.fromString(agentKey));
+        }
         return new VetoAgent(persona, runner);
     }
 
@@ -433,7 +468,7 @@ public class AgentService {
                         binding,
                         deltaBroker,
                         userId,
-                        captureService);
+                        turnLogService);
         return new VetoAgent(scoped, runner);
     }
 
@@ -445,9 +480,21 @@ public class AgentService {
      * registered tools.
      */
     private AgentPersona buildPersona(String agentKey, AgentRunner.LlmBinding binding) {
+        return buildPersona(agentKey, null, binding);
+    }
+
+    // persona.id() is the agent identity written to turn_records.agent_id and used as the HITL
+    // workspace key. When the DB path supplies primaryAgentId (the AgentEntity id, a UUID) we adopt
+    // it
+    // verbatim so persisted turns group under the right agent stream and resume can find them;
+    // absent
+    // that (legacy/test path) we mint a fresh UUID just as before.
+    private AgentPersona buildPersona(
+            String agentKey, @Nullable String primaryAgentId, AgentRunner.LlmBinding binding) {
         Set<ToolDefinition> tools = roleToolFilter.resolve(Role.STANDALONE);
+        String personaId = primaryAgentId != null ? primaryAgentId : UUID.randomUUID().toString();
         return new AgentPersona(
-                UUID.randomUUID().toString(),
+                personaId,
                 SystemPromptResolver.NAME,
                 SystemPromptResolver.DESCRIPTION,
                 tools,

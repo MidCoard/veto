@@ -41,6 +41,11 @@ public record AgentToolDefinition(
     }
 
     @Override
+    public @NonNull List<String> returnExamples() {
+        return ToolDocs.returnExamplesOf(argsClass);
+    }
+
+    @Override
     public @NonNull String longDescription() {
         return ToolDocs.descriptionOf(argsClass);
     }

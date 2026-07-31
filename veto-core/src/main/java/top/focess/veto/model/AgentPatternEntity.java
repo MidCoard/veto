@@ -4,7 +4,23 @@ import jakarta.persistence.*;
 import java.time.Instant;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
+import top.focess.veto.model.tier.ModelBinding;
+import top.focess.veto.model.tier.ModelTier;
 
+/**
+ * A named agent pattern bound to a {@link ModelTier}. The tier is the live source of truth: at
+ * activation the {@link top.focess.veto.model.tier.ModelTierRegistry} resolves the tier against the
+ * active model-tier configuration to obtain the concrete provider, model, and credential. Patterns
+ * do not know which concrete model they run on - only their tier - so switching the active
+ * configuration swaps the model for every pattern at once.
+ *
+ * <p>The {@code provider}/{@code model}/{@code topModel}/{@code credentialKey} columns are a
+ * <em>vestigial create-time cache</em>: they are populated from the tier's resolved {@link
+ * ModelBinding} when the pattern is created purely to satisfy pre-existing NOT NULL constraints
+ * (Hibernate {@code ddl-auto=update} adds the {@code tier} column but cannot relax the old ones).
+ * They are not read for live resolution; the registry is. A future migration may drop them.
+ */
 @Entity
 @Table(name = "agent_patterns")
 public class AgentPatternEntity {
@@ -14,6 +30,17 @@ public class AgentPatternEntity {
     @Column(nullable = false)
     private String name;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "tier", nullable = false)
+    private ModelTier tier;
+
+    @Column(name = "owner", nullable = false)
+    private String owner;
+
+    @Column(name = "created_at", nullable = false)
+    private Instant createdAt;
+
+    // ── vestigial NOT NULL cache (populated from the tier binding at create; not live-read) ──
     @Column(nullable = false)
     private String provider;
 
@@ -23,47 +50,56 @@ public class AgentPatternEntity {
     @Column(name = "top_model", nullable = false)
     private String topModel;
 
-    @Column(name = "mid_model")
-    private String midModel;
-
-    @Column(name = "low_model")
-    private String lowModel;
-
     @Column(name = "credential_key", nullable = false)
     private String credentialKey;
 
-    @Column(name = "owner", nullable = false)
-    private String owner;
-
-    @Column(name = "created_at", nullable = false)
-    private Instant createdAt;
-
     protected AgentPatternEntity() {}
 
+    /**
+     * Create a pattern bound to a tier. {@code cache} is the tier's resolved binding at create
+     * time, used to populate the vestigial NOT NULL cache columns.
+     *
+     * @param name the pattern name
+     * @param tier the model tier this pattern binds to
+     * @param cache the resolved binding for {@code tier} (provider/model/credential cached)
+     * @param owner the owning username
+     */
     public AgentPatternEntity(
-            String name,
-            String provider,
-            String model,
-            String credentialKey,
-            String owner,
-            String topModel,
-            String midModel,
-            String lowModel) {
+            @NonNull String name,
+            @NonNull ModelTier tier,
+            @NonNull ModelBinding cache,
+            @NonNull String owner) {
         this.id = UUID.randomUUID().toString();
         this.name = name;
-        this.provider = provider;
-        this.model = model;
-        this.credentialKey = credentialKey;
+        this.tier = tier;
         this.owner = owner;
         this.createdAt = Instant.now();
-        this.topModel = topModel;
-        this.midModel = midModel;
-        this.lowModel = lowModel;
+        this.provider = cache.provider().name();
+        this.model = cache.model();
+        this.topModel = cache.model();
+        this.credentialKey = cache.credentialKey();
     }
 
+    /**
+     * Transitional constructor for callers that still supply a frozen provider/model/credential
+     * directly. Defaults the tier to {@link ModelTier#TOP}. Used while the agent-freeze path
+     * migrates to tier-based resolution.
+     */
     public AgentPatternEntity(
-            String name, String provider, String model, String credentialKey, String owner) {
-        this(name, provider, model, credentialKey, owner, model, null, null);
+            @NonNull String name,
+            @NonNull String provider,
+            @NonNull String model,
+            @NonNull String credentialKey,
+            @NonNull String owner) {
+        this.id = UUID.randomUUID().toString();
+        this.name = name;
+        this.tier = ModelTier.TOP;
+        this.owner = owner;
+        this.createdAt = Instant.now();
+        this.provider = provider;
+        this.model = model;
+        this.topModel = model;
+        this.credentialKey = credentialKey;
     }
 
     public String getId() {
@@ -78,28 +114,12 @@ public class AgentPatternEntity {
         this.name = name;
     }
 
-    public String getProvider() {
-        return provider;
+    public @NonNull ModelTier getTier() {
+        return tier;
     }
 
-    public void setProvider(@NonNull String provider) {
-        this.provider = provider;
-    }
-
-    public String getModel() {
-        return model;
-    }
-
-    public void setModel(@NonNull String model) {
-        this.model = model;
-    }
-
-    public String getCredentialKey() {
-        return credentialKey;
-    }
-
-    public void setCredentialKey(@NonNull String credentialKey) {
-        this.credentialKey = credentialKey;
+    public void setTier(@NonNull ModelTier tier) {
+        this.tier = tier;
     }
 
     public String getOwner() {
@@ -118,27 +138,39 @@ public class AgentPatternEntity {
         this.createdAt = createdAt;
     }
 
-    public String getTopModel() {
+    /** The cached provider (value of the tier binding at create; not live). */
+    public @Nullable String getProvider() {
+        return provider;
+    }
+
+    public void setProvider(@NonNull String provider) {
+        this.provider = provider;
+    }
+
+    /** The cached model (value of the tier binding at create; not live). */
+    public @Nullable String getModel() {
+        return model;
+    }
+
+    public void setModel(@NonNull String model) {
+        this.model = model;
+    }
+
+    /** The cached credential-key (value of the tier binding at create; not live). */
+    public @Nullable String getCredentialKey() {
+        return credentialKey;
+    }
+
+    public void setCredentialKey(@NonNull String credentialKey) {
+        this.credentialKey = credentialKey;
+    }
+
+    /** The cached top model (mirror of {@link #getModel()}; retained for NOT NULL compat). */
+    public @Nullable String getTopModel() {
         return topModel;
     }
 
     public void setTopModel(@NonNull String topModel) {
         this.topModel = topModel;
-    }
-
-    public String getMidModel() {
-        return midModel;
-    }
-
-    public void setMidModel(@NonNull String midModel) {
-        this.midModel = midModel;
-    }
-
-    public String getLowModel() {
-        return lowModel;
-    }
-
-    public void setLowModel(@NonNull String lowModel) {
-        this.lowModel = lowModel;
     }
 }

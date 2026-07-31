@@ -19,7 +19,6 @@ import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.llm.core.ProviderType;
 import top.focess.veto.llm.core.UniformLLMCaller;
-import top.focess.veto.memory.MemoryCaptureService;
 
 /**
  * Verifies {@link AgentService#getOrCreateAgent} seeds replayed history on first creation (so a
@@ -117,11 +116,7 @@ class AgentServiceHistorySeedTest {
                 "FULL_ACCESS",
                 "STRICT",
                 null,
-                new MemoryCaptureService(
-                        new top.focess.veto.memory.InMemoryMemoryStore(
-                                new top.focess.veto.memory.embedder.HashEmbedder()),
-                        null,
-                        mapper));
+                new top.focess.veto.memory.TurnLogService(null, mapper));
     }
 
     private static AgentRunner.LlmBinding binding() {

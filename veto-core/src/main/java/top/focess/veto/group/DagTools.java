@@ -1,0 +1,265 @@
+package top.focess.veto.group;
+
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
+import org.springframework.stereotype.Component;
+import top.focess.veto.agent.mcp.AgentTool;
+import top.focess.veto.agent.mcp.Doc;
+import top.focess.veto.agent.mcp.ParamCategory;
+import top.focess.veto.agent.mcp.SecurityHint;
+import top.focess.veto.agent.mcp.ToolCallContext;
+import top.focess.veto.agent.mcp.ToolCallContextHolder;
+import top.focess.veto.agent.mcp.ToolDoc;
+import top.focess.veto.group.GroupOrchestrator.NodeEdit;
+
+/**
+ * The Leader's node-authoring tools ({@code create_node} / {@code remove_node}). The Leader builds
+ * the group's execution plan node by node - never as a submitted JSON blob - so the {@link
+ * GroupOrchestrator} stays the DAG's source of truth: every call is one atomic, validated change
+ * (duplicate id, unknown dependency, dependents on removal), and acyclicity holds by construction
+ * (a node can only depend on nodes that already exist).
+ *
+ * <p>Both tools resolve the group from the {@link ToolCallContext} (the caller leads exactly one
+ * group), so neither takes a {@code groupId} argument. Role gating (LEADER-only) is enforced by
+ * tool availability - the Mate and STANDALONE personas are not offered these tools.
+ */
+public final class DagTools {
+
+    private DagTools() {}
+
+    /** Resolve the caller's group id from the tool call context, or null when not in a group. */
+    private static @Nullable UUID contextGroupId() {
+        ToolCallContext ctx = ToolCallContextHolder.get();
+        return ctx != null ? ctx.groupId() : null;
+    }
+
+    /** {@code create_node} — add a node to the group's execution plan. */
+    @Component
+    @ToolDoc(
+            description =
+                    "Add a node to your group's execution plan - one discrete task with "
+                            + "a required skillset.",
+            usage =
+                    """
+                    #### When to use
+                    Use `create_node` to build your plan node by node: one call per discrete \
+                    task. Create dependencies before the nodes that need them - you author the \
+                    plan from its foundations up. Also use it to extend the plan while the group \
+                    is running.
+
+                    #### When NOT to use
+                    - Do not create a node before you have investigated enough to describe it \
+                    concretely - vague nodes make vague work.
+                    - Do not create nodes for work that needs no mate; synthesis is your job, \
+                    not a node.
+                    - Do not depend on a node that does not exist yet; create it first.
+
+                    #### Behavior
+                    Adds one node to the execution plan. `dependsOn` may reference only existing, \
+                    live nodes - the plan stays acyclic by construction. The node starts PENDING; \
+                    the engine provisions a mate of the required skillset if none exists and \
+                    dispatches the node as soon as its dependencies verify. Each call is \
+                    validated atomically: a duplicate id or an unknown dependency rejects just \
+                    that call.
+
+                    #### Return format
+                    On success - one prose line per created node:
+                      Node created: node-1 (skillset: coding). It dispatches as soon as a coding mate is provisioned.
+                    On rejection:
+                      Node not created: <reason and what to do next>
+
+                    #### Errors & edge cases
+                    - Duplicate `nodeId` -> rejected; choose a unique id.
+                    - `dependsOn` references an unknown or retired (stale) node -> rejected naming \
+                    the id; create dependencies first.
+                    - Blank `description` or `skillset` -> rejected.
+                    - The plan needs more distinct skillsets than the mate cap allows -> the node \
+                    is accepted but waits in PENDING until a mate frees up.
+
+                    #### Security
+                    Agent tool (`RiskCategory.AGENT`). The Gateway returns `NotScreened`; each \
+                    call is structurally validated by the engine before it takes effect. \
+                    Leader-only.
+                    """,
+            examples = {
+                "{\"nodeId\": \"node-1\", \"description\": \"Implement JWT login in UserService\", \"skillset\": \"coding\"}",
+                "{\"nodeId\": \"node-2\", \"description\": \"Test the login flow\", \"skillset\": \"testing\", \"dependsOn\": [\"node-1\"]}",
+                "{\"nodeId\": \"node-2\", \"description\": \"Verify\", \"skillset\": \"testing\", \"dependsOn\": [\"node-9\"]}"
+            },
+            returnExamples = {
+                "Node created: node-1 (skillset: coding). It dispatches as soon as a coding mate is provisioned.",
+                "Node created: node-2 (skillset: testing, depends on: node-1). It dispatches when node-1 verifies.",
+                "Node not created: unknown dependency node-9. Create dependencies before the nodes that need them."
+            })
+    public static final class CreateNode implements AgentTool<CreateNode.Args> {
+
+        private final GroupOrchestrator orchestrator;
+
+        public CreateNode(GroupOrchestrator orchestrator) {
+            this.orchestrator = orchestrator;
+        }
+
+        public record Args(
+                @SecurityHint(ParamCategory.GENERIC)
+                        @Doc("New node's id (unique within the plan, e.g. 'node-1').")
+                        String nodeId,
+                @SecurityHint(ParamCategory.GENERIC)
+                        @Doc(
+                                "What the node does - concrete enough for a mate to execute without asking.")
+                        String description,
+                @SecurityHint(ParamCategory.GENERIC)
+                        @Doc("The skillset this node requires (e.g. 'coding', 'testing').")
+                        String skillset,
+                @SecurityHint(ParamCategory.GENERIC)
+                        @Nullable
+                        @Doc(
+                                "Ids of existing nodes that must verify before this one dispatches; "
+                                        + "omit for a root node.")
+                        List<String> dependsOn) {}
+
+        @Override
+        public @NonNull String getName() {
+            return "create_node";
+        }
+
+        @Override
+        public @NonNull String getDescription() {
+            ToolDoc doc = Args.class.getAnnotation(ToolDoc.class);
+            return (doc != null && !doc.description().isEmpty()) ? doc.description() : "";
+        }
+
+        @Override
+        public @NonNull Class<Args> getArgsClass() {
+            return Args.class;
+        }
+
+        @Override
+        public @NonNull String execute(@NonNull Args args) {
+            UUID groupId = contextGroupId();
+            if (groupId == null) {
+                return "Node not created: no active group in your context. create_node is "
+                        + "a Leader tool inside a group.";
+            }
+            String nodeId = args.nodeId() == null ? "" : args.nodeId().strip();
+            String description = args.description() == null ? "" : args.description().strip();
+            String skillset = args.skillset() == null ? "" : args.skillset().strip();
+            Set<String> deps =
+                    args.dependsOn() == null ? Set.of() : new LinkedHashSet<>(args.dependsOn());
+            NodeEdit edit = orchestrator.addNode(groupId, nodeId, description, skillset, deps);
+            if (edit instanceof NodeEdit.Rejected r) {
+                return "Node not created: " + r.reason();
+            }
+            if (deps.isEmpty()) {
+                return "Node created: "
+                        + nodeId
+                        + " (skillset: "
+                        + skillset
+                        + "). It dispatches as soon as a "
+                        + skillset
+                        + " mate is provisioned.";
+            }
+            return "Node created: "
+                    + nodeId
+                    + " (skillset: "
+                    + skillset
+                    + ", depends on: "
+                    + String.join(", ", deps)
+                    + "). It dispatches when its dependencies verify.";
+        }
+    }
+
+    /** {@code remove_node} — retire a node from the group's plan (marked STALE). */
+    @Component
+    @ToolDoc(
+            description =
+                    "Retire a node from your group's plan - re-planning marks it stale "
+                            + "rather than deleting it.",
+            usage =
+                    """
+                    #### When to use
+                    Use `remove_node` when re-planning makes a node obsolete - a strategic \
+                    pivot, a task that turned out unnecessary, or a failed node you are replacing \
+                    with a different approach.
+
+                    #### When NOT to use
+                    - Do not remove a VERIFIED node; verified work is checkpointed and stays.
+                    - Do not remove a node others still depend on; re-plan or remove the \
+                    dependents first (the error names them).
+                    - Do not remove a node as a reaction to a single failure - the engine already \
+                    routes retries; removal is for plan-level changes.
+
+                    #### Behavior
+                    Marks the node STALE. A stale node is never dispatched again and stays in the \
+                    plan record for audit; other nodes can no longer depend on it. If the node is \
+                    running, its mate is told to stop and the assignment closes. Refused while \
+                    live nodes still depend on it.
+
+                    #### Return format
+                    On success:
+                      Node removed: node-2 (marked stale).
+                    On refusal:
+                      Node not removed: node-3 depends on node-1. Remove or re-plan node-3 first.
+
+                    #### Errors & edge cases
+                    - Unknown `nodeId` -> `Node not found: <id>`.
+                    - Live dependents exist -> refused, naming the dependents.
+                    - Already stale or VERIFIED -> not removed; stale is final, verified is \
+                    checkpointed.
+
+                    #### Security
+                    Agent tool (`RiskCategory.AGENT`). The Gateway returns `NotScreened`; the \
+                    engine validates the removal before it takes effect. Leader-only.
+                    """,
+            examples = {"{\"nodeId\": \"node-2\"}", "{\"nodeId\": \"node-1\"}"},
+            returnExamples = {
+                "Node removed: node-2 (marked stale).",
+                "Node not removed: node-3 depends on node-1. Remove or re-plan node-3 first."
+            })
+    public static final class RemoveNode implements AgentTool<RemoveNode.Args> {
+
+        private final GroupOrchestrator orchestrator;
+
+        public RemoveNode(GroupOrchestrator orchestrator) {
+            this.orchestrator = orchestrator;
+        }
+
+        public record Args(
+                @SecurityHint(ParamCategory.GENERIC) @Doc("The id of the node to retire.")
+                        String nodeId) {}
+
+        @Override
+        public @NonNull String getName() {
+            return "remove_node";
+        }
+
+        @Override
+        public @NonNull String getDescription() {
+            ToolDoc doc = Args.class.getAnnotation(ToolDoc.class);
+            return (doc != null && !doc.description().isEmpty()) ? doc.description() : "";
+        }
+
+        @Override
+        public @NonNull Class<Args> getArgsClass() {
+            return Args.class;
+        }
+
+        @Override
+        public @NonNull String execute(@NonNull Args args) {
+            UUID groupId = contextGroupId();
+            if (groupId == null) {
+                return "Node not removed: no active group in your context. remove_node is "
+                        + "a Leader tool inside a group.";
+            }
+            String nodeId = args.nodeId() == null ? "" : args.nodeId().strip();
+            NodeEdit edit = orchestrator.removeNode(groupId, nodeId);
+            if (edit instanceof NodeEdit.Rejected r) {
+                return "Node not removed: " + r.reason();
+            }
+            return "Node removed: " + nodeId + " (marked stale).";
+        }
+    }
+}

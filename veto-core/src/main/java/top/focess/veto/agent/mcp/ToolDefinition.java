@@ -46,6 +46,14 @@ public sealed interface ToolDefinition
     }
 
     /**
+     * Concrete return-value examples reflected from a {@link ToolDoc} on the tool's args record;
+     * the i-th entry corresponds to the i-th {@link #examples()} entry. Empty by default.
+     */
+    default @NonNull List<String> returnExamples() {
+        return List.of();
+    }
+
+    /**
      * Long-form, LLM-facing usage doc reflected from a {@link ToolDoc} on the tool's args record;
      * rendered verbatim as the body of the tool's catalog entry by the prompt compiler. Empty by
      * default (the short {@link #description()} is rendered alone).

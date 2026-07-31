@@ -2,167 +2,87 @@ package top.focess.veto.group;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import java.time.Duration;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeoutException;
-import java.util.function.Consumer;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.agent.Agent;
-import top.focess.veto.agent.AgentResult;
-import top.focess.veto.agent.AgentState;
-import top.focess.veto.agent.TurnRecord;
-import top.focess.veto.agent.TurnType;
-import top.focess.veto.agent.drift.ReadHistory;
-import top.focess.veto.agent.identity.AgentPersona;
+import top.focess.veto.agent.identity.RoleToolFilter;
 import top.focess.veto.agent.mcp.ToolCallContextHolder;
+import top.focess.veto.agent.mcp.ToolDefinition;
+import top.focess.veto.agent.mcp.ToolEngine;
+import top.focess.veto.agent.mcp.ToolResult;
 import top.focess.veto.group.GroupTools.CreateGroup;
 import top.focess.veto.group.GroupTools.DisbandGroup;
-import top.focess.veto.group.GroupTools.DispatchTask;
 import top.focess.veto.group.GroupTools.PostMessage;
+import top.focess.veto.llm.core.ToolCall;
+import top.focess.veto.model.tier.DefaultModelTierRegistry;
+import top.focess.veto.model.tier.ModelTierProperties;
 
 /**
- * Verifies the {@code GroupTools} native-tool bodies are wired to the runtime (GroupSpawner +
- * Blackboard). {@code create_group} now spawns a one-shot Leader agent to author the DAG, registers
- * the group, spawns one Mate per skillset, and returns {@code "delegated"} (no group id) - the
- * Leader agent is stubbed here so the authoring path is exercised without an LLM.
+ * Verifies the Model B {@code GroupTools} native-tool bodies are wired to the runtime (GroupSpawner
+ * + Blackboard + GroupRegistry). {@code create_group} registers an empty group and requests a
+ * forward transform (STANDALONE -> Leader); {@code disband_group} tears the group down and requests
+ * the reverse transform; {@code post_message} posts to the Blackboard. All three resolve the
+ * caller's group from the {@link ToolCallContext}, so none takes a {@code groupId} argument.
  */
 class GroupToolsWiringTest {
 
     private final Blackboard blackboard = new Blackboard();
     private final GroupRegistry registry = new GroupRegistry();
-    private final GroupOrchestrator orchestrator =
-            new GroupOrchestrator(registry, blackboard, new HeuristicLeader());
+    private final GroupOrchestrator orchestrator = new GroupOrchestrator(registry, blackboard);
+    private final DefaultModelTierRegistry tierRegistry =
+            new DefaultModelTierRegistry(new ModelTierProperties());
     private final GroupSpawner spawner =
-            new GroupSpawner(
-                    blackboard, registry, orchestrator, new MateBreakerRegistry(), 50, null);
+            new GroupSpawner(blackboard, registry, orchestrator, new MateBreakerRegistry(), 50);
+    private final LeaderBinding leaderBinding = new LeaderBinding("TOP", "base", tierRegistry);
+    private final RoleToolFilter roleToolFilter = new RoleToolFilter(new StubToolEngine());
 
-    /** A stub Agent whose {@code await} returns a fixed result (the Leader's authored DAG JSON). */
-    private static final class StubAgent implements Agent {
-        private final AgentPersona persona;
-        private final AgentResult result;
-
-        StubAgent(AgentPersona persona, AgentResult result) {
-            this.persona = persona;
-            this.result = result;
-        }
-
+    /**
+     * A stub ToolEngine whose active-tools set is empty - the filter resolves an empty Leader set.
+     */
+    private static final class StubToolEngine implements ToolEngine {
         @Override
-        public @NonNull String id() {
-            return persona.id();
-        }
-
-        @Override
-        public @NonNull String name() {
-            return persona.name();
-        }
-
-        @Override
-        public @NonNull AgentPersona persona() {
-            return persona;
-        }
-
-        @Override
-        public @NonNull Set<String> whitelistedTools() {
-            return Set.of();
-        }
-
-        @Override
-        public @NonNull AgentState state() {
-            return AgentState.IDLE;
-        }
-
-        @Override
-        public void submit(@NonNull String prompt) {}
-
-        @Override
-        public void submit(@NonNull String prompt, @Nullable Consumer<AgentResult> callback) {}
-
-        @Override
-        public @NonNull AgentResult await(@NonNull Duration timeout)
-                throws TimeoutException, InterruptedException {
-            return result;
-        }
-
-        @Override
-        public @NonNull CompletableFuture<AgentResult> result() {
-            return CompletableFuture.completedFuture(result);
-        }
-
-        @Override
-        public void pause() {}
-
-        @Override
-        public void resume() {}
-
-        @Override
-        public void terminate() {}
-
-        @Override
-        public @NonNull List<TurnRecord> history() {
+        public @NonNull List<ToolDefinition> getActiveTools(@Nullable Set<String> whitelist) {
             return List.of();
         }
 
         @Override
-        public @NonNull ReadHistory readHistory() {
-            return new ReadHistory();
+        public @Nullable ToolDefinition resolveDefinition(@NonNull String toolName) {
+            return null;
         }
 
         @Override
-        public void compact() {}
-    }
-
-    /**
-     * A stub AgentFactory: the Leader gets the authored-DAG result; Mates get a failure (unused).
-     */
-    private static final class StubAgentFactory implements GroupSpawner.AgentFactory {
-        private final AgentResult leaderResult;
-
-        StubAgentFactory(AgentResult leaderResult) {
-            this.leaderResult = leaderResult;
-        }
-
-        @Override
-        public Agent create(@NonNull AgentPersona persona) {
-            AgentResult r =
-                    persona.role() == top.focess.veto.agent.identity.Role.LEADER
-                            ? leaderResult
-                            : AgentResult.failure("stub mate", Map.of());
-            return new StubAgent(persona, r);
+        public @NonNull ToolResult execute(@NonNull ToolCall call, @NonNull ToolDefinition def) {
+            return new ToolResult(call.toolName(), call.callId(), true, "");
         }
     }
 
     @Test
-    void createGroupDelegatesAndRegistersGroupWithRecallBrief() {
-        AgentResult leaderResult =
-                AgentResult.success(
-                        "{\"nodes\":[{\"nodeId\":\"n1\",\"description\":\"do the thing\",\"skillset\":\"coding\"}]}",
-                        Map.of());
-        CreateGroup create = new CreateGroup(spawner, new StubAgentFactory(leaderResult));
+    void createGroupRegistersEmptyGroupAndRequestsTransform() {
+        CreateGroup create = new CreateGroup(spawner, leaderBinding, roleToolFilter);
 
         ToolCallContextHolder.set("agent-1", UUID.randomUUID());
         try {
-            String result = create.execute(new CreateGroup.Args("do the thing", null));
-            assertEquals("delegated", result, "create_group returns 'delegated', not a group id");
+            String result = create.execute(new CreateGroup.Args("do the thing"));
+            assertEquals("", result, "create_group returns an empty result on success");
 
-            // A RECALL brief is requested to seed the caller's context with the authored plan.
-            List<TurnRecord> pending = ToolCallContextHolder.drainPendingTurns();
-            assertEquals(1, pending.size(), "a RECALL is requested");
-            assertEquals(TurnType.RECALL, pending.get(0).type());
+            // A forward transform (STANDALONE -> Leader) is requested - not a recall.
+            ToolCallContextHolder.TransformRequest request = ToolCallContextHolder.drainTransform();
+            assertInstanceOf(ToolCallContextHolder.TransformRequest.ToLeader.class, request);
+            ToolCallContextHolder.TransformDirective directive =
+                    ((ToolCallContextHolder.TransformRequest.ToLeader) request).directive();
+            assertEquals("do the thing", directive.brief());
+            assertEquals("deepseek-chat", directive.leaderBinding().model());
 
-            // The group is registered (found via the registry snapshot - no id was returned).
+            // An empty group is registered (no DAG nodes, no Mates).
             assertEquals(1, registry.snapshot().size(), "one group registered");
             Group g = registry.snapshot().values().iterator().next();
             assertTrue(g.isActive());
-            assertEquals("do the thing", g.contextBrief());
             assertEquals(
-                    1, g.dag().nodes().size(), "the Leader-authored single-node DAG is registered");
-            assertEquals("do the thing", g.dag().nodes().get(0).description());
+                    directive.groupId(), g.groupId(), "the directive stamps the registered group");
+            assertTrue(g.dag().nodes().isEmpty(), "the group starts with an empty DAG");
             spawner.disband(g.groupId());
         } finally {
             ToolCallContextHolder.clear();
@@ -170,108 +90,92 @@ class GroupToolsWiringTest {
     }
 
     @Test
-    void createGroupRegistersLeaderAuthoredDag() {
-        String dagJson =
-                "{\"nodes\":["
-                        + "{\"nodeId\":\"n1\",\"description\":\"a\",\"skillset\":\"coding\"},"
-                        + "{\"nodeId\":\"n2\",\"description\":\"b\",\"skillset\":\"testing\","
-                        + "\"dependsOn\":[\"n1\"]}"
-                        + "]}";
-        AgentResult leaderResult = AgentResult.success(dagJson, Map.of());
-        CreateGroup create = new CreateGroup(spawner, new StubAgentFactory(leaderResult));
-
-        ToolCallContextHolder.set("agent-2", UUID.randomUUID());
+    void createGroupRefusesBlankBrief() {
+        CreateGroup create = new CreateGroup(spawner, leaderBinding, roleToolFilter);
+        ToolCallContextHolder.set("agent-blank", UUID.randomUUID());
         try {
-            String result = create.execute(new CreateGroup.Args("brief", null));
-            assertEquals("delegated", result);
-            ToolCallContextHolder.drainPendingTurns(); // discard the RECALL
-
-            Group g = registry.snapshot().values().iterator().next();
-            assertEquals(2, g.dag().nodes().size(), "the Leader-authored 2-node DAG is registered");
-            assertEquals("n2", g.dag().nodes().get(1).nodeId());
-            spawner.disband(g.groupId());
+            String result = create.execute(new CreateGroup.Args("   "));
+            assertTrue(result.startsWith("Group not created:"), "blank brief is refused");
+            assertNull(ToolCallContextHolder.drainTransform(), "no transform requested on refusal");
+            assertTrue(registry.snapshot().isEmpty(), "no group registered on refusal");
         } finally {
             ToolCallContextHolder.clear();
         }
     }
 
     @Test
-    void createGroupFallsBackToLinearDagWhenLeaderFails() {
-        // Leader returns a failure -> authorDag falls back to a single-node linear DAG.
-        AgentResult leaderResult = AgentResult.failure("no model configured", Map.of());
-        CreateGroup create = new CreateGroup(spawner, new StubAgentFactory(leaderResult));
+    void disbandGroupTearsDownGroupAndRequestsReverseTransform() {
+        Group g = spawner.registerEmptyGroup("leader", "default", "brief");
 
-        ToolCallContextHolder.set("agent-3", UUID.randomUUID());
+        DisbandGroup disband = new DisbandGroup(spawner, registry);
+        ToolCallContextHolder.set("leader", UUID.randomUUID(), g.groupId());
         try {
-            String result = create.execute(new CreateGroup.Args("fallback brief", null));
-            assertEquals("delegated", result);
-            ToolCallContextHolder.drainPendingTurns();
+            String result = disband.execute(new DisbandGroup.Args());
+            assertEquals("", result, "disband_group returns an empty result on success");
 
-            Group g = registry.snapshot().values().iterator().next();
-            assertEquals(1, g.dag().nodes().size(), "fallback is a single-node linear DAG");
-            spawner.disband(g.groupId());
-        } finally {
-            ToolCallContextHolder.clear();
-        }
-    }
+            // A reverse transform (Leader -> STANDALONE) is requested.
+            ToolCallContextHolder.TransformRequest request = ToolCallContextHolder.drainTransform();
+            assertInstanceOf(ToolCallContextHolder.TransformRequest.ToStandalone.class, request);
+            String brief = ((ToolCallContextHolder.TransformRequest.ToStandalone) request).brief();
+            assertTrue(
+                    brief.contains("Delegation complete"),
+                    "the reverse-transform brief carries the outcome");
 
-    @Test
-    void dispatchTaskPostsTaskDispatchToMate() {
-        Group g =
-                spawner.spawnGroup(
-                        "leader",
-                        "default",
-                        "brief",
-                        ExecutionDag.linear(UUID.randomUUID(), List.of("n1")));
-
-        DispatchTask dispatch = new DispatchTask(blackboard);
-        dispatch.execute(new DispatchTask.Args(g.groupId().toString(), "mate-1", "do x"));
-
-        List<BlackboardMessage> forMate = blackboard.readFor(g.groupId(), "mate-1");
-        assertEquals(1, forMate.size());
-        assertEquals(BlackboardMessage.MessageType.TASK_DISPATCH, forMate.get(0).type());
-        assertEquals("mate-1:do x", forMate.get(0).payload());
-        spawner.disband(g.groupId());
-    }
-
-    @Test
-    void postMessagePostsMateToLeaderMessage() {
-        Group g =
-                spawner.spawnGroup(
-                        "leader",
-                        "default",
-                        "brief",
-                        ExecutionDag.linear(UUID.randomUUID(), List.of("n1")));
-
-        PostMessage post = new PostMessage(blackboard);
-        post.execute(new PostMessage.Args(g.groupId().toString(), "FEEDBACK", "oops"));
-
-        List<BlackboardMessage> forLeader = blackboard.readFor(g.groupId(), "LEADER");
-        assertEquals(1, forLeader.size());
-        assertEquals(BlackboardMessage.MessageType.FEEDBACK, forLeader.get(0).type());
-        assertEquals("oops", forLeader.get(0).payload());
-        spawner.disband(g.groupId());
-    }
-
-    @Test
-    void disbandGroupTearsDownRegisteredGroup() {
-        AgentResult leaderResult =
-                AgentResult.success(
-                        "{\"nodes\":[{\"nodeId\":\"n1\",\"description\":\"x\",\"skillset\":\"coding\"}]}",
-                        Map.of());
-        CreateGroup create = new CreateGroup(spawner, new StubAgentFactory(leaderResult));
-        ToolCallContextHolder.set("agent-4", UUID.randomUUID());
-        try {
-            create.execute(new CreateGroup.Args("do the thing", null));
-            ToolCallContextHolder.drainPendingTurns();
-            Group g = registry.snapshot().values().iterator().next();
-
-            DisbandGroup disband = new DisbandGroup(spawner);
-            disband.execute(new DisbandGroup.Args(g.groupId().toString()));
             assertEquals(
                     Group.GroupState.DISBANDED,
                     registry.get(g.groupId()).state(),
                     "disband flips the group to DISBANDED");
+        } finally {
+            ToolCallContextHolder.clear();
+        }
+    }
+
+    @Test
+    void disbandGroupRefusesWithoutActiveGroup() {
+        DisbandGroup disband = new DisbandGroup(spawner, registry);
+        ToolCallContextHolder.set("leader", UUID.randomUUID()); // no groupId in context
+        try {
+            String result = disband.execute(new DisbandGroup.Args());
+            assertTrue(result.startsWith("Group not disbanded:"), "no active group is refused");
+            assertNull(
+                    ToolCallContextHolder.drainTransform(),
+                    "no reverse transform requested on refusal");
+        } finally {
+            ToolCallContextHolder.clear();
+        }
+    }
+
+    @Test
+    void postMessagePostsToBlackboardForReceiver() {
+        Group g = spawner.registerEmptyGroup("leader", "default", "brief");
+
+        PostMessage post = new PostMessage(blackboard);
+        ToolCallContextHolder.set("leader", UUID.randomUUID(), g.groupId());
+        try {
+            String result = post.execute(new PostMessage.Args("FEEDBACK", "mate-1", "oops"));
+            assertEquals("posted", result);
+
+            List<BlackboardMessage> forMate = blackboard.readFor(g.groupId(), "mate-1");
+            assertEquals(1, forMate.size());
+            assertEquals(BlackboardMessage.MessageType.FEEDBACK, forMate.get(0).type());
+            assertEquals("oops", forMate.get(0).payload());
+            assertEquals(
+                    "LEADER",
+                    forMate.get(0).senderId(),
+                    "sender is the Leader (blackboard identity)");
+            spawner.disband(g.groupId());
+        } finally {
+            ToolCallContextHolder.clear();
+        }
+    }
+
+    @Test
+    void postMessageRefusesWithoutActiveGroup() {
+        PostMessage post = new PostMessage(blackboard);
+        ToolCallContextHolder.set("leader", UUID.randomUUID()); // no groupId in context
+        try {
+            String result = post.execute(new PostMessage.Args("STATUS", "LEADER", "note"));
+            assertTrue(result.startsWith("Not posted:"), "no active group is refused");
         } finally {
             ToolCallContextHolder.clear();
         }
