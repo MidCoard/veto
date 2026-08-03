@@ -11,27 +11,27 @@ import org.jspecify.annotations.NonNull;
  */
 public record StyledText(@NonNull StyleToken token, @NonNull String text) {
 
-    public static StyledText plain(@NonNull String text) {
+    public static @NonNull StyledText plain(@NonNull String text) {
         return new StyledText(StyleToken.PLAIN, text);
     }
 
-    public static StyledText muted(@NonNull String text) {
+    public static @NonNull StyledText muted(@NonNull String text) {
         return new StyledText(StyleToken.MUTED, text);
     }
 
-    public static StyledText error(@NonNull String text) {
+    public static @NonNull StyledText error(@NonNull String text) {
         return new StyledText(StyleToken.ERROR, text);
     }
 
-    public static StyledText accent(@NonNull String text) {
+    public static @NonNull StyledText accent(@NonNull String text) {
         return new StyledText(StyleToken.ACCENT, text);
     }
 
-    public static StyledText success(@NonNull String text) {
+    public static @NonNull StyledText success(@NonNull String text) {
         return new StyledText(StyleToken.SUCCESS, text);
     }
 
-    public static StyledText warning(@NonNull String text) {
+    public static @NonNull StyledText warning(@NonNull String text) {
         return new StyledText(StyleToken.WARNING, text);
     }
 }

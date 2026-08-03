@@ -13,19 +13,19 @@ import org.springframework.context.annotation.Configuration;
 public class TrainingConfiguration {
 
     /** Python interpreter path (can be venv-resolved). */
-    private String pythonPath = "python";
+    private @NonNull String pythonPath = "python";
 
     /** Root directory of the training pipeline (relative to project root). */
-    private String trainingDir = "./training";
+    private @NonNull String trainingDir = "./training";
 
     /** Directory where models are output and looked up. */
-    private String modelOutputDir = "./models";
+    private @NonNull String modelOutputDir = "./models";
 
     /** HuggingFace base model for fine-tuning. */
-    private String baseModel = "Qwen/Qwen2.5-1.5B-Instruct";
+    private @NonNull String baseModel = "Qwen/Qwen2.5-1.5B-Instruct";
 
     /** Default GGUF filename expected by the LlamaCppBridge. */
-    private String defaultGgufName = "veto-slm.gguf";
+    private @NonNull String defaultGgufName = "veto-slm.gguf";
 
     /** Maximum hours a training run can take before forced cancellation. */
     private int maxTrainingHours = 4;
@@ -34,7 +34,7 @@ public class TrainingConfiguration {
     private boolean autoDeployOnCompletion = true;
 
     /** Path to a Python venv activate script (e.g., training/.venv/Scripts/activate). */
-    private String venvPath = "./training/.venv";
+    private @NonNull String venvPath = "./training/.venv";
 
     /** Whether to automatically restart the LlamaCppBridge after deploy. */
     private boolean restartBridgeOnDeploy = true;
@@ -43,11 +43,11 @@ public class TrainingConfiguration {
     private boolean qualityFilterEnabled = true;
 
     /** Directory for user-supplied custom training data. */
-    private String customDataDir = "";
+    private @NonNull String customDataDir = "";
 
     // ── Getters & Setters ──
 
-    public String getPythonPath() {
+    public @NonNull String getPythonPath() {
         return pythonPath;
     }
 
@@ -55,7 +55,7 @@ public class TrainingConfiguration {
         this.pythonPath = pythonPath;
     }
 
-    public String getTrainingDir() {
+    public @NonNull String getTrainingDir() {
         return trainingDir;
     }
 
@@ -63,7 +63,7 @@ public class TrainingConfiguration {
         this.trainingDir = trainingDir;
     }
 
-    public String getModelOutputDir() {
+    public @NonNull String getModelOutputDir() {
         return modelOutputDir;
     }
 
@@ -71,7 +71,7 @@ public class TrainingConfiguration {
         this.modelOutputDir = modelOutputDir;
     }
 
-    public String getBaseModel() {
+    public @NonNull String getBaseModel() {
         return baseModel;
     }
 
@@ -79,7 +79,7 @@ public class TrainingConfiguration {
         this.baseModel = baseModel;
     }
 
-    public String getDefaultGgufName() {
+    public @NonNull String getDefaultGgufName() {
         return defaultGgufName;
     }
 
@@ -103,7 +103,7 @@ public class TrainingConfiguration {
         this.autoDeployOnCompletion = autoDeployOnCompletion;
     }
 
-    public String getVenvPath() {
+    public @NonNull String getVenvPath() {
         return venvPath;
     }
 
@@ -127,7 +127,7 @@ public class TrainingConfiguration {
         this.qualityFilterEnabled = qualityFilterEnabled;
     }
 
-    public String getCustomDataDir() {
+    public @NonNull String getCustomDataDir() {
         return customDataDir;
     }
 

@@ -31,17 +31,17 @@ public class TrainingManager {
     private static final Logger log = LoggerFactory.getLogger(TrainingManager.class);
 
     /** Pattern for structured JSON progress lines emitted by train.py. */
-    private static final Pattern STRUCTURED_PROGRESS_PATTERN =
+    private static final @NonNull Pattern STRUCTURED_PROGRESS_PATTERN =
             Pattern.compile("^\\{\"type\"\\s*:\\s*\"(\\w+)\".*}$");
 
     private final @NonNull TrainingConfiguration config;
     private final @NonNull ObjectMapper objectMapper;
 
-    private final TrainingProgress progress = new TrainingProgress();
-    private final AtomicBoolean running = new AtomicBoolean(false);
+    private final @NonNull TrainingProgress progress = new TrainingProgress();
+    private final @NonNull AtomicBoolean running = new AtomicBoolean(false);
 
-    private Process trainingProcess;
-    private final ExecutorService processExecutor =
+    private @Nullable Process trainingProcess;
+    private final @NonNull ExecutorService processExecutor =
             Executors.newSingleThreadExecutor(
                     r -> {
                         Thread t = new Thread(r, "veto-training-monitor");
@@ -52,10 +52,10 @@ public class TrainingManager {
     /** Callback interface for model deployment (wired to LlamaCppBridge restart). */
     @FunctionalInterface
     public interface ModelDeployCallback {
-        void deploy(String modelPath);
+        void deploy(@NonNull String modelPath);
     }
 
-    private ModelDeployCallback deployCallback = null;
+    private @Nullable ModelDeployCallback deployCallback = null;
 
     public
     @NonNull
@@ -394,7 +394,7 @@ public class TrainingManager {
     // ── Internal helpers ──
 
     /** Run the quality filter Python script on the given data path. */
-    private boolean runQualityFilter(Path pythonDir, Path dataPath) {
+    private boolean runQualityFilter(@NonNull Path pythonDir, @NonNull Path dataPath) {
         String python = resolvePythonPath();
         Path reportPath = dataPath.getParent().resolve("quality_report.json");
 
@@ -438,7 +438,7 @@ public class TrainingManager {
      * Parse the evaluation report JSON (produced by evaluate.py --json-output) into a
      * TrainingProgress.EvaluationReport and attach it to the progress.
      */
-    private void parseEvaluationReport(Path reportPath) {
+    private void parseEvaluationReport(@NonNull Path reportPath) {
         if (!Files.exists(reportPath)) {
             log.warn("Evaluation report not found: {}", reportPath);
             return;
@@ -493,7 +493,8 @@ public class TrainingManager {
         }
     }
 
-    private Path resolveTrainingDataPath(Path trainingDir, @Nullable String requestDataPath) {
+    private @NonNull Path resolveTrainingDataPath(
+            @NonNull Path trainingDir, @Nullable String requestDataPath) {
         if (requestDataPath != null && !requestDataPath.isEmpty()) {
             Path custom = Path.of(requestDataPath);
             if (Files.exists(custom)) {
@@ -504,7 +505,7 @@ public class TrainingManager {
         return trainingDir.resolve("data").resolve("veto_training_data.jsonl");
     }
 
-    private Path resolveGgufModelPath(Path outputDir, Path trainingDir) {
+    private @NonNull Path resolveGgufModelPath(@NonNull Path outputDir, @NonNull Path trainingDir) {
         // Try the output dir first
         Path candidate = outputDir.resolve("veto-slm-q4_k_m.gguf");
         if (Files.exists(candidate)) {
@@ -521,7 +522,7 @@ public class TrainingManager {
      * @param command the command to run (e.g. "prepare_data.py" or "train.py --epochs 3")
      * @return true if the script exited with code 0
      */
-    private boolean runPythonScript(Path workingDir, String command) {
+    private boolean runPythonScript(@NonNull Path workingDir, @NonNull String command) {
         // Resolve Python interpreter (prefer venv)
         String python = resolvePythonPath();
 
@@ -596,7 +597,7 @@ public class TrainingManager {
      * {"type":"progress","epoch":1,"step":50,"loss":0.45}} {@code
      * {"type":"phase","phase":"training","message":"Starting QLoRA fine-tuning..."}}
      */
-    private void parseProgressLine(String line) {
+    private void parseProgressLine(@Nullable String line) {
         if (line == null || line.isBlank()) {
             return;
         }
@@ -663,7 +664,7 @@ public class TrainingManager {
     }
 
     /** Resolve the Python interpreter path, preferring the venv if it exists. */
-    private String resolvePythonPath() {
+    private @NonNull String resolvePythonPath() {
         if (!config.getVenvPath().isEmpty()) {
             Path venvPython;
             String os = System.getProperty("os.name").toLowerCase();
@@ -696,7 +697,7 @@ public class TrainingManager {
 
     // ── Public accessors ──
 
-    public TrainingProgress getProgress() {
+    public @NonNull TrainingProgress getProgress() {
         return progress;
     }
 

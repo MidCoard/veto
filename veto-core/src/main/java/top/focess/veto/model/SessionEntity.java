@@ -14,13 +14,13 @@ import org.jspecify.annotations.Nullable;
 @Table(name = "sessions")
 public class SessionEntity {
 
-    @Id private String id;
+    @Id private @NonNull String id;
 
     @Column(nullable = false)
-    private String owner;
+    private @NonNull String owner;
 
     @Column(nullable = false)
-    private String name;
+    private @NonNull String name;
 
     /**
      * CSV of host paths backing the session's workspace (the roots the session's agents resolve
@@ -32,13 +32,13 @@ public class SessionEntity {
     private @Nullable String workspaceRoots;
 
     @Column(name = "primary_agent_id")
-    private String primaryAgentId;
+    private @Nullable String primaryAgentId;
 
     @Column(name = "created_at", nullable = false)
-    private Instant createdAt;
+    private @NonNull Instant createdAt;
 
     @Column(name = "last_active_at")
-    private Instant lastActiveAt;
+    private @Nullable Instant lastActiveAt;
 
     protected SessionEntity() {}
 

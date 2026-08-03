@@ -1,6 +1,7 @@
 package top.focess.veto.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Collections;
@@ -26,8 +27,8 @@ import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.Gateway;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
-import top.focess.veto.agent.intercept.InterceptResolution;
 import top.focess.veto.agent.intercept.LoopInterceptor;
+import top.focess.veto.agent.intercept.VetoPrompt;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.mcp.ToolDefinition;
 import top.focess.veto.agent.mcp.ToolEngine;
@@ -38,6 +39,7 @@ import top.focess.veto.agent.screening.ScreeningMode;
 import top.focess.veto.agent.screening.SlmRelevanceProvider;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.bus.DeltaBroker;
+import top.focess.veto.contract.IpcFrame;
 import top.focess.veto.llm.config.LlmJacksonConfig;
 import top.focess.veto.llm.core.UniformLLMCaller;
 
@@ -76,9 +78,10 @@ public class AgentService {
     private final top.focess.veto.memory.@Nullable TurnLogService turnLogService;
 
     /**
-     * The default user id for memory capture. Per-user identity is not yet wired at the transport
-     * ({@code submit} takes no user id), so all local-CLI agents capture under this single user
-     * until the transport passes a real user id. Multi-user isolation is the follow-up.
+     * The fallback memory-tenant userId for legacy/test paths that bypass session activation (the
+     * {@code submit} overloads with no owner). The activate path derives a real per-user tenant via
+     * {@link #userIdForOwner(String)} instead, so memories and turn logs attribute to the actual
+     * session owner.
      */
     static final UUID DEFAULT_USER_ID = UUID.fromString("00000000-0000-0000-0000-000000000000");
 
@@ -177,10 +180,82 @@ public class AgentService {
             @NonNull Duration timeout,
             @Nullable Consumer<String> messageSink)
             throws TimeoutException, InterruptedException {
+        return submit(agentKey, prompt, binding, timeout, messageSink, null);
+    }
+
+    /**
+     * Synchronous submit that streams user-facing messages to {@code messageSink} and forwards HITL
+     * veto prompts to {@code vetoSink} while the loop runs, then returns the final result. Both
+     * sinks are attached before the prompt is enqueued (no missed events) and detached in the
+     * finally (no leak across episodes / stale senders). The veto sink renders a picker; the user's
+     * reply resolves the parked veto via {@link #resolveVeto}.
+     */
+    public AgentResult submit(
+            @NonNull String agentKey,
+            @NonNull String prompt,
+            AgentRunner.@NonNull LlmBinding binding,
+            @NonNull Duration timeout,
+            @Nullable Consumer<String> messageSink,
+            @Nullable Consumer<VetoPrompt> vetoSink)
+            throws TimeoutException, InterruptedException {
+        return submit(agentKey, prompt, binding, timeout, messageSink, vetoSink, null);
+    }
+
+    /**
+     * Synchronous submit that additionally streams the agent's interim thoughts to {@code
+     * thoughtSink} (rendered distinct from user-facing messages). The thought sink is attached and
+     * detached alongside the message and veto sinks so a transport sees the full thought-then-
+     * message sequence for every turn with no leak across episodes.
+     */
+    public AgentResult submit(
+            @NonNull String agentKey,
+            @NonNull String prompt,
+            AgentRunner.@NonNull LlmBinding binding,
+            @NonNull Duration timeout,
+            @Nullable Consumer<String> messageSink,
+            @Nullable Consumer<VetoPrompt> vetoSink,
+            @Nullable Consumer<String> thoughtSink)
+            throws TimeoutException, InterruptedException {
+        return submit(
+                agentKey, prompt, binding, timeout, messageSink, vetoSink, thoughtSink, null, null);
+    }
+
+    /**
+     * Synchronous submit that additionally streams the agent's per-tool-call indicators (via {@code
+     * toolCallSink}) and the framed observations the model received (via {@code toolResultSink}) so
+     * the terminal can render a Claude-Code-style transparency trace. Both sinks are attached
+     * before the prompt is enqueued (no missed events) and detached in the finally (no leak across
+     * episodes). The tool result body is the exact text the model sees, so the user can verify the
+     * call it belongs to by the self-describing "Observation (tool(args)) [...]" header
+     * IngressDefense writes.
+     */
+    public AgentResult submit(
+            @NonNull String agentKey,
+            @NonNull String prompt,
+            AgentRunner.@NonNull LlmBinding binding,
+            @NonNull Duration timeout,
+            @Nullable Consumer<String> messageSink,
+            @Nullable Consumer<VetoPrompt> vetoSink,
+            @Nullable Consumer<String> thoughtSink,
+            @Nullable Consumer<IpcFrame.ToolCall> toolCallSink,
+            @Nullable Consumer<IpcFrame.ToolResult> toolResultSink)
+            throws TimeoutException, InterruptedException {
         VetoAgent agent = agents.computeIfAbsent(agentKey, k -> createAgent(k, binding));
         agent.bind(binding);
         if (messageSink != null) {
             agent.addMessageListener(messageSink);
+        }
+        if (vetoSink != null) {
+            agent.addVetoListener(vetoSink);
+        }
+        if (thoughtSink != null) {
+            agent.addThoughtListener(thoughtSink);
+        }
+        if (toolCallSink != null) {
+            agent.addToolCallListener(toolCallSink);
+        }
+        if (toolResultSink != null) {
+            agent.addToolResultListener(toolResultSink);
         }
         try {
             agent.submit(prompt);
@@ -188,6 +263,18 @@ public class AgentService {
         } finally {
             if (messageSink != null) {
                 agent.removeMessageListener(messageSink);
+            }
+            if (vetoSink != null) {
+                agent.removeVetoListener(vetoSink);
+            }
+            if (thoughtSink != null) {
+                agent.removeThoughtListener(thoughtSink);
+            }
+            if (toolCallSink != null) {
+                agent.removeToolCallListener(toolCallSink);
+            }
+            if (toolResultSink != null) {
+                agent.removeToolResultListener(toolResultSink);
             }
         }
     }
@@ -249,7 +336,7 @@ public class AgentService {
             @NonNull List<TurnRecord> history,
             @NonNull UUID userId,
             @Nullable String workspaceRoots) {
-        return getOrCreateAgent(sessionId, null, binding, history, userId, workspaceRoots);
+        return getOrCreateAgent(sessionId, null, binding, history, userId, null, workspaceRoots);
     }
 
     /**
@@ -258,6 +345,10 @@ public class AgentService {
      * (a UUID); when present it becomes the persona id (and thus turn_records.agent_id) and the
      * runner's session id is stamped to {@code sessionId} (session.getId()). When null the legacy
      * behavior (mint a fresh persona UUID, session id = persona id) is preserved.
+     *
+     * @param owner the session owner (username) whose model-tier profile resolves the agent's tier;
+     *     threaded onto the runner's {@link top.focess.veto.agent.mcp.ToolCallContext} so group
+     *     spawns resolve per-user. Null in legacy/test paths.
      */
     public Agent getOrCreateAgent(
             @NonNull String sessionId,
@@ -265,6 +356,7 @@ public class AgentService {
             AgentRunner.@NonNull LlmBinding binding,
             @NonNull List<TurnRecord> history,
             @NonNull UUID userId,
+            @Nullable String owner,
             @Nullable String workspaceRoots) {
         boolean[] created = {false};
         Workspace workspace = buildWorkspace(workspaceRoots);
@@ -273,7 +365,8 @@ public class AgentService {
                         sessionId,
                         k -> {
                             created[0] = true;
-                            return createAgent(k, primaryAgentId, binding, userId, workspace);
+                            return createAgent(
+                                    k, primaryAgentId, binding, userId, owner, workspace);
                         });
         agent.bind(binding);
         if (created[0] && history != null && !history.isEmpty()) {
@@ -283,19 +376,21 @@ public class AgentService {
     }
 
     /**
-     * Resolves a pending veto for an agent's call. The {@code toolName} parameter is kept for
-     * back-compat with the old API (the new {@code HitlRegistry.resolve} reads the tool name from
-     * the supplied {@link ToolCall}). The caller can pass {@code null} for the call/def when the
-     * original call is not available (e.g. legacy veto endpoints).
+     * Resolves a pending veto from a user-chosen option name (the {@code Input} reply). Validates
+     * the option against the offered set (stashed at register time) and builds the resolution
+     * (masking per the option). Returns {@code false} if no pending veto exists for the key.
      */
     public boolean resolveVeto(
-            @NonNull String agentId,
-            @NonNull String callId,
-            @NonNull InterceptResolution resolution,
-            @NonNull String toolName,
-            top.focess.veto.llm.core.@Nullable ToolCall originalCall,
-            top.focess.veto.agent.mcp.@Nullable ToolDefinition originalDef) {
-        return hitlRegistry.resolve(agentId, callId, resolution, originalCall, originalDef);
+            @NonNull String agentId, @NonNull String callId, @NonNull String optionName) {
+        return hitlRegistry.resolveOption(agentId, callId, optionName);
+    }
+
+    /**
+     * Declines a pending veto (cancel-during-veto): resolves with the scenario's refusal so the
+     * agent refuses this call and continues. Returns {@code false} if no pending veto exists.
+     */
+    public boolean declineVeto(@NonNull String agentId, @NonNull String callId) {
+        return hitlRegistry.declineOption(agentId, callId);
     }
 
     /** The live agent for a transport id (for history / state inspection). */
@@ -335,7 +430,7 @@ public class AgentService {
             AgentRunner.@NonNull LlmBinding binding,
             @NonNull UUID userId,
             @NonNull Workspace workspace) {
-        return createAgent(agentKey, null, binding, userId, workspace);
+        return createAgent(agentKey, null, binding, userId, null, workspace);
     }
 
     // The DB-backed create path: agentKey is session.getId() (a UUID) and primaryAgentId is the
@@ -349,6 +444,7 @@ public class AgentService {
             @Nullable String primaryAgentId,
             AgentRunner.@NonNull LlmBinding binding,
             @NonNull UUID userId,
+            @Nullable String owner,
             @NonNull Workspace workspace) {
         AgentPersona persona = buildPersona(agentKey, primaryAgentId, binding);
         // Register this agent's workspace on the HITL registry under its persona id so grant
@@ -381,6 +477,9 @@ public class AgentService {
                         deltaBroker,
                         userId,
                         turnLogService);
+        // Stamp the session owner so group-spawned Mates / Leaders resolve their tier against the
+        // user's active model-tier profile via the ToolCallContext.
+        runner.setOwner(owner);
         if (primaryAgentId != null) {
             runner.setSessionId(UUID.fromString(agentKey));
         }
@@ -395,7 +494,7 @@ public class AgentService {
      * spawned Mates yet).
      */
     public Agent createMate(AgentPersona persona, AgentRunner.LlmBinding binding) {
-        return createMate(persona, binding, DEFAULT_USER_ID, defaultWorkspace);
+        return createMate(persona, binding, DEFAULT_USER_ID, null, defaultWorkspace);
     }
 
     /**
@@ -407,7 +506,7 @@ public class AgentService {
             @NonNull AgentPersona persona,
             AgentRunner.@NonNull LlmBinding binding,
             @NonNull Workspace workspace) {
-        return createMate(persona, binding, DEFAULT_USER_ID, workspace);
+        return createMate(persona, binding, DEFAULT_USER_ID, null, workspace);
     }
 
     /**
@@ -418,7 +517,7 @@ public class AgentService {
             @NonNull AgentPersona persona,
             AgentRunner.@NonNull LlmBinding binding,
             @NonNull UUID userId) {
-        return createMate(persona, binding, userId, defaultWorkspace);
+        return createMate(persona, binding, userId, null, defaultWorkspace);
     }
 
     /**
@@ -430,6 +529,23 @@ public class AgentService {
             @NonNull AgentPersona persona,
             AgentRunner.@NonNull LlmBinding binding,
             @NonNull UUID userId,
+            @NonNull Workspace workspace) {
+        return createMate(persona, binding, userId, null, workspace);
+    }
+
+    /**
+     * Builds a Mate {@link Agent} with explicit user identity <em>and</em> session owner. The Mate
+     * inherits the Leader's userId (memory tenant) and owner (whose model-tier profile resolves the
+     * Mate's tier). This is the overload the production group factory ({@link
+     * top.focess.veto.group.GroupAgentFactory}) uses - it reads both from the calling agent's
+     * {@link top.focess.veto.agent.mcp.ToolCallContext} so the Mate resolves its model against the
+     * same user's active profile as the Leader.
+     */
+    public Agent createMate(
+            @NonNull AgentPersona persona,
+            AgentRunner.@NonNull LlmBinding binding,
+            @NonNull UUID userId,
+            @Nullable String owner,
             @NonNull Workspace workspace) {
         // Re-scope the persona's tools to its role. The persona may have been built with the full
         // standalone manifest before its role (MATE/LEADER) was known; the RoleToolFilter narrows
@@ -469,6 +585,9 @@ public class AgentService {
                         deltaBroker,
                         userId,
                         turnLogService);
+        // Stamp the session owner so the Mate (or one-shot Leader) resolves its tier against the
+        // user's active model-tier profile via the ToolCallContext.
+        runner.setOwner(owner);
         return new VetoAgent(scoped, runner);
     }
 
@@ -507,6 +626,19 @@ public class AgentService {
      */
     public Workspace workspace() {
         return defaultWorkspace;
+    }
+
+    /**
+     * Derives the stable memory-tenant userId for a session owner. Users are keyed by username (no
+     * UUID column on {@code UserEntity}), so a name-based UUID ({@link UUID#nameUUIDFromBytes})
+     * gives each owner a distinct, deterministic tenant id. Memories and turn logs then attribute
+     * to the real user across sessions and restarts, replacing the {@code DEFAULT_USER_ID}
+     * placeholder on the activate path. Used by the session-activate path and by Mate provisioning
+     * when no tool-call scope is available (the {@link top.focess.veto.group.GroupAgentFactory}
+     * fallback).
+     */
+    public @NonNull UUID userIdForOwner(@NonNull String owner) {
+        return UUID.nameUUIDFromBytes(owner.getBytes(StandardCharsets.UTF_8));
     }
 
     /**

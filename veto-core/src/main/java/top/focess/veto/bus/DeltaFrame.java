@@ -7,6 +7,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The Part 8 Delta-frame broker abstraction. A {@code DeltaFrame} is a single streaming update
@@ -31,12 +32,12 @@ import org.jspecify.annotations.NonNull;
  * the bus, multiplexing frames per session.
  */
 public record DeltaFrame(
-        UUID sessionId,
+        @NonNull UUID sessionId,
         long sequence,
-        Instant emittedAt,
-        Kind kind,
-        String text,
-        Map<String, JsonNode> attrs) {
+        @Nullable Instant emittedAt,
+        @NonNull Kind kind,
+        @Nullable String text,
+        @Nullable Map<String, JsonNode> attrs) {
 
     public enum Kind {
         ASSISTANT_THOUGHT,
@@ -49,14 +50,8 @@ public record DeltaFrame(
     }
 
     public DeltaFrame {
-        if (sessionId == null) {
-            throw new IllegalArgumentException("sessionId");
-        }
         if (emittedAt == null) {
             emittedAt = Instant.now();
-        }
-        if (kind == null) {
-            throw new IllegalArgumentException("kind");
         }
         if (text == null) {
             text = "";
@@ -103,17 +98,17 @@ public record DeltaFrame(
         }
     }
 
-    public static Builder builder() {
+    public static @NonNull Builder builder() {
         return new Builder();
     }
 
     /** Convenience builder. */
     public static final class Builder {
-        private UUID sessionId;
+        private @Nullable UUID sessionId;
         private long sequence;
-        private Kind kind;
-        private String text = "";
-        private final Map<String, JsonNode> attrs = new LinkedHashMap<>();
+        private @Nullable Kind kind;
+        private @NonNull String text = "";
+        private final @NonNull Map<String, JsonNode> attrs = new LinkedHashMap<>();
 
         public @NonNull Builder sessionId(@NonNull UUID v) {
             this.sessionId = v;
@@ -140,7 +135,7 @@ public record DeltaFrame(
             return this;
         }
 
-        public DeltaFrame build() {
+        public @NonNull DeltaFrame build() {
             return new DeltaFrame(sessionId, sequence, Instant.now(), kind, text, attrs);
         }
     }

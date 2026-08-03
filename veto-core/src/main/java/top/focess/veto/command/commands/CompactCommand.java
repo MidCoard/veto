@@ -15,7 +15,7 @@ import top.focess.veto.command.VetoCommandSender;
  */
 public class CompactCommand extends VetoCommand {
 
-    private final PromptHandler promptHandler;
+    private final @NonNull PromptHandler promptHandler;
 
     public CompactCommand(@NonNull PromptHandler promptHandler) {
         super("compact", "Summarize and compact the active agent's history segment");

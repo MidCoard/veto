@@ -10,6 +10,7 @@ import java.util.*;
 import javax.crypto.*;
 import javax.crypto.spec.GCMParameterSpec;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -37,7 +38,7 @@ public class TamperProofStore {
     private final @NonNull DiffCalculator diffCalculator;
 
     // In-memory hash chain tail (last record's hash for integrity)
-    private volatile String chainTailHash = "";
+    private volatile @NonNull String chainTailHash = "";
 
     public
     @NonNull
@@ -109,7 +110,7 @@ public class TamperProofStore {
     }
 
     /** Verify the integrity of the entire audit chain from a given start. */
-    public ChainVerificationResult verifyChain() {
+    public @NonNull ChainVerificationResult verifyChain() {
         List<String> violations = new ArrayList<>();
         int recordsChecked = 0;
         String previousHash = "";
@@ -184,7 +185,7 @@ public class TamperProofStore {
         return records;
     }
 
-    private String serializeRecord(AuditRecord record) {
+    private @NonNull String serializeRecord(@NonNull AuditRecord record) {
         return String.join(
                 "|",
                 record.getId(),
@@ -201,7 +202,7 @@ public class TamperProofStore {
                 String.valueOf(record.isVetoApplied()));
     }
 
-    private byte[] encryptRecord(String plaintext) throws Exception {
+    private @NonNull byte[] encryptRecord(@NonNull String plaintext) throws Exception {
         if (!config.isEncryptionEnabled()) {
             return plaintext.getBytes(StandardCharsets.UTF_8);
         }
@@ -221,7 +222,7 @@ public class TamperProofStore {
         return Base64.getEncoder().encodeToString(combined).getBytes(StandardCharsets.UTF_8);
     }
 
-    private String decryptRecord(byte[] encryptedBlob) throws Exception {
+    private @NonNull String decryptRecord(@NonNull byte[] encryptedBlob) throws Exception {
         if (!config.isEncryptionEnabled()) {
             return new String(encryptedBlob, StandardCharsets.UTF_8);
         }
@@ -242,7 +243,7 @@ public class TamperProofStore {
         return new String(plaintext, StandardCharsets.UTF_8);
     }
 
-    private SecretKey deriveStoreKey() {
+    private @NonNull SecretKey deriveStoreKey() {
         try {
             // Use SHA-256 to derive a 256-bit key from the configured password/key
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
@@ -254,12 +255,12 @@ public class TamperProofStore {
         }
     }
 
-    private Path getDailyFilePath() {
+    private @NonNull Path getDailyFilePath() {
         String dateStr = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE);
         return auditDir.resolve(STORE_FILE_PREFIX + dateStr + STORE_FILE_SUFFIX);
     }
 
-    private void appendToIndex(AuditRecord record) throws IOException {
+    private void appendToIndex(@NonNull AuditRecord record) throws IOException {
         Path indexFile = auditDir.resolve(INDEX_FILE);
         String indexLine =
                 String.join(
@@ -297,7 +298,7 @@ public class TamperProofStore {
         }
     }
 
-    private LocalDate extractDate(String fileName) {
+    private @Nullable LocalDate extractDate(@NonNull String fileName) {
         try {
             String dateStr = fileName.replace(STORE_FILE_PREFIX, "").replace(STORE_FILE_SUFFIX, "");
             return LocalDate.parse(dateStr, DateTimeFormatter.ISO_LOCAL_DATE);
@@ -306,11 +307,11 @@ public class TamperProofStore {
         }
     }
 
-    public String getChainTailHash() {
+    public @NonNull String getChainTailHash() {
         return chainTailHash;
     }
 
     /** Result of an audit chain verification. */
     public record ChainVerificationResult(
-            int recordsChecked, boolean chainIntact, String summary) {}
+            int recordsChecked, boolean chainIntact, @NonNull String summary) {}
 }

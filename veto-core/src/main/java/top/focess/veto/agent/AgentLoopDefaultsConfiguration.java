@@ -30,8 +30,8 @@ public class AgentLoopDefaultsConfiguration {
 
     @Bean
     @ConditionalOnMissingBean(CapabilityTranslator.class)
-    public CapabilityTranslator defaultCapabilityTranslator(
-            @Qualifier(LlmJacksonConfig.LLM_OBJECT_MAPPER) ObjectMapper objectMapper) {
+    public @NonNull CapabilityTranslator defaultCapabilityTranslator(
+            @Qualifier(LlmJacksonConfig.LLM_OBJECT_MAPPER) @NonNull ObjectMapper objectMapper) {
         return new DefaultCapabilityTranslator(objectMapper);
     }
 
@@ -42,17 +42,20 @@ public class AgentLoopDefaultsConfiguration {
     }
 
     /**
-     * The default {@link Workspace} (built from {@code veto.workspace.*} config) used to resolve
-     * VETO.md (The Law) in {@link PromptCompiler}. Required as a bean because {@code
-     * PromptCompiler} is a Spring-managed {@code @Component} whose constructor takes a {@link
-     * Workspace}. {@code @ConditionalOnMissingBean} lets a richer workspace bean override.
+     * The default {@link Workspace} (built from {@code veto.workspace.*} config). Kept as a bean so
+     * components that need a fallback workspace can inject it directly (e.g. the {@code
+     * SystemPromptDumpTest} diagnostic). Per-session workspaces are built by {@link
+     * top.focess.veto.agent.AgentService#buildWorkspace} from the session's reported cwd and
+     * threaded through the per-agent {@link top.focess.veto.agent.intercept.Gateway} into the
+     * {@link PromptCompiler}; this bean is not that path. {@code @ConditionalOnMissingBean} lets a
+     * richer workspace bean override.
      */
     @Bean
     @ConditionalOnMissingBean(Workspace.class)
-    public Workspace defaultWorkspace(
-            @Value("${veto.workspace.root:}") String legacyRoot,
-            @Value("${veto.workspace.roots:}") String rootsCsv,
-            @Value("${veto.workspace.path-mode:REAL}") String pathMode) {
+    public @NonNull Workspace defaultWorkspace(
+            @Value("${veto.workspace.root:}") @NonNull String legacyRoot,
+            @Value("${veto.workspace.roots:}") @NonNull String rootsCsv,
+            @Value("${veto.workspace.path-mode:REAL}") @NonNull String pathMode) {
         return Workspace.fromConfig(legacyRoot, rootsCsv, pathMode);
     }
 }

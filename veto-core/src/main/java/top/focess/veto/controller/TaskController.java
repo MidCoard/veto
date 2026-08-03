@@ -24,7 +24,8 @@ public class TaskController {
     private static final Logger log = LoggerFactory.getLogger(TaskController.class);
 
     private final @NonNull RoutingBusService routingBusService;
-    private final ConcurrentHashMap<String, DAGPayload> taskStore = new ConcurrentHashMap<>();
+    private final @NonNull ConcurrentHashMap<String, DAGPayload> taskStore =
+            new ConcurrentHashMap<>();
 
     public
     @NonNull
@@ -36,8 +37,8 @@ public class TaskController {
     @PostMapping(
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<Map<String, Object>> createTask(
-            @RequestBody Map<String, Object> request) {
+    public @NonNull ResponseEntity<Map<String, Object>> createTask(
+            @NonNull @RequestBody Map<String, Object> request) {
         String taskType = (String) request.get("taskType");
         if (taskType == null || taskType.isEmpty()) {
             return ResponseEntity.badRequest()
@@ -84,7 +85,8 @@ public class TaskController {
 
     /** GET /api/tasks/{id} - Get DAG task status and details. */
     @GetMapping(value = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<Map<String, @NonNull Object>> getTask(@PathVariable("id") String id) {
+    public @NonNull ResponseEntity<Map<String, @NonNull Object>> getTask(
+            @NonNull @PathVariable("id") String id) {
         DAGPayload payload = taskStore.get(id);
         if (payload == null) {
             return ResponseEntity.notFound().build();
@@ -107,7 +109,7 @@ public class TaskController {
 
     /** GET /api/tasks - List all tasks. */
     @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<Map<String, Object>> listTasks() {
+    public @NonNull ResponseEntity<Map<String, Object>> listTasks() {
         return ResponseEntity.ok(
                 Map.of(
                         "status",
@@ -136,7 +138,8 @@ public class TaskController {
 
     /** DELETE /api/tasks/{id} - Cancel a task. */
     @DeleteMapping(value = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<Map<String, @NonNull Object>> cancelTask(@PathVariable("id") String id) {
+    public @NonNull ResponseEntity<Map<String, @NonNull Object>> cancelTask(
+            @NonNull @PathVariable("id") String id) {
         DAGPayload existing = taskStore.get(id);
         if (existing == null) {
             return ResponseEntity.notFound().build();

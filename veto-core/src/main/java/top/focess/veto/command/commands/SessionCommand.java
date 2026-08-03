@@ -17,8 +17,8 @@ import top.focess.veto.session.SessionService;
 /** Manages the session lifecycle: /session create|list|activate|deactivate|status. */
 public class SessionCommand extends VetoCommand {
 
-    private final SessionService service;
-    private final PromptHandler promptHandler;
+    private final @NonNull SessionService service;
+    private final @NonNull PromptHandler promptHandler;
 
     public SessionCommand(@NonNull SessionService service, @NonNull PromptHandler promptHandler) {
         super("session", "Manage sessions", "ses");
@@ -48,9 +48,12 @@ public class SessionCommand extends VetoCommand {
                                         + "' created from pattern '"
                                         + pattern
                                         + "'.");
-                        // Auto-activate if no active session on this terminal.
+                        // Auto-activate if no active session on this terminal. The session was
+                        // just bound to the terminal's cwd, so the strict workspace check inside
+                        // activate() trivially passes.
                         if (service.activeSession(s.terminalId()).isEmpty()) {
-                            service.activate(s.terminalId(), session.getName(), s.username());
+                            service.activate(
+                                    s.terminalId(), session.getName(), s.username(), s.cwd());
                             s.output("Activated session '" + session.getName() + "'.");
                         }
                         return CommandResult.ALLOW;
@@ -68,12 +71,15 @@ public class SessionCommand extends VetoCommand {
                 (sender, args) -> {
                     VetoCommandSender s = vetoSender(sender);
                     if (s == null) return CommandResult.REFUSE;
-                    List<SessionEntity> sessions = service.listSessions(s.username());
+                    List<SessionEntity> sessions = service.listSessions(s.username(), s.cwd());
                     if (sessions.isEmpty()) {
-                        s.output("No sessions. Use /session create <pattern>.");
+                        s.output(
+                                "No sessions in this workspace ('"
+                                        + s.cwd()
+                                        + "'). Use /session create <pattern>.");
                         return CommandResult.ALLOW;
                     }
-                    s.output("Sessions:");
+                    s.output("Sessions in this workspace:");
                     for (SessionEntity se : sessions) {
                         s.output(
                                 String.format(
@@ -83,7 +89,7 @@ public class SessionCommand extends VetoCommand {
                     }
                     return CommandResult.ALLOW;
                 },
-                fixed("list").description("List your sessions"));
+                fixed("list").description("List your sessions in the current workspace"));
 
         // /session activate <name>
         addExecutor(
@@ -92,7 +98,8 @@ public class SessionCommand extends VetoCommand {
                     if (s == null) return CommandResult.REFUSE;
                     String n = args.get("name");
                     try {
-                        Optional<LlmConfig> cfg = service.activate(s.terminalId(), n, s.username());
+                        Optional<LlmConfig> cfg =
+                                service.activate(s.terminalId(), n, s.username(), s.cwd());
                         if (cfg.isEmpty()) {
                             s.output("Session has no primary agent.");
                             return CommandResult.REFUSE;
@@ -151,9 +158,10 @@ public class SessionCommand extends VetoCommand {
     private @NonNull List<CommandCompletion> completeSessionName(
             @NonNull CommandSender sender, @NonNull Command cmd, @NonNull String[] argv) {
         if (!LOGGED_IN.test(sender)) return List.of();
-        String u = ((VetoCommandSender) sender).username();
+        VetoCommandSender v = (VetoCommandSender) sender;
+        String u = v.username();
         String prefix = argv.length > 0 ? argv[argv.length - 1].toLowerCase() : "";
-        return service.listSessions(u).stream()
+        return service.listSessions(u, v.cwd()).stream()
                 .filter(se -> se.getName().toLowerCase().startsWith(prefix))
                 .map(
                         se ->
@@ -169,8 +177,8 @@ public class SessionCommand extends VetoCommand {
     public @NonNull List<String> usage(@NonNull CommandSender s) {
         return List.of(
                 "/session create <pattern> [name] - Create a session from a pattern (auto-activates if idle)",
-                "/session list - List your sessions",
-                "/session activate <name> - Attach this terminal to a session",
+                "/session list - List your sessions in the current workspace",
+                "/session activate <name> - Attach this terminal to a session in this workspace",
                 "/session deactivate - Detach (session persists)",
                 "/session status - Show the active session");
     }

@@ -15,7 +15,10 @@ import org.jspecify.annotations.NonNull;
  * @param maxWallClock the default per-chain wall-clock timeout
  */
 public record SandboxProfile(
-        Path workspaceRoot, long maxMemoryMb, int maxCpuPercent, Duration maxWallClock) {
+        @NonNull Path workspaceRoot,
+        long maxMemoryMb,
+        int maxCpuPercent,
+        @NonNull Duration maxWallClock) {
 
     /** A permissive default profile for the local substrate. */
     public static @NonNull SandboxProfile defaults(@NonNull Path workspaceRoot) {

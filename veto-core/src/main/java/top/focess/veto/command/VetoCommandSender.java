@@ -3,6 +3,7 @@ package top.focess.veto.command;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
@@ -10,6 +11,7 @@ import org.slf4j.LoggerFactory;
 import top.focess.command.AbstractCommandSender;
 import top.focess.command.CommandPermission;
 import top.focess.command.CommandSender;
+import top.focess.veto.agent.intercept.VetoPrompt;
 import top.focess.veto.contract.IpcFrame;
 import top.focess.veto.contract.Version;
 import top.focess.veto.terminal.IpcServer;
@@ -61,6 +63,14 @@ public final class VetoCommandSender extends AbstractCommandSender {
      * explicitly. Never {@code null} - the terminal always reports its JVM working dir.
      */
     private final @NonNull String cwd;
+
+    /**
+     * The pending HITL veto (agentId + callId), stashed when a veto Prompt is sent and claimed when
+     * the user's reply (or a cancel) arrives. Under the 1:1 request invariant at most one veto is
+     * pending per session, so a single slot suffices. Atomic: written on the agent virtual thread
+     * (the veto sink), claimed on the session-worker thread (Input/Cancel).
+     */
+    private final @NonNull AtomicReference<PendingVeto> pendingVeto = new AtomicReference<>();
 
     /**
      * Constructs a new {@code VetoCommandSender} for the given terminal session.
@@ -168,6 +178,50 @@ public final class VetoCommandSender extends AbstractCommandSender {
         ipcServer.send(terminalId, new IpcFrame.Delta(message));
     }
 
+    /**
+     * Sends a streaming <em>thought</em> chunk to the terminal as a thought-kind {@link
+     * IpcFrame.Delta} frame. The terminal renders thoughts distinct (muted/dim) from user-facing
+     * messages delivered via {@link #output}, so the user can follow the agent's reasoning without
+     * it competing with the answer.
+     *
+     * <p>Null or empty thoughts are silently ignored.
+     *
+     * @param thought the interim reasoning text to stream; {@code null} or empty silently dropped
+     */
+    public void outputThought(@Nullable String thought) {
+        if (thought == null || thought.isEmpty()) return;
+        log.info("thought -> outbox: {}", thought.replace("\n", "\\n"));
+        ipcServer.send(terminalId, IpcFrame.Delta.thought(thought));
+    }
+
+    /**
+     * Streams a tool call the agent is about to execute to the terminal as a {@link
+     * IpcFrame.ToolCall} frame, so the terminal can render a Claude-Code-style indicator and the
+     * user can see exactly which tool the agent invoked with which arguments. Called from the
+     * agent's tool-call emission seam (the toolCallSink), on the agent virtual thread, after the
+     * TOOL_CALL turn has been durably persisted.
+     */
+    public void sendToolCall(IpcFrame.@NonNull ToolCall call) {
+        log.info("tool_call -> outbox: {}", call);
+        ipcServer.send(terminalId, call);
+    }
+
+    /**
+     * Streams the framed observation the model receives for a tool call to the terminal as a {@link
+     * IpcFrame.ToolResult} frame. The body is the self-describing "Observation (tool(args)) [...]"
+     * text the model sees, so the terminal can render a single result and the user can verify which
+     * call it belongs to without tracking call/result pairs. Called from the agent's tool-result
+     * emission seam (the toolResultSink), on the agent virtual thread, after the TOOL_RESPONSE turn
+     * has been durably persisted.
+     */
+    public void sendToolResult(IpcFrame.@NonNull ToolResult result) {
+        log.info(
+                "tool_result -> outbox: success={} bodyBytes={}",
+                result.success(),
+                result.body() == null ? 0 : result.body().length());
+        ipcServer.send(terminalId, result);
+    }
+
     // ── input (CommandSender contract overrides & overloads) ──────────────────────────────
 
     /**
@@ -266,4 +320,37 @@ public final class VetoCommandSender extends AbstractCommandSender {
         }
         return false;
     }
+
+    // ── HITL veto ────────────────────────────────────────────────────────
+
+    /**
+     * Sends a HITL veto prompt to the terminal as a {@link IpcFrame.Prompt} carrying a {@link
+     * IpcFrame.VetoPayload}, and stashes the veto's (agentId, callId) so the inbound {@link
+     * IpcFrame.Input} reply (or a {@link IpcFrame.Cancel}) can resolve it. Called from the agent's
+     * veto emission seam (the veto sink), on the agent virtual thread.
+     */
+    public void sendVetoPrompt(@NonNull VetoPrompt vp) {
+        pendingVeto.set(new PendingVeto(vp.agentId(), vp.callId()));
+        IpcFrame.VetoPayload payload =
+                new IpcFrame.VetoPayload(
+                        vp.agentId(),
+                        vp.callId(),
+                        vp.tool(),
+                        vp.scenario().name(),
+                        vp.options().stream().map(Enum::name).toList(),
+                        vp.args());
+        String summary = "HITL: " + vp.tool() + " (" + vp.scenario() + ")";
+        ipcServer.send(terminalId, new IpcFrame.Prompt(summary, false, payload));
+    }
+
+    /**
+     * Atomically claims the pending veto (returns and clears it), so the inbound handler resolves
+     * it exactly once. Returns {@code null} if no veto is pending (a free-text prompt, or none).
+     */
+    public @Nullable PendingVeto claimPendingVeto() {
+        return pendingVeto.getAndSet(null);
+    }
+
+    /** The (agentId, callId) stashed for a pending veto - the HitlRegistry key + call id. */
+    public record PendingVeto(@NonNull String agentId, @NonNull String callId) {}
 }

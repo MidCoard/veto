@@ -36,12 +36,12 @@ final class DeepSeekLlmClient extends LlmClient {
     private final @NonNull CapabilityTranslator capabilityTranslator;
 
     DeepSeekLlmClient(
-            String baseUrl,
-            String apiKey,
-            String providerName,
-            ObjectMapper objectMapper,
-            CapabilityTranslator capabilityTranslator) {
-        this.baseUrl = baseUrl != null && !baseUrl.isEmpty() ? baseUrl : "https://api.deepseek.com";
+            @NonNull String baseUrl,
+            @NonNull String apiKey,
+            @NonNull String providerName,
+            @NonNull ObjectMapper objectMapper,
+            @NonNull CapabilityTranslator capabilityTranslator) {
+        this.baseUrl = baseUrl.isEmpty() ? "https://api.deepseek.com" : baseUrl;
         this.apiKey = apiKey;
         this.providerName = providerName;
         this.objectMapper = objectMapper;

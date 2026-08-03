@@ -81,26 +81,26 @@ public final class ReplaceFileContentTool implements NativeTool<ReplaceFileConte
             })
     public record Args(
             @SecurityHint(ParamCategory.FILESYSTEM_PATH) @Doc("Absolute path of the file to patch.")
-                    String targetFile,
+                    @NonNull String targetFile,
             @Doc("1-indexed starting line (inclusive).") int startLine,
             @Doc("1-indexed ending line (inclusive).") int endLine,
             @SecurityHint(ParamCategory.CODE_CONTENT) @Doc("Exact text range to replace.")
-                    String targetContent,
+                    @NonNull String targetContent,
             @SecurityHint(ParamCategory.CODE_CONTENT) @Doc("The replacement text.")
-                    String replacementContent) {}
+                    @NonNull String replacementContent) {}
 
     @Override
-    public String getName() {
+    public @NonNull String getName() {
         return "replace_file_content";
     }
 
     @Override
-    public String getDescription() {
+    public @NonNull String getDescription() {
         return "Replace a single contiguous block of code in an existing file.";
     }
 
     @Override
-    public Class<Args> getArgsClass() {
+    public @NonNull Class<Args> getArgsClass() {
         return Args.class;
     }
 

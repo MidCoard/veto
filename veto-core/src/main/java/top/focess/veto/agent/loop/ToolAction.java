@@ -9,23 +9,23 @@ import org.jspecify.annotations.NonNull;
  * tool name, bound inputs, and output bindings.
  */
 public record ToolAction(
-        String id,
-        String label,
-        String tool,
-        Map<String, String> inputs,
-        Map<String, String> outputs)
+        @NonNull String id,
+        @NonNull String label,
+        @NonNull String tool,
+        @NonNull Map<String, String> inputs,
+        @NonNull Map<String, String> outputs)
         implements Action {
 
     public ToolAction {
-        if (tool == null || tool.isBlank()) {
+        if (tool.isBlank()) {
             throw new IllegalArgumentException("tool action requires a tool name");
         }
-        inputs = inputs == null ? Map.of() : Map.copyOf(inputs);
-        outputs = outputs == null ? Map.of() : Map.copyOf(outputs);
+        inputs = Map.copyOf(inputs);
+        outputs = Map.copyOf(outputs);
     }
 
     @Override
-    public Map<String, @NonNull Object> resolveInputs(@NonNull Scope scope) {
+    public @NonNull Map<String, @NonNull Object> resolveInputs(@NonNull Scope scope) {
         Map<String, Object> resolved = new HashMap<>();
         for (var entry : inputs.entrySet()) {
             resolved.put(entry.getKey(), scope.resolveValue(entry.getValue()));

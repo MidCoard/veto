@@ -15,12 +15,6 @@ public record ConditionalGotoAction(
         @Nullable Integer falseGoto)
         implements Action {
 
-    public ConditionalGotoAction {
-        if (check == null) {
-            throw new IllegalArgumentException("conditional_goto requires a check");
-        }
-    }
-
     /**
      * The next program counter: {@code trueGoto} if the check passes, else {@code falseGoto} (or
      * {@code fallback}).

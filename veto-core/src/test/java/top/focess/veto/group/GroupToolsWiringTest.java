@@ -16,9 +16,11 @@ import top.focess.veto.agent.mcp.ToolResult;
 import top.focess.veto.group.GroupTools.CreateGroup;
 import top.focess.veto.group.GroupTools.DisbandGroup;
 import top.focess.veto.group.GroupTools.PostMessage;
+import top.focess.veto.llm.core.ProviderType;
 import top.focess.veto.llm.core.ToolCall;
-import top.focess.veto.model.tier.DefaultModelTierRegistry;
-import top.focess.veto.model.tier.ModelTierProperties;
+import top.focess.veto.model.tier.ModelBinding;
+import top.focess.veto.model.tier.ModelTier;
+import top.focess.veto.model.tier.ModelTierRegistry;
 
 /**
  * Verifies the Model B {@code GroupTools} native-tool bodies are wired to the runtime (GroupSpawner
@@ -32,8 +34,24 @@ class GroupToolsWiringTest {
     private final Blackboard blackboard = new Blackboard();
     private final GroupRegistry registry = new GroupRegistry();
     private final GroupOrchestrator orchestrator = new GroupOrchestrator(registry, blackboard);
-    private final DefaultModelTierRegistry tierRegistry =
-            new DefaultModelTierRegistry(new ModelTierProperties());
+    private final ModelTierRegistry tierRegistry =
+            new ModelTierRegistry() {
+                @Override
+                public ModelBinding resolve(String username, ModelTier tier) {
+                    return new ModelBinding(
+                            ProviderType.DEEPSEEK,
+                            "deepseek-chat",
+                            "deepseek-default",
+                            0.7,
+                            4096,
+                            null);
+                }
+
+                @Override
+                public String activeProfile(String username) {
+                    return "default";
+                }
+            };
     private final GroupSpawner spawner =
             new GroupSpawner(blackboard, registry, orchestrator, new MateBreakerRegistry(), 50);
     private final LeaderBinding leaderBinding = new LeaderBinding("TOP", "base", tierRegistry);
@@ -105,7 +123,7 @@ class GroupToolsWiringTest {
 
     @Test
     void disbandGroupTearsDownGroupAndRequestsReverseTransform() {
-        Group g = spawner.registerEmptyGroup("leader", "default", "brief");
+        Group g = spawner.registerEmptyGroup("leader", "default", null, "brief");
 
         DisbandGroup disband = new DisbandGroup(spawner, registry);
         ToolCallContextHolder.set("leader", UUID.randomUUID(), g.groupId());
@@ -147,7 +165,7 @@ class GroupToolsWiringTest {
 
     @Test
     void postMessagePostsToBlackboardForReceiver() {
-        Group g = spawner.registerEmptyGroup("leader", "default", "brief");
+        Group g = spawner.registerEmptyGroup("leader", "default", null, "brief");
 
         PostMessage post = new PostMessage(blackboard);
         ToolCallContextHolder.set("leader", UUID.randomUUID(), g.groupId());

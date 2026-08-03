@@ -10,6 +10,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.agent.Agent;
@@ -54,20 +55,21 @@ public class MateAgent {
     private final @NonNull String skillset;
 
     /** Set of turnSeqs we have already processed (so we don't re-dispatch on each tick). */
-    private final ConcurrentMap<String, Long> lastSeenSeqByReceiver = new ConcurrentHashMap<>();
+    private final @NonNull ConcurrentMap<String, Long> lastSeenSeqByReceiver =
+            new ConcurrentHashMap<>();
 
-    private final AtomicBoolean running = new AtomicBoolean(false);
+    private final @NonNull AtomicBoolean running = new AtomicBoolean(false);
     private final @NonNull ScheduledExecutorService scheduler;
-    private ScheduledFuture<?> pollTask;
+    private @Nullable ScheduledFuture<?> pollTask;
     private final long maxCallsPerEpisode;
 
     public MateAgent(
-            String mateId,
-            UUID groupId,
-            String skillset,
-            Agent agent,
-            Blackboard blackboard,
-            MateBreakerRegistry breakers,
+            @NonNull String mateId,
+            @NonNull UUID groupId,
+            @NonNull String skillset,
+            @NonNull Agent agent,
+            @NonNull Blackboard blackboard,
+            @NonNull MateBreakerRegistry breakers,
             long maxCallsPerEpisode) {
         this(
                 mateId,
@@ -82,12 +84,12 @@ public class MateAgent {
     }
 
     public MateAgent(
-            String mateId,
-            UUID groupId,
-            String skillset,
-            Agent agent,
-            Blackboard blackboard,
-            MateBreakerRegistry breakers,
+            @NonNull String mateId,
+            @NonNull UUID groupId,
+            @NonNull String skillset,
+            @NonNull Agent agent,
+            @NonNull Blackboard blackboard,
+            @NonNull MateBreakerRegistry breakers,
             long maxCallsPerEpisode,
             long pollIntervalMs,
             long taskTimeoutMs) {
@@ -111,19 +113,19 @@ public class MateAgent {
         breakers.forMate(groupId, mateId, maxCallsPerEpisode);
     }
 
-    public String mateId() {
+    public @NonNull String mateId() {
         return mateId;
     }
 
-    public String skillset() {
+    public @NonNull String skillset() {
         return skillset;
     }
 
-    public Agent agent() {
+    public @NonNull Agent agent() {
         return agent;
     }
 
-    public UUID groupId() {
+    public @NonNull UUID groupId() {
         return groupId;
     }
 
@@ -185,14 +187,14 @@ public class MateAgent {
         }
     }
 
-    private List<BlackboardMessage> newMessagesSince(long seen) {
+    private @NonNull List<BlackboardMessage> newMessagesSince(long seen) {
         return blackboard.readAll(groupId).stream()
                 .filter(m -> mateId.equals(m.receiverId()))
                 .filter(m -> m.turnSeq() > seen)
                 .toList();
     }
 
-    private void handleDispatch(BlackboardMessage dispatch) {
+    private void handleDispatch(@NonNull BlackboardMessage dispatch) {
         // 1. Parse nodeId + instruction from the payload (format: "<nodeId>:<instruction>").
         String payload = dispatch.payload();
         int colon = payload.indexOf(':');
@@ -239,7 +241,7 @@ public class MateAgent {
         }
     }
 
-    private String extractArtifact(AgentResult result) {
+    private @Nullable String extractArtifact(@NonNull AgentResult result) {
         // Heuristic: the last assistant message is the artifact description. For a real
         // deployment the Mate would write to a workspace path; the path is what we post.
         if (result.message() == null || result.message().isBlank()) {
@@ -248,7 +250,7 @@ public class MateAgent {
         return "/mate/" + mateId + "/" + System.currentTimeMillis();
     }
 
-    private void postAccept(String nodeId, String artifactPath) {
+    private void postAccept(@NonNull String nodeId, @Nullable String artifactPath) {
         String payload = nodeId + ":accept:" + (artifactPath == null ? "/artifact" : artifactPath);
         blackboard.post(
                 new BlackboardMessage(
@@ -261,7 +263,7 @@ public class MateAgent {
                         0));
     }
 
-    private void postArtifactRef(String nodeId, String path) {
+    private void postArtifactRef(@NonNull String nodeId, @NonNull String path) {
         blackboard.post(
                 new BlackboardMessage(
                         UUID.randomUUID().toString(),
@@ -273,7 +275,7 @@ public class MateAgent {
                         0));
     }
 
-    private void postFeedback(String nodeId, String reason) {
+    private void postFeedback(@NonNull String nodeId, @Nullable String reason) {
         blackboard.post(
                 new BlackboardMessage(
                         UUID.randomUUID().toString(),
@@ -285,7 +287,7 @@ public class MateAgent {
                         0));
     }
 
-    private void postTerminalStatus(String nodeId, String reason) {
+    private void postTerminalStatus(@NonNull String nodeId, @NonNull String reason) {
         blackboard.post(
                 new BlackboardMessage(
                         UUID.randomUUID().toString(),
@@ -297,19 +299,19 @@ public class MateAgent {
                         0));
     }
 
-    private static String lastSeenSeqKey() {
+    private static @NonNull String lastSeenSeqKey() {
         // Single Mate per MateAgent instance; the key is just the bare Mate id. (Per-group
         // dedupe is implicit because we only ever read this group's Blackboard.)
         return "self";
     }
 
     /** The Mate's last agent state (for tests + diagnostics). */
-    public AgentState state() {
+    public @NonNull AgentState state() {
         return agent.state();
     }
 
     /** Inspect the Mate's turn history (for tests + diagnostics). */
-    public List<TurnRecord> history() {
+    public @NonNull List<TurnRecord> history() {
         return agent.history();
     }
 }

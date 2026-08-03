@@ -33,12 +33,6 @@ class DiffCalculatorTest {
     }
 
     @Test
-    void testNullInputs() {
-        DiffCalculator.DiffResult result = diffCalculator.computeDiff(null, null);
-        assertEquals(0, result.totalChanges());
-    }
-
-    @Test
     void testLineCountDifference() {
         String original = "a\nb\nc";
         String redacted = "a\nx\ny\nz";

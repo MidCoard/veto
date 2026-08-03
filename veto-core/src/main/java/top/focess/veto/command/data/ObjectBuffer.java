@@ -1,6 +1,8 @@
 package top.focess.veto.command.data;
 
 import org.jetbrains.annotations.NotNull;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import top.focess.command.data.DataBuffer;
 
 /**
@@ -18,7 +20,7 @@ import top.focess.command.data.DataBuffer;
  */
 public final class ObjectBuffer<T> extends DataBuffer<T> {
 
-    private final Object[] values;
+    private final @NonNull Object[] values;
     private int pos;
 
     private ObjectBuffer(final int size) {
@@ -43,7 +45,7 @@ public final class ObjectBuffer<T> extends DataBuffer<T> {
     }
 
     @Override
-    public void put(final T t) {
+    public void put(@Nullable final T t) {
         if (this.pos < this.values.length) {
             this.values[this.pos] = t;
             this.pos++;
@@ -52,7 +54,7 @@ public final class ObjectBuffer<T> extends DataBuffer<T> {
 
     @Override
     @SuppressWarnings("unchecked")
-    public T get() {
+    public @Nullable T get() {
         if (this.pos < this.values.length) {
             return (T) this.values[this.pos++];
         }
@@ -61,7 +63,7 @@ public final class ObjectBuffer<T> extends DataBuffer<T> {
 
     @Override
     @SuppressWarnings("unchecked")
-    public T get(final int index) {
+    public @Nullable T get(final int index) {
         if (index >= 0 && index < this.values.length) {
             return (T) this.values[index];
         }

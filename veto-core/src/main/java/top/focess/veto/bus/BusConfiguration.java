@@ -9,10 +9,10 @@ import org.springframework.context.annotation.Configuration;
 @ConfigurationProperties(prefix = "veto.bus")
 public class BusConfiguration {
 
-    private WebSocketConfig websocket = new WebSocketConfig();
-    private GrpcConfig grpc = new GrpcConfig();
+    private @NonNull WebSocketConfig websocket = new WebSocketConfig();
+    private @NonNull GrpcConfig grpc = new GrpcConfig();
 
-    public WebSocketConfig getWebsocket() {
+    public @NonNull WebSocketConfig getWebsocket() {
         return websocket;
     }
 
@@ -20,7 +20,7 @@ public class BusConfiguration {
         this.websocket = websocket;
     }
 
-    public GrpcConfig getGrpc() {
+    public @NonNull GrpcConfig getGrpc() {
         return grpc;
     }
 
@@ -30,7 +30,7 @@ public class BusConfiguration {
 
     public static class WebSocketConfig {
         private int port = 9090;
-        private String path = "/veto/bus";
+        private @NonNull String path = "/veto/bus";
         private int heartbeatIntervalMs = 30000;
         private int reconnectDelayMs = 5000;
         private int maxReconnectAttempts = 10;
@@ -43,7 +43,7 @@ public class BusConfiguration {
             this.port = port;
         }
 
-        public String getPath() {
+        public @NonNull String getPath() {
             return path;
         }
 

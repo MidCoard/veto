@@ -49,7 +49,7 @@ public sealed interface Check
     record Llm(@NonNull String prompt, @NonNull String var) implements Check {}
 
     /** The operands a check references (for validation). */
-    default List<String> operands() {
+    default @NonNull List<String> operands() {
         return switch (this) {
             case Equals e -> List.of(e.var());
             case NotEquals e -> List.of(e.var());

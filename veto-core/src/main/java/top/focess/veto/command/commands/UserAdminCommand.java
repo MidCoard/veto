@@ -18,8 +18,8 @@ import top.focess.veto.vault.UserRegistry;
  */
 public class UserAdminCommand extends VetoCommand {
 
-    private final UserAdminService admin;
-    private final SignupPolicy policy;
+    private final @NonNull UserAdminService admin;
+    private final @NonNull SignupPolicy policy;
 
     public UserAdminCommand(@NonNull UserAdminService admin, @NonNull SignupPolicy policy) {
         super("user", "Manage user accounts (admin)", "users");

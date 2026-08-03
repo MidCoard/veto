@@ -1,5 +1,6 @@
 package top.focess.veto.agent.screening;
 
+import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.mcp.ToolDefinition;
 import top.focess.veto.llm.core.ToolCall;
 
@@ -9,10 +10,11 @@ import top.focess.veto.llm.core.ToolCall;
  * agent's relevance by default; the deterministic danger floor still protects).
  */
 public interface SlmRelevanceProvider {
-    Relevance relevance(ToolCall call, ToolDefinition def, String thought);
+    @NonNull Relevance relevance(
+            @NonNull ToolCall call, @NonNull ToolDefinition def, @NonNull String thought);
 
     /** Degraded: always HIGH. */
-    static SlmRelevanceProvider degraded() {
+    static @NonNull SlmRelevanceProvider degraded() {
         return new DegradedSlmRelevanceProvider();
     }
 }

@@ -51,11 +51,17 @@ public final class ListDirTool implements NativeTool<ListDirTool.Args> {
 
                     #### Errors & edge cases
                     - `directoryPath` does not exist or is not a directory -> \
-                    `{"status":"error","error":"Not a directory: <path>"}`.
-                    - Passing a file path -> "Not a directory" error.
-                    - A directory with many entries returns them all; there is no pagination - narrow by \
+                    `{"status":"error","error":"Not a directory: <path>"}`. **This is the canonical
+                    signal that the path you constructed does not exist.** The right response is NOT
+                    to retry with a similar guess - return to your last successful `list_dir`
+                    observation and reconstruct the absolute path from the actual subdirectory names
+                    you saw there. The most common cause is dropping a parent segment (e.g. listing
+                    `.minecraft/versions/` under `E:\\minecraft`, then trying `E:\\minecraft\\versions`
+                    instead of `E:\\minecraft\\.minecraft\\versions`).
+                    - Passing a file path -> same "Not a directory" error; use `view_file` instead.
+                    - A directory with many entries returns them all; there is no pagination - narrow by
                     descending into specific subdirectories if the listing is large.
-                    - Permissions gaps may hide entries the process cannot read; the tool lists what the \
+                    - Permissions gaps may hide entries the process cannot read; the tool lists what the
                     filesystem exposes.
 
                     #### Security
@@ -76,20 +82,20 @@ public final class ListDirTool implements NativeTool<ListDirTool.Args> {
             })
     public record Args(
             @SecurityHint(ParamCategory.FILESYSTEM_PATH) @Doc("Absolute path to list contents of.")
-                    String directoryPath) {}
+                    @NonNull String directoryPath) {}
 
     @Override
-    public String getName() {
+    public @NonNull String getName() {
         return "list_dir";
     }
 
     @Override
-    public String getDescription() {
+    public @NonNull String getDescription() {
         return "List contents of a directory (files and child subdirectories).";
     }
 
     @Override
-    public Class<Args> getArgsClass() {
+    public @NonNull Class<Args> getArgsClass() {
         return Args.class;
     }
 

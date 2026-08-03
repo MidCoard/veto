@@ -5,6 +5,7 @@ import com.sun.jna.Native;
 import com.sun.jna.Pointer;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -33,7 +34,7 @@ public class SeccompWall {
     private static final Logger log = LoggerFactory.getLogger(SeccompWall.class);
 
     /** The loaded libseccomp binding, or {@code null} when libseccomp is unavailable. */
-    private final @NonNull LinuxLibSeccomp lib;
+    private final @Nullable LinuxLibSeccomp lib;
 
     public SeccompWall() {
         LinuxLibSeccomp loaded = null;
@@ -61,7 +62,7 @@ public class SeccompWall {
      * getpid, exit, exit_group, arch_prctl, futex, clock_gettime, getrandom. Production would query
      * {@code uname(2)} and use the right architecture's table.
      */
-    public List<Integer> baselineSyscalls() {
+    public @NonNull List<Integer> baselineSyscalls() {
         return List.of(
                 0, // read
                 1, // write
@@ -89,12 +90,12 @@ public class SeccompWall {
         /**
          * {@code seccomp_init(SCMP_ACT_KILL)} — create a filter context that kills on violation.
          */
-        Pointer seccomp_init(int action);
+        @Nullable Pointer seccomp_init(int action);
 
-        int seccomp_rule_add(Pointer ctx, int action, int syscall, int argCount);
+        int seccomp_rule_add(@Nullable Pointer ctx, int action, int syscall, int argCount);
 
-        int seccomp_load(Pointer ctx);
+        int seccomp_load(@Nullable Pointer ctx);
 
-        void seccomp_release(Pointer ctx);
+        void seccomp_release(@Nullable Pointer ctx);
     }
 }

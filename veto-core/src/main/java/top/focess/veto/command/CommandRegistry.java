@@ -108,7 +108,7 @@ public class CommandRegistry {
         return promptHandler.handle(prompt, sender.terminalId(), sender);
     }
 
-    private IpcFrame.TerminalResponse dispatchSlashCommand(
+    private IpcFrame.@NonNull TerminalResponse dispatchSlashCommand(
             @NonNull VetoCommandSender sender, @NonNull String commandLine) {
 
         String input = commandLine.substring(1);
@@ -141,7 +141,7 @@ public class CommandRegistry {
         }
     }
 
-    private Map<String, Object> buildDoneMeta(
+    private @NonNull Map<String, Object> buildDoneMeta(
             @NonNull VetoCommandSender sender, boolean wasLogout) {
         Map<String, Object> meta = new java.util.HashMap<>();
         if (wasLogout) {

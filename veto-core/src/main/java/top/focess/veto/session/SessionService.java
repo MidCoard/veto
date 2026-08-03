@@ -1,9 +1,13 @@
 package top.focess.veto.session;
 
+import java.nio.file.Path;
+import java.time.Instant;
+import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ThreadLocalRandom;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
@@ -28,26 +32,23 @@ import top.focess.veto.model.tier.ModelTierRegistry;
  * session; the session's primary agent is get-or-created in {@link AgentService} with replayed
  * history loaded by {@link SessionHistoryLoader}.
  *
- * <p>Per-user identity for memory capture is not yet wired here (the placeholder {@code
- * DEFAULT_USER_ID} is used, matching the existing transport path); multi-user isolation is the
- * follow-up tracked on {@link AgentService}.
+ * <p>Per-user identity for memory capture is derived from the session owner via {@link
+ * AgentService#userIdForOwner(String)}, so memories and turn logs attribute to the real user rather
+ * than a shared placeholder.
  */
 @Service
 public class SessionService {
 
-    /** Placeholder until per-user identity is threaded from the transport (see class javadoc). */
-    private static final UUID DEFAULT_USER_ID =
-            UUID.fromString("00000000-0000-0000-0000-000000000000");
-
-    private final SessionRepository sessions;
-    private final AgentInstanceRepository agents;
-    private final AgentPatternRepository patterns;
-    private final AgentService agentService;
-    private final SessionHistoryLoader historyLoader;
-    private final ModelTierRegistry tierRegistry;
+    private final @NonNull SessionRepository sessions;
+    private final @NonNull AgentInstanceRepository agents;
+    private final @NonNull AgentPatternRepository patterns;
+    private final @NonNull AgentService agentService;
+    private final @NonNull SessionHistoryLoader historyLoader;
+    private final @NonNull ModelTierRegistry tierRegistry;
 
     /** Per-terminal active session id. Key = terminal id, value = session id. */
-    private final ConcurrentHashMap<String, String> activeSessions = new ConcurrentHashMap<>();
+    private final @NonNull ConcurrentHashMap<String, String> activeSessions =
+            new ConcurrentHashMap<>();
 
     public SessionService(
             @NonNull SessionRepository sessions,
@@ -98,7 +99,9 @@ public class SessionService {
      *
      * @param owner the session owner
      * @param patternName the pattern to instantiate the primary agent from
-     * @param sessionName the desired session name; null/empty defaults to {@code patternName}
+     * @param sessionName the desired session name; null/empty triggers an auto-generated name of
+     *     the form {@code <patternName>-xxxxxxxx} (8 lowercase hex digits) that is unique within
+     *     this workspace. An explicit name is still validated for workspace-scoped uniqueness.
      * @param workspaceRoots CSV of host paths backing the session's workspace; never {@code null}
      */
     @Transactional
@@ -114,16 +117,32 @@ public class SessionService {
                                         new IllegalArgumentException(
                                                 "Pattern not found: " + patternName));
 
-        String resolvedName =
-                (sessionName == null || sessionName.isEmpty()) ? patternName : sessionName;
-        if (sessions.findByNameAndOwner(resolvedName, owner).isPresent()) {
-            throw new IllegalArgumentException(
-                    "Session name '" + resolvedName + "' already exists; provide a unique name");
+        String resolvedName;
+        if (sessionName == null || sessionName.isEmpty()) {
+            // Implicit session name: always produce a workspace-unique name so `/session create ds`
+            // succeeds even when another `ds` session exists in this workspace. The generated name
+            // keeps the pattern name as a human-readable prefix.
+            resolvedName = generateUniqueSessionName(owner, patternName, workspaceRoots);
+        } else {
+            resolvedName = sessionName;
+            // Uniqueness is scoped to (owner, name, workspaceRoots): the same name is allowed in a
+            // different workspace. The match is an exact CSV-string compare; a legacy row with
+            // workspace_roots = NULL is a distinct workspace from any new row (SQL NULL != 'X'), so
+            // it does not block creation in a concrete workspace.
+            if (sessions.findByOwnerAndNameAndWorkspaceRoots(owner, resolvedName, workspaceRoots)
+                    .isPresent()) {
+                throw new IllegalArgumentException(
+                        "Session name '"
+                                + resolvedName
+                                + "' already exists in workspace '"
+                                + workspaceRoots
+                                + "'; provide a unique name in this workspace");
+            }
         }
 
         SessionEntity session =
                 sessions.save(new SessionEntity(owner, resolvedName, workspaceRoots));
-        ModelBinding cache = tierRegistry.resolve(pattern.getTier());
+        ModelBinding cache = tierRegistry.resolve(owner, pattern.getTier());
         AgentEntity agent =
                 new AgentEntity(
                         session.getId(),
@@ -137,29 +156,112 @@ public class SessionService {
         return sessions.save(session);
     }
 
+    /**
+     * Generates a session name of the form {@code baseName-xxxxxxxx} that is not already used by
+     * {@code owner} in {@code workspaceRoots}. The suffix is 8 lowercase hex digits from a
+     * ThreadLocalRandom source; the lookup loop protects against an astronomically unlikely
+     * collision.
+     */
+    private @NonNull String generateUniqueSessionName(
+            @NonNull String owner, @NonNull String baseName, @NonNull String workspaceRoots) {
+        for (int attempt = 0; attempt < 16; attempt++) {
+            String suffix = String.format("%08x", ThreadLocalRandom.current().nextInt());
+            String candidate = baseName + "-" + suffix;
+            if (sessions.findByOwnerAndNameAndWorkspaceRoots(owner, candidate, workspaceRoots)
+                    .isEmpty()) {
+                return candidate;
+            }
+        }
+        // Fall back to a full timestamped suffix if random space is exhausted.
+        return baseName + "-" + System.currentTimeMillis();
+    }
+
+    /**
+     * Returns every session owned by {@code owner}, irrespective of workspace binding. Used by the
+     * REST facade ({@link top.focess.veto.controller.SessionController#list}) where there is no
+     * terminal cwd to scope to — the web UI is expected to group / filter as it wishes.
+     */
     public @NonNull List<SessionEntity> listSessions(@NonNull String owner) {
         return sessions.findByOwner(owner);
     }
 
     /**
+     * Returns the owner's sessions whose {@link SessionEntity#getWorkspaceRoots()} contains the
+     * terminal's {@code cwd} (at-or-under one of the roots). {@code cwd} is the terminal's current
+     * working directory — the session's bound workspace is fixed at creation, so a terminal outside
+     * that scope sees an empty list. The strict binding is what makes sessions "belong" to a
+     * workspace; different workspaces show different sessions.
+     *
+     * <p>{@code workspaceRoots} from the session is treated as CSV when present; null/blank is
+     * treated as "matches any workspace" for backward compatibility with legacy rows written before
+     * the field was populated.
+     *
+     * @param owner the session owner
+     * @param cwd the terminal's current working directory; never {@code null} (the terminal always
+     *     reports its JVM working dir in the IPC {@code Hello} handshake)
+     */
+    public @NonNull List<SessionEntity> listSessions(@NonNull String owner, @NonNull String cwd) {
+        return sessions.findByOwner(owner).stream()
+                .filter(s -> isInWorkspace(s.getWorkspaceRoots(), cwd))
+                .toList();
+    }
+
+    /**
      * Attaches the terminal to an existing session. Get-or-creates the primary agent (seeding
      * replayed history) and returns its LLM config. Sets the terminal's active session on success.
+     *
+     * <p>Strict workspace binding: the session's {@code workspaceRoots} (its creation-time cwd)
+     * must contain the terminal's current {@code cwd} — the terminal is expected to be at-or-under
+     * one of the session's roots. A terminal in a different workspace cannot activate the session;
+     * it gets a clear error pointing at the session's binding. Different workspaces show different
+     * sessions in {@link #listSessions}; the auto-resume path uses the same scope.
      */
     @Transactional
     public @NonNull Optional<LlmConfig> activate(
-            @NonNull String terminalId, @NonNull String sessionName, @NonNull String owner) {
-        SessionEntity session =
-                sessions.findByNameAndOwner(sessionName, owner)
-                        .orElseThrow(
-                                () ->
-                                        new IllegalArgumentException(
-                                                "Session not found: " + sessionName));
+            @NonNull String terminalId,
+            @NonNull String sessionName,
+            @NonNull String owner,
+            @NonNull String cwd) {
+        // Find by owner + name (the same name may exist in multiple workspaces) and pick the one
+        // whose workspace contains the terminal's cwd. With the create-time uniqueness check on
+        // (owner, name, workspaceRoots), at most one session per name is bound to a given cwd —
+        // except legacy rows with workspace_roots = NULL, which match every cwd. When both a
+        // legacy row and a concrete-workspace row match, the concrete one wins (more specific).
+        List<SessionEntity> candidates =
+                sessions.findByOwner(owner).stream()
+                        .filter(s -> sessionName.equals(s.getName()))
+                        .filter(s -> isInWorkspace(s.getWorkspaceRoots(), cwd))
+                        .sorted(
+                                // Concrete workspace first (workspaceRoots != null), then by
+                                // lastActiveAt descending; legacy (null) sessions come last as a
+                                // fallback when no concrete match exists.
+                                Comparator.<SessionEntity, Boolean>comparing(
+                                                s -> s.getWorkspaceRoots() == null)
+                                        .thenComparing(
+                                                SessionEntity::getLastActiveAt,
+                                                Comparator.nullsFirst(
+                                                        Comparator.<Instant>naturalOrder()
+                                                                .reversed())))
+                        .toList();
+        if (candidates.isEmpty()) {
+            // Disambiguate the error: is it "not found at all" or "found but in a different
+            // workspace"? The user benefits from knowing they can cd to activate.
+            sessions.findByNameAndOwner(sessionName, owner)
+                    .ifPresent(
+                            s -> {
+                                throw new IllegalArgumentException(
+                                        workspaceMismatchMessage(
+                                                sessionName, s.getWorkspaceRoots(), cwd));
+                            });
+            throw new IllegalArgumentException("Session not found: " + sessionName);
+        }
+        SessionEntity session = candidates.get(0);
         AgentEntity agent = primaryAgent(session);
         if (agent == null) {
             return Optional.empty();
         }
 
-        ModelBinding resolved = tierRegistry.resolve(agent.getTier());
+        ModelBinding resolved = tierRegistry.resolve(owner, agent.getTier());
         AgentRunner.LlmBinding binding = standaloneBinding(resolved);
         List<TurnRecord> history = historyLoader.load(session.getId(), agent.getId());
         agentService.getOrCreateAgent(
@@ -167,7 +269,8 @@ public class SessionService {
                 agent.getId(),
                 binding,
                 history,
-                DEFAULT_USER_ID,
+                agentService.userIdForOwner(owner),
+                owner,
                 session.getWorkspaceRoots());
         session.touch();
         sessions.save(session);
@@ -177,16 +280,23 @@ public class SessionService {
     }
 
     /**
-     * Auto-resumes the owner's most-recently-active session after a server restart or terminal
-     * reconnect (the in-memory active-session map is wiped on restart). Replays durable history by
-     * delegating to {@link #activate}. Returns empty if the owner has no sessions or the last one
-     * has no primary agent.
+     * Auto-resumes the owner's most-recently-active session in the terminal's current {@code cwd}
+     * after a server restart or terminal reconnect (the in-memory active-session map is wiped on
+     * restart). Replays durable history by delegating to {@link #activate}. Returns empty if the
+     * owner has no in-workspace session, or the most-recent in-workspace session has no primary
+     * agent — out-of-workspace sessions are intentionally skipped so a terminal never silently
+     * resumes into a session that operates on a different directory tree.
      */
     @Transactional
     public @NonNull Optional<LlmConfig> resumeLastSession(
-            @NonNull String terminalId, @NonNull String owner) {
-        return sessions.findFirstByOwnerOrderByLastActiveAtDesc(owner)
-                .flatMap(session -> activate(terminalId, session.getName(), owner));
+            @NonNull String terminalId, @NonNull String owner, @NonNull String cwd) {
+        return sessions.findByOwner(owner).stream()
+                .filter(s -> isInWorkspace(s.getWorkspaceRoots(), cwd))
+                .max(
+                        Comparator.comparing(
+                                SessionEntity::getLastActiveAt,
+                                Comparator.nullsFirst(Comparator.naturalOrder())))
+                .flatMap(session -> activate(terminalId, session.getName(), owner, cwd));
     }
 
     public void deactivate(@NonNull String terminalId) {
@@ -208,6 +318,54 @@ public class SessionService {
                         });
     }
 
+    /**
+     * Deletes a session and cascades: detaches any terminal attached to it, terminates the
+     * in-memory agent, and removes the session's agent instances + the session row. Mirrors the
+     * per-session slice of {@link top.focess.veto.security.UserAdminService#deleteUser}.
+     *
+     * <p>Because two sessions may share a name across workspaces, the {@code (owner, name)} pair is
+     * no longer unique. Returns {@code false} when no session matches, and throws {@link
+     * IllegalStateException} when more than one matches — the caller (e.g. {@code
+     * SessionController}) is expected to disambiguate by workspace. A future API change can accept
+     * a {@code workspace} parameter to make that explicit.
+     */
+    @Transactional
+    public boolean delete(@NonNull String owner, @NonNull String sessionName) {
+        List<SessionEntity> matches =
+                sessions.findByOwner(owner).stream()
+                        .filter(s -> sessionName.equals(s.getName()))
+                        .toList();
+        if (matches.isEmpty()) {
+            return false;
+        }
+        if (matches.size() > 1) {
+            String workspaces =
+                    matches.stream()
+                            .map(
+                                    s ->
+                                            s.getWorkspaceRoots() == null
+                                                    ? "<unbound>"
+                                                    : s.getWorkspaceRoots())
+                            .reduce((a, b) -> a + ", " + b)
+                            .orElse("");
+            throw new IllegalStateException(
+                    "Multiple sessions named '"
+                            + sessionName
+                            + "' exist for owner '"
+                            + owner
+                            + "' (workspaces: ["
+                            + workspaces
+                            + "]); disambiguate by workspace before deleting");
+        }
+        SessionEntity session = matches.get(0);
+        String sessionId = session.getId();
+        activeSessions.entrySet().removeIf(e -> sessionId.equals(e.getValue()));
+        agentService.remove(sessionId);
+        agents.deleteBySessionId(sessionId);
+        sessions.delete(session);
+        return true;
+    }
+
     public @NonNull Optional<String> activeSession(@NonNull String terminalId) {
         return Optional.ofNullable(activeSessions.get(terminalId));
     }
@@ -219,7 +377,7 @@ public class SessionService {
         if (session == null) return Optional.empty();
         AgentEntity agent = primaryAgent(session);
         if (agent == null) return Optional.empty();
-        return Optional.of(llmConfig(tierRegistry.resolve(agent.getTier())));
+        return Optional.of(llmConfig(tierRegistry.resolve(session.getOwner(), agent.getTier())));
     }
 
     /**
@@ -235,11 +393,16 @@ public class SessionService {
                         null,
                         resolved.maxOutputTokens(),
                         LlmOptions.defaults().timeout()),
-                null);
+                null,
+                resolved.baseUrl());
     }
 
     private @NonNull LlmConfig llmConfig(@NonNull ModelBinding resolved) {
-        return new LlmConfig(resolved.provider(), resolved.model(), resolved.credentialKey());
+        return new LlmConfig(
+                resolved.provider(),
+                resolved.model(),
+                resolved.credentialKey(),
+                resolved.baseUrl());
     }
 
     public @NonNull Optional<Agent> activeAgent(@NonNull String terminalId) {
@@ -251,5 +414,55 @@ public class SessionService {
     private @Nullable AgentEntity primaryAgent(@NonNull SessionEntity session) {
         if (session.getPrimaryAgentId() == null) return null;
         return agents.findById(session.getPrimaryAgentId()).orElse(null);
+    }
+
+    /**
+     * Builds the user-facing error when a session exists for {@code (owner, name)} but its
+     * workspace does not contain the terminal's current {@code cwd}. Pulled out so {@link
+     * #activate} (which now matches by owner+name+workspace) produces a single canonical message
+     * whether the wrong-workspace session was filtered out or surfaced via the fallback lookup.
+     */
+    private static @NonNull String workspaceMismatchMessage(
+            @NonNull String sessionName,
+            @Nullable String sessionWorkspaceRoots,
+            @NonNull String cwd) {
+        return "Session '"
+                + sessionName
+                + "' is bound to workspace '"
+                + (sessionWorkspaceRoots == null ? "" : sessionWorkspaceRoots)
+                + "'; current cwd is '"
+                + cwd
+                + "'. Use /session create <pattern> in this directory,"
+                + " or cd into the session's workspace and retry.";
+    }
+
+    /**
+     * Returns true when {@code cwd} is at or under one of the roots in {@code
+     * sessionWorkspaceRoots} (CSV of host paths). Null/blank {@code sessionWorkspaceRoots} is
+     * treated as "matches any workspace" for backward compatibility with legacy rows written before
+     * the field was populated. Both paths are normalized via {@code toAbsolutePath().normalize()}
+     * so a trailing slash, {@code .} / {@code ..} segments, or relative-vs-absolute spelling never
+     * causes a false negative.
+     *
+     * <p>This is a purely lexical check — symlink-resolved canonicalization is the job of {@link
+     * top.focess.veto.agent.workspace.PathResolver} at tool-call time, not session routing. A
+     * terminal that has symlinked itself into a session's workspace is still "in" it for
+     * session-routing purposes; the agent's tool calls will then resolve symlinks per their own
+     * canonicalization rules.
+     */
+    private static boolean isInWorkspace(
+            @Nullable String sessionWorkspaceRoots, @NonNull String cwd) {
+        if (sessionWorkspaceRoots == null || sessionWorkspaceRoots.isBlank()) {
+            return true;
+        }
+        Path cwdPath = Path.of(cwd).toAbsolutePath().normalize();
+        return Arrays.stream(sessionWorkspaceRoots.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .anyMatch(
+                        root -> {
+                            Path rootPath = Path.of(root).toAbsolutePath().normalize();
+                            return cwdPath.equals(rootPath) || cwdPath.startsWith(rootPath);
+                        });
     }
 }

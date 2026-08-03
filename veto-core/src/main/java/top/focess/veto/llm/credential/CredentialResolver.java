@@ -35,7 +35,7 @@ public class CredentialResolver {
      */
     public @Nullable String resolve(
             @NonNull ProviderType providerType, @NonNull String credentialKey) {
-        if (credentialKey == null || credentialKey.isEmpty()) {
+        if (credentialKey.isEmpty()) {
             throw new LlmAuthException("Credential key is missing for provider " + providerType);
         }
         try {

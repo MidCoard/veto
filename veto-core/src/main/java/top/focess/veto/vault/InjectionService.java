@@ -23,14 +23,14 @@ public class InjectionService {
     private final @NonNull KeysteadVault vault;
 
     // Active injection sessions - cleared after use
-    private final Map<String, Map<String, String>> activeInjections = new HashMap<>();
+    private final @NonNull Map<String, Map<String, String>> activeInjections = new HashMap<>();
 
     public InjectionService(@NonNull KeysteadVault vault) {
         this.vault = vault;
     }
 
     /** Inject credentials required by a tool execution request into the sandbox environment. */
-    public synchronized Map<String, @NonNull String> injectForExecution(
+    public synchronized @NonNull Map<String, @NonNull String> injectForExecution(
             @NonNull ToolExecutionRequest request) {
         Set<String> requiredCreds = request.getRequiredCredentials();
         if (requiredCreds.isEmpty()) {

@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -14,6 +15,8 @@ import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.mcp.ToolSchemaCompiler;
 import top.focess.veto.agent.mcp.tools.GrepSearchTool;
 import top.focess.veto.agent.screening.DeployerPolicy;
+import top.focess.veto.agent.workspace.PathMode;
+import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.ToolDefinition;
 
 /**
@@ -75,6 +78,11 @@ class PromptCompileRenderTest {
                                 "General-purpose engineering assistant for workspace and code"
                                         + " automation."));
         blocks.put("ROLE", PromptBlocks.role(role));
+        blocks.put(
+                "WORKSPACE",
+                PromptBlocks.workspace(
+                        Workspace.single(
+                                Path.of(System.getProperty("user.dir", ".")), PathMode.REAL)));
         blocks.put("TOOLS", PromptBlocks.tools(tools));
         blocks.put("BOUNDARIES", PromptBlocks.boundaries(policy));
         blocks.put("SKILLS", PromptBlocks.skills(List.of()));

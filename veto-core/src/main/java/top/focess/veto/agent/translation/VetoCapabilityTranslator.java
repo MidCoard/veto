@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 import top.focess.veto.agent.mcp.ParameterSchema;
 import top.focess.veto.agent.mcp.ToolDefinition;
@@ -42,8 +43,8 @@ public class VetoCapabilityTranslator implements CapabilityTranslator {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     @Override
-    public List<top.focess.veto.llm.core.ToolDefinition> translateTools(
-            List<ToolDefinition> manifest) {
+    public @NonNull List<top.focess.veto.llm.core.ToolDefinition> translateTools(
+            @Nullable List<ToolDefinition> manifest) {
         List<top.focess.veto.llm.core.ToolDefinition> flat = new ArrayList<>();
         if (manifest == null) return flat;
         for (ToolDefinition def : manifest) {
@@ -137,7 +138,7 @@ public class VetoCapabilityTranslator implements CapabilityTranslator {
     }
 
     /** Resolves a manifest tool's inputSchema to a flat {@code Map} for the provider tool list. */
-    private Map<String, Object> inputSchemaOf(ToolDefinition def) {
+    private @NonNull Map<String, Object> inputSchemaOf(@NonNull ToolDefinition def) {
         ParameterSchema params = def.parameters();
         JsonNode schema =
                 switch (params) {
@@ -149,12 +150,13 @@ public class VetoCapabilityTranslator implements CapabilityTranslator {
         return MAPPER.convertValue(schema, Map.class);
     }
 
-    private static ObjectNode stringNode(String description) {
+    private static @NonNull ObjectNode stringNode(@NonNull String description) {
         return typedSchemaNode("string", description);
     }
 
     /** Builds a typed schema node (boolean/object/...) with an optional description. */
-    private static ObjectNode typedSchemaNode(String type, String description) {
+    private static @NonNull ObjectNode typedSchemaNode(
+            @NonNull String type, @Nullable String description) {
         ObjectNode node = MAPPER.createObjectNode();
         node.put("type", type);
         if (description != null) {

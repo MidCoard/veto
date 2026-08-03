@@ -17,6 +17,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import org.zeromq.ZContext;
 import top.focess.veto.VetoVersion;
+import top.focess.veto.agent.AgentService;
 import top.focess.veto.command.CommandRegistry;
 import top.focess.veto.command.VetoCommandSender;
 import top.focess.veto.contract.IpcClient;
@@ -96,6 +97,7 @@ public class IpcServer {
     private static final int MAX_OUTBOX_SIZE = 10_000;
 
     private final CommandRegistry registry;
+    private final AgentService agentService;
 
     /**
      * Outbox queue: any thread may enqueue; only the IO thread dequeues and sends. Using {@link
@@ -142,12 +144,14 @@ public class IpcServer {
 
     /**
      * Constructs a new {@code IpcServer}. Spring calls this constructor with the {@link
-     * CommandRegistry} bean wired from the application context.
+     * CommandRegistry} and {@link AgentService} beans wired from the application context.
      *
      * @param registry the command registry used to dispatch requests and produce completions
+     * @param agentService the agent service used to resolve/decline pending HITL vetoes
      */
-    public IpcServer(@NonNull CommandRegistry registry) {
+    public IpcServer(@NonNull CommandRegistry registry, @NonNull AgentService agentService) {
         this.registry = registry;
+        this.agentService = agentService;
     }
 
     // ── Lifecycle ────────────────────────────────────────────────────────
@@ -416,16 +420,31 @@ public class IpcServer {
 
                 case IpcFrame.Input in -> {
                     log.trace("IN   {}", identity.substring(0, 8));
-                    boolean accepted = session.sender.receiveInput(in.raw());
-                    if (!accepted) {
-                        // ACTIVE × Input with no waiting request: discard + log. No Error
-                        // frame — the terminal only sends Input in reply to a Prompt (client
-                        // routing), so an unaccepted Input means no command awaits input; an
-                        // Error would break the exactly-one-terminal-frame invariant for an
-                        // unrelated Request.
+                    // Veto-first routing: a pending HITL veto consumes this Input as the
+                    // chosen option name; only free-text inputs reach receiveInput. The 1:1
+                    // invariant (veto-pending XOR free-text-prompt-pending) makes the
+                    // single-slot claim safe - the Input replies to whichever Prompt is
+                    // outstanding, and exactly one is outstanding at a time.
+                    VetoCommandSender.PendingVeto pv = session.sender.claimPendingVeto();
+                    if (pv != null) {
+                        agentService.resolveVeto(pv.agentId(), pv.callId(), in.raw());
                         log.trace(
-                                "Input from {} with no waiting request — discarding",
-                                identity.substring(0, 8));
+                                "IN   {}: resolved veto {} with option '{}'",
+                                identity.substring(0, 8),
+                                pv.callId(),
+                                in.raw());
+                    } else {
+                        boolean accepted = session.sender.receiveInput(in.raw());
+                        if (!accepted) {
+                            // ACTIVE × Input with no waiting request: discard + log. No Error
+                            // frame — the terminal only sends Input in reply to a Prompt (client
+                            // routing), so an unaccepted Input means no command awaits input; an
+                            // Error would break the exactly-one-terminal-frame invariant for an
+                            // unrelated Request.
+                            log.trace(
+                                    "Input from {} with no waiting request — discarding",
+                                    identity.substring(0, 8));
+                        }
                     }
                 }
 
@@ -474,6 +493,19 @@ public class IpcServer {
                                 log.trace(
                                         "CANC {}: dismissed current prompt",
                                         identity.substring(0, 8));
+                            } else if (session.sender.claimPendingVeto()
+                                    instanceof VetoCommandSender.PendingVeto pv) {
+                                // Level 1.5: a HITL veto was pending. cancelCurrentPrompt
+                                // returns false for a veto Prompt - the agent parks on the
+                                // HitlRegistry, not on an input future. Decline it (fail-safe
+                                // refusal); the agent continues, processes the refusal, and sends
+                                // its own Done. We do not cancel(true) the task and do not send
+                                // Done{cancelled} - the agent's terminal frame still owns the slot.
+                                agentService.declineVeto(pv.agentId(), pv.callId());
+                                log.trace(
+                                        "CANC {}: declined veto {}",
+                                        identity.substring(0, 8),
+                                        pv.callId());
                             } else if (!session.terminalSent) {
                                 // Level 2: claim the single terminal frame, then cancel(true) the
                                 // in-flight task — done() releases the slot and dispatches the next

@@ -9,7 +9,11 @@ import org.jspecify.annotations.NonNull;
  * annotations..
  */
 public record RemoteToolDefinition(
-        String name, String description, RiskCategory risk, String serverName, JsonNode inputSchema)
+        @NonNull String name,
+        @NonNull String description,
+        @NonNull RiskCategory risk,
+        @NonNull String serverName,
+        @NonNull JsonNode inputSchema)
         implements ToolDefinition {
 
     @Override

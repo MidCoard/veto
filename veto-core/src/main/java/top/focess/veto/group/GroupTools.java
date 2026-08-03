@@ -2,6 +2,7 @@ package top.focess.veto.group;
 
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.identity.Role;
 import top.focess.veto.agent.identity.RoleToolFilter;
@@ -85,12 +86,14 @@ public final class GroupTools {
             })
     public static final class CreateGroup implements AgentTool<CreateGroup.Args> {
 
-        private final GroupSpawner spawner;
-        private final LeaderBinding leaderBinding;
-        private final RoleToolFilter roleToolFilter;
+        private final @NonNull GroupSpawner spawner;
+        private final @NonNull LeaderBinding leaderBinding;
+        private final @NonNull RoleToolFilter roleToolFilter;
 
         public CreateGroup(
-                GroupSpawner spawner, LeaderBinding leaderBinding, RoleToolFilter roleToolFilter) {
+                @NonNull GroupSpawner spawner,
+                @NonNull LeaderBinding leaderBinding,
+                @NonNull RoleToolFilter roleToolFilter) {
             this.spawner = spawner;
             this.leaderBinding = leaderBinding;
             this.roleToolFilter = roleToolFilter;
@@ -100,26 +103,26 @@ public final class GroupTools {
                 @SecurityHint(ParamCategory.GENERIC)
                         @Doc(
                                 "Short brief of the work to be done (seeds your investigation as Leader).")
-                        String task) {}
+                        @Nullable String task) {}
 
         @Override
-        public String getName() {
+        public @NonNull String getName() {
             return "create_group";
         }
 
         @Override
-        public String getDescription() {
+        public @NonNull String getDescription() {
             return "Spawn a delegation group for a task; you transform into its Leader "
                     + "and plan the work.";
         }
 
         @Override
-        public Class<Args> getArgsClass() {
+        public @NonNull Class<Args> getArgsClass() {
             return Args.class;
         }
 
         @Override
-        public String execute(@NonNull Args args) {
+        public @NonNull String execute(@NonNull Args args) {
             String task = args.task() == null ? "" : args.task().strip();
             if (task.isBlank()) {
                 return "Group not created: blank brief. Pass a real description of the work.";
@@ -128,11 +131,12 @@ public final class GroupTools {
             ToolCallContext ctx = ToolCallContextHolder.get();
             String leaderId = ctx != null ? ctx.agentId() : "leader";
             String userId = ctx != null ? ctx.userId().toString() : "default";
+            String owner = ctx != null ? ctx.owner() : null;
 
             // Register an empty group - no DAG yet, no Mates. The Leader (the transformed caller)
             // authors the DAG node by node via create_node; the engine provisions Mates lazily on
             // dispatch.
-            Group g = spawner.registerEmptyGroup(leaderId, userId, task);
+            Group g = spawner.registerEmptyGroup(leaderId, userId, owner, task);
 
             // Request the delegation transform: the runner rewinds, re-seeds the Leader persona +
             // tool set + top-tier binding, stamps the group, and re-injects the brief. This call's
@@ -142,7 +146,7 @@ public final class GroupTools {
                     new ToolCallContextHolder.TransformDirective(
                             task,
                             g.groupId(),
-                            leaderBinding.binding(),
+                            leaderBinding.binding(owner),
                             roleToolFilter.resolve(Role.LEADER)));
             return "";
         }
@@ -186,10 +190,10 @@ public final class GroupTools {
             examples = {"{}"})
     public static final class DisbandGroup implements AgentTool<DisbandGroup.Args> {
 
-        private final GroupSpawner spawner;
-        private final GroupRegistry registry;
+        private final @NonNull GroupSpawner spawner;
+        private final @NonNull GroupRegistry registry;
 
-        public DisbandGroup(GroupSpawner spawner, GroupRegistry registry) {
+        public DisbandGroup(@NonNull GroupSpawner spawner, @NonNull GroupRegistry registry) {
             this.spawner = spawner;
             this.registry = registry;
         }
@@ -197,22 +201,22 @@ public final class GroupTools {
         public record Args() {}
 
         @Override
-        public String getName() {
+        public @NonNull String getName() {
             return "disband_group";
         }
 
         @Override
-        public String getDescription() {
+        public @NonNull String getDescription() {
             return "Tear down your active group and return to single-agent autonomous mode.";
         }
 
         @Override
-        public Class<Args> getArgsClass() {
+        public @NonNull Class<Args> getArgsClass() {
             return Args.class;
         }
 
         @Override
-        public String execute(@NonNull Args args) {
+        public @NonNull String execute(@NonNull Args args) {
             ToolCallContext ctx = ToolCallContextHolder.get();
             UUID groupId = ctx != null ? ctx.groupId() : null;
             if (groupId == null) {
@@ -232,7 +236,7 @@ public final class GroupTools {
         /**
          * Builds the outcome brief seeded into the now-STANDALONE agent's context after disband.
          */
-        private static String buildDisbandBrief(Group g) {
+        private static @NonNull String buildDisbandBrief(@Nullable Group g) {
             StringBuilder sb = new StringBuilder();
             sb.append("Delegation complete. You led a group to the following outcome.\n");
             if (g == null) {
@@ -299,9 +303,9 @@ public final class GroupTools {
             })
     public static final class PostMessage implements AgentTool<PostMessage.Args> {
 
-        private final Blackboard blackboard;
+        private final @NonNull Blackboard blackboard;
 
-        public PostMessage(Blackboard blackboard) {
+        public PostMessage(@NonNull Blackboard blackboard) {
             this.blackboard = blackboard;
         }
 
@@ -309,32 +313,32 @@ public final class GroupTools {
                 @SecurityHint(ParamCategory.GENERIC)
                         @Doc(
                                 "Message type: TASK_DISPATCH, ARTIFACT_REF, LOG_REF, FEEDBACK, STATUS, ACCEPT.")
-                        String type,
+                        @Nullable String type,
                 @SecurityHint(ParamCategory.GENERIC)
                         @Doc("Receiver id (a Mate id, or 'LEADER' for a self-note).")
-                        String receiver,
+                        @Nullable String receiver,
                 @SecurityHint(ParamCategory.GENERIC)
                         @Doc(
                                 "Small payload (path / status / short feedback). No file contents - paths only.")
-                        String payload) {}
+                        @Nullable String payload) {}
 
         @Override
-        public String getName() {
+        public @NonNull String getName() {
             return "post_message";
         }
 
         @Override
-        public String getDescription() {
+        public @NonNull String getDescription() {
             return "Post a typed message to your group's Blackboard (Leader -> Mate, or a self-note).";
         }
 
         @Override
-        public Class<Args> getArgsClass() {
+        public @NonNull Class<Args> getArgsClass() {
             return Args.class;
         }
 
         @Override
-        public String execute(@NonNull Args args) {
+        public @NonNull String execute(@NonNull Args args) {
             ToolCallContext ctx = ToolCallContextHolder.get();
             UUID groupId = ctx != null ? ctx.groupId() : null;
             if (groupId == null) {

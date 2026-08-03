@@ -3,10 +3,10 @@ package top.focess.veto.agent;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.agent.identity.SystemPromptResolver;
@@ -15,8 +15,6 @@ import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.mcp.DefaultToolEngine;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
-import top.focess.veto.agent.workspace.PathMode;
-import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.ChatMessage;
 import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.llm.core.ProviderType;
@@ -40,10 +38,7 @@ class AgentRunnerTest {
         ObjectMapper mapper = new ObjectMapper();
         PromptCompiler compiler =
                 new PromptCompiler(
-                        new DefaultCapabilityTranslator(mapper),
-                        Workspace.single(
-                                Path.of(System.getProperty("user.dir", ".")), PathMode.REAL),
-                        new SystemPromptResolver());
+                        new DefaultCapabilityTranslator(mapper), new SystemPromptResolver());
         // The @Value defaults are only injected by Spring; set sensible budgets for the unit test.
         ReflectionTestUtils.setField(compiler, "maxInputTokens", 32000);
         ReflectionTestUtils.setField(compiler, "contextFillRatio", 0.9);
@@ -176,5 +171,59 @@ class AgentRunnerTest {
         assertFalse(
                 rejection.contains("thought field must not be present"),
                 "must not mis-map to the thought-OFF guidance: " + rejection);
+    }
+
+    /**
+     * A response that carries both a thought and a message must deliver the thought to the
+     * thoughtSink and the message to the messageSink, with the thought arriving first (the loop
+     * records + emits the thought before the message).
+     */
+    @Test
+    void thoughtStreamsToThoughtSinkBeforeMessage() throws Exception {
+        UniformLLMCaller caller =
+                request ->
+                        new VetoResponse(
+                                "I should answer directly.",
+                                List.of(),
+                                "The answer is 4.",
+                                new VetoResponse.Features(false),
+                                null);
+
+        AgentService service = serviceWith(caller);
+        List<String> thoughts = new CopyOnWriteArrayList<>();
+        List<String> messages = new CopyOnWriteArrayList<>();
+        AtomicInteger order = new AtomicInteger();
+        List<String> sequence = new CopyOnWriteArrayList<>();
+
+        AgentResult result =
+                service.submit(
+                        "thought-stream",
+                        "What is 2 + 2?",
+                        binding("You are a helpful assistant."),
+                        EPISODE_TIMEOUT,
+                        m -> {
+                            messages.add(m);
+                            sequence.add("message:" + order.incrementAndGet());
+                        },
+                        null,
+                        t -> {
+                            thoughts.add(t);
+                            sequence.add("thought:" + order.incrementAndGet());
+                        });
+
+        assertTrue(result.success(), "episode should finish cleanly");
+        assertEquals(1, thoughts.size(), "the thought is delivered to the thoughtSink once");
+        assertEquals(
+                "I should answer directly.",
+                thoughts.get(0),
+                "the thought text is forwarded verbatim");
+        assertEquals(1, messages.size(), "the message is delivered to the messageSink once");
+        assertEquals("The answer is 4.", messages.get(0), "the message text is forwarded verbatim");
+        assertEquals(
+                "thought:1",
+                sequence.get(0),
+                "the thought must stream BEFORE the message so the terminal renders reasoning"
+                        + " ahead of the answer");
+        assertEquals("message:2", sequence.get(1));
     }
 }

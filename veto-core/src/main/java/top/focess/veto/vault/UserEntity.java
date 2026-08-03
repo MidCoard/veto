@@ -11,28 +11,28 @@ public class UserEntity {
 
     @Id
     @Column(length = 64)
-    private String username;
+    private @NonNull String username;
 
     @Column(name = "password_hash", nullable = false)
-    private byte[] passwordHash;
+    private byte @NonNull [] passwordHash;
 
     @Column(name = "password_salt", nullable = false)
-    private byte[] passwordSalt;
+    private byte @NonNull [] passwordSalt;
 
     @Column(length = 16, nullable = false)
-    private String role;
+    private @NonNull String role;
 
     @Column(name = "created_at", nullable = false)
-    private Instant createdAt;
+    private @NonNull Instant createdAt;
 
     protected UserEntity() {}
 
     public UserEntity(
-            String username,
-            byte[] passwordHash,
-            byte[] passwordSalt,
-            String role,
-            Instant createdAt) {
+            @NonNull String username,
+            byte @NonNull [] passwordHash,
+            byte @NonNull [] passwordSalt,
+            @NonNull String role,
+            @NonNull Instant createdAt) {
         this.username = username;
         this.passwordHash = passwordHash;
         this.passwordSalt = passwordSalt;
@@ -44,11 +44,11 @@ public class UserEntity {
         return username;
     }
 
-    public byte[] getPasswordHash() {
+    public byte @NonNull [] getPasswordHash() {
         return passwordHash;
     }
 
-    public byte[] getPasswordSalt() {
+    public byte @NonNull [] getPasswordSalt() {
         return passwordSalt;
     }
 

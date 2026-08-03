@@ -8,6 +8,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.mcp.AgentToolDefinition;
@@ -71,9 +72,19 @@ public class HitlRegistry {
      */
     private volatile Workspace defaultWorkspace;
 
+    /**
+     * A pending veto: the future the agent parks on, plus the original call/def/offered-options
+     * stashed at {@link #register} time so {@link #resolve} can build a grant without the resolver
+     * supplying them (the transport cannot reach a {@link ToolDefinition}).
+     */
+    record Pending(
+            CompletableFuture<InterceptResolution> future,
+            ToolCall call,
+            ToolDefinition def,
+            List<VetoOption> options) {}
+
     /** Pending veto futures keyed by {@code agentId + "|" + callId}. */
-    private final ConcurrentHashMap<String, CompletableFuture<InterceptResolution>> pending =
-            new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Pending> pending = new ConcurrentHashMap<>();
 
     /** Permission grants per agent (session-scoped; cleared on terminate). */
     private final ConcurrentHashMap<String, Set<PermissionGrant>> grants =
@@ -278,23 +289,39 @@ public class HitlRegistry {
 
     /**
      * Registers a pending veto future keyed by {@code (agentId, callId)} and returns it. The
-     * agent's virtual thread parks on it.
+     * agent's virtual thread parks on it. No call/def/options are stashed (the Refused-park path
+     * uses this - it is resolved via {@link #declineAll}, never builds a grant).
      */
     public @NonNull CompletableFuture<InterceptResolution> register(
             @NonNull String agentId, @NonNull String callId) {
+        return register(agentId, callId, null, null, null);
+    }
+
+    /**
+     * Registers a pending veto future with the original call/def/offered-options stashed for
+     * grant-building. The agent's virtual thread parks on the returned future until {@link
+     * #resolve} completes it. The stash lets {@link #resolve} build a grant without the resolver
+     * supplying the call/def (the transport cannot reach a {@link ToolDefinition}).
+     */
+    public @NonNull CompletableFuture<InterceptResolution> register(
+            @NonNull String agentId,
+            @NonNull String callId,
+            @Nullable ToolCall call,
+            @Nullable ToolDefinition def,
+            @Nullable List<VetoOption> options) {
         CompletableFuture<InterceptResolution> future = new CompletableFuture<>();
-        pending.put(key(agentId, callId), future);
+        pending.put(key(agentId, callId), new Pending(future, call, def, options));
         return future;
     }
 
     /** Parks the calling (virtual) thread until the user resolves the veto. */
     public @NonNull InterceptResolution await(@NonNull String agentId, @NonNull String callId) {
-        CompletableFuture<InterceptResolution> future = pending.get(key(agentId, callId));
-        if (future == null) {
+        Pending p = pending.get(key(agentId, callId));
+        if (p == null) {
             throw new IllegalStateException("no pending veto for " + agentId + "/" + callId);
         }
         try {
-            return future.join();
+            return p.future().join();
         } finally {
             pending.remove(key(agentId, callId));
         }
@@ -302,23 +329,20 @@ public class HitlRegistry {
 
     /**
      * Resolves a pending veto. On {@code _LIKE_THIS} options, builds the appropriate {@link
-     * PermissionGrant} (read / write / command) and caches it session-scoped. On {@link
-     * VetoOption#ACCEPT_COMMAND_AS_SESSION_RULE} / {@link VetoOption#ACCEPT_AS_SESSION_RULE} legacy
-     * alias, builds a command grant with the same match key. Returns {@code false} if no pending
-     * veto exists for the key.
+     * PermissionGrant} (read / write / command) and caches it session-scoped, using the call/def
+     * stashed at {@link #register} time. Returns {@code false} if no pending veto exists for the
+     * key.
      */
     public boolean resolve(
-            String agentId,
-            String callId,
-            InterceptResolution resolution,
-            ToolCall originalCall,
-            ToolDefinition originalDef) {
-        CompletableFuture<InterceptResolution> future = pending.remove(key(agentId, callId));
-        if (future == null) {
+            @NonNull String agentId,
+            @NonNull String callId,
+            @NonNull InterceptResolution resolution) {
+        Pending p = pending.remove(key(agentId, callId));
+        if (p == null) {
             return false;
         }
-        if (resolution.createsGrant() && originalCall != null && originalDef != null) {
-            PermissionGrant grant = buildGrant(agentId, originalCall, originalDef, resolution);
+        if (resolution.createsGrant() && p.call() != null && p.def() != null) {
+            PermissionGrant grant = buildGrant(agentId, p.call(), p.def(), resolution);
             if (grant != null) {
                 grants.computeIfAbsent(agentId, k -> ConcurrentHashMap.newKeySet()).add(grant);
                 grantLog.computeIfAbsent(
@@ -326,8 +350,71 @@ public class HitlRegistry {
                         .add(grant);
             }
         }
-        future.complete(resolution);
+        p.future().complete(resolution);
         return true;
+    }
+
+    /**
+     * Resolves a pending veto from a user-chosen option name (the {@code Input} reply). Validates
+     * {@code optionName} against the offered options stashed at {@link #register}; on a valid
+     * choice, builds the {@link InterceptResolution} (masking per {@link
+     * VetoOption#impliesMasking()}) and resolves. On an invalid choice (defense-in-depth - the
+     * terminal validates client-side), resolves with the scenario's refusal so the agent unstucks
+     * fail-safe rather than executing a mis-approved call. Returns {@code false} only if no pending
+     * veto exists.
+     */
+    public boolean resolveOption(
+            @NonNull String agentId, @NonNull String callId, @NonNull String optionName) {
+        Pending p = pending.get(key(agentId, callId));
+        if (p == null) {
+            return false;
+        }
+        VetoOption chosen = parseOption(optionName, p.options());
+        InterceptResolution resolution =
+                chosen != null
+                        ? new InterceptResolution(chosen, null, chosen.impliesMasking())
+                        : new InterceptResolution(firstRefusal(p.options()), null);
+        return resolve(agentId, callId, resolution);
+    }
+
+    /**
+     * Declines a pending veto (cancel-during-veto): resolves with the scenario's refusal option so
+     * the agent refuses this call and continues. Returns {@code false} if no pending veto exists.
+     */
+    public boolean declineOption(@NonNull String agentId, @NonNull String callId) {
+        Pending p = pending.get(key(agentId, callId));
+        if (p == null) {
+            return false;
+        }
+        return resolve(agentId, callId, new InterceptResolution(firstRefusal(p.options()), null));
+    }
+
+    /** Parses the option name against the offered set (case-insensitive); null if not offered. */
+    private static @Nullable VetoOption parseOption(
+            @NonNull String optionName, @Nullable List<VetoOption> offered) {
+        if (offered == null || offered.isEmpty()) {
+            return null;
+        }
+        for (VetoOption o : offered) {
+            if (o.name().equalsIgnoreCase(optionName)) {
+                return o;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * The first refusal option in the offered set, falling back to {@link VetoOption#EXEC_DECLINE}.
+     */
+    private static @NonNull VetoOption firstRefusal(@Nullable List<VetoOption> offered) {
+        if (offered != null) {
+            for (VetoOption o : offered) {
+                if (o.isRefusal()) {
+                    return o;
+                }
+            }
+        }
+        return VetoOption.EXEC_DECLINE;
     }
 
     /**
@@ -470,9 +557,9 @@ public class HitlRegistry {
      */
     public void declineAll(@NonNull String agentId) {
         pending.forEach(
-                (k, future) -> {
+                (k, p) -> {
                     if (k.startsWith(agentId + "|")) {
-                        future.complete(new InterceptResolution(VetoOption.EXEC_DECLINE, null));
+                        p.future().complete(new InterceptResolution(VetoOption.EXEC_DECLINE, null));
                     }
                 });
     }

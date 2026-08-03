@@ -4,6 +4,7 @@ import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
+import org.jspecify.annotations.NonNull;
 
 /**
  * LLM-facing documentation for a tool, declared on its args record. Carries a one-liner {@link
@@ -29,7 +30,7 @@ import java.lang.annotation.Target;
 public @interface ToolDoc {
 
     /** One-liner for the manifest header — what the tool is. */
-    String description() default "";
+    @NonNull String description() default "";
 
     /**
      * 6-section long-form usage doc — how and when to use it. Surfaces as {@link
@@ -37,10 +38,10 @@ public @interface ToolDoc {
      * by the prompt compiler. Empty by default (the tool's short {@code description} is used
      * alone).
      */
-    String usage() default "";
+    @NonNull String usage() default "";
 
     /** Concrete usage examples (args-object strings); empty by default. */
-    String[] examples() default {};
+    @NonNull String[] examples() default {};
 
     /**
      * Concrete return-value examples; the i-th entry corresponds to the i-th {@link #examples()}
@@ -48,5 +49,5 @@ public @interface ToolDoc {
      * the line/record splitter, flat {@code key=value} inline fields, a short prose header, no
      * pseudo-JSON and no truncation. Empty by default.
      */
-    String[] returnExamples() default {};
+    @NonNull String[] returnExamples() default {};
 }

@@ -20,9 +20,9 @@ public class DeepSeekProvider extends OpenAiCompatibleProvider {
     private static final String DEEPSEEK_BASE_URL = "https://api.deepseek.com";
 
     public DeepSeekProvider(
-            @Qualifier(LlmJacksonConfig.LLM_OBJECT_MAPPER) ObjectMapper objectMapper,
-            AuditLogger auditLogger,
-            LlmClientFactory clientFactory) {
+            @Qualifier(LlmJacksonConfig.LLM_OBJECT_MAPPER) @NonNull ObjectMapper objectMapper,
+            @NonNull AuditLogger auditLogger,
+            @NonNull LlmClientFactory clientFactory) {
         super(objectMapper, auditLogger, clientFactory);
     }
 
@@ -32,7 +32,7 @@ public class DeepSeekProvider extends OpenAiCompatibleProvider {
     }
 
     @Override
-    protected String providerName() {
+    protected @NonNull String providerName() {
         return "DeepSeek";
     }
 
@@ -45,7 +45,7 @@ public class DeepSeekProvider extends OpenAiCompatibleProvider {
     }
 
     @Override
-    public String defaultBaseUrl() {
+    public @NonNull String defaultBaseUrl() {
         return DEEPSEEK_BASE_URL;
     }
 

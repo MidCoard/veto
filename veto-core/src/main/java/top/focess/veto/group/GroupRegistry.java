@@ -1,5 +1,6 @@
 package top.focess.veto.group;
 
+import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -19,7 +20,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class GroupRegistry {
 
-    private final ConcurrentMap<UUID, Group> groups = new ConcurrentHashMap<>();
+    private final @NonNull ConcurrentMap<UUID, Group> groups = new ConcurrentHashMap<>();
 
     public void put(@NonNull Group group) {
         groups.put(group.groupId(), group);
@@ -29,7 +30,7 @@ public class GroupRegistry {
         return groups.get(groupId);
     }
 
-    public void disband(UUID groupId, java.time.Instant when) {
+    public void disband(@NonNull UUID groupId, @NonNull Instant when) {
         Group g = groups.get(groupId);
         if (g == null) {
             return;
@@ -37,7 +38,7 @@ public class GroupRegistry {
         groups.put(groupId, g.withState(Group.GroupState.DISBANDED, when));
     }
 
-    public boolean remove(UUID groupId) {
+    public boolean remove(@NonNull UUID groupId) {
         return groups.remove(groupId) != null;
     }
 

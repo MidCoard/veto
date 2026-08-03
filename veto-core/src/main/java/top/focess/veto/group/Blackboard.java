@@ -20,14 +20,12 @@ import org.springframework.stereotype.Component;
 @Component
 public class Blackboard {
 
-    private final ConcurrentMap<UUID, List<BlackboardMessage>> messages = new ConcurrentHashMap<>();
-    private final ConcurrentMap<UUID, AtomicLong> seqCounters = new ConcurrentHashMap<>();
+    private final @NonNull ConcurrentMap<UUID, List<BlackboardMessage>> messages =
+            new ConcurrentHashMap<>();
+    private final @NonNull ConcurrentMap<UUID, AtomicLong> seqCounters = new ConcurrentHashMap<>();
 
     /** Append a message to a group's log. */
-    public BlackboardMessage post(BlackboardMessage message) {
-        if (message == null) {
-            throw new IllegalArgumentException("message");
-        }
+    public @NonNull BlackboardMessage post(@NonNull BlackboardMessage message) {
         // Enforce hub-and-spoke: Mates can only post to the Leader.
         if (!"LEADER".equals(message.senderId()) && !"LEADER".equals(message.receiverId())) {
             throw new IllegalArgumentException(
@@ -64,12 +62,12 @@ public class Blackboard {
     }
 
     /** Total messages for a group. */
-    public int size(UUID groupId) {
+    public int size(@NonNull UUID groupId) {
         return messages.getOrDefault(groupId, List.of()).size();
     }
 
     /** Test-only: clear a group. */
-    public void clear(UUID groupId) {
+    public void clear(@NonNull UUID groupId) {
         messages.remove(groupId);
         seqCounters.remove(groupId);
     }

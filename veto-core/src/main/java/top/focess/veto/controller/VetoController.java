@@ -36,8 +36,8 @@ public class VetoController {
             value = "/process",
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<Map<String, Object>> processPayload(
-            @RequestBody Map<String, Object> request) {
+    public @NonNull ResponseEntity<Map<String, Object>> processPayload(
+            @NonNull @RequestBody Map<String, Object> request) {
         String payload = (String) request.getOrDefault("payload", "");
         if (payload.isEmpty()) {
             return ResponseEntity.badRequest()
@@ -73,7 +73,7 @@ public class VetoController {
 
     /** GET /api/veto/status - Return gateway statistics. */
     @GetMapping(value = "/status", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<Map<String, Object>> getStatus() {
+    public @NonNull ResponseEntity<Map<String, Object>> getStatus() {
         return ResponseEntity.ok(
                 Map.of(
                         "status", "ok",
@@ -89,8 +89,8 @@ public class VetoController {
             value = "/check",
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<Map<String, Object>> checkPayload(
-            @RequestBody Map<String, Object> request) {
+    public @NonNull ResponseEntity<Map<String, Object>> checkPayload(
+            @NonNull @RequestBody Map<String, Object> request) {
         String payload = (String) request.getOrDefault("payload", "");
         if (payload.isEmpty()) {
             return ResponseEntity.badRequest()

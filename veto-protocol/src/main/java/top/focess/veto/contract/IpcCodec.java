@@ -56,7 +56,7 @@ public final class IpcCodec {
      * @throws IpcCodecException if serialization fails (indicates a programming error, not bad
      *     input)
      */
-    public static byte[] encode(@NonNull IpcFrame frame) {
+    public static byte @NonNull [] encode(@NonNull IpcFrame frame) {
         try {
             return JSON.writeValueAsBytes(frame);
         } catch (JsonProcessingException e) {

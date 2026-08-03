@@ -6,6 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.TurnRecord;
@@ -41,7 +42,6 @@ import top.focess.veto.llm.core.ChatMessage;
 public class PromptCompiler {
 
     private final @NonNull CapabilityTranslator translator;
-    private final @NonNull Workspace workspace;
     private final @NonNull SystemPromptResolver systemPromptResolver;
 
     @Value("${veto.context.max_input_tokens:32000}")
@@ -51,7 +51,7 @@ public class PromptCompiler {
     private double contextFillRatio;
 
     @Value("${veto.security.deployer-policy:FULL_ACCESS}")
-    private String deployerPolicyRaw;
+    private @NonNull String deployerPolicyRaw;
 
     private @NonNull DeployerPolicy deployerPolicy = DeployerPolicy.FULL_ACCESS;
 
@@ -59,10 +59,8 @@ public class PromptCompiler {
     @NonNull
     PromptCompiler(
             @NonNull CapabilityTranslator translator,
-            @NonNull Workspace workspace,
             @NonNull SystemPromptResolver systemPromptResolver) {
         this.translator = translator;
-        this.workspace = workspace;
         this.systemPromptResolver = systemPromptResolver;
     }
 
@@ -75,23 +73,28 @@ public class PromptCompiler {
      * Compiles the payload for one loop cycle.
      *
      * @param persona the agent's identity + resolved manifest + registered skills
+     * @param sessionWorkspace the per-session workspace (the session's actual roots, from the
+     *     Gateway). Mounted into the system prompt and used to resolve VETO.md (The Law) so the
+     *     prompt reflects the session's real roots, not the default bean workspace.
      * @param systemPromptBase optional identity override (e.g. the Mate base from {@code
      *     veto.group.mate.system-prompt-base}); null/blank -> the persona name+description is used.
      *     Role/tools/boundaries are persona-driven.
      * @param history the raw, append-only turn history (oldest->newest)
      * @param guidedSwitch whether this is the guided-switch turn (emits {@code actions})
      */
-    public CompiledPrompt compile(
-            AgentPersona persona,
-            String systemPromptBase,
-            List<TurnRecord> history,
+    public @NonNull CompiledPrompt compile(
+            @NonNull AgentPersona persona,
+            @NonNull Workspace sessionWorkspace,
+            @Nullable String systemPromptBase,
+            @Nullable List<TurnRecord> history,
             boolean guidedSwitch,
             double correctionFactor) {
 
         List<top.focess.veto.llm.core.ToolDefinition> flatTools =
                 translator.translateTools(List.copyOf(persona.whitelistedTools()));
         String systemMessage =
-                buildSystemMessage(persona, systemPromptBase, flatTools, guidedSwitch);
+                buildSystemMessage(
+                        persona, sessionWorkspace, systemPromptBase, flatTools, guidedSwitch);
         List<ChatMessage> conversation = resolveRewinds(history);
         List<ChatMessage> budgeted = fitBudget(systemMessage, conversation, correctionFactor);
 
@@ -111,12 +114,13 @@ public class PromptCompiler {
 
     // ── System message (compile/link) ───────────────────────────────────────────
 
-    private String buildSystemMessage(
-            AgentPersona persona,
-            String base,
-            List<top.focess.veto.llm.core.ToolDefinition> flatTools,
+    private @NonNull String buildSystemMessage(
+            @NonNull AgentPersona persona,
+            @NonNull Workspace sessionWorkspace,
+            @Nullable String base,
+            @NonNull List<top.focess.veto.llm.core.ToolDefinition> flatTools,
             boolean guidedSwitch) {
-        String law = workspace.vetoMdResolver().resolve();
+        String law = sessionWorkspace.vetoMdResolver().resolve();
         // A caller-supplied base (e.g. veto.group.mate.system-prompt-base) overrides the persona
         // identity line; role, tools, boundaries, skills, and the response format are all
         // persona/config-driven via the template markers (see PromptBlocks).
@@ -128,6 +132,7 @@ public class PromptCompiler {
         blocks.put("LAW", PromptBlocks.law(law));
         blocks.put("IDENTITY", identity);
         blocks.put("ROLE", PromptBlocks.role(persona.role()));
+        blocks.put("WORKSPACE", PromptBlocks.workspace(sessionWorkspace));
         blocks.put("TOOLS", PromptBlocks.tools(flatTools));
         blocks.put("BOUNDARIES", PromptBlocks.boundaries(deployerPolicy));
         blocks.put("SKILLS", PromptBlocks.skills(persona.registeredSkills()));
@@ -139,7 +144,7 @@ public class PromptCompiler {
     /**
      * Walks history ascending, applying REWIND suffix-drops; returns the effective compiled list.
      */
-    private List<ChatMessage> resolveRewinds(List<TurnRecord> history) {
+    private @NonNull List<ChatMessage> resolveRewinds(@Nullable List<TurnRecord> history) {
         List<ChatMessage> compiled = new ArrayList<>();
         if (history == null) {
             return compiled;
@@ -166,7 +171,7 @@ public class PromptCompiler {
         return compiled;
     }
 
-    private static void truncate(List<ChatMessage> compiled, int fromIndex) {
+    private static void truncate(@NonNull List<ChatMessage> compiled, int fromIndex) {
         if (fromIndex < 0) {
             fromIndex = 0;
         }
@@ -176,7 +181,7 @@ public class PromptCompiler {
     }
 
     /** Role mapping per. */
-    private ChatMessage mapRole(TurnRecord turn) {
+    private @Nullable ChatMessage mapRole(@NonNull TurnRecord turn) {
         return switch (turn.type()) {
             case USER_PROMPT -> ChatMessage.user(str(turn.payload(), "content"));
             case USER_INTERRUPT ->
@@ -199,14 +204,14 @@ public class PromptCompiler {
         };
     }
 
-    private String toolCallRepr(TurnRecord turn) {
+    private @NonNull String toolCallRepr(@NonNull TurnRecord turn) {
         return "Tool call: "
                 + str(turn.payload(), "tool_name")
                 + " args="
                 + turn.payload().get("args");
     }
 
-    private static String str(java.util.Map<String, Object> payload, String key) {
+    private static @NonNull String str(@Nullable Map<String, Object> payload, @NonNull String key) {
         if (payload == null) {
             return "";
         }
@@ -217,8 +222,10 @@ public class PromptCompiler {
     // ── Token budget ──────────────────────────────────────────────────
 
     /** Walks newest->oldest, keeping turns until the budget is exceeded (system never trimmed). */
-    private List<ChatMessage> fitBudget(
-            String systemMessage, List<ChatMessage> conversation, double correctionFactor) {
+    private @NonNull List<ChatMessage> fitBudget(
+            @NonNull String systemMessage,
+            @NonNull List<ChatMessage> conversation,
+            double correctionFactor) {
         long budget = (long) (maxInputTokens * contextFillRatio);
         long estimate = Math.round(ceilChars(systemMessage.length()) * correctionFactor);
         List<ChatMessage> kept = new ArrayList<>();

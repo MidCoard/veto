@@ -23,23 +23,25 @@ public record TurnRecord(
         @Nullable Instant timestamp) {
 
     public TurnRecord {
-        if (type == null) {
-            throw new IllegalArgumentException("type");
-        }
-        if (payload == null) {
-            payload = Map.of();
-        } else {
-            // Null-tolerant unmodifiable copy: the payload schema has OPTIONAL fields (e.g. a
-            // synthetic TOOL_RESPONSE observation carries no call_id), so Map.copyOf's null-hostile
-            // copy would throw NPE for those. Keys remain String; values may legitimately be null.
-            payload = java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(payload));
-        }
+        // Null-tolerant unmodifiable copy: the payload schema has OPTIONAL fields (e.g. a
+        // synthetic TOOL_RESPONSE observation carries no call_id), so Map.copyOf's null-hostile
+        // copy would throw NPE for those. Keys remain String; values may legitimately be null.
+        payload = java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(payload));
         if (timestamp == null) {
             timestamp = Instant.now();
         }
     }
 
     // ── Factories ───────────────────────────────────────────────────────────
+
+    /**
+     * A copy of this turn with its number replaced. The runner uses this when it authoritatively
+     * assigns the durable turn number on append (see {@code AgentRunner.appendTurn}); turns are
+     * otherwise immutable.
+     */
+    public @NonNull TurnRecord withTurnNumber(int turnNumber) {
+        return new TurnRecord(turnNumber, type, payload, timestamp);
+    }
 
     /** A user prompt ({@code payload.content}). */
     public static @NonNull TurnRecord userPrompt(int turnNumber, @NonNull String content) {

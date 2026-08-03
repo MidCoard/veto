@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import top.focess.veto.agent.mcp.AgentToolDefinition;
 import top.focess.veto.agent.mcp.NativeToolDefinition;
 import top.focess.veto.agent.mcp.RemoteToolDefinition;
@@ -120,8 +121,8 @@ public class DefaultCapabilityTranslator implements CapabilityTranslator {
     }
 
     @Override
-    public List<top.focess.veto.llm.core.ToolDefinition> translateTools(
-            List<ToolDefinition> manifest) {
+    public @NonNull List<top.focess.veto.llm.core.ToolDefinition> translateTools(
+            @Nullable List<ToolDefinition> manifest) {
         List<top.focess.veto.llm.core.ToolDefinition> flat = new ArrayList<>();
         if (manifest == null) {
             return flat;
@@ -143,19 +144,19 @@ public class DefaultCapabilityTranslator implements CapabilityTranslator {
         return flat;
     }
 
-    private Map<String, Object> minimalObjectSchema() {
+    private @NonNull Map<String, Object> minimalObjectSchema() {
         return orderedMap("type", "object", "properties", Map.of(), "additionalProperties", false);
     }
 
     @SuppressWarnings("unchecked")
-    private Map<String, Object> jsonNodeToMap(JsonNode node) {
+    private @NonNull Map<String, Object> jsonNodeToMap(@Nullable JsonNode node) {
         if (node == null || node.isNull()) {
             return minimalObjectSchema();
         }
         return objectMapper.convertValue(node, Map.class);
     }
 
-    private static Map<String, Object> orderedMap(Object... kv) {
+    private static @NonNull Map<String, Object> orderedMap(@NonNull Object... kv) {
         Map<String, Object> m = new LinkedHashMap<>();
         for (int i = 0; i < kv.length; i += 2) {
             m.put((String) kv[i], kv[i + 1]);

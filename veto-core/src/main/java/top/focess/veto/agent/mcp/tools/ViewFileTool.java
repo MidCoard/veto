@@ -55,7 +55,12 @@ public final class ViewFileTool implements NativeTool<ViewFileTool.Args> {
 
                     #### Errors & edge cases
                     - `absolutePath` does not exist or is not a regular file -> \
-                    `{"status":"error","error":"Not a regular file: <path>"}`.
+                    `{"status":"error","error":"Not a regular file: <path>"}`. **This is the canonical
+                    signal that the path you constructed does not exist as a file.** The right response
+                    is NOT to retry with a similar guess - return to your last successful `list_dir`
+                    observation of the parent directory and reconstruct the absolute path from the
+                    actual file names you saw there. The most common cause is dropping or duplicating
+                    a parent segment.
                     - `startLine` greater than the file length -> no output (range clamped to empty).
                     - `endLine` less than `startLine` -> no output.
                     - Directories, device files, and sockets are rejected as "not a regular file".
@@ -81,22 +86,22 @@ public final class ViewFileTool implements NativeTool<ViewFileTool.Args> {
     public record Args(
             @SecurityHint(ParamCategory.FILESYSTEM_PATH)
                     @Doc("The absolute path of the file to view.")
-                    String absolutePath,
+                    @NonNull String absolutePath,
             @Nullable @Doc("1-indexed starting line (inclusive).") Integer startLine,
             @Nullable @Doc("1-indexed ending line (inclusive).") Integer endLine) {}
 
     @Override
-    public String getName() {
+    public @NonNull String getName() {
         return "view_file";
     }
 
     @Override
-    public String getDescription() {
+    public @NonNull String getDescription() {
         return "Read lines of a text file from the local filesystem.";
     }
 
     @Override
-    public Class<Args> getArgsClass() {
+    public @NonNull Class<Args> getArgsClass() {
         return Args.class;
     }
 

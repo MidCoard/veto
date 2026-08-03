@@ -3,6 +3,7 @@ package top.focess.veto.model;
 import java.time.Instant;
 import java.util.*;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
 /** A request to execute a specific atomic tool capability within sandbox Sandbox. */
 public class ToolExecutionRequest {
@@ -14,9 +15,9 @@ public class ToolExecutionRequest {
     private final @NonNull String sessionId;
     private final @NonNull String workflowId;
     private final @NonNull Instant createdAt;
-    private volatile ToolExecutionStatus status;
-    private volatile String resultPayload;
-    private volatile String errorMessage;
+    private volatile @NonNull ToolExecutionStatus status;
+    private volatile @Nullable String resultPayload;
+    private volatile @Nullable String errorMessage;
 
     public
     @NonNull
@@ -25,12 +26,12 @@ public class ToolExecutionRequest {
     }
 
     public ToolExecutionRequest(
-            String id,
-            String capabilityName,
-            Map<String, Object> arguments,
-            Set<String> requiredCredentials,
-            String sessionId,
-            String workflowId) {
+            @NonNull String id,
+            @NonNull String capabilityName,
+            @Nullable Map<String, Object> arguments,
+            @Nullable Set<String> requiredCredentials,
+            @NonNull String sessionId,
+            @NonNull String workflowId) {
         this.id = id;
         this.capabilityName = capabilityName;
         this.arguments =
@@ -49,43 +50,43 @@ public class ToolExecutionRequest {
         this.errorMessage = null;
     }
 
-    public String getId() {
+    public @NonNull String getId() {
         return id;
     }
 
-    public String getCapabilityName() {
+    public @NonNull String getCapabilityName() {
         return capabilityName;
     }
 
-    public Map<String, Object> getArguments() {
+    public @NonNull Map<String, Object> getArguments() {
         return arguments;
     }
 
-    public Set<String> getRequiredCredentials() {
+    public @NonNull Set<String> getRequiredCredentials() {
         return requiredCredentials;
     }
 
-    public String getSessionId() {
+    public @NonNull String getSessionId() {
         return sessionId;
     }
 
-    public String getWorkflowId() {
+    public @NonNull String getWorkflowId() {
         return workflowId;
     }
 
-    public Instant getCreatedAt() {
+    public @NonNull Instant getCreatedAt() {
         return createdAt;
     }
 
-    public synchronized ToolExecutionStatus getStatus() {
+    public synchronized @NonNull ToolExecutionStatus getStatus() {
         return status;
     }
 
-    public synchronized String getResultPayload() {
+    public synchronized @Nullable String getResultPayload() {
         return resultPayload;
     }
 
-    public synchronized String getErrorMessage() {
+    public synchronized @Nullable String getErrorMessage() {
         return errorMessage;
     }
 
@@ -130,7 +131,7 @@ public class ToolExecutionRequest {
     }
 
     @Override
-    public String toString() {
+    public @NonNull String toString() {
         return "ToolExecutionRequest{id='"
                 + id
                 + "', capability='"

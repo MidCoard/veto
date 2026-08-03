@@ -39,9 +39,9 @@ public class PromptHandler {
     /** How long to block for one agent episode before timing the terminal out. */
     private static final Duration EPISODE_TIMEOUT = Duration.ofMinutes(5);
 
-    private final KeysteadVault vault;
-    private final AgentService agentService;
-    private final SessionService sessionService;
+    private final @NonNull KeysteadVault vault;
+    private final @NonNull AgentService agentService;
+    private final @NonNull SessionService sessionService;
 
     /**
      * Constructs a new {@code PromptHandler}.
@@ -115,13 +115,15 @@ public class PromptHandler {
         Optional<LlmConfig> opt = sessionService.resolveLlmConfig(terminalId);
         if (opt.isEmpty()) {
             // Server restart or fresh reconnect wiped the in-memory active-session map: auto-resume
-            // the user's most-recently-active session (replays durable history, continues
-            // seamlessly).
-            opt = sessionService.resumeLastSession(terminalId, user);
+            // the user's most-recently-active session IN THE TERMINAL'S WORKSPACE (replays durable
+            // history, continues seamlessly). Sessions bound to a different workspace are skipped
+            // so a terminal never silently resumes into a session that operates elsewhere.
+            opt = sessionService.resumeLastSession(terminalId, user, sender.cwd());
         }
         if (opt.isEmpty()) {
             return IpcFrame.Error.ofError(
-                    "No active session. Use /session create <pattern> or /session activate <name>.");
+                    "No active session in this workspace. Use /session create <pattern> or"
+                            + " /session activate <name>.");
         }
         LlmConfig config = opt.get();
         String sessionId = sessionService.activeSession(terminalId).orElseThrow();
@@ -132,7 +134,8 @@ public class PromptHandler {
                         config.model(),
                         config.credKey(),
                         LlmOptions.defaults(),
-                        null); // systemPromptBase - persona-derived in PromptCompiler
+                        null, // systemPromptBase - persona-derived in PromptCompiler
+                        config.baseUrl());
 
         try {
             // Stream each user-facing message the agent emits while the episode runs, then block
@@ -140,7 +143,15 @@ public class PromptHandler {
             // the result. The sink is attached/detached inside AgentService.submit.
             AgentResult result =
                     agentService.submit(
-                            sessionId, prompt, binding, EPISODE_TIMEOUT, sender::output);
+                            sessionId,
+                            prompt,
+                            binding,
+                            EPISODE_TIMEOUT,
+                            sender::output,
+                            sender::sendVetoPrompt,
+                            sender::outputThought,
+                            sender::sendToolCall,
+                            sender::sendToolResult);
 
             Map<String, Object> doneMeta = new HashMap<>();
             doneMeta.put(IpcMeta.USERNAME, user);
@@ -171,7 +182,7 @@ public class PromptHandler {
     /**
      * Reads the episode's turn count from the result metadata ({@code turns}, set by the runner).
      */
-    private static int turnsOf(AgentResult result) {
+    private static int turnsOf(@Nullable AgentResult result) {
         if (result == null || result.metadata() == null) {
             return 0;
         }

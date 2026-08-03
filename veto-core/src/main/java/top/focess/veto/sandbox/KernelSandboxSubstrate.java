@@ -48,9 +48,9 @@ public class KernelSandboxSubstrate {
     private static final boolean IS_LINUX =
             OS.contains("nix") || OS.contains("nux") || OS.contains("linux");
 
-    private final WindowsKernel32 windowsKernel;
-    private final LinuxLibc linuxLibc;
-    private final Kernel32 windowsStdKernel;
+    private final @Nullable WindowsKernel32 windowsKernel;
+    private final @Nullable LinuxLibc linuxLibc;
+    private final @Nullable Kernel32 windowsStdKernel;
 
     public KernelSandboxSubstrate() {
         WindowsKernel32 w = null;
@@ -143,7 +143,7 @@ public class KernelSandboxSubstrate {
      * {@code unshare(1)} to give the child a fresh mount/pid/net namespace. If {@code unshare} is
      * not on PATH, returns the original ProcessBuilder unchanged.
      */
-    public static ProcessBuilder spawnLinuxWrapper(java.util.List<String> command) {
+    public static @NonNull ProcessBuilder spawnLinuxWrapper(@Nullable List<String> command) {
         if (!IS_LINUX || command == null || command.isEmpty()) {
             return new ProcessBuilder(command);
         }
@@ -181,7 +181,7 @@ public class KernelSandboxSubstrate {
      * @param baselineSyscalls the syscall numbers to allow (x86_64)
      * @return the wrapped command, or the original if systemd-run is unavailable
      */
-    public static java.util.List<String> wrapWithSystemdRun(
+    public static java.util.@NonNull List<String> wrapWithSystemdRun(
             java.util.@NonNull List<String> command,
             @Nullable String systemdRunPath,
             java.util.@NonNull List<Integer> baselineSyscalls) {
@@ -215,7 +215,7 @@ public class KernelSandboxSubstrate {
      * Converts x86_64 syscall numbers to their names for systemd-run's SystemCallFilter. Production
      * would use a complete mapping; this covers the baseline allowlist.
      */
-    private static String syscallsToNames(java.util.List<Integer> syscalls) {
+    private static @NonNull String syscallsToNames(java.util.@NonNull List<Integer> syscalls) {
         java.util.List<String> names = new java.util.ArrayList<>();
         for (int num : syscalls) {
             String name = SYSCALL_NAMES.getOrDefault(num, "syscall_" + num);
@@ -242,7 +242,7 @@ public class KernelSandboxSubstrate {
                     java.util.Map.entry(231, "exit_group"),
                     java.util.Map.entry(318, "getrandom"));
 
-    private static String locateOnPath(String name) {
+    private static @Nullable String locateOnPath(@NonNull String name) {
         String path = System.getenv("PATH");
         if (path == null) {
             return null;
@@ -395,17 +395,17 @@ public class KernelSandboxSubstrate {
 
     /** A closeable wrapper for a Windows Job Object handle. */
     private final class JobHandle implements AutoCloseable {
-        private final WinNT.HANDLE job;
+        private final WinNT.@NonNull HANDLE job;
         private final int pid;
 
-        JobHandle(WinNT.HANDLE job, int pid) {
+        JobHandle(WinNT.@NonNull HANDLE job, int pid) {
             this.job = job;
             this.pid = pid;
         }
 
         @Override
         public void close() {
-            if (job != null && windowsStdKernel != null) {
+            if (windowsStdKernel != null) {
                 try {
                     windowsStdKernel.CloseHandle(job);
                     log.debug("KernelSandboxSubstrate: closed Job handle for pid {}", pid);
@@ -420,7 +420,7 @@ public class KernelSandboxSubstrate {
      * Cross-platform process-id extraction via the public {@link Process#pid()} API (Java 9+).
      * Returns -1 if the process is null or the pid cannot be coerced to a positive int.
      */
-    private static int getProcessId(Process process) {
+    private static int getProcessId(@Nullable Process process) {
         if (process == null) {
             return -1;
         }
@@ -437,15 +437,17 @@ public class KernelSandboxSubstrate {
 
     /** Minimal JNA interface for the Windows kernel32 calls we need. */
     public interface WindowsKernel32 extends Library {
-        WinNT.HANDLE CreateJobObjectW(Pointer lpJobAttributes, String lpName);
+        WinNT.@Nullable HANDLE CreateJobObjectW(
+                @Nullable Pointer lpJobAttributes, @Nullable String lpName);
 
         boolean SetInformationJobObject(
-                WinNT.HANDLE hJob,
+                WinNT.@Nullable HANDLE hJob,
                 int JobObjectInfoClass,
-                Structure lpJobObjectInfo,
+                @Nullable Structure lpJobObjectInfo,
                 int cbJobObjectInfoLength);
 
-        boolean AssignProcessToJobObject(WinNT.HANDLE hJob, WinNT.HANDLE hProcess);
+        boolean AssignProcessToJobObject(
+                WinNT.@Nullable HANDLE hJob, WinNT.@Nullable HANDLE hProcess);
     }
 
     /** Minimal JNA interface for the Linux libc calls we need (extensible to libseccomp). */
@@ -470,7 +472,7 @@ public class KernelSandboxSubstrate {
         public int SchedulingClass;
 
         @Override
-        protected List<String> getFieldOrder() {
+        protected @NonNull List<String> getFieldOrder() {
             return Arrays.asList(
                     "PerProcessUserTimeLimit",
                     "PerJobUserTimeLimit",
@@ -494,7 +496,7 @@ public class KernelSandboxSubstrate {
         public long OtherTransferCount;
 
         @Override
-        protected List<String> getFieldOrder() {
+        protected @NonNull List<String> getFieldOrder() {
             return Arrays.asList(
                     "ReadOperationCount",
                     "WriteOperationCount",
@@ -507,8 +509,8 @@ public class KernelSandboxSubstrate {
 
     /** Win32 {@code JOBOBJECT_EXTENDED_LIMIT_INFORMATION}. */
     public static class JobObjectExtendedLimitInformation extends Structure {
-        public JobObjectBasicLimitInformation BasicLimitInformation;
-        public IoCounters IoInfo;
+        public @NonNull JobObjectBasicLimitInformation BasicLimitInformation;
+        public @NonNull IoCounters IoInfo;
         public long ProcessMemoryLimit;
         public long JobMemoryLimit;
         public long PeakProcessMemoryUsed;
@@ -520,7 +522,7 @@ public class KernelSandboxSubstrate {
         }
 
         @Override
-        protected List<String> getFieldOrder() {
+        protected @NonNull List<String> getFieldOrder() {
             return Arrays.asList(
                     "BasicLimitInformation",
                     "IoInfo",

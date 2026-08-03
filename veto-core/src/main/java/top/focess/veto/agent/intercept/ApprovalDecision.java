@@ -36,10 +36,7 @@ public sealed interface ApprovalDecision
     record Prompt(@NonNull VetoScenario scenario, @NonNull List<VetoOption> options)
             implements ApprovalDecision {
         public Prompt {
-            if (scenario == null) {
-                throw new IllegalArgumentException("scenario");
-            }
-            options = options == null ? List.of() : List.copyOf(options);
+            options = List.copyOf(options);
         }
     }
 

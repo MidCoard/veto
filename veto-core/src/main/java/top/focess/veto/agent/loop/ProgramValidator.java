@@ -22,7 +22,7 @@ public final class ProgramValidator {
 
     /** Validates; throws {@link InvalidProgramException} on failure. */
     public static void validate(@NonNull ActionsProgram program) {
-        if (program == null || program.actions().isEmpty()) {
+        if (program.actions().isEmpty()) {
             throw new InvalidProgramException("program is empty");
         }
         // (A) STOP termination.
@@ -33,11 +33,11 @@ public final class ProgramValidator {
         Set<String> ids = new HashSet<>();
         for (int i = 0; i < n; i++) {
             Action a = program.actions().get(i);
-            if (a.id() != null && !ids.add(a.id())) {
+            if (!ids.add(a.id())) {
                 throw new InvalidProgramException("duplicate action id: " + a.id());
             }
             if (a instanceof ToolAction t) {
-                if (t.tool() == null || t.tool().isBlank()) {
+                if (t.tool().isBlank()) {
                     throw new InvalidProgramException("action " + a.id() + ": tool required");
                 }
             }
@@ -65,7 +65,7 @@ public final class ProgramValidator {
      * Detects a deterministic cycle (goto-only, ignoring conditional_goto branches that lead to
      * STOP).
      */
-    private static boolean acyclic(ActionsProgram program) {
+    private static boolean acyclic(@NonNull ActionsProgram program) {
         int n = program.actions().size();
         boolean[] onStack = new boolean[n];
         boolean[] visited = new boolean[n];
@@ -77,7 +77,11 @@ public final class ProgramValidator {
         return true;
     }
 
-    private static boolean hasCycle(ActionsProgram p, int i, boolean[] onStack, boolean[] visited) {
+    private static boolean hasCycle(
+            @NonNull ActionsProgram p,
+            int i,
+            @NonNull boolean[] onStack,
+            @NonNull boolean[] visited) {
         if (onStack[i]) {
             return true;
         }

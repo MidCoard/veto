@@ -1,5 +1,7 @@
 package top.focess.veto.sandbox;
 
+import org.jspecify.annotations.NonNull;
+
 /**
  * A contiguous replacement spec for {@code replace_file_content}..
  *
@@ -9,4 +11,7 @@ package top.focess.veto.sandbox;
  * @param replacementContent the replacement text
  */
 public record PatchSpec(
-        int startLine, int endLine, String targetContent, String replacementContent) {}
+        int startLine,
+        int endLine,
+        @NonNull String targetContent,
+        @NonNull String replacementContent) {}

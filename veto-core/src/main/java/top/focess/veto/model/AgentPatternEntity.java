@@ -25,33 +25,33 @@ import top.focess.veto.model.tier.ModelTier;
 @Table(name = "agent_patterns")
 public class AgentPatternEntity {
 
-    @Id private String id;
+    @Id private @NonNull String id;
 
     @Column(nullable = false)
-    private String name;
+    private @NonNull String name;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "tier", nullable = false)
-    private ModelTier tier;
+    private @NonNull ModelTier tier;
 
     @Column(name = "owner", nullable = false)
-    private String owner;
+    private @NonNull String owner;
 
     @Column(name = "created_at", nullable = false)
-    private Instant createdAt;
+    private @NonNull Instant createdAt;
 
     // ── vestigial NOT NULL cache (populated from the tier binding at create; not live-read) ──
     @Column(nullable = false)
-    private String provider;
+    private @NonNull String provider;
 
     @Column(nullable = false)
-    private String model;
+    private @NonNull String model;
 
     @Column(name = "top_model", nullable = false)
-    private String topModel;
+    private @NonNull String topModel;
 
     @Column(name = "credential_key", nullable = false)
-    private String credentialKey;
+    private @NonNull String credentialKey;
 
     protected AgentPatternEntity() {}
 
@@ -102,11 +102,11 @@ public class AgentPatternEntity {
         this.credentialKey = credentialKey;
     }
 
-    public String getId() {
+    public @NonNull String getId() {
         return id;
     }
 
-    public String getName() {
+    public @NonNull String getName() {
         return name;
     }
 
@@ -122,7 +122,7 @@ public class AgentPatternEntity {
         this.tier = tier;
     }
 
-    public String getOwner() {
+    public @NonNull String getOwner() {
         return owner;
     }
 
@@ -130,7 +130,7 @@ public class AgentPatternEntity {
         this.owner = owner;
     }
 
-    public Instant getCreatedAt() {
+    public @NonNull Instant getCreatedAt() {
         return createdAt;
     }
 

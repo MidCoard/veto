@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
@@ -20,8 +19,6 @@ import org.jspecify.annotations.NonNull;
 public record ExecutionDag(@NonNull UUID groupId, @NonNull List<DagNode> nodes) {
 
     public ExecutionDag {
-        Objects.requireNonNull(groupId, "groupId");
-        Objects.requireNonNull(nodes, "nodes");
         nodes = List.copyOf(nodes);
     }
 
@@ -79,7 +76,7 @@ public record ExecutionDag(@NonNull UUID groupId, @NonNull List<DagNode> nodes) 
         return index().keySet();
     }
 
-    private Map<String, DagNode> index() {
+    private @NonNull Map<String, DagNode> index() {
         Map<String, DagNode> m = new LinkedHashMap<>();
         for (DagNode n : nodes) {
             m.put(n.nodeId(), n);

@@ -1,18 +1,21 @@
 package top.focess.veto.model;
 
 import java.util.List;
+import java.util.Optional;
+import org.jspecify.annotations.NonNull;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 @Repository
 public interface AgentPatternRepository extends JpaRepository<AgentPatternEntity, String> {
 
-    List<AgentPatternEntity> findByOwner(String owner);
+    @NonNull List<AgentPatternEntity> findByOwner(@NonNull String owner);
 
-    java.util.Optional<AgentPatternEntity> findByNameAndOwner(String name, String owner);
+    @NonNull Optional<AgentPatternEntity> findByNameAndOwner(
+            @NonNull String name, @NonNull String owner);
 
-    void deleteByNameAndOwner(String name, String owner);
+    void deleteByNameAndOwner(@NonNull String name, @NonNull String owner);
 
     /** Bulk-delete every pattern owned by {@code owner} (used by user-deletion cascade). */
-    void deleteByOwner(String owner);
+    void deleteByOwner(@NonNull String owner);
 }

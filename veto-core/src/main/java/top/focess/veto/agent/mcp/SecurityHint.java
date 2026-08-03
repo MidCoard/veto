@@ -4,6 +4,7 @@ import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
+import org.jspecify.annotations.NonNull;
 
 /**
  * Declares what category of security check a native tool parameter requires. Read by the Gateway to
@@ -14,5 +15,5 @@ import java.lang.annotation.Target;
 public @interface SecurityHint {
 
     /** What category of security check this parameter requires. */
-    ParamCategory value();
+    @NonNull ParamCategory value();
 }

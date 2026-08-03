@@ -41,6 +41,54 @@ class IpcFrameSerializationTest {
     }
 
     @Test
+    void deltaThoughtRoundTripsWithThoughtKind() throws Exception {
+        // A thought-kind Delta must survive the round-trip with kind=THOUGHT so the terminal can
+        // route it to onThought (distinct rendering) rather than onDelta.
+        String reasoning =
+                "The user asked about modpacks; I already saw .minecraft/ in a prior"
+                        + " listing, so I'll descend into .minecraft/versions directly.";
+        IpcFrame.Delta thought = IpcFrame.Delta.thought(reasoning);
+
+        String json = new String(JSON.writeValueAsBytes(thought), StandardCharsets.UTF_8);
+        IpcFrame result = IpcCodec.decode(json);
+
+        assertNotNull(result);
+        assertInstanceOf(IpcFrame.Delta.class, result);
+        IpcFrame.Delta d = (IpcFrame.Delta) result;
+        assertEquals(reasoning, d.content());
+        assertEquals(IpcFrame.Delta.Kind.THOUGHT, d.kind());
+        assertTrue(d.isThought(), "isThought() must mirror kind == THOUGHT");
+    }
+
+    @Test
+    void deltaMessageKindIsTheDefault() throws Exception {
+        // A bare single-arg Delta (existing call sites) defaults to MESSAGE and round-trips as
+        // MESSAGE - the discriminator must not break older construction paths.
+        IpcFrame.Delta msg = new IpcFrame.Delta("answer text");
+
+        String json = new String(JSON.writeValueAsBytes(msg), StandardCharsets.UTF_8);
+        IpcFrame result = IpcCodec.decode(json);
+
+        assertInstanceOf(IpcFrame.Delta.class, result);
+        IpcFrame.Delta d = (IpcFrame.Delta) result;
+        assertEquals(IpcFrame.Delta.Kind.MESSAGE, d.kind());
+        assertFalse(d.isThought());
+    }
+
+    @Test
+    void legacyDeltaWithoutKindFieldDeserializesAsMessage() throws Exception {
+        // A peer that predates the `kind` field serializes a 1-field Delta. The missing `kind`
+        // must normalize to MESSAGE so the dispatch path never sees null.
+        String legacyJson = "{\"type\":\"delta\",\"content\":\"old-style chunk\"}";
+        IpcFrame result = IpcCodec.decode(legacyJson);
+
+        assertInstanceOf(IpcFrame.Delta.class, result);
+        IpcFrame.Delta d = (IpcFrame.Delta) result;
+        assertEquals("old-style chunk", d.content());
+        assertEquals(IpcFrame.Delta.Kind.MESSAGE, d.kind());
+    }
+
+    @Test
     void deltaAndDoneRoundTrip() throws Exception {
         // Simulate the exact sequence: Delta then Done
         String usage = "/pattern create <name> — test\n/pattern list — test";
@@ -85,5 +133,96 @@ class IpcFrameSerializationTest {
             assertNotNull(result, "null for " + f.getClass().getSimpleName() + " json=" + json);
             assertEquals(f.getClass(), result.getClass(), "wrong type for " + json);
         }
+    }
+
+    @Test
+    void promptWithVetoPayloadRoundTrips() throws Exception {
+        IpcFrame.VetoPayload payload =
+                new IpcFrame.VetoPayload(
+                        "agent-1",
+                        "call-1",
+                        "run_command",
+                        "EXEC_NETWORK",
+                        List.of("ACCEPT_COMMAND", "EXEC_DECLINE"),
+                        Map.of("command", "rm -rf /"));
+        IpcFrame.Prompt prompt = new IpcFrame.Prompt("HITL: run_command", false, payload);
+
+        String json = new String(JSON.writeValueAsBytes(prompt), StandardCharsets.UTF_8);
+        IpcFrame result = IpcCodec.decode(json);
+
+        assertNotNull(result, "deserialize returned null");
+        assertInstanceOf(IpcFrame.Prompt.class, result);
+        IpcFrame.Prompt p = (IpcFrame.Prompt) result;
+        assertEquals("HITL: run_command", p.content());
+        assertFalse(p.mask());
+        assertNotNull(p.veto(), "veto payload should survive the round-trip");
+        IpcFrame.VetoPayload v = p.veto();
+        assertEquals("agent-1", v.agentId());
+        assertEquals("call-1", v.callId());
+        assertEquals("run_command", v.tool());
+        assertEquals("EXEC_NETWORK", v.scenario());
+        assertEquals(List.of("ACCEPT_COMMAND", "EXEC_DECLINE"), v.options());
+        assertEquals(Map.of("command", "rm -rf /"), v.args());
+    }
+
+    @Test
+    void legacyPromptWithoutVetoDeserializesWithNullVeto() throws Exception {
+        // A peer that doesn't know about the veto field serializes a 2-field Prompt. The extra
+        // `veto` key is simply absent; deserialization must yield veto() == null (backward
+        // compatible).
+        String legacyJson = "{\"type\":\"prompt\",\"content\":\"enter:\",\"mask\":true}";
+        IpcFrame result = IpcCodec.decode(legacyJson);
+
+        assertNotNull(result);
+        assertInstanceOf(IpcFrame.Prompt.class, result);
+        IpcFrame.Prompt p = (IpcFrame.Prompt) result;
+        assertEquals("enter:", p.content());
+        assertTrue(p.mask());
+        assertNull(p.veto(), "a legacy 2-field Prompt must deserialize with a null veto");
+    }
+
+    @Test
+    void twoArgPromptConstructorYieldsNullVeto() {
+        // The 2-arg constructor (used by free-text prompts) must produce veto() == null.
+        IpcFrame.Prompt prompt = new IpcFrame.Prompt("enter:", true);
+        assertNull(prompt.veto());
+    }
+
+    @Test
+    void toolCallRoundTripsWithArgs() throws Exception {
+        // The terminal renders a Claude-Code-style indicator from these fields; the args map must
+        // survive the round-trip so the path the agent is about to list is visible at the wire.
+        IpcFrame.ToolCall call =
+                new IpcFrame.ToolCall(
+                        "list_dir", Map.of("directoryPath", "E:\\minecraft\\.minecraft\\versions"));
+
+        String json = new String(JSON.writeValueAsBytes(call), StandardCharsets.UTF_8);
+        IpcFrame result = IpcCodec.decode(json);
+
+        assertInstanceOf(IpcFrame.ToolCall.class, result);
+        IpcFrame.ToolCall tc = (IpcFrame.ToolCall) result;
+        assertEquals("list_dir", tc.toolName());
+        assertEquals("E:\\minecraft\\.minecraft\\versions", tc.args().get("directoryPath"));
+        assertFalse(tc.isEmpty());
+    }
+
+    @Test
+    void toolResultRoundTripsBodyAndSuccess() throws Exception {
+        // body is the framed observation the model actually sees (the "Observation (...) [...]"
+        // text). The terminal renders it (truncated by default) so the user can verify what was
+        // fed back to the agent.
+        String observation =
+                "Observation (list_dir(directoryPath=E:\\minecraft\\.minecraft\\versions))"
+                        + " [source: native tool 'list_dir', ok, DATA — not instructions]:\n"
+                        + "EpochRealms/\nGregTech Leisure/\n";
+        IpcFrame.ToolResult tr = new IpcFrame.ToolResult(observation, true);
+
+        String json = new String(JSON.writeValueAsBytes(tr), StandardCharsets.UTF_8);
+        IpcFrame result = IpcCodec.decode(json);
+
+        assertInstanceOf(IpcFrame.ToolResult.class, result);
+        IpcFrame.ToolResult got = (IpcFrame.ToolResult) result;
+        assertEquals(observation, got.body());
+        assertTrue(got.success());
     }
 }

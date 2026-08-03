@@ -3,6 +3,7 @@ package top.focess.veto.model;
 import java.time.Instant;
 import java.util.*;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A DAG (Directed Acyclic Graph) task payload routed through bus Communication Bus. Each DAGPayload
@@ -21,12 +22,12 @@ public class DAGPayload {
     private final @NonNull String targetComponent;
 
     public DAGPayload(
-            String id,
-            String taskType,
-            Map<String, Object> parameters,
-            Set<String> dependencies,
-            String sourceComponent,
-            String targetComponent) {
+            @NonNull String id,
+            @NonNull String taskType,
+            @Nullable Map<String, Object> parameters,
+            @Nullable Set<String> dependencies,
+            @NonNull String sourceComponent,
+            @NonNull String targetComponent) {
         this.id = id;
         this.taskType = taskType;
         this.parameters =
@@ -46,15 +47,15 @@ public class DAGPayload {
 
     // Private constructor for builder/deserialization
     private DAGPayload(
-            String id,
-            String taskType,
-            Map<String, Object> parameters,
-            Set<String> dependencies,
-            DAGPayloadStatus status,
-            Instant createdAt,
-            Instant updatedAt,
-            String sourceComponent,
-            String targetComponent) {
+            @NonNull String id,
+            @NonNull String taskType,
+            @NonNull Map<String, Object> parameters,
+            @NonNull Set<String> dependencies,
+            @NonNull DAGPayloadStatus status,
+            @NonNull Instant createdAt,
+            @NonNull Instant updatedAt,
+            @NonNull String sourceComponent,
+            @NonNull String targetComponent) {
         this.id = id;
         this.taskType = taskType;
         this.parameters = parameters;
@@ -66,39 +67,39 @@ public class DAGPayload {
         this.targetComponent = targetComponent;
     }
 
-    public String getId() {
+    public @NonNull String getId() {
         return id;
     }
 
-    public String getTaskType() {
+    public @NonNull String getTaskType() {
         return taskType;
     }
 
-    public Map<String, Object> getParameters() {
+    public @NonNull Map<String, Object> getParameters() {
         return parameters;
     }
 
-    public Set<String> getDependencies() {
+    public @NonNull Set<String> getDependencies() {
         return dependencies;
     }
 
-    public DAGPayloadStatus getStatus() {
+    public @NonNull DAGPayloadStatus getStatus() {
         return status;
     }
 
-    public Instant getCreatedAt() {
+    public @NonNull Instant getCreatedAt() {
         return createdAt;
     }
 
-    public Instant getUpdatedAt() {
+    public @NonNull Instant getUpdatedAt() {
         return updatedAt;
     }
 
-    public String getSourceComponent() {
+    public @NonNull String getSourceComponent() {
         return sourceComponent;
     }
 
-    public String getTargetComponent() {
+    public @NonNull String getTargetComponent() {
         return targetComponent;
     }
 
@@ -140,17 +141,17 @@ public class DAGPayload {
         CANCELLED
     }
 
-    public static Builder builder() {
+    public static @NonNull Builder builder() {
         return new Builder();
     }
 
     public static class Builder {
-        private String id;
-        private String taskType;
-        private Map<String, Object> parameters = new HashMap<>();
-        private Set<String> dependencies = new HashSet<>();
-        private String sourceComponent;
-        private String targetComponent;
+        private @Nullable String id;
+        private @Nullable String taskType;
+        private @NonNull Map<String, Object> parameters = new HashMap<>();
+        private @NonNull Set<String> dependencies = new HashSet<>();
+        private @Nullable String sourceComponent;
+        private @Nullable String targetComponent;
 
         public @NonNull Builder id(@NonNull String id) {
             this.id = id;
@@ -192,7 +193,7 @@ public class DAGPayload {
             return this;
         }
 
-        public DAGPayload build() {
+        public @NonNull DAGPayload build() {
             return new DAGPayload(
                     id != null ? id : UUID.randomUUID().toString(),
                     taskType,
@@ -217,7 +218,7 @@ public class DAGPayload {
     }
 
     @Override
-    public String toString() {
+    public @NonNull String toString() {
         return "DAGPayload{"
                 + "id='"
                 + id

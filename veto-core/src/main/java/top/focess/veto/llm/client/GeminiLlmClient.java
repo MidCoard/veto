@@ -24,9 +24,9 @@ final class GeminiLlmClient extends LlmClient {
     private final @NonNull CapabilityTranslator capabilityTranslator;
 
     GeminiLlmClient(
-            Client sdkClient,
-            ObjectMapper objectMapper,
-            CapabilityTranslator capabilityTranslator) {
+            @NonNull Client sdkClient,
+            @NonNull ObjectMapper objectMapper,
+            @NonNull CapabilityTranslator capabilityTranslator) {
         this.sdkClient = sdkClient;
         this.objectMapper = objectMapper;
         this.capabilityTranslator = capabilityTranslator;

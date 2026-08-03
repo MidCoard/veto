@@ -8,6 +8,7 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.agent.drift.ReadHistory;
@@ -68,12 +69,12 @@ public class Gateway {
      * @param readHistory this agent's read-history (for write drift checks).
      */
     public Gateway(
-            Workspace workspace,
-            DangerComputation dangerComputation,
-            SlmRelevanceProvider slmRelevance,
-            DeployerPolicy policy,
-            ProtectedSet protectedSet,
-            ReadHistory readHistory) {
+            @NonNull Workspace workspace,
+            @NonNull DangerComputation dangerComputation,
+            @NonNull SlmRelevanceProvider slmRelevance,
+            @NonNull DeployerPolicy policy,
+            @NonNull ProtectedSet protectedSet,
+            @NonNull ReadHistory readHistory) {
         this.workspace = workspace;
         this.dangerComputation = dangerComputation;
         this.slmRelevance = slmRelevance;
@@ -109,7 +110,7 @@ public class Gateway {
         return new GatewayResult.Screened(new Screening(relevance, danger, scenario, reason));
     }
 
-    private VetoScenario scenarioFor(Danger danger, ToolDefinition def) {
+    private @NonNull VetoScenario scenarioFor(@NonNull Danger danger, @NonNull ToolDefinition def) {
         if (danger == Danger.CRITICAL)
             return VetoScenario
                     .EXEC_DETERMINISTIC; // E1-style; the registry offers options per scenario
@@ -123,14 +124,15 @@ public class Gateway {
         };
     }
 
-    private String reasonFor(Danger danger, ToolDefinition def) {
+    private @NonNull String reasonFor(@NonNull Danger danger, @NonNull ToolDefinition def) {
         return def.risk() + " -> " + danger;
     }
 
     // ── Path extraction ───────────────────────────────────────────────────
 
     /** Extracts filesystem-path arguments using the definition's {@link ParamCategory} hints. */
-    private List<String> extractPathArgs(ToolCall call, ToolDefinition def) {
+    private @NonNull List<String> extractPathArgs(
+            @NonNull ToolCall call, @NonNull ToolDefinition def) {
         List<String> paths = new ArrayList<>();
         Map<String, ParamCategory> hints = parameterHints(def);
         if (hints.isEmpty()) {
@@ -151,7 +153,7 @@ public class Gateway {
         return paths;
     }
 
-    private Map<String, ParamCategory> parameterHints(ToolDefinition def) {
+    private @NonNull Map<String, ParamCategory> parameterHints(@NonNull ToolDefinition def) {
         return switch (def) {
             case NativeToolDefinition n -> n.paramHints();
             case AgentToolDefinition a -> a.paramHints();
@@ -162,7 +164,7 @@ public class Gateway {
     // ── Write drift ─────────────
 
     /** Returns a drift result if a write target changed since the agent last read it, else null. */
-    private GatewayResult.DriftResult checkWriteDrift(List<String> paths) {
+    private GatewayResult.@Nullable DriftResult checkWriteDrift(@NonNull List<String> paths) {
         for (String path : paths) {
             ReadHistory.Snapshot prior = readHistory.lookup(path).orElse(null);
             if (prior == null) {
@@ -177,7 +179,10 @@ public class Gateway {
         return null;
     }
 
-    private String buildDiff(String path, ReadHistory.Snapshot prior, String currentHash) {
+    private @NonNull String buildDiff(
+            @NonNull String path,
+            ReadHistory.@NonNull Snapshot prior,
+            @NonNull String currentHash) {
         return "--- "
                 + path
                 + " (read at size="
@@ -216,6 +221,15 @@ public class Gateway {
     /** The operational workspace root this Gateway resolves against (for tests). */
     public Path workspaceRoot() {
         return workspace.pathResolver().operationalRoot();
+    }
+
+    /**
+     * The per-session {@link Workspace} this Gateway screens against. Threaded to the {@link
+     * top.focess.veto.agent.loop.PromptCompiler} so the system prompt mounts the session's actual
+     * roots (not the default bean workspace).
+     */
+    public @NonNull Workspace workspace() {
+        return workspace;
     }
 
     /** Computes a SHA-256 hex hash of the given path (for read-time recording by the sandbox). */

@@ -32,9 +32,9 @@ final class AnthropicLlmClient extends LlmClient {
     private final @NonNull CapabilityTranslator capabilityTranslator;
 
     AnthropicLlmClient(
-            AnthropicClient sdkClient,
-            ObjectMapper objectMapper,
-            CapabilityTranslator capabilityTranslator) {
+            @NonNull AnthropicClient sdkClient,
+            @NonNull ObjectMapper objectMapper,
+            @NonNull CapabilityTranslator capabilityTranslator) {
         this.sdkClient = sdkClient;
         this.objectMapper = objectMapper;
         this.capabilityTranslator = capabilityTranslator;

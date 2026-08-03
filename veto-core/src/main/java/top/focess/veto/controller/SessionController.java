@@ -65,9 +65,10 @@ public class SessionController {
     public @NonNull ResponseEntity<Void> delete(@NonNull @PathVariable String name) {
         String user = vault.currentUser();
         if (user == null) return ResponseEntity.status(401).build();
-        // SessionService does not yet expose delete; reject explicitly until it does, rather than
-        // silently no-op'ing.
-        return ResponseEntity.status(501).build();
+        if (!service.delete(user, name)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Session not found: " + name);
+        }
+        return ResponseEntity.noContent().build();
     }
 
     /** Request body for {@link #create}. */

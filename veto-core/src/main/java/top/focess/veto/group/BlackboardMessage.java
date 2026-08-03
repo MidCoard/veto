@@ -1,6 +1,5 @@
 package top.focess.veto.group;
 
-import java.util.Objects;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 
@@ -17,15 +16,6 @@ public record BlackboardMessage(
         @NonNull MessageType type,
         @NonNull String payload,
         long turnSeq) {
-
-    public BlackboardMessage {
-        Objects.requireNonNull(messageId, "messageId");
-        Objects.requireNonNull(groupId, "groupId");
-        Objects.requireNonNull(senderId, "senderId");
-        Objects.requireNonNull(receiverId, "receiverId");
-        Objects.requireNonNull(type, "type");
-        Objects.requireNonNull(payload, "payload");
-    }
 
     public enum MessageType {
         /** Leader → Mate: a task or revision instruction (the Leader's authored text). */

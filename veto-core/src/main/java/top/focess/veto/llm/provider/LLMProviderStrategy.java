@@ -1,5 +1,7 @@
 package top.focess.veto.llm.provider;
 
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import top.focess.veto.llm.core.ProviderType;
 import top.focess.veto.llm.core.ResolvedRequest;
 import top.focess.veto.llm.core.VetoResponse;
@@ -16,7 +18,7 @@ public interface LLMProviderStrategy {
      * @param providerType the provider type to check
      * @return true if supported, false otherwise
      */
-    boolean supports(ProviderType providerType);
+    boolean supports(@NonNull ProviderType providerType);
 
     /**
      * The provider's own base URL, or {@code null} to use the SDK default. The egress strategy may
@@ -25,7 +27,7 @@ public interface LLMProviderStrategy {
      *
      * @return the default base URL
      */
-    String defaultBaseUrl();
+    @Nullable String defaultBaseUrl();
 
     /**
      * Executes the LLM request using this strategy.
@@ -33,5 +35,5 @@ public interface LLMProviderStrategy {
      * @param request the resolved request containing the effective URL and API key
      * @return the response from the LLM
      */
-    VetoResponse execute(ResolvedRequest request);
+    @NonNull VetoResponse execute(@NonNull ResolvedRequest request);
 }

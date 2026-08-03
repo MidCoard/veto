@@ -1,5 +1,6 @@
 package top.focess.veto.agent.mcp.tools;
 
+import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.mcp.Doc;
 import top.focess.veto.agent.mcp.ToolDoc;
 
@@ -52,4 +53,4 @@ import top.focess.veto.agent.mcp.ToolDoc;
                 """,
         examples = {"{\"skillName\": \"git-rebase\"}", "{\"skillName\": \"verify_suite\"}"})
 public record LoadSkillArgs(
-        @Doc("The name of the skill to load (e.g. 'verify_suite').") String skillName) {}
+        @Doc("The name of the skill to load (e.g. 'verify_suite').") @NonNull String skillName) {}

@@ -36,11 +36,11 @@ final class OpenAiLlmClient extends LlmClient {
     private final @NonNull CapabilityTranslator capabilityTranslator;
 
     OpenAiLlmClient(
-            OpenAIClient sdkClient,
+            @NonNull OpenAIClient sdkClient,
             boolean supportsJsonSchema,
-            String providerName,
-            ObjectMapper objectMapper,
-            CapabilityTranslator capabilityTranslator) {
+            @NonNull String providerName,
+            @NonNull ObjectMapper objectMapper,
+            @NonNull CapabilityTranslator capabilityTranslator) {
         this.sdkClient = sdkClient;
         this.supportsJsonSchema = supportsJsonSchema;
         this.providerName = providerName;
@@ -119,7 +119,8 @@ final class OpenAiLlmClient extends LlmClient {
         return new RawCompletion(summary, content);
     }
 
-    private void applyOptions(ChatCompletionCreateParams.Builder builder, LlmOptions options) {
+    private void applyOptions(
+            ChatCompletionCreateParams.@NonNull Builder builder, @NonNull LlmOptions options) {
         if (options.temperature() != null) {
             builder.temperature(options.temperature());
         }
@@ -131,8 +132,8 @@ final class OpenAiLlmClient extends LlmClient {
         }
     }
 
-    private String augmentPromptWithSchema(
-            String systemPrompt, Map<String, Object> responseSchema) {
+    private @NonNull String augmentPromptWithSchema(
+            @NonNull String systemPrompt, @NonNull Map<String, Object> responseSchema) {
         try {
             String schemaJson =
                     objectMapper

@@ -55,7 +55,9 @@ public class DefaultUniformLLMCaller implements UniformLLMCaller {
                                                         + request.providerType()));
         EgressEndpoint endpoint =
                 egress.resolve(
-                        request.providerType(), provider.defaultBaseUrl(), request.credentialKey());
+                        request.providerType(),
+                        request.baseUrl() != null ? request.baseUrl() : provider.defaultBaseUrl(),
+                        request.credentialKey());
         ResolvedRequest resolved =
                 new ResolvedRequest(request, endpoint.baseUrl(), endpoint.apiKey());
         LlmException last = null;

@@ -73,23 +73,23 @@ public final class WriteToFileTool implements NativeTool<WriteToFileTool.Args> {
             })
     public record Args(
             @SecurityHint(ParamCategory.FILESYSTEM_PATH) @Doc("Absolute path of the file to write.")
-                    String targetFile,
+                    @NonNull String targetFile,
             @SecurityHint(ParamCategory.CODE_CONTENT) @Doc("The full content to write.")
-                    String codeContent,
+                    @NonNull String codeContent,
             @Doc("If false, refuse to overwrite an existing file.") boolean overwrite) {}
 
     @Override
-    public String getName() {
+    public @NonNull String getName() {
         return "write_to_file";
     }
 
     @Override
-    public String getDescription() {
+    public @NonNull String getDescription() {
         return "Create a new file or completely overwrite an existing file.";
     }
 
     @Override
-    public Class<Args> getArgsClass() {
+    public @NonNull Class<Args> getArgsClass() {
         return Args.class;
     }
 

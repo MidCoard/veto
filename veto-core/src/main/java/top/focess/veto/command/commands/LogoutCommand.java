@@ -12,8 +12,8 @@ import top.focess.veto.vault.AuthLifecycleManager;
 
 public class LogoutCommand extends VetoCommand {
 
-    private final AuthLifecycleManager authLifecycleManager;
-    private final PromptHandler promptHandler;
+    private final @NonNull AuthLifecycleManager authLifecycleManager;
+    private final @NonNull PromptHandler promptHandler;
 
     public LogoutCommand(
             @NonNull AuthLifecycleManager authLifecycleManager,

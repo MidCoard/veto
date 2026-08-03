@@ -1,4 +1,4 @@
-plugins {
+﻿plugins {
     java
     id("org.springframework.boot") version "3.5.16"
     id("io.spring.dependency-management") version "1.1.6"
@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "top.focess"
-version = "1.0.25"
+version = "1.0.49"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_25
@@ -58,7 +58,7 @@ dependencies {
     implementation("org.bouncycastle:bcprov-jdk18on:1.84")
 
     // Keystead credential vault (Maven Central release)
-    implementation("top.focess:keystead-core:0.2.0")
+    implementation("top.focess:keystead-core:0.4.3")
 
     // JNA (Java Native Access) for kernel-level sandbox substrate
     implementation("net.java.dev.jna:jna:5.14.0")
@@ -102,7 +102,7 @@ protobuf {
     }
 }
 
-// ── Build-time version source ──────────────────────────────────────────
+// 鈹€鈹€ Build-time version source 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 // Generates top.focess.veto.VetoVersion (COMPONENT + VERSION) from project.version so the runtime
 // can report its build version (e.g. in /version and the IPC handshake). Spotless targets src/**
 // only, so generated sources under build/ are exempt from formatting.

@@ -6,6 +6,7 @@ import org.springframework.context.annotation.Configuration;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.command.commands.*;
 import top.focess.veto.model.AgentPatternRepository;
+import top.focess.veto.model.tier.ModelTierProfileService;
 import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.security.SignupPolicy;
 import top.focess.veto.security.UserAdminService;
@@ -79,7 +80,8 @@ public class CommandConfiguration {
             @NonNull KeysteadVault keysteadVault,
             @NonNull SignupPolicy signupPolicy,
             @NonNull UserAdminService userAdminService,
-            @NonNull ModelTierRegistry tierRegistry) {
+            @NonNull ModelTierRegistry tierRegistry,
+            @NonNull ModelTierProfileService profileService) {
 
         CommandRegistry registry = new CommandRegistry(promptHandler);
 
@@ -90,6 +92,7 @@ public class CommandConfiguration {
         registry.register(new VersionCommand());
         registry.register(new ExitCommand());
         registry.register(new PatternCommand(patternRepo, tierRegistry));
+        registry.register(new ModelTierCommand(profileService, tierRegistry));
         registry.register(new CredentialCommand(keysteadVault));
         registry.register(new SessionCommand(sessionService, promptHandler));
         registry.register(new CompactCommand(promptHandler));

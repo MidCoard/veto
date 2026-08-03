@@ -2,6 +2,7 @@ package top.focess.veto.observability;
 
 import java.util.*;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -26,10 +27,6 @@ public class DiffCalculator {
      * @return A DiffResult containing line-level and character-level difference data
      */
     public @NonNull DiffResult computeDiff(@NonNull String original, @NonNull String redacted) {
-        if (original == null || redacted == null) {
-            return new DiffResult(0, 0, 0, "(null input)", List.of());
-        }
-
         if (original.equals(redacted)) {
             return new DiffResult(0, 0, 0, "(identical)", List.of());
         }
@@ -99,7 +96,7 @@ public class DiffCalculator {
         return sb.toString();
     }
 
-    private String truncate(String s) {
+    private @NonNull String truncate(@Nullable String s) {
         if (s == null || s.length() <= 120) return s != null ? s : "";
         return s.substring(0, 120) + "...";
     }
@@ -109,8 +106,8 @@ public class DiffCalculator {
             int totalChanges,
             int charsChanged,
             int lineCountChange,
-            String summary,
-            List<DiffLine> lineDiffs) {
+            @NonNull String summary,
+            @NonNull List<DiffLine> lineDiffs) {
         public boolean hasChanges() {
             return totalChanges > 0;
         }

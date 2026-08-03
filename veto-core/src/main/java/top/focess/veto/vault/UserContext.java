@@ -1,6 +1,7 @@
 package top.focess.veto.vault;
 
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Thread-local context holder for the currently authenticated user in Veto. This enables multi-user
@@ -27,7 +28,7 @@ public final class UserContext {
      *
      * @return the username, or null if not set
      */
-    public static String get() {
+    public static @Nullable String get() {
         return CURRENT_USER.get();
     }
 

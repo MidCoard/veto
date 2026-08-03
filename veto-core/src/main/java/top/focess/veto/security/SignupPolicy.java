@@ -28,8 +28,7 @@ public class SignupPolicy {
             @Value("${veto.security.deployer-policy:FULL_ACCESS}")
                     @NonNull String deployerPolicyRaw) {
         this.mode = parseMode(modeRaw);
-        this.deployerPolicy =
-                deployerPolicyRaw == null ? "" : deployerPolicyRaw.trim().toUpperCase();
+        this.deployerPolicy = deployerPolicyRaw.trim().toUpperCase();
     }
 
     /** The configured signup mode. */
@@ -60,7 +59,7 @@ public class SignupPolicy {
     }
 
     private static @NonNull SignupMode parseMode(@NonNull String raw) {
-        if (raw == null || raw.isBlank()) {
+        if (raw.isBlank()) {
             return SignupMode.SOLO;
         }
         try {

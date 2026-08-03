@@ -28,37 +28,37 @@ public class AgentEntity {
         SUB
     }
 
-    @Id private String id;
+    @Id private @NonNull String id;
 
     @Column(name = "session_id", nullable = false)
-    private String sessionId;
+    private @NonNull String sessionId;
 
     @Column(name = "pattern_id")
-    private String patternId;
+    private @Nullable String patternId;
 
     @Column(nullable = false)
     @Enumerated(EnumType.STRING)
-    private Role role;
+    private @NonNull Role role;
 
     @Column(nullable = false)
-    private String name;
+    private @NonNull String name;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "tier", nullable = false)
-    private ModelTier tier;
+    private @NonNull ModelTier tier;
 
     // ── vestigial NOT NULL cache (frozen from the tier binding at create; not live-read) ──
     @Column(nullable = false)
-    private String provider;
+    private @NonNull String provider;
 
     @Column(nullable = false)
-    private String model;
+    private @NonNull String model;
 
     @Column(name = "credential_key", nullable = false)
-    private String credentialKey;
+    private @NonNull String credentialKey;
 
     @Column(name = "created_at", nullable = false)
-    private Instant createdAt;
+    private @NonNull Instant createdAt;
 
     protected AgentEntity() {}
 

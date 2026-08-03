@@ -34,7 +34,7 @@ public class LocalSlmRelevanceProvider implements SlmRelevanceProvider {
     @Override
     public @NonNull Relevance relevance(
             @NonNull ToolCall call, @NonNull ToolDefinition def, @NonNull String thought) {
-        if (bridge == null || !bridge.isAvailable()) {
+        if (!bridge.isAvailable()) {
             return Relevance.HIGH;
         }
         String prompt = buildPrompt(call, def, thought);
@@ -65,7 +65,8 @@ public class LocalSlmRelevanceProvider implements SlmRelevanceProvider {
         }
     }
 
-    private static String buildPrompt(ToolCall call, ToolDefinition def, String thought) {
+    private static @NonNull String buildPrompt(
+            @NonNull ToolCall call, @NonNull ToolDefinition def, @NonNull String thought) {
         StringBuilder sb = new StringBuilder();
         sb.append("Given the agent's thought: \"").append(safe(thought)).append("\"\n");
         sb.append("And the tool call: ").append(call.toolName()).append("(");
@@ -78,10 +79,7 @@ public class LocalSlmRelevanceProvider implements SlmRelevanceProvider {
         return sb.toString();
     }
 
-    private static String safe(String s) {
-        if (s == null) {
-            return "";
-        }
+    private static @NonNull String safe(@NonNull String s) {
         return s.length() > 200 ? s.substring(0, 200) + "..." : s;
     }
 }

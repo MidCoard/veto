@@ -5,6 +5,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -16,8 +17,8 @@ public class ReconnectionHandler {
     private static final Logger log = LoggerFactory.getLogger(ReconnectionHandler.class);
 
     private final @NonNull BusConfiguration config;
-    private final AtomicInteger reconnectAttempts = new AtomicInteger(0);
-    private final ScheduledExecutorService scheduler =
+    private final @NonNull AtomicInteger reconnectAttempts = new AtomicInteger(0);
+    private final @NonNull ScheduledExecutorService scheduler =
             Executors.newSingleThreadScheduledExecutor(
                     r -> {
                         Thread t = new Thread(r, "veto-reconnect");
@@ -25,7 +26,7 @@ public class ReconnectionHandler {
                         return t;
                     });
 
-    private volatile String lastBackendUrl;
+    private volatile @Nullable String lastBackendUrl;
     private volatile boolean reconnecting = false;
 
     public
@@ -36,7 +37,7 @@ public class ReconnectionHandler {
 
     /** Schedule an exponential-backoff reconnection attempt. */
     public void scheduleReconnect(@NonNull WebSocketBus bus, @NonNull String backendUrl) {
-        if (backendUrl == null || backendUrl.isEmpty()) {
+        if (backendUrl.isEmpty()) {
             log.warn("bus Reconnect: No backend URL to reconnect to");
             return;
         }
@@ -91,7 +92,7 @@ public class ReconnectionHandler {
         return reconnectAttempts.get();
     }
 
-    public String getLastBackendUrl() {
+    public @Nullable String getLastBackendUrl() {
         return lastBackendUrl;
     }
 }

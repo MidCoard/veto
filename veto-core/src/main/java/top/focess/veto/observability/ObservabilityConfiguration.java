@@ -9,13 +9,13 @@ import org.springframework.context.annotation.Configuration;
 @ConfigurationProperties(prefix = "veto.observability")
 public class ObservabilityConfiguration {
 
-    private String auditLogPath = "./audit/";
+    private @NonNull String auditLogPath = "./audit/";
     private int logRotationDays = 365;
     private boolean encryptionEnabled = true;
-    private String encryptionKey = "default-veto-audit-key-change-me";
+    private @NonNull String encryptionKey = "default-veto-audit-key-change-me";
     private boolean tamperProof = true;
 
-    public String getAuditLogPath() {
+    public @NonNull String getAuditLogPath() {
         return auditLogPath;
     }
 
@@ -39,7 +39,7 @@ public class ObservabilityConfiguration {
         this.encryptionEnabled = encryptionEnabled;
     }
 
-    public String getEncryptionKey() {
+    public @NonNull String getEncryptionKey() {
         return encryptionKey;
     }
 

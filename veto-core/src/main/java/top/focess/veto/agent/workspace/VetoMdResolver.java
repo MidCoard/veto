@@ -19,7 +19,7 @@ public record VetoMdResolver(@NonNull List<WorkspaceRoot> roots) {
     private static final Logger log = LoggerFactory.getLogger(VetoMdResolver.class);
 
     /** Resolves the concatenated Law across all roots (empty string if none). */
-    public String resolve() {
+    public @NonNull String resolve() {
         StringBuilder sb = new StringBuilder();
         for (WorkspaceRoot root : roots) {
             String perRoot = resolveRoot(root.hostPath());
@@ -33,14 +33,14 @@ public record VetoMdResolver(@NonNull List<WorkspaceRoot> roots) {
         return sb.toString();
     }
 
-    private String resolveRoot(Path rootHost) {
+    private @NonNull String resolveRoot(@NonNull Path rootHost) {
         StringBuilder sb = new StringBuilder();
         appendIfReadable(sb, rootHost.resolve("VETO.md"));
         appendIfReadable(sb, rootHost.resolve(".veto/VETO.md"));
         return sb.toString().strip();
     }
 
-    private void appendIfReadable(StringBuilder sb, Path file) {
+    private void appendIfReadable(@NonNull StringBuilder sb, @NonNull Path file) {
         if (!Files.isRegularFile(file) || !Files.isReadable(file)) {
             return;
         }

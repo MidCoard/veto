@@ -3,7 +3,6 @@ package top.focess.veto.agent;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -15,8 +14,6 @@ import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.mcp.DefaultToolEngine;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
-import top.focess.veto.agent.workspace.PathMode;
-import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.bus.DeltaFrame;
 import top.focess.veto.llm.core.LlmOptions;
@@ -38,10 +35,7 @@ class DeltaBrokerWiringTest {
         ObjectMapper mapper = new ObjectMapper();
         PromptCompiler compiler =
                 new PromptCompiler(
-                        new DefaultCapabilityTranslator(mapper),
-                        Workspace.single(
-                                Path.of(System.getProperty("user.dir", ".")), PathMode.REAL),
-                        new SystemPromptResolver());
+                        new DefaultCapabilityTranslator(mapper), new SystemPromptResolver());
         ReflectionTestUtils.setField(compiler, "maxInputTokens", 32000);
         ReflectionTestUtils.setField(compiler, "contextFillRatio", 0.9);
         return new AgentService(
@@ -103,10 +97,20 @@ class DeltaBrokerWiringTest {
 
         assertTrue(result.success(), "episode should finish successfully");
         assertFalse(frames.isEmpty(), "a DeltaFrame should be published on emitMessage");
-        DeltaFrame f = frames.get(0);
-        assertEquals(DeltaFrame.Kind.ASSISTANT_MESSAGE, f.kind());
-        assertEquals("The answer is 4.", f.text());
-        assertEquals(1L, f.sequence(), "broker assigns a monotonic sequence starting at 1");
+        // The response carries both a thought and a message, so the broker now receives TWO frames:
+        // the thought first (emitThought runs from appendThought before emitMessage), then the
+        // message. Both are part of the per-session stream the DeltaBusBridge forwards to WS
+        // clients.
+        assertEquals(2, frames.size(), "thought + message each publish their own DeltaFrame");
+        DeltaFrame thoughtFrame = frames.get(0);
+        assertEquals(DeltaFrame.Kind.ASSISTANT_THOUGHT, thoughtFrame.kind());
+        assertEquals("2 + 2 = 4.", thoughtFrame.text());
+        assertEquals(
+                1L, thoughtFrame.sequence(), "broker assigns a monotonic sequence starting at 1");
+        DeltaFrame messageFrame = frames.get(1);
+        assertEquals(DeltaFrame.Kind.ASSISTANT_MESSAGE, messageFrame.kind());
+        assertEquals("The answer is 4.", messageFrame.text());
+        assertEquals(2L, messageFrame.sequence(), "the message follows the thought in sequence");
     }
 
     @Test

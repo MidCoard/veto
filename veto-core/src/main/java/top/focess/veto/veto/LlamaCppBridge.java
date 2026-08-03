@@ -12,6 +12,7 @@ import java.util.concurrent.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -30,18 +31,18 @@ public class LlamaCppBridge {
     private static final Logger log = LoggerFactory.getLogger(LlamaCppBridge.class);
 
     /** Pattern to extract the port from llama-server startup output. */
-    private static final Pattern PORT_PATTERN =
+    private static final @NonNull Pattern PORT_PATTERN =
             Pattern.compile("llama server listening at .*:(\\d+)");
 
     private final @NonNull VetoGatewayConfiguration config;
     private final @NonNull GBNFGrammarEngine grammarEngine;
 
-    private Process llamaProcess;
-    private Path grammarTempFile;
+    private @Nullable Process llamaProcess;
+    private @Nullable Path grammarTempFile;
     private volatile int serverPort = -1;
-    private final HttpClient httpClient =
+    private final @NonNull HttpClient httpClient =
             HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
-    private final ExecutorService startupExecutor =
+    private final @NonNull ExecutorService startupExecutor =
             Executors.newSingleThreadExecutor(
                     r -> {
                         Thread t = new Thread(r, "veto-llamacpp-startup");
@@ -156,8 +157,7 @@ public class LlamaCppBridge {
                                                 + "\"stop\":[\"###\"],\"grammar\":\"%s\"}",
                                         escapeJson(prompt),
                                         config.getLlamaCpp().getTemperature(),
-                                        escapeJson(
-                                                grammarName != null ? grammarName : "veto-output"));
+                                        escapeJson(grammarName));
 
                         HttpRequest request =
                                 HttpRequest.newBuilder()
@@ -258,7 +258,7 @@ public class LlamaCppBridge {
      * Parse the server port from llama-server startup output. Falls back to the requested port if
      * the pattern is not found.
      */
-    private int parsePortFromStartup(Process process, int fallbackPort) {
+    private int parsePortFromStartup(@NonNull Process process, int fallbackPort) {
         try (BufferedReader reader =
                 new BufferedReader(new InputStreamReader(process.getInputStream()))) {
             // Read startup output for up to 30 seconds looking for the port line
@@ -307,7 +307,7 @@ public class LlamaCppBridge {
     }
 
     /** Extract the generated content from the OpenAI completions response JSON. */
-    private String extractContentFromResponse(String responseBody) {
+    private @NonNull String extractContentFromResponse(@NonNull String responseBody) {
         // Parse the OpenAI-format response: {"content":[{"text":"..."}]}
         try {
             Pattern textPattern = Pattern.compile("\"text\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"");
@@ -347,7 +347,7 @@ public class LlamaCppBridge {
                 });
     }
 
-    private String escapeJson(String s) {
+    private @NonNull String escapeJson(@Nullable String s) {
         if (s == null) return "";
         return s.replace("\\", "\\\\")
                 .replace("\"", "\\\"")
@@ -356,7 +356,7 @@ public class LlamaCppBridge {
                 .replace("\t", "\\t");
     }
 
-    private String unescapeJson(String s) {
+    private @NonNull String unescapeJson(@Nullable String s) {
         if (s == null) return "";
         return s.replace("\\n", "\n")
                 .replace("\\r", "\r")

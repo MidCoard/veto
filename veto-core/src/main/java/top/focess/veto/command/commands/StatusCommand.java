@@ -11,8 +11,8 @@ import top.focess.veto.vault.KeysteadVault;
 
 public class StatusCommand extends VetoCommand {
 
-    private final KeysteadVault vault;
-    private final PromptHandler promptHandler;
+    private final @NonNull KeysteadVault vault;
+    private final @NonNull PromptHandler promptHandler;
 
     public StatusCommand(@NonNull KeysteadVault vault, @NonNull PromptHandler promptHandler) {
         super("status", "Show session info");

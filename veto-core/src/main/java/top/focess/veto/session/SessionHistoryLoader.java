@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -25,10 +26,10 @@ public class SessionHistoryLoader {
     private static final Logger log = LoggerFactory.getLogger(SessionHistoryLoader.class);
     private static final TypeReference<Map<String, Object>> PAYLOAD_TYPE = new TypeReference<>() {};
 
-    private final TurnRecordRepository repo;
-    private final ObjectMapper mapper;
+    private final @NonNull TurnRecordRepository repo;
+    private final @NonNull ObjectMapper mapper;
 
-    public SessionHistoryLoader(TurnRecordRepository repo, ObjectMapper mapper) {
+    public SessionHistoryLoader(@NonNull TurnRecordRepository repo, @NonNull ObjectMapper mapper) {
         this.repo = repo;
         this.mapper = mapper;
     }
@@ -50,7 +51,8 @@ public class SessionHistoryLoader {
         return mapRows(rows, sessionId);
     }
 
-    private @NonNull List<TurnRecord> mapRows(List<TurnRecordEntity> rows, String sessionId) {
+    private @NonNull List<TurnRecord> mapRows(
+            @NonNull List<TurnRecordEntity> rows, @NonNull String sessionId) {
         List<TurnRecord> out = new ArrayList<>(rows.size());
         for (TurnRecordEntity row : rows) {
             try {
@@ -69,7 +71,7 @@ public class SessionHistoryLoader {
         return out;
     }
 
-    private Map<String, Object> deserializePayload(String json) {
+    private @NonNull Map<String, Object> deserializePayload(@Nullable String json) {
         if (json == null || json.isEmpty()) return Map.of();
         try {
             return mapper.readValue(json, PAYLOAD_TYPE);

@@ -1,5 +1,7 @@
 package top.focess.veto.memory.embedder;
 
+import org.jspecify.annotations.NonNull;
+
 /**
  * Text -> vector embedding for the memory subsystem, decoupled from {@link
  * top.focess.veto.memory.MemoryStore} so the embedding model can evolve (local stub vs. provider
@@ -18,7 +20,7 @@ public interface Embedder {
      * @param text the text to embed
      * @return the embedding vector; never {@code null}
      */
-    float[] embed(String text);
+    float @NonNull [] embed(@NonNull String text);
 
     /**
      * The dimensionality of vectors this embedder produces. Must be stable across calls so that

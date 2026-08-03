@@ -29,6 +29,11 @@ class ClientSessionTest {
         }
 
         @Override
+        public void onThought(String content) {
+            events.add("thought:" + content);
+        }
+
+        @Override
         public void onProgress(StyledText content) {
             events.add("progress:" + content.text());
         }
@@ -147,6 +152,42 @@ class ClientSessionTest {
     }
 
     // ═══ outbound: cancel ════════════════════════════════════════════
+
+    @Test
+    void runningVetoPromptExposesVetoPayloadAndSubmitsOptionName() {
+        // A Prompt carrying a VetoPayload must expose the payload in the prompt view (so the
+        // terminal renders a picker), and the user's picker reply is submitted as an Input
+        // carrying the chosen option name (the server's veto-first routing resolves it).
+        RecordingView v = new RecordingView();
+        ClientSession s = new ClientSession(v);
+        s.submit("first"); // RUNNING
+
+        IpcFrame.VetoPayload payload =
+                new IpcFrame.VetoPayload(
+                        "agent-1",
+                        "call-1",
+                        "run_command",
+                        "EXEC_NETWORK",
+                        List.of("ACCEPT_COMMAND", "EXEC_DECLINE"),
+                        Map.of("command", "echo hi"));
+        s.onFrame(new IpcFrame.Prompt("HITL: run_command", false, payload));
+
+        assertEquals(ClientSession.State.PROMPTED, s.state());
+        IpcFrame.Prompt active = s.promptView().activePrompt();
+        assertNotNull(active);
+        assertNotNull(active.veto(), "the veto payload should be exposed in the prompt view");
+        assertEquals("call-1", active.veto().callId());
+        assertEquals("run_command", active.veto().tool());
+        assertEquals(List.of("ACCEPT_COMMAND", "EXEC_DECLINE"), active.veto().options());
+        assertTrue(v.events.contains("prompted"));
+        assertTrue(v.events.contains("prompt:HITL: run_command"));
+
+        IpcFrame.ClientFrame f = s.submit("ACCEPT_COMMAND");
+        assertInstanceOf(IpcFrame.Input.class, f);
+        assertEquals("ACCEPT_COMMAND", ((IpcFrame.Input) f).raw());
+        assertEquals(ClientSession.State.RUNNING, s.state());
+        assertNull(s.promptView().activePrompt());
+    }
 
     @Test
     void cancelFromIdleReturnsNullAsShutdownSignal() {
@@ -268,6 +309,22 @@ class ClientSessionTest {
         s.onFrame(new IpcFrame.Delta("chunk"));
 
         assertTrue(v.events.contains("delta:chunk"));
+    }
+
+    @Test
+    void runningThoughtDeltaRoutesToOnThought() {
+        // A thought-kind Delta must route to onThought (distinct rendering), NOT to onDelta, so the
+        // terminal can dim the agent's reasoning separately from user-facing message prose.
+        RecordingView v = new RecordingView();
+        ClientSession s = new ClientSession(v);
+        s.submit("first"); // RUNNING
+
+        s.onFrame(IpcFrame.Delta.thought("reasoning chunk"));
+
+        assertTrue(v.events.contains("thought:reasoning chunk"));
+        assertFalse(
+                v.events.contains("delta:reasoning chunk"),
+                "a thought-kind Delta must NOT also fire onDelta");
     }
 
     @Test

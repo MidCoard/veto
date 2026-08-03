@@ -12,10 +12,10 @@ public class CredentialVaultConfiguration {
     /**
      * Base directory for all vault files (keystead vaults live under {@code {vaultHome}/keystead}).
      */
-    private String vaultHome = expandTilde("~/.veto");
+    private @NonNull String vaultHome = expandTilde("~/.veto");
 
     /** Returns the base directory for all vault files. */
-    public String getVaultHome() {
+    public @NonNull String getVaultHome() {
         return vaultHome;
     }
 
@@ -24,7 +24,7 @@ public class CredentialVaultConfiguration {
         this.vaultHome = expandTilde(vaultHome);
     }
 
-    private static String expandTilde(String path) {
+    private static @NonNull String expandTilde(@NonNull String path) {
         if (path.startsWith("~/")) {
             return System.getProperty("user.home") + path.substring(1);
         }

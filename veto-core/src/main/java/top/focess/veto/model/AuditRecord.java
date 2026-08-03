@@ -27,14 +27,14 @@ public class AuditRecord {
     private final boolean vetoApplied;
 
     public AuditRecord(
-            String dagPayloadId,
-            String requestId,
-            String componentSource,
-            String rawPayload,
-            String redactedPayload,
-            String diffExcerpt,
-            String previousRecordHash,
-            AuditAction action,
+            @NonNull String dagPayloadId,
+            @NonNull String requestId,
+            @NonNull String componentSource,
+            @NonNull String rawPayload,
+            @NonNull String redactedPayload,
+            @NonNull String diffExcerpt,
+            @NonNull String previousRecordHash,
+            @NonNull AuditAction action,
             boolean vetoApplied) {
         this.id = UUID.randomUUID().toString();
         this.dagPayloadId = dagPayloadId;
@@ -50,7 +50,7 @@ public class AuditRecord {
         this.currentHash = computeHash();
     }
 
-    private String computeHash() {
+    private @NonNull String computeHash() {
         String content =
                 id
                         + dagPayloadId
@@ -65,7 +65,7 @@ public class AuditRecord {
         return sha256(content);
     }
 
-    private static String sha256(String input) {
+    private static @NonNull String sha256(@NonNull String input) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] hash = digest.digest(input.getBytes());
@@ -81,47 +81,47 @@ public class AuditRecord {
     }
 
     // Getters
-    public String getId() {
+    public @NonNull String getId() {
         return id;
     }
 
-    public String getDagPayloadId() {
+    public @NonNull String getDagPayloadId() {
         return dagPayloadId;
     }
 
-    public String getRequestId() {
+    public @NonNull String getRequestId() {
         return requestId;
     }
 
-    public String getComponentSource() {
+    public @NonNull String getComponentSource() {
         return componentSource;
     }
 
-    public String getRawPayloadHash() {
+    public @NonNull String getRawPayloadHash() {
         return rawPayloadHash;
     }
 
-    public String getRedactedPayloadHash() {
+    public @NonNull String getRedactedPayloadHash() {
         return redactedPayloadHash;
     }
 
-    public String getDiffExcerpt() {
+    public @NonNull String getDiffExcerpt() {
         return diffExcerpt;
     }
 
-    public String getPreviousRecordHash() {
+    public @NonNull String getPreviousRecordHash() {
         return previousRecordHash;
     }
 
-    public String getCurrentHash() {
+    public @NonNull String getCurrentHash() {
         return currentHash;
     }
 
-    public Instant getTimestamp() {
+    public @NonNull Instant getTimestamp() {
         return timestamp;
     }
 
-    public AuditAction getAction() {
+    public @NonNull AuditAction getAction() {
         return action;
     }
 
@@ -139,7 +139,7 @@ public class AuditRecord {
     }
 
     @Override
-    public String toString() {
+    public @NonNull String toString() {
         return "AuditRecord{id='"
                 + id
                 + "', action="

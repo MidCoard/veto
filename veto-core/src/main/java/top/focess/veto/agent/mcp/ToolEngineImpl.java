@@ -59,18 +59,18 @@ public class ToolEngineImpl implements ToolEngine {
     private final @NonNull SandboxManager sandboxManager;
     private final @NonNull ApplicationContext applicationContext;
 
-    private final Map<String, NativeToolDefinition> nativeDefs = new ConcurrentHashMap<>();
-    private final Map<String, NativeTool<?>> nativeByName = new ConcurrentHashMap<>();
-    private final Map<String, AgentToolDefinition> agentDefs = new ConcurrentHashMap<>();
-    private final Map<String, AgentTool<?>> agentBeans = new LinkedHashMap<>();
-    private final Map<String, RemoteToolDefinition> remoteDefs = new ConcurrentHashMap<>();
-    private final Map<String, McpTransport> transports = new ConcurrentHashMap<>();
+    private final @NonNull Map<String, NativeToolDefinition> nativeDefs = new ConcurrentHashMap<>();
+    private final @NonNull Map<String, NativeTool<?>> nativeByName = new ConcurrentHashMap<>();
+    private final @NonNull Map<String, AgentToolDefinition> agentDefs = new ConcurrentHashMap<>();
+    private final @NonNull Map<String, AgentTool<?>> agentBeans = new LinkedHashMap<>();
+    private final @NonNull Map<String, RemoteToolDefinition> remoteDefs = new ConcurrentHashMap<>();
+    private final @NonNull Map<String, McpTransport> transports = new ConcurrentHashMap<>();
 
     public ToolEngineImpl(
-            @Qualifier(LlmJacksonConfig.LLM_OBJECT_MAPPER) ObjectMapper mapper,
-            List<NativeTool<?>> nativeToolBeans,
-            SandboxManager sandboxManager,
-            ApplicationContext applicationContext) {
+            @Qualifier(LlmJacksonConfig.LLM_OBJECT_MAPPER) @NonNull ObjectMapper mapper,
+            @NonNull List<NativeTool<?>> nativeToolBeans,
+            @NonNull SandboxManager sandboxManager,
+            @NonNull ApplicationContext applicationContext) {
         this.mapper = mapper;
         this.nativeToolBeans = nativeToolBeans;
         this.sandboxManager = sandboxManager;
@@ -124,7 +124,7 @@ public class ToolEngineImpl implements ToolEngine {
     }
 
     @Override
-    public @NonNull List<ToolDefinition> getActiveTools(@NonNull Set<String> whitelist) {
+    public @NonNull List<ToolDefinition> getActiveTools(@Nullable Set<String> whitelist) {
         List<ToolDefinition> active = new ArrayList<>();
         for (NativeToolDefinition def : nativeDefs.values()) {
             if (whitelist == null || whitelist.contains(def.name())) {
@@ -178,12 +178,12 @@ public class ToolEngineImpl implements ToolEngine {
      * Registers an external tool discovered from a registered MCP server. Names are prefixed {@code
      * {serverName}__{originalToolName}}.
      */
-    public RemoteToolDefinition registerRemoteTool(
-            String serverName,
-            String originalName,
-            String description,
-            RiskCategory risk,
-            JsonNode inputSchema) {
+    public @NonNull RemoteToolDefinition registerRemoteTool(
+            @NonNull String serverName,
+            @NonNull String originalName,
+            @NonNull String description,
+            @NonNull RiskCategory risk,
+            @NonNull JsonNode inputSchema) {
         String prefixed = serverName + "__" + originalName;
         RemoteToolDefinition def =
                 new RemoteToolDefinition(prefixed, description, risk, serverName, inputSchema);
@@ -218,7 +218,29 @@ public class ToolEngineImpl implements ToolEngine {
         }
         JsonNode jsonArgs = mapper.valueToTree(call.args());
         String result = bean.executeFromJson(jsonArgs, mapper);
-        return new ToolResult(call.toolName(), call.callId(), true, result);
+        // Native tools signal "this call did not do what you asked" by returning a JSON envelope
+        // `{"status":"error", "error": "<message>"}` rather than throwing. The engine has not
+        // thrown, so a naive mapping would surface success=true and the IngressDefense observation
+        // envelope would render [ok, ...] - misleading the agent into thinking the path was OK
+        // while the body reports the path is missing. Sniff the canonical error prefix and
+        // promote it to success=false so the envelope renders [error, ...] and downstream
+        // masking/alerting sees the failure.
+        boolean success = !isErrorJson(result);
+        return new ToolResult(call.toolName(), call.callId(), success, result);
+    }
+
+    /**
+     * Returns {@code true} when {@code body} starts with the canonical native-tool error envelope
+     * {@code {"status":"error", ...}}. Centralised so the success-mapping rule lives in one place
+     * and tools that follow the documented convention get the correct {@code success} flag for
+     * free.
+     */
+    private static boolean isErrorJson(@Nullable String body) {
+        if (body == null) return false;
+        // Trim leading whitespace - tools may indent their JSON before returning.
+        int i = 0;
+        while (i < body.length() && Character.isWhitespace(body.charAt(i))) i++;
+        return body.startsWith("{\"status\":\"error\"", i);
     }
 
     /**

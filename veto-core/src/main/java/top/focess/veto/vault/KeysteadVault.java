@@ -2,7 +2,7 @@ package top.focess.veto.vault;
 
 import jakarta.annotation.PreDestroy;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
+import java.io.UncheckedIOException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -11,7 +11,6 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Arrays;
 import java.util.Optional;
 import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
@@ -22,19 +21,17 @@ import top.focess.keystead.memory.SecretBuffer;
 import top.focess.keystead.model.SecretId;
 import top.focess.keystead.model.SecretMetadata;
 import top.focess.keystead.model.SecretType;
-import top.focess.keystead.model.VaultId;
 import top.focess.keystead.service.CreateVaultRequest;
 import top.focess.keystead.service.DefaultVaultService;
 import top.focess.keystead.service.VaultHandle;
 import top.focess.keystead.service.VaultService;
-import top.focess.keystead.store.FileVaultStore;
 
 /**
  * Keystead-backed credential vault. Replaces the old {@code CredentialVault} + {@code SecureStore}
- * + {@code VaultKeyManager}: each user has their own keystead vault (a {@link FileVaultStore} at
- * {@code {vaultHome}/keystead/{username}/}), opened with their login password. keystead performs
- * the KDF and vault-key wrapping internally, so veto no longer derives or stores a master/vault
- * key.
+ * + {@code VaultKeyManager}: each user has their own keystead vault (an {@code OneFileVaultStore}
+ * at {@code {vaultHome}/keystead/{username}/vault.keystead}), opened with their login password.
+ * keystead performs the KDF and vault-key wrapping internally, so veto no longer derives or stores
+ * a master/vault key.
  *
  * <p>An unlocked {@link VaultHandle} is cached per user for the lifetime of the login. Consumers
  * retrieve the current user's handle via {@link #currentHandle()} (resolved from {@link
@@ -52,9 +49,10 @@ public class KeysteadVault {
 
     private static final Logger log = LoggerFactory.getLogger(KeysteadVault.class);
 
-    private final Path vaultBase;
-    private final ConcurrentHashMap<String, VaultHandle> handles = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, VaultService> services = new ConcurrentHashMap<>();
+    private final @NonNull Path vaultBase;
+    private final @NonNull VaultService vaultService = new DefaultVaultService();
+    private final @NonNull ConcurrentHashMap<String, VaultHandle> handles =
+            new ConcurrentHashMap<>();
 
     public KeysteadVault(@NonNull CredentialVaultConfiguration config) {
         this.vaultBase = Path.of(config.getVaultHome(), "keystead");
@@ -66,8 +64,9 @@ public class KeysteadVault {
     public void signup(@NonNull String username, @NonNull String password) {
         char[] pw = password.toCharArray();
         try {
+            ensureVaultDir(username);
             VaultHandle handle =
-                    serviceFor(username).createVault(new CreateVaultRequest(vaultId(username)), pw);
+                    vaultService.createVault(new CreateVaultRequest(vaultPath(username)), pw);
             handles.put(username, handle);
             log.info("KeysteadVault: vault created and opened for user '{}'", username);
         } finally {
@@ -83,8 +82,9 @@ public class KeysteadVault {
     public void createVault(@NonNull String username, @NonNull String password) {
         char[] pw = password.toCharArray();
         try {
+            ensureVaultDir(username);
             VaultHandle handle =
-                    serviceFor(username).createVault(new CreateVaultRequest(vaultId(username)), pw);
+                    vaultService.createVault(new CreateVaultRequest(vaultPath(username)), pw);
             handle.close();
             log.info("KeysteadVault: vault created (closed) for user '{}'", username);
         } finally {
@@ -100,7 +100,7 @@ public class KeysteadVault {
         }
         char[] pw = password.toCharArray();
         try {
-            VaultHandle handle = serviceFor(username).openVault(vaultId(username), pw);
+            VaultHandle handle = vaultService.openVault(vaultPath(username), pw);
             handles.put(username, handle);
             log.info("KeysteadVault: vault opened for user '{}'", username);
         } finally {
@@ -130,7 +130,6 @@ public class KeysteadVault {
      */
     public void deleteVaultStore(@NonNull String username) {
         logout(username);
-        services.remove(username);
         Path path = vaultBase.resolve(username);
         if (!Files.exists(path)) {
             return;
@@ -141,15 +140,16 @@ public class KeysteadVault {
                         path,
                         new SimpleFileVisitor<>() {
                             @Override
-                            public FileVisitResult visitFile(Path f, BasicFileAttributes a)
+                            public @NonNull FileVisitResult visitFile(
+                                    @NonNull Path f, @NonNull BasicFileAttributes a)
                                     throws IOException {
                                 Files.delete(f);
                                 return FileVisitResult.CONTINUE;
                             }
 
                             @Override
-                            public FileVisitResult postVisitDirectory(Path d, IOException exc)
-                                    throws IOException {
+                            public @NonNull FileVisitResult postVisitDirectory(
+                                    @NonNull Path d, @Nullable IOException exc) throws IOException {
                                 Files.delete(d);
                                 return FileVisitResult.CONTINUE;
                             }
@@ -289,9 +289,27 @@ public class KeysteadVault {
         }
     }
 
+    /**
+     * Whether a credential with the given title (key) exists in the named user's vault. Unlike the
+     * other note helpers, which resolve the current user via {@link UserContext}, this takes the
+     * username explicitly so callers that already hold the username (e.g. the model-tier service
+     * validating a {@code credKey}) can check without relying on a thread-local context.
+     *
+     * @throws VaultLockedException if the user's vault is not unlocked
+     */
+    public boolean hasNote(@NonNull String username, @NonNull String title) {
+        VaultHandle handle = handles.get(username);
+        if (handle == null || handle.isClosed()) {
+            throw new VaultLockedException("Vault is locked for user: " + username);
+        }
+        synchronized (handle) {
+            return findNoteByTitle(handle, title) != null;
+        }
+    }
+
     // ── internals ──────────────────────────────────────────────────────────
 
-    private SecretId findNoteByTitle(@NonNull VaultHandle handle, @NonNull String title) {
+    private @Nullable SecretId findNoteByTitle(@NonNull VaultHandle handle, @NonNull String title) {
         return handle.listSecrets().stream()
                 .filter(
                         m ->
@@ -302,18 +320,20 @@ public class KeysteadVault {
                 .orElse(null);
     }
 
-    private VaultService serviceFor(@NonNull String username) {
-        return services.computeIfAbsent(
-                username, u -> new DefaultVaultService(new FileVaultStore(vaultBase.resolve(u))));
+    private @NonNull Path vaultPath(@NonNull String username) {
+        return vaultBase.resolve(username).resolve("vault.keystead");
     }
 
-    private static VaultId vaultId(@NonNull String username) {
-        return new VaultId(
-                UUID.nameUUIDFromBytes(
-                        ("veto-vault:" + username).getBytes(StandardCharsets.UTF_8)));
+    private void ensureVaultDir(@NonNull String username) {
+        try {
+            Files.createDirectories(vaultBase.resolve(username));
+        } catch (IOException e) {
+            throw new UncheckedIOException(
+                    "Could not create vault directory for user '" + username + "'", e);
+        }
     }
 
-    private static void wipe(char[] chars) {
+    private static void wipe(char @NonNull [] chars) {
         Arrays.fill(chars, '\0');
     }
 

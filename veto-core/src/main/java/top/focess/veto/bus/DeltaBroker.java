@@ -26,14 +26,15 @@ public class DeltaBroker {
     private final @NonNull ObjectMapper mapper;
 
     /** Per-session listeners. */
-    private final ConcurrentMap<UUID, List<Consumer<DeltaFrame>>> listeners =
+    private final @NonNull ConcurrentMap<UUID, List<Consumer<DeltaFrame>>> listeners =
             new ConcurrentHashMap<>();
 
     /** Wildcard subscribers (receive every frame regardless of sessionId). */
-    private final List<Consumer<DeltaFrame>> wildcardListeners = new CopyOnWriteArrayList<>();
+    private final @NonNull List<Consumer<DeltaFrame>> wildcardListeners =
+            new CopyOnWriteArrayList<>();
 
     /** Per-session monotonic sequence. */
-    private final ConcurrentMap<UUID, AtomicLong> sequences = new ConcurrentHashMap<>();
+    private final @NonNull ConcurrentMap<UUID, AtomicLong> sequences = new ConcurrentHashMap<>();
 
     public
     @NonNull
@@ -120,7 +121,7 @@ public class DeltaBroker {
     }
 
     /** Test-only: list of subscriber counts per session. */
-    public Map<UUID, Integer> subscriberCounts() {
+    public @NonNull Map<UUID, Integer> subscriberCounts() {
         Map<UUID, Integer> out = new java.util.HashMap<>();
         for (var entry : listeners.entrySet()) {
             out.put(entry.getKey(), entry.getValue().size());

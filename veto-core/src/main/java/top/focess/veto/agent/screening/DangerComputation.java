@@ -51,7 +51,7 @@ public class DangerComputation {
         return max(base, pathDanger, shellDanger);
     }
 
-    private Danger baseFromRisk(RiskCategory risk) {
+    private @NonNull Danger baseFromRisk(@NonNull RiskCategory risk) {
         return switch (risk) {
             case READ_ONLY -> Danger.SAFE;
             case FILE_WRITE -> Danger.ELEVATED;
@@ -61,12 +61,12 @@ public class DangerComputation {
         };
     }
 
-    private Danger pathDanger(
-            ToolDefinition def,
-            ToolCall call,
-            Workspace workspace,
-            DeployerPolicy policy,
-            ProtectedSet protectedSet) {
+    private @NonNull Danger pathDanger(
+            @NonNull ToolDefinition def,
+            @NonNull ToolCall call,
+            @NonNull Workspace workspace,
+            @NonNull DeployerPolicy policy,
+            @NonNull ProtectedSet protectedSet) {
         Map<String, ParamCategory> hints =
                 def instanceof NativeToolDefinition n ? n.paramHints() : Map.of();
         if (hints.isEmpty()) {
@@ -93,18 +93,18 @@ public class DangerComputation {
         return worst;
     }
 
-    private Danger classifyPath(
-            Resolution res,
-            RiskCategory risk,
-            DeployerPolicy policy,
-            ProtectedSet protectedSet,
-            Workspace workspace) {
+    private @NonNull Danger classifyPath(
+            @NonNull Resolution res,
+            @NonNull RiskCategory risk,
+            @NonNull DeployerPolicy policy,
+            @NonNull ProtectedSet protectedSet,
+            @NonNull Workspace workspace) {
         Path host = res.hostPath();
         String str = host.toString();
 
         // 1. Check policies that make certain paths CRITICAL
         if (policy != DeployerPolicy.FULL_ACCESS) {
-            if (protectedSet != null && protectedSet.covers(host)) {
+            if (protectedSet.covers(host)) {
                 return Danger.CRITICAL;
             }
         }
@@ -168,7 +168,7 @@ public class DangerComputation {
         return Danger.SAFE;
     }
 
-    private boolean isDeviceOrKernelPath(String path) {
+    private boolean isDeviceOrKernelPath(@NonNull String path) {
         String p = path.toLowerCase();
         return p.startsWith("/dev/")
                 || p.startsWith("/proc/")
@@ -177,7 +177,7 @@ public class DangerComputation {
     }
 
     @SuppressWarnings("unchecked")
-    private Danger shellDanger(ToolDefinition def, ToolCall call) {
+    private @NonNull Danger shellDanger(@NonNull ToolDefinition def, @NonNull ToolCall call) {
         if (def.risk() != RiskCategory.SHELL_EXEC) {
             return Danger.SAFE;
         }
@@ -215,7 +215,7 @@ public class DangerComputation {
         return worst;
     }
 
-    private boolean isNetworkScan(String exec) {
+    private boolean isNetworkScan(@NonNull String exec) {
         return Set.of("curl", "wget", "nc", "ncat", "nmap", "ftp", "telnet").contains(exec);
     }
 
@@ -225,12 +225,12 @@ public class DangerComputation {
      * handles both {@code /} and {@code \} separators without parsing via {@link Path} (which is
      * filesystem-sensitive and can misparse foreign-style paths).
      */
-    private static String baseName(String exe) {
+    private static @NonNull String baseName(@NonNull String exe) {
         int slash = Math.max(exe.lastIndexOf('/'), exe.lastIndexOf('\\'));
         return slash >= 0 ? exe.substring(slash + 1) : exe;
     }
 
-    private static Danger max(Danger... ds) {
+    private static @NonNull Danger max(@NonNull Danger... ds) {
         Danger worst = Danger.SAFE;
         for (Danger d : ds) {
             if (d == null) continue;

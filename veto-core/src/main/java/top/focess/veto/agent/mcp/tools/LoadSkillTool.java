@@ -19,9 +19,9 @@ import top.focess.veto.agent.skills.SkillRegistry;
 @Component
 public final class LoadSkillTool implements AgentTool<LoadSkillArgs> {
 
-    private final SkillRegistry skillRegistry;
+    private final @NonNull SkillRegistry skillRegistry;
 
-    public LoadSkillTool(SkillRegistry skillRegistry) {
+    public LoadSkillTool(@NonNull SkillRegistry skillRegistry) {
         this.skillRegistry = skillRegistry;
     }
 

@@ -123,7 +123,7 @@ public class UserRegistry {
 
     // ── Crypto ──────────────────────────────────────────────────────────────
 
-    private byte[] hashPassword(String password, byte[] salt) {
+    private byte @NonNull [] hashPassword(@NonNull String password, byte @NonNull [] salt) {
         Argon2Parameters params =
                 new Argon2Parameters.Builder(Argon2Parameters.ARGON2_id)
                         .withSalt(salt)
@@ -138,7 +138,7 @@ public class UserRegistry {
         return hash;
     }
 
-    private static SecureRandom newSecureRandom() {
+    private static @NonNull SecureRandom newSecureRandom() {
         try {
             return SecureRandom.getInstanceStrong();
         } catch (Exception e) {

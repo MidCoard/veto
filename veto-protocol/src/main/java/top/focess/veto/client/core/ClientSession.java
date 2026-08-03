@@ -218,6 +218,10 @@ public final class ClientSession {
                 case IpcFrame.Delta d -> {
                     if (state == State.IDLE) {
                         rejectOrphan(d, "Delta");
+                    } else if (d.isThought()) {
+                        // Interim reasoning is routed to a separate view hook so the renderer can
+                        // style it distinct from user-facing message prose.
+                        events.add(() -> view.onThought(d.content()));
                     } else {
                         events.add(() -> view.onDelta(d.content()));
                     }
@@ -227,6 +231,24 @@ public final class ClientSession {
                         rejectOrphan(p, "Progress");
                     } else {
                         events.add(() -> view.onProgress(StyledText.muted("  ⏳ " + p.content())));
+                    }
+                }
+                case IpcFrame.ToolCall tc -> {
+                    // Transparency emission: the agent is about to execute a tool call. Routed to
+                    // the view so a renderer can show a Claude-Code-style indicator. An orphan
+                    // call (no in-flight request) is dropped silently — the audit log still
+                    // records the call durably on the backend, so the user is not misled.
+                    if (state != State.IDLE) {
+                        events.add(() -> view.onToolCall(tc));
+                    }
+                }
+                case IpcFrame.ToolResult tr -> {
+                    // Transparency emission: the framed observation the model received. The body is
+                    // self-describing (carries the tool + args in its "Observation (...)" header),
+                    // so the view does not need to track call/result pairs to render it. Same
+                    // orphan tolerance as ToolCall.
+                    if (state != State.IDLE) {
+                        events.add(() -> view.onToolResult(tr));
                     }
                 }
                 case IpcFrame.Prompt pr -> {

@@ -15,6 +15,6 @@ import org.jspecify.annotations.NonNull;
 public record ActionsProgram(@NonNull List<Action> actions) {
 
     public ActionsProgram {
-        actions = actions == null ? List.of() : List.copyOf(actions);
+        actions = List.copyOf(actions);
     }
 }

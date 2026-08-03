@@ -2,6 +2,7 @@ package top.focess.veto.training;
 
 import java.time.Instant;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Represents the current state of a model training run. Thread-safe; read by the REST controller
@@ -21,17 +22,17 @@ public class TrainingProgress {
         CANCELLED
     }
 
-    private volatile Status status = Status.IDLE;
+    private volatile @NonNull Status status = Status.IDLE;
     private volatile double progress = 0.0;
-    private volatile String currentPhase = "";
-    private volatile String message = "";
-    private volatile String trainedModelPath = "";
-    private volatile Instant startedAt = null;
-    private volatile Instant completedAt = null;
-    private volatile String errorMessage = "";
+    private volatile @NonNull String currentPhase = "";
+    private volatile @NonNull String message = "";
+    private volatile @NonNull String trainedModelPath = "";
+    private volatile @Nullable Instant startedAt = null;
+    private volatile @Nullable Instant completedAt = null;
+    private volatile @NonNull String errorMessage = "";
 
     /** Optional evaluation report attached after evaluation. */
-    private volatile EvaluationReport evaluation = null;
+    private volatile @Nullable EvaluationReport evaluation = null;
 
     public TrainingProgress() {}
 
@@ -89,7 +90,7 @@ public class TrainingProgress {
 
     // ── Getters ──
 
-    public Status getStatus() {
+    public @NonNull Status getStatus() {
         return status;
     }
 
@@ -97,31 +98,31 @@ public class TrainingProgress {
         return progress;
     }
 
-    public String getCurrentPhase() {
+    public @NonNull String getCurrentPhase() {
         return currentPhase;
     }
 
-    public String getMessage() {
+    public @NonNull String getMessage() {
         return message;
     }
 
-    public String getTrainedModelPath() {
+    public @NonNull String getTrainedModelPath() {
         return trainedModelPath;
     }
 
-    public Instant getStartedAt() {
+    public @Nullable Instant getStartedAt() {
         return startedAt;
     }
 
-    public Instant getCompletedAt() {
+    public @Nullable Instant getCompletedAt() {
         return completedAt;
     }
 
-    public String getErrorMessage() {
+    public @NonNull String getErrorMessage() {
         return errorMessage;
     }
 
-    public EvaluationReport getEvaluation() {
+    public @Nullable EvaluationReport getEvaluation() {
         return evaluation;
     }
 
@@ -132,15 +133,15 @@ public class TrainingProgress {
     // ── Record for evaluation report (mirrors Python schema) ──
 
     public record EvaluationReport(
-            String modelPath,
-            String datasetPath,
-            String timestamp,
+            @Nullable String modelPath,
+            @Nullable String datasetPath,
+            @Nullable String timestamp,
             int totalSamples,
             double elapsedSeconds,
-            GbnfCompliance gbnfCompliance,
-            DecisionAccuracy decisionAccuracy,
-            RedactionAccuracy redactionAccuracy,
-            StructuralValidation structuralValidation) {
+            @NonNull GbnfCompliance gbnfCompliance,
+            @NonNull DecisionAccuracy decisionAccuracy,
+            @NonNull RedactionAccuracy redactionAccuracy,
+            @NonNull StructuralValidation structuralValidation) {
         public record GbnfCompliance(int validJsonCount, double validJsonRate) {}
 
         public record DecisionAccuracy(int correct, int total, double accuracy) {}

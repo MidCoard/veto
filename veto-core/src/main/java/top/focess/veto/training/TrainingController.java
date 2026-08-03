@@ -49,7 +49,7 @@ public class TrainingController {
      * "/path/to/custom_data.jsonl", "skipQualityFilter": false }}
      */
     @PostMapping("/start")
-    public ResponseEntity<Map<String, Object>> startTraining(
+    public @NonNull ResponseEntity<Map<String, Object>> startTraining(
             @Nullable @RequestBody(required = false) TrainingRequest request) {
         if (trainingManager.isRunning()) {
             return ResponseEntity.status(409)
@@ -91,7 +91,7 @@ public class TrainingController {
 
     /** Cancel the current training run. */
     @PostMapping("/cancel")
-    public ResponseEntity<Map<String, Object>> cancelTraining() {
+    public @NonNull ResponseEntity<Map<String, Object>> cancelTraining() {
         if (!trainingManager.isRunning()) {
             return ResponseEntity.ok(
                     Map.of(
@@ -117,7 +117,7 @@ public class TrainingController {
 
     /** Get current training progress. */
     @GetMapping("/progress")
-    public ResponseEntity<Map<String, Object>> getProgress() {
+    public @NonNull ResponseEntity<Map<String, Object>> getProgress() {
         TrainingProgress p = trainingManager.getProgress();
         return ResponseEntity.ok(
                 Map.of(
@@ -139,8 +139,8 @@ public class TrainingController {
      * <p>Request body: { "modelPath": "./training/models/veto-slm-q4_k_m.gguf" }
      */
     @PostMapping("/deploy")
-    public ResponseEntity<Map<String, Object>> deployModel(
-            @RequestBody Map<String, String> request) {
+    public @NonNull ResponseEntity<Map<String, Object>> deployModel(
+            @RequestBody @NonNull Map<String, String> request) {
         String modelPath = request.get("modelPath");
         if (modelPath == null || modelPath.isEmpty()) {
             // Default to the most recent trained model
@@ -175,7 +175,7 @@ public class TrainingController {
 
     /** Get overall training system status (configuration info). */
     @GetMapping("/status")
-    public ResponseEntity<Map<String, Object>> getStatus() {
+    public @NonNull ResponseEntity<Map<String, Object>> getStatus() {
         return ResponseEntity.ok(
                 Map.of(
                         "running", trainingManager.isRunning(),
@@ -194,7 +194,7 @@ public class TrainingController {
      * run. Returns the filter report.
      */
     @PostMapping("/quality-check")
-    public ResponseEntity<Map<String, Object>> runQualityCheck() {
+    public @NonNull ResponseEntity<Map<String, Object>> runQualityCheck() {
         Map<String, Object> report = trainingManager.runStandaloneQualityCheck();
         if (report != null) {
             return ResponseEntity.ok(
@@ -218,7 +218,7 @@ public class TrainingController {
 
     /** Get the latest evaluation report from the most recent training run. */
     @GetMapping("/evaluation")
-    public ResponseEntity<Map<String, Object>> getEvaluation() {
+    public @NonNull ResponseEntity<Map<String, Object>> getEvaluation() {
         TrainingProgress.EvaluationReport eval = trainingManager.getProgress().getEvaluation();
         if (eval != null) {
             return ResponseEntity.ok(Map.of("success", true, "evaluation", eval));

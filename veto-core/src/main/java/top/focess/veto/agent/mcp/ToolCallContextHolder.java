@@ -87,6 +87,18 @@ public final class ToolCallContextHolder {
         CONTEXT.set(new ToolCallContext(agentId, userId, groupId));
     }
 
+    /**
+     * Sets the tool call context for the current thread, including the caller's group and the
+     * session owner (username) whose model-tier profile resolves the caller's tier.
+     */
+    public static void set(
+            @NonNull String agentId,
+            @NonNull UUID userId,
+            @Nullable UUID groupId,
+            @Nullable String owner) {
+        CONTEXT.set(new ToolCallContext(agentId, userId, groupId, owner));
+    }
+
     /** Sets the tool call context for the current thread. */
     public static void set(@NonNull ToolCallContext ctx) {
         CONTEXT.set(ctx);

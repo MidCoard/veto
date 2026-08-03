@@ -21,23 +21,23 @@ public interface MemoryStore {
      * memories whose embedding cosine-similarity to the query embedding is at or above the
      * configured score floor, ranked descending. Results carry their source attribution.
      */
-    List<ScoredMemory> search(MemoryQuery query);
+    @NonNull List<ScoredMemory> search(@NonNull MemoryQuery query);
 
     /** Append a new memory to the store (insert). */
-    MemoryId add(Memory memory);
+    @NonNull MemoryId add(@NonNull Memory memory);
 
     /**
      * Capture one turn's content into Session LTM (long_term_memory_tiers.md §3.1 capture point).
      * The engine calls this at the capture points (after tool execution, after a thought, after a
      * user prompt). The content is already masked at the capture point.
      */
-    void capture(TurnRecord turn, UUID sessionId, UUID userId);
+    void capture(@NonNull TurnRecord turn, @NonNull UUID sessionId, @NonNull UUID userId);
 
     /** Promote a Session-LTM memory to Cross-Session LTM (the curating boundary, §3.3). */
-    void promote(MemoryId id);
+    void promote(@NonNull MemoryId id);
 
     /** Explicitly drop a memory (user- or agent-initiated). */
-    void forget(MemoryId id);
+    void forget(@NonNull MemoryId id);
 
     /**
      * A search result: the memory + its similarity score (1.0 = identical embedding, 0.0 =

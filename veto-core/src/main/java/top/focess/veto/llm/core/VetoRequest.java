@@ -30,9 +30,38 @@ public record VetoRequest(
         @NonNull String credentialKey,
         @NonNull LlmOptions options,
         @NonNull List<ChatMessage> messages,
-        @Nullable JsonNode responseSchema) {
+        @Nullable JsonNode responseSchema,
+        @Nullable String baseUrl) {
 
-    /** Backwards-compatible constructor (single-turn system+user; no per-turn schema). */
+    /**
+     * 9-arg convenience: no per-turn schema and no base-URL override (null -> provider default).
+     */
+    public VetoRequest(
+            @NonNull String systemPrompt,
+            @NonNull String userPrompt,
+            @NonNull List<ToolDefinition> tools,
+            @NonNull ProviderType providerType,
+            @NonNull String modelName,
+            @NonNull String credentialKey,
+            @NonNull LlmOptions options,
+            @NonNull List<ChatMessage> messages,
+            @Nullable JsonNode responseSchema) {
+        this(
+                systemPrompt,
+                userPrompt,
+                tools,
+                providerType,
+                modelName,
+                credentialKey,
+                options,
+                messages,
+                responseSchema,
+                null);
+    }
+
+    /**
+     * Backwards-compatible constructor (single-turn system+user; no per-turn schema, no base URL).
+     */
     public VetoRequest(
             @NonNull String systemPrompt,
             @NonNull String userPrompt,
@@ -50,6 +79,7 @@ public record VetoRequest(
                 credentialKey,
                 options,
                 List.of(),
+                null,
                 null);
     }
 

@@ -35,7 +35,7 @@ public class TerminateException extends RuntimeException {
      *
      * @return the termination reason string; never {@code null}
      */
-    public String getReason() {
+    public @NonNull String getReason() {
         return reason;
     }
 }

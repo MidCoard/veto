@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The PROTECTED protected set — paths default-blocked (CRITICAL on access). Seeded with deployer
@@ -18,10 +19,10 @@ import org.jspecify.annotations.NonNull;
 public record ProtectedSet(@NonNull Set<Path> paths) {
 
     public ProtectedSet {
-        paths = paths == null ? Set.of() : canonicalizeAll(paths);
+        paths = canonicalizeAll(paths);
     }
 
-    public static ProtectedSet empty() {
+    public static @NonNull ProtectedSet empty() {
         return new ProtectedSet(Set.of());
     }
 
@@ -29,7 +30,7 @@ public record ProtectedSet(@NonNull Set<Path> paths) {
      * Seeded with the home-relative deployer defaults only ({@code ~/.veto/users/default/}, {@code
      * ~/.ssh}, {@code ~/.aws}, {@code ~/.gnupg}).
      */
-    public static ProtectedSet withDeployerDefaults() {
+    public static @NonNull ProtectedSet withDeployerDefaults() {
         return withDeployerDefaults("default", List.of());
     }
 
@@ -49,11 +50,9 @@ public record ProtectedSet(@NonNull Set<Path> paths) {
         defaults.add(Path.of(home, ".ssh"));
         defaults.add(Path.of(home, ".aws"));
         defaults.add(Path.of(home, ".gnupg"));
-        if (workspaceRoots != null) {
-            for (Path root : workspaceRoots) {
-                if (root != null) {
-                    defaults.add(root.resolve(".env"));
-                }
+        for (Path root : workspaceRoots) {
+            if (root != null) {
+                defaults.add(root.resolve(".env"));
             }
         }
         return new ProtectedSet(defaults);
@@ -65,15 +64,17 @@ public record ProtectedSet(@NonNull Set<Path> paths) {
      * explicitly shared with the requesting user; the requesting user gets {@code READ_ONLY} or
      * {@code READ_WRITE} on it per the grant mode.
      */
-    public static ProtectedSet withSharedGrants(
-            String vetoUserId, List<Path> workspaceRoots, List<SharedGrant> sharedGrants) {
+    public static @NonNull ProtectedSet withSharedGrants(
+            @NonNull String vetoUserId,
+            @NonNull List<Path> workspaceRoots,
+            @Nullable List<SharedGrant> sharedGrants) {
         ProtectedSet base = withDeployerDefaults(vetoUserId, workspaceRoots);
         if (sharedGrants == null || sharedGrants.isEmpty()) {
             return base;
         }
         Set<Path> paths = new HashSet<>(base.paths());
         for (SharedGrant g : sharedGrants) {
-            if (g == null || g.rootPath() == null) {
+            if (g == null) {
                 continue;
             }
             paths.add(g.rootPath());
@@ -88,7 +89,7 @@ public record ProtectedSet(@NonNull Set<Path> paths) {
      * #standardSystemProtected(Path)}.
      */
     public @NonNull ProtectedSet withSystemProtected(@NonNull Collection<Path> systemPaths) {
-        if (systemPaths == null || systemPaths.isEmpty()) {
+        if (systemPaths.isEmpty()) {
             return this;
         }
         Set<Path> merged = new HashSet<>(this.paths);
@@ -122,16 +123,7 @@ public record ProtectedSet(@NonNull Set<Path> paths) {
      * being shared; {@code mode} is the access level. The grant is a per-user authorization — it is
      * checked when {@code DangerComputation} runs under {@link DeployerPolicy#TENANT}.
      */
-    public record SharedGrant(@NonNull Path rootPath, @NonNull GrantMode mode) {
-        public SharedGrant {
-            if (rootPath == null) {
-                throw new IllegalArgumentException("rootPath");
-            }
-            if (mode == null) {
-                mode = GrantMode.READ_ONLY;
-            }
-        }
-    }
+    public record SharedGrant(@NonNull Path rootPath, @NonNull GrantMode mode) {}
 
     public enum GrantMode {
         READ_ONLY,
@@ -149,7 +141,7 @@ public record ProtectedSet(@NonNull Set<Path> paths) {
         return false;
     }
 
-    private static Set<Path> canonicalizeAll(Set<Path> in) {
+    private static @NonNull Set<Path> canonicalizeAll(@NonNull Set<Path> in) {
         return in.stream().map(p -> p.toAbsolutePath().normalize()).collect(Collectors.toSet());
     }
 }

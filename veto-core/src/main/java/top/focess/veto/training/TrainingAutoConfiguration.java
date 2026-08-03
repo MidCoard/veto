@@ -21,7 +21,7 @@ public class TrainingAutoConfiguration {
     private final @NonNull LlamaCppBridge llamaCppBridge;
 
     public TrainingAutoConfiguration(
-            TrainingManager trainingManager, LlamaCppBridge llamaCppBridge) {
+            @NonNull TrainingManager trainingManager, @NonNull LlamaCppBridge llamaCppBridge) {
         this.trainingManager = trainingManager;
         this.llamaCppBridge = llamaCppBridge;
     }

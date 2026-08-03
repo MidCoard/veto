@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -28,7 +29,7 @@ public class DeltaBusBridge {
     private final @NonNull DeltaBroker broker;
     private final @NonNull VetoWebSocketHandler handler;
     private final @NonNull ObjectMapper mapper;
-    private AutoCloseable subscription;
+    private @Nullable AutoCloseable subscription;
 
     public
     @NonNull

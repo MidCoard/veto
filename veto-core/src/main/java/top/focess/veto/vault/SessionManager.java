@@ -18,7 +18,7 @@ public class SessionManager {
 
     private static final Logger log = LoggerFactory.getLogger(SessionManager.class);
 
-    private final ConcurrentHashMap<String, Session> sessions = new ConcurrentHashMap<>();
+    private final @NonNull ConcurrentHashMap<String, Session> sessions = new ConcurrentHashMap<>();
 
     public @NonNull String createSession(@NonNull String username) {
         String token = UUID.randomUUID().toString();
@@ -28,9 +28,6 @@ public class SessionManager {
     }
 
     public @NonNull Optional<Session> validate(@NonNull String token) {
-        if (token == null) {
-            return Optional.empty();
-        }
         return Optional.ofNullable(sessions.get(token));
     }
 

@@ -1,5 +1,6 @@
 package top.focess.veto.agent.mcp.tools;
 
+import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.mcp.AgentToolDefinition;
 import top.focess.veto.agent.mcp.Doc;
 
@@ -11,4 +12,4 @@ import top.focess.veto.agent.mcp.Doc;
  * not-implemented observation.
  */
 public record CreateGroupArgs(
-        @Doc("A description/goal for the delegation to accomplish.") String description) {}
+        @Doc("A description/goal for the delegation to accomplish.") @NonNull String description) {}

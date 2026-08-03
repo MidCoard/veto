@@ -3,7 +3,6 @@ package top.focess.veto.agent;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
@@ -14,8 +13,6 @@ import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.mcp.DefaultToolEngine;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
-import top.focess.veto.agent.workspace.PathMode;
-import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.llm.core.ProviderType;
 import top.focess.veto.llm.core.UniformLLMCaller;
@@ -94,10 +91,7 @@ class AgentServiceHistorySeedTest {
         ObjectMapper mapper = new ObjectMapper();
         PromptCompiler compiler =
                 new PromptCompiler(
-                        new DefaultCapabilityTranslator(mapper),
-                        Workspace.single(
-                                Path.of(System.getProperty("user.dir", ".")), PathMode.REAL),
-                        new SystemPromptResolver());
+                        new DefaultCapabilityTranslator(mapper), new SystemPromptResolver());
         org.springframework.test.util.ReflectionTestUtils.setField(
                 compiler, "maxInputTokens", 32000);
         org.springframework.test.util.ReflectionTestUtils.setField(

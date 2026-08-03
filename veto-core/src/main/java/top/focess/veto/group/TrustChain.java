@@ -6,10 +6,10 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.HexFormat;
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The Part 5.5 trust chain — a sealed record of the trust model for skillset authorizations in a
@@ -41,28 +41,28 @@ public sealed interface TrustChain
         permits TrustChain.OwnerIssued, TrustChain.DeployerGranted, TrustChain.SessionEphemeral {
 
     /** Root authority that issued the chain (deployer, user, or Leader). */
-    String rootAuthority();
+    @NonNull String rootAuthority();
 
     /** The Mate's id (the chain's terminal subject). */
-    String subjectId();
+    @NonNull String subjectId();
 
     /** Skillset the grant covers. */
-    String skillset();
+    @NonNull String skillset();
 
     /** Scope tags (project, env, etc.) — empty means "all". */
-    Set<String> scope();
+    @NonNull Set<String> scope();
 
     /** The trust marker at the root of the chain. */
-    String trust();
+    @NonNull String trust();
 
     /** The full delegation chain as a list of {@link Hop}s (root first, subject last). */
-    List<Hop> hops();
+    @NonNull List<Hop> hops();
 
     /** When the chain was issued. */
-    Instant issuedAt();
+    @NonNull Instant issuedAt();
 
     /** When the chain expires (null = no expiry). */
-    Instant expiresAt();
+    @Nullable Instant expiresAt();
 
     /**
      * The SHA-256 of the canonical chain payload (root + subject + skillset + hops + trust +
@@ -70,21 +70,14 @@ public sealed interface TrustChain
      * #verifyIntegrity()}. Any retroactive edit to a hop, the subject, or the issuance time changes
      * the digest and is detected.
      */
-    String auditHash();
+    @NonNull String auditHash();
 
     /** One hop in the delegation chain: who delegated, to whom, with what trust level, and when. */
     record Hop(
             @NonNull String fromAuthority,
             @NonNull String toAuthority,
             @NonNull String trust,
-            @NonNull Instant at) {
-        public Hop {
-            Objects.requireNonNull(fromAuthority, "fromAuthority");
-            Objects.requireNonNull(toAuthority, "toAuthority");
-            Objects.requireNonNull(trust, "trust");
-            Objects.requireNonNull(at, "at");
-        }
-    }
+            @NonNull Instant at) {}
 
     /** Trust levels. */
     enum TrustLevel {
@@ -101,38 +94,38 @@ public sealed interface TrustChain
      * authority, no expiry by default.
      */
     record OwnerIssued(
-            String userId,
-            String subjectId,
-            String skillset,
-            Set<String> scope,
-            List<Hop> hops,
-            Instant issuedAt)
+            @NonNull String userId,
+            @NonNull String subjectId,
+            @NonNull String skillset,
+            @NonNull Set<String> scope,
+            @NonNull List<Hop> hops,
+            @NonNull Instant issuedAt)
             implements TrustChain {
         public OwnerIssued {
-            if (hops == null || hops.isEmpty()) {
+            if (hops.isEmpty()) {
                 throw new IllegalArgumentException("hops must include at least the owner");
             }
             hops = List.copyOf(hops);
-            scope = scope == null ? Set.of() : Set.copyOf(scope);
+            scope = Set.copyOf(scope);
         }
 
         @Override
-        public String rootAuthority() {
+        public @NonNull String rootAuthority() {
             return hops.get(0).fromAuthority();
         }
 
         @Override
-        public String trust() {
+        public @NonNull String trust() {
             return TrustLevel.OWNED.name();
         }
 
         @Override
-        public Instant expiresAt() {
+        public @Nullable Instant expiresAt() {
             return null; // owner-issued chains don't expire
         }
 
         @Override
-        public String auditHash() {
+        public @NonNull String auditHash() {
             return computeAuditHash(rootAuthority(), subjectId, skillset, trust(), hops, issuedAt);
         }
     }
@@ -142,35 +135,35 @@ public sealed interface TrustChain
      * user, who can then delegate. Optional expiry.
      */
     record DeployerGranted(
-            String deployerId,
-            String userId,
-            String subjectId,
-            String skillset,
-            Set<String> scope,
-            List<Hop> hops,
-            Instant issuedAt,
-            Instant expiresAt)
+            @NonNull String deployerId,
+            @NonNull String userId,
+            @NonNull String subjectId,
+            @NonNull String skillset,
+            @NonNull Set<String> scope,
+            @NonNull List<Hop> hops,
+            @NonNull Instant issuedAt,
+            @Nullable Instant expiresAt)
             implements TrustChain {
         public DeployerGranted {
-            if (hops == null || hops.isEmpty()) {
+            if (hops.isEmpty()) {
                 throw new IllegalArgumentException("hops must include at least the deployer");
             }
             hops = List.copyOf(hops);
-            scope = scope == null ? Set.of() : Set.copyOf(scope);
+            scope = Set.copyOf(scope);
         }
 
         @Override
-        public String rootAuthority() {
+        public @NonNull String rootAuthority() {
             return hops.get(0).fromAuthority();
         }
 
         @Override
-        public String trust() {
+        public @NonNull String trust() {
             return TrustLevel.DELEGATED.name();
         }
 
         @Override
-        public String auditHash() {
+        public @NonNull String auditHash() {
             return computeAuditHash(rootAuthority(), subjectId, skillset, trust(), hops, issuedAt);
         }
     }
@@ -180,44 +173,44 @@ public sealed interface TrustChain
      * Auto-revoked on session end.
      */
     record SessionEphemeral(
-            UUID groupId,
-            String leaderId,
-            String subjectId,
-            String skillset,
-            List<Hop> hops,
-            Instant issuedAt)
+            @NonNull UUID groupId,
+            @NonNull String leaderId,
+            @NonNull String subjectId,
+            @NonNull String skillset,
+            @NonNull List<Hop> hops,
+            @NonNull Instant issuedAt)
             implements TrustChain {
 
         public SessionEphemeral {
-            if (hops == null || hops.isEmpty()) {
+            if (hops.isEmpty()) {
                 throw new IllegalArgumentException("hops must include at least the leader");
             }
             hops = List.copyOf(hops);
         }
 
         @Override
-        public String rootAuthority() {
+        public @NonNull String rootAuthority() {
             return leaderId;
         }
 
         @Override
-        public Set<String> scope() {
+        public @NonNull Set<String> scope() {
             return Set.of("group:" + groupId);
         }
 
         @Override
-        public String trust() {
+        public @NonNull String trust() {
             return TrustLevel.DELEGATED.name();
         }
 
         @Override
-        public Instant expiresAt() {
+        public @Nullable Instant expiresAt() {
             // Session-ephemeral chains expire on session end (when the group is disbanded).
             return null;
         }
 
         @Override
-        public String auditHash() {
+        public @NonNull String auditHash() {
             return computeAuditHash(rootAuthority(), subjectId, skillset, trust(), hops, issuedAt);
         }
     }
@@ -267,13 +260,13 @@ public sealed interface TrustChain
      * concatenation of root, subject, skillset, trust, the hops (each as "from→to[trust@at]"), and
      * the issuedAt ISO string. SHA-256 of the UTF-8 bytes, hex-encoded (lowercase).
      */
-    private static String computeAuditHash(
-            String root,
-            String subject,
-            String skillset,
-            String trust,
-            List<Hop> hops,
-            Instant issuedAt) {
+    private static @NonNull String computeAuditHash(
+            @Nullable String root,
+            @Nullable String subject,
+            @Nullable String skillset,
+            @Nullable String trust,
+            @Nullable List<Hop> hops,
+            @Nullable Instant issuedAt) {
         StringBuilder sb = new StringBuilder();
         sb.append("root=")
                 .append(safe(root))
@@ -304,11 +297,11 @@ public sealed interface TrustChain
         return sha256Hex(sb.toString());
     }
 
-    private static String safe(String s) {
+    private static @NonNull String safe(@Nullable String s) {
         return s == null ? "" : s;
     }
 
-    private static String sha256Hex(String input) {
+    private static @NonNull String sha256Hex(@NonNull String input) {
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-256");
             byte[] digest = md.digest(input.getBytes(StandardCharsets.UTF_8));

@@ -1,12 +1,15 @@
 package top.focess.veto.llm.provider;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.llm.client.LlmClient;
 import top.focess.veto.llm.core.ResolvedRequest;
+import top.focess.veto.llm.core.ToolDefinition;
 import top.focess.veto.llm.core.VetoResponse;
 import top.focess.veto.llm.exceptions.LlmAuthException;
 import top.focess.veto.llm.exceptions.LlmException;
@@ -56,7 +59,7 @@ public abstract class AbstractLlmProvider implements LLMProviderStrategy {
      *
      * @return the provider name
      */
-    protected abstract String providerName();
+    protected abstract @NonNull String providerName();
 
     /**
      * Executes the LLM request. Orchestrates the full lifecycle: request invocation, audit logging,
@@ -73,47 +76,26 @@ public abstract class AbstractLlmProvider implements LLMProviderStrategy {
                 requestId,
                 providerName(),
                 request.modelName());
-        // Full logical request (system prompt + role-mapped message flow) so the exact prompt
-        // handed
-        // to the provider is visible in the spring log. This is the universal chokepoint - every
-        // provider (OpenAI, DeepSeek, Anthropic, Gemini) flows through here, so logging here fires
-        // regardless of which LlmClient adapter the provider picks. Provider clients may further
-        // augment the system prompt (e.g. append the veto_pulse schema for non-json_schema
-        // providers); this is the pre-augment compiled prompt. No secrets live on VetoRequest -
-        // apiKey is on ResolvedRequest and is never logged.
+        // This is the universal chokepoint - every provider (OpenAI, DeepSeek, Anthropic, Gemini)
+        // flows through here, so logging here fires regardless of which LlmClient adapter the
+        // provider picks. Per turn only the tool list is surfaced at this layer (each tool's name +
+        // input schema) - that is the actionable surface for debugging tool/path resolution. The
+        // system prompt, role-mapped message flow, userPrompt and responseSchema are NOT logged
+        // here; the full exchange remains in the audit trail via auditLogger.logLLMExchange below.
+        // No secrets live on VetoRequest - apiKey is on ResolvedRequest and is never logged.
         var vetoRequest = request.request();
-        log.debug(
-                "LLM raw request requestId={} systemPrompt ({} chars):\n{}",
-                requestId,
-                vetoRequest.systemPrompt() == null ? 0 : vetoRequest.systemPrompt().length(),
-                vetoRequest.systemPrompt());
-        if (vetoRequest.hasMessages()) {
+        List<ToolDefinition> tools = vetoRequest.tools();
+        log.debug("LLM raw request requestId={} tools ({}):", requestId, tools.size());
+        for (ToolDefinition tool : tools) {
             log.debug(
-                    "LLM raw request requestId={} message flow ({} msgs):",
-                    requestId,
-                    vetoRequest.messages().size());
-            for (int i = 0; i < vetoRequest.messages().size(); i++) {
-                var message = vetoRequest.messages().get(i);
-                log.debug("  [{}] role={} | {}", i, message.role(), message.content());
-            }
-        } else {
-            log.debug(
-                    "LLM raw request requestId={} userPrompt:\n{}",
-                    requestId,
-                    vetoRequest.userPrompt());
-        }
-        if (vetoRequest.responseSchema() != null) {
-            log.debug(
-                    "LLM raw request requestId={} responseSchema (veto_pulse):\n{}",
-                    requestId,
-                    vetoRequest.responseSchema().toPrettyString());
+                    "  [tool] {} params={}", tool.name(), describeInputSchema(tool.inputSchema()));
         }
         try {
             LlmClient.RawCompletion raw = invoke(request);
             log.debug(
                     "LLM raw response requestId={} ({} chars):\n{}",
                     requestId,
-                    raw.rawResponse() == null ? 0 : raw.rawResponse().length(),
+                    raw.rawResponse().length(),
                     raw.rawResponse());
             auditLogger.logLLMExchange(
                     requestId, request.modelName(), raw.requestSummary(), raw.rawResponse());
@@ -150,7 +132,20 @@ public abstract class AbstractLlmProvider implements LLMProviderStrategy {
         }
     }
 
-    private VetoResponse parse(String rawResponse) {
+    /**
+     * Compact JSON rendering of a tool's input schema for debug logging, so the per-tool params
+     * passed to the model are visible without dumping the full system prompt. Falls back to the
+     * map's {@code toString} if serialization fails.
+     */
+    private @NonNull String describeInputSchema(@NonNull Map<String, Object> inputSchema) {
+        try {
+            return objectMapper.writeValueAsString(inputSchema);
+        } catch (Exception e) {
+            return String.valueOf(inputSchema);
+        }
+    }
+
+    private @NonNull VetoResponse parse(@NonNull String rawResponse) {
         try {
             return objectMapper.readValue(rawResponse, VetoResponse.class);
         } catch (Exception e) {

@@ -24,12 +24,15 @@ public class RoutingBusService {
     private final @NonNull BusConfiguration config;
     private final @NonNull ObjectMapper objectMapper;
 
-    private final ConcurrentMap<String, DAGPayload> activePayloads = new ConcurrentHashMap<>();
-    private final ConcurrentMap<String, CompletableFuture<DAGPayload>> pendingFutures =
+    private final @NonNull ConcurrentMap<String, DAGPayload> activePayloads =
+            new ConcurrentHashMap<>();
+    private final @NonNull ConcurrentMap<String, CompletableFuture<DAGPayload>> pendingFutures =
             new ConcurrentHashMap<>();
 
     public RoutingBusService(
-            WebSocketBus webSocketBus, BusConfiguration config, ObjectMapper objectMapper) {
+            @NonNull WebSocketBus webSocketBus,
+            @NonNull BusConfiguration config,
+            @NonNull ObjectMapper objectMapper) {
         this.webSocketBus = webSocketBus;
         this.config = config;
         this.objectMapper = objectMapper;

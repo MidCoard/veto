@@ -1,9 +1,9 @@
 package top.focess.veto.memory;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A query against the {@link MemoryStore}. Carries the query text (to be embedded at search time),
@@ -11,18 +11,15 @@ import org.jspecify.annotations.NonNull;
  * floor are not returned — "better no memory than a wrong one", long_term_memory_tiers.md §5).
  */
 public record MemoryQuery(
-        String queryText,
-        List<MemoryTier> tiers,
-        UUID sessionFilter,
-        UUID projectFilter,
-        UUID userId,
+        @NonNull String queryText,
+        @NonNull List<MemoryTier> tiers,
+        @Nullable UUID sessionFilter,
+        @Nullable UUID projectFilter,
+        @NonNull UUID userId,
         int topK,
         float scoreFloor) {
 
     public MemoryQuery {
-        Objects.requireNonNull(queryText, "queryText");
-        Objects.requireNonNull(userId, "userId");
-        Objects.requireNonNull(tiers, "tiers");
         tiers = List.copyOf(tiers);
         if (topK <= 0) {
             throw new IllegalArgumentException("topK must be > 0");

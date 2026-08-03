@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -54,11 +55,11 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
      * the {@link KernelSandboxSubstrate} bean in production so the wall applies to spawned
      * commands.
      */
-    private final @NonNull KernelSandboxSubstrate kernelWall;
+    private final @Nullable KernelSandboxSubstrate kernelWall;
 
     /** No-arg constructor (tests): no kernel wall — attach is skipped. */
     public ConstrainedSubprocessSubstrate() {
-        this(null);
+        this.kernelWall = null;
     }
 
     /**
@@ -84,8 +85,12 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
     }
 
     @Override
-    public CommandResult runCommands(
-            SandboxHandle h, List<Command> cmds, Path cwd, ChainMode connect, Duration timeout) {
+    public @NonNull CommandResult runCommands(
+            @NonNull SandboxHandle h,
+            @NonNull List<Command> cmds,
+            @NonNull Path cwd,
+            @NonNull ChainMode connect,
+            @NonNull Duration timeout) {
         if (cmds.isEmpty()) {
             return new CommandResult(0, "", "", List.of());
         }
@@ -100,7 +105,7 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
             builders.add(pb);
         }
 
-        Duration effectiveTimeout = timeout != null ? timeout : Duration.ofMinutes(10);
+        Duration effectiveTimeout = timeout;
         try {
             return switch (connect) {
                 case PIPE -> runPipeline(builders, effectiveTimeout);
@@ -112,7 +117,8 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
         }
     }
 
-    private CommandResult runPipeline(List<ProcessBuilder> builders, Duration timeout)
+    private @NonNull CommandResult runPipeline(
+            @NonNull List<ProcessBuilder> builders, @NonNull Duration timeout)
             throws IOException, InterruptedException {
         List<Process> pipeline = ProcessBuilder.startPipeline(builders);
         pipeline.forEach(this::attachKernelWall);
@@ -129,8 +135,10 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
         return new CommandResult(last.exitValue(), stdout, stderr, codes);
     }
 
-    private CommandResult runSequential(
-            List<ProcessBuilder> builders, ChainMode connect, Duration timeout)
+    private @NonNull CommandResult runSequential(
+            @NonNull List<ProcessBuilder> builders,
+            @NonNull ChainMode connect,
+            @NonNull Duration timeout)
             throws IOException, InterruptedException {
         StringBuilder stdout = new StringBuilder();
         StringBuilder stderr = new StringBuilder();
@@ -161,7 +169,7 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
     /**
      * Best-effort attach the kernel wall to a spawned process; skipped when no wall is configured.
      */
-    private void attachKernelWall(Process process) {
+    private void attachKernelWall(@NonNull Process process) {
         if (kernelWall == null || !kernelWall.isAvailable()) {
             return;
         }
@@ -176,7 +184,7 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
     }
 
     @Override
-    public byte[] readFile(@NonNull SandboxHandle h, @NonNull Path rel) {
+    public byte @NonNull [] readFile(@NonNull SandboxHandle h, @NonNull Path rel) {
         try {
             return Files.readAllBytes(resolveUnderWorkspace(h, rel));
         } catch (IOException e) {
@@ -185,7 +193,7 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
     }
 
     @Override
-    public void writeFile(@NonNull SandboxHandle h, @NonNull Path rel, byte[] content) {
+    public void writeFile(@NonNull SandboxHandle h, @NonNull Path rel, byte @NonNull [] content) {
         try {
             Path resolved = resolveUnderWorkspace(h, rel);
             Files.createDirectories(resolved.getParent());
@@ -274,7 +282,7 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
     }
 
     /** Resolves {@code rel} under the workspace root, rejecting traversal escapes. */
-    private Path resolveUnderWorkspace(SandboxHandle h, Path rel) {
+    private @NonNull Path resolveUnderWorkspace(@NonNull SandboxHandle h, @NonNull Path rel) {
         Path root = h.workspaceRoot().toAbsolutePath().normalize();
         Path resolved = root.resolve(rel).toAbsolutePath().normalize();
         if (!resolved.startsWith(root)) {
@@ -283,7 +291,7 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
         return resolved;
     }
 
-    private static long sizeOf(Path p) {
+    private static long sizeOf(@NonNull Path p) {
         try {
             return Files.size(p);
         } catch (IOException e) {

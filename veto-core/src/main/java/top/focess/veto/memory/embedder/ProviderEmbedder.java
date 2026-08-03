@@ -10,6 +10,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.llm.core.ProviderType;
@@ -70,7 +71,7 @@ public final class ProviderEmbedder implements Embedder {
 
     // ── OpenAI-compatible (/v1/embeddings) ──────────────────────────────────
 
-    private float[] embedOpenAi(String text) {
+    private float @NonNull [] embedOpenAi(@NonNull String text) {
         String apiKey = resolveKey(ProviderType.OPENAI);
         String base = defaultIfBlank(props.getBaseUrl(), "https://api.openai.com");
         String model = requireModel();
@@ -93,7 +94,7 @@ public final class ProviderEmbedder implements Embedder {
 
     // ── Gemini (:embedContent) ──────────────────────────────────────────────
 
-    private float[] embedGemini(String text) {
+    private float @NonNull [] embedGemini(@NonNull String text) {
         String apiKey = resolveKey(ProviderType.GEMINI);
         String base =
                 defaultIfBlank(props.getBaseUrl(), "https://generativelanguage.googleapis.com");
@@ -117,7 +118,7 @@ public final class ProviderEmbedder implements Embedder {
 
     // ── helpers ─────────────────────────────────────────────────────────────
 
-    private String resolveKey(ProviderType type) {
+    private @NonNull String resolveKey(@NonNull ProviderType type) {
         String key = props.getCredentialKey();
         if (key == null || key.isBlank()) {
             throw new IllegalStateException(
@@ -126,7 +127,7 @@ public final class ProviderEmbedder implements Embedder {
         return resolver.resolve(type, key);
     }
 
-    private String requireModel() {
+    private @NonNull String requireModel() {
         String model = props.getModel();
         if (model == null || model.isBlank()) {
             throw new IllegalStateException("veto.memory.embedder.model is not set");
@@ -134,11 +135,13 @@ public final class ProviderEmbedder implements Embedder {
         return model;
     }
 
-    private static HttpRequest.Builder httpRequest(String uri, String body) {
+    private static HttpRequest.@NonNull Builder httpRequest(
+            @NonNull String uri, @NonNull String body) {
         return httpRequest(URI.create(uri), body);
     }
 
-    private static HttpRequest.Builder httpRequest(URI uri, String body) {
+    private static HttpRequest.@NonNull Builder httpRequest(
+            @NonNull URI uri, @NonNull String body) {
         return HttpRequest.newBuilder()
                 .uri(uri)
                 .header("Content-Type", "application/json")
@@ -146,7 +149,7 @@ public final class ProviderEmbedder implements Embedder {
                 .POST(HttpRequest.BodyPublishers.ofString(body));
     }
 
-    private static void throwIfNotOk(String provider, HttpResponse<String> resp) {
+    private static void throwIfNotOk(@NonNull String provider, @NonNull HttpResponse<String> resp) {
         if (resp.statusCode() != 200) {
             throw new IllegalStateException(
                     provider
@@ -157,7 +160,7 @@ public final class ProviderEmbedder implements Embedder {
         }
     }
 
-    private static float[] toFloatArray(JsonNode arr) {
+    private static float @NonNull [] toFloatArray(@Nullable JsonNode arr) {
         if (arr == null || !arr.isArray() || arr.isEmpty()) {
             throw new IllegalStateException("Provider returned an empty embedding");
         }
@@ -168,7 +171,8 @@ public final class ProviderEmbedder implements Embedder {
         return v;
     }
 
-    private static String defaultIfBlank(String value, String fallback) {
+    private static @NonNull String defaultIfBlank(
+            @Nullable String value, @NonNull String fallback) {
         return value == null || value.isBlank() ? fallback : value;
     }
 }

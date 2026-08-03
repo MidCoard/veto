@@ -1,6 +1,7 @@
 package top.focess.veto.group;
 
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.AgentRunner;
@@ -29,11 +30,11 @@ public class LeaderBinding {
     private final @NonNull String systemPromptBase;
 
     public LeaderBinding(
-            @Value("${veto.group.leader.tier:TOP}") String tier,
+            @Value("${veto.group.leader.tier:TOP}") @Nullable String tier,
             @Value(
                             "${veto.group.leader.system-prompt-base:You are a Leader agent. Decompose the task and arrange the execution DAG node by node.}")
-                    String systemPromptBase,
-            ModelTierRegistry tierRegistry) {
+                    @NonNull String systemPromptBase,
+            @NonNull ModelTierRegistry tierRegistry) {
         this.tierRegistry = tierRegistry;
         this.tier = parseTier(tier);
         this.systemPromptBase = systemPromptBase;
@@ -41,19 +42,22 @@ public class LeaderBinding {
 
     /**
      * The Leader's model binding (provider / model / credential / options / system-prompt base),
-     * resolved from the active model-tier profile for this binding's tier.
+     * resolved from the owner's active model-tier profile for this binding's tier. The owner is the
+     * session username (read from the calling agent's {@link
+     * top.focess.veto.agent.mcp.ToolCallContext} at {@code create_group} time).
      */
-    public AgentRunner.@NonNull LlmBinding binding() {
-        ModelBinding resolved = tierRegistry.resolve(tier);
+    public AgentRunner.@NonNull LlmBinding binding(@NonNull String owner) {
+        ModelBinding resolved = tierRegistry.resolve(owner, tier);
         return new AgentRunner.LlmBinding(
                 resolved.provider(),
                 resolved.model(),
                 resolved.credentialKey(),
                 LlmOptions.defaults(),
-                systemPromptBase);
+                systemPromptBase,
+                resolved.baseUrl());
     }
 
-    private static ModelTier parseTier(String s) {
+    private static @NonNull ModelTier parseTier(@Nullable String s) {
         if (s == null || s.isBlank()) {
             return ModelTier.TOP;
         }

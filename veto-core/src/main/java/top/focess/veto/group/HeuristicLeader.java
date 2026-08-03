@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -92,7 +93,7 @@ public class HeuristicLeader {
      * fewest currently-RUNNING assignments (load balance); if none match, pick any available Mate.
      * Returns null if no Mates are available.
      */
-    private String pickMate(DagNode n, Map<String, String> mates) {
+    private @Nullable String pickMate(@NonNull DagNode n, @NonNull Map<String, String> mates) {
         if (mates.isEmpty()) {
             return null;
         }
@@ -138,8 +139,7 @@ public class HeuristicLeader {
                                 n.requiredSkillset(),
                                 n.dependsOn(),
                                 DagNode.NodeState.STALE,
-                                new DagNode.ResultFailure(
-                                        feedback == null ? "max retries" : feedback, List.of()),
+                                new DagNode.ResultFailure(feedback, List.of()),
                                 retries + 1);
                 return group.withDag(dag.withNode(nodeId, updated));
             }
@@ -153,15 +153,14 @@ public class HeuristicLeader {
                             n.requiredSkillset(),
                             n.dependsOn(),
                             DagNode.NodeState.PENDING,
-                            new DagNode.ResultFailure(
-                                    feedback == null ? "retry" : feedback, List.of()),
+                            new DagNode.ResultFailure(feedback, List.of()),
                             retries + 1);
             return group.withDag(dag.withNode(nodeId, updated));
         }
         return group;
     }
 
-    private int countRetries(DagNode n) {
+    private int countRetries(@NonNull DagNode n) {
         // Use the persisted retryCount field on the node.
         return n.retryCount();
     }
@@ -202,7 +201,7 @@ public class HeuristicLeader {
      * </ul>
      */
     public boolean shouldPivot(
-            Group group, int perMateMessageCount, double contextSaturationRatio) {
+            @NonNull Group group, int perMateMessageCount, double contextSaturationRatio) {
         return perMateMessageCount > pivotThreshold || contextSaturationRatio > 0.8;
     }
 

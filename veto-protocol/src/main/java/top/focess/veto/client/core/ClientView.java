@@ -24,6 +24,39 @@ public interface ClientView {
     void onDelta(@NonNull String content);
 
     /**
+     * Streaming <em>thought</em> chunk - the agent's interim reasoning, as opposed to user-facing
+     * message prose delivered via {@link #onDelta}. A view renders the two with different styles
+     * (e.g. the thought dimmed/muted, the message as normal prose) so the user can follow the
+     * agent's reasoning without it competing with the answer.
+     *
+     * <p>Default implementation ignores the thought, so views that predate this hook (or that
+     * choose not to surface reasoning) still compile and behave as before.
+     *
+     * @param content the interim reasoning text
+     */
+    default void onThought(@NonNull String content) {}
+
+    /**
+     * A tool call the agent is about to execute (the agent's transparency emission seam). The
+     * default implementation ignores the call, so views that predate this hook still compile and
+     * behave as before. A view that renders the indicator should display it (typically muted) right
+     * before the matching {@link #onToolResult} or user-facing message so the user can see exactly
+     * which tool the agent is invoking with which arguments.
+     */
+    default void onToolCall(IpcFrame.@NonNull ToolCall call) {}
+
+    /**
+     * The framed observation the model received for a tool call (the agent's transparency emission
+     * seam, paired with {@link #onToolCall}). The {@code body} is the self-describing "Observation
+     * (tool(args)) [...]" text the model actually sees, so the view does not need to track
+     * call/result pairs to render it.
+     *
+     * <p>Default implementation ignores the result, so views that predate this hook still compile
+     * and behave as before.
+     */
+    default void onToolResult(IpcFrame.@NonNull ToolResult result) {}
+
+    /**
      * Progress hint, already wrapped in a {@link StyledText} (typically {@link StyleToken#MUTED}).
      */
     void onProgress(@NonNull StyledText content);

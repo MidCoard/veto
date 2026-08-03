@@ -7,6 +7,7 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
 /**
  * JPA persistence for a {@link Memory}. Stored in PostgreSQL with JSONB columns (Hibernate's {@code
@@ -22,30 +23,38 @@ import org.jspecify.annotations.NonNull;
 @Table(name = "memories")
 public class MemoryEntity {
 
-    @Id private String id;
+    @Id @NonNull private String id;
 
     @Column(name = "user_id", nullable = false)
+    @NonNull
     private String userId;
 
     @Column(name = "session_id")
+    @Nullable
     private String sessionId;
 
     @Column(name = "tier", nullable = false)
+    @NonNull
     private String tier;
 
     @Column(name = "project_id")
+    @Nullable
     private String projectId;
 
     @Column(name = "content", nullable = false, columnDefinition = "TEXT")
+    @NonNull
     private String content;
 
     @Column(name = "embedding", columnDefinition = "TEXT")
+    @Nullable
     private String embedding; // float[] serialized as comma-separated values for portability
 
     @Column(name = "source_ref", columnDefinition = "TEXT")
+    @Nullable
     private String sourceRef;
 
     @Column(name = "created_at", nullable = false)
+    @NonNull
     private Instant createdAt;
 
     protected MemoryEntity() {}
@@ -78,7 +87,7 @@ public class MemoryEntity {
                 e.createdAt);
     }
 
-    private static String serializeEmbedding(float[] e) {
+    private static @NonNull String serializeEmbedding(float @Nullable [] e) {
         if (e == null || e.length == 0) {
             return "";
         }
@@ -92,7 +101,7 @@ public class MemoryEntity {
         return sb.toString();
     }
 
-    private static float[] deserializeEmbedding(String s) {
+    private static float @NonNull [] deserializeEmbedding(@Nullable String s) {
         if (s == null || s.isBlank()) {
             return new float[0];
         }
@@ -104,31 +113,31 @@ public class MemoryEntity {
         return out;
     }
 
-    public String getId() {
+    public @NonNull String getId() {
         return id;
     }
 
-    public String getUserId() {
+    public @NonNull String getUserId() {
         return userId;
     }
 
-    public String getSessionId() {
+    public @Nullable String getSessionId() {
         return sessionId;
     }
 
-    public String getTier() {
+    public @NonNull String getTier() {
         return tier;
     }
 
-    public String getContent() {
+    public @NonNull String getContent() {
         return content;
     }
 
-    public String getEmbedding() {
+    public @Nullable String getEmbedding() {
         return embedding;
     }
 
-    public Instant getCreatedAt() {
+    public @NonNull Instant getCreatedAt() {
         return createdAt;
     }
 }

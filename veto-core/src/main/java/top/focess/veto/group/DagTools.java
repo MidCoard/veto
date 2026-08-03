@@ -97,23 +97,23 @@ public final class DagTools {
             })
     public static final class CreateNode implements AgentTool<CreateNode.Args> {
 
-        private final GroupOrchestrator orchestrator;
+        private final @NonNull GroupOrchestrator orchestrator;
 
-        public CreateNode(GroupOrchestrator orchestrator) {
+        public CreateNode(@NonNull GroupOrchestrator orchestrator) {
             this.orchestrator = orchestrator;
         }
 
         public record Args(
                 @SecurityHint(ParamCategory.GENERIC)
                         @Doc("New node's id (unique within the plan, e.g. 'node-1').")
-                        String nodeId,
+                        @Nullable String nodeId,
                 @SecurityHint(ParamCategory.GENERIC)
                         @Doc(
                                 "What the node does - concrete enough for a mate to execute without asking.")
-                        String description,
+                        @Nullable String description,
                 @SecurityHint(ParamCategory.GENERIC)
                         @Doc("The skillset this node requires (e.g. 'coding', 'testing').")
-                        String skillset,
+                        @Nullable String skillset,
                 @SecurityHint(ParamCategory.GENERIC)
                         @Nullable
                         @Doc(
@@ -221,15 +221,15 @@ public final class DagTools {
             })
     public static final class RemoveNode implements AgentTool<RemoveNode.Args> {
 
-        private final GroupOrchestrator orchestrator;
+        private final @NonNull GroupOrchestrator orchestrator;
 
-        public RemoveNode(GroupOrchestrator orchestrator) {
+        public RemoveNode(@NonNull GroupOrchestrator orchestrator) {
             this.orchestrator = orchestrator;
         }
 
         public record Args(
                 @SecurityHint(ParamCategory.GENERIC) @Doc("The id of the node to retire.")
-                        String nodeId) {}
+                        @Nullable String nodeId) {}
 
         @Override
         public @NonNull String getName() {

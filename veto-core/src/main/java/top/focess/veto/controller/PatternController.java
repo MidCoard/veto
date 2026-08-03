@@ -3,11 +3,15 @@ package top.focess.veto.controller;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 import top.focess.veto.model.AgentPatternEntity;
 import top.focess.veto.model.AgentPatternRepository;
+import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTier;
+import top.focess.veto.model.tier.ModelTierConfigException;
 import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.vault.KeysteadVault;
 
@@ -31,7 +35,7 @@ public class PatternController {
     }
 
     @GetMapping
-    public List<AgentPatternEntity> list() {
+    public @NonNull List<AgentPatternEntity> list() {
         String user = vault.currentUser();
         return user != null ? repo.findByOwner(user) : List.of();
     }
@@ -41,7 +45,15 @@ public class PatternController {
         String user = vault.currentUser();
         if (user == null) throw new IllegalStateException("Not logged in");
         ModelTier tier = ModelTier.valueOf(body.get("tier").toUpperCase());
-        var p = new AgentPatternEntity(body.get("name"), tier, tierRegistry.resolve(tier), user);
+        ModelBinding binding;
+        try {
+            binding = tierRegistry.resolve(user, tier);
+        } catch (ModelTierConfigException e) {
+            // No active model-tier profile (or incomplete binding) for this user - the client must
+            // configure one before creating a pattern that targets this tier.
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+        }
+        var p = new AgentPatternEntity(body.get("name"), tier, binding, user);
         return repo.save(p);
     }
 

@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * Verifies {@link KeysteadVault} against the real keystead {@code FileVaultStore} crypto: signup
+ * Verifies {@link KeysteadVault} against the real keystead {@code OneFileVaultStore} crypto: signup
  * opens a handle, notes round-trip, logout/login reopens a persisted vault, upsert does not
  * duplicate, and a locked vault rejects operations.
  */

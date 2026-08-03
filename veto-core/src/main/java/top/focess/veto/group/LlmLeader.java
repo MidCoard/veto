@@ -7,7 +7,9 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -49,7 +51,7 @@ public class LlmLeader {
 
     private static final Logger log = LoggerFactory.getLogger(LlmLeader.class);
 
-    private final @NonNull Agent leaderAgent;
+    private final @Nullable Agent leaderAgent;
     private final @NonNull HeuristicLeader fallback;
 
     public LlmLeader() {
@@ -66,7 +68,7 @@ public class LlmLeader {
     /** Construct with a pre-built heuristic fallback (for tests). */
     public
     @NonNull
-    LlmLeader(@NonNull Agent leaderAgent, @NonNull HeuristicLeader fallback) {
+    LlmLeader(@Nullable Agent leaderAgent, @NonNull HeuristicLeader fallback) {
         this.leaderAgent = leaderAgent;
         this.fallback = fallback;
     }
@@ -75,8 +77,7 @@ public class LlmLeader {
      * Author the DAG from the contextBrief: have the Leader agent investigate + draft the initial
      * node list. Returns the fallback's linear DAG if the LLM call fails.
      */
-    public @NonNull ExecutionDag authorDag(
-            java.util.@NonNull UUID groupId, @NonNull String contextBrief) {
+    public @NonNull ExecutionDag authorDag(@NonNull UUID groupId, @NonNull String contextBrief) {
         if (leaderAgent == null) {
             return ExecutionDag.linear(groupId, List.of("n1"));
         }
@@ -103,7 +104,7 @@ public class LlmLeader {
      * Blackboard state. Falls back to {@link HeuristicLeader#shouldPivot} on failure.
      */
     public boolean shouldPivot(
-            Group group, int perMateMessageCount, double contextSaturationRatio) {
+            @NonNull Group group, int perMateMessageCount, double contextSaturationRatio) {
         if (fallback.shouldPivot(group, perMateMessageCount, contextSaturationRatio)) {
             return true; // heuristic said yes — trust it
         }
@@ -138,7 +139,7 @@ public class LlmLeader {
      * the heuristic's signal — and since the heuristic already said no we are by definition below
      * its threshold).
      */
-    static boolean parsePivotDecision(String response) {
+    static boolean parsePivotDecision(@Nullable String response) {
         if (response == null || response.isBlank()) {
             return false;
         }
@@ -194,12 +195,13 @@ public class LlmLeader {
     }
 
     /** Access the heuristic fallback (for tests). */
-    public HeuristicLeader heuristic() {
+    public @NonNull HeuristicLeader heuristic() {
         return fallback;
     }
 
     /** Heuristic prompt: "investigate + author a DAG from this contextBrief." */
-    private static String buildAuthorPrompt(java.util.UUID groupId, String contextBrief) {
+    private static @NonNull String buildAuthorPrompt(
+            @NonNull UUID groupId, @Nullable String contextBrief) {
         return "You are the Group Leader (a Top-Tier reasoning model) for group "
                 + groupId
                 + ". The Leader authors an Execution DAG for the work, then dispatches it to"
@@ -244,8 +246,8 @@ public class LlmLeader {
     }
 
     /** Heuristic prompt: "should we pivot?" */
-    private static String buildPivotPrompt(
-            Group group, int perMateMessageCount, double saturation) {
+    private static @NonNull String buildPivotPrompt(
+            @NonNull Group group, int perMateMessageCount, double saturation) {
         StringBuilder sb = new StringBuilder();
         sb.append("You are the Group Leader (a Top-Tier reasoning model) for group ")
                 .append(group.groupId())
@@ -300,7 +302,7 @@ public class LlmLeader {
      *
      * <p>Returns null on parse failure or when no nodes were authored.
      */
-    static ExecutionDag parseDagFromJson(java.util.UUID groupId, String json) {
+    static @Nullable ExecutionDag parseDagFromJson(@NonNull UUID groupId, @Nullable String json) {
         if (json == null || json.isBlank()) {
             return null;
         }
@@ -365,7 +367,7 @@ public class LlmLeader {
         }
     }
 
-    private static String textOrNull(JsonNode obj, String field) {
+    private static @Nullable String textOrNull(@NonNull JsonNode obj, @NonNull String field) {
         JsonNode v = obj.get(field);
         if (v == null || v.isNull()) {
             return null;
@@ -382,7 +384,8 @@ public class LlmLeader {
      * handles the common case where the LLM lists nodes out of order but the dependency is still
      * real (it will be resolvable once all nodes are in {@code seenIds}).
      */
-    private static boolean refersToLaterNode(String dep, JsonNode nodesNode, JsonNode current) {
+    private static boolean refersToLaterNode(
+            @NonNull String dep, @NonNull JsonNode nodesNode, @NonNull JsonNode current) {
         for (JsonNode other : nodesNode) {
             if (other == current) {
                 continue;

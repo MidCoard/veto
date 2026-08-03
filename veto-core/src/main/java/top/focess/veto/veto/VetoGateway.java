@@ -2,6 +2,7 @@ package top.focess.veto.veto;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
+import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,19 +30,16 @@ public class VetoGateway {
     private final @NonNull GBNFGrammarEngine grammarEngine;
     private final @NonNull AuditLogger auditLogger;
 
-    private final java.util.concurrent.atomic.AtomicLong totalVetoes =
-            new java.util.concurrent.atomic.AtomicLong(0);
-    private final java.util.concurrent.atomic.AtomicLong totalPasses =
-            new java.util.concurrent.atomic.AtomicLong(0);
-    private final java.util.concurrent.atomic.AtomicLong totalRedactions =
-            new java.util.concurrent.atomic.AtomicLong(0);
+    private final @NonNull AtomicLong totalVetoes = new AtomicLong(0);
+    private final @NonNull AtomicLong totalPasses = new AtomicLong(0);
+    private final @NonNull AtomicLong totalRedactions = new AtomicLong(0);
 
     public VetoGateway(
-            VetoGatewayConfiguration config,
-            LlamaCppBridge llamaCppBridge,
-            SemanticRedactor semanticRedactor,
-            GBNFGrammarEngine grammarEngine,
-            AuditLogger auditLogger) {
+            @NonNull VetoGatewayConfiguration config,
+            @NonNull LlamaCppBridge llamaCppBridge,
+            @NonNull SemanticRedactor semanticRedactor,
+            @NonNull GBNFGrammarEngine grammarEngine,
+            @NonNull AuditLogger auditLogger) {
         this.config = config;
         this.llamaCppBridge = llamaCppBridge;
         this.semanticRedactor = semanticRedactor;
@@ -90,8 +88,11 @@ public class VetoGateway {
      * @param componentSource Source component (mcp MCP or sandbox Sandbox)
      * @return VetoResult containing the decision and processed payload
      */
-    public VetoResult processOutbound(
-            String payload, String dagPayloadId, String requestId, String componentSource) {
+    public @NonNull VetoResult processOutbound(
+            @NonNull String payload,
+            @NonNull String dagPayloadId,
+            @NonNull String requestId,
+            @NonNull String componentSource) {
         if (!config.isEnabled()) {
             return VetoResult.pass(payload, "Veto gateway disabled");
         }
@@ -192,7 +193,7 @@ public class VetoGateway {
      * Enforce structural constraints on the payload. Validates that the data adheres to project
      * rules (e.g., normalized physics values).
      */
-    private String enforceStructuralConstraints(String payload) {
+    private @NonNull String enforceStructuralConstraints(@NonNull String payload) {
         if (!config.isEnforceStructuralConstraints()) {
             return payload;
         }
@@ -214,7 +215,7 @@ public class VetoGateway {
         return result;
     }
 
-    private String computeDiff(String original, String redacted) {
+    private @NonNull String computeDiff(@NonNull String original, @NonNull String redacted) {
         if (original.equals(redacted)) return "(no changes)";
         // Simple diff for audit: show changed sections
         StringBuilder diff = new StringBuilder();
@@ -242,7 +243,7 @@ public class VetoGateway {
         return diff.toString();
     }
 
-    private String previousRecordHash() {
+    private @NonNull String previousRecordHash() {
         return ""; // Will be chained by AuditLogger
     }
 
@@ -264,7 +265,10 @@ public class VetoGateway {
 
     /** The result of processing a payload through the Veto Gateway. */
     public record VetoResult(
-            VetoDecision decision, String processedPayload, String reason, int redactionCount) {
+            @NonNull VetoDecision decision,
+            @NonNull String processedPayload,
+            @NonNull String reason,
+            int redactionCount) {
 
         public static @NonNull VetoResult pass(@NonNull String payload, @NonNull String reason) {
             return new VetoResult(VetoDecision.PASS, payload, reason, 0);

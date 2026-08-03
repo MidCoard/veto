@@ -22,7 +22,7 @@ public class CredentialCommand extends VetoCommand {
 
     private static final Logger log = LoggerFactory.getLogger(CredentialCommand.class);
 
-    private final KeysteadVault vault;
+    private final @NonNull KeysteadVault vault;
 
     public CredentialCommand(@NonNull KeysteadVault vault) {
         super("credential", "Manage per-user API-key credentials", "cred");

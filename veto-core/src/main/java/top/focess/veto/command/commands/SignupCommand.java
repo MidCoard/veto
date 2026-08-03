@@ -12,9 +12,9 @@ import top.focess.veto.vault.*;
 
 public class SignupCommand extends VetoCommand {
 
-    private final UserRegistry users;
-    private final AuthLifecycleManager authLifecycleManager;
-    private final SignupPolicy policy;
+    private final @NonNull UserRegistry users;
+    private final @NonNull AuthLifecycleManager authLifecycleManager;
+    private final @NonNull SignupPolicy policy;
 
     public SignupCommand(
             @NonNull UserRegistry users,

@@ -3,9 +3,11 @@ package top.focess.veto.agent.skills;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -25,12 +27,12 @@ public class SkillRegistry {
 
     private static final Logger log = LoggerFactory.getLogger(SkillRegistry.class);
 
-    private final MarkdownSkillLoader loader = new MarkdownSkillLoader();
-    private final ConcurrentHashMap<String, Skill> skills = new ConcurrentHashMap<>();
+    private final @NonNull MarkdownSkillLoader loader = new MarkdownSkillLoader();
+    private final @NonNull ConcurrentHashMap<String, Skill> skills = new ConcurrentHashMap<>();
 
     public
     @NonNull
-    SkillRegistry(@Value("${veto.skills.project-dir:}") String projectSkillsDir) {
+    SkillRegistry(@Value("${veto.skills.project-dir:}") @Nullable String projectSkillsDir) {
         register(loadSkillsFrom(homeSkillsDir(), SkillSourceType.PERSONAL));
         if (projectSkillsDir != null && !projectSkillsDir.isBlank()) {
             register(loadSkillsFrom(Path.of(projectSkillsDir), SkillSourceType.PROJECT));
@@ -70,19 +72,20 @@ public class SkillRegistry {
     }
 
     /** Lightweight catalog of {@code (name, description)} pairs for the system prompt. */
-    public List<Skill> catalog() {
+    public @NonNull List<Skill> catalog() {
         return new ArrayList<>(skills.values());
     }
 
-    private void register(java.util.Map<String, Skill> loaded) {
+    private void register(@NonNull Map<String, Skill> loaded) {
         loaded.forEach((k, v) -> skills.merge(k, v, (a, b) -> a));
     }
 
-    private java.util.Map<String, Skill> loadSkillsFrom(Path dir, SkillSourceType type) {
+    private @NonNull Map<String, Skill> loadSkillsFrom(
+            @NonNull Path dir, @NonNull SkillSourceType type) {
         return loader.loadSkillsFromDir(dir, type);
     }
 
-    private static Path homeSkillsDir() {
+    private static @NonNull Path homeSkillsDir() {
         String home = System.getProperty("user.home");
         return Path.of(home, ".veto", "skills");
     }

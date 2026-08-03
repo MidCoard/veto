@@ -3,7 +3,6 @@ package top.focess.veto.agent;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.List;
@@ -29,8 +28,6 @@ import top.focess.veto.agent.mcp.ToolDefinition;
 import top.focess.veto.agent.mcp.ToolEngine;
 import top.focess.veto.agent.mcp.ToolResult;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
-import top.focess.veto.agent.workspace.PathMode;
-import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.llm.core.ProviderType;
 import top.focess.veto.llm.core.ToolCall;
@@ -53,10 +50,7 @@ class AgentEndToEndTest {
         ObjectMapper mapper = new ObjectMapper();
         PromptCompiler compiler =
                 new PromptCompiler(
-                        new DefaultCapabilityTranslator(mapper),
-                        Workspace.single(
-                                Path.of(System.getProperty("user.dir", ".")), PathMode.REAL),
-                        new SystemPromptResolver());
+                        new DefaultCapabilityTranslator(mapper), new SystemPromptResolver());
         // The @Value defaults are only injected by Spring; set sensible budgets for the unit test.
         ReflectionTestUtils.setField(compiler, "maxInputTokens", 32000);
         ReflectionTestUtils.setField(compiler, "contextFillRatio", 0.9);
@@ -127,10 +121,7 @@ class AgentEndToEndTest {
         ObjectMapper mapper = new ObjectMapper();
         PromptCompiler compiler =
                 new PromptCompiler(
-                        new DefaultCapabilityTranslator(mapper),
-                        Workspace.single(
-                                Path.of(System.getProperty("user.dir", ".")), PathMode.REAL),
-                        new SystemPromptResolver());
+                        new DefaultCapabilityTranslator(mapper), new SystemPromptResolver());
         ReflectionTestUtils.setField(compiler, "maxInputTokens", 32000);
         ReflectionTestUtils.setField(compiler, "contextFillRatio", 0.9);
         return new AgentService(
@@ -218,6 +209,43 @@ class AgentEndToEndTest {
         assertTrue(types.contains(TurnType.TOOL_RESPONSE), "the tool observation was recorded");
         assertTrue(types.contains(TurnType.ASSISTANT_RESPONSE));
         assertReturnsToIdle(agent);
+    }
+
+    @Test
+    void turnNumbersAreStrictlyIncreasingAcrossThoughtAndToolCall() throws Exception {
+        // Regression: a non-blank thought followed by a tool call used to reuse the user prompt's
+        // turn_number (appendThought and the confirmed-path appendToolCall did not advance the
+        // counter), so the second record collided on the uk_turn_records_agent_turn unique key and
+        // the durable turn log rejected it, leaving the DB inconsistent with the in-memory history.
+        // The runner now authoritatively allocates a unique, strictly-increasing number per
+        // appended
+        // record.
+        AgentService service =
+                serviceWith(
+                        scripted(
+                                thoughtOnWithCall(
+                                        "I'll compute 2+2 via calc.",
+                                        "Let me check.",
+                                        new ToolCall("calc", Map.of("expr", "2+2"))),
+                                thoughtOn("calc says 4.", "The answer is 4.")));
+
+        AgentResult result =
+                service.submit(
+                        "turn-numbers-test",
+                        "What is 2 + 2?",
+                        binding("You are a helpful assistant."),
+                        EPISODE_TIMEOUT,
+                        ignored -> {});
+
+        assertTrue(result.success(), "episode should finish successfully");
+        VetoAgent agent = service.agent("turn-numbers-test");
+        List<Integer> numbers = agent.history().stream().map(TurnRecord::turnNumber).toList();
+        assertFalse(numbers.isEmpty(), "history should contain turns");
+        for (int i = 1; i < numbers.size(); i++) {
+            assertTrue(
+                    numbers.get(i) > numbers.get(i - 1),
+                    "turn numbers must be strictly increasing; got " + numbers);
+        }
     }
 
     @Test

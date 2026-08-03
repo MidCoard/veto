@@ -23,13 +23,7 @@ public sealed interface AgentAction
      * effective thought flag is forced ON for the first model call ( ). Breaker trip resumption is
      * just a {@code UserPromptAction("continue")}.
      */
-    record UserPromptAction(@NonNull String prompt) implements AgentAction {
-        public UserPromptAction {
-            if (prompt == null) {
-                prompt = "";
-            }
-        }
-    }
+    record UserPromptAction(@NonNull String prompt) implements AgentAction {}
 
     /** Pause the agent → {@link AgentState#PAUSED}. */
     record PauseAction() implements AgentAction {}

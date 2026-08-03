@@ -23,12 +23,12 @@ public class AuditLogger {
     private final @NonNull TamperProofStore tamperProofStore;
     private final @NonNull DiffCalculator diffCalculator;
 
-    private final AtomicLong totalRecordsWritten = new AtomicLong(0);
+    private final @NonNull AtomicLong totalRecordsWritten = new AtomicLong(0);
 
     public AuditLogger(
-            ObservabilityConfiguration config,
-            TamperProofStore tamperProofStore,
-            DiffCalculator diffCalculator) {
+            @NonNull ObservabilityConfiguration config,
+            @NonNull TamperProofStore tamperProofStore,
+            @NonNull DiffCalculator diffCalculator) {
         this.config = config;
         this.tamperProofStore = tamperProofStore;
         this.diffCalculator = diffCalculator;
@@ -52,13 +52,13 @@ public class AuditLogger {
 
     /** Log a veto redaction event with pre/post data. */
     public void logRedaction(
-            String dagPayloadId,
-            String requestId,
-            String componentSource,
-            String originalPayload,
-            String redactedPayload,
-            String diffExcerpt,
-            String previousRecordHash,
+            @NonNull String dagPayloadId,
+            @NonNull String requestId,
+            @NonNull String componentSource,
+            @NonNull String originalPayload,
+            @NonNull String redactedPayload,
+            @NonNull String diffExcerpt,
+            @NonNull String previousRecordHash,
             boolean vetoApplied) {
 
         AuditRecord record =
@@ -86,11 +86,11 @@ public class AuditLogger {
 
     /** Log a tool execution event. */
     public void logToolExecution(
-            String dagPayloadId,
-            String requestId,
-            String componentSource,
-            String requestPayload,
-            String resultPayload) {
+            @NonNull String dagPayloadId,
+            @NonNull String requestId,
+            @NonNull String componentSource,
+            @NonNull String requestPayload,
+            @NonNull String resultPayload) {
         AuditRecord record =
                 new AuditRecord(
                         dagPayloadId,
@@ -109,7 +109,10 @@ public class AuditLogger {
 
     /** Log an LLM exchange event (request/response). */
     public void logLLMExchange(
-            String requestId, String modelName, String requestPayload, String rawResponsePayload) {
+            @NonNull String requestId,
+            @NonNull String modelName,
+            @NonNull String requestPayload,
+            @NonNull String rawResponsePayload) {
         AuditRecord record =
                 new AuditRecord(
                         "LLM-EXCHANGE",
@@ -148,7 +151,10 @@ public class AuditLogger {
 
     /** Log a system error event. */
     public void logError(
-            String dagPayloadId, String requestId, String componentSource, String errorMessage) {
+            @NonNull String dagPayloadId,
+            @NonNull String requestId,
+            @NonNull String componentSource,
+            @NonNull String errorMessage) {
         AuditRecord record =
                 new AuditRecord(
                         dagPayloadId,
@@ -166,7 +172,7 @@ public class AuditLogger {
     }
 
     /** Verify the integrity of the entire audit chain. */
-    public TamperProofStore.ChainVerificationResult verifyAuditChain() {
+    public TamperProofStore.@NonNull ChainVerificationResult verifyAuditChain() {
         return tamperProofStore.verifyChain();
     }
 

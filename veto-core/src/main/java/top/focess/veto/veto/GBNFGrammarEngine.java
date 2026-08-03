@@ -20,7 +20,8 @@ public class GBNFGrammarEngine {
     private static final Logger log = LoggerFactory.getLogger(GBNFGrammarEngine.class);
 
     private final @NonNull VetoGatewayConfiguration config;
-    private final ConcurrentHashMap<String, String> grammarCache = new ConcurrentHashMap<>();
+    private final @NonNull ConcurrentHashMap<String, String> grammarCache =
+            new ConcurrentHashMap<>();
 
     public
     @NonNull
@@ -29,7 +30,7 @@ public class GBNFGrammarEngine {
     }
 
     /** Load the main veto output grammar from the configured path. */
-    public String loadVetoOutputGrammar() {
+    public @NonNull String loadVetoOutputGrammar() {
         return loadGrammar(config.getLlamaCpp().getGbnfGrammarPath());
     }
 
@@ -62,7 +63,7 @@ public class GBNFGrammarEngine {
     /**
      * Get the default veto output grammar. Enforces structured JSON output with redaction markers.
      */
-    public String getDefaultVetoGrammar() {
+    public @NonNull String getDefaultVetoGrammar() {
         return
 """
 root ::= veto-response
@@ -81,7 +82,7 @@ number ::= [0-9]+ ("." [0-9]+)?
      * Get the structural constraints grammar for code validation. Enforces that code output adheres
      * to project rules (e.g., normalized physics values).
      */
-    public String getCodeConstraintGrammar() {
+    public @NonNull String getCodeConstraintGrammar() {
         return
 """
 root ::= code-constraint-response
@@ -98,7 +99,7 @@ string ::= "\\"" [^"]* "\\""
     }
 
     /** Get the secrets redaction grammar. */
-    public String getSecretsRedactionGrammar() {
+    public @NonNull String getSecretsRedactionGrammar() {
         return
 """
 root ::= redaction-response

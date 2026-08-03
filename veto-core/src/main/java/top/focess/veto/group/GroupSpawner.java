@@ -58,25 +58,26 @@ public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
      * Mate's executor. Cleared on disband; a long-running process won't accumulate orphan
      * schedulers across many group lifecycles.
      */
-    private final ConcurrentMap<UUID, List<MateAgent>> liveMates = new ConcurrentHashMap<>();
+    private final @NonNull ConcurrentMap<UUID, List<MateAgent>> liveMates =
+            new ConcurrentHashMap<>();
 
     /** A factory for creating fresh {@link Agent} instances (one per Mate). */
     @FunctionalInterface
     public interface AgentFactory {
-        Agent create(AgentPersona persona, MateBinding mateBinding);
+        @NonNull Agent create(@NonNull AgentPersona persona, @NonNull MateBinding mateBinding);
     }
 
     @Autowired
     public GroupSpawner(
-            Blackboard blackboard,
-            GroupRegistry registry,
-            GroupOrchestrator orchestrator,
-            MateBreakerRegistry breakers,
-            SkillsetProperties skillsetProperties,
+            @NonNull Blackboard blackboard,
+            @NonNull GroupRegistry registry,
+            @NonNull GroupOrchestrator orchestrator,
+            @NonNull MateBreakerRegistry breakers,
+            @NonNull SkillsetProperties skillsetProperties,
             @Value("${veto.group.mate.max_calls_per_episode:50}") long defaultMaxCallsPerEpisode,
-            @Value("${veto.group.mate.tier:MID}") String mateTier,
+            @Value("${veto.group.mate.tier:MID}") @Nullable String mateTier,
             @Value("${veto.group.mate.system-prompt-base:" + DEFAULT_MATE_SYSTEM_PROMPT_BASE + "}")
-                    String mateSystemPromptBase,
+                    @NonNull String mateSystemPromptBase,
             @Nullable AgentFactory agentFactory) {
         this.blackboard = blackboard;
         this.registry = registry;
@@ -94,10 +95,10 @@ public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
 
     /** Test-only constructor: no agent factory, so {@link #provision} is unavailable. */
     public GroupSpawner(
-            Blackboard blackboard,
-            GroupRegistry registry,
-            GroupOrchestrator orchestrator,
-            MateBreakerRegistry breakers,
+            @NonNull Blackboard blackboard,
+            @NonNull GroupRegistry registry,
+            @NonNull GroupOrchestrator orchestrator,
+            @NonNull MateBreakerRegistry breakers,
             long defaultMaxCallsPerEpisode) {
         this(
                 blackboard,
@@ -116,14 +117,15 @@ public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
      * SkillsetProperties} overrides either field individually; unset fields fall back to the global
      * {@code veto.group.mate.tier} / {@code veto.group.mate.system-prompt-base}.
      */
-    private @NonNull MateBinding resolveMateBinding(@NonNull String skillset) {
+    private @NonNull MateBinding resolveMateBinding(
+            @NonNull String skillset, @Nullable Group group) {
         SkillsetProperties.SkillsetConfig cfg = skillsetProperties.forSkillset(skillset);
         ModelTier tier = (cfg != null && cfg.getTier() != null) ? cfg.getTier() : mateTier;
         String base =
                 (cfg != null && cfg.getSystemPromptBase() != null)
                         ? cfg.getSystemPromptBase()
                         : mateSystemPromptBase;
-        return new MateBinding(tier, base);
+        return new MateBinding(tier, base, group != null ? group.owner() : null);
     }
 
     /**
@@ -132,13 +134,13 @@ public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
      * Blackboard. The returned Group has all the wiring; calling code can then drive orchestration
      * via {@link GroupOrchestrator#tick(java.util.UUID)}.
      */
-    public Group spawn(
-            String leaderId,
-            String userId,
-            String contextBrief,
-            ExecutionDag dag,
-            List<MateSpec> mateSpecs,
-            AgentFactory agentFactory) {
+    public @NonNull Group spawn(
+            @NonNull String leaderId,
+            @NonNull String userId,
+            @Nullable String contextBrief,
+            @NonNull ExecutionDag dag,
+            @NonNull List<MateSpec> mateSpecs,
+            @NonNull AgentFactory agentFactory) {
         UUID groupId = UUID.randomUUID();
         // Group.create() already rebases the DAG onto the freshly-generated groupId; the
         // post-2014 manual rebase here was dead code.
@@ -164,13 +166,13 @@ public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
     }
 
     /** Convenience: spawn a single-Mate group (the common case for small tasks). */
-    public Group spawn(
-            String leaderId,
-            String userId,
-            String contextBrief,
-            String singleMateId,
-            String skillset,
-            AgentFactory agentFactory) {
+    public @NonNull Group spawn(
+            @NonNull String leaderId,
+            @NonNull String userId,
+            @Nullable String contextBrief,
+            @NonNull String singleMateId,
+            @NonNull String skillset,
+            @NonNull AgentFactory agentFactory) {
 
         // Use the same groupId for the linear DAG and the Group so we don't generate and discard
         // a UUID (the previous implementation did `ExecutionDag.linear(UUID.randomUUID(), ...)`
@@ -208,14 +210,18 @@ public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
      * registered group so the caller can stamp its id into the transform directive.
      */
     public @NonNull Group registerEmptyGroup(
-            @NonNull String leaderId, @NonNull String userId, @NonNull String contextBrief) {
+            @NonNull String leaderId,
+            @NonNull String userId,
+            @Nullable String owner,
+            @NonNull String contextBrief) {
         Group g =
                 Group.create(
                         leaderId,
                         userId,
                         contextBrief,
                         blackboard,
-                        new ExecutionDag(UUID.randomUUID(), java.util.List.of()));
+                        new ExecutionDag(UUID.randomUUID(), java.util.List.of()),
+                        owner);
         registry.put(g);
         log.info(
                 "GroupSpawner: registered empty group {} (Leader will author the DAG)",
@@ -250,12 +256,13 @@ public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
      * concurrent tick never observes a half-wired group). Shared by {@link #addMate} (which then
      * writes the registry) and {@link #provision} (which leaves the registry to the orchestrator).
      */
-    private MateAgent startMate(
+    private @NonNull MateAgent startMate(
             @NonNull UUID groupId,
             @NonNull String mateId,
             @NonNull String skillset,
             @NonNull AgentFactory agentFactory) {
-        MateBinding mateBinding = resolveMateBinding(skillset);
+        Group group = registry.get(groupId);
+        MateBinding mateBinding = resolveMateBinding(skillset, group);
         AgentPersona persona =
                 new AgentPersona(
                         mateId,
@@ -350,7 +357,7 @@ public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
         }
     }
 
-    private void stopMates(UUID groupId) {
+    private void stopMates(@NonNull UUID groupId) {
         List<MateAgent> mates = liveMates.remove(groupId);
         if (mates == null) {
             return;
@@ -365,7 +372,7 @@ public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
         }
     }
 
-    private static ModelTier parseTier(String s) {
+    private static @NonNull ModelTier parseTier(@Nullable String s) {
         if (s == null || s.isBlank()) {
             return ModelTier.MID;
         }
@@ -379,10 +386,10 @@ public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
     /** A specification for a Mate in a group. */
     public record MateSpec(@NonNull String mateId, @NonNull String skillset) {
         public MateSpec {
-            if (mateId == null || mateId.isBlank()) {
+            if (mateId.isBlank()) {
                 throw new IllegalArgumentException("mateId");
             }
-            if (skillset == null || skillset.isBlank()) {
+            if (skillset.isBlank()) {
                 throw new IllegalArgumentException("skillset");
             }
         }

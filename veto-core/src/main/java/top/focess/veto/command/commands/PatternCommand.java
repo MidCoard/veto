@@ -16,14 +16,15 @@ import top.focess.veto.model.AgentPatternEntity;
 import top.focess.veto.model.AgentPatternRepository;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTier;
+import top.focess.veto.model.tier.ModelTierConfigException;
 import top.focess.veto.model.tier.ModelTierRegistry;
 
 public class PatternCommand extends VetoCommand {
 
     private static final Logger log = LoggerFactory.getLogger(PatternCommand.class);
 
-    private final AgentPatternRepository repo;
-    private final ModelTierRegistry tierRegistry;
+    private final @NonNull AgentPatternRepository repo;
+    private final @NonNull ModelTierRegistry tierRegistry;
 
     public PatternCommand(
             @NonNull AgentPatternRepository repo, @NonNull ModelTierRegistry tierRegistry) {
@@ -48,15 +49,27 @@ public class PatternCommand extends VetoCommand {
 
         // /pattern create <name> <tier>
         // The pattern binds to a model tier; the concrete provider/model/credential come from the
-        // active model-tier configuration (veto.model-tiers), resolved live at activation. The
-        // system prompt is persona-derived in PromptCompiler; commands must not set or store it.
+        // owner's active model-tier profile, resolved live at activation. The system prompt is
+        // persona-derived in PromptCompiler; commands must not set or store it.
         addExecutor(
                 (sender, args) -> {
                     VetoCommandSender s = vetoSender(sender);
                     if (s == null) return CommandResult.REFUSE;
                     String n = args.get("name");
                     ModelTier tier = args.get("tier");
-                    ModelBinding cache = tierRegistry.resolve(tier);
+                    ModelBinding cache;
+                    try {
+                        cache = tierRegistry.resolve(s.username(), tier);
+                    } catch (ModelTierConfigException e) {
+                        s.output(
+                                "Cannot resolve tier "
+                                        + tier
+                                        + ": "
+                                        + e.getMessage()
+                                        + ". Configure a model-tier profile first"
+                                        + " (/modeltier create ...).");
+                        return CommandResult.REFUSE;
+                    }
                     AgentPatternEntity entity =
                             new AgentPatternEntity(n, tier, cache, s.username());
                     repo.save(entity);
@@ -88,7 +101,16 @@ public class PatternCommand extends VetoCommand {
                     }
                     s.output("Patterns:");
                     for (var p : pats) {
-                        ModelBinding live = tierRegistry.resolve(p.getTier());
+                        ModelBinding live;
+                        try {
+                            live = tierRegistry.resolve(s.username(), p.getTier());
+                        } catch (ModelTierConfigException e) {
+                            s.output(
+                                    String.format(
+                                            "  %-16s tier=%-5s (unresolved: %s)",
+                                            p.getName(), p.getTier(), e.getMessage()));
+                            continue;
+                        }
                         s.output(
                                 String.format(
                                         "  %-16s tier=%-5s -> %s/%s",
@@ -131,10 +153,22 @@ public class PatternCommand extends VetoCommand {
                         return CommandResult.REFUSE;
                     }
                     var p = found.get();
-                    ModelBinding live = tierRegistry.resolve(p.getTier());
+                    ModelBinding live;
+                    try {
+                        live = tierRegistry.resolve(s.username(), p.getTier());
+                    } catch (ModelTierConfigException e) {
+                        s.output(
+                                "Cannot resolve tier "
+                                        + p.getTier()
+                                        + ": "
+                                        + e.getMessage()
+                                        + ". Configure a model-tier profile first"
+                                        + " (/modeltier create ...).");
+                        return CommandResult.REFUSE;
+                    }
                     s.output("Pattern: " + p.getName());
                     s.output("  Tier:          " + p.getTier());
-                    s.output("  Active config: " + tierRegistry.activeProfile());
+                    s.output("  Active config: " + tierRegistry.activeProfile(s.username()));
                     s.output("  Resolved:      " + live.provider() + "/" + live.model());
                     s.output(
                             "  Credential:    "

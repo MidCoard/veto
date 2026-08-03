@@ -91,6 +91,48 @@ class ToolEngineImplTest {
     }
 
     @Test
+    void executeNativeListDirOnMissingPathReturnsErrorEnvelopeAndSuccessFalse(
+            @TempDir Path tempDir) {
+        ToolEngineImpl engine = newEngine();
+        // A path under tempDir that does not exist - simulating the agent's "dropped parent
+        // segment" bug (e.g. asking for E:\minecraft\versions when versions only exists under
+        // E:\minecraft\.minecraft\versions).
+        Path missing = tempDir.resolve("nonexistent/child");
+
+        ToolResult result =
+                engine.execute(
+                        new ToolCall(
+                                "list_dir", Map.of("directoryPath", missing.toString()), "cid-x"),
+                        engine.resolveDefinition("list_dir"));
+        assertFalse(
+                result.success(),
+                "a native tool that returns {\"status\":\"error\",...} must surface success=false"
+                        + " so the observation envelope renders [error, ...] and the agent does"
+                        + " not mistake the failure for a successful call");
+        assertTrue(
+                result.content().contains("\"status\":\"error\""),
+                "the body should be the canonical error envelope verbatim: " + result.content());
+    }
+
+    @Test
+    void executeNativeViewFileOnMissingPathReturnsErrorEnvelopeAndSuccessFalse(
+            @TempDir Path tempDir) {
+        ToolEngineImpl engine = newEngine();
+        Path missing = tempDir.resolve("does-not-exist.txt");
+
+        ToolResult result =
+                engine.execute(
+                        new ToolCall(
+                                "view_file", Map.of("absolutePath", missing.toString()), "cid-y"),
+                        engine.resolveDefinition("view_file"));
+        assertFalse(
+                result.success(),
+                "view_file on a missing path must also surface success=false via the same"
+                        + " canonical error envelope - this is what was broken before the fix");
+        assertTrue(result.content().contains("\"status\":\"error\""));
+    }
+
+    @Test
     void executeRunCommandRoutesThroughSubstrateNoShell(@TempDir Path tempDir) {
         ToolEngineImpl engine = newEngine();
         // Use the JDK's own java binary (guaranteed present) — argv[] direct exec, no shell.

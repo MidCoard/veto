@@ -2,6 +2,8 @@ package top.focess.veto.agent.translation;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.List;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import top.focess.veto.agent.mcp.ToolDefinition;
 import top.focess.veto.llm.core.VetoResponse;
 
@@ -32,7 +34,8 @@ public interface CapabilityTranslator {
      * Translates the whitelisted manifest tools into the flat, provider-facing {@link
      * top.focess.veto.llm.core.ToolDefinition} list carried by {@code VetoRequest.tools}.
      */
-    List<top.focess.veto.llm.core.ToolDefinition> translateTools(List<ToolDefinition> manifest);
+    @NonNull List<top.focess.veto.llm.core.ToolDefinition> translateTools(
+            @Nullable List<ToolDefinition> manifest);
 
     /**
      * Builds the per-turn {@code veto_pulse} response schema that constrains the model to a {@link
@@ -42,5 +45,5 @@ public interface CapabilityTranslator {
      *     features.guided=true}; {@code calls} forbidden) vs an autonomous turn ({@code calls}
      *     allowed, {@code actions} forbidden). {@code thought} is always an optional property.
      */
-    JsonNode vetoResponseSchema(boolean guidedSwitch);
+    @NonNull JsonNode vetoResponseSchema(boolean guidedSwitch);
 }

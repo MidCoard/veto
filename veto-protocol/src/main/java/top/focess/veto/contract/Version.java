@@ -2,7 +2,6 @@ package top.focess.veto.contract;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
-import java.util.Objects;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
@@ -44,7 +43,7 @@ public record Version(
      */
     @JsonCreator
     public static @NonNull Version parse(@NonNull String raw) {
-        String s = Objects.requireNonNull(raw, "raw").trim();
+        String s = raw.trim();
         if (s.isEmpty()) {
             throw new IllegalArgumentException("empty version");
         }

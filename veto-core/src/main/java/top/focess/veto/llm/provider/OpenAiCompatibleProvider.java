@@ -15,7 +15,7 @@ import top.focess.veto.observability.AuditLogger;
  * <p>All SDK-specific logic lives in {@code OpenAiLlmClient}. This class is just wiring.
  */
 public abstract class OpenAiCompatibleProvider extends AbstractLlmProvider {
-    protected final LlmClientFactory clientFactory;
+    protected final @NonNull LlmClientFactory clientFactory;
 
     /**
      * Constructs a new OpenAiCompatibleProvider with the specified dependencies.
@@ -25,7 +25,9 @@ public abstract class OpenAiCompatibleProvider extends AbstractLlmProvider {
      * @param clientFactory the factory for creating LLM clients
      */
     protected OpenAiCompatibleProvider(
-            ObjectMapper objectMapper, AuditLogger auditLogger, LlmClientFactory clientFactory) {
+            @NonNull ObjectMapper objectMapper,
+            @NonNull AuditLogger auditLogger,
+            @NonNull LlmClientFactory clientFactory) {
         super(objectMapper, auditLogger);
         this.clientFactory = clientFactory;
     }

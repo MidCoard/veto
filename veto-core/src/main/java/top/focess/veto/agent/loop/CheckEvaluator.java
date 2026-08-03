@@ -38,7 +38,7 @@ public final class CheckEvaluator {
         };
     }
 
-    private static boolean exitOk(Scope scope, String stepId) {
+    private static boolean exitOk(@NonNull Scope scope, @NonNull String stepId) {
         Object ok = scope.get("step_ok:" + stepId);
         if (ok instanceof Boolean b) {
             return b;
@@ -50,7 +50,8 @@ public final class CheckEvaluator {
         return false;
     }
 
-    private static boolean numericCompare(Object lhs, String op, String rhs) {
+    private static boolean numericCompare(
+            @NonNull Object lhs, @NonNull String op, @NonNull String rhs) {
         double a = toDouble(lhs);
         double b = toDouble(rhs);
         return switch (op) {
@@ -63,7 +64,7 @@ public final class CheckEvaluator {
         };
     }
 
-    private static double toDouble(Object o) {
+    private static double toDouble(@NonNull Object o) {
         if (o instanceof Number n) {
             return n.doubleValue();
         }
@@ -74,8 +75,8 @@ public final class CheckEvaluator {
         }
     }
 
-    private static String stringOf(Object o) {
-        if (o == null || o == Scope.UNDEFINED) {
+    private static @NonNull String stringOf(@NonNull Object o) {
+        if (o == Scope.UNDEFINED) {
             return "";
         }
         return o.toString();

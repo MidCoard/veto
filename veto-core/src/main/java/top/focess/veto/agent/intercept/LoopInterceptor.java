@@ -1,5 +1,6 @@
 package top.focess.veto.agent.intercept;
 
+import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.mcp.ToolResult;
 import top.focess.veto.llm.core.ToolCall;
 
@@ -22,17 +23,18 @@ public interface LoopInterceptor {
      * @return {@code true} to continue to the next plugin / proceed to execution; {@code false} to
      *     block the call.
      */
-    boolean preAction(String agentId, ToolCall call);
+    boolean preAction(@NonNull String agentId, @NonNull ToolCall call);
 
     /**
      * Fired after tool execution but before the observation is masked/framed. Each plugin may
      * transform or redact the result.
      */
-    ToolResult postAction(String agentId, ToolCall call, ToolResult result);
+    @NonNull ToolResult postAction(
+            @NonNull String agentId, @NonNull ToolCall call, @NonNull ToolResult result);
 
     /**
      * Fired before an observation enters the prompt compiler (after ingress defense has
      * framed/masked it). Each plugin may tag, frame, or redact.
      */
-    String preObservation(String agentId, String rawObservation);
+    @NonNull String preObservation(@NonNull String agentId, @NonNull String rawObservation);
 }

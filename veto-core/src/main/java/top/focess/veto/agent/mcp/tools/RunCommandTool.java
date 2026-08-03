@@ -2,6 +2,7 @@ package top.focess.veto.agent.mcp.tools;
 
 import java.util.List;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.mcp.Doc;
 import top.focess.veto.agent.mcp.NativeTool;
@@ -30,9 +31,9 @@ public final class RunCommandTool implements NativeTool<RunCommandTool.Args> {
     public record CommandInput(
             @Doc(
                             "Binary name (resolved against the exec allowlist), e.g. 'gradle'. Not a shell string.")
-                    String executable,
+                    @NonNull String executable,
             @Doc("argv array. Glob/env expansion is done by Veto, not a shell.")
-                    List<String> args) {}
+                    @NonNull List<String> args) {}
 
     @ToolDoc(
             description =
@@ -103,28 +104,29 @@ public final class RunCommandTool implements NativeTool<RunCommandTool.Args> {
             @SecurityHint(ParamCategory.SHELL_COMMAND)
                     @Doc(
                             "Discrete commands; Veto connects them per `connect`. No shell, no chaining operators in input.")
-                    List<CommandInput> commands,
+                    @NonNull List<CommandInput> commands,
             @SecurityHint(ParamCategory.FILESYSTEM_PATH)
                     @Doc("Working directory; must be under an allowed root (Gateway-checked).")
-                    String cwd,
-            @Doc(
+                    @NonNull String cwd,
+            @Nullable
+                    @Doc(
                             /* annotation was: @Nullable */
                             "How Veto connects the commands: STOP_ON_FAILURE (default), RUN_ALL, or PIPE.")
                     String connect) {}
 
     @Override
-    public String getName() {
+    public @NonNull String getName() {
         return "run_command";
     }
 
     @Override
-    public String getDescription() {
+    public @NonNull String getDescription() {
         return "Run one or more commands inside the sandbox. The model lists discrete commands; "
                 + "Veto connects them per `connect`.";
     }
 
     @Override
-    public Class<Args> getArgsClass() {
+    public @NonNull Class<Args> getArgsClass() {
         return Args.class;
     }
 

@@ -4,6 +4,7 @@ import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
+import org.jspecify.annotations.NonNull;
 
 /**
  * LLM-facing description for a native tool parameter record component. Reflected at load time by
@@ -18,5 +19,5 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface Doc {
 
-    String value();
+    @NonNull String value();
 }

@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
@@ -32,10 +33,10 @@ public class AuthController {
     private final @NonNull AuthLifecycleManager authLifecycleManager;
 
     public AuthController(
-            UserRegistry userRegistry,
-            SessionManager sessionManager,
-            KeysteadVault vault,
-            AuthLifecycleManager authLifecycleManager) {
+            @NonNull UserRegistry userRegistry,
+            @NonNull SessionManager sessionManager,
+            @NonNull KeysteadVault vault,
+            @NonNull AuthLifecycleManager authLifecycleManager) {
         this.userRegistry = userRegistry;
         this.sessionManager = sessionManager;
         this.vault = vault;
@@ -49,7 +50,7 @@ public class AuthController {
             value = "/setup",
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<Map<String, @NonNull Object>> setup(
+    public @NonNull ResponseEntity<Map<String, @NonNull Object>> setup(
             @NonNull @RequestBody Map<String, String> request) {
         String username = request.get("username");
         String password = request.get("password");
@@ -114,7 +115,7 @@ public class AuthController {
             value = "/login",
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<Map<String, @NonNull Object>> login(
+    public @NonNull ResponseEntity<Map<String, @NonNull Object>> login(
             @NonNull @RequestBody Map<String, String> request) {
         String username = request.get("username");
         String password = request.get("password");
@@ -161,8 +162,8 @@ public class AuthController {
 
     /** POST /api/auth/logout - Invalidate session and lock vault if no other sessions active. */
     @PostMapping(value = "/logout", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<Map<String, @NonNull Object>> logout(
-            @RequestHeader(TOKEN_HEADER) String token) {
+    public @NonNull ResponseEntity<Map<String, @NonNull Object>> logout(
+            @NonNull @RequestHeader(TOKEN_HEADER) String token) {
         var session = sessionManager.validate(token);
         if (session.isEmpty()) {
             return ResponseEntity.status(401)
@@ -189,8 +190,8 @@ public class AuthController {
 
     /** GET /api/auth/status - Returns vault and session state. */
     @GetMapping(value = "/status", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<Map<String, Object>> status(
-            @RequestHeader(value = TOKEN_HEADER, required = false) String token) {
+    public @NonNull ResponseEntity<Map<String, Object>> status(
+            @Nullable @RequestHeader(value = TOKEN_HEADER, required = false) String token) {
         boolean setupNeeded = !userRegistry.anyUserExists();
         boolean vaultLocked = !vault.isUnlocked();
 
@@ -219,8 +220,9 @@ public class AuthController {
             value = "/users",
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<Map<String, Object>> addUser(
-            @RequestHeader(TOKEN_HEADER) String token, @RequestBody Map<String, String> request) {
+    public @NonNull ResponseEntity<Map<String, Object>> addUser(
+            @NonNull @RequestHeader(TOKEN_HEADER) String token,
+            @NonNull @RequestBody Map<String, String> request) {
 
         var session = sessionManager.validate(token);
         if (session.isEmpty()) {

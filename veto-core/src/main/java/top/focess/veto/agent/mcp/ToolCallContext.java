@@ -7,10 +7,12 @@ import top.focess.veto.agent.AgentRunner;
 import top.focess.veto.group.GroupTools;
 
 /**
- * The call context for a tool execution: the calling agent's id and the user id, plus the group id
- * when the caller belongs to a group. Threaded from {@link AgentRunner} through {@link
- * ToolEngineImpl} to {@link NativeTool} and {@link AgentTool} implementations so tools like {@link
- * GroupTools} can record the caller's identity.
+ * The call context for a tool execution: the calling agent's id, the user id, the group id when the
+ * caller belongs to a group, and the session owner (username). Threaded from {@link AgentRunner}
+ * through {@code ToolEngineImpl} to {@link NativeTool} and {@link AgentTool} implementations so
+ * tools like {@link GroupTools} can record the caller's identity, and so group-spawned Mates /
+ * Leaders resolve their model tier against the <em>session owner's</em> active profile (per-user
+ * model-tier configuration).
  *
  * @param agentId the id of the agent making the call (e.g., the Leader's persona id); always
  *     non-null
@@ -18,12 +20,22 @@ import top.focess.veto.group.GroupTools;
  *     non-null
  * @param groupId the id of the group the calling agent belongs to (the group it leads, or the group
  *     it is a Mate of); null when the caller is a single-agent (STANDALONE) loop
+ * @param owner the session owner (username) whose model-tier profile resolves the caller's tier;
+ *     null in legacy/test paths that bypass session activation
  */
 public record ToolCallContext(
-        @NonNull String agentId, @NonNull UUID userId, @Nullable UUID groupId) {
+        @NonNull String agentId,
+        @NonNull UUID userId,
+        @Nullable UUID groupId,
+        @Nullable String owner) {
+
+    /** Compatibility constructor for callers without a group or an owner (STANDALONE / tests). */
+    public ToolCallContext(@NonNull String agentId, @NonNull UUID userId, @Nullable UUID groupId) {
+        this(agentId, userId, groupId, null);
+    }
 
     /** Compatibility constructor for callers without a group (STANDALONE agents). */
     public ToolCallContext(@NonNull String agentId, @NonNull UUID userId) {
-        this(agentId, userId, null);
+        this(agentId, userId, null, null);
     }
 }

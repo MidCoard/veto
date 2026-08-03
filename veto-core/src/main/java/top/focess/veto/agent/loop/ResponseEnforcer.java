@@ -30,9 +30,6 @@ public final class ResponseEnforcer {
      *     calls} forbidden) vs an autonomous turn.
      */
     public static @NonNull VetoResponse enforce(@NonNull VetoResponse r, boolean guidedSwitch) {
-        if (r == null) {
-            throw new ModelSchemaException("null VetoResponse");
-        }
         if (r.features() == null) {
             throw new ModelSchemaException("features is required (next-status)");
         }

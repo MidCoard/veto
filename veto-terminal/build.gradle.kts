@@ -1,11 +1,11 @@
-plugins {
+﻿plugins {
     application
     kotlin("jvm") version "2.3.0"
     id("com.diffplug.spotless") version "6.25.0"
 }
 
 group = "top.focess"
-version = "1.0.25"
+version = "1.0.49"
 
 application {
     mainClass = "top.focess.veto.terminal.VetoTerminal"
@@ -40,15 +40,15 @@ dependencies {
     // JLine 3 for terminal I/O, line editing, ANSI, Display
     implementation("org.jline:jline:$jlineVersion")
 
-    // Mordant — rich terminal output (tables, spinners, panels, ANSI detection)
+    // Mordant 鈥?rich terminal output (tables, spinners, panels, ANSI detection)
     implementation("com.github.ajalt.mordant:mordant:3.0.2")
 
-    // Logging backend — the application owns this (veto-protocol depends on the SLF4J facade only).
+    // Logging backend 鈥?the application owns this (veto-protocol depends on the SLF4J facade only).
     implementation("ch.qos.logback:logback-classic:$logbackVersion")
     implementation("org.slf4j:jul-to-slf4j:$slf4jVersion")
 }
 
-// ── Build-time version source ──────────────────────────────────────────
+// 鈹€鈹€ Build-time version source 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 // Generates top.focess.veto.terminal.VetoVersion (COMPONENT + VERSION) from project.version so the
 // runtime can report its build version (sent to the backend in the IPC Hello handshake). Spotless
 // targets src/** only, so generated sources under build/ are exempt from formatting.

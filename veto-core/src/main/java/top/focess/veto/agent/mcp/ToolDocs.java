@@ -73,7 +73,7 @@ public final class ToolDocs {
      * (up to and including the first period) from the usage text.
      */
     public static @NonNull String firstSentenceOf(@NonNull String text) {
-        if (text == null || text.isEmpty()) {
+        if (text.isEmpty()) {
             return "";
         }
         int dot = text.indexOf('.');

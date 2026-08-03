@@ -2,6 +2,7 @@ package top.focess.veto.llm.provider;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import top.focess.veto.llm.client.LlmClient;
@@ -20,9 +21,9 @@ public class AnthropicProvider extends AbstractLlmProvider {
     private final @NonNull LlmClientFactory clientFactory;
 
     public AnthropicProvider(
-            @Qualifier(LlmJacksonConfig.LLM_OBJECT_MAPPER) ObjectMapper objectMapper,
-            AuditLogger auditLogger,
-            LlmClientFactory clientFactory) {
+            @Qualifier(LlmJacksonConfig.LLM_OBJECT_MAPPER) @NonNull ObjectMapper objectMapper,
+            @NonNull AuditLogger auditLogger,
+            @NonNull LlmClientFactory clientFactory) {
         super(objectMapper, auditLogger);
         this.clientFactory = clientFactory;
     }
@@ -33,12 +34,12 @@ public class AnthropicProvider extends AbstractLlmProvider {
     }
 
     @Override
-    protected String providerName() {
+    protected @NonNull String providerName() {
         return "Anthropic";
     }
 
     @Override
-    public String defaultBaseUrl() {
+    public @Nullable String defaultBaseUrl() {
         return null;
     }
 

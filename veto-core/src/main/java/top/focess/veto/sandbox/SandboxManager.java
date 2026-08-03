@@ -22,7 +22,8 @@ public class SandboxManager {
     private static final Logger log = LoggerFactory.getLogger(SandboxManager.class);
 
     private final @NonNull SandboxSubstrate substrate;
-    private final ConcurrentHashMap<String, SandboxHandle> handles = new ConcurrentHashMap<>();
+    private final @NonNull ConcurrentHashMap<String, SandboxHandle> handles =
+            new ConcurrentHashMap<>();
 
     public
     @NonNull
@@ -55,7 +56,7 @@ public class SandboxManager {
         }
     }
 
-    public SandboxSubstrate substrate() {
+    public @NonNull SandboxSubstrate substrate() {
         return substrate;
     }
 }

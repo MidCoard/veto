@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -73,12 +74,15 @@ public final class McpJsonRpcClient {
             @NonNull String toolName,
             @NonNull Map<String, Object> args)
             throws IOException {
-        Map<String, Object> params =
-                Map.of("name", toolName, "arguments", args == null ? Map.of() : args);
+        Map<String, Object> params = Map.of("name", toolName, "arguments", args);
         return invoke(transport, "tools/call", params, 60_000);
     }
 
-    private JsonNode invoke(McpTransport transport, String method, Object params, long timeoutMs)
+    private @NonNull JsonNode invoke(
+            @NonNull McpTransport transport,
+            @NonNull String method,
+            @Nullable Object params,
+            long timeoutMs)
             throws IOException {
         return switch (transport) {
             case McpTransport.StdioMcpTransport stdio ->
@@ -103,8 +107,11 @@ public final class McpJsonRpcClient {
      * Linux/macOS runtime concern; the {@code java.net.UnixDomainSocketAddress} class exists in
      * Java 16+ but is only usable on POSIX systems).
      */
-    private JsonNode invokeSocket(
-            McpTransport.SocketMcpTransport transport, String method, Object params, long timeoutMs)
+    private @NonNull JsonNode invokeSocket(
+            McpTransport.@NonNull SocketMcpTransport transport,
+            @NonNull String method,
+            @Nullable Object params,
+            long timeoutMs)
             throws IOException {
         if (!java.nio.file.Files.exists(transport.socketPath())) {
             throw new IOException("Socket MCP server not found at " + transport.socketPath());
@@ -180,8 +187,11 @@ public final class McpJsonRpcClient {
         }
     }
 
-    private JsonNode invokeStdio(
-            McpTransport.StdioMcpTransport transport, String method, Object params, long timeoutMs)
+    private @NonNull JsonNode invokeStdio(
+            McpTransport.@NonNull StdioMcpTransport transport,
+            @NonNull String method,
+            @Nullable Object params,
+            long timeoutMs)
             throws IOException {
         Process p;
         try {
@@ -227,8 +237,11 @@ public final class McpJsonRpcClient {
         }
     }
 
-    private JsonNode invokeSse(
-            McpTransport.SseMcpTransport transport, String method, Object params, long timeoutMs)
+    private @NonNull JsonNode invokeSse(
+            McpTransport.@NonNull SseMcpTransport transport,
+            @NonNull String method,
+            @Nullable Object params,
+            long timeoutMs)
             throws IOException {
         try {
             HttpClient client =
@@ -286,7 +299,7 @@ public final class McpJsonRpcClient {
         }
     }
 
-    private JsonNode parseResponse(String line) throws IOException {
+    private @NonNull JsonNode parseResponse(@NonNull String line) throws IOException {
         JsonNode node = mapper.readTree(line);
         JsonNode error = node.get("error");
         if (error != null) {
@@ -299,7 +312,7 @@ public final class McpJsonRpcClient {
         return result;
     }
 
-    private static String serverNameFor(McpTransport transport) {
+    private static @NonNull String serverNameFor(@NonNull McpTransport transport) {
         return switch (transport) {
             case McpTransport.StdioMcpTransport s -> "stdio:" + s.processBuilder().command();
             case McpTransport.SseMcpTransport s -> "sse:" + s.baseUrl();

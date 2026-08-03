@@ -2,9 +2,9 @@ package top.focess.veto.memory;
 
 import java.time.Instant;
 import java.util.Map;
-import java.util.Objects;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A single memory entry stored by the {@link MemoryStore}. Carries the captured content (already
@@ -16,22 +16,17 @@ import org.jspecify.annotations.NonNull;
  * for query speed.
  */
 public record Memory(
-        MemoryId id,
-        UUID userId,
-        UUID sessionId,
-        MemoryTier tier,
-        UUID projectId,
-        String content,
-        float[] embedding,
-        SourceRef sourceRef,
-        Instant createdAt) {
+        @NonNull MemoryId id,
+        @NonNull UUID userId,
+        @Nullable UUID sessionId,
+        @NonNull MemoryTier tier,
+        @Nullable UUID projectId,
+        @NonNull String content,
+        float @Nullable [] embedding,
+        @Nullable SourceRef sourceRef,
+        @NonNull Instant createdAt) {
 
     public Memory {
-        Objects.requireNonNull(id, "id");
-        Objects.requireNonNull(userId, "userId");
-        Objects.requireNonNull(tier, "tier");
-        Objects.requireNonNull(content, "content");
-        Objects.requireNonNull(createdAt, "createdAt");
         if (tier == MemoryTier.SESSION && sessionId == null) {
             throw new IllegalArgumentException("SESSION-tier memory must have sessionId");
         }
@@ -46,11 +41,7 @@ public record Memory(
      */
     public record SourceRef(@NonNull String kind, @NonNull Map<String, Object> attrs) {
         public SourceRef {
-            if (attrs == null) {
-                attrs = Map.of();
-            } else {
-                attrs = Map.copyOf(attrs);
-            }
+            attrs = Map.copyOf(attrs);
         }
 
         public static @NonNull SourceRef callId(@NonNull String callId) {

@@ -31,6 +31,7 @@ import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.intercept.InterceptResolution;
 import top.focess.veto.agent.intercept.LoopInterceptor;
 import top.focess.veto.agent.intercept.VetoOption;
+import top.focess.veto.agent.intercept.VetoPrompt;
 import top.focess.veto.agent.loop.ActionsProgram;
 import top.focess.veto.agent.loop.ActionsProgramParser;
 import top.focess.veto.agent.loop.CheckEvaluator;
@@ -43,6 +44,7 @@ import top.focess.veto.agent.loop.ResponseEnforcer;
 import top.focess.veto.agent.loop.Scope;
 import top.focess.veto.agent.loop.StopAction;
 import top.focess.veto.agent.mcp.AgentToolDefinition;
+import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.ToolCallContextHolder;
 import top.focess.veto.agent.mcp.ToolDefinition;
 import top.focess.veto.agent.mcp.ToolEngine;
@@ -50,6 +52,7 @@ import top.focess.veto.agent.mcp.ToolResult;
 import top.focess.veto.agent.screening.Danger;
 import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.bus.DeltaFrame;
+import top.focess.veto.contract.IpcFrame;
 import top.focess.veto.llm.core.ChatMessage;
 import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.llm.core.ProviderType;
@@ -59,6 +62,7 @@ import top.focess.veto.llm.core.VetoRequest;
 import top.focess.veto.llm.core.VetoResponse;
 import top.focess.veto.llm.exceptions.LlmException;
 import top.focess.veto.llm.exceptions.ModelSchemaException;
+import top.focess.veto.vault.UserContext;
 
 /**
  * The execution engine — the ReAct loop running in one of two modes (guided or autonomous) on the
@@ -106,6 +110,12 @@ public class AgentRunner {
     // the raw-turn audit/replay log.
     private final top.focess.veto.memory.@Nullable TurnLogService turnLogService;
     private final @NonNull UUID userId;
+    // The session owner (username) whose model-tier profile resolves this agent's tier. Threaded
+    // into each tool's ToolCallContext so group-spawned Mates / Leaders resolve against the user's
+    // active profile (per-user model-tier configuration). Nullable in legacy/test paths that bypass
+    // session activation (those tests stub the registry). Volatile: set once at creation before the
+    // loop processes any tool call.
+    private volatile @Nullable String owner;
     // The group this agent belongs to (the group it leads, or the group it is a Mate of); null for
     // a single-agent (STANDALONE) loop. Stamped by group-spawning code and threaded into each
     // tool's ToolCallContext so group-scoped tools (create_node, post_message, ...) resolve the
@@ -115,22 +125,50 @@ public class AgentRunner {
     // --- model binding (provider/model/credential), set per prompt ---
     private volatile @NonNull LlmBinding binding;
 
+    // ── Loop discipline (structural enforcement of the system-prompt rules) ──
+    //
+    // The system prompt forbids "premature stop" (emitting a final message after one tool call
+    // when the user asked a question) and "duplicate calls" (re-issuing the same tool+args without
+    // an intervening state change). A small/weak model can lose attention to those rules under long
+    // system-prompt pressure, so the loop itself enforces them — the model prompt is the carrot,
+    // the loop is the stick. Both state slices are loop-thread-only (no synchronization needed).
+    //
+    // recentToolCalls: a bounded ring of (toolName, args, result) for the last N read-only calls.
+    // executeToolCalls consults this to short-circuit a duplicate. The result is injected as an
+    // error observation so the model sees the prior body instead of re-running the tool.
+    private final java.util.@NonNull Deque<RecentCall> recentToolCalls =
+            new java.util.ArrayDeque<>();
+    private static final int RECENT_CALL_WINDOW = 8;
+
+    // forcedContinuations: the count of "force-progress" re-prompts the loop has issued in the
+    // current episode after catching a premature stop. Capped so a model that keeps re-emitting
+    // the same banned phrase can't loop forever; after the cap, the loop honors the stop.
+    private int forcedContinuations = 0;
+    private static final int MAX_FORCED_CONTINUATIONS = 2;
+
+    /** Bounded record of a recent tool call + its result, for duplicate detection. */
+    private record RecentCall(
+            @NonNull String toolName,
+            java.util.@NonNull Map<String, Object> args,
+            @NonNull String body) {}
+
     // The pre-transform STANDALONE persona + binding, stashed when the agent transforms into a
     // Leader so disband_group can reverse the transform and restore them. Null when not leading.
     private volatile @Nullable AgentPersona preTransformPersona;
     private volatile @Nullable LlmBinding preTransformBinding;
 
     // --- loop state (mutated only by the runner's virtual thread) ---
-    private final BlockingQueue<AgentAction> actionQueue = new LinkedBlockingQueue<>();
-    private volatile AgentState state = AgentState.IDLE;
-    private final List<TurnRecord> history = new ArrayList<>();
+    private final @NonNull BlockingQueue<AgentAction> actionQueue = new LinkedBlockingQueue<>();
+    private volatile @NonNull AgentState state = AgentState.IDLE;
+    private final @NonNull List<TurnRecord> history = new ArrayList<>();
     private int turnNumber = 0;
     private boolean guided = false;
-    private ActionsProgram activeProgram = null;
+    private @Nullable ActionsProgram activeProgram = null;
     private int programCounter = 0;
     private int currentSteps = 0;
     private @NonNull Scope scope;
-    private CompletableFuture<AgentResult> resultFuture = CompletableFuture.completedFuture(null);
+    private @NonNull CompletableFuture<AgentResult> resultFuture =
+            CompletableFuture.completedFuture(null);
     private @Nullable Consumer<AgentResult> callback;
     private volatile boolean sessionAlive = true;
     private double correctionFactor = 1.0;
@@ -141,7 +179,37 @@ public class AgentRunner {
     // Delta while the loop runs. A JVM EventBus + ZmqServer Delta-frame broker will sit between
     // this
     // seam and the wire; until then the listener is the direct handoff.
-    private final CopyOnWriteArrayList<Consumer<String>> messageListeners =
+    private final @NonNull CopyOnWriteArrayList<Consumer<String>> messageListeners =
+            new CopyOnWriteArrayList<>();
+
+    // Interim-thought listeners (parallel to messageListeners). emitThought notifies these so a
+    // transport can forward each assistantThought to its client as a thought-kind Delta - rendered
+    // distinct (muted/dim) from the user-facing message. Thoughts stream before the matching
+    // message because appendThought runs before emitMessage in the loop.
+    private final @NonNull CopyOnWriteArrayList<Consumer<String>> thoughtListeners =
+            new CopyOnWriteArrayList<>();
+
+    // HITL veto listeners (the veto emission seam, parallel to messageListeners). emitVetoRequired
+    // notifies these so a transport can render a picker (an IpcFrame.Prompt with a VetoPayload) and
+    // route the user's reply back to resolve the parked veto. The agent parks in HitlRegistry
+    // regardless; the listener only advertises the prompt.
+    private final @NonNull CopyOnWriteArrayList<Consumer<VetoPrompt>> vetoListeners =
+            new CopyOnWriteArrayList<>();
+
+    // Tool-call listeners (the transparency emission seam, parallel to messageListeners).
+    // emitToolCall notifies these so a transport (the terminal PromptHandler) can forward each
+    // tool call the agent is about to execute as an IpcFrame.ToolCall - analogous to Claude
+    // Code's per-tool operation indicator. Fires on the agent's virtual thread inside appendTurn
+    // after the durable TOOL_CALL turn is persisted, so listeners never see a turn the audit
+    // log lost.
+    private final @NonNull CopyOnWriteArrayList<Consumer<IpcFrame.ToolCall>> toolCallListeners =
+            new CopyOnWriteArrayList<>();
+
+    // Tool-result listeners (parallel to toolCallListeners). emitToolResult forwards the framed
+    // observation text (what the model actually sees) so the terminal can render the body and
+    // the user can verify exactly what was fed back to the agent. Fires after the durable
+    // TOOL_RESPONSE turn is persisted.
+    private final @NonNull CopyOnWriteArrayList<Consumer<IpcFrame.ToolResult>> toolResultListeners =
             new CopyOnWriteArrayList<>();
 
     public AgentRunner(
@@ -190,65 +258,82 @@ public class AgentRunner {
     // ── Virtual-thread loop ────────────────────────────────────────────────
 
     public void run() {
-        while (sessionAlive && state != AgentState.TERMINATED) {
-            try {
-                AgentAction action = actionQueue.take();
-                if (action instanceof AgentAction.TerminateAction) {
-                    transitionTo(AgentState.TERMINATED);
+        // Stamp the session owner onto the agent's virtual thread so credential resolution on the
+        // LLM-call path (CredentialResolver → KeysteadVault.currentHandle → UserContext.get) and
+        // the embedder path resolve against the owner's vault rather than the single-active-handle
+        // fallback. Owner is set once by AgentService before this thread starts, so a single set at
+        // entry covers every turn; clear on exit so the thread never leaks a stale user.
+        if (owner != null) {
+            UserContext.set(owner);
+        }
+        try {
+            while (sessionAlive && state != AgentState.TERMINATED) {
+                try {
+                    AgentAction action = actionQueue.take();
+                    if (action instanceof AgentAction.TerminateAction) {
+                        transitionTo(AgentState.TERMINATED);
+                        break;
+                    }
+                    if (action instanceof AgentAction.PauseAction) {
+                        transitionTo(AgentState.PAUSED);
+                        continue;
+                    }
+                    if (action instanceof AgentAction.ResumeAction) {
+                        transitionTo(AgentState.RUNNING);
+                        continue;
+                    }
+                    if (action instanceof AgentAction.CompactAction) {
+                        transitionTo(AgentState.RUNNING);
+                        try {
+                            processCompaction();
+                            completeSuccess();
+                        } catch (Exception e) {
+                            log.error("Agent {} compaction failed", agentId, e);
+                            completeFailure(e.getMessage());
+                        } finally {
+                            transitionTo(AgentState.IDLE);
+                        }
+                        continue;
+                    }
+                    if (action instanceof AgentAction.UserPromptAction upa) {
+                        transitionTo(AgentState.RUNNING);
+                        try {
+                            processUserPrompt(upa.prompt());
+                            completeSuccess();
+                        } catch (BreakerTripException e) {
+                            completeBreaker();
+                        } catch (Exception e) {
+                            log.error("Agent {} task failed", agentId, e);
+                            completeFailure(e.getMessage());
+                        } finally {
+                            transitionTo(AgentState.IDLE);
+                        }
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
                     break;
                 }
-                if (action instanceof AgentAction.PauseAction) {
-                    transitionTo(AgentState.PAUSED);
-                    continue;
-                }
-                if (action instanceof AgentAction.ResumeAction) {
-                    transitionTo(AgentState.RUNNING);
-                    continue;
-                }
-                if (action instanceof AgentAction.CompactAction) {
-                    transitionTo(AgentState.RUNNING);
-                    try {
-                        processCompaction();
-                        completeSuccess();
-                    } catch (Exception e) {
-                        log.error("Agent {} compaction failed", agentId, e);
-                        completeFailure(e.getMessage());
-                    } finally {
-                        transitionTo(AgentState.IDLE);
-                    }
-                    continue;
-                }
-                if (action instanceof AgentAction.UserPromptAction upa) {
-                    transitionTo(AgentState.RUNNING);
-                    try {
-                        processUserPrompt(upa.prompt());
-                        completeSuccess();
-                    } catch (BreakerTripException e) {
-                        completeBreaker();
-                    } catch (Exception e) {
-                        log.error("Agent {} task failed", agentId, e);
-                        completeFailure(e.getMessage());
-                    } finally {
-                        transitionTo(AgentState.IDLE);
-                    }
-                }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
             }
+        } finally {
+            UserContext.clear();
         }
     }
 
     // ── Episode setup + autonomous loop ─────────────────────────────────────
 
-    private void processUserPrompt(String prompt) {
-        // Fresh UserPromptAction: reset guided state and program counter.
+    private void processUserPrompt(@NonNull String prompt) {
+        // Fresh UserPromptAction: reset guided state, program counter, and the loop-discipline
+        // state (recent-call ring + forced-continuation counter). The discipline state is per-
+        // episode: a duplicate-call in episode N is not a duplicate in episode N+1, and a forced
+        // continuation in episode N must not carry over.
         appendTurn(TurnRecord.userPrompt(++turnNumber, prompt));
         this.guided = false;
         this.activeProgram = null;
         this.programCounter = 0;
         this.breaker.newEpisode();
         this.scope = new Scope(objectMapper);
+        this.recentToolCalls.clear();
+        this.forcedContinuations = 0;
 
         if (activeProgram != null) {
             runGuided();
@@ -294,8 +379,8 @@ public class AgentRunner {
      * session forward as a COMPACTION_SUMMARY). Returns {@code "{}"} when there is nothing to
      * summarize; never null.
      */
-    private String computeCompactionSummary(List<TurnRecord> workTurns) {
-        if (workTurns == null || workTurns.isEmpty()) {
+    private @NonNull String computeCompactionSummary(@NonNull List<TurnRecord> workTurns) {
+        if (workTurns.isEmpty()) {
             return "{}";
         }
         StringBuilder sb = new StringBuilder();
@@ -367,7 +452,8 @@ public class AgentRunner {
         return callCompactor(systemPrompt, combined.toString());
     }
 
-    private String callCompactor(String systemPrompt, String userPrompt) {
+    private @NonNull String callCompactor(
+            @NonNull String systemPrompt, @NonNull String userPrompt) {
         List<ChatMessage> messages =
                 List.of(ChatMessage.system(systemPrompt), ChatMessage.user(userPrompt));
         VetoRequest request =
@@ -380,7 +466,8 @@ public class AgentRunner {
                         binding.credentialKey(),
                         binding.options(),
                         messages,
-                        null);
+                        null,
+                        binding.baseUrl());
         VetoResponse response = caller.call(request);
         return response.message() != null && !response.message().isBlank()
                 ? response.message()
@@ -425,6 +512,36 @@ public class AgentRunner {
             }
             if (response.hasCalls()) {
                 executeToolCalls(assignCallIds(response.calls()));
+            } else if (isPrematureStop(response)) {
+                // The model emitted a stopping message but the content matches one of the banned
+                // "no task / what would you like" patterns the system prompt explicitly forbids
+                // (the model lost attention to the rule under long system-prompt pressure).
+                // Inject a force-progress reminder as an observation and re-call the model. Capped
+                // at MAX_FORCED_CONTINUATIONS so a model that keeps re-emitting the same phrase
+                // cannot loop forever; once capped, the loop honors the stop.
+                if (forcedContinuations >= MAX_FORCED_CONTINUATIONS) {
+                    log.warn(
+                            "Agent {} hit MAX_FORCED_CONTINUATIONS={} after premature-stop"
+                                    + " detections; honoring stop with last message",
+                            agentId,
+                            MAX_FORCED_CONTINUATIONS);
+                    return;
+                }
+                forcedContinuations++;
+                String userTask = lastUserPromptExcerpt();
+                String reminder =
+                        "[loop-enforcer] Your previous response did not advance the user's task."
+                                + " The user asked: \""
+                                + userTask
+                                + "\". You must either (a) make a concrete tool call that"
+                                + " advances an answer, or (b) compose a substantive message that"
+                                + " DIRECTLY answers the question with the information you"
+                                + " already have. Do NOT end with 'what would you like me to"
+                                + " do?' or 'no task was given' — those are forbidden by the"
+                                + " system prompt and the loop will keep forcing you back here"
+                                + " until you do one of (a) or (b).";
+                appendObservation("loop_enforcer", reminder);
+                continue;
             } else {
                 // No tool calls: the agent has emitted its answer with nothing further to act
                 // on. Termination routes on call presence - calls absent means stop. The agent
@@ -434,6 +551,88 @@ public class AgentRunner {
                 return;
             }
         }
+    }
+
+    /**
+     * Returns {@code true} when the model's stopping response is a "premature stop" — a final
+     * message that contains one of the banned phrases the system prompt explicitly forbids (the
+     * model has lost attention to the user request and is asking the user to restate it). The check
+     * is intentionally a small, conservative phrase set so it triggers only on the patterns that
+     * have actually caused premature stops in practice; a too-broad detector would mis-fire on
+     * legitimate "what next?" answers where the user genuinely gave no task.
+     *
+     * <p>Detection is case-insensitive and operates on the model's emitted message. The thought is
+     * not checked (it is private reasoning and the system prompt explicitly allows the model to say
+     * "no task" there during early planning — only the user-facing {@code message} is gated).
+     */
+    private boolean isPrematureStop(@NonNull VetoResponse response) {
+        String msg = response.message();
+        if (msg == null || msg.isBlank()) {
+            return false;
+        }
+        String lower = msg.toLowerCase();
+        // Banned phrase set — each entry is a substring that, if present in the model's user-
+        // facing message, signals the model has lost the user request and is asking them to
+        // restate it. Phrases are kept literal (not regex) so a future tightening is mechanical.
+        String[] banned = {
+            "what would you like me to do",
+            "what would you like to do",
+            "no task was given",
+            "no specific task was given",
+            "no task is stated",
+            "no task is stated yet",
+            "i don't see a request",
+            "i don't see a specific request",
+            "i don't see any request",
+            "i don't see a task",
+            "no visible user request",
+            "no visible request",
+            "no specific request",
+            "no request was given",
+            "no request is stated",
+            "let me know what you'd like",
+            "let me know what you would like",
+            "let me know what you need",
+            "let me know what you want",
+            "tell me what you'd like",
+            "tell me what you would like",
+            "could you clarify what",
+            "could you clarify your",
+            "could you please clarify",
+            "please clarify what",
+            "could you provide more context",
+            "what would you like me to help with",
+            "how can i help you",
+            "how can i assist you"
+        };
+        for (String b : banned) {
+            if (lower.contains(b)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Returns the most recent user prompt's text (or a placeholder if no user prompt is on the
+     * history yet) so the force-progress reminder can quote the user's actual task. Truncated to
+     * keep the reminder short.
+     */
+    private @NonNull String lastUserPromptExcerpt() {
+        for (int i = history.size() - 1; i >= 0; i--) {
+            TurnRecord t = history.get(i);
+            if (t.type() == TurnType.USER_PROMPT) {
+                Object content = t.payload().get("content");
+                if (content instanceof String s && !s.isBlank()) {
+                    String trimmed = s.strip();
+                    if (trimmed.length() > 200) {
+                        return trimmed.substring(0, 197) + "...";
+                    }
+                    return trimmed;
+                }
+            }
+        }
+        return "(no user prompt on record)";
     }
 
     // ── Guided loop (drives the actions program IR) ─────────────────────────
@@ -494,7 +693,7 @@ public class AgentRunner {
         }
     }
 
-    private VetoResponse callGenerate(GenerateAction gen) {
+    private @NonNull VetoResponse callGenerate(@NonNull GenerateAction gen) {
         // A generate action invokes the model within the shared conversation with its scoped
         // prompt.
         // The generate prompt is fed as a user turn; the model responds in veto_pulse.
@@ -506,7 +705,7 @@ public class AgentRunner {
         return response;
     }
 
-    private boolean loadProgram(JsonNode node) {
+    private boolean loadProgram(@NonNull JsonNode node) {
         try {
             ActionsProgram program = ActionsProgramParser.parse(node);
             ProgramValidator.validate(program);
@@ -520,7 +719,7 @@ public class AgentRunner {
         }
     }
 
-    private void escapeToAutonomous(String reason) {
+    private void escapeToAutonomous(@NonNull String reason) {
         this.activeProgram = null;
         this.programCounter = 0;
         this.guided = false;
@@ -535,10 +734,11 @@ public class AgentRunner {
 
     // ── The model call (compile + dispatch + enforce, with schema retry) ────
 
-    private VetoResponse callModel(boolean guidedSwitch) {
+    private @NonNull VetoResponse callModel(boolean guidedSwitch) {
         CompiledPrompt compiled =
                 promptCompiler.compile(
                         persona,
+                        gateway.workspace(),
                         binding.systemPromptBase(),
                         List.copyOf(history),
                         guidedSwitch,
@@ -581,7 +781,7 @@ public class AgentRunner {
         throw last;
     }
 
-    private VetoRequest buildRequest(CompiledPrompt compiled) {
+    private @NonNull VetoRequest buildRequest(@NonNull CompiledPrompt compiled) {
         List<ChatMessage> messages = new ArrayList<>();
         messages.add(ChatMessage.system(compiled.systemMessage()));
         messages.addAll(compiled.messages());
@@ -595,7 +795,8 @@ public class AgentRunner {
                 b.credentialKey(),
                 b.options(),
                 messages,
-                compiled.responseSchema());
+                compiled.responseSchema(),
+                b.baseUrl());
     }
 
     /**
@@ -604,7 +805,8 @@ public class AgentRunner {
      * #history}, so a crash after a successful retry loses it (acceptable). All binding fields
      * (provider/model/credential/options/schema) are preserved verbatim.
      */
-    private VetoRequest injectSchemaRejection(VetoRequest request, ModelSchemaException e) {
+    private @NonNull VetoRequest injectSchemaRejection(
+            @NonNull VetoRequest request, @NonNull ModelSchemaException e) {
         String rejection =
                 String.format(
                         "Your previous response was rejected due to a schema violation: %s.\n"
@@ -622,7 +824,8 @@ public class AgentRunner {
                 request.credentialKey(),
                 request.options(),
                 augmented,
-                request.responseSchema());
+                request.responseSchema(),
+                request.baseUrl());
     }
 
     /**
@@ -630,7 +833,7 @@ public class AgentRunner {
      * adopt on retry. Substring-matched against the canonical messages {@link ResponseEnforcer}
      * emits.
      */
-    private String getExpectedDescription(ModelSchemaException e) {
+    private @NonNull String getExpectedDescription(@NonNull ModelSchemaException e) {
         String msg = e.getMessage();
         if (msg.contains("message required")) {
             return "message field is required when stopping (no tool calls or actions)";
@@ -649,9 +852,35 @@ public class AgentRunner {
 
     // ── executeToolCalls — the canonical chain ─────────────────────
 
-    private void executeToolCalls(List<ToolCall> calls) {
+    private void executeToolCalls(@NonNull List<ToolCall> calls) {
         transitionTo(AgentState.WAITING);
         try {
+            // 0. Duplicate-call filter. The system prompt forbids re-listing a directory the
+            //    model has already listed in this session; a small/weak model loses attention to
+            //    that rule under long system-prompt pressure and re-issues the same call. The
+            //    loop enforces it: any read-only (tool, args) that already ran in this episode
+            //    is short-circuited with a synthetic observation quoting the prior framed result
+            //    (self-describing, the same string the model saw on the first call). Writes are
+            //    excluded (re-execution is legitimate under the prompt's write-then-reread
+            //    carve-out). Agent tools (create_node, recall_session, write_insight, think)
+            //    are excluded — they are not idempotent reads; a re-call with different intent
+            //    is a real call, not a mistake.
+            List<ToolCall> deduped = applyDuplicateCallFilter(calls);
+            if (deduped.size() != calls.size()) {
+                log.info(
+                        "Agent {}: dedup-filtered {} duplicate call(s) (kept {} fresh)",
+                        agentId,
+                        calls.size() - deduped.size(),
+                        deduped.size());
+            }
+            if (deduped.isEmpty()) {
+                // All calls in this turn were duplicates; synthetic observations were appended as
+                // TOOL_RESPONSE turns and the model will re-decide on the next iteration. No
+                // further dispatch is needed.
+                return;
+            }
+            calls = deduped;
+
             // 1. Check phase (screen all calls first)
             List<ApprovalDecision> decisions = new ArrayList<>();
             boolean hasVeto = false;
@@ -681,6 +910,7 @@ public class AgentRunner {
                 for (int i = 0; i < calls.size(); i++) {
                     ToolCall call = calls.get(i);
                     ApprovalDecision decision = decisions.get(i);
+                    ToolDefinition def = mcpEngine.resolveDefinition(call.toolName());
 
                     if (decision instanceof ApprovalDecision.Refused r) {
                         emitMessage(r.reason());
@@ -691,8 +921,14 @@ public class AgentRunner {
                         break;
                     } else if (decision instanceof ApprovalDecision.Prompt p) {
                         transitionTo(AgentState.INTERCEPTED);
-                        emitVetoRequired(call, p);
-                        hitlRegistry.register(agentId, call.callId());
+                        // Register the await target BEFORE advertising the prompt: the veto
+                        // listener sends the Prompt synchronously, and the user's reply could
+                        // otherwise race register and resolve against a not-yet-registered future
+                        // (a hang). EDIT is filtered from the offered set in v1 (a raw-string
+                        // reply can't carry edited args).
+                        List<VetoOption> offered = VetoOption.withoutEdit(p.options());
+                        hitlRegistry.register(agentId, call.callId(), call, def, offered);
+                        emitVetoRequired(call, p, offered);
                         InterceptResolution resolution = hitlRegistry.await(agentId, call.callId());
 
                         if (resolution.option() == VetoOption.DECLINE_AND_CONTINUE) {
@@ -707,7 +943,6 @@ public class AgentRunner {
                                             call.toolName(),
                                             resolution.editedArgs(),
                                             call.callId());
-                            ToolDefinition def = mcpEngine.resolveDefinition(edited.toolName());
                             var r2 = gateway.screen(edited, def);
                             if (r2 instanceof GatewayResult.Screened sc
                                     && sc.screening().danger() == Danger.CRITICAL) {
@@ -730,7 +965,7 @@ public class AgentRunner {
                 if (!batchApproved) {
                     // Synthesize ToolResponse(status=REFUSED) for all calls, no execution, go IDLE
                     for (ToolCall call : calls) {
-                        appendTurn(TurnRecord.toolCall(turnNumber, call));
+                        appendTurn(TurnRecord.toolCall(++turnNumber, call));
                         appendTurn(
                                 TurnRecord.toolResponse(
                                         ++turnNumber, call.callId(), "REFUSED", false));
@@ -746,7 +981,7 @@ public class AgentRunner {
             // 3. Execute phase (all confirmed / skipped)
             for (ToolCall call : calls) {
                 if (skippedCalls.contains(call)) {
-                    appendTurn(TurnRecord.toolCall(turnNumber, call));
+                    appendTurn(TurnRecord.toolCall(++turnNumber, call));
                     appendTurn(
                             TurnRecord.toolResponse(++turnNumber, call.callId(), "REFUSED", false));
                 } else {
@@ -761,16 +996,16 @@ public class AgentRunner {
         }
     }
 
-    private ToolResult executeOneConfirmedCall(ToolCall call) {
+    private @NonNull ToolResult executeOneConfirmedCall(@NonNull ToolCall call) {
         ToolDefinition def = mcpEngine.resolveDefinition(call.toolName());
         if (def == null) {
             String obs = "Tool not found: " + call.toolName();
-            appendTurn(TurnRecord.toolCall(turnNumber, call));
+            appendTurn(TurnRecord.toolCall(++turnNumber, call));
             appendObservation(call.toolName(), obs);
             return new ToolResult(call.toolName(), call.callId(), false, obs);
         }
 
-        appendTurn(TurnRecord.toolCall(turnNumber, call));
+        appendTurn(TurnRecord.toolCall(++turnNumber, call));
 
         // (c) plugin preAction chain
         for (LoopInterceptor plugin : interceptors) {
@@ -781,7 +1016,7 @@ public class AgentRunner {
         }
 
         // (d) execute with tool call context (agentId + userId + groupId) threaded through.
-        ToolCallContextHolder.set(agentId, userId, groupId);
+        ToolCallContextHolder.set(agentId, userId, groupId, owner);
         try {
             ToolResult result = mcpEngine.execute(call, def);
 
@@ -800,6 +1035,17 @@ public class AgentRunner {
             for (LoopInterceptor plugin : interceptors) {
                 observation = plugin.preObservation(agentId, observation);
             }
+
+            appendTurn(
+                    TurnRecord.toolResponse(
+                            ++turnNumber, call.callId(), observation, transformed.success()));
+
+            // Record the call so future duplicate-call filter hits can quote the framed
+            // observation back to the model. Only read-only native tools are tracked — writes
+            // are excluded (a subsequent read of the same path is a legitimate fresh call after
+            // the write's side effect), and agent tools are excluded (their behavior is state-
+            // dependent and a re-call with the same args may not be a duplicate).
+            recordRecentCall(call, observation, def);
 
             appendTurn(
                     TurnRecord.toolResponse(
@@ -834,7 +1080,7 @@ public class AgentRunner {
         }
     }
 
-    private ToolResult executeOneCall(ToolCall call) {
+    private @NonNull ToolResult executeOneCall(@NonNull ToolCall call) {
         ToolDefinition def = mcpEngine.resolveDefinition(call.toolName());
         if (def == null) {
             String obs = "Tool not found: " + call.toolName();
@@ -860,7 +1106,7 @@ public class AgentRunner {
                 hitlRegistry.register(agentId, call.callId());
                 InterceptResolution res = hitlRegistry.await(agentId, call.callId());
 
-                appendTurn(TurnRecord.toolCall(turnNumber, call));
+                appendTurn(TurnRecord.toolCall(++turnNumber, call));
                 appendTurn(TurnRecord.toolResponse(++turnNumber, call.callId(), "REFUSED", false));
                 this.state = AgentState.IDLE;
                 return new ToolResult(call.toolName(), call.callId(), false, "REFUSED");
@@ -874,7 +1120,7 @@ public class AgentRunner {
             }
         }
 
-        appendTurn(TurnRecord.toolCall(turnNumber, call));
+        appendTurn(TurnRecord.toolCall(++turnNumber, call));
 
         // (c) plugin preAction chain (transform/observe/block — plugins only).
         for (LoopInterceptor plugin : interceptors) {
@@ -885,7 +1131,7 @@ public class AgentRunner {
         }
 
         // (d) execute with tool call context (agentId + userId + groupId) threaded through.
-        ToolCallContextHolder.set(agentId, userId, groupId);
+        ToolCallContextHolder.set(agentId, userId, groupId, owner);
         try {
             ToolResult result = mcpEngine.execute(call, def);
 
@@ -938,16 +1184,21 @@ public class AgentRunner {
     }
 
     /** Parks the virtual thread on a HITL future; applies the resolution (EDIT re-screens). */
-    private ToolCall awaitVeto(ToolCall call, ToolDefinition def, ApprovalDecision.Prompt p) {
+    private @Nullable ToolCall awaitVeto(
+            @NonNull ToolCall call,
+            @NonNull ToolDefinition def,
+            ApprovalDecision.@NonNull Prompt p) {
         transitionTo(AgentState.INTERCEPTED);
-        emitVetoRequired(call, p);
-        CompletableFuture<top.focess.veto.agent.intercept.InterceptResolution> future =
-                hitlRegistry.register(agentId, call.callId());
+        // Register the await target BEFORE advertising the prompt (see executeToolCalls for the
+        // race rationale). EDIT is filtered from the offered set in v1.
+        List<VetoOption> offered = VetoOption.withoutEdit(p.options());
+        hitlRegistry.register(agentId, call.callId(), call, def, offered);
+        emitVetoRequired(call, p, offered);
         top.focess.veto.agent.intercept.InterceptResolution resolution =
                 hitlRegistry.await(agentId, call.callId());
         transitionTo(AgentState.WAITING);
         if (resolution.isRefusal()) {
-            appendTurn(TurnRecord.toolCall(turnNumber, call));
+            appendTurn(TurnRecord.toolCall(++turnNumber, call));
             appendTurn(TurnRecord.toolResponse(++turnNumber, call.callId(), "REFUSED", false));
             return null;
         }
@@ -957,12 +1208,12 @@ public class AgentRunner {
             var r2 = gateway.screen(edited, def);
             if (r2 instanceof GatewayResult.Screened sc
                     && sc.screening().danger() == Danger.CRITICAL) {
-                appendTurn(TurnRecord.toolCall(turnNumber, call));
+                appendTurn(TurnRecord.toolCall(++turnNumber, call));
                 appendTurn(TurnRecord.toolResponse(++turnNumber, call.callId(), "REFUSED", false));
                 return null;
             }
             if (r2 instanceof GatewayResult.DriftResult) {
-                appendTurn(TurnRecord.toolCall(turnNumber, call));
+                appendTurn(TurnRecord.toolCall(++turnNumber, call));
                 appendTurn(TurnRecord.toolResponse(++turnNumber, call.callId(), "REFUSED", false));
                 return null;
             }
@@ -971,32 +1222,57 @@ public class AgentRunner {
         return call;
     }
 
-    private void emitVetoRequired(ToolCall call, ApprovalDecision.Prompt p) {
+    private void emitVetoRequired(
+            @NonNull ToolCall call,
+            ApprovalDecision.@NonNull Prompt p,
+            @NonNull List<VetoOption> offered) {
         log.info(
                 "VETO_REQUIRED agent={} callId={} tool={} scenario={} options={}",
                 agentId,
                 call.callId(),
                 call.toolName(),
                 p.scenario(),
-                p.options());
-        // The transport subscribes to this; it is logged.
-        // A full VETO_REQUIRED frame is emitted via the event bus in a later part.
-    }
-
-    // ── Turn history + messaging ────────────────────────────────────────────
-
-    private void appendThought(VetoResponse response) {
-        if (response.thought() != null && !response.thought().isBlank()) {
-            try {
-                String raw = objectMapper.writeValueAsString(response);
-                appendTurn(TurnRecord.assistantThought(turnNumber, raw));
-            } catch (Exception e) {
-                appendTurn(TurnRecord.assistantThought(turnNumber, response.thought()));
+                offered);
+        // Notify the veto emission seam: a transport renders a picker (a Prompt with a
+        // VetoPayload) and routes the user's reply back to resolve the parked veto. The agent
+        // parks in HitlRegistry regardless; a throwing listener is logged, not propagated.
+        if (!vetoListeners.isEmpty()) {
+            VetoPrompt vp =
+                    new VetoPrompt(
+                            agentId,
+                            call.callId(),
+                            call.toolName(),
+                            p.scenario(),
+                            offered,
+                            call.args());
+            for (Consumer<VetoPrompt> listener : vetoListeners) {
+                try {
+                    listener.accept(vp);
+                } catch (RuntimeException e) {
+                    log.warn("Agent {} veto listener threw", agentId, e);
+                }
             }
         }
     }
 
-    private void emitMessage(String message) {
+    // ── Turn history + messaging ────────────────────────────────────────────
+
+    private void appendThought(@NonNull VetoResponse response) {
+        if (response.thought() != null && !response.thought().isBlank()) {
+            try {
+                String raw = objectMapper.writeValueAsString(response);
+                appendTurn(TurnRecord.assistantThought(++turnNumber, raw));
+            } catch (Exception e) {
+                appendTurn(TurnRecord.assistantThought(++turnNumber, response.thought()));
+            }
+            // Stream the thought to transports now (after it is durably recorded). The terminal
+            // renders it dimmed/muted ahead of the user-facing message that follows, so the user
+            // can follow the reasoning without it competing with the answer.
+            emitThought(response.thought());
+        }
+    }
+
+    private void emitMessage(@NonNull String message) {
         appendTurn(TurnRecord.assistantResponse(++turnNumber, message));
         lastMessage = message;
         // emission seam: forward each user-facing message to subscribed transports so they
@@ -1028,22 +1304,134 @@ public class AgentRunner {
         }
     }
 
-    private void appendObservation(String toolName, String content) {
+    /**
+     * Emission seam for interim thoughts, parallel to {@link #emitMessage}: forwards the thought
+     * text to each subscribed transport (the terminal renders it distinct from a message) and
+     * publishes an {@link DeltaFrame.Kind#ASSISTANT_THOUGHT} to the broker so the web UI gets the
+     * same stream. Unlike {@code emitMessage} this does NOT advance the turn history - the thought
+     * is already recorded by {@link #appendThought} before calling here.
+     */
+    private void emitThought(@NonNull String thought) {
+        if (thought == null || thought.isBlank()) return;
+        if (!thoughtListeners.isEmpty()) {
+            for (Consumer<String> listener : thoughtListeners) {
+                try {
+                    listener.accept(thought);
+                } catch (RuntimeException e) {
+                    log.warn("Agent {} thought listener threw", agentId, e);
+                }
+            }
+        }
+        if (deltaBroker != null) {
+            try {
+                deltaBroker.publish(
+                        DeltaFrame.builder()
+                                .sessionId(sessionId)
+                                .kind(DeltaFrame.Kind.ASSISTANT_THOUGHT)
+                                .text(thought)
+                                .build());
+            } catch (RuntimeException e) {
+                log.warn("Agent {} delta-broker publish failed (thought)", agentId, e);
+            }
+        }
+    }
+
+    private void appendObservation(@NonNull String toolName, @NonNull String content) {
         appendTurn(TurnRecord.toolResponse(++turnNumber, null, content, false));
     }
 
     private void appendTurn(TurnRecord turn) {
+        TurnRecord numbered;
         synchronized (this) {
-            history.add(turn);
+            // turn_number is the durable unique key (uk_turn_records_agent_turn on
+            // session_id, agent_id, turn_number). The in-memory history's high-water mark is the
+            // allocation authority, not the turnNumber counter: a caller's ++turnNumber
+            // side-effect leaves the counter equal to the passed number whether the caller
+            // incremented or forgot, so the counter cannot distinguish a correct advance from a
+            // reuse. If the passed number does not advance past the last recorded turn, allocate
+            // the next one so a duplicate is never persisted (the DB would reject it and leave the
+            // durable log inconsistent with the in-memory history). history only grows, so its
+            // last element carries the max turn_number.
+            int highWater = history.isEmpty() ? 0 : history.get(history.size() - 1).turnNumber();
+            numbered = turn.turnNumber() <= highWater ? turn.withTurnNumber(highWater + 1) : turn;
+            turnNumber = numbered.turnNumber();
+            history.add(numbered);
         }
         // Persist the turn to the raw-turn audit/replay log (session resume, Leader
         // reconstruction). Best-effort — done outside the history lock so a DB write doesn't
         // block history readers, and the service swallows failures so the loop is never affected.
         if (turnLogService != null) {
             try {
-                turnLogService.log(turn, sessionId, userId, agentId);
+                turnLogService.log(numbered, sessionId, userId, agentId);
             } catch (RuntimeException e) {
                 log.warn("Agent {} turn log failed", agentId, e);
+            }
+        }
+        // Transparency emission seam: forward tool calls + observations to subscribed transports
+        // so the terminal can render a Claude-Code-style indicator. Emitted AFTER the DB persist
+        // so listeners never see a turn the durable log lost. Only the two types whose wire
+        // representation carries call/result fields are routed; other types (USER_PROMPT,
+        // ASSISTANT_THOUGHT, ASSISTANT_RESPONSE) are already handled by the message/thought seams.
+        switch (numbered.type()) {
+            case TOOL_CALL -> {
+                Object name = numbered.payload().get("tool_name");
+                Object args = numbered.payload().get("args");
+                if (name instanceof String toolName) {
+                    @SuppressWarnings("unchecked")
+                    java.util.Map<String, Object> argMap =
+                            args instanceof java.util.Map
+                                    ? (java.util.Map<String, Object>) args
+                                    : java.util.Map.of();
+                    emitToolCall(new IpcFrame.ToolCall(toolName, argMap));
+                }
+            }
+            case TOOL_RESPONSE -> {
+                Object content = numbered.payload().get("content");
+                Object success = numbered.payload().get("success");
+                if (content instanceof String body) {
+                    emitToolResult(new IpcFrame.ToolResult(body, Boolean.TRUE.equals(success)));
+                }
+            }
+            default -> {
+                // no-op: message/thought seams already cover the other types
+            }
+        }
+    }
+
+    /**
+     * Emission seam for tool calls. Notifies each subscribed transport (the terminal renders a
+     * compact indicator) by handing it a structured {@link IpcFrame.ToolCall}. Best-effort: a
+     * listener that throws is logged and skipped so one bad subscriber can't break the loop.
+     */
+    private void emitToolCall(IpcFrame.@NonNull ToolCall call) {
+        if (toolCallListeners.isEmpty()) {
+            return;
+        }
+        for (Consumer<IpcFrame.ToolCall> listener : toolCallListeners) {
+            try {
+                listener.accept(call);
+            } catch (RuntimeException e) {
+                log.warn("Agent {} tool-call listener threw", agentId, e);
+            }
+        }
+    }
+
+    /**
+     * Emission seam for tool results. Notifies each subscribed transport with the framed
+     * observation text (the exact string the model sees). The {@code body} is self-describing
+     * thanks to {@code IngressDefense.maskAndFrame} which prefixes the call's args, so the terminal
+     * can render a single result and the user can verify the call it belongs to without tracking
+     * pairs.
+     */
+    private void emitToolResult(IpcFrame.@NonNull ToolResult result) {
+        if (toolResultListeners.isEmpty()) {
+            return;
+        }
+        for (Consumer<IpcFrame.ToolResult> listener : toolResultListeners) {
+            try {
+                listener.accept(result);
+            } catch (RuntimeException e) {
+                log.warn("Agent {} tool-result listener threw", agentId, e);
             }
         }
     }
@@ -1077,7 +1465,7 @@ public class AgentRunner {
 
     // ── completion ──────────────────────────────────────────────────────────
 
-    private volatile String lastMessage = "";
+    private volatile @NonNull String lastMessage = "";
 
     private void completeSuccess() {
         Map<String, Object> meta = new HashMap<>();
@@ -1092,7 +1480,7 @@ public class AgentRunner {
         complete(AgentResult.failure(lastMessage, meta));
     }
 
-    private void completeFailure(String message) {
+    private void completeFailure(@Nullable String message) {
         Map<String, Object> meta = new HashMap<>();
         meta.put("turns", turnNumber);
         complete(AgentResult.failure(message, meta));
@@ -1161,6 +1549,77 @@ public class AgentRunner {
         }
     }
 
+    /**
+     * Subscribes an interim-thought listener (the thought emission seam; forwarded in {@link
+     * #emitThought}). Fires before the matching message listener because {@link #appendThought}
+     * runs before {@link #emitMessage} in the loop.
+     */
+    public void addThoughtListener(@NonNull Consumer<String> listener) {
+        if (listener != null) {
+            thoughtListeners.add(listener);
+        }
+    }
+
+    /** Unsubscribes an interim-thought listener. */
+    public void removeThoughtListener(@NonNull Consumer<String> listener) {
+        if (listener != null) {
+            thoughtListeners.remove(listener);
+        }
+    }
+
+    /**
+     * Subscribes a HITL-veto listener (the veto emission seam; forwarded in {@link
+     * #emitVetoRequired}). Fires on the agent's virtual thread when a tool call parks for approval.
+     */
+    public void addVetoListener(@NonNull Consumer<VetoPrompt> listener) {
+        if (listener != null) {
+            vetoListeners.add(listener);
+        }
+    }
+
+    /** Unsubscribes a HITL-veto listener. */
+    public void removeVetoListener(@NonNull Consumer<VetoPrompt> listener) {
+        if (listener != null) {
+            vetoListeners.remove(listener);
+        }
+    }
+
+    /**
+     * Subscribes a tool-call listener (the transparency emission seam; forwarded in {@link
+     * #emitToolCall}). Fires on the agent's virtual thread when a TOOL_CALL turn is appended — i.e.
+     * immediately before the model receives the tool result for that call.
+     */
+    public void addToolCallListener(@NonNull Consumer<IpcFrame.ToolCall> listener) {
+        if (listener != null) {
+            toolCallListeners.add(listener);
+        }
+    }
+
+    /** Unsubscribes a tool-call listener. */
+    public void removeToolCallListener(@NonNull Consumer<IpcFrame.ToolCall> listener) {
+        if (listener != null) {
+            toolCallListeners.remove(listener);
+        }
+    }
+
+    /**
+     * Subscribes a tool-result listener (the transparency emission seam; forwarded in {@link
+     * #emitToolResult}). Fires on the agent's virtual thread when a TOOL_RESPONSE turn is appended
+     * — i.e. immediately after the model receives the observation.
+     */
+    public void addToolResultListener(@NonNull Consumer<IpcFrame.ToolResult> listener) {
+        if (listener != null) {
+            toolResultListeners.add(listener);
+        }
+    }
+
+    /** Unsubscribes a tool-result listener. */
+    public void removeToolResultListener(@NonNull Consumer<IpcFrame.ToolResult> listener) {
+        if (listener != null) {
+            toolResultListeners.remove(listener);
+        }
+    }
+
     public @NonNull AgentResult await(@NonNull Duration timeout)
             throws TimeoutException, InterruptedException {
         CompletableFuture<AgentResult> f = resultFuture;
@@ -1207,6 +1666,16 @@ public class AgentRunner {
     /** Stamps the group this agent belongs to (called by group-spawning code / the transform). */
     public void setGroupId(@Nullable UUID groupId) {
         this.groupId = groupId;
+    }
+
+    /**
+     * Stamps the session owner (username) whose model-tier profile resolves this agent's tier.
+     * Called by the DB-backed create path ({@link AgentService#createMate} / {@code createAgent})
+     * before the loop starts, so group-spawned Mates / Leaders resolve their tier against the
+     * user's active profile via the {@link ToolCallContext}.
+     */
+    public void setOwner(@Nullable String owner) {
+        this.owner = owner;
     }
 
     // Overwrites the default (agent-id-derived) session id with the real session id. Called by the
@@ -1368,14 +1837,121 @@ public class AgentRunner {
         return "call_" + UUID.randomUUID().toString().substring(0, 8);
     }
 
-    /** A model binding: provider/model/credential/options + the Layer-1 system-prompt base. */
+    /**
+     * A model binding: provider/model/credential/options + the Layer-1 system-prompt base. The
+     * {@code baseUrl} overrides the provider's default base URL when non-null (per-user, per-tier);
+     * null falls back to the provider strategy's default.
+     */
     public record LlmBinding(
             @NonNull ProviderType provider,
             @NonNull String model,
             @NonNull String credentialKey,
             @NonNull LlmOptions options,
-            @Nullable String systemPromptBase) {}
+            @Nullable String systemPromptBase,
+            @Nullable String baseUrl) {
+
+        /**
+         * Convenience constructor for callers that do not override the base URL (null -> default).
+         */
+        public LlmBinding(
+                @NonNull ProviderType provider,
+                @NonNull String model,
+                @NonNull String credentialKey,
+                @NonNull LlmOptions options,
+                @Nullable String systemPromptBase) {
+            this(provider, model, credentialKey, options, systemPromptBase, null);
+        }
+    }
 
     /** Signals a breaker trip (caught at the action boundary → IDLE + notice). */
     private static final class BreakerTripException extends RuntimeException {}
+
+    // ── Loop discipline helpers (duplicate-call filter) ─────────────────────
+
+    /**
+     * Filters a batch of model-issued tool calls against the recent-call ring. Any read-only call
+     * whose (toolName, args) matches a recent entry is short-circuited: a synthetic observation
+     * quoting the prior framed result is appended as a TOOL_RESPONSE turn, and the call is removed
+     * from the batch. Non-read calls (writes, agent tools) pass through unchanged.
+     *
+     * <p>Loop-thread-only. Returns a new list; the input is not mutated.
+     */
+    private @NonNull List<ToolCall> applyDuplicateCallFilter(@NonNull List<ToolCall> calls) {
+        List<ToolCall> kept = new ArrayList<>(calls.size());
+        for (ToolCall call : calls) {
+            RecentCall prior = findRecentCall(call);
+            if (prior != null) {
+                String body =
+                        "[loop-enforcer] You already executed this exact call earlier in this"
+                                + " session. The prior framed result was:\n"
+                                + prior.body()
+                                + "\n\nRead that prior result; do NOT re-execute. Either make a"
+                                + " NEW tool call with different arguments (descend into a"
+                                + " subdirectory, search for different content, etc.) or compose"
+                                + " your answer in `message`.";
+                appendObservation(call.toolName(), body);
+                // The dedup count is logged at the call site (where we know both totals).
+            } else {
+                kept.add(call);
+            }
+        }
+        return kept;
+    }
+
+    /**
+     * Records a successful tool call into the recent-call ring. Only read-only native tools are
+     * recorded: writes have side effects (a subsequent read is a fresh call, not a duplicate), and
+     * agent tools are state-dependent (a re-call with the same args may not be a mistake).
+     */
+    private void recordRecentCall(
+            @NonNull ToolCall call, @NonNull String observation, @NonNull ToolDefinition def) {
+        if (def.risk() != RiskCategory.READ_ONLY) {
+            return;
+        }
+        if (recentToolCalls.size() >= RECENT_CALL_WINDOW) {
+            recentToolCalls.pollFirst();
+        }
+        Map<String, Object> args = call.args() == null ? Map.of() : call.args();
+        recentToolCalls.offerLast(new RecentCall(call.toolName(), args, observation));
+    }
+
+    /**
+     * Returns the most recent matching entry from the recent-call ring, or {@code null} if this
+     * call's (toolName, args) has not been seen before in this session. Match is exact: same tool
+     * name and a structurally-equal args map (order-independent key/value comparison).
+     */
+    private @Nullable RecentCall findRecentCall(@NonNull ToolCall call) {
+        String name = call.toolName();
+        Map<String, Object> args = call.args() == null ? Map.of() : call.args();
+        for (RecentCall rc : recentToolCalls) {
+            if (rc.toolName().equals(name) && argsEqual(rc.args(), args)) {
+                return rc;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Structural equality on args maps. Order-independent; values compared with {@link
+     * Object#equals}. Used for duplicate-call detection — a model that re-issues the same call
+     * typically re-uses the same args verbatim, so exact equality is the right granularity (no
+     * fuzzy matching, no canonicalization of equivalent paths).
+     */
+    private static boolean argsEqual(
+            @NonNull Map<String, Object> a, @NonNull Map<String, Object> b) {
+        if (a.size() != b.size()) {
+            return false;
+        }
+        for (Map.Entry<String, Object> e : a.entrySet()) {
+            if (!b.containsKey(e.getKey())) {
+                return false;
+            }
+            Object av = e.getValue();
+            Object bv = b.get(e.getKey());
+            if (av == null ? bv != null : !av.equals(bv)) {
+                return false;
+            }
+        }
+        return true;
+    }
 }

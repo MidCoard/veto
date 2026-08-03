@@ -88,23 +88,23 @@ public final class GrepSearchTool implements NativeTool<GrepSearchTool.Args> {
             })
     public record Args(
             @SecurityHint(ParamCategory.FILESYSTEM_PATH) @Doc("Absolute path to search under.")
-                    String searchPath,
-            @Doc("The exact pattern to match.") String query,
+                    @NonNull String searchPath,
+            @Doc("The exact pattern to match.") @NonNull String query,
             @Nullable @Doc("Whether to match case-insensitively.") Boolean caseInsensitive,
             @Nullable @Doc("Glob filters for which files to include.") List<String> includes) {}
 
     @Override
-    public String getName() {
+    public @NonNull String getName() {
         return "grep_search";
     }
 
     @Override
-    public String getDescription() {
+    public @NonNull String getDescription() {
         return "Search for exact pattern matches inside files.";
     }
 
     @Override
-    public Class<Args> getArgsClass() {
+    public @NonNull Class<Args> getArgsClass() {
         return Args.class;
     }
 

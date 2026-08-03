@@ -168,7 +168,7 @@ public final class ToolSchemaCompiler {
      * Walks the {@link NativeTool} or {@link AgentTool} interface to find the type parameter (the
      * args record).
      */
-    static Class<?> findArgsClass(Class<?> toolClass) {
+    static @NonNull Class<?> findArgsClass(@NonNull Class<?> toolClass) {
         for (var iface : toolClass.getGenericInterfaces()) {
             if (iface instanceof java.lang.reflect.ParameterizedType pt) {
                 var rawType = pt.getRawType();
@@ -181,7 +181,7 @@ public final class ToolSchemaCompiler {
                 toolClass.getName() + " must implement NativeTool<T> or AgentTool<T>");
     }
 
-    private static String mapJavaTypeToSchemaType(Class<?> type) {
+    private static @NonNull String mapJavaTypeToSchemaType(@NonNull Class<?> type) {
         if (type == String.class) return "string";
         if (type == int.class || type == Integer.class || type == long.class || type == Long.class)
             return "integer";

@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Stream;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -28,10 +29,10 @@ public class MarkdownSkillLoader {
 
     private static final Logger log = LoggerFactory.getLogger(MarkdownSkillLoader.class);
 
-    private final YAMLMapper yamlMapper = new YAMLMapper();
+    private final @NonNull YAMLMapper yamlMapper = new YAMLMapper();
 
     /** Scans the base skills directory and parses all {@code SKILL.md} files. */
-    public Map<String, @NonNull Skill> loadSkillsFromDir(
+    public @NonNull Map<String, @NonNull Skill> loadSkillsFromDir(
             @NonNull Path skillsDir, @NonNull SkillSourceType sourceType) {
         Map<String, Skill> skillsMap = new HashMap<>();
         if (!Files.exists(skillsDir) || !Files.isDirectory(skillsDir)) {
@@ -113,7 +114,7 @@ public class MarkdownSkillLoader {
         }
     }
 
-    private static String computeSha256(String input) {
+    private static @NonNull String computeSha256(@NonNull String input) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
@@ -123,10 +124,12 @@ public class MarkdownSkillLoader {
         }
     }
 
-    private record ToolRequirement(String name) {}
+    private record ToolRequirement(@NonNull String name) {}
 
     private record ToolRequirements(
-            List<ToolRequirement> required, List<ToolRequirement> recommended) {}
+            @Nullable List<ToolRequirement> required,
+            @Nullable List<ToolRequirement> recommended) {}
 
-    private record SkillMetadata(String name, String description, ToolRequirements tools) {}
+    private record SkillMetadata(
+            @NonNull String name, @NonNull String description, @Nullable ToolRequirements tools) {}
 }

@@ -3,7 +3,6 @@ package top.focess.veto.agent;
 import java.time.Duration;
 import java.util.List;
 import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
@@ -28,7 +27,7 @@ public class VetoAgent implements Agent {
     private final @NonNull Thread virtualThread;
 
     public VetoAgent(@NonNull AgentPersona persona, @NonNull AgentRunner runner) {
-        this.id = persona.id() != null ? persona.id() : UUID.randomUUID().toString();
+        this.id = persona.id();
         this.persona = persona;
         this.whitelistedTools = runner.whitelistedToolsView();
         this.runner = runner;
@@ -139,6 +138,75 @@ public class VetoAgent implements Agent {
     /** Unsubscribes a user-facing-message listener. */
     public void removeMessageListener(java.util.function.@NonNull Consumer<String> listener) {
         runner.removeMessageListener(listener);
+    }
+
+    /**
+     * Subscribes an interim-thought listener (the thought emission seam) for the duration a
+     * transport cares about streaming reasoning. The listener fires on the agent's virtual thread
+     * as each {@code response.thought} is emitted, before the matching message.
+     */
+    public void addThoughtListener(java.util.function.@NonNull Consumer<String> listener) {
+        runner.addThoughtListener(listener);
+    }
+
+    /** Unsubscribes an interim-thought listener. */
+    public void removeThoughtListener(java.util.function.@NonNull Consumer<String> listener) {
+        runner.removeThoughtListener(listener);
+    }
+
+    /**
+     * Subscribes a HITL-veto listener (the veto emission seam) for the duration a transport cares
+     * about rendering veto pickers. The listener fires on the agent's virtual thread when a tool
+     * call parks for approval.
+     */
+    public void addVetoListener(
+            java.util.function.@NonNull Consumer<top.focess.veto.agent.intercept.VetoPrompt>
+                    listener) {
+        runner.addVetoListener(listener);
+    }
+
+    /** Unsubscribes a HITL-veto listener. */
+    public void removeVetoListener(
+            java.util.function.@NonNull Consumer<top.focess.veto.agent.intercept.VetoPrompt>
+                    listener) {
+        runner.removeVetoListener(listener);
+    }
+
+    /**
+     * Subscribes a tool-call listener (the transparency emission seam) for the duration a transport
+     * cares about streaming per-tool-call indicators. The listener fires on the agent's virtual
+     * thread when a TOOL_CALL turn is appended — i.e. just before the model receives the matching
+     * tool result.
+     */
+    public void addToolCallListener(
+            java.util.function.@NonNull Consumer<top.focess.veto.contract.IpcFrame.ToolCall>
+                    listener) {
+        runner.addToolCallListener(listener);
+    }
+
+    /** Unsubscribes a tool-call listener. */
+    public void removeToolCallListener(
+            java.util.function.@NonNull Consumer<top.focess.veto.contract.IpcFrame.ToolCall>
+                    listener) {
+        runner.removeToolCallListener(listener);
+    }
+
+    /**
+     * Subscribes a tool-result listener (the transparency emission seam) for the duration a
+     * transport cares about streaming the observation the model received. The listener fires on the
+     * agent's virtual thread when a TOOL_RESPONSE turn is appended.
+     */
+    public void addToolResultListener(
+            java.util.function.@NonNull Consumer<top.focess.veto.contract.IpcFrame.ToolResult>
+                    listener) {
+        runner.addToolResultListener(listener);
+    }
+
+    /** Unsubscribes a tool-result listener. */
+    public void removeToolResultListener(
+            java.util.function.@NonNull Consumer<top.focess.veto.contract.IpcFrame.ToolResult>
+                    listener) {
+        runner.removeToolResultListener(listener);
     }
 
     /** The persona's resolved manifest (for the PromptCompiler / tests). */

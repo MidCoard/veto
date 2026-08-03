@@ -1,5 +1,6 @@
 package top.focess.veto.training;
 
+import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -26,7 +27,7 @@ public record TrainingRequest(
         @Nullable Boolean skipQualityFilter) {
 
     /** Create a request with all defaults. */
-    public static TrainingRequest defaults() {
+    public static @NonNull TrainingRequest defaults() {
         return new TrainingRequest(null, null, null, null, null, null, null);
     }
 }

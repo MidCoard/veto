@@ -27,7 +27,7 @@ public final class SecretMasker {
      */
     private static final LinkedHashMap<Pattern, String> PATTERNS = buildPatterns();
 
-    private static LinkedHashMap<Pattern, String> buildPatterns() {
+    private static @NonNull LinkedHashMap<Pattern, String> buildPatterns() {
         LinkedHashMap<Pattern, String> m = new LinkedHashMap<>();
         // AWS access key
         m.put(Pattern.compile("AKIA[0-9A-Z]{16}"), "[REDACTED_AWS_KEY]");
@@ -67,7 +67,7 @@ public final class SecretMasker {
      * [REDACTED_*]} tag. Stable for testing (no randomness).
      */
     public static @NonNull String mask(@NonNull String input) {
-        if (input == null || input.isEmpty()) {
+        if (input.isEmpty()) {
             return input;
         }
         String out = input;

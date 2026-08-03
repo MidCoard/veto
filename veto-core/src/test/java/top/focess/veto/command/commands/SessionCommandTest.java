@@ -30,7 +30,7 @@ class SessionCommandTest {
         SessionEntity session = new SessionEntity("alice", "coder");
         when(service.createSession("alice", "coder", null, CWD)).thenReturn(session);
         when(service.activeSession("term-1")).thenReturn(Optional.empty());
-        when(service.activate("term-1", "coder", "alice"))
+        when(service.activate("term-1", "coder", "alice", CWD))
                 .thenReturn(Optional.of(new LlmConfig(ProviderType.DEEPSEEK, "deepseek-v4", "k")));
 
         VetoCommandSender sender = mock(VetoCommandSender.class);
@@ -47,7 +47,7 @@ class SessionCommandTest {
 
         assertEquals(CommandResult.ALLOW, result.result());
         verify(service).createSession("alice", "coder", null, CWD);
-        verify(service).activate("term-1", "coder", "alice");
+        verify(service).activate("term-1", "coder", "alice", CWD);
     }
 
     @Test
@@ -73,7 +73,7 @@ class SessionCommandTest {
 
         assertEquals(CommandResult.ALLOW, result.result());
         verify(service).createSession("alice", "coder", null, CWD);
-        verify(service, never()).activate(anyString(), anyString(), anyString());
+        verify(service, never()).activate(anyString(), anyString(), anyString(), anyString());
     }
 
     @Test
@@ -105,7 +105,7 @@ class SessionCommandTest {
         SessionEntity session = new SessionEntity("alice", "mysession");
         when(service.createSession("alice", "coder", "mysession", CWD)).thenReturn(session);
         when(service.activeSession("term-1")).thenReturn(Optional.empty());
-        when(service.activate("term-1", "mysession", "alice"))
+        when(service.activate("term-1", "mysession", "alice", CWD))
                 .thenReturn(Optional.of(new LlmConfig(ProviderType.DEEPSEEK, "deepseek-v4", "k")));
 
         VetoCommandSender sender = mock(VetoCommandSender.class);
@@ -122,6 +122,6 @@ class SessionCommandTest {
 
         assertEquals(CommandResult.ALLOW, result.result());
         verify(service).createSession("alice", "coder", "mysession", CWD);
-        verify(service).activate("term-1", "mysession", "alice");
+        verify(service).activate("term-1", "mysession", "alice", CWD);
     }
 }

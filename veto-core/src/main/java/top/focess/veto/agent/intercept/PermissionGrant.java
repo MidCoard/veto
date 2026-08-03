@@ -3,7 +3,6 @@ package top.focess.veto.agent.intercept;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import org.jspecify.annotations.NonNull;
 
 /**
@@ -67,9 +66,7 @@ public sealed interface PermissionGrant
             implements PermissionGrant {
 
         public ReadGrant {
-            Objects.requireNonNull(toolFamily, "toolFamily");
-            Objects.requireNonNull(directoryPrefix, "directoryPrefix");
-            flagShape = flagShape == null ? List.of() : List.copyOf(flagShape);
+            flagShape = List.copyOf(flagShape);
             directoryPrefix = directoryPrefix.toAbsolutePath().normalize();
         }
 
@@ -100,9 +97,7 @@ public sealed interface PermissionGrant
             implements PermissionGrant {
 
         public WriteGrant {
-            Objects.requireNonNull(toolName, "toolName");
-            Objects.requireNonNull(directoryPrefix, "directoryPrefix");
-            flagShape = flagShape == null ? List.of() : List.copyOf(flagShape);
+            flagShape = List.copyOf(flagShape);
             directoryPrefix = directoryPrefix.toAbsolutePath().normalize();
         }
 
@@ -138,9 +133,8 @@ public sealed interface PermissionGrant
             implements PermissionGrant {
 
         public CommandGrant {
-            Objects.requireNonNull(executable, "executable");
-            subcommands = subcommands == null ? List.of() : List.copyOf(subcommands);
-            flagShape = flagShape == null ? List.of() : List.copyOf(flagShape);
+            subcommands = List.copyOf(subcommands);
+            flagShape = List.copyOf(flagShape);
         }
 
         @Override

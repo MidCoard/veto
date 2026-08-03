@@ -12,7 +12,7 @@ import top.focess.veto.command.VetoCommandSender;
 
 public class HelpCommand extends VetoCommand {
 
-    private final CommandRegistry registry;
+    private final @NonNull CommandRegistry registry;
 
     public HelpCommand(@NonNull CommandRegistry registry) {
         super("help", "Show available commands", "h");

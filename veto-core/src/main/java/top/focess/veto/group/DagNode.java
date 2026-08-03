@@ -1,7 +1,6 @@
 package top.focess.veto.group;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
@@ -21,13 +20,7 @@ public record DagNode(
         int retryCount) { // number of FAILED → retry cycles
 
     public DagNode {
-        Objects.requireNonNull(nodeId, "nodeId");
-        Objects.requireNonNull(description, "description");
-        Objects.requireNonNull(requiredSkillset, "requiredSkillset");
-        dependsOn = dependsOn == null ? Set.of() : Set.copyOf(dependsOn);
-        if (state == null) {
-            state = NodeState.PENDING;
-        }
+        dependsOn = Set.copyOf(dependsOn);
         if (retryCount < 0) {
             retryCount = 0;
         }
@@ -53,7 +46,7 @@ public record DagNode(
     public record ResultFailure(@NonNull String feedback, @NonNull List<String> logRefs)
             implements NodeResult {
         public ResultFailure {
-            logRefs = logRefs == null ? List.of() : List.copyOf(logRefs);
+            logRefs = List.copyOf(logRefs);
         }
     }
 

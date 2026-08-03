@@ -10,7 +10,7 @@ import org.springframework.context.annotation.Configuration;
 public class VetoGatewayConfiguration {
 
     private boolean enabled = true;
-    private LlamaCppConfig llamaCpp = new LlamaCppConfig();
+    private @NonNull LlamaCppConfig llamaCpp = new LlamaCppConfig();
     private boolean interceptAllOutbound = true;
     private boolean redactSecrets = true;
     private boolean enforceStructuralConstraints = true;
@@ -23,7 +23,7 @@ public class VetoGatewayConfiguration {
         this.enabled = enabled;
     }
 
-    public LlamaCppConfig getLlamaCpp() {
+    public @NonNull LlamaCppConfig getLlamaCpp() {
         return llamaCpp;
     }
 
@@ -56,13 +56,13 @@ public class VetoGatewayConfiguration {
     }
 
     public static class LlamaCppConfig {
-        private String modelPath = "./models/veto-slm.gguf";
+        private @NonNull String modelPath = "./models/veto-slm.gguf";
         private int nCtx = 2048;
         private int nGpuLayers = 0;
         private double temperature = 0.1;
-        private String gbnfGrammarPath = "./grammars/veto-output.gbnf";
+        private @NonNull String gbnfGrammarPath = "./grammars/veto-output.gbnf";
 
-        public String getModelPath() {
+        public @NonNull String getModelPath() {
             return modelPath;
         }
 
@@ -94,7 +94,7 @@ public class VetoGatewayConfiguration {
             this.temperature = temperature;
         }
 
-        public String getGbnfGrammarPath() {
+        public @NonNull String getGbnfGrammarPath() {
             return gbnfGrammarPath;
         }
 

@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Parses the raw {@code actions} {@link JsonNode} - a flat, ordered array emitted by the agent -
@@ -18,7 +19,7 @@ public final class ActionsProgramParser {
 
     /** Parses; throws {@link ProgramValidator.InvalidProgramException} on a malformed program. */
     public static @NonNull ActionsProgram parse(@NonNull JsonNode node) {
-        if (node == null || !node.isArray()) {
+        if (!node.isArray()) {
             throw new ProgramValidator.InvalidProgramException("actions must be an array");
         }
         List<Action> actions = new ArrayList<>();
@@ -28,7 +29,7 @@ public final class ActionsProgramParser {
         return new ActionsProgram(actions);
     }
 
-    private static Action parseAction(JsonNode a) {
+    private static @NonNull Action parseAction(@NonNull JsonNode a) {
         String id = text(a, "id");
         String label = text(a, "label");
         String type = text(a, "type");
@@ -71,7 +72,7 @@ public final class ActionsProgramParser {
         };
     }
 
-    private static Check parseCheck(JsonNode c) {
+    private static @NonNull Check parseCheck(@Nullable JsonNode c) {
         if (c == null || !c.has("kind")) {
             throw new ProgramValidator.InvalidProgramException("check missing 'kind'");
         }
@@ -91,21 +92,21 @@ public final class ActionsProgramParser {
         };
     }
 
-    private static String text(JsonNode n, String field) {
+    private static @NonNull String text(@Nullable JsonNode n, @NonNull String field) {
         if (n == null || !n.has(field) || n.get(field).isNull()) {
             return "";
         }
         return n.get(field).asText();
     }
 
-    private static String nullableText(JsonNode n, String field) {
+    private static @Nullable String nullableText(@Nullable JsonNode n, @NonNull String field) {
         if (n == null || !n.has(field) || n.get(field).isNull()) {
             return null;
         }
         return n.get(field).asText();
     }
 
-    private static Map<String, String> toStringMap(JsonNode node) {
+    private static @NonNull Map<String, String> toStringMap(@Nullable JsonNode node) {
         Map<String, String> map = new HashMap<>();
         if (node == null || !node.isObject()) {
             return map;

@@ -10,8 +10,8 @@ import top.focess.veto.vault.*;
 
 public class LoginCommand extends VetoCommand {
 
-    private final UserRegistry users;
-    private final AuthLifecycleManager authLifecycleManager;
+    private final @NonNull UserRegistry users;
+    private final @NonNull AuthLifecycleManager authLifecycleManager;
 
     public LoginCommand(
             @NonNull UserRegistry users, @NonNull AuthLifecycleManager authLifecycleManager) {

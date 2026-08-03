@@ -37,7 +37,7 @@ public class PathResolver {
 
     /** Resolves an agent path to a host path + which root, or out-of-scope. */
     public @NonNull Resolution resolveToHost(@NonNull String agentPath) {
-        if (agentPath == null || agentPath.isBlank()) {
+        if (agentPath.isBlank()) {
             return Resolution.outOfScope(null);
         }
         if (pathMode == PathMode.VIRTUAL) {
@@ -47,11 +47,11 @@ public class PathResolver {
     }
 
     /** The current operational root's host path (for relative-path resolution). */
-    public Path operationalRoot() {
+    public @NonNull Path operationalRoot() {
         return roots.get(currentRootIndex).hostPath();
     }
 
-    private Resolution resolveVirtual(String agentPath) {
+    private @NonNull Resolution resolveVirtual(@NonNull String agentPath) {
         if (agentPath.startsWith("/")) {
             // absolute virtual: /{rootDirName}/...
             int slash = agentPath.indexOf('/', 1);
@@ -75,7 +75,7 @@ public class PathResolver {
         return classifyAgainstRoot(canonicalize(host), currentRootIndex);
     }
 
-    private Resolution resolveReal(String agentPath) {
+    private @NonNull Resolution resolveReal(@NonNull String agentPath) {
         Path candidate = canonicalize(Path.of(agentPath).toAbsolutePath().normalize());
         for (int i = 0; i < roots.size(); i++) {
             Path rootHost = roots.get(i).hostPath();
@@ -107,7 +107,7 @@ public class PathResolver {
      * lexical canonicalization of ancestor + tail — safe because a totally-non-existent prefix has
      * no symlink to exploit.
      */
-    private Path canonicalize(Path host) {
+    private @NonNull Path canonicalize(@NonNull Path host) {
         // (1) Fast path: the path itself exists → toRealPath() resolves all symlinks and '..' in
         // one shot (also catches '..' escapes that normalize() would keep lexically under a root).
         if (Files.exists(host)) {
@@ -150,14 +150,14 @@ public class PathResolver {
      * otherwise the canonical path traversed out of the workspace → out-of-scope (the real path's
      * class decides, no special-casing).
      */
-    private Resolution classifyAgainstRoot(Path canonical, int i) {
+    private @NonNull Resolution classifyAgainstRoot(@NonNull Path canonical, int i) {
         if (canonical.startsWith(roots.get(i).hostPath())) {
             return new Resolution(canonical, i, true);
         }
         return Resolution.outOfScope(canonical);
     }
 
-    private String rootName(int i) {
+    private @NonNull String rootName(int i) {
         Path name = roots.get(i).hostPath().getFileName();
         return name == null ? "" : name.toString();
     }

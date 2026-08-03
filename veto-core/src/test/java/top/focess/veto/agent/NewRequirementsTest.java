@@ -133,9 +133,7 @@ class NewRequirementsTest {
         ObjectMapper mapper = new ObjectMapper();
         PromptCompiler compiler =
                 new PromptCompiler(
-                        new DefaultCapabilityTranslator(mapper),
-                        Workspace.single(root, PathMode.REAL),
-                        new SystemPromptResolver());
+                        new DefaultCapabilityTranslator(mapper), new SystemPromptResolver());
         ReflectionTestUtils.setField(compiler, "maxInputTokens", 32000);
         ReflectionTestUtils.setField(compiler, "contextFillRatio", 0.9);
 
@@ -227,9 +225,7 @@ class NewRequirementsTest {
                 if (hitlRegistry.resolve(
                         resolvedAgentId,
                         resolvedCallId,
-                        new InterceptResolution(VetoOption.EXEC_DECLINE, null),
-                        ncCall,
-                        mcpEngine.resolveDefinition("run_command"))) {
+                        new InterceptResolution(VetoOption.EXEC_DECLINE, null))) {
                     resolved = true;
                     break;
                 }
@@ -279,9 +275,7 @@ class NewRequirementsTest {
         ObjectMapper mapper = new ObjectMapper();
         PromptCompiler compiler =
                 new PromptCompiler(
-                        new DefaultCapabilityTranslator(mapper),
-                        Workspace.single(root, PathMode.REAL),
-                        new SystemPromptResolver());
+                        new DefaultCapabilityTranslator(mapper), new SystemPromptResolver());
         ReflectionTestUtils.setField(compiler, "maxInputTokens", 32000);
         ReflectionTestUtils.setField(compiler, "contextFillRatio", 0.9);
 

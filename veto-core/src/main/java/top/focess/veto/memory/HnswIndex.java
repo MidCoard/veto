@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
@@ -11,6 +12,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 
 /**
@@ -36,16 +38,16 @@ public class HnswIndex {
     private static final int EF_SEARCH = 32;
     private static final double ML = 1.0 / Math.log(M);
 
-    private final ConcurrentMap<UUID, Node> nodes = new ConcurrentHashMap<>();
-    private final ConcurrentMap<UUID, float[]> vectors = new ConcurrentHashMap<>();
-    private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
-    private final Random random = new Random();
+    private final @NonNull ConcurrentMap<UUID, Node> nodes = new ConcurrentHashMap<>();
+    private final @NonNull ConcurrentMap<UUID, float[]> vectors = new ConcurrentHashMap<>();
+    private final @NonNull ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
+    private final @NonNull Random random = new Random();
 
     /** The top layer's entry point (a node id); null if the index is empty. */
-    private volatile UUID entryPoint;
+    private volatile @Nullable UUID entryPoint;
 
     /** Insert a vector at the given id. Replaces any existing vector at that id. */
-    public void insert(@NonNull UUID id, float[] vector) {
+    public void insert(@NonNull UUID id, float @Nullable [] vector) {
         if (vector == null || vector.length == 0) {
             return;
         }
@@ -102,7 +104,8 @@ public class HnswIndex {
      * closest {@code M} (or {@code M0} at layer 0), wire bidirectional edges, and prune the peer's
      * list if it grew too large.
      */
-    private void insertAtLayer(Node node, float[] v, int level, UUID entryCurrent) {
+    private void insertAtLayer(
+            @NonNull Node node, float @NonNull [] v, int level, @NonNull UUID entryCurrent) {
         UUID current = entryCurrent;
         float[] curVec = vectors.get(current);
         float dist = curVec == null ? Float.POSITIVE_INFINITY : distance(v, curVec);
@@ -163,7 +166,7 @@ public class HnswIndex {
      * Approximate k-nearest-neighbor search. Returns up to {@code k} (id, score) pairs ranked by
      * descending similarity (higher = closer).
      */
-    public @NonNull List<VectorIndex.Match> topK(float[] query, int k) {
+    public @NonNull List<VectorIndex.Match> topK(float @Nullable [] query, int k) {
         if (query == null || query.length == 0 || k <= 0) {
             return List.of();
         }
@@ -217,7 +220,7 @@ public class HnswIndex {
         return m;
     }
 
-    private static int maxLevelOf(Node n) {
+    private static int maxLevelOf(@NonNull Node n) {
         int m = -1;
         for (Integer l : n.neighborsByLevel.keySet()) {
             m = Math.max(m, l);
@@ -229,8 +232,8 @@ public class HnswIndex {
      * Single-layer HNSW search: maintain a candidate set + a visited set; iteratively expand the
      * best candidate, add its neighbors, prune the worse ones.
      */
-    private List<SearchResult> searchLayer(
-            float[] query, List<SearchResult> entryPoints, int level) {
+    private @NonNull List<SearchResult> searchLayer(
+            float @NonNull [] query, @NonNull List<SearchResult> entryPoints, int level) {
         List<SearchResult> candidates = new ArrayList<>(entryPoints);
         candidates.sort(Comparator.comparingDouble((SearchResult sr) -> -sr.score));
         List<SearchResult> result = new ArrayList<>(entryPoints);
@@ -282,7 +285,8 @@ public class HnswIndex {
      * Neighbor-selection heuristic: pick the {@code m} closest. A more advanced implementation
      * would use the "heuristic" rule from the HNSW paper; this is the simple variant.
      */
-    private static List<SearchResult> selectNeighbors(List<SearchResult> candidates, int m) {
+    private static @NonNull List<SearchResult> selectNeighbors(
+            @NonNull List<SearchResult> candidates, int m) {
         candidates.sort(Comparator.comparingDouble((SearchResult sr) -> -sr.score));
         return candidates.subList(0, Math.min(m, candidates.size()));
     }
@@ -295,7 +299,7 @@ public class HnswIndex {
      * silently kept the FURTHEST neighbors while dropping the closest, regressing graph quality
      * with every prune.
      */
-    private void pruneNeighbors(Node node, int level) {
+    private void pruneNeighbors(@NonNull Node node, int level) {
         int budget = level == 0 ? M0 : M;
         Set<UUID> neighbors = node.neighborsByLevel.get(level);
         if (neighbors == null || neighbors.size() <= budget) {
@@ -323,7 +327,7 @@ public class HnswIndex {
     }
 
     /** Squared L2 distance. (Cosine is computed at the higher layer for ranking.) */
-    private static float distance(float[] a, float[] b) {
+    private static float distance(float @Nullable [] a, float @Nullable [] b) {
         if (a == null || b == null) {
             return Float.POSITIVE_INFINITY;
         }
@@ -338,10 +342,10 @@ public class HnswIndex {
 
     /** A node in the HNSW graph: its neighbors per layer. */
     private static final class Node {
-        final UUID id;
-        final java.util.Map<Integer, Set<UUID>> neighborsByLevel = new java.util.HashMap<>();
+        final @NonNull UUID id;
+        final @NonNull Map<Integer, Set<UUID>> neighborsByLevel = new java.util.HashMap<>();
 
-        Node(UUID id, int topLevel) {
+        Node(@NonNull UUID id, int topLevel) {
             this.id = id;
             // Pre-allocate neighbor sets for layers 0..topLevel.
             for (int l = 0; l <= topLevel; l++) {
@@ -351,5 +355,5 @@ public class HnswIndex {
     }
 
     /** A search result: the node id + similarity score. */
-    private record SearchResult(UUID id, float score) {}
+    private record SearchResult(@NonNull UUID id, float score) {}
 }

@@ -3,6 +3,7 @@ package top.focess.veto.agent.loop;
 import java.util.HashMap;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A model-invoked content action. The only action that calls the model — invoked within the same
@@ -11,26 +12,26 @@ import org.jspecify.annotations.NonNull;
  * temperature} are frozen at IR-authoring time.
  */
 public record GenerateAction(
-        String id,
-        String label,
-        String prompt,
-        Map<String, String> inputs,
-        Map<String, String> outputs,
-        Boolean thought,
-        String modelTier,
-        Double temperature)
+        @NonNull String id,
+        @NonNull String label,
+        @NonNull String prompt,
+        @NonNull Map<String, String> inputs,
+        @NonNull Map<String, String> outputs,
+        @Nullable Boolean thought,
+        @Nullable String modelTier,
+        @Nullable Double temperature)
         implements Action {
 
     public GenerateAction {
-        if (prompt == null || prompt.isBlank()) {
+        if (prompt.isBlank()) {
             throw new IllegalArgumentException("generate action requires a prompt");
         }
-        inputs = inputs == null ? Map.of() : Map.copyOf(inputs);
-        outputs = outputs == null ? Map.of() : Map.copyOf(outputs);
+        inputs = Map.copyOf(inputs);
+        outputs = Map.copyOf(outputs);
     }
 
     @Override
-    public Map<String, @NonNull Object> resolveInputs(@NonNull Scope scope) {
+    public @NonNull Map<String, @NonNull Object> resolveInputs(@NonNull Scope scope) {
         Map<String, Object> resolved = new HashMap<>();
         for (var entry : inputs.entrySet()) {
             resolved.put(entry.getKey(), scope.resolveValue(entry.getValue()));

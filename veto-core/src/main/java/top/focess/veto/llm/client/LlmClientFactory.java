@@ -23,10 +23,10 @@ import top.focess.veto.llm.config.LlmJacksonConfig;
 @Component
 public class LlmClientFactory {
 
-    private final ConcurrentHashMap<Class<?>, ConcurrentHashMap<String, Object>> caches =
+    private final @NonNull ConcurrentHashMap<Class<?>, ConcurrentHashMap<String, Object>> caches =
             new ConcurrentHashMap<>();
 
-    private final ConcurrentHashMap<Class<?>, BiFunction<String, String, ?>> builders =
+    private final @NonNull ConcurrentHashMap<Class<?>, BiFunction<String, String, ?>> builders =
             new ConcurrentHashMap<>();
 
     private final @NonNull ObjectMapper objectMapper;
@@ -39,8 +39,8 @@ public class LlmClientFactory {
      * @param capabilityTranslator the translator that emits the per-turn veto_pulse schema
      */
     public LlmClientFactory(
-            @Qualifier(LlmJacksonConfig.LLM_OBJECT_MAPPER) ObjectMapper objectMapper,
-            CapabilityTranslator capabilityTranslator) {
+            @Qualifier(LlmJacksonConfig.LLM_OBJECT_MAPPER) @NonNull ObjectMapper objectMapper,
+            @NonNull CapabilityTranslator capabilityTranslator) {
         this.objectMapper = objectMapper;
         this.capabilityTranslator = capabilityTranslator;
     }
@@ -100,8 +100,11 @@ public class LlmClientFactory {
      * Returns an {@link LlmClient} backed by a cached {@code OpenAIClient}. For OpenAI and
      * providers that support strict {@code json_schema}.
      */
-    public LlmClient openAi(
-            String baseUrl, String apiKey, boolean supportsJsonSchema, String providerName) {
+    public @NonNull LlmClient openAi(
+            @NonNull String baseUrl,
+            @NonNull String apiKey,
+            boolean supportsJsonSchema,
+            @NonNull String providerName) {
         com.openai.client.OpenAIClient sdk =
                 get(com.openai.client.OpenAIClient.class, baseUrl, apiKey);
         return new OpenAiLlmClient(
@@ -143,8 +146,8 @@ public class LlmClientFactory {
         return new GeminiLlmClient(sdk, objectMapper, capabilityTranslator);
     }
 
-    private static String cacheKey(String baseUrl, String apiKey) {
-        String base = baseUrl == null ? "" : baseUrl;
-        return base + "|" + Integer.toHexString(apiKey == null ? 0 : apiKey.hashCode());
+    private static @NonNull String cacheKey(@NonNull String baseUrl, @NonNull String apiKey) {
+        String base = baseUrl;
+        return base + "|" + Integer.toHexString(apiKey.hashCode());
     }
 }

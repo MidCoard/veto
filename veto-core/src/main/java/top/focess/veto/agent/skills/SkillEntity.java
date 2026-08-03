@@ -9,6 +9,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
 /**
  * JPA persistence for a skill's integrity hash (Part 5 "skill DB hash storage"). The hash is the
@@ -23,25 +24,25 @@ import org.jspecify.annotations.NonNull;
 @Table(name = "skill_hashes")
 public class SkillEntity {
 
-    @Id private String id;
+    @Id private @NonNull String id;
 
     @Column(nullable = false)
-    private String name;
+    private @NonNull String name;
 
     @Column(name = "source_type", nullable = false)
-    private String sourceType;
+    private @NonNull String sourceType;
 
     @Column(name = "content_hash", nullable = false, length = 64)
-    private String contentHash;
+    private @NonNull String contentHash;
 
     @Column(name = "skill_directory")
-    private String skillDirectory;
+    private @Nullable String skillDirectory;
 
     @Column(name = "required_tools", columnDefinition = "TEXT")
-    private String requiredTools;
+    private @Nullable String requiredTools;
 
     @Column(name = "description", columnDefinition = "TEXT")
-    private String description;
+    private @Nullable String description;
 
     protected SkillEntity() {}
 
@@ -52,10 +53,8 @@ public class SkillEntity {
         this.name = skill.name();
         this.sourceType = skill.sourceType().name();
         this.contentHash = skill.contentHash();
-        this.skillDirectory =
-                skill.skillDirectory() == null ? null : skill.skillDirectory().toString();
-        this.requiredTools =
-                String.join(",", skill.requiredTools() == null ? List.of() : skill.requiredTools());
+        this.skillDirectory = skill.skillDirectory().toString();
+        this.requiredTools = String.join(",", skill.requiredTools());
         this.description = skill.description();
     }
 
@@ -72,19 +71,19 @@ public class SkillEntity {
                 e.contentHash);
     }
 
-    public String getId() {
+    public @NonNull String getId() {
         return id;
     }
 
-    public String getName() {
+    public @NonNull String getName() {
         return name;
     }
 
-    public String getSourceType() {
+    public @NonNull String getSourceType() {
         return sourceType;
     }
 
-    public String getContentHash() {
+    public @NonNull String getContentHash() {
         return contentHash;
     }
 
@@ -92,15 +91,15 @@ public class SkillEntity {
         this.contentHash = contentHash;
     }
 
-    public String getSkillDirectory() {
+    public @Nullable String getSkillDirectory() {
         return skillDirectory;
     }
 
-    public String getRequiredTools() {
+    public @Nullable String getRequiredTools() {
         return requiredTools;
     }
 
-    public String getDescription() {
+    public @Nullable String getDescription() {
         return description;
     }
 }

@@ -21,7 +21,7 @@ public class SemanticRedactor {
     private static final Logger log = LoggerFactory.getLogger(SemanticRedactor.class);
 
     // Deterministic pattern-based redaction (first pass, before SLM)
-    private static final List<RedactionRule> REDACTION_RULES =
+    private static final @NonNull List<RedactionRule> REDACTION_RULES =
             List.of(
                     // IPv4 addresses
                     new RedactionRule(
@@ -78,7 +78,7 @@ public class SemanticRedactor {
                             RedactionType.SECRET_KEY));
 
     // Proprietary physics parameter patterns (configurable)
-    private final List<Pattern> proprietaryParameterPatterns = new ArrayList<>();
+    private final @NonNull List<Pattern> proprietaryParameterPatterns = new ArrayList<>();
 
     public SemanticRedactor() {
         // Broadened proprietary physics patterns
@@ -154,14 +154,15 @@ public class SemanticRedactor {
         String redacted = deterministicReport.redactedPayload();
 
         // Apply SLM suggestions if the LLM found additional redactions
-        if (llmSuggestion != null && !llmSuggestion.isEmpty()) {
+        if (!llmSuggestion.isEmpty()) {
             redacted = applySLMRedactions(redacted, llmSuggestion);
         }
 
         return redacted;
     }
 
-    private String applySLMRedactions(String payload, String llmSuggestion) {
+    private @NonNull String applySLMRedactions(
+            @NonNull String payload, @NonNull String llmSuggestion) {
         // Parse the SLM's structured output (JSON) and apply additional redactions
         // The SLM output follows the GBNF grammar and provides specific field-level redactions
         try {
@@ -185,7 +186,9 @@ public class SemanticRedactor {
 
     /** Redaction report containing original, redacted, and all entries. */
     public record RedactionReport(
-            String originalPayload, String redactedPayload, List<RedactionEntry> entries) {
+            @NonNull String originalPayload,
+            @NonNull String redactedPayload,
+            @NonNull List<RedactionEntry> entries) {
         public int getTotalRedactions() {
             return entries.size();
         }

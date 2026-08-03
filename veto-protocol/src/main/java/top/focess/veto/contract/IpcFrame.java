@@ -5,7 +5,6 @@ import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
@@ -53,6 +52,8 @@ import org.jspecify.annotations.Nullable;
     @JsonSubTypes.Type(value = IpcFrame.Done.class, name = "done"),
     @JsonSubTypes.Type(value = IpcFrame.Error.class, name = "error"),
     @JsonSubTypes.Type(value = IpcFrame.Delta.class, name = "delta"),
+    @JsonSubTypes.Type(value = IpcFrame.ToolCall.class, name = "tool_call"),
+    @JsonSubTypes.Type(value = IpcFrame.ToolResult.class, name = "tool_result"),
     @JsonSubTypes.Type(value = IpcFrame.Progress.class, name = "progress"),
     @JsonSubTypes.Type(value = IpcFrame.Prompt.class, name = "prompt"),
     @JsonSubTypes.Type(value = IpcFrame.Terminate.class, name = "terminate"),
@@ -105,13 +106,7 @@ public sealed interface IpcFrame
      *     explicitly via REST, so this field is terminal-only.
      */
     record Hello(int version, long seq, @NonNull Version productVersion, @NonNull String cwd)
-            implements SeqRequest {
-        /** Compact constructor: a version and cwd are always required. */
-        public Hello {
-            Objects.requireNonNull(productVersion, "productVersion");
-            Objects.requireNonNull(cwd, "cwd");
-        }
-    }
+            implements SeqRequest {}
 
     /**
      * User typed a command or plain-text prompt.
@@ -170,7 +165,7 @@ public sealed interface IpcFrame
      * {@link Prompt}, {@link Done}) do not carry a {@code seq}.
      */
     sealed interface ServerFrame extends IpcFrame
-            permits SeqResponse, TerminalResponse, Delta, Progress, Prompt {}
+            permits SeqResponse, TerminalResponse, Delta, ToolCall, ToolResult, Progress, Prompt {}
 
     /** Marker interface for all seq-based server response frames. */
     sealed interface SeqResponse extends ServerFrame
@@ -189,12 +184,7 @@ public sealed interface IpcFrame
      * @param seq the sequence number echoed from the handshake request
      * @param productVersion the server's product version; never {@code null}
      */
-    record Welcome(int version, long seq, @NonNull Version productVersion) implements SeqResponse {
-        /** Compact constructor: a version is always required. */
-        public Welcome {
-            Objects.requireNonNull(productVersion, "productVersion");
-        }
-    }
+    record Welcome(int version, long seq, @NonNull Version productVersion) implements SeqResponse {}
 
     /**
      * An autocomplete candidate returned in a {@link CompleteResult}.
@@ -229,8 +219,8 @@ public sealed interface IpcFrame
          *
          * @return the formatted hint display text
          */
-        @JsonIgnore /* annotation was: @NonNull */
-        public String displayText() {
+        @JsonIgnore
+        public @NonNull String displayText() {
             if (placeholder == null) {
                 return "";
             }
@@ -297,8 +287,81 @@ public sealed interface IpcFrame
      * Streaming content chunk — not terminal; more frames follow.
      *
      * @param content the text chunk content
+     * @param kind the chunk's role - user-facing message or interim thought
      */
-    record Delta(@NonNull String content) implements ServerFrame {}
+    record Delta(@NonNull String content, @NonNull Kind kind) implements ServerFrame {
+
+        /** The role of a {@link Delta} chunk - message prose vs interim reasoning. */
+        public enum Kind {
+            /** User-facing message content - rendered as normal prose. */
+            MESSAGE,
+            /** Interim agent reasoning - rendered distinct (muted/dim) from the message. */
+            THOUGHT
+        }
+
+        /**
+         * Canonical constructor. Normalizes a null {@code kind} (e.g. from a peer that omits the
+         * field) to {@link Kind#MESSAGE} so the dispatch path never sees null.
+         */
+        public Delta(@NonNull String content, @NonNull Kind kind) {
+            this.content = content;
+            this.kind = kind == null ? Kind.MESSAGE : kind;
+        }
+
+        /** Backward-compat constructor: a bare content chunk is a user-facing message. */
+        public Delta(@NonNull String content) {
+            this(content, Kind.MESSAGE);
+        }
+
+        /** Factory for a user-facing message chunk. */
+        public static @NonNull Delta message(@NonNull String content) {
+            return new Delta(content, Kind.MESSAGE);
+        }
+
+        /** Factory for an interim-thought chunk. */
+        public static @NonNull Delta thought(@NonNull String content) {
+            return new Delta(content, Kind.THOUGHT);
+        }
+
+        /** True when this chunk is interim reasoning (not user-facing prose). */
+        public boolean isThought() {
+            return kind == Kind.THOUGHT;
+        }
+    }
+
+    /**
+     * A tool call the agent is about to execute (streamed to the terminal for transparency /
+     * debugging — analogous to Claude Code's per-tool operation indicator). Not terminal; the
+     * matching {@link ToolResult} or a terminal frame follows.
+     *
+     * <p>The {@code args} are the model's own arguments, forwarded as-is so the terminal can show
+     * exactly what the agent requested (e.g. the path it is about to list).
+     *
+     * @param toolName the tool the agent is calling
+     * @param args the call's arguments (the model-provided input, not the engine's framed form)
+     */
+    record ToolCall(@NonNull String toolName, @NonNull Map<String, Object> args)
+            implements ServerFrame {
+
+        /** True when the call carries no arguments. */
+        public boolean isEmpty() {
+            return args == null || args.isEmpty();
+        }
+    }
+
+    /**
+     * The observation the agent receives for a tool call (streamed to the terminal so the user can
+     * verify exactly what was fed back into the model). The {@code body} is the same string stored
+     * in the durable {@code TOOL_RESPONSE} turn and forwarded as a tool-role message by the {@code
+     * PromptCompiler} — i.e. the framed {@code "Observation (<tool>(<args>)) [...]"} text the model
+     * actually sees, not the raw tool output.
+     *
+     * <p>Not terminal; follows the matching {@link ToolCall}.
+     *
+     * @param body the observation text (framed, masked, exactly as the model receives it)
+     * @param success whether the tool's execution itself succeeded
+     */
+    record ToolResult(@NonNull String body, boolean success) implements ServerFrame {}
 
     /**
      * Optional progress hint between deltas.
@@ -319,10 +382,51 @@ public sealed interface IpcFrame
      * Backend requests user input — pauses the stream; terminal writes an {@link Input} frame in
      * reply.
      *
+     * <p>Two shapes share one frame type:
+     *
+     * <ul>
+     *   <li><b>Free-text prompt</b> ({@code veto == null}) - the terminal renders {@code content}
+     *       as an input field (optionally masked) and replies with the typed line.
+     *   <li><b>HITL veto</b> ({@code veto != null}) - the terminal renders a picker from {@link
+     *       VetoPayload#options()} and replies with the chosen option name as the {@link
+     *       Input#raw()} string. Parking stays server-side (the agent parks in the HitlRegistry);
+     *       the reply is correlated by the 1:1 request invariant (at most one veto pending per
+     *       session at a time), so the {@code Input} carries only the option name.
+     * </ul>
+     *
      * @param content the prompt message content to display
-     * @param mask whether to mask the user's input characters (e.g. for password fields)
+     * @param mask whether to mask the user's input characters (e.g. for password fields); always
+     *     {@code false} for a veto picker
+     * @param veto the optional HITL veto payload; {@code null} for a free-text prompt
      */
-    record Prompt(@NonNull String content, boolean mask) implements ServerFrame {}
+    record Prompt(@NonNull String content, boolean mask, @Nullable VetoPayload veto)
+            implements ServerFrame {
+        /** Free-text prompt constructor (no veto payload) - keeps existing callers unchanged. */
+        public Prompt(@NonNull String content, boolean mask) {
+            this(content, mask, null);
+        }
+    }
+
+    /**
+     * The HITL veto payload carried by a {@link Prompt} - everything the terminal needs to render a
+     * picker and reply with a chosen option, in transport-pure types (no core dependency). The
+     * reply is an {@link Input} whose {@code raw} is the chosen option name (one of {@link
+     * #options()}).
+     *
+     * @param agentId the agent (persona) id the veto is parked under - the HitlRegistry key
+     * @param callId the tool-call id the veto is parked under
+     * @param tool the tool name being approved/refused
+     * @param scenario the {@code VetoScenario} name (display + grouping)
+     * @param options the offered option names (VetoOption names); the reply must be one of these
+     * @param args the call's arguments (display-only - the user approves the actual call)
+     */
+    record VetoPayload(
+            @NonNull String agentId,
+            @NonNull String callId,
+            @NonNull String tool,
+            @NonNull String scenario,
+            @NonNull List<String> options,
+            @NonNull Map<String, Object> args) {}
 
     /**
      * Sent by the server to forcefully terminate the terminal connection session.

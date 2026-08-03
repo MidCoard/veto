@@ -34,5 +34,6 @@ public enum ScreeningMode {
         }
     };
 
-    public abstract ScreeningOutcome cell(Relevance relevance, Danger danger);
+    public abstract @NonNull ScreeningOutcome cell(
+            @NonNull Relevance relevance, @NonNull Danger danger);
 }

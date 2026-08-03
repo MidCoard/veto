@@ -2,6 +2,7 @@ package top.focess.veto.group;
 
 import java.util.HashMap;
 import java.util.Map;
+import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
@@ -31,13 +32,13 @@ import top.focess.veto.model.tier.ModelTier;
 @ConfigurationProperties("veto.group")
 public class SkillsetProperties {
 
-    private Map<String, SkillsetConfig> skillsets = new HashMap<>();
+    private @NonNull Map<String, SkillsetConfig> skillsets = new HashMap<>();
 
-    public Map<String, SkillsetConfig> getSkillsets() {
+    public @NonNull Map<String, SkillsetConfig> getSkillsets() {
         return skillsets;
     }
 
-    public void setSkillsets(Map<String, SkillsetConfig> skillsets) {
+    public void setSkillsets(@NonNull Map<String, SkillsetConfig> skillsets) {
         this.skillsets = skillsets;
     }
 
@@ -52,22 +53,22 @@ public class SkillsetProperties {
     /** Per-skillset overrides for a Mate's tier and system-prompt base. */
     public static class SkillsetConfig {
 
-        private ModelTier tier;
-        private String systemPromptBase;
+        private @Nullable ModelTier tier;
+        private @Nullable String systemPromptBase;
 
-        public ModelTier getTier() {
+        public @Nullable ModelTier getTier() {
             return tier;
         }
 
-        public void setTier(ModelTier tier) {
+        public void setTier(@Nullable ModelTier tier) {
             this.tier = tier;
         }
 
-        public String getSystemPromptBase() {
+        public @Nullable String getSystemPromptBase() {
             return systemPromptBase;
         }
 
-        public void setSystemPromptBase(String systemPromptBase) {
+        public void setSystemPromptBase(@Nullable String systemPromptBase) {
             this.systemPromptBase = systemPromptBase;
         }
     }

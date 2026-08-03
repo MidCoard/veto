@@ -11,9 +11,9 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @Configuration
 public class WebConfig implements WebMvcConfigurer {
 
-    private final SecurityContextInterceptor interceptor;
+    private final @NonNull SecurityContextInterceptor interceptor;
 
-    public WebConfig(SecurityContextInterceptor interceptor) {
+    public WebConfig(@NonNull SecurityContextInterceptor interceptor) {
         this.interceptor = interceptor;
     }
 

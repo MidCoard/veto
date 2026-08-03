@@ -19,8 +19,8 @@ public class AuthLifecycleManager {
 
     private static final Logger log = LoggerFactory.getLogger(AuthLifecycleManager.class);
 
-    private final KeysteadVault vault;
-    private final PromptHandler promptHandler;
+    private final @NonNull KeysteadVault vault;
+    private final @NonNull PromptHandler promptHandler;
 
     public AuthLifecycleManager(
             @NonNull KeysteadVault vault, @NonNull PromptHandler promptHandler) {

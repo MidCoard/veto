@@ -1,5 +1,9 @@
 package top.focess.veto.agent.intercept;
 
+import java.util.ArrayList;
+import java.util.List;
+import org.jspecify.annotations.NonNull;
+
 /**
  * A resolution option offered at a veto prompt. The offered set is determined by the tool's {@link
  * VetoScenario} (screening_model.md §8). The {@code _LIKE_THIS} variants create a permission grant
@@ -128,5 +132,25 @@ public enum VetoOption {
     /** Whether this option is the per-call refuse-and-continue variant. */
     public boolean isDeclineAndContinue() {
         return this == DECLINE_AND_CONTINUE;
+    }
+
+    /**
+     * The options offered to the user with {@link #EDIT} removed. v1 wires the veto reply as a raw
+     * option-name string (an {@code Input} frame), which can't carry the edited args {@link #EDIT}
+     * requires - so EDIT is omitted from the offered set (it only appears in the WRITE_DRIFT
+     * scenario). The upgrade path is an optional {@code editedArgs} on {@code Input} or a follow-up
+     * frame.
+     */
+    public static @NonNull List<VetoOption> withoutEdit(@NonNull List<VetoOption> options) {
+        if (options.isEmpty()) {
+            return List.of();
+        }
+        List<VetoOption> out = new ArrayList<>(options.size());
+        for (VetoOption o : options) {
+            if (o != EDIT) {
+                out.add(o);
+            }
+        }
+        return List.copyOf(out);
     }
 }

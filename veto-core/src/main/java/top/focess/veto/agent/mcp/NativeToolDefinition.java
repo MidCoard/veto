@@ -10,12 +10,12 @@ import org.jspecify.annotations.NonNull;
  * per-parameter {@link ParamCategory} hints (for the Gateway).
  */
 public record NativeToolDefinition(
-        String name,
-        String description,
-        RiskCategory risk,
+        @NonNull String name,
+        @NonNull String description,
+        @NonNull RiskCategory risk,
         boolean requiresSemanticScreening,
-        Class<?> argsClass,
-        Map<String, ParamCategory> paramHints)
+        @NonNull Class<?> argsClass,
+        @NonNull Map<String, ParamCategory> paramHints)
         implements ToolDefinition {
 
     @Override

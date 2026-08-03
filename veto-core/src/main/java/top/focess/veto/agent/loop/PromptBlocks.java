@@ -1,13 +1,18 @@
 package top.focess.veto.agent.loop;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import top.focess.veto.agent.identity.Role;
 import top.focess.veto.agent.screening.DeployerPolicy;
 import top.focess.veto.agent.skills.Skill;
+import top.focess.veto.agent.workspace.PathMode;
+import top.focess.veto.agent.workspace.Workspace;
+import top.focess.veto.agent.workspace.WorkspaceRoot;
 import top.focess.veto.llm.core.ToolDefinition;
 
 /**
@@ -31,12 +36,12 @@ public final class PromptBlocks {
     private PromptBlocks() {}
 
     /** The VETO.md Law block (raw, resolved per-root); empty when no VETO.md is present. */
-    public static @NonNull String law(String law) {
+    public static @NonNull String law(@Nullable String law) {
         return (law == null || law.isBlank()) ? "" : law.strip();
     }
 
     /** The persona identity line: "You are {name}, {description}." */
-    public static @NonNull String identity(String name, String description) {
+    public static @NonNull String identity(@Nullable String name, @Nullable String description) {
         String n = (name == null || name.isBlank()) ? "a Veto agent" : name;
         String d = (description == null || description.isBlank()) ? "" : description;
         if (d.isEmpty()) {
@@ -52,7 +57,7 @@ public final class PromptBlocks {
     }
 
     /** The role-specific "## Your Role" block, scoped to the agent's operational role. */
-    public static @NonNull String role(Role role) {
+    public static @NonNull String role(@Nullable Role role) {
         Role r = (role == null) ? Role.STANDALONE : role;
         return switch (r) {
             case STANDALONE ->
@@ -82,6 +87,48 @@ public final class PromptBlocks {
     }
 
     /**
+     * The "## Workspace" block: mounts the session's workspace roots + path mode so the agent can
+     * address files with correct absolute paths. The native file tools take absolute host paths
+     * verbatim ({@link java.nio.file.Path#of}), so the agent must know its roots to construct them.
+     * Empty when the workspace has no roots.
+     */
+    public static @NonNull String workspace(@Nullable Workspace workspace) {
+        if (workspace == null) {
+            return "";
+        }
+        List<WorkspaceRoot> roots = workspace.roots();
+        if (roots == null || roots.isEmpty()) {
+            return "";
+        }
+        Path operational = workspace.pathResolver().operationalRoot();
+        StringBuilder sb = new StringBuilder();
+        sb.append("## Workspace\n");
+        sb.append(
+                "This session is pointed at the workspace below. Address files with **absolute"
+                        + " paths** rooted under one of these roots - the file tools take the path"
+                        + " verbatim.\n");
+        sb.append("- Path mode: `").append(workspace.pathMode()).append("` - ");
+        if (workspace.pathMode() == PathMode.VIRTUAL) {
+            sb.append(
+                    "address files as `/{rootDirName}/...`; the first segment selects the root.\n");
+        } else {
+            sb.append("pass the absolute host path directly.\n");
+        }
+        sb.append("- Roots:\n");
+        for (WorkspaceRoot root : roots) {
+            sb.append("  - `").append(root.hostPath()).append("`");
+            if (root.hostPath().equals(operational)) {
+                sb.append("  (operational root)");
+            }
+            if (root.isGitRepo() && root.currentBranch() != null) {
+                sb.append("  [git: ").append(root.currentBranch()).append("]");
+            }
+            sb.append('\n');
+        }
+        return sb.toString();
+    }
+
+    /**
      * The "## Your Tools" catalog: a deep, per-tool entry (short description, long-form usage doc,
      * typed args with required/optional flags and per-arg descriptions, and concrete examples),
      * rendered from the translated tools that also build {@code tools[]}. Empty when the role has
@@ -92,7 +139,7 @@ public final class PromptBlocks {
      * and the {@code tools[]} manifest can never disagree and role-based filtering upstream is
      * reflected automatically.
      */
-    public static @NonNull String tools(List<ToolDefinition> flatTools) {
+    public static @NonNull String tools(@Nullable List<ToolDefinition> flatTools) {
         if (flatTools == null || flatTools.isEmpty()) {
             return "";
         }
@@ -142,7 +189,7 @@ public final class PromptBlocks {
      * non-FULL_ACCESS; a one-line advisory under FULL_ACCESS. Defense-in-depth - the gateway
      * enforces these, but telling the model avoids wasted turns on blocked operations.
      */
-    public static @NonNull String boundaries(DeployerPolicy policy) {
+    public static @NonNull String boundaries(@Nullable DeployerPolicy policy) {
         if (policy == null) {
             return "";
         }
@@ -164,7 +211,7 @@ public final class PromptBlocks {
     }
 
     /** The "## Available Skills" catalog (name + description only); empty when no skills. */
-    public static @NonNull String skills(List<Skill> skills) {
+    public static @NonNull String skills(@Nullable List<Skill> skills) {
         if (skills == null || skills.isEmpty()) {
             return "";
         }
@@ -184,7 +231,7 @@ public final class PromptBlocks {
      * components, and marks required vs optional from the schema's {@code required[]} - so the
      * catalog matches what the gateway will actually accept.
      */
-    private static List<String> argDetails(Map<String, Object> inputSchema) {
+    private static @NonNull List<String> argDetails(@Nullable Map<String, Object> inputSchema) {
         if (inputSchema == null) {
             return List.of();
         }

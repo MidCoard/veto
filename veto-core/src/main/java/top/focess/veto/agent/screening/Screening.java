@@ -12,19 +12,4 @@ public record Screening(
         @NonNull Relevance relevance,
         @NonNull Danger danger,
         @NonNull VetoScenario scenario,
-        @NonNull String reason) {
-    public Screening {
-        if (relevance == null) {
-            relevance = Relevance.HIGH;
-        }
-        if (danger == null) {
-            danger = Danger.SAFE;
-        }
-        if (scenario == null) {
-            scenario = VetoScenario.GENERIC;
-        }
-        if (reason == null) {
-            reason = "";
-        }
-    }
-}
+        @NonNull String reason) {}
