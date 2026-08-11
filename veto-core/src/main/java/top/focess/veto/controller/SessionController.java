@@ -1,14 +1,20 @@
 package top.focess.veto.controller;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
+import top.focess.veto.agent.TurnRecord;
+import top.focess.veto.i18n.Msg;
 import top.focess.veto.model.SessionEntity;
+import top.focess.veto.session.SessionHistoryLoader;
 import top.focess.veto.session.SessionService;
+import top.focess.veto.session.SessionService.SessionConfig;
 import top.focess.veto.vault.KeysteadVault;
 
 /**
@@ -27,12 +33,17 @@ public class SessionController {
 
     private final @NonNull SessionService service;
     private final @NonNull KeysteadVault vault;
+    private final @NonNull SessionHistoryLoader historyLoader;
 
     public
     @NonNull
-    SessionController(@NonNull SessionService service, @NonNull KeysteadVault vault) {
+    SessionController(
+            @NonNull SessionService service,
+            @NonNull KeysteadVault vault,
+            @NonNull SessionHistoryLoader historyLoader) {
         this.service = service;
         this.vault = vault;
+        this.historyLoader = historyLoader;
     }
 
     @GetMapping
@@ -51,24 +62,69 @@ public class SessionController {
     @PostMapping
     public @NonNull SessionEntity create(@NonNull @RequestBody CreateSessionRequest body) {
         String user = vault.currentUser();
-        if (user == null) throw new IllegalStateException("Not logged in");
+        if (user == null) throw new IllegalStateException(Msg.get("error.auth.notLoggedIn"));
         String pattern = body.pattern();
         String roots = body.workspaceRoots();
         if (pattern == null || pattern.isBlank() || roots == null || roots.isBlank()) {
             throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST, "pattern and workspaceRoots are both required");
+                    HttpStatus.BAD_REQUEST, Msg.get("error.session.missingFields"));
         }
         return service.createSession(user, pattern, body.name(), roots);
     }
 
     @DeleteMapping("/{name}")
-    public @NonNull ResponseEntity<Void> delete(@NonNull @PathVariable String name) {
+    public @NonNull ResponseEntity<?> delete(@NonNull @PathVariable String name) {
         String user = vault.currentUser();
-        if (user == null) return ResponseEntity.status(401).build();
+        if (user == null) {
+            return ResponseEntity.status(401)
+                    .body(
+                            Map.of(
+                                    "status",
+                                    "error",
+                                    "message",
+                                    Msg.get("error.auth.notAuthenticated")));
+        }
         if (!service.delete(user, name)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Session not found: " + name);
+            throw new ResponseStatusException(
+                    HttpStatus.NOT_FOUND, Msg.get("error.session.notFound", name));
         }
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * GET /api/sessions/{name}/history - the session's durable turn log (the {@code turn_records}
+     * table), ordered by turn number. Same {turnNumber, type, payload} shape as the history array
+     * in the prompt response, but available for past/inactive sessions too. Payload contents vary
+     * by turn type (see {@link TurnRecord} factories): USER_PROMPT {content}, ASSISTANT_THOUGHT
+     * {response} (raw veto_pulse JSON string), ASSISTANT_RESPONSE {content}, TOOL_CALL {call_id,
+     * tool_name, args}, TOOL_RESPONSE {call_id, content, success}.
+     */
+    @GetMapping("/{name}/history")
+    public @NonNull ResponseEntity<?> history(@NonNull @PathVariable String name) {
+        String user = vault.currentUser();
+        if (user == null) {
+            return ResponseEntity.status(401)
+                    .body(Map.of("error", Msg.get("error.auth.notAuthenticated")));
+        }
+        SessionConfig cfg = service.resolveByName(name, user).orElse(null);
+        if (cfg == null) {
+            return ResponseEntity.status(404)
+                    .body(Map.of("error", Msg.get("error.session.notFoundForUser", name, user)));
+        }
+        List<Map<String, Object>> turns = new ArrayList<>();
+        for (TurnRecord turn : historyLoader.load(cfg.sessionId())) {
+            turns.add(
+                    Map.of(
+                            "turnNumber",
+                            turn.turnNumber(),
+                            "type",
+                            turn.type().name(),
+                            "payload",
+                            turn.payload(),
+                            "timestamp",
+                            turn.timestamp().toString()));
+        }
+        return ResponseEntity.ok(turns);
     }
 
     /** Request body for {@link #create}. */

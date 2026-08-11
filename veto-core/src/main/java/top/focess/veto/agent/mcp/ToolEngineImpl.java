@@ -162,7 +162,10 @@ public class ToolEngineImpl implements ToolEngine {
         } catch (Exception e) {
             log.warn("Tool '{}' execution failed.", call.toolName(), e);
             return new ToolResult(
-                    call.toolName(), callId, false, "Tool execution failed: " + e.getMessage());
+                    call.toolName(),
+                    callId,
+                    false,
+                    errorEnvelope("Tool execution failed: " + e.getMessage()));
         }
     }
 
@@ -197,7 +200,8 @@ public class ToolEngineImpl implements ToolEngine {
             @NonNull String toolName, @NonNull Map<String, Object> arguments) {
         ToolDefinition def = resolveDefinition(toolName);
         if (def == null) {
-            return new ToolResult(toolName, null, false, "Unknown tool: " + toolName);
+            return new ToolResult(
+                    toolName, null, false, errorEnvelope("Unknown tool: " + toolName));
         }
         return execute(new ToolCall(toolName, arguments, null), def);
     }
@@ -214,7 +218,7 @@ public class ToolEngineImpl implements ToolEngine {
                     call.toolName(),
                     call.callId(),
                     false,
-                    "No bean for native tool: " + def.name());
+                    errorEnvelope("No bean for native tool: " + def.name()));
         }
         JsonNode jsonArgs = mapper.valueToTree(call.args());
         String result = bean.executeFromJson(jsonArgs, mapper);
@@ -244,6 +248,41 @@ public class ToolEngineImpl implements ToolEngine {
     }
 
     /**
+     * The uniform error envelope for engine-level failures (unknown tool, missing bean, handler
+     * exception, remote transport down). Tool-detected errors already speak this envelope; the
+     * engine synthesizes the same shape here so every tool error the model can ever see matches one
+     * prefix - it learns a single branch: the call did not happen, read {@code error}, replan.
+     */
+    private static @NonNull String errorEnvelope(@NonNull String message) {
+        return "{\"status\":\"error\",\"error\":\"" + jsonEscape(message) + "\"}";
+    }
+
+    /**
+     * Minimal JSON string-body escaping for {@link #errorEnvelope} (quotes, backslashes, controls).
+     */
+    private static @NonNull String jsonEscape(@NonNull String s) {
+        StringBuilder sb = new StringBuilder(s.length() + 8);
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            switch (c) {
+                case '"' -> sb.append("\\\"");
+                case '\\' -> sb.append("\\\\");
+                case '\n' -> sb.append("\\n");
+                case '\r' -> sb.append("\\r");
+                case '\t' -> sb.append("\\t");
+                default -> {
+                    if (c < 0x20) {
+                        sb.append(String.format("\\u%04x", (int) c));
+                    } else {
+                        sb.append(c);
+                    }
+                }
+            }
+        }
+        return sb.toString();
+    }
+
+    /**
      * {@code run_command} — routes through the Sandbox substrate (no shell, argv[] direct exec).
      */
     private ToolResult executeRunCommand(ToolCall call) {
@@ -262,7 +301,15 @@ public class ToolEngineImpl implements ToolEngine {
                                 handle, commands, Path.of("."), connect, Duration.ofMinutes(10));
         String content =
                 (result.stdout().isEmpty() ? "" : result.stdout())
-                        + (result.stderr().isEmpty() ? "" : "\n[stderr]\n" + result.stderr());
+                        + (result.stderr() == null || result.stderr().isEmpty()
+                                ? ""
+                                : "\n[stderr]\n" + result.stderr());
+        // A non-zero exit is not an error envelope - the command ran and its output is the truth
+        // the model asked for. The exit code rides as a trailing CONTENT line so the model can
+        // branch on it without a separate status channel.
+        if (result.exitCode() != 0) {
+            content += "\n(exit code: " + result.exitCode() + ")";
+        }
         return new ToolResult(call.toolName(), call.callId(), result.success(), content);
     }
 
@@ -270,7 +317,10 @@ public class ToolEngineImpl implements ToolEngine {
         AgentTool<?> bean = agentBeans.get(def.name());
         if (bean == null) {
             return new ToolResult(
-                    call.toolName(), call.callId(), false, "Unknown agent tool: " + def.name());
+                    call.toolName(),
+                    call.callId(),
+                    false,
+                    errorEnvelope("Unknown agent tool: " + def.name()));
         }
         try {
             JsonNode jsonArgs = mapper.valueToTree(call.args());
@@ -278,7 +328,10 @@ public class ToolEngineImpl implements ToolEngine {
             return new ToolResult(call.toolName(), call.callId(), true, result);
         } catch (Exception e) {
             return new ToolResult(
-                    call.toolName(), call.callId(), false, "Agent tool error: " + e.getMessage());
+                    call.toolName(),
+                    call.callId(),
+                    false,
+                    errorEnvelope("Agent tool error: " + e.getMessage()));
         }
     }
 
@@ -294,15 +347,16 @@ public class ToolEngineImpl implements ToolEngine {
                     call.toolName(),
                     call.callId(),
                     false,
-                    "No transport registered for server: " + def.serverName());
+                    errorEnvelope("No transport registered for server: " + def.serverName()));
         }
         return new ToolResult(
                 call.toolName(),
                 call.callId(),
                 false,
-                "Remote tool execution over "
-                        + transport.getClass().getSimpleName()
-                        + " is not implemented.");
+                errorEnvelope(
+                        "Remote tool execution over "
+                                + transport.getClass().getSimpleName()
+                                + " is not implemented."));
     }
 
     private static ChainMode parseChainMode(String connect) {

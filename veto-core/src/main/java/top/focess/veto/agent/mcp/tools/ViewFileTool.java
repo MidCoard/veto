@@ -82,7 +82,8 @@ public final class ViewFileTool implements NativeTool<ViewFileTool.Args> {
                 "{\"absolutePath\": \"/abs/build.gradle.kts\"}",
                 "{\"absolutePath\": \"/abs/src/Main.java\", \"startLine\": 100}",
                 "{\"absolutePath\": \"/abs/config/app.yml\", \"endLine\": 30}"
-            })
+            },
+            returnExamples = {"1: package com.example;\n2: \n3: public class Main {"})
     public record Args(
             @SecurityHint(ParamCategory.FILESYSTEM_PATH)
                     @Doc("The absolute path of the file to view.")

@@ -22,7 +22,7 @@ import org.jspecify.annotations.NonNull;
  * <p>Three flavours correspond to the three match-key shapes per screening_model.md §7.1:
  *
  * <ul>
- *   <li>{@link ReadGrant} — directory prefix (canonical) + read tool family + flag-shape.
+ *   <li>{@link ReadGrant} — directory prefix (canonical) + the exact read tool + flag-shape.
  *   <li>{@link WriteGrant} — directory prefix (canonical) + tool.
  *   <li>{@link CommandGrant} — executable + leading subcommand(s) + flag presence/structure.
  * </ul>
@@ -55,9 +55,12 @@ public sealed interface PermissionGrant
             Path canonicalPathArg) {}
 
     /**
-     * Read grant: matches future read tools (view_file / list_dir / grep_search) whose canonical
-     * file path is under {@link #directoryPrefix}. Flag-shape is a positional list of present flag
-     * names (order is significant; presence-only, values wildcarded).
+     * Read grant: matches future calls of the SAME read tool (e.g. a grant created from a {@code
+     * list_dir} call covers only later {@code list_dir} calls - it does NOT leak to {@code
+     * view_file}/{@code grep_search}) whose canonical file path is under {@link #directoryPrefix}.
+     * Flag-shape is a positional list of present flag names (order is significant; presence-only,
+     * values wildcarded). The field is named {@code toolFamily} for record compatibility but
+     * carries the exact tool name - like-this scopes by tool + directory subtree, not by family.
      */
     record ReadGrant(
             @NonNull String toolFamily,
@@ -72,8 +75,7 @@ public sealed interface PermissionGrant
 
         @Override
         public boolean matches(@NonNull ToolCallSpec call) {
-            if (!toolFamily.equals(call.toolName())
-                    && !READ_TOOL_FAMILY.contains(call.toolName())) {
+            if (!toolFamily.equals(call.toolName())) {
                 return false;
             }
             if (call.canonicalPathArg() == null) {
@@ -196,7 +198,11 @@ public sealed interface PermissionGrant
         }
     }
 
-    /** Read tool family — covered by a single ReadGrant. */
+    /**
+     * @deprecated the read grant scopes by exact tool name since 1.0.72 (like-this = same tool +
+     *     directory subtree); the family set is unused and only kept for source compatibility.
+     */
+    @Deprecated
     java.util.Set<String> READ_TOOL_FAMILY =
             java.util.Set.of("view_file", "list_dir", "grep_search");
 

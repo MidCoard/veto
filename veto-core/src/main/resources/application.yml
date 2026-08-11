@@ -1,6 +1,11 @@
 # Project Veto — Core Engine Configuration
 server:
   port: 8443
+  error:
+    # ResponseStatusException reasons are written for end users (e.g. "Profile 'default' has no
+    # binding for tier TOP") - include them in the error body so the web client can show the real
+    # cause instead of a bare "Bad Request".
+    include-message: always
 
 spring:
   datasource:

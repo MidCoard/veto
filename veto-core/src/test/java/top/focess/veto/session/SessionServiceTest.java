@@ -151,7 +151,8 @@ class SessionServiceTest {
         session.setPrimaryAgentId(agent.getId());
 
         when(sessions.findByOwner("alice")).thenReturn(List.of(session));
-        when(sessions.findByNameAndOwner("coder", "alice")).thenReturn(Optional.of(session));
+        when(sessions.findFirstByNameAndOwnerOrderByLastActiveAtDesc("coder", "alice"))
+                .thenReturn(Optional.of(session));
         when(sessions.findById(session.getId())).thenReturn(Optional.of(session));
         when(agents.findById(agent.getId())).thenReturn(Optional.of(agent));
         when(loader.load(session.getId(), agent.getId())).thenReturn(List.of());
@@ -191,7 +192,8 @@ class SessionServiceTest {
         session.setPrimaryAgentId(agent.getId());
 
         when(sessions.findByOwner("alice")).thenReturn(List.of(session));
-        when(sessions.findByNameAndOwner("coder", "alice")).thenReturn(Optional.of(session));
+        when(sessions.findFirstByNameAndOwnerOrderByLastActiveAtDesc("coder", "alice"))
+                .thenReturn(Optional.of(session));
         when(agents.findById(agent.getId())).thenReturn(Optional.of(agent));
         when(loader.load(session.getId(), agent.getId())).thenReturn(List.of());
         when(agentService.getOrCreateAgent(
@@ -226,7 +228,8 @@ class SessionServiceTest {
         session.setPrimaryAgentId(agent.getId());
 
         when(sessions.findByOwner("alice")).thenReturn(List.of(session));
-        when(sessions.findByNameAndOwner("coder", "alice")).thenReturn(Optional.of(session));
+        when(sessions.findFirstByNameAndOwnerOrderByLastActiveAtDesc("coder", "alice"))
+                .thenReturn(Optional.of(session));
         when(sessions.findById(session.getId())).thenReturn(Optional.of(session));
         when(agents.findById(agent.getId())).thenReturn(Optional.of(agent));
         when(loader.load(session.getId(), agent.getId())).thenReturn(List.of());
@@ -266,7 +269,8 @@ class SessionServiceTest {
         session.setPrimaryAgentId(agent.getId());
 
         when(sessions.findByOwner("alice")).thenReturn(List.of(session));
-        when(sessions.findByNameAndOwner("coder", "alice")).thenReturn(Optional.of(session));
+        when(sessions.findFirstByNameAndOwnerOrderByLastActiveAtDesc("coder", "alice"))
+                .thenReturn(Optional.of(session));
         when(sessions.findById(session.getId())).thenReturn(Optional.of(session));
         when(agents.findById(agent.getId())).thenReturn(Optional.of(agent));
         when(loader.load(session.getId(), agent.getId())).thenReturn(List.of());
@@ -333,7 +337,8 @@ class SessionServiceTest {
         session.setPrimaryAgentId(agent.getId());
 
         when(sessions.findByOwner("alice")).thenReturn(List.of(session));
-        when(sessions.findByNameAndOwner("coder", "alice")).thenReturn(Optional.of(session));
+        when(sessions.findFirstByNameAndOwnerOrderByLastActiveAtDesc("coder", "alice"))
+                .thenReturn(Optional.of(session));
         when(sessions.findById(session.getId())).thenReturn(Optional.of(session));
         when(agents.findById(agent.getId())).thenReturn(Optional.of(agent));
         when(loader.load(session.getId(), agent.getId())).thenReturn(List.of());
@@ -363,7 +368,8 @@ class SessionServiceTest {
         AgentService agentService = mock(AgentService.class);
         SessionHistoryLoader loader = mock(SessionHistoryLoader.class);
         when(sessions.findByOwner("alice")).thenReturn(List.of());
-        when(sessions.findByNameAndOwner("nope", "alice")).thenReturn(Optional.empty());
+        when(sessions.findFirstByNameAndOwnerOrderByLastActiveAtDesc("nope", "alice"))
+                .thenReturn(Optional.empty());
 
         SessionService service =
                 new SessionService(sessions, agents, patterns, agentService, loader, tierRegistry);
@@ -396,7 +402,8 @@ class SessionServiceTest {
                         TurnRecord.userPrompt(1, "earlier prompt"),
                         TurnRecord.assistantResponse(2, "earlier reply"));
         when(sessions.findByOwner("alice")).thenReturn(List.of(session));
-        when(sessions.findByNameAndOwner("coder", "alice")).thenReturn(Optional.of(session));
+        when(sessions.findFirstByNameAndOwnerOrderByLastActiveAtDesc("coder", "alice"))
+                .thenReturn(Optional.of(session));
         when(sessions.findById(session.getId())).thenReturn(Optional.of(session));
         when(agents.findById(agent.getId())).thenReturn(Optional.of(agent));
         when(loader.load(session.getId(), agent.getId())).thenReturn(history);
@@ -504,7 +511,8 @@ class SessionServiceTest {
         String projectB = fakeDir("veto-test-ws-B");
         SessionEntity session = new SessionEntity("alice", "alpha", projectA);
         when(sessions.findByOwner("alice")).thenReturn(List.of(session));
-        when(sessions.findByNameAndOwner("alpha", "alice")).thenReturn(Optional.of(session));
+        when(sessions.findFirstByNameAndOwnerOrderByLastActiveAtDesc("alpha", "alice"))
+                .thenReturn(Optional.of(session));
 
         SessionService service =
                 new SessionService(sessions, agents, patterns, agentService, loader, tierRegistry);
@@ -549,7 +557,8 @@ class SessionServiceTest {
         session.setPrimaryAgentId(agent.getId());
 
         when(sessions.findByOwner("alice")).thenReturn(List.of(session));
-        when(sessions.findByNameAndOwner("alpha", "alice")).thenReturn(Optional.of(session));
+        when(sessions.findFirstByNameAndOwnerOrderByLastActiveAtDesc("alpha", "alice"))
+                .thenReturn(Optional.of(session));
         when(sessions.findById(session.getId())).thenReturn(Optional.of(session));
         when(agents.findById(agent.getId())).thenReturn(Optional.of(agent));
         when(loader.load(session.getId(), agent.getId())).thenReturn(List.of());
@@ -637,7 +646,8 @@ class SessionServiceTest {
         newer.setPrimaryAgentId(agent.getId());
 
         when(sessions.findByOwner("alice")).thenReturn(List.of(older, newer));
-        when(sessions.findByNameAndOwner("alpha", "alice")).thenReturn(Optional.of(newer));
+        when(sessions.findFirstByNameAndOwnerOrderByLastActiveAtDesc("alpha", "alice"))
+                .thenReturn(Optional.of(newer));
         when(sessions.findById(newer.getId())).thenReturn(Optional.of(newer));
         when(agents.findById(agent.getId())).thenReturn(Optional.of(agent));
         when(loader.load(newer.getId(), agent.getId())).thenReturn(List.of());
@@ -800,7 +810,8 @@ class SessionServiceTest {
         explicit.setPrimaryAgentId(agent.getId());
 
         when(sessions.findByOwner("alice")).thenReturn(List.of(legacy, explicit));
-        when(sessions.findByNameAndOwner("ds", "alice")).thenReturn(Optional.of(explicit));
+        when(sessions.findFirstByNameAndOwnerOrderByLastActiveAtDesc("ds", "alice"))
+                .thenReturn(Optional.of(explicit));
         when(sessions.findById(explicit.getId())).thenReturn(Optional.of(explicit));
         when(agents.findById(agent.getId())).thenReturn(Optional.of(agent));
         when(loader.load(explicit.getId(), agent.getId())).thenReturn(List.of());
@@ -822,7 +833,7 @@ class SessionServiceTest {
     }
 
     @Test
-    void deleteThrowsWhenMultipleSessionsWithSameName() {
+    void deleteRemovesAllSessionsWithSameName() {
         SessionRepository sessions = mock(SessionRepository.class);
         AgentInstanceRepository agents = mock(AgentInstanceRepository.class);
         AgentPatternRepository patterns = mock(AgentPatternRepository.class);
@@ -831,6 +842,8 @@ class SessionServiceTest {
 
         String projectA = fakeDir("ws-A");
         String projectB = fakeDir("ws-B");
+        // Two "ds" sessions for alice in different workspaces: the REST caller has no workspace
+        // context to disambiguate with, so both are removed.
         SessionEntity inA = new SessionEntity("alice", "ds", projectA);
         SessionEntity inB = new SessionEntity("alice", "ds", projectB);
         when(sessions.findByOwner("alice")).thenReturn(List.of(inA, inB));
@@ -838,14 +851,8 @@ class SessionServiceTest {
         SessionService service =
                 new SessionService(sessions, agents, patterns, agentService, loader, tierRegistry);
 
-        IllegalStateException ex =
-                assertThrows(IllegalStateException.class, () -> service.delete("alice", "ds"));
-        assertTrue(
-                ex.getMessage().contains("ds"),
-                "error names the session so the user can identify it");
-        assertTrue(
-                ex.getMessage().contains(projectA) && ex.getMessage().contains(projectB),
-                "error names both workspaces so the user can disambiguate");
-        verify(sessions, never()).delete(any(SessionEntity.class));
+        assertTrue(service.delete("alice", "ds"));
+        verify(sessions).delete(inA);
+        verify(sessions).delete(inB);
     }
 }

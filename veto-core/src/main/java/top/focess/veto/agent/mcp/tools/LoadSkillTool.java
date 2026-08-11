@@ -45,7 +45,9 @@ public final class LoadSkillTool implements AgentTool<LoadSkillArgs> {
     public @NonNull String execute(@NonNull LoadSkillArgs args) throws Exception {
         var skill = skillRegistry.loadVerified(args.skillName());
         if (skill.isEmpty()) {
-            return "Skill '" + args.skillName() + "' not found or tampered.";
+            return "{\"status\":\"error\",\"error\":\"Skill '"
+                    + args.skillName()
+                    + "' not found or tampered.\"}";
         }
         return skill.get().promptInstructions();
     }

@@ -119,6 +119,19 @@ public class VetoAgent implements Agent {
     }
 
     /**
+     * Stamps the session's message locale (the request's Accept-Language on the REST path; null
+     * resets to English) so agent-thread messages render in the user's language.
+     */
+    public void setLocale(java.util.@Nullable Locale locale) {
+        runner.setLocale(locale);
+    }
+
+    /** The session's message locale (see {@link #setLocale}). */
+    public java.util.@NonNull Locale locale() {
+        return runner.locale();
+    }
+
+    /**
      * Seeds replayed history (from the durable turn log) into the runner on session activate.
      * Idempotent; see {@link AgentRunner#seedHistory}.
      */

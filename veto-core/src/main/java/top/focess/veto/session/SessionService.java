@@ -16,6 +16,7 @@ import top.focess.veto.agent.Agent;
 import top.focess.veto.agent.AgentRunner;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.TurnRecord;
+import top.focess.veto.i18n.Msg;
 import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.model.AgentEntity;
 import top.focess.veto.model.AgentInstanceRepository;
@@ -115,7 +116,9 @@ public class SessionService {
                         .orElseThrow(
                                 () ->
                                         new IllegalArgumentException(
-                                                "Pattern not found: " + patternName));
+                                                Msg.get(
+                                                        "error.session.patternNotFound",
+                                                        patternName)));
 
         String resolvedName;
         if (sessionName == null || sessionName.isEmpty()) {
@@ -132,11 +135,7 @@ public class SessionService {
             if (sessions.findByOwnerAndNameAndWorkspaceRoots(owner, resolvedName, workspaceRoots)
                     .isPresent()) {
                 throw new IllegalArgumentException(
-                        "Session name '"
-                                + resolvedName
-                                + "' already exists in workspace '"
-                                + workspaceRoots
-                                + "'; provide a unique name in this workspace");
+                        Msg.get("error.session.nameExists", resolvedName, workspaceRoots));
             }
         }
 
@@ -245,15 +244,18 @@ public class SessionService {
                         .toList();
         if (candidates.isEmpty()) {
             // Disambiguate the error: is it "not found at all" or "found but in a different
-            // workspace"? The user benefits from knowing they can cd to activate.
-            sessions.findByNameAndOwner(sessionName, owner)
+            // workspace"? The user benefits from knowing they can cd to activate. Stream over the
+            // owner's sessions - findByNameAndOwner would throw on cross-workspace duplicates.
+            sessions.findByOwner(owner).stream()
+                    .filter(s -> sessionName.equals(s.getName()))
+                    .findFirst()
                     .ifPresent(
                             s -> {
                                 throw new IllegalArgumentException(
                                         workspaceMismatchMessage(
                                                 sessionName, s.getWorkspaceRoots(), cwd));
                             });
-            throw new IllegalArgumentException("Session not found: " + sessionName);
+            throw new IllegalArgumentException(Msg.get("error.session.notFound", sessionName));
         }
         SessionEntity session = candidates.get(0);
         AgentEntity agent = primaryAgent(session);
@@ -324,10 +326,9 @@ public class SessionService {
      * per-session slice of {@link top.focess.veto.security.UserAdminService#deleteUser}.
      *
      * <p>Because two sessions may share a name across workspaces, the {@code (owner, name)} pair is
-     * no longer unique. Returns {@code false} when no session matches, and throws {@link
-     * IllegalStateException} when more than one matches — the caller (e.g. {@code
-     * SessionController}) is expected to disambiguate by workspace. A future API change can accept
-     * a {@code workspace} parameter to make that explicit.
+     * not unique; the REST caller ({@code SessionController}) has no workspace context to
+     * disambiguate with, so every matching session is deleted. Returns {@code false} when no
+     * session matches.
      */
     @Transactional
     public boolean delete(@NonNull String owner, @NonNull String sessionName) {
@@ -338,31 +339,13 @@ public class SessionService {
         if (matches.isEmpty()) {
             return false;
         }
-        if (matches.size() > 1) {
-            String workspaces =
-                    matches.stream()
-                            .map(
-                                    s ->
-                                            s.getWorkspaceRoots() == null
-                                                    ? "<unbound>"
-                                                    : s.getWorkspaceRoots())
-                            .reduce((a, b) -> a + ", " + b)
-                            .orElse("");
-            throw new IllegalStateException(
-                    "Multiple sessions named '"
-                            + sessionName
-                            + "' exist for owner '"
-                            + owner
-                            + "' (workspaces: ["
-                            + workspaces
-                            + "]); disambiguate by workspace before deleting");
+        for (SessionEntity session : matches) {
+            String sessionId = session.getId();
+            activeSessions.entrySet().removeIf(e -> sessionId.equals(e.getValue()));
+            agentService.remove(sessionId);
+            agents.deleteBySessionId(sessionId);
+            sessions.delete(session);
         }
-        SessionEntity session = matches.get(0);
-        String sessionId = session.getId();
-        activeSessions.entrySet().removeIf(e -> sessionId.equals(e.getValue()));
-        agentService.remove(sessionId);
-        agents.deleteBySessionId(sessionId);
-        sessions.delete(session);
         return true;
     }
 
@@ -378,6 +361,74 @@ public class SessionService {
         AgentEntity agent = primaryAgent(session);
         if (agent == null) return Optional.empty();
         return Optional.of(llmConfig(tierRegistry.resolve(session.getOwner(), agent.getTier())));
+    }
+
+    /**
+     * Resolves the LLM config for a session by name + owner (REST path). The REST controller has no
+     * terminalId (that's an IPC concept); it resolves the session by name for the authenticated
+     * user and returns the config + session id in one call.
+     */
+    public @NonNull Optional<SessionConfig> resolveByName(
+            @NonNull String name, @NonNull String owner) {
+        // Duplicate-tolerant: several sessions may share a name across workspaces, and the REST
+        // caller has no workspace to disambiguate with - the most-recently-active one wins.
+        SessionEntity session =
+                sessions.findFirstByNameAndOwnerOrderByLastActiveAtDesc(name, owner).orElse(null);
+        if (session == null) return Optional.empty();
+        AgentEntity agent = primaryAgent(session);
+        if (agent == null) return Optional.empty();
+        LlmConfig config = llmConfig(tierRegistry.resolve(session.getOwner(), agent.getTier()));
+        return Optional.of(new SessionConfig(session.getId(), config));
+    }
+
+    /** A resolved session's id + LLM config, for the REST prompt path. */
+    public record SessionConfig(@NonNull String sessionId, @NonNull LlmConfig config) {}
+
+    /**
+     * Activates a session for the REST prompt path (no terminal, no cwd scoping): resolves the
+     * session duplicate-tolerantly (most-recently-active wins, same as {@link #resolveByName}),
+     * get-or-creates its primary agent with the DB primary agent id + the session's workspace +
+     * replayed history - so HITL vetoes park under the id {@link #primaryAgentIdFor} reports and
+     * tools run against the session's roots - touches lastActiveAt, and returns the session id +
+     * LLM config. Empty when the session or its primary agent does not exist.
+     */
+    @Transactional
+    public @NonNull Optional<SessionConfig> activateForRest(
+            @NonNull String name, @NonNull String owner) {
+        SessionEntity session =
+                sessions.findFirstByNameAndOwnerOrderByLastActiveAtDesc(name, owner).orElse(null);
+        if (session == null) return Optional.empty();
+        AgentEntity agent = primaryAgent(session);
+        if (agent == null) return Optional.empty();
+        ModelBinding resolved = tierRegistry.resolve(session.getOwner(), agent.getTier());
+        List<TurnRecord> history = historyLoader.load(session.getId(), agent.getId());
+        agentService.getOrCreateAgent(
+                session.getId(),
+                agent.getId(),
+                standaloneBinding(resolved),
+                history,
+                agentService.userIdForOwner(owner),
+                owner,
+                session.getWorkspaceRoots());
+        session.touch();
+        sessions.save(session);
+        return Optional.of(new SessionConfig(session.getId(), llmConfig(resolved)));
+    }
+
+    /**
+     * The session's primary agent id - the key the HITL registry parks vetoes under. Resolved
+     * duplicate-tolerantly (most-recently-active wins), same as {@link #resolveByName}. Empty when
+     * the session has no primary agent.
+     */
+    public @NonNull Optional<String> primaryAgentIdFor(
+            @NonNull String name, @NonNull String owner) {
+        SessionEntity session =
+                sessions.findFirstByNameAndOwnerOrderByLastActiveAtDesc(name, owner).orElse(null);
+        if (session == null) {
+            return Optional.empty();
+        }
+        AgentEntity agent = primaryAgent(session);
+        return agent != null ? Optional.of(agent.getId()) : Optional.empty();
     }
 
     /**
@@ -426,14 +477,11 @@ public class SessionService {
             @NonNull String sessionName,
             @Nullable String sessionWorkspaceRoots,
             @NonNull String cwd) {
-        return "Session '"
-                + sessionName
-                + "' is bound to workspace '"
-                + (sessionWorkspaceRoots == null ? "" : sessionWorkspaceRoots)
-                + "'; current cwd is '"
-                + cwd
-                + "'. Use /session create <pattern> in this directory,"
-                + " or cd into the session's workspace and retry.";
+        return Msg.get(
+                "error.session.workspaceMismatch",
+                sessionName,
+                sessionWorkspaceRoots == null ? "" : sessionWorkspaceRoots,
+                cwd);
     }
 
     /**

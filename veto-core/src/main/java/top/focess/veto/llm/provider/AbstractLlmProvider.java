@@ -16,6 +16,7 @@ import top.focess.veto.llm.exceptions.LlmException;
 import top.focess.veto.llm.exceptions.LlmRateLimitException;
 import top.focess.veto.llm.exceptions.LlmTimeoutException;
 import top.focess.veto.llm.exceptions.ModelCapabilityException;
+import top.focess.veto.llm.exceptions.PlainTextResponseException;
 import top.focess.veto.observability.AuditLogger;
 
 /**
@@ -149,6 +150,17 @@ public abstract class AbstractLlmProvider implements LLMProviderStrategy {
         try {
             return objectMapper.readValue(rawResponse, VetoResponse.class);
         } catch (Exception e) {
+            // Not JSON: signal a retryable failure so DefaultUniformLLMCaller's retry loop
+            // re-prompts (the schema enforcement is probabilistic - a retry usually recovers).
+            // The orchestrator converts this back to a plain-text message once its attempts are
+            // exhausted, preserving the graceful-degradation behavior this fallback used to give.
+            if (rawResponse != null && !rawResponse.isBlank()) {
+                log.warn(
+                        "{} response was not valid JSON, requesting retry ({} chars)",
+                        providerName(),
+                        rawResponse.length());
+                throw new PlainTextResponseException(providerName(), rawResponse.strip());
+            }
             throw new ModelCapabilityException(
                     providerName() + " response could not be parsed into VetoResponse", e);
         }

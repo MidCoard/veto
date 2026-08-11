@@ -174,7 +174,6 @@ public final class VetoCommandSender extends AbstractCommandSender {
     @Override
     public void output(@Nullable String message) {
         if (message == null || message.isEmpty()) return;
-        log.info("output → outbox: {}", message.replace("\n", "\\n"));
         ipcServer.send(terminalId, new IpcFrame.Delta(message));
     }
 
@@ -190,7 +189,6 @@ public final class VetoCommandSender extends AbstractCommandSender {
      */
     public void outputThought(@Nullable String thought) {
         if (thought == null || thought.isEmpty()) return;
-        log.info("thought -> outbox: {}", thought.replace("\n", "\\n"));
         ipcServer.send(terminalId, IpcFrame.Delta.thought(thought));
     }
 
@@ -202,7 +200,6 @@ public final class VetoCommandSender extends AbstractCommandSender {
      * TOOL_CALL turn has been durably persisted.
      */
     public void sendToolCall(IpcFrame.@NonNull ToolCall call) {
-        log.info("tool_call -> outbox: {}", call);
         ipcServer.send(terminalId, call);
     }
 
@@ -215,10 +212,6 @@ public final class VetoCommandSender extends AbstractCommandSender {
      * has been durably persisted.
      */
     public void sendToolResult(IpcFrame.@NonNull ToolResult result) {
-        log.info(
-                "tool_result -> outbox: success={} bodyBytes={}",
-                result.success(),
-                result.body() == null ? 0 : result.body().length());
         ipcServer.send(terminalId, result);
     }
 

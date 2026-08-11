@@ -29,7 +29,9 @@ public class WebSocketConfig implements WebSocketConfigurer {
     @Override
     public void registerWebSocketHandlers(@NonNull WebSocketHandlerRegistry registry) {
         registry.addHandler(vetoWebSocketHandler, "/ws/veto/bus")
-                .setAllowedOrigins("*")
+                // SockJS enables session cookies (allowCredentials), so "*" is rejected in
+                // allowedOrigins – use origin patterns, which Spring expands per-request.
+                .setAllowedOriginPatterns("*")
                 .withSockJS()
                 .setClientLibraryUrl(
                         "https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js");

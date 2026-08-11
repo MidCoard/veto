@@ -99,6 +99,10 @@ public final class RunCommandTool implements NativeTool<RunCommandTool.Args> {
                 "{\"commands\": [{\"executable\": \"grep\", \"args\": [\"-r\", \"TODO\", \"src\"]}, {\"executable\": \"wc\", \"args\": [\"-l\"]}], \"cwd\": \"/abs\", \"connect\": \"PIPE\"}",
                 "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"clean\", \"build\", \"test\"]}], \"cwd\": \"/abs\", \"connect\": \"RUN_ALL\"}",
                 "{\"commands\": [{\"executable\": \"node\", \"args\": [\"script.js\"]}], \"cwd\": \"/abs/app\"}"
+            },
+            returnExamples = {
+                "BUILD SUCCESSFUL in 12s",
+                "src/Main.java:15: error: cannot find symbol\n(exit code: 1)"
             })
     public record Args(
             @SecurityHint(ParamCategory.SHELL_COMMAND)

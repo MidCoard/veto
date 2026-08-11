@@ -7,6 +7,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
+import top.focess.veto.i18n.Msg;
 import top.focess.veto.model.AgentPatternEntity;
 import top.focess.veto.model.AgentPatternRepository;
 import top.focess.veto.model.tier.ModelBinding;
@@ -43,8 +44,20 @@ public class PatternController {
     @PostMapping
     public @NonNull AgentPatternEntity create(@NonNull @RequestBody Map<String, String> body) {
         String user = vault.currentUser();
-        if (user == null) throw new IllegalStateException("Not logged in");
-        ModelTier tier = ModelTier.valueOf(body.get("tier").toUpperCase());
+        if (user == null) throw new IllegalStateException(Msg.get("error.auth.notLoggedIn"));
+        String name = body.get("name");
+        String tierValue = body.get("tier");
+        if (name == null || name.isBlank() || tierValue == null || tierValue.isBlank()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, Msg.get("error.pattern.missingFields"));
+        }
+        // Names are unique per owner - a duplicate insert would poison findByNameAndOwner
+        // (NonUniqueResultException) for every later session create against this name.
+        if (repo.existsByNameAndOwner(name, user)) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT, Msg.get("error.pattern.duplicate", name));
+        }
+        ModelTier tier = ModelTier.valueOf(tierValue.toUpperCase());
         ModelBinding binding;
         try {
             binding = tierRegistry.resolve(user, tier);
@@ -53,14 +66,22 @@ public class PatternController {
             // configure one before creating a pattern that targets this tier.
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
         }
-        var p = new AgentPatternEntity(body.get("name"), tier, binding, user);
+        var p = new AgentPatternEntity(name, tier, binding, user);
         return repo.save(p);
     }
 
     @DeleteMapping("/{name}")
-    public @NonNull ResponseEntity<Void> delete(@NonNull @PathVariable String name) {
+    public @NonNull ResponseEntity<?> delete(@NonNull @PathVariable String name) {
         String user = vault.currentUser();
-        if (user == null) return ResponseEntity.status(401).build();
+        if (user == null) {
+            return ResponseEntity.status(401)
+                    .body(
+                            Map.of(
+                                    "status",
+                                    "error",
+                                    "message",
+                                    Msg.get("error.auth.notAuthenticated")));
+        }
         repo.deleteByNameAndOwner(name, user);
         return ResponseEntity.noContent().build();
     }

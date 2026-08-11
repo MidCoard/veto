@@ -18,6 +18,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.stereotype.Service;
 import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.identity.AgentPersona;
@@ -40,6 +41,7 @@ import top.focess.veto.agent.screening.SlmRelevanceProvider;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.contract.IpcFrame;
+import top.focess.veto.i18n.Msg;
 import top.focess.veto.llm.config.LlmJacksonConfig;
 import top.focess.veto.llm.core.UniformLLMCaller;
 
@@ -140,15 +142,17 @@ public class AgentService {
             AgentRunner.@NonNull LlmBinding binding) {
         VetoAgent agent = agents.computeIfAbsent(agentKey, k -> createAgent(k, binding));
         agent.bind(binding);
+        agent.setLocale(LocaleContextHolder.getLocale());
         agent.submit(prompt);
         try {
             return agent.await(DEFAULT_AWAIT);
         } catch (TimeoutException e) {
             log.warn("Agent {} await timed out", agentKey);
-            return AgentResult.failure("Agent timed out.", Map.of());
+            return AgentResult.failure(Msg.get(agent.locale(), "error.agent.timedOut"), Map.of());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            return AgentResult.failure("Interrupted.", Map.of());
+            return AgentResult.failure(
+                    Msg.get(agent.locale(), "error.agent.interrupted"), Map.of());
         }
     }
 
@@ -161,6 +165,7 @@ public class AgentService {
             throws TimeoutException, InterruptedException {
         VetoAgent agent = agents.computeIfAbsent(agentKey, k -> createAgent(k, binding));
         agent.bind(binding);
+        agent.setLocale(LocaleContextHolder.getLocale());
         agent.submit(prompt);
         return agent.await(timeout);
     }
@@ -242,6 +247,7 @@ public class AgentService {
             throws TimeoutException, InterruptedException {
         VetoAgent agent = agents.computeIfAbsent(agentKey, k -> createAgent(k, binding));
         agent.bind(binding);
+        agent.setLocale(LocaleContextHolder.getLocale());
         if (messageSink != null) {
             agent.addMessageListener(messageSink);
         }
@@ -300,6 +306,7 @@ public class AgentService {
             throws TimeoutException, InterruptedException {
         VetoAgent agent = agents.computeIfAbsent(agentKey, k -> createAgent(k, binding, userId));
         agent.bind(binding);
+        agent.setLocale(LocaleContextHolder.getLocale());
         agent.submit(prompt);
         return agent.await(timeout);
     }
@@ -391,6 +398,14 @@ public class AgentService {
      */
     public boolean declineVeto(@NonNull String agentId, @NonNull String callId) {
         return hitlRegistry.declineOption(agentId, callId);
+    }
+
+    /**
+     * Declines every pending veto for the agent (a transport's cancel while parked): each resolves
+     * with the refusal option so the agent unstucks fail-safe. Returns the number declined.
+     */
+    public int declineAllVetoes(@NonNull String agentId) {
+        return hitlRegistry.declineAll(agentId);
     }
 
     /** The live agent for a transport id (for history / state inspection). */

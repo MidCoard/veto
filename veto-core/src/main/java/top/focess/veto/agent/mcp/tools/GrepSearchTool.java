@@ -85,6 +85,10 @@ public final class GrepSearchTool implements NativeTool<GrepSearchTool.Args> {
                 "{\"searchPath\": \"/abs/config\", \"query\": \"password\"}",
                 "{\"searchPath\": \"/abs/src\", \"query\": \"@Override\"}",
                 "{\"searchPath\": \"/abs\", \"query\": \"TODO(jess)\"}"
+            },
+            returnExamples = {
+                "/abs/src/Main.java:12: // TODO: refactor\n/abs/src/util/Helper.java:30: // TODO(jess): cleanup",
+                "(no matches)"
             })
     public record Args(
             @SecurityHint(ParamCategory.FILESYSTEM_PATH) @Doc("Absolute path to search under.")
@@ -140,6 +144,6 @@ public final class GrepSearchTool implements NativeTool<GrepSearchTool.Args> {
                                 }
                             });
         }
-        return sb.toString();
+        return sb.isEmpty() ? "(no matches)" : sb.toString();
     }
 }

@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import top.focess.veto.i18n.Msg;
 import top.focess.veto.veto.VetoGateway;
 
 /**
@@ -43,8 +44,10 @@ public class VetoController {
             return ResponseEntity.badRequest()
                     .body(
                             Map.of(
-                                    "status", "error",
-                                    "message", "payload field is required and must be non-empty"));
+                                    "status",
+                                    "error",
+                                    "message",
+                                    Msg.get("error.veto.payloadRequired")));
         }
 
         String dagPayloadId =
@@ -96,8 +99,10 @@ public class VetoController {
             return ResponseEntity.badRequest()
                     .body(
                             Map.of(
-                                    "status", "error",
-                                    "message", "payload field is required"));
+                                    "status",
+                                    "error",
+                                    "message",
+                                    Msg.get("error.veto.payloadRequired")));
         }
 
         VetoGateway.VetoResult result =

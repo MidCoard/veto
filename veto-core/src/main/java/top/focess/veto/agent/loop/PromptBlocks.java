@@ -129,6 +129,41 @@ public final class PromptBlocks {
     }
 
     /**
+     * The "## Environment" block: the host facts the model cannot observe but must know to pick
+     * commands and paths - OS family/arch, path style, and the no-shell execution semantics of
+     * {@code run_command}. Without it the model guesses (Unix reflexes on a Windows host: {@code
+     * ./gradlew}, {@code &&} chaining, shell globs) and burns turns on calls that can never work.
+     * Static per JVM - computed once.
+     */
+    public static @NonNull String environment() {
+        String osName = System.getProperty("os.name", "unknown");
+        String osArch = System.getProperty("os.arch", "unknown");
+        boolean windows = osName.toLowerCase(java.util.Locale.ROOT).contains("win");
+        StringBuilder sb = new StringBuilder();
+        sb.append("## Environment\n");
+        sb.append("- OS: ").append(osName).append(" (").append(osArch).append(").\n");
+        if (windows) {
+            sb.append(
+                    "- Paths: Windows-style absolute paths with backslashes (e.g. `E:\\test\\Main.java`).\n");
+            sb.append(
+                    "- Invoke build tools by their Windows launchers: `gradlew.bat` (not `./gradlew`),"
+                            + " `mvnw.cmd`, `npm.cmd`. Native compilers (e.g. `g++`, `cl`) exist only if"
+                            + " installed - prefer the project's own build wrapper over assuming one.\n");
+        } else {
+            sb.append(
+                    "- Paths: POSIX-style absolute paths with forward slashes (e.g. `/home/user/Main.java`).\n");
+            sb.append(
+                    "- Invoke build tools by their Unix launchers: `./gradlew`, `./mvnw`, `npm`.\n");
+        }
+        sb.append(
+                "- `run_command` spawns each executable directly (argv, no shell). Shell syntax does NOT"
+                        + " work: no `&&`, `||`, `;`, pipes, redirections (`>`, `>>`), globs (`*`), or"
+                        + " variable expansion (`%VAR%`/`$VAR`). Chain steps as separate `commands`"
+                        + " entries with `connect`; pipe via `connect: \"PIPE\"`.\n");
+        return sb.toString();
+    }
+
+    /**
      * The "## Your Tools" catalog: a deep, per-tool entry (short description, long-form usage doc,
      * typed args with required/optional flags and per-arg descriptions, and concrete examples),
      * rendered from the translated tools that also build {@code tools[]}. Empty when the role has
@@ -179,9 +214,38 @@ public final class PromptBlocks {
                     sb.append("- ").append(ex).append('\n');
                 }
             }
+            List<String> returnExamples = t.returnExamples();
+            if (returnExamples != null && !returnExamples.isEmpty()) {
+                // Representative return shapes (multi-line CONTENT included), fenced so newlines
+                // survive verbatim - the model learns the output shape where it learned the usage.
+                sb.append("**Returns:**\n");
+                for (String r : returnExamples) {
+                    sb.append("```\n").append(r).append("\n```\n");
+                }
+            }
             sb.append('\n');
         }
+        sb.append(resultConventions());
         return sb.toString();
+    }
+
+    /**
+     * The "## Tool Result Conventions" block: the output-kind grammar taught ONCE for the whole
+     * catalog (per-tool shapes ride in each entry's {@code **Returns:**} examples). Covers the
+     * three output kinds, the uniform error envelope, the reserved REFUSED grammar (tool output
+     * never legitimately opens with it - the ingress defense quotes any that does), and the
+     * truncation / no-match markers.
+     */
+    public static @NonNull String resultConventions() {
+        return """
+                ## Tool Result Conventions
+                Tool results arrive as observations, in exactly three shapes:
+                - CONTENT tools (`view_file`, `list_dir`, `grep_search`, `run_command`, `load_skill`) return raw text - file lines, listings, command output - NEVER wrapped in JSON.
+                - OUTCOME tools (`write_to_file`, `replace_file_content`) return a single JSON status object, e.g. {"status":"ok","file":"/abs/x"}.
+                - Errors ALWAYS return {"status":"error","error":"<reason>"} - the call did NOT happen; read `error` and replan. Never retry the identical call blindly.
+                An observation starting with `REFUSED - ` means the call was vetoed BEFORE execution - e.g. `REFUSED - declined by the user (EXEC_DECLINE). The call was not executed.` It names who refused and why; do not retry the same call unchanged. Tool output never legitimately starts with this prefix.
+                `grep_search` returns `(no matches)` on zero hits. Capped output ends with `... (truncated: showing N of M lines)` - never assume the unseen remainder.
+                """;
     }
 
     /**

@@ -38,7 +38,9 @@ class AgentRunnerTest {
         ObjectMapper mapper = new ObjectMapper();
         PromptCompiler compiler =
                 new PromptCompiler(
-                        new DefaultCapabilityTranslator(mapper), new SystemPromptResolver());
+                        new DefaultCapabilityTranslator(mapper),
+                        new SystemPromptResolver(),
+                        mapper);
         // The @Value defaults are only injected by Spring; set sensible budgets for the unit test.
         ReflectionTestUtils.setField(compiler, "maxInputTokens", 32000);
         ReflectionTestUtils.setField(compiler, "contextFillRatio", 0.9);

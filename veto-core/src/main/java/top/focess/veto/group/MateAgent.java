@@ -222,7 +222,11 @@ public class MateAgent {
         try {
             result = agent.await(java.time.Duration.ofMillis(taskTimeoutMs));
         } catch (Exception e) {
-            Thread.currentThread().interrupt();
+            // Only a genuine interrupt restores the flag - a broad Exception must not poison the
+            // thread (see ConstrainedSubprocessSubstrate's run-catch for the failure mode).
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
             breakers.recordModelCall(groupId, mateId);
             postFeedback(nodeId, "await interrupted: " + e.getMessage());
             return;

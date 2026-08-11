@@ -56,8 +56,8 @@ public final class ListDirTool implements NativeTool<ListDirTool.Args> {
                     to retry with a similar guess - return to your last successful `list_dir`
                     observation and reconstruct the absolute path from the actual subdirectory names
                     you saw there. The most common cause is dropping a parent segment (e.g. listing
-                    `.minecraft/versions/` under `E:\\minecraft`, then trying `E:\\minecraft\\versions`
-                    instead of `E:\\minecraft\\.minecraft\\versions`).
+                    `project/sub/config/` under `/abs/project`, then trying `/abs/project/config`
+                    instead of `/abs/project/sub/config`).
                     - Passing a file path -> same "Not a directory" error; use `view_file` instead.
                     - A directory with many entries returns them all; there is no pagination - narrow by
                     descending into specific subdirectories if the listing is large.
@@ -79,7 +79,8 @@ public final class ListDirTool implements NativeTool<ListDirTool.Args> {
                 "{\"directoryPath\": \"/abs/config\"}",
                 "{\"directoryPath\": \"/abs/src/util\"}",
                 "{\"directoryPath\": \"/abs/notes\"}"
-            })
+            },
+            returnExamples = {"src/\nbuild.gradle.kts\nREADME.md"})
     public record Args(
             @SecurityHint(ParamCategory.FILESYSTEM_PATH) @Doc("Absolute path to list contents of.")
                     @NonNull String directoryPath) {}

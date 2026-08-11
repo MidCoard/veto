@@ -78,7 +78,8 @@ public final class ReplaceFileContentTool implements NativeTool<ReplaceFileConte
                 "{\"targetFile\": \"/abs/config/app.yml\", \"startLine\": 10, \"endLine\": 10, \"targetContent\": \"port: 8080\", \"replacementContent\": \"port: 8443\"}",
                 "{\"targetFile\": \"/abs/src/Main.java\", \"startLine\": 20, \"endLine\": 24, \"targetContent\": \"// TODO\\n\", \"replacementContent\": \"// done\\n\"}",
                 "{\"targetFile\": \"/abs/src/Main.java\", \"startLine\": 8, \"endLine\": 8, \"targetContent\": \"    return null;\", \"replacementContent\": \"    return value;\"}"
-            })
+            },
+            returnExamples = {"{\"status\":\"ok\",\"file\":\"/abs/src/Main.java\"}"})
     public record Args(
             @SecurityHint(ParamCategory.FILESYSTEM_PATH) @Doc("Absolute path of the file to patch.")
                     @NonNull String targetFile,

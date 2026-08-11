@@ -1,10 +1,10 @@
-﻿plugins {
+plugins {
     id("org.springframework.boot") version "3.5.16" apply false
     id("io.spring.dependency-management") version "1.1.6" apply false
 }
 
 group = "top.focess"
-version = "1.0.49"
+version = "1.0.78"
 
 // Centralized dependency versions shared across all subprojects
 extra["jacksonVersion"] = "2.18.0"

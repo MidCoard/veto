@@ -11,6 +11,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import top.focess.veto.bus.RoutingBusService;
+import top.focess.veto.i18n.Msg;
 import top.focess.veto.model.DAGPayload;
 
 /**
@@ -42,10 +43,7 @@ public class TaskController {
         String taskType = (String) request.get("taskType");
         if (taskType == null || taskType.isEmpty()) {
             return ResponseEntity.badRequest()
-                    .body(
-                            Map.of(
-                                    "status", "error",
-                                    "message", "taskType is required"));
+                    .body(Map.of("status", "error", "message", Msg.get("error.task.typeRequired")));
         }
 
         Map<String, Object> parameters =
@@ -89,7 +87,8 @@ public class TaskController {
             @NonNull @PathVariable("id") String id) {
         DAGPayload payload = taskStore.get(id);
         if (payload == null) {
-            return ResponseEntity.notFound().build();
+            return ResponseEntity.status(404)
+                    .body(Map.of("status", "error", "message", Msg.get("error.task.notFound", id)));
         }
 
         java.util.HashMap<String, Object> result = new java.util.HashMap<>();
@@ -142,7 +141,8 @@ public class TaskController {
             @NonNull @PathVariable("id") String id) {
         DAGPayload existing = taskStore.get(id);
         if (existing == null) {
-            return ResponseEntity.notFound().build();
+            return ResponseEntity.status(404)
+                    .body(Map.of("status", "error", "message", Msg.get("error.task.notFound", id)));
         }
 
         DAGPayload cancelled = existing.withStatus(DAGPayload.DAGPayloadStatus.CANCELLED);

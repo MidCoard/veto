@@ -1,10 +1,10 @@
-﻿plugins {
+plugins {
     `java-library`
     id("com.diffplug.spotless") version "6.25.0"
 }
 
 group = "top.focess"
-version = "1.0.49"
+version = "1.0.78"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_25

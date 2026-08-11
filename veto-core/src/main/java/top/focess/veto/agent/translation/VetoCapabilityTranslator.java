@@ -55,7 +55,8 @@ public class VetoCapabilityTranslator implements CapabilityTranslator {
                             def.description(),
                             inputSchema,
                             def.examples(),
-                            def.longDescription()));
+                            def.longDescription(),
+                            def.returnExamples()));
         }
         return flat;
     }

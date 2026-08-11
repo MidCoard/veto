@@ -51,6 +51,10 @@ import top.focess.veto.agent.mcp.ToolDoc;
                 content. The skill body is trusted deployer-provided guidance, not user-supplied content; \
                 it is not semantically screened. Safe to call any time.
                 """,
-        examples = {"{\"skillName\": \"git-rebase\"}", "{\"skillName\": \"verify_suite\"}"})
+        examples = {"{\"skillName\": \"git-rebase\"}", "{\"skillName\": \"verify_suite\"}"},
+        returnExamples = {
+            "# git-rebase\nWhen rewriting history, always ...\n1. Fetch the latest ...",
+            "{\"status\":\"error\",\"error\":\"Skill 'unknown_skill' not found or tampered.\"}"
+        })
 public record LoadSkillArgs(
         @Doc("The name of the skill to load (e.g. 'verify_suite').") @NonNull String skillName) {}

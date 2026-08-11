@@ -70,7 +70,8 @@ public final class WriteToFileTool implements NativeTool<WriteToFileTool.Args> {
                 "{\"targetFile\": \"/abs/empty.txt\", \"codeContent\": \"\", \"overwrite\": true}",
                 "{\"targetFile\": \"/abs/config/local.properties\", \"codeContent\": \"debug=true\\n\", \"overwrite\": false}",
                 "{\"targetFile\": \"/abs/src/Main.java\", \"codeContent\": \"// rewritten\\n\", \"overwrite\": true}"
-            })
+            },
+            returnExamples = {"{\"status\":\"ok\",\"file\":\"/abs/src/Main.java\"}"})
     public record Args(
             @SecurityHint(ParamCategory.FILESYSTEM_PATH) @Doc("Absolute path of the file to write.")
                     @NonNull String targetFile,

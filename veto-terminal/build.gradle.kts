@@ -1,11 +1,11 @@
-﻿plugins {
+plugins {
     application
     kotlin("jvm") version "2.3.0"
     id("com.diffplug.spotless") version "6.25.0"
 }
 
 group = "top.focess"
-version = "1.0.49"
+version = "1.0.78"
 
 application {
     mainClass = "top.focess.veto.terminal.VetoTerminal"

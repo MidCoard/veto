@@ -20,6 +20,20 @@ public class ModelCapabilityException extends LlmException {
     }
 
     /**
+     * Constructs a new ModelCapabilityException with the specified message and retryable flag. Use
+     * {@code retryable=true} for transient issues like DeepSeek's intermittent blank-content
+     * response (a known API issue with {@code response_format: json_object}).
+     *
+     * @param message the detail message
+     * @param retryable whether the exception is retryable
+     */
+    public
+    @NonNull
+    ModelCapabilityException(@NonNull String message, boolean retryable) {
+        super(message, retryable);
+    }
+
+    /**
      * Constructs a new ModelCapabilityException with the specified message and cause.
      *
      * @param message the detail message

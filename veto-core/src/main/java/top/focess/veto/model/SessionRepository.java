@@ -21,6 +21,15 @@ public interface SessionRepository extends JpaRepository<SessionEntity, String> 
             @NonNull String name, @NonNull String owner);
 
     /**
+     * Duplicate-tolerant variant of {@link #findByNameAndOwner}: when legacy rows share an {@code
+     * (owner, name)} pair (same name across workspaces), the most-recently-active one wins instead
+     * of throwing {@code NonUniqueResultException}. Used by the REST path, which has no workspace
+     * context to disambiguate with.
+     */
+    @NonNull Optional<SessionEntity> findFirstByNameAndOwnerOrderByLastActiveAtDesc(
+            @NonNull String name, @NonNull String owner);
+
+    /**
      * Returns the owner's session whose {@code name} and {@code workspaceRoots} both match exactly
      * (case-sensitive, byte-exact CSV string). Used by {@code createSession} to enforce that two
      * sessions with the same name may exist in different workspaces but not in the same one — the

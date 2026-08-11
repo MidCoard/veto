@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -12,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import top.focess.veto.agent.identity.Role;
+import top.focess.veto.agent.identity.RoleToolFilter;
 import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.mcp.ToolEngine;
 import top.focess.veto.agent.screening.DeployerPolicy;
@@ -35,11 +37,11 @@ import top.focess.veto.llm.core.ToolDefinition;
  * (no bootRun, no login) but uses the production prompt-assembly path ({@link PromptBlocks} +
  * {@link PromptTemplate}), so what you read is exactly what a real agent turn would receive.
  *
- * <p><b>Note:</b> tools are the FULL registered set for every role today - {@link
- * ToolEngine#getActiveTools} is called with a {@code null} whitelist, matching current {@code
- * AgentService.buildPersona} behavior. That the {@code ## Your Tools} block is identical across
- * STANDALONE/LEADER/MATE is itself one of the issues this dump exists to surface (role-based tool
- * scoping is not yet implemented).
+ * <p><b>Note:</b> each role's tools are resolved through the production {@link RoleToolFilter} (the
+ * same filter {@code AgentService.buildPersona} applies), so the {@code ## Your Tools} block in
+ * each role's dump reflects exactly what a real agent of that role would see - STANDALONE sees
+ * everything except Leader-only arrangement tools; LEADER sees only investigation + arrangement;
+ * MATE sees everything except all group tools.
  */
 @SpringBootTest
 class SystemPromptDumpTest {
@@ -49,6 +51,7 @@ class SystemPromptDumpTest {
     @Autowired private ToolEngine mcpEngine;
     @Autowired private CapabilityTranslator translator;
     @Autowired private Workspace workspace;
+    @Autowired private RoleToolFilter roleToolFilter;
 
     private final SystemPromptResolver resolver = new SystemPromptResolver();
 
@@ -60,24 +63,29 @@ class SystemPromptDumpTest {
         String law = workspace.vetoMdResolver().resolve();
         String template = resolver.defaultPrompt();
 
-        // Raw template, the tools block in isolation, and a plain inventory.
-        write("00-template.md", "# Raw default-system-prompt.md template\n\n" + template);
-        write(
-                "01-tool-catalog.md",
-                "# ## Your Tools block (all registered tools)\n\n" + PromptBlocks.tools(flatTools));
+        // Raw template, the full tool catalog (reference, pre-role-filter), and a plain inventory.
+        // No labels or descriptors are prepended - each file is pure content, exactly what the
+        // corresponding stage produces.
+        write("00-template.md", template);
+        write("01-tool-catalog.md", PromptBlocks.tools(flatTools));
         write("02-tool-inventory.md", inventory(flatTools));
 
-        // Full compiled prompt per role x policy.
+        // Full compiled prompt per role x policy, using the role-scoped tool set from
+        // RoleToolFilter (the same path production takes via AgentService.buildPersona).
         DeployerPolicy[] policies = {DeployerPolicy.FULL_ACCESS, DeployerPolicy.SANDBOXED};
         for (Role role : Role.values()) {
+            List<ToolDefinition> roleTools =
+                    translator.translateTools(new ArrayList<>(roleToolFilter.resolve(role)));
             for (DeployerPolicy policy : policies) {
                 write(
                         role + "-" + policy + ".md",
-                        render(role, policy, identityFor(role), flatTools, law, template));
+                        render(role, policy, identityFor(role), roleTools, law, template));
             }
+            // Per-role tool inventory so the role-scoping is visible at a glance.
+            write("03-tools-" + role + ".md", inventory(roleTools));
         }
 
-        int count = 3 + Role.values().length * policies.length;
+        int count = 3 + Role.values().length * (policies.length + 1);
         System.out.println(
                 "=== System-prompt dump written to "
                         + DUMP_DIR.toAbsolutePath()

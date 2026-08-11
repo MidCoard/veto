@@ -17,20 +17,24 @@ import org.jspecify.annotations.NonNull;
  *     tool's catalog entry (when to use, when not to, behavior, return format, edges). Prompt-side
  *     metadata only; never sent to a provider. Empty for tools without a {@code @ToolDoc}
  *     description.
+ * @param returnExamples concrete return-value examples rendered in the prompt catalog (one or two
+ *     representative shapes in the tool's declared output kind; NOT positionally aligned with
+ *     {@code examples}). Prompt-side metadata only; never sent to a provider.
  */
 public record ToolDefinition(
         @NonNull String name,
         @NonNull String description,
         @NonNull Map<String, Object> inputSchema,
         @NonNull List<String> examples,
-        @NonNull String longDescription) {
+        @NonNull String longDescription,
+        @NonNull List<String> returnExamples) {
 
     /** Convenience for tools without examples or a long description; delegates with empties. */
     public ToolDefinition(
             @NonNull String name,
             @NonNull String description,
             @NonNull Map<String, Object> inputSchema) {
-        this(name, description, inputSchema, List.of(), "");
+        this(name, description, inputSchema, List.of(), "", List.of());
     }
 
     /**
@@ -41,7 +45,17 @@ public record ToolDefinition(
             @NonNull String description,
             @NonNull Map<String, Object> inputSchema,
             @NonNull List<String> examples) {
-        this(name, description, inputSchema, examples, "");
+        this(name, description, inputSchema, examples, "", List.of());
+    }
+
+    /** Convenience for tools without return examples; delegates with an empty list. */
+    public ToolDefinition(
+            @NonNull String name,
+            @NonNull String description,
+            @NonNull Map<String, Object> inputSchema,
+            @NonNull List<String> examples,
+            @NonNull String longDescription) {
+        this(name, description, inputSchema, examples, longDescription, List.of());
     }
 
     public ToolDefinition {
@@ -50,6 +64,9 @@ public record ToolDefinition(
         }
         if (longDescription == null) {
             longDescription = "";
+        }
+        if (returnExamples == null) {
+            returnExamples = List.of();
         }
     }
 }

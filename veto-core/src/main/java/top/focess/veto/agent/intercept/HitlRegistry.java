@@ -2,7 +2,9 @@ package top.focess.veto.agent.intercept;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -20,6 +22,7 @@ import top.focess.veto.agent.screening.Screening;
 import top.focess.veto.agent.screening.ScreeningMode;
 import top.focess.veto.agent.screening.ScreeningOutcome;
 import top.focess.veto.agent.workspace.Workspace;
+import top.focess.veto.i18n.Msg;
 import top.focess.veto.llm.core.ToolCall;
 
 /**
@@ -94,6 +97,13 @@ public class HitlRegistry {
     private final ConcurrentHashMap<String, List<PermissionGrant>> grantLog =
             new ConcurrentHashMap<>();
 
+    /**
+     * Per-agent message locale for user-facing refusal reasons (decide runs on the agent's virtual
+     * thread, off the request thread). Stamped by {@code AgentRunner.setLocale}; English default.
+     * Cleared by {@link #clear}.
+     */
+    private final ConcurrentHashMap<String, Locale> locales = new ConcurrentHashMap<>();
+
     // ── Decide ──────────────────────────────────────────────────────────────
 
     /**
@@ -120,14 +130,13 @@ public class HitlRegistry {
             case APPROVE -> ApprovalDecision.AUTO_APPROVE;
             case REFUSED ->
                     new ApprovalDecision.Refused(
-                            "The agent is attempting a dangerous/refused action: ["
-                                    + call.toolName()
-                                    + (call.args() != null && !call.args().isEmpty()
+                            Msg.get(
+                                    localeFor(agentId),
+                                    "error.hitl.refusedCritical",
+                                    call.toolName(),
+                                    call.args() != null && !call.args().isEmpty()
                                             ? " " + call.args()
-                                            : "")
-                                    + "]. Reprompt to steer the LLM away from this. If you"
-                                    + " believe this is a mis-classification, contact your"
-                                    + " administrator.");
+                                            : ""));
             case ASK -> {
                 VetoScenario scenario = scenarioFor(call, def, screening);
                 if (grantCovers(agentId, call, def, screening)) {
@@ -141,6 +150,16 @@ public class HitlRegistry {
     /** Sets the screening matrix (called by {@link AgentService}). */
     public void setScreeningMode(@NonNull ScreeningMode screeningMode) {
         this.screeningMode = screeningMode;
+    }
+
+    /** Stamps the agent's message locale (called by {@code AgentRunner.setLocale}). */
+    public void setLocale(@NonNull String agentId, @NonNull Locale locale) {
+        locales.put(agentId, locale);
+    }
+
+    /** The agent's message locale, defaulting to English when none was stamped. */
+    private @NonNull Locale localeFor(@NonNull String agentId) {
+        return locales.getOrDefault(agentId, Locale.ENGLISH);
     }
 
     /**
@@ -227,10 +246,11 @@ public class HitlRegistry {
                     VetoOption.ACCEPT_READ,
                     VetoOption.ACCEPT_READ_LIKE_THIS,
                     VetoOption.READ_DECLINE);
+    // Write offers no mask variants: masking protects content the agent READS back (secrets
+    // entering the model's context); a write's observation carries no user content worth
+    // scrubbing, so the choice is just accept / accept-like-this / decline.
     static final List<VetoOption> W_OPTIONS =
             List.of(
-                    VetoOption.ACCEPT_AND_MASK_WRITE,
-                    VetoOption.ACCEPT_AND_MASK_WRITE_LIKE_THIS,
                     VetoOption.ACCEPT_WRITE,
                     VetoOption.ACCEPT_WRITE_LIKE_THIS,
                     VetoOption.EXEC_DECLINE);
@@ -241,10 +261,12 @@ public class HitlRegistry {
                     VetoOption.FORCE_OVERWRITE,
                     VetoOption.EDIT);
     static final List<VetoOption> E1_OPTIONS = List.of(VetoOption.BLOCK, VetoOption.OVERRIDE);
+    // Exec offers no mask variants (1.0.72): per the user's HITL principle, the explicit
+    // accept_and_mask choice belongs to READ only; an exec observation's masking is the
+    // IngressDefense default-on behavior, not a per-veto user choice. The ACCEPT_AND_MASK_COMMAND*
+    // enum constants are retained for backward compatibility.
     static final List<VetoOption> E2_OPTIONS =
             List.of(
-                    VetoOption.ACCEPT_AND_MASK_COMMAND,
-                    VetoOption.ACCEPT_AND_MASK_COMMAND_LIKE_THIS,
                     VetoOption.ACCEPT_COMMAND,
                     VetoOption.ACCEPT_COMMAND_LIKE_THIS,
                     VetoOption.EXEC_DECLINE);
@@ -460,8 +482,10 @@ public class HitlRegistry {
         Path dir = directoryOfFirstPathArg(agentId, call, def);
         List<String> flagShape =
                 MatchKeyExtractor.extract(call, def, workspace(agentId)).flagShape();
-        String family = "read";
-        return new PermissionGrant.ReadGrant(family, dir == null ? Path.of(".") : dir, flagShape);
+        // Scope by the exact tool (like-this = same tool + directory subtree): a list_dir grant
+        // must not auto-approve view_file / grep_search calls under the same prefix.
+        return new PermissionGrant.ReadGrant(
+                def.name(), dir == null ? Path.of(".") : dir, flagShape);
     }
 
     private PermissionGrant.WriteGrant buildWriteGrant(
@@ -552,16 +576,50 @@ public class HitlRegistry {
     }
 
     /**
-     * Decline every pending veto for the agent (on session stop / new-prompt-while-held = decline).
-     * The agent loop will synthesize the {@code ToolResponse(REFUSED)} observations.
+     * A transport-facing view of the agent's pending vetoes: the parked call + the option names
+     * offered to the user. Entries without a stashed call (the Refused-park path) are skipped -
+     * they resolve via {@link #declineAll}, never through a picker.
      */
-    public void declineAll(@NonNull String agentId) {
+    public @NonNull List<Map<String, Object>> pendingFor(@NonNull String agentId) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        String prefix = agentId + "|";
         pending.forEach(
                 (k, p) -> {
-                    if (k.startsWith(agentId + "|")) {
-                        p.future().complete(new InterceptResolution(VetoOption.EXEC_DECLINE, null));
+                    if (!k.startsWith(prefix) || p.call() == null) {
+                        return;
+                    }
+                    Map<String, Object> view = new LinkedHashMap<>();
+                    view.put("callId", p.call().callId());
+                    view.put("toolName", p.call().toolName());
+                    view.put("args", p.call().args() != null ? p.call().args() : Map.of());
+                    view.put(
+                            "options",
+                            p.options() != null
+                                    ? p.options().stream().map(VetoOption::name).toList()
+                                    : List.<String>of());
+                    out.add(view);
+                });
+        return out;
+    }
+
+    /**
+     * Decline every pending veto for the agent (on session stop / new-prompt-while-held = decline /
+     * a transport's cancel). The agent loop will synthesize the {@code ToolResponse(REFUSED)}
+     * observations. Returns the number of vetoes declined.
+     */
+    public int declineAll(@NonNull String agentId) {
+        int[] declined = {0};
+        pending.forEach(
+                (k, p) -> {
+                    if (k.startsWith(agentId + "|")
+                            && p.future()
+                                    .complete(
+                                            new InterceptResolution(
+                                                    VetoOption.EXEC_DECLINE, null))) {
+                        declined[0]++;
                     }
                 });
+        return declined[0];
     }
 
     /** Drops any pending veto + grants for the agent (on terminate). */
@@ -570,6 +628,7 @@ public class HitlRegistry {
         grants.remove(agentId);
         grantLog.remove(agentId);
         workspaces.remove(agentId);
+        locales.remove(agentId);
     }
 
     /** Revoke a single grant (audited + revocable, screening_model.md §7.2 #5). */

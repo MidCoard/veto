@@ -91,7 +91,9 @@ class AgentServiceHistorySeedTest {
         ObjectMapper mapper = new ObjectMapper();
         PromptCompiler compiler =
                 new PromptCompiler(
-                        new DefaultCapabilityTranslator(mapper), new SystemPromptResolver());
+                        new DefaultCapabilityTranslator(mapper),
+                        new SystemPromptResolver(),
+                        mapper);
         org.springframework.test.util.ReflectionTestUtils.setField(
                 compiler, "maxInputTokens", 32000);
         org.springframework.test.util.ReflectionTestUtils.setField(

@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import top.focess.veto.i18n.Msg;
 import top.focess.veto.vault.*;
 
 /**
@@ -62,7 +63,7 @@ public class AuthController {
                                     "status",
                                     "error",
                                     "message",
-                                    "username and password are required"));
+                                    Msg.get("error.auth.credentialsRequired")));
         }
         if (password.length() < 8) {
             return ResponseEntity.badRequest()
@@ -71,16 +72,11 @@ public class AuthController {
                                     "status",
                                     "error",
                                     "message",
-                                    "password must be at least 8 characters"));
+                                    Msg.get("error.auth.passwordTooShort")));
         }
         if (userRegistry.anyUserExists()) {
             return ResponseEntity.status(409)
-                    .body(
-                            Map.of(
-                                    "status",
-                                    "error",
-                                    "message",
-                                    "Vault is already set up - use /login"));
+                    .body(Map.of("status", "error", "message", Msg.get("error.auth.alreadySetup")));
         }
 
         try {
@@ -104,7 +100,12 @@ public class AuthController {
         } catch (Exception e) {
             log.error("Setup failed", e);
             return ResponseEntity.internalServerError()
-                    .body(Map.of("status", "error", "message", "Setup failed: " + e.getMessage()));
+                    .body(
+                            Map.of(
+                                    "status",
+                                    "error",
+                                    "message",
+                                    Msg.get("error.auth.setupFailed", e.getMessage())));
         }
     }
 
@@ -127,13 +128,18 @@ public class AuthController {
                                     "status",
                                     "error",
                                     "message",
-                                    "username and password are required"));
+                                    Msg.get("error.auth.credentialsRequired")));
         }
 
         var user = userRegistry.authenticate(username, password);
         if (user.isEmpty()) {
             return ResponseEntity.status(401)
-                    .body(Map.of("status", "error", "message", "Invalid username or password"));
+                    .body(
+                            Map.of(
+                                    "status",
+                                    "error",
+                                    "message",
+                                    Msg.get("error.auth.invalidCredentials")));
         }
 
         try {
@@ -154,7 +160,12 @@ public class AuthController {
         } catch (Exception e) {
             log.error("Login failed for user '{}'", username, e);
             return ResponseEntity.internalServerError()
-                    .body(Map.of("status", "error", "message", "Login failed: " + e.getMessage()));
+                    .body(
+                            Map.of(
+                                    "status",
+                                    "error",
+                                    "message",
+                                    Msg.get("error.auth.loginFailed", e.getMessage())));
         }
     }
 
@@ -167,7 +178,12 @@ public class AuthController {
         var session = sessionManager.validate(token);
         if (session.isEmpty()) {
             return ResponseEntity.status(401)
-                    .body(Map.of("status", "error", "message", "Invalid or expired session"));
+                    .body(
+                            Map.of(
+                                    "status",
+                                    "error",
+                                    "message",
+                                    Msg.get("error.auth.invalidSession")));
         }
 
         sessionManager.invalidate(token);
@@ -227,14 +243,24 @@ public class AuthController {
         var session = sessionManager.validate(token);
         if (session.isEmpty()) {
             return ResponseEntity.status(401)
-                    .body(Map.of("status", "error", "message", "Invalid or expired session"));
+                    .body(
+                            Map.of(
+                                    "status",
+                                    "error",
+                                    "message",
+                                    Msg.get("error.auth.invalidSession")));
         }
 
         // Verify admin role
         var adminEntry = userRegistry.findByUsername(session.get().username());
         if (adminEntry.isEmpty() || !"ADMIN".equals(adminEntry.get().getRole())) {
             return ResponseEntity.status(403)
-                    .body(Map.of("status", "error", "message", "Admin privileges required"));
+                    .body(
+                            Map.of(
+                                    "status",
+                                    "error",
+                                    "message",
+                                    Msg.get("error.auth.adminRequired")));
         }
 
         String username = request.get("username");
@@ -248,7 +274,7 @@ public class AuthController {
                                     "status",
                                     "error",
                                     "message",
-                                    "username and password are required"));
+                                    Msg.get("error.auth.credentialsRequired")));
         }
         if (password.length() < 8) {
             return ResponseEntity.badRequest()
@@ -257,7 +283,7 @@ public class AuthController {
                                     "status",
                                     "error",
                                     "message",
-                                    "password must be at least 8 characters"));
+                                    Msg.get("error.auth.passwordTooShort")));
         }
 
         try {
@@ -281,8 +307,14 @@ public class AuthController {
                             "message",
                             "User created"));
         } catch (IllegalArgumentException e) {
+            // Duplicate username (UserRegistry.create rejects an existing id).
             return ResponseEntity.status(409)
-                    .body(Map.of("status", "error", "message", e.getMessage()));
+                    .body(
+                            Map.of(
+                                    "status",
+                                    "error",
+                                    "message",
+                                    Msg.get("error.auth.userExists", username)));
         } catch (Exception e) {
             log.error("Failed to create user '{}'", username, e);
             return ResponseEntity.internalServerError()
@@ -291,7 +323,7 @@ public class AuthController {
                                     "status",
                                     "error",
                                     "message",
-                                    "Failed to create user: " + e.getMessage()));
+                                    Msg.get("error.auth.createUserFailed", e.getMessage())));
         }
     }
 }

@@ -1,6 +1,8 @@
 package top.focess.veto.agent.loop;
 
+import java.util.Locale;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.i18n.Msg;
 
 /**
  * The single-agent circuit breaker. One metric: <b>model calls between two {@code
@@ -51,9 +53,8 @@ public final class LoopBreaker {
         return maxCallsPerEpisode;
     }
 
-    /** The notice emitted on a trip. */
-    public static @NonNull String tripNotice() {
-        return "The agent auto-stopped due to many calls (episode limit reached). To continue, enter"
-                + " 'continue'. To run without limitation, configure the calls limit to infinite.";
+    /** The notice emitted on a trip, in the session's message locale. */
+    public static @NonNull String tripNotice(@NonNull Locale locale) {
+        return Msg.get(locale, "error.agent.loopTripped");
     }
 }

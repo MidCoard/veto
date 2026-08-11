@@ -50,7 +50,9 @@ class AgentEndToEndTest {
         ObjectMapper mapper = new ObjectMapper();
         PromptCompiler compiler =
                 new PromptCompiler(
-                        new DefaultCapabilityTranslator(mapper), new SystemPromptResolver());
+                        new DefaultCapabilityTranslator(mapper),
+                        new SystemPromptResolver(),
+                        mapper);
         // The @Value defaults are only injected by Spring; set sensible budgets for the unit test.
         ReflectionTestUtils.setField(compiler, "maxInputTokens", 32000);
         ReflectionTestUtils.setField(compiler, "contextFillRatio", 0.9);
@@ -121,7 +123,9 @@ class AgentEndToEndTest {
         ObjectMapper mapper = new ObjectMapper();
         PromptCompiler compiler =
                 new PromptCompiler(
-                        new DefaultCapabilityTranslator(mapper), new SystemPromptResolver());
+                        new DefaultCapabilityTranslator(mapper),
+                        new SystemPromptResolver(),
+                        mapper);
         ReflectionTestUtils.setField(compiler, "maxInputTokens", 32000);
         ReflectionTestUtils.setField(compiler, "contextFillRatio", 0.9);
         return new AgentService(
@@ -209,6 +213,46 @@ class AgentEndToEndTest {
         assertTrue(types.contains(TurnType.TOOL_RESPONSE), "the tool observation was recorded");
         assertTrue(types.contains(TurnType.ASSISTANT_RESPONSE));
         assertReturnsToIdle(agent);
+    }
+
+    /**
+     * Regression contract: one tool call in the model's response must produce exactly one
+     * TOOL_RESPONSE turn in history - not two. A prior bug (introduced when a recordRecentCall hook
+     * was inserted between two identical appendTurn calls in executeOneConfirmedCall) doubled every
+     * tool observation, wasting turn numbers and feeding the model duplicate observations.
+     */
+    @Test
+    void oneToolCallProducesExactlyOneToolResponse() throws Exception {
+        AgentService service =
+                serviceWith(
+                        scripted(
+                                thoughtOnWithCall(
+                                        "I'll compute 2+2 via calc.",
+                                        "Let me check.",
+                                        new ToolCall("calc", Map.of("expr", "2+2"))),
+                                thoughtOn("calc says 4.", "The answer is 4.")));
+
+        AgentResult result =
+                service.submit(
+                        "one-response-test",
+                        "What is 2 + 2?",
+                        binding("You are a helpful assistant."),
+                        EPISODE_TIMEOUT,
+                        ignored -> {});
+
+        assertTrue(result.success(), "episode should finish successfully after the tool call");
+
+        VetoAgent agent = service.agent("one-response-test");
+        long toolCalls =
+                agent.history().stream().filter(t -> t.type() == TurnType.TOOL_CALL).count();
+        long toolResponses =
+                agent.history().stream().filter(t -> t.type() == TurnType.TOOL_RESPONSE).count();
+        assertEquals(1, toolCalls, "exactly one TOOL_CALL turn should be recorded");
+        assertEquals(
+                1,
+                toolResponses,
+                "exactly one TOOL_RESPONSE turn should be recorded"
+                        + " (regression: a duplicate appendTurn doubled this)");
     }
 
     @Test

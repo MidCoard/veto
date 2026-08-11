@@ -9,13 +9,17 @@ import com.openai.models.ChatModel;
 import com.openai.models.ResponseFormatJsonObject;
 import com.openai.models.ResponseFormatJsonSchema;
 import com.openai.models.chat.completions.ChatCompletion;
+import com.openai.models.chat.completions.ChatCompletionAssistantMessageParam;
 import com.openai.models.chat.completions.ChatCompletionCreateParams;
+import com.openai.models.chat.completions.ChatCompletionMessageFunctionToolCall;
 import com.openai.models.chat.completions.ChatCompletionMessageParam;
 import com.openai.models.chat.completions.ChatCompletionSystemMessageParam;
+import com.openai.models.chat.completions.ChatCompletionToolMessageParam;
 import com.openai.models.chat.completions.ChatCompletionUserMessageParam;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.translation.CapabilityTranslator;
+import top.focess.veto.llm.core.ChatMessage;
 import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.llm.core.ResolvedRequest;
 import top.focess.veto.llm.core.VetoRequest;
@@ -81,15 +85,17 @@ final class OpenAiLlmClient extends LlmClient {
         }
 
         builder.addMessage(
-                        ChatCompletionMessageParam.ofSystem(
-                                ChatCompletionSystemMessageParam.builder()
-                                        .content(systemPrompt)
-                                        .build()))
-                .addMessage(
-                        ChatCompletionMessageParam.ofUser(
-                                ChatCompletionUserMessageParam.builder()
-                                        .content(request.userPrompt())
-                                        .build()));
+                ChatCompletionMessageParam.ofSystem(
+                        ChatCompletionSystemMessageParam.builder().content(systemPrompt).build()));
+        // Send the FULL conversation history (not just the last message). Each message is mapped
+        // to its native SDK type: user -> user, assistant+callId -> assistant with tool_calls,
+        // tool -> tool with tool_call_id. The call_id structurally links tool calls to results.
+        for (ChatMessage msg : request.messages()) {
+            if ("system".equals(msg.role())) {
+                continue; // already added above
+            }
+            builder.addMessage(toSdkMessage(msg));
+        }
         applyOptions(builder, request.options());
 
         ChatCompletion completion = sdkClient.chat().completions().create(builder.build());
@@ -146,6 +152,58 @@ final class OpenAiLlmClient extends LlmClient {
         } catch (Exception e) {
             throw new ModelCapabilityException(
                     providerName + " failed to serialize response schema", e);
+        }
+    }
+
+    /**
+     * Converts a {@link ChatMessage} to the OpenAI SDK's {@link ChatCompletionMessageParam}.
+     * Tool-call assistant messages carry native {@code tool_calls}; tool-result messages carry
+     * {@code tool_call_id}. Both are linked by the shared {@code callId}.
+     */
+    private static ChatCompletionMessageParam toSdkMessage(@NonNull ChatMessage msg) {
+        switch (msg.role()) {
+            case "user" -> {
+                return ChatCompletionMessageParam.ofUser(
+                        ChatCompletionUserMessageParam.builder().content(msg.content()).build());
+            }
+            case "assistant" -> {
+                if (msg.callId() != null) {
+                    // Native tool_call on the assistant message
+                    ChatCompletionMessageFunctionToolCall.Function function =
+                            ChatCompletionMessageFunctionToolCall.Function.builder()
+                                    .name(msg.toolName() != null ? msg.toolName() : "")
+                                    .arguments(msg.toolArgs() != null ? msg.toolArgs() : "{}")
+                                    .build();
+                    ChatCompletionMessageFunctionToolCall toolCall =
+                            ChatCompletionMessageFunctionToolCall.builder()
+                                    .id(msg.callId())
+                                    .function(function)
+                                    .build();
+                    ChatCompletionAssistantMessageParam.Builder ab =
+                            ChatCompletionAssistantMessageParam.builder().addToolCall(toolCall);
+                    if (!msg.content().isEmpty()) {
+                        ab.content(msg.content());
+                    }
+                    return ChatCompletionMessageParam.ofAssistant(ab.build());
+                }
+                return ChatCompletionMessageParam.ofAssistant(
+                        ChatCompletionAssistantMessageParam.builder()
+                                .content(msg.content())
+                                .build());
+            }
+            case "tool" -> {
+                return ChatCompletionMessageParam.ofTool(
+                        ChatCompletionToolMessageParam.builder()
+                                .content(
+                                        ChatCompletionToolMessageParam.Content.ofText(
+                                                msg.content()))
+                                .toolCallId(msg.callId() != null ? msg.callId() : "")
+                                .build());
+            }
+            default -> {
+                return ChatCompletionMessageParam.ofUser(
+                        ChatCompletionUserMessageParam.builder().content(msg.content()).build());
+            }
         }
     }
 }

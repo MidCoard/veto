@@ -23,7 +23,9 @@
     "plans/",
     "scripts/",
     "docs/",
-    "ARCHITECTURE.md"
+    "ARCHITECTURE.md",
+    ".playwright-mcp/",
+    "prompt-dump/"
   ],
   "addons": {}
 }

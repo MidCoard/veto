@@ -83,6 +83,7 @@ class PromptCompileRenderTest {
                 PromptBlocks.workspace(
                         Workspace.single(
                                 Path.of(System.getProperty("user.dir", ".")), PathMode.REAL)));
+        blocks.put("ENVIRONMENT", PromptBlocks.environment());
         blocks.put("TOOLS", PromptBlocks.tools(tools));
         blocks.put("BOUNDARIES", PromptBlocks.boundaries(policy));
         blocks.put("SKILLS", PromptBlocks.skills(List.of()));

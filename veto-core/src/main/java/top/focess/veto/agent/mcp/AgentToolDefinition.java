@@ -71,7 +71,7 @@ public record AgentToolDefinition(
      */
     public static @NonNull AgentToolDefinition from(
             @NonNull String name, @NonNull Class<?> argsClass) {
-        ToolDoc doc = argsClass.getAnnotation(ToolDoc.class);
+        ToolDoc doc = ToolDocs.toolDocOf(argsClass);
         String description =
                 (doc != null && !doc.description().isEmpty())
                         ? doc.description()

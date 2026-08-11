@@ -23,7 +23,7 @@ import top.focess.veto.llm.core.ToolCall;
  * Tests for the permission-grant system (screening_model.md §7.1). Covers:
  *
  * <ul>
- *   <li>Read grants match by directory prefix + read tool family
+ *   <li>Read grants match by directory prefix + the exact read tool (1.0.72: per-tool, not family)
  *   <li>Write grants match by directory prefix + tool
  *   <li>Command grants match by executable + subcommand + flag shape
  *   <li>Grants are session-scoped
@@ -51,8 +51,15 @@ class PermissionGrantTest {
         ToolCall call =
                 new ToolCall("view_file", Map.of("path", subdir.resolve("Main.java").toString()));
         PermissionGrant.ToolCallSpec spec = MatchKeyExtractor.extract(call, readDef, ws);
-        PermissionGrant.ReadGrant grant = new PermissionGrant.ReadGrant("read", subdir, List.of());
-        assertTrue(grant.matches(spec), "read grant should match the same directory");
+        PermissionGrant.ReadGrant grant =
+                new PermissionGrant.ReadGrant("view_file", subdir, List.of());
+        assertTrue(grant.matches(spec), "read grant should match the same tool + directory");
+        // 1.0.72: a grant scopes by exact tool - a list_dir grant must NOT cover view_file.
+        PermissionGrant.ReadGrant otherToolGrant =
+                new PermissionGrant.ReadGrant("list_dir", subdir, List.of());
+        assertFalse(
+                otherToolGrant.matches(spec),
+                "a list_dir grant must NOT match a view_file call (per-tool scope)");
     }
 
     @Test
@@ -74,7 +81,7 @@ class PermissionGrantTest {
                 new ToolCall("view_file", Map.of("path", other.resolve("x.txt").toString()));
         PermissionGrant.ToolCallSpec spec = MatchKeyExtractor.extract(call, readDef, ws);
         PermissionGrant.ReadGrant grant =
-                new PermissionGrant.ReadGrant("read", root.resolve("src"), List.of());
+                new PermissionGrant.ReadGrant("view_file", root.resolve("src"), List.of());
         assertFalse(grant.matches(spec), "read grant must NOT match outside its directory");
     }
 

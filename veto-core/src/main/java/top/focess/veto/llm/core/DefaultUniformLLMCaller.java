@@ -9,6 +9,7 @@ import top.focess.veto.llm.egress.EgressEndpoint;
 import top.focess.veto.llm.egress.LlmEgress;
 import top.focess.veto.llm.exceptions.LlmException;
 import top.focess.veto.llm.exceptions.ModelCapabilityException;
+import top.focess.veto.llm.exceptions.PlainTextResponseException;
 import top.focess.veto.llm.provider.LLMProviderStrategy;
 
 /**
@@ -23,7 +24,7 @@ import top.focess.veto.llm.provider.LLMProviderStrategy;
 @Service
 public class DefaultUniformLLMCaller implements UniformLLMCaller {
     private static final Logger log = LoggerFactory.getLogger(DefaultUniformLLMCaller.class);
-    private static final int MAX_ATTEMPTS = 3;
+    private static final int MAX_ATTEMPTS = 5;
     private static final long BASE_BACKOFF_MILLIS = 250L;
     private final @NonNull List<LLMProviderStrategy> strategies;
     private final @NonNull LlmEgress egress;
@@ -67,6 +68,19 @@ public class DefaultUniformLLMCaller implements UniformLLMCaller {
             } catch (LlmException e) {
                 last = e;
                 if (!e.isRetryable() || attempt == MAX_ATTEMPTS) {
+                    // Graceful degradation: a persistently non-JSON answer becomes the agent's
+                    // plain-text message (a stopping turn) rather than an episode failure.
+                    if (e instanceof PlainTextResponseException plainText) {
+                        log.warn(
+                                "Plain-text LLM response after {} attempts - surfacing as message",
+                                attempt);
+                        return new VetoResponse(
+                                null, // thought
+                                null, // calls
+                                plainText.text(), // message
+                                new VetoResponse.Features(false), // autonomous, stopping
+                                null); // actions
+                    }
                     throw e;
                 }
                 backoff(attempt, e);

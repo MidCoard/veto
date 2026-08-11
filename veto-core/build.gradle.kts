@@ -1,4 +1,4 @@
-﻿plugins {
+plugins {
     java
     id("org.springframework.boot") version "3.5.16"
     id("io.spring.dependency-management") version "1.1.6"
@@ -8,7 +8,7 @@
 }
 
 group = "top.focess"
-version = "1.0.49"
+version = "1.0.78"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_25

@@ -111,8 +111,17 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
                 case PIPE -> runPipeline(builders, effectiveTimeout);
                 case RUN_ALL, STOP_ON_FAILURE -> runSequential(builders, connect, effectiveTimeout);
             };
-        } catch (IOException | InterruptedException e) {
+        } catch (InterruptedException e) {
+            // A genuine interrupt (cancel/shutdown): restore the flag so the loop sees it.
             Thread.currentThread().interrupt();
+            return new CommandResult(
+                    -1, "", "Sandbox run interrupted: " + e.getMessage(), List.of(-1));
+        } catch (IOException e) {
+            // A plain spawn/IO failure (executable not found, cwd unreadable) is DATA for the
+            // agent to judge, not an interrupt. Do NOT touch the interrupt flag here - setting it
+            // poisons every later interruptible op on this thread (the PG turn-log write fails as
+            // "I/O error", the next LLM HTTP call throws InterruptedException instantly, and the
+            // whole round dies on a phantom interrupt).
             return new CommandResult(-1, "", "Sandbox run failed: " + e.getMessage(), List.of(-1));
         }
     }

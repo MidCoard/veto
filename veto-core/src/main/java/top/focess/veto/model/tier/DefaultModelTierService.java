@@ -6,6 +6,7 @@ import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import top.focess.veto.i18n.Msg;
 import top.focess.veto.llm.core.ProviderType;
 
 /**
@@ -53,28 +54,15 @@ public class DefaultModelTierService implements ModelTierRegistry, ModelTierProf
                         .orElseThrow(
                                 () ->
                                         new ModelTierConfigException(
-                                                "Profile '"
-                                                        + profile.getName()
-                                                        + "' has no binding for tier "
-                                                        + tier
-                                                        + ". Configure it: /modeltier set "
-                                                        + profile.getName()
-                                                        + " "
-                                                        + tier
-                                                        + " <field> <value>."));
+                                                Msg.get(
+                                                        "error.tier.noBinding",
+                                                        profile.getName(),
+                                                        tier)));
         if (binding.getProvider() == null
                 || binding.getModel() == null
                 || binding.getCredentialKey() == null) {
             throw new ModelTierConfigException(
-                    "Tier "
-                            + tier
-                            + " in profile '"
-                            + profile.getName()
-                            + "' is incomplete: set provider, model, and credKey via /modeltier set "
-                            + profile.getName()
-                            + " "
-                            + tier
-                            + " <field> <value>.");
+                    Msg.get("error.tier.incomplete", tier, profile.getName()));
         }
         double temperature =
                 binding.getTemperature() != null ? binding.getTemperature() : DEFAULT_TEMPERATURE;
@@ -107,18 +95,14 @@ public class DefaultModelTierService implements ModelTierRegistry, ModelTierProf
                 .orElseThrow(
                         () ->
                                 new ModelTierConfigException(
-                                        "No active model-tier profile for user '"
-                                                + username
-                                                + "'. Create one with /modeltier create <name>,"
-                                                + " configure it with /modeltier set <name> <tier>"
-                                                + " <field> <value>, then /modeltier use <name>."));
+                                        Msg.get("error.tier.noActiveProfile", username)));
     }
 
     @Override
     @Transactional
     public void createProfile(@NonNull String username, @NonNull String name) {
         if (profileRepo.findByNameAndOwner(name, username).isPresent()) {
-            throw new IllegalArgumentException("Profile '" + name + "' already exists");
+            throw new IllegalArgumentException(Msg.get("error.tier.profileExists", name));
         }
         // Auto-activate the user's first profile so a first-time user can resolve immediately
         // without a separate /modeltier use (they can switch later with `use`).
@@ -142,12 +126,7 @@ public class DefaultModelTierService implements ModelTierRegistry, ModelTierProf
         if (field == ModelTierField.CREDENTIAL_KEY) {
             String credKey = value.trim();
             if (!credentialChecker.exists(username, credKey)) {
-                throw new IllegalArgumentException(
-                        "Credential '"
-                                + credKey
-                                + "' not found in the vault. Store it first with /credential set "
-                                + credKey
-                                + ".");
+                throw new IllegalArgumentException(Msg.get("error.vault.credKeyMissing", credKey));
             }
         }
         applyField(binding, field, value);
@@ -207,7 +186,10 @@ public class DefaultModelTierService implements ModelTierRegistry, ModelTierProf
             @NonNull String username, @NonNull String name) {
         return profileRepo
                 .findByNameAndOwner(name, username)
-                .orElseThrow(() -> new IllegalArgumentException("Profile not found: " + name));
+                .orElseThrow(
+                        () ->
+                                new IllegalArgumentException(
+                                        Msg.get("error.tier.profileNotFound", name)));
     }
 
     private static void applyField(
@@ -219,7 +201,8 @@ public class DefaultModelTierService implements ModelTierRegistry, ModelTierProf
                 try {
                     binding.setProvider(ProviderType.valueOf(value.trim().toUpperCase()));
                 } catch (IllegalArgumentException e) {
-                    throw new IllegalArgumentException("Unknown provider: " + value);
+                    throw new IllegalArgumentException(
+                            Msg.get("error.tier.unknownProvider", value));
                 }
             }
             case BASE_URL -> binding.setBaseUrl(value.isBlank() ? null : value.trim());
@@ -229,14 +212,16 @@ public class DefaultModelTierService implements ModelTierRegistry, ModelTierProf
                 try {
                     binding.setTemperature(Double.parseDouble(value.trim()));
                 } catch (NumberFormatException e) {
-                    throw new IllegalArgumentException("Invalid temperature: " + value);
+                    throw new IllegalArgumentException(
+                            Msg.get("error.tier.invalidTemperature", value));
                 }
             }
             case MAX_OUTPUT_TOKENS -> {
                 try {
                     binding.setMaxOutputTokens(Integer.parseInt(value.trim()));
                 } catch (NumberFormatException e) {
-                    throw new IllegalArgumentException("Invalid max output tokens: " + value);
+                    throw new IllegalArgumentException(
+                            Msg.get("error.tier.invalidMaxTokens", value));
                 }
             }
         }
