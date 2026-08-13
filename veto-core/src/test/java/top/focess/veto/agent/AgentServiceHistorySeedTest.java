@@ -112,7 +112,10 @@ class AgentServiceHistorySeedTest {
                 "FULL_ACCESS",
                 "STRICT",
                 null,
-                new top.focess.veto.memory.TurnLogService(null, mapper));
+                new top.focess.veto.memory.TurnLogService(null, mapper),
+                new top.focess.veto.sandbox.BackgroundTaskManager(
+                        new top.focess.veto.sandbox.SandboxManager(
+                                new top.focess.veto.sandbox.ConstrainedSubprocessSubstrate())));
     }
 
     private static AgentRunner.LlmBinding binding() {

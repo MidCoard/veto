@@ -13,8 +13,10 @@ import top.focess.veto.llm.core.ToolDefinition;
  * top.focess.veto.llm.core.VetoRequest}.
  *
  * @param systemMessage the Layer-1+2+3 system message (always {@code messages[0]}, never trimmed)
- * @param messages the role-mapped, token-budgeted conversation (newest→oldest, pair-safe
- *     truncation)
+ * @param messages the role-mapped, token-budgeted conversation, oldest→newest. Pair-safe truncation
+ *     plus the {@code PromptCompiler.wellFormed} contract: it opens on a user message, every
+ *     tool_result immediately follows its tool_call, and no tool_call dangles unanswered - the
+ *     shape every strict provider accepts.
  * @param tools the flat, provider-translated tool list (full whitelist, every cycle)
  * @param responseSchema the per-turn {@code veto_pulse} schema variant ({@code null} → provider
  *     default)

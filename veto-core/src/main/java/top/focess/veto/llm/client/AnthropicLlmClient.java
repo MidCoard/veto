@@ -85,7 +85,14 @@ final class AnthropicLlmClient extends LlmClient {
                             .build());
         }
 
-        for (MessageParam messageParam : toMessageParams(request)) {
+        List<MessageParam> messageParams = toMessageParams(request);
+        if (log.isDebugEnabled()) {
+            log.debug(
+                    "Anthropic outgoing history ({} compiled msgs):\n{}",
+                    request.messages().size(),
+                    describeHistory(request.messages()));
+        }
+        for (MessageParam messageParam : messageParams) {
             builder.addMessage(messageParam);
         }
 
@@ -155,6 +162,9 @@ final class AnthropicLlmClient extends LlmClient {
      * user text, matching the compiler's intent.
      */
     private @NonNull List<MessageParam> toMessageParams(@NonNull VetoRequest request) {
+        // The PromptCompiler.wellFormed contract already guarantees a conversation every strict
+        // provider accepts (opens on a user message; tool_use/tool_result pairs intact), so this
+        // adapter maps messages directly and carries no provider-specific pairing guards.
         List<ChatMessage> history = request.messages();
         if (history.isEmpty()) {
             return List.of(
@@ -236,8 +246,27 @@ final class AnthropicLlmClient extends LlmClient {
         return MessageParam.builder().role(role).contentOfBlockParams(blocks).build();
     }
 
+    /**
+     * Renders the compiled history (role + callId + toolName + content length) for the debug log.
+     */
+    private @NonNull String describeHistory(@NonNull List<ChatMessage> history) {
+        StringBuilder sb = new StringBuilder();
+        for (ChatMessage m : history) {
+            sb.append('[').append(m.role()).append(']');
+            if (m.callId() != null) {
+                sb.append(" callId=").append(m.callId());
+            }
+            if (m.toolName() != null) {
+                sb.append(" tool=").append(m.toolName());
+            }
+            sb.append(" contentLen=").append(m.content() == null ? 0 : m.content().length());
+            sb.append('\n');
+        }
+        return sb.toString().strip();
+    }
+
     /** Parses a tool-call args JSON string into the SDK's input param; empty input on bad JSON. */
-    private @NonNull ToolUseBlockParam.Input toolInputParam(@Nullable String toolArgs) {
+    private ToolUseBlockParam.@NonNull Input toolInputParam(@Nullable String toolArgs) {
         ToolUseBlockParam.Input.Builder input = ToolUseBlockParam.Input.builder();
         if (toolArgs != null && !toolArgs.isBlank()) {
             try {
@@ -245,7 +274,9 @@ final class AnthropicLlmClient extends LlmClient {
                         objectMapper.readValue(toolArgs, new TypeReference<>() {});
                 args.forEach((k, v) -> input.putAdditionalProperty(k, JsonValue.from(v)));
             } catch (Exception e) {
-                log.debug("AnthropicLlmClient: unparseable tool args, sending empty input: {}", toolArgs);
+                log.debug(
+                        "AnthropicLlmClient: unparseable tool args, sending empty input: {}",
+                        toolArgs);
             }
         }
         return input.build();

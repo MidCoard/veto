@@ -53,7 +53,6 @@ import top.focess.veto.agent.mcp.ToolResult;
 import top.focess.veto.agent.screening.Danger;
 import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.bus.DeltaFrame;
-import top.focess.veto.contract.IpcFrame;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.llm.core.ChatMessage;
 import top.focess.veto.llm.core.LlmOptions;
@@ -69,6 +68,7 @@ import top.focess.veto.llm.exceptions.LlmRateLimitException;
 import top.focess.veto.llm.exceptions.LlmTimeoutException;
 import top.focess.veto.llm.exceptions.ModelCapabilityException;
 import top.focess.veto.llm.exceptions.ModelSchemaException;
+import top.focess.veto.sandbox.BackgroundTaskManager;
 import top.focess.veto.vault.KeysteadVault;
 import top.focess.veto.vault.UserContext;
 
@@ -118,6 +118,7 @@ public class AgentRunner {
     // the raw-turn audit/replay log.
     private final top.focess.veto.memory.@Nullable TurnLogService turnLogService;
     private final @NonNull UUID userId;
+    private final @Nullable BackgroundTaskManager backgroundTaskManager;
     // The session owner (username) whose model-tier profile resolves this agent's tier. Threaded
     // into each tool's ToolCallContext so group-spawned Mates / Leaders resolve against the user's
     // active profile (per-user model-tier configuration). Nullable in legacy/test paths that bypass
@@ -180,26 +181,26 @@ public class AgentRunner {
             new CopyOnWriteArrayList<>();
 
     // HITL veto listeners (the veto emission seam, parallel to messageListeners). emitVetoRequired
-    // notifies these so a transport can render a picker (an IpcFrame.Prompt with a VetoPayload) and
-    // route the user's reply back to resolve the parked veto. The agent parks in HitlRegistry
-    // regardless; the listener only advertises the prompt.
+    // notifies these with a domain VetoPrompt so a transport can render a picker and route the
+    // user's reply back to resolve the parked veto. The agent parks in HitlRegistry regardless; the
+    // listener only advertises the prompt.
     private final @NonNull CopyOnWriteArrayList<Consumer<VetoPrompt>> vetoListeners =
             new CopyOnWriteArrayList<>();
 
     // Tool-call listeners (the transparency emission seam, parallel to messageListeners).
-    // emitToolCall notifies these so a transport (the terminal PromptHandler) can forward each
-    // tool call the agent is about to execute as an IpcFrame.ToolCall - analogous to Claude
-    // Code's per-tool operation indicator. Fires on the agent's virtual thread inside appendTurn
-    // after the durable TOOL_CALL turn is persisted, so listeners never see a turn the audit
-    // log lost.
-    private final @NonNull CopyOnWriteArrayList<Consumer<IpcFrame.ToolCall>> toolCallListeners =
+    // emitToolCall notifies these with a domain ToolCallEvent so a transport (the terminal
+    // PromptHandler) can forward each tool call the agent is about to execute - analogous to
+    // Claude Code's per-tool operation indicator. Fires on the agent's virtual thread inside
+    // appendTurn after the durable TOOL_CALL turn is persisted, so listeners never see a turn the
+    // audit log lost.
+    private final @NonNull CopyOnWriteArrayList<Consumer<ToolCallEvent>> toolCallListeners =
             new CopyOnWriteArrayList<>();
 
-    // Tool-result listeners (parallel to toolCallListeners). emitToolResult forwards the framed
-    // observation text (what the model actually sees) so the terminal can render the body and
-    // the user can verify exactly what was fed back to the agent. Fires after the durable
-    // TOOL_RESPONSE turn is persisted.
-    private final @NonNull CopyOnWriteArrayList<Consumer<IpcFrame.ToolResult>> toolResultListeners =
+    // Tool-result listeners (parallel to toolCallListeners). emitToolResult forwards a domain
+    // ToolResultEvent (the framed observation the model actually sees) so the terminal can render
+    // the body and the user can verify exactly what was fed back to the agent. Fires after the
+    // durable TOOL_RESPONSE turn is persisted.
+    private final @NonNull CopyOnWriteArrayList<Consumer<ToolResultEvent>> toolResultListeners =
             new CopyOnWriteArrayList<>();
 
     public AgentRunner(
@@ -217,7 +218,8 @@ public class AgentRunner {
             @NonNull LlmBinding binding,
             @Nullable DeltaBroker deltaBroker,
             @NonNull UUID userId,
-            top.focess.veto.memory.@Nullable TurnLogService turnLogService) {
+            top.focess.veto.memory.@Nullable TurnLogService turnLogService,
+            @Nullable BackgroundTaskManager backgroundTaskManager) {
         this.agentId = agentId;
         this.persona = persona;
         this.whitelistedTools =
@@ -243,6 +245,8 @@ public class AgentRunner {
         this.userId = userId;
         // Nullable: non-Spring callers (tests) pass null so turns are not logged.
         this.turnLogService = turnLogService;
+        // Nullable: non-Spring callers (tests) pass null; the run_task path injects exit notices.
+        this.backgroundTaskManager = backgroundTaskManager;
     }
 
     // ── Virtual-thread loop ────────────────────────────────────────────────
@@ -322,6 +326,11 @@ public class AgentRunner {
     // ── Episode setup + autonomous loop ─────────────────────────────────────
 
     private void processUserPrompt(@NonNull String prompt) {
+        // Actively tell the agent about background tasks that ended since it last ran — drained
+        // into the context BEFORE the new user prompt so the model reads them together. This is
+        // the push half of the task lifecycle (the UI gets TASK_EXITED live; the agent gets it
+        // here on its next turn instead of having to remember to poll view_task).
+        injectPendingTaskExitNotices();
         // Fresh UserPromptAction: reset guided state and program counter.
         appendTurn(TurnRecord.userPrompt(++turnNumber, prompt));
         this.guided = false;
@@ -334,6 +343,51 @@ public class AgentRunner {
             runGuided();
         } else {
             runAutonomous();
+        }
+    }
+
+    /**
+     * Drains background-task exit notices queued for this agent and appends each as a user-role
+     * observation, so the model is actively told which of its tasks ended while it was idle (and
+     * their exit codes) rather than having to remember to poll {@code view_task}. No-op when no
+     * task manager is wired (tests) or nothing exited.
+     */
+    private void injectPendingTaskExitNotices() {
+        if (backgroundTaskManager == null) {
+            return;
+        }
+        for (BackgroundTaskManager.TaskExitNotice notice :
+                backgroundTaskManager.drainExitNotices(agentId)) {
+            String prefix =
+                    "[notice] background task " + notice.taskId() + " (" + notice.command() + ") ";
+            String text =
+                    switch (notice.cause()) {
+                        case NATURAL ->
+                                prefix
+                                        + "exited on its own with code "
+                                        + notice.exitCode()
+                                        + (notice.exitCode() != 0
+                                                ? " — a non-zero code means it crashed."
+                                                : ".")
+                                        + " Launch it again with run_task if needed.";
+                        case AGENT_STOP ->
+                                prefix
+                                        + "was stopped by you (stop_task). It is no longer"
+                                        + " running.";
+                        case USER_STOP ->
+                                prefix
+                                        + "was stopped by the user. It is no longer running —"
+                                        + " launch it again with run_task only if asked.";
+                        case AUTO_KILL ->
+                                prefix
+                                        + "was auto-killed because its timeout elapsed. It is"
+                                        + " no longer running.";
+                        case SHUTDOWN ->
+                                prefix
+                                        + "was terminated during server/agent cleanup. It is"
+                                        + " no longer running.";
+                    };
+            appendObservation("task_exited", text);
         }
     }
 
@@ -365,6 +419,16 @@ public class AgentRunner {
         appendTurn(TurnRecord.rewind(++turnNumber, 1));
         appendTurn(TurnRecord.compactionSummary(++turnNumber, finalSummary));
         emitMessage(Msg.get(locale, "error.agent.compactDone", workTurns.size()));
+        // Domain event: the session compacted. Subscribers can mark the ledger boundary without
+        // inferring it from the message text.
+        publishFrame(
+                DeltaFrame.builder()
+                        .sessionId(sessionId)
+                        .kind(DeltaFrame.Kind.COMPACTION)
+                        .attr("turnNumber", turnNumber)
+                        .attr("compactedTurns", workTurns.size())
+                        .text(finalSummary)
+                        .build());
     }
 
     /**
@@ -471,8 +535,12 @@ public class AgentRunner {
 
     private void runAutonomous() {
         while (state == AgentState.RUNNING) {
+            // Mid-episode task lifecycle: a background task that ended (or that the user
+            // stopped) during THIS episode is reported at the next iteration, not only at the
+            // start of the next episode. Cheap no-op when the queue is empty.
+            injectPendingTaskExitNotices();
             if (breaker.shouldTrip()) {
-                emitMessage(LoopBreaker.tripNotice(locale));
+                tripBreaker();
                 throw new BreakerTripException();
             }
             boolean guidedSwitch = false;
@@ -522,6 +590,8 @@ public class AgentRunner {
 
     private void runGuided() {
         while (state == AgentState.RUNNING && activeProgram != null) {
+            // Same mid-episode task-lifecycle drain as the autonomous loop.
+            injectPendingTaskExitNotices();
             if (programCounter < 0 || programCounter >= activeProgram.actions().size()) {
                 escapeToAutonomous("program counter out of bounds");
                 return;
@@ -539,7 +609,7 @@ public class AgentRunner {
                 }
                 case GenerateAction gen -> {
                     if (breaker.shouldTrip()) {
-                        emitMessage(LoopBreaker.tripNotice(locale));
+                        tripBreaker();
                         throw new BreakerTripException();
                     }
                     VetoResponse response = callGenerate(gen);
@@ -783,7 +853,7 @@ public class AgentRunner {
                         emitMessage(r.reason());
                         transitionTo(AgentState.INTERCEPTED);
                         hitlRegistry.register(agentId, call.callId());
-                        InterceptResolution res = hitlRegistry.await(agentId, call.callId());
+                        InterceptResolution res = awaitResolution(call.callId());
                         refusalDetail =
                                 "refused by the security policy (CRITICAL - no approval path)";
                         batchApproved = false;
@@ -796,9 +866,10 @@ public class AgentRunner {
                         // (a hang). EDIT is filtered from the offered set in v1 (a raw-string
                         // reply can't carry edited args).
                         List<VetoOption> offered = VetoOption.withoutEdit(p.options());
-                        hitlRegistry.register(agentId, call.callId(), call, def, offered);
+                        hitlRegistry.register(
+                                agentId, call.callId(), call, def, offered, p.danger());
                         emitVetoRequired(call, p, offered);
-                        InterceptResolution resolution = hitlRegistry.await(agentId, call.callId());
+                        InterceptResolution resolution = awaitResolution(call.callId());
 
                         if (resolution.option() == VetoOption.DECLINE_AND_CONTINUE) {
                             skippedCalls.add(call);
@@ -900,7 +971,7 @@ public class AgentRunner {
         }
 
         // (d) execute with tool call context (agentId + userId + groupId) threaded through.
-        ToolCallContextHolder.set(agentId, userId, groupId, owner);
+        ToolCallContextHolder.set(agentId, userId, groupId, owner, sessionId);
         try {
             ToolResult result = mcpEngine.execute(call, def);
 
@@ -1017,7 +1088,7 @@ public class AgentRunner {
         }
 
         // (d) execute with tool call context (agentId + userId + groupId) threaded through.
-        ToolCallContextHolder.set(agentId, userId, groupId, owner);
+        ToolCallContextHolder.set(agentId, userId, groupId, owner, sessionId);
         try {
             ToolResult result = mcpEngine.execute(call, def);
 
@@ -1078,6 +1149,25 @@ public class AgentRunner {
     }
 
     /** Parks the virtual thread on a HITL future; applies the resolution (EDIT re-screens). */
+    /**
+     * Parks on a veto's resolution future and, when the user's decision arrives, publishes {@link
+     * DeltaFrame.Kind#VETO_RESOLVED} so subscribers can drop the prompt without polling. The single
+     * wait-and-announce point shared by every veto await site.
+     */
+    private @NonNull InterceptResolution awaitResolution(@NonNull String callId) {
+        InterceptResolution resolution = hitlRegistry.await(agentId, callId);
+        publishFrame(
+                DeltaFrame.builder()
+                        .sessionId(sessionId)
+                        .kind(DeltaFrame.Kind.VETO_RESOLVED)
+                        .attr("agentId", agentId)
+                        .attr("callId", callId)
+                        .attr("option", resolution.option().name())
+                        .attr("refusal", resolution.isRefusal())
+                        .build());
+        return resolution;
+    }
+
     private @Nullable ToolCall awaitVeto(
             @NonNull ToolCall call,
             @NonNull ToolDefinition def,
@@ -1086,10 +1176,10 @@ public class AgentRunner {
         // Register the await target BEFORE advertising the prompt (see executeToolCalls for the
         // race rationale). EDIT is filtered from the offered set in v1.
         List<VetoOption> offered = VetoOption.withoutEdit(p.options());
-        hitlRegistry.register(agentId, call.callId(), call, def, offered);
+        hitlRegistry.register(agentId, call.callId(), call, def, offered, p.danger());
         emitVetoRequired(call, p, offered);
         top.focess.veto.agent.intercept.InterceptResolution resolution =
-                hitlRegistry.await(agentId, call.callId());
+                awaitResolution(call.callId());
         transitionTo(AgentState.WAITING);
         if (resolution.isRefusal()) {
             appendTurn(TurnRecord.toolCall(++turnNumber, call));
@@ -1154,7 +1244,8 @@ public class AgentRunner {
                             call.toolName(),
                             p.scenario(),
                             offered,
-                            call.args());
+                            call.args(),
+                            p.danger());
             for (Consumer<VetoPrompt> listener : vetoListeners) {
                 try {
                     listener.accept(vp);
@@ -1163,6 +1254,24 @@ public class AgentRunner {
                 }
             }
         }
+        // Domain event: a veto is parked and waiting for the user's decision. Subscribers (the web
+        // UI, the terminal adapter) render a prompt from this instead of polling; the user's reply
+        // still goes through the authenticated resolve path.
+        DeltaFrame.Builder frame =
+                DeltaFrame.builder()
+                        .sessionId(sessionId)
+                        .kind(DeltaFrame.Kind.VETO_REQUIRED)
+                        .attr("agentId", agentId)
+                        .attr("callId", call.callId())
+                        .attr("toolName", call.toolName())
+                        .attr("scenario", p.scenario().name())
+                        .attr("options", objectMapper.valueToTree(offered))
+                        .attr("args", objectMapper.valueToTree(call.args()));
+        // Danger rides the frame so the UI can warn prominently on DANGEROUS/CRITICAL calls.
+        if (p.danger() != null) {
+            frame.attr("danger", p.danger().name());
+        }
+        publishFrame(frame.text(call.toolName()).build());
     }
 
     // ── Turn history + messaging ────────────────────────────────────────────
@@ -1204,18 +1313,13 @@ public class AgentRunner {
         // Part-8 emission seam: publish a DeltaFrame to the broker so transports (the WebSocket
         // bus via DeltaBusBridge) can stream each user-facing message. The broker assigns the
         // per-session sequence; the frame text is the message verbatim.
-        if (deltaBroker != null) {
-            try {
-                deltaBroker.publish(
-                        DeltaFrame.builder()
-                                .sessionId(sessionId)
-                                .kind(DeltaFrame.Kind.ASSISTANT_MESSAGE)
-                                .text(message)
-                                .build());
-            } catch (RuntimeException e) {
-                log.warn("Agent {} delta-broker publish failed", agentId, e);
-            }
-        }
+        publishFrame(
+                DeltaFrame.builder()
+                        .sessionId(sessionId)
+                        .kind(DeltaFrame.Kind.ASSISTANT_MESSAGE)
+                        .attr("turnNumber", turnNumber)
+                        .text(message)
+                        .build());
     }
 
     /**
@@ -1236,18 +1340,48 @@ public class AgentRunner {
                 }
             }
         }
-        if (deltaBroker != null) {
-            try {
-                deltaBroker.publish(
-                        DeltaFrame.builder()
-                                .sessionId(sessionId)
-                                .kind(DeltaFrame.Kind.ASSISTANT_THOUGHT)
-                                .text(thought)
-                                .build());
-            } catch (RuntimeException e) {
-                log.warn("Agent {} delta-broker publish failed (thought)", agentId, e);
-            }
+        publishFrame(
+                DeltaFrame.builder()
+                        .sessionId(sessionId)
+                        .kind(DeltaFrame.Kind.ASSISTANT_THOUGHT)
+                        .attr("turnNumber", turnNumber)
+                        .text(thought)
+                        .build());
+    }
+
+    /**
+     * Best-effort publish of a {@link DeltaFrame} to the broker — the single emission point for
+     * every event kind. A null broker (tests / non-Spring callers) and a throwing broker are both
+     * swallowed: events are notifications for subscribers, not load-bearing control flow, so
+     * emitting one must never break the loop.
+     */
+    private void publishFrame(@NonNull DeltaFrame frame) {
+        if (deltaBroker == null) {
+            return;
         }
+        try {
+            deltaBroker.publish(frame);
+        } catch (RuntimeException e) {
+            log.warn("Agent {} delta-broker publish failed (kind={})", agentId, frame.kind(), e);
+        }
+    }
+
+    /**
+     * Emits the breaker-trip user message and publishes the {@link DeltaFrame.Kind#BREAKER_TRIPPED}
+     * domain event, so subscribers can distinguish a per-episode call-ceiling trip from a normal
+     * message. The caller still throws {@code BreakerTripException} to end the episode.
+     */
+    private void tripBreaker() {
+        String notice = LoopBreaker.tripNotice(locale);
+        emitMessage(notice);
+        publishFrame(
+                DeltaFrame.builder()
+                        .sessionId(sessionId)
+                        .kind(DeltaFrame.Kind.BREAKER_TRIPPED)
+                        .attr("turnNumber", turnNumber)
+                        .attr("maxCallsPerEpisode", breaker.maxCallsPerEpisode())
+                        .text(notice)
+                        .build());
     }
 
     private void appendObservation(@NonNull String toolName, @NonNull String content) {
@@ -1290,20 +1424,49 @@ public class AgentRunner {
             case TOOL_CALL -> {
                 Object name = numbered.payload().get("tool_name");
                 Object args = numbered.payload().get("args");
+                Object callId = numbered.payload().get("call_id");
                 if (name instanceof String toolName) {
                     @SuppressWarnings("unchecked")
                     java.util.Map<String, Object> argMap =
                             args instanceof java.util.Map
                                     ? (java.util.Map<String, Object>) args
                                     : java.util.Map.of();
-                    emitToolCall(new IpcFrame.ToolCall(toolName, argMap));
+                    emitToolCall(new ToolCallEvent(toolName, argMap));
+                    // Domain event for every subscriber (web, terminal adapter): the call the agent
+                    // is about to run. Carries the authoritative turnNumber + callId so a client
+                    // can
+                    // apply it incrementally and pair the later result without refetching history.
+                    DeltaFrame.Builder b =
+                            DeltaFrame.builder()
+                                    .sessionId(sessionId)
+                                    .kind(DeltaFrame.Kind.TOOL_CALL)
+                                    .attr("turnNumber", numbered.turnNumber())
+                                    .attr("toolName", toolName)
+                                    .attr("args", objectMapper.valueToTree(argMap))
+                                    .text(toolName);
+                    if (callId instanceof String c) {
+                        b.attr("callId", c);
+                    }
+                    publishFrame(b.build());
                 }
             }
             case TOOL_RESPONSE -> {
                 Object content = numbered.payload().get("content");
                 Object success = numbered.payload().get("success");
+                Object callId = numbered.payload().get("call_id");
                 if (content instanceof String body) {
-                    emitToolResult(new IpcFrame.ToolResult(body, Boolean.TRUE.equals(success)));
+                    emitToolResult(new ToolResultEvent(body, Boolean.TRUE.equals(success)));
+                    DeltaFrame.Builder b =
+                            DeltaFrame.builder()
+                                    .sessionId(sessionId)
+                                    .kind(DeltaFrame.Kind.TOOL_RESULT)
+                                    .attr("turnNumber", numbered.turnNumber())
+                                    .attr("success", Boolean.TRUE.equals(success))
+                                    .text(body);
+                    if (callId instanceof String c) {
+                        b.attr("callId", c);
+                    }
+                    publishFrame(b.build());
                 }
             }
             default -> {
@@ -1313,15 +1476,28 @@ public class AgentRunner {
     }
 
     /**
-     * Emission seam for tool calls. Notifies each subscribed transport (the terminal renders a
-     * compact indicator) by handing it a structured {@link IpcFrame.ToolCall}. Best-effort: a
-     * listener that throws is logged and skipped so one bad subscriber can't break the loop.
+     * The transparency event for a tool call the agent is about to execute. Domain data only - a
+     * transport adapter (the terminal's {@code VetoCommandSender}) maps it to its wire frame. The
+     * agent never constructs a client wire type.
      */
-    private void emitToolCall(IpcFrame.@NonNull ToolCall call) {
+    public record ToolCallEvent(@NonNull String toolName, @NonNull Map<String, Object> args) {}
+
+    /**
+     * The transparency event for a tool result: the framed observation text the model sees (the
+     * self-describing {@code IngressDefense.maskAndFrame} body) plus success.
+     */
+    public record ToolResultEvent(@NonNull String body, boolean success) {}
+
+    /**
+     * Emission seam for tool calls. Notifies each subscribed transport (the terminal renders a
+     * compact indicator) by handing it a domain {@link ToolCallEvent}. Best-effort: a listener that
+     * throws is logged and skipped so one bad subscriber can't break the loop.
+     */
+    private void emitToolCall(@NonNull ToolCallEvent call) {
         if (toolCallListeners.isEmpty()) {
             return;
         }
-        for (Consumer<IpcFrame.ToolCall> listener : toolCallListeners) {
+        for (Consumer<ToolCallEvent> listener : toolCallListeners) {
             try {
                 listener.accept(call);
             } catch (RuntimeException e) {
@@ -1337,11 +1513,11 @@ public class AgentRunner {
      * can render a single result and the user can verify the call it belongs to without tracking
      * pairs.
      */
-    private void emitToolResult(IpcFrame.@NonNull ToolResult result) {
+    private void emitToolResult(@NonNull ToolResultEvent result) {
         if (toolResultListeners.isEmpty()) {
             return;
         }
-        for (Consumer<IpcFrame.ToolResult> listener : toolResultListeners) {
+        for (Consumer<ToolResultEvent> listener : toolResultListeners) {
             try {
                 listener.accept(result);
             } catch (RuntimeException e) {
@@ -1395,6 +1571,15 @@ public class AgentRunner {
     }
 
     private void completeFailure(@Nullable String message) {
+        // Domain event: the episode failed. Subscribers that surface an error banner use this; the
+        // EPISODE_DONE below (success=false) is the authoritative "stop waiting" signal.
+        publishFrame(
+                DeltaFrame.builder()
+                        .sessionId(sessionId)
+                        .kind(DeltaFrame.Kind.ERROR)
+                        .attr("turnNumber", turnNumber)
+                        .text(message == null ? "" : message)
+                        .build());
         Map<String, Object> meta = new HashMap<>();
         meta.put("turns", turnNumber);
         complete(AgentResult.failure(message, meta));
@@ -1450,6 +1635,19 @@ public class AgentRunner {
     }
 
     private void complete(AgentResult result) {
+        // Domain event: the episode finished. Carries the authoritative success flag so subscribers
+        // (the web UI, the terminal adapter) can stop waiting on the episode without blocking on
+        // the
+        // submit call. Emitted before the future completes so a subscriber that also awaits the
+        // future sees the event first.
+        publishFrame(
+                DeltaFrame.builder()
+                        .sessionId(sessionId)
+                        .kind(DeltaFrame.Kind.EPISODE_DONE)
+                        .attr("turnNumber", turnNumber)
+                        .attr("success", result.success())
+                        .text(result.message())
+                        .build());
         // Complete the in-place handoff future installed by startTask. Completing the field
         // (rather than reassigning it to a fresh completed future) means an await that already
         // snapshotted resultFuture blocks on the right future and wakes here — a reassignment
@@ -1552,14 +1750,14 @@ public class AgentRunner {
      * #emitToolCall}). Fires on the agent's virtual thread when a TOOL_CALL turn is appended — i.e.
      * immediately before the model receives the tool result for that call.
      */
-    public void addToolCallListener(@NonNull Consumer<IpcFrame.ToolCall> listener) {
+    public void addToolCallListener(@NonNull Consumer<ToolCallEvent> listener) {
         if (listener != null) {
             toolCallListeners.add(listener);
         }
     }
 
     /** Unsubscribes a tool-call listener. */
-    public void removeToolCallListener(@NonNull Consumer<IpcFrame.ToolCall> listener) {
+    public void removeToolCallListener(@NonNull Consumer<ToolCallEvent> listener) {
         if (listener != null) {
             toolCallListeners.remove(listener);
         }
@@ -1570,14 +1768,14 @@ public class AgentRunner {
      * #emitToolResult}). Fires on the agent's virtual thread when a TOOL_RESPONSE turn is appended
      * — i.e. immediately after the model receives the observation.
      */
-    public void addToolResultListener(@NonNull Consumer<IpcFrame.ToolResult> listener) {
+    public void addToolResultListener(@NonNull Consumer<ToolResultEvent> listener) {
         if (listener != null) {
             toolResultListeners.add(listener);
         }
     }
 
     /** Unsubscribes a tool-result listener. */
-    public void removeToolResultListener(@NonNull Consumer<IpcFrame.ToolResult> listener) {
+    public void removeToolResultListener(@NonNull Consumer<ToolResultEvent> listener) {
         if (listener != null) {
             toolResultListeners.remove(listener);
         }

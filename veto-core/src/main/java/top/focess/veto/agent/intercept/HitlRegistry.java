@@ -84,7 +84,8 @@ public class HitlRegistry {
             CompletableFuture<InterceptResolution> future,
             ToolCall call,
             ToolDefinition def,
-            List<VetoOption> options) {}
+            List<VetoOption> options,
+            @Nullable Danger danger) {}
 
     /** Pending veto futures keyed by {@code agentId + "|" + callId}. */
     private final ConcurrentHashMap<String, Pending> pending = new ConcurrentHashMap<>();
@@ -121,7 +122,7 @@ public class HitlRegistry {
             return ApprovalDecision.AUTO_APPROVE;
         }
         if (result instanceof GatewayResult.DriftResult d) {
-            return new ApprovalDecision.Prompt(VetoScenario.WRITE_DRIFT, W_OPTIONS);
+            return new ApprovalDecision.Prompt(VetoScenario.WRITE_DRIFT, W_OPTIONS, null);
         }
         GatewayResult.Screened s = (GatewayResult.Screened) result;
         Screening screening = s.screening();
@@ -142,7 +143,8 @@ public class HitlRegistry {
                 if (grantCovers(agentId, call, def, screening)) {
                     yield ApprovalDecision.AUTO_APPROVE;
                 }
-                yield new ApprovalDecision.Prompt(scenario, optionsFor(scenario));
+                yield new ApprovalDecision.Prompt(
+                        scenario, optionsFor(scenario), screening.danger());
             }
         };
     }
@@ -316,23 +318,25 @@ public class HitlRegistry {
      */
     public @NonNull CompletableFuture<InterceptResolution> register(
             @NonNull String agentId, @NonNull String callId) {
-        return register(agentId, callId, null, null, null);
+        return register(agentId, callId, null, null, null, null);
     }
 
     /**
      * Registers a pending veto future with the original call/def/offered-options stashed for
      * grant-building. The agent's virtual thread parks on the returned future until {@link
      * #resolve} completes it. The stash lets {@link #resolve} build a grant without the resolver
-     * supplying the call/def (the transport cannot reach a {@link ToolDefinition}).
+     * supplying the call/def (the transport cannot reach a {@link ToolDefinition}). The stashed
+     * {@code danger} is surfaced to transports so they can warn the user on DANGEROUS calls.
      */
     public @NonNull CompletableFuture<InterceptResolution> register(
             @NonNull String agentId,
             @NonNull String callId,
             @Nullable ToolCall call,
             @Nullable ToolDefinition def,
-            @Nullable List<VetoOption> options) {
+            @Nullable List<VetoOption> options,
+            @Nullable Danger danger) {
         CompletableFuture<InterceptResolution> future = new CompletableFuture<>();
-        pending.put(key(agentId, callId), new Pending(future, call, def, options));
+        pending.put(key(agentId, callId), new Pending(future, call, def, options, danger));
         return future;
     }
 
@@ -497,7 +501,8 @@ public class HitlRegistry {
                 call.toolName(), dir == null ? Path.of(".") : dir, flagShape);
     }
 
-    private PermissionGrant.CommandGrant buildCommandGrant(String agentId, ToolCall call) {
+    private PermissionGrant.@NonNull CommandGrant buildCommandGrant(
+            @NonNull String agentId, @NonNull ToolCall call) {
         Map<String, Object> args = call.args();
         if (args == null) {
             return new PermissionGrant.CommandGrant("", List.of(), List.of());
@@ -528,7 +533,8 @@ public class HitlRegistry {
         return new PermissionGrant.CommandGrant(executable, subcommands, flagShape);
     }
 
-    private Path directoryOfFirstPathArg(String agentId, ToolCall call, ToolDefinition def) {
+    private @Nullable Path directoryOfFirstPathArg(
+            @NonNull String agentId, @NonNull ToolCall call, @Nullable ToolDefinition def) {
         Workspace ws = workspace(agentId);
         if (def == null || ws == null) {
             return null;
@@ -597,6 +603,8 @@ public class HitlRegistry {
                             p.options() != null
                                     ? p.options().stream().map(VetoOption::name).toList()
                                     : List.<String>of());
+                    // Danger level so the UI can warn prominently on DANGEROUS/CRITICAL calls.
+                    view.put("danger", p.danger() != null ? p.danger().name() : null);
                     out.add(view);
                 });
         return out;
@@ -646,7 +654,7 @@ public class HitlRegistry {
         return log == null ? List.of() : List.copyOf(log);
     }
 
-    private static String key(String agentId, String callId) {
+    private static @NonNull String key(@NonNull String agentId, @NonNull String callId) {
         return agentId + "|" + callId;
     }
 }

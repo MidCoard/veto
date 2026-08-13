@@ -199,7 +199,7 @@ public class Gateway {
 
     // ── Hashing ──────────────────────────────────────────────────────────────
 
-    private static String computeHash(Path path) {
+    private static @NonNull String computeHash(@NonNull Path path) {
         try {
             if (!Files.exists(path)) {
                 return "<missing>";

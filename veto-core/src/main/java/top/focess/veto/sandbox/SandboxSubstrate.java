@@ -33,6 +33,17 @@ public sealed interface SandboxSubstrate permits ConstrainedSubprocessSubstrate 
             @NonNull ChainMode connect,
             @NonNull Duration timeout);
 
+    /**
+     * Start a single command as a detached background process - returns immediately with the
+     * started {@link Process} (no stream draining, no {@code waitFor}). The caller owns lifecycle +
+     * output draining. Stderr is merged into stdout ({@code redirectErrorStream}) so one drain
+     * thread captures all output. Same env/cwd/kernel-wall setup as {@link #runCommands}; used by
+     * {@code run_command(background=true)} for long-running servers (e.g. {@code npm run dev}) that
+     * never exit and would otherwise block the turn.
+     */
+    @NonNull Process startBackground(
+            @NonNull SandboxHandle h, @NonNull Command cmd, @NonNull Path cwd);
+
     /** {@code view_file} — read bytes relative to the workspace root. */
     byte @NonNull [] readFile(@NonNull SandboxHandle h, @NonNull Path rel);
 

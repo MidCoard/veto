@@ -6,6 +6,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -144,7 +145,8 @@ public class SemanticMasker {
     /** The masker's output: a redacted observation plus an optional high-risk signal. */
     public record MaskResult(@NonNull String masked, @NonNull HighRiskSignal highRisk) {}
 
-    private static String buildPrompt(String observation, ToolCall call, ToolDefinition def) {
+    private static @NonNull String buildPrompt(
+            @NonNull String observation, @NonNull ToolCall call, @NonNull ToolDefinition def) {
         StringBuilder sb = new StringBuilder();
         sb.append("The agent just called ")
                 .append(call.toolName())
@@ -165,7 +167,7 @@ public class SemanticMasker {
         return sb.toString();
     }
 
-    private static String safe(Object o) {
+    private static @NonNull String safe(@Nullable Object o) {
         if (o == null) {
             return "";
         }

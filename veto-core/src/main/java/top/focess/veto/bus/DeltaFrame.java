@@ -2,6 +2,9 @@ package top.focess.veto.bus;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.BooleanNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.TextNode;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -46,7 +49,17 @@ public record DeltaFrame(
         TOOL_RESULT,
         COMPACTION,
         BREAKER_TRIPPED,
-        ERROR
+        ERROR,
+        /** A HITL veto was raised and is waiting for the user's decision. */
+        VETO_REQUIRED,
+        /** A previously raised veto was resolved (approved/declined/edited). */
+        VETO_RESOLVED,
+        /** A background task (run_task) was launched. */
+        TASK_STARTED,
+        /** A background task finished (natural exit, auto-kill, or explicit stop). */
+        TASK_EXITED,
+        /** The episode finished; carries the final success flag so clients can stop waiting. */
+        EPISODE_DONE
     }
 
     public DeltaFrame {
@@ -133,6 +146,26 @@ public record DeltaFrame(
         public @NonNull Builder attr(@NonNull String key, @NonNull JsonNode value) {
             this.attrs.put(key, value);
             return this;
+        }
+
+        /** Convenience: a string attr. */
+        public @NonNull Builder attr(@NonNull String key, @NonNull String value) {
+            return attr(key, TextNode.valueOf(value));
+        }
+
+        /** Convenience: an integer attr (e.g. the authoritative {@code turnNumber}). */
+        public @NonNull Builder attr(@NonNull String key, int value) {
+            return attr(key, JsonNodeFactory.instance.numberNode(value));
+        }
+
+        /** Convenience: a long attr. */
+        public @NonNull Builder attr(@NonNull String key, long value) {
+            return attr(key, JsonNodeFactory.instance.numberNode(value));
+        }
+
+        /** Convenience: a boolean attr (e.g. {@code success}). */
+        public @NonNull Builder attr(@NonNull String key, boolean value) {
+            return attr(key, BooleanNode.valueOf(value));
         }
 
         public @NonNull DeltaFrame build() {

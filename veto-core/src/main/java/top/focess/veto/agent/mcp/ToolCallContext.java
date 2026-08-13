@@ -22,20 +22,32 @@ import top.focess.veto.group.GroupTools;
  *     it is a Mate of); null when the caller is a single-agent (STANDALONE) loop
  * @param owner the session owner (username) whose model-tier profile resolves the caller's tier;
  *     null in legacy/test paths that bypass session activation
+ * @param sessionId the session this call's agent belongs to; used to route session-scoped events
+ *     (e.g. background-task lifecycle) on the delta broker. Null in legacy/test paths.
  */
 public record ToolCallContext(
         @NonNull String agentId,
         @NonNull UUID userId,
         @Nullable UUID groupId,
-        @Nullable String owner) {
+        @Nullable String owner,
+        @Nullable UUID sessionId) {
+
+    /** Compatibility constructor without a session id. */
+    public ToolCallContext(
+            @NonNull String agentId,
+            @NonNull UUID userId,
+            @Nullable UUID groupId,
+            @Nullable String owner) {
+        this(agentId, userId, groupId, owner, null);
+    }
 
     /** Compatibility constructor for callers without a group or an owner (STANDALONE / tests). */
     public ToolCallContext(@NonNull String agentId, @NonNull UUID userId, @Nullable UUID groupId) {
-        this(agentId, userId, groupId, null);
+        this(agentId, userId, groupId, null, null);
     }
 
     /** Compatibility constructor for callers without a group (STANDALONE agents). */
     public ToolCallContext(@NonNull String agentId, @NonNull UUID userId) {
-        this(agentId, userId, null, null);
+        this(agentId, userId, null, null, null);
     }
 }

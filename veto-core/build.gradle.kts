@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "top.focess"
-version = "1.0.78"
+version = "1.0.95"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_25
@@ -66,6 +66,9 @@ dependencies {
 
     // WebSocket Client
     implementation("org.java-websocket:Java-WebSocket:1.6.0")
+
+    // HTML parsing for web_fetch (HTML -> readable text)
+    implementation("org.jsoup:jsoup:1.18.3")
 
     // Official LLM SDKs
     implementation("com.openai:openai-java:4.38.0")

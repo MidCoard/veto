@@ -115,7 +115,9 @@ public abstract class AbstractLlmProvider implements LLMProviderStrategy {
                     response.features() != null ? response.features().guided() : null);
             return response;
         } catch (LlmException e) {
-            log.debug(
+            // WARN, not DEBUG: a failed provider call is the actionable line when an episode
+            // fails - it must survive any log-level sweep without digging through request dumps.
+            log.warn(
                     "LLM call failed requestId={} model={} {}: {}",
                     requestId,
                     request.modelName(),
@@ -123,7 +125,7 @@ public abstract class AbstractLlmProvider implements LLMProviderStrategy {
                     e.getMessage());
             throw e;
         } catch (Exception e) {
-            log.debug(
+            log.warn(
                     "LLM call failed requestId={} model={} {}: {}",
                     requestId,
                     request.modelName(),

@@ -33,15 +33,27 @@ import top.focess.veto.llm.core.ChatMessage;
  *       semantics), {@code {{TOOLS}}} (role-scoped catalog, from the SAME flat tools that build
  *       {@code tools[]}), {@code {{BOUNDARIES}}} (deployer-policy "not-do" fence), {@code
  *       {{SKILLS}}} (name+desc catalog). See {@link PromptTemplate} + {@link PromptBlocks}.
- *   <li><b>messages[]</b> - raw history newest->oldest, role-mapped per, REWIND-resolved per ,
- *       token-budgeted with pair-safe truncation (a tool message is never kept without its
- *       preceding assistant tool_call message; system never trimmed).
+ *   <li><b>messages[]</b> - role-mapped, REWIND-resolved, token-budgeted (pair-safe truncation,
+ *       system never trimmed), emitted oldest->newest and passed through {@link #wellFormed} so the
+ *       result is the conversation every strict provider accepts (opens on a user message; every
+ *       tool_call is answered by a tool_result immediately after it — unanswered calls get a
+ *       synthesized "interrupted" result).
  *   <li><b>tools[]</b> + <b>response_schema</b> - via the {@link CapabilityTranslator} (flat tools
  *       + the per-turn {@code veto_pulse} schema variant).
  * </ol>
  */
 @Component
 public class PromptCompiler {
+
+    /**
+     * The tool_result content synthesized for a tool_call the episode never answered (the run was
+     * interrupted or the backend stopped between the call and its result). The message is
+     * model-facing: it tells the model the call is known-but-unanswered so it can reissue it
+     * instead of assuming it ran.
+     */
+    static final @NonNull String INTERRUPTED_TOOL_RESULT =
+            "(tool call interrupted — no result was recorded; reissue the call if its result is"
+                    + " still needed)";
 
     private final @NonNull CapabilityTranslator translator;
     private final @NonNull SystemPromptResolver systemPromptResolver;
@@ -101,19 +113,20 @@ public class PromptCompiler {
                 buildSystemMessage(persona, sessionWorkspace, systemPromptBase, flatTools);
         List<ChatMessage> conversation = resolveRewinds(history);
         List<ChatMessage> budgeted = fitBudget(systemMessage, conversation, correctionFactor);
+        List<ChatMessage> messages = wellFormed(conversation, budgeted);
 
         var responseSchema = translator.vetoResponseSchema(guidedSwitch);
 
         int trimmed = conversation.size() - budgeted.size();
         long estimate = Math.round(ceilChars(systemMessage.length()) * correctionFactor);
-        for (ChatMessage msg : budgeted) {
+        for (ChatMessage msg : messages) {
             estimate +=
                     Math.round(
                             ceilChars(msg.content() == null ? 0 : msg.content().length())
                                     * correctionFactor);
         }
         return new CompiledPrompt(
-                systemMessage, budgeted, flatTools, responseSchema, trimmed, estimate);
+                systemMessage, messages, flatTools, responseSchema, trimmed, estimate);
     }
 
     // ── System message (compile/link) ───────────────────────────────────────────
@@ -326,6 +339,87 @@ public class PromptCompiler {
             i--;
         }
         return kept;
+    }
+
+    /**
+     * Normalizes the budgeted window into the conversation shape <b>every</b> strict provider
+     * accepts. This is a provider-agnostic contract, enforced once here for all clients - never a
+     * per-provider special case in an adapter. Three invariants:
+     *
+     * <ol>
+     *   <li><b>Every tool_call is answered immediately.</b> An assistant tool_call whose next
+     *       message is not the matching tool_result gets a synthesized {@link
+     *       #INTERRUPTED_TOOL_RESULT} right after it. This covers dangling calls ANYWHERE in the
+     *       window - the production shape is an episode cut off mid-tool (user interrupt, backend
+     *       restart) leaving a persisted tool_call with no result, followed by the next user
+     *       prompt; strict providers reject that conversation (e.g. MiniMax error 2013). The
+     *       synthesis is compile-time only - the persisted turn log is never rewritten.
+     *   <li><b>No orphaned tool_result.</b> A {@code tool} message not paired with the assistant
+     *       tool_call emitted just before it is demoted to a user text message - its content is
+     *       context, preserved rather than dropped.
+     *   <li><b>First message is {@code user}.</b> Strict providers reject a conversation that opens
+     *       on an assistant/tool turn, which the budget can produce once the opening user turn is
+     *       trimmed. Re-anchor on the episode's opening user prompt (the last user message of the
+     *       pre-budget list) so the window stays truthful; a minimal marker covers the rare case
+     *       where no user message exists.
+     * </ol>
+     *
+     * <p>Package-private and static so the contract is unit-testable without a full compile.
+     *
+     * @param full the pre-budget compiled conversation (oldest→newest), used to recover the anchor
+     * @param window the budgeted conversation (oldest→newest)
+     */
+    static @NonNull List<ChatMessage> wellFormed(
+            @NonNull List<ChatMessage> full, @NonNull List<ChatMessage> window) {
+        List<ChatMessage> out = new ArrayList<>(window.size());
+        for (int i = 0; i < window.size(); i++) {
+            ChatMessage m = window.get(i);
+            if ("assistant".equals(m.role()) && m.callId() != null && !m.callId().isBlank()) {
+                out.add(m);
+                if (!isAnsweredImmediately(window, i, m)) {
+                    out.add(ChatMessage.toolResult(m.callId(), INTERRUPTED_TOOL_RESULT));
+                }
+                continue;
+            }
+            if ("tool".equals(m.role())) {
+                ChatMessage prev = out.isEmpty() ? null : out.get(out.size() - 1);
+                boolean paired =
+                        prev != null
+                                && "assistant".equals(prev.role())
+                                && m.callId() != null
+                                && m.callId().equals(prev.callId());
+                if (!paired) {
+                    out.add(ChatMessage.user(m.content()));
+                    continue;
+                }
+            }
+            out.add(m);
+        }
+        // Invariant 3: the conversation must open on a user message; re-anchor if the budget
+        // trimmed the opening user turn (or the window collapsed entirely).
+        if (out.isEmpty() || !"user".equals(out.get(0).role())) {
+            String anchor = lastUserContent(full);
+            out.add(0, ChatMessage.user(anchor != null ? anchor : "(continued)"));
+        }
+        return out;
+    }
+
+    /** True when the tool_result for the call at {@code index} is the very next message. */
+    private static boolean isAnsweredImmediately(
+            @NonNull List<ChatMessage> window, int index, @NonNull ChatMessage call) {
+        ChatMessage next = index + 1 < window.size() ? window.get(index + 1) : null;
+        return next != null && "tool".equals(next.role()) && call.callId().equals(next.callId());
+    }
+
+    /** The content of the last user-role message (the episode's opening prompt), or null. */
+    private static @Nullable String lastUserContent(@NonNull List<ChatMessage> messages) {
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            ChatMessage m = messages.get(i);
+            if ("user".equals(m.role()) && m.content() != null && !m.content().isBlank()) {
+                return m.content();
+            }
+        }
+        return null;
     }
 
     private static int contentLen(@NonNull ChatMessage msg) {

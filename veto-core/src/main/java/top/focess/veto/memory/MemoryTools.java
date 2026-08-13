@@ -66,6 +66,11 @@ public final class MemoryTools {
             examples = {
                 "{\"query\": \"UserService authentication\"}",
                 "{\"query\": \"build configuration\", \"topK\": 3, \"scoreFloor\": 0.6}"
+            },
+            returnExamples = {
+                "1. [0.82] (tool_result) UserService.authenticate validates the JWT expiry and...\n"
+                        + "2. [0.74] (observation) Decided to reject expired tokens with 401...",
+                "(no matches)"
             })
     public static final class RecallSession implements AgentTool<RecallSession.Args> {
 
@@ -159,6 +164,11 @@ public final class MemoryTools {
             examples = {
                 "{\"query\": \"project configuration patterns\"}",
                 "{\"query\": \"authentication\", \"topK\": 3}"
+            },
+            returnExamples = {
+                "1. [0.88] (insight) Always externalize secrets to the keystead vault, never...\n"
+                        + "2. [0.71] (insight) Prefer constructor injection over field injection...",
+                "(no matches)"
             })
     public static final class RecallInsights implements AgentTool<RecallInsights.Args> {
 
@@ -259,6 +269,10 @@ public final class MemoryTools {
                 "{\"content\": \"This project uses Gradle 8.5 with Kotlin DSL. Custom task: compileKotlin\"}",
                 "{\"content\": \"Auth middleware in application.yml\", \"projectId\": \"project-xyz\"}",
                 "{\"content\": \"...\", \"promoteMemoryId\": \"session-mem-456\"}"
+            },
+            returnExamples = {
+                "{\"status\": \"ok\", \"memoryId\": \"insight-abc123\"}",
+                "{\"status\": \"error\", \"error\": \"promoteMemoryId not found: session-mem-456\"}"
             })
     public static final class WriteInsight implements AgentTool<WriteInsight.Args> {
 
@@ -361,7 +375,8 @@ public final class MemoryTools {
                     Agent tool (`RiskCategory.AGENT`). The Gateway does not screen it. Permanent \
                     deletion, audited. Safe to call any time.
                     """,
-            examples = {"{\"memoryId\": \"insight-abc123\"}"})
+            examples = {"{\"memoryId\": \"insight-abc123\"}"},
+            returnExamples = {"forgotten", "invalid memoryId; nothing forgotten"})
     public static final class Forget implements AgentTool<Forget.Args> {
 
         private final MemoryStore store;

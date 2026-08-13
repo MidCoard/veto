@@ -35,7 +35,14 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
 
     private static final Logger log = LoggerFactory.getLogger(ConstrainedSubprocessSubstrate.class);
 
-    /** Environment variables passed through to sandboxed processes (the rest are dropped). */
+    /**
+     * Environment variables passed through to sandboxed processes (the rest are dropped). Kept to
+     * standard, non-secret system + toolchain vars so real CLIs work: node/npm on Windows need
+     * {@code ComSpec}/{@code PATHEXT} to run {@code npm.cmd} and {@code APPDATA}/{@code
+     * LOCALAPPDATA}/{@code ProgramFiles}/{@code USERPROFILE} to resolve the node install and the
+     * project - without them {@code npm run dev} dies immediately (observed: exit 1 in ~9ms). No
+     * credential-bearing vars are on the list.
+     */
     private static final List<String> ENV_ALLOWLIST =
             List.of(
                     "PATH",
@@ -46,8 +53,23 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
                     "LC_ALL",
                     "JAVA_HOME",
                     "SystemRoot",
+                    "SYSTEMROOT",
                     "TEMP",
-                    "TMP");
+                    "TMP",
+                    // Windows shell + node/npm toolchain resolution.
+                    "ComSpec",
+                    "PATHEXT",
+                    "APPDATA",
+                    "LOCALAPPDATA",
+                    "ProgramFiles",
+                    "ProgramFiles(x86)",
+                    "ProgramData",
+                    "USERPROFILE",
+                    "HOMEDRIVE",
+                    "HOMEPATH",
+                    "SYSTEMDRIVE",
+                    "PUBLIC",
+                    "windir");
 
     /**
      * The kernel-level wall (Windows Job Object / Linux cgroup) attached to each spawned process.
@@ -97,12 +119,7 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
         Path workdir = resolveUnderWorkspace(h, cwd);
         List<ProcessBuilder> builders = new ArrayList<>();
         for (Command c : cmds) {
-            List<String> command = new ArrayList<>();
-            command.add(c.executable());
-            command.addAll(c.args());
-            ProcessBuilder pb = new ProcessBuilder(command).directory(workdir.toFile());
-            pb.environment().keySet().retainAll(ENV_ALLOWLIST);
-            builders.add(pb);
+            builders.add(processBuilderFor(c, workdir));
         }
 
         Duration effectiveTimeout = timeout;
@@ -126,16 +143,105 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
         }
     }
 
+    @Override
+    public @NonNull Process startBackground(
+            @NonNull SandboxHandle h, @NonNull Command cmd, @NonNull Path cwd) {
+        Path workdir = resolveUnderWorkspace(h, cwd);
+        ProcessBuilder pb = processBuilderFor(cmd, workdir);
+        // Merge stderr into stdout so a single drain thread captures everything the server logs.
+        pb.redirectErrorStream(true);
+        try {
+            Process p = pb.start();
+            attachKernelWall(p);
+            return p;
+        } catch (IOException e) {
+            throw new IllegalStateException("Background start failed: " + cmd.executable(), e);
+        }
+    }
+
+    private @NonNull ProcessBuilder processBuilderFor(@NonNull Command c, @NonNull Path workdir) {
+        List<String> command = new ArrayList<>();
+        command.add(resolveExecutable(c.executable()));
+        command.addAll(c.args());
+        ProcessBuilder pb = new ProcessBuilder(command).directory(workdir.toFile());
+        pb.environment().keySet().retainAll(ENV_ALLOWLIST);
+        // Subprocess output is piped, so color-capable CLIs should emit plain text at the
+        // source: NO_COLOR is the no-color.org convention (picocolors/chalk/vite/npm honor it),
+        // FORCE_COLOR=0 covers tools that only read FORCE_COLOR. AnsiEscapes.strip at the decode
+        // seam catches the tools that ignore both.
+        pb.environment().put("NO_COLOR", "1");
+        pb.environment().put("FORCE_COLOR", "0");
+        return pb;
+    }
+
+    /**
+     * Resolves a bare executable name against PATH × PATHEXT the way a shell would. Windows process
+     * creation only appends {@code .exe} to a bare name, so extensionless shims like {@code npm}
+     * (really {@code npm.cmd}) fail to launch unless resolved here — that drove the agent to hunt
+     * full paths via {@code cmd.exe}. Names that already carry a path separator or a file extension
+     * pass through untouched (the OS runs them as given). Unresolved bare names also pass through
+     * so the spawn fails with the standard "not found" error for the model to read. Screening is
+     * unaffected: it normalizes the ORIGINAL name (baseName + extension strip) before allowlist
+     * matching.
+     */
+    private static @NonNull String resolveExecutable(@NonNull String executable) {
+        if (executable.indexOf('/') >= 0 || executable.indexOf('\\') >= 0) {
+            return executable; // explicit path — run as given
+        }
+        if (executable.lastIndexOf('.') > 0) {
+            return executable; // already has an extension — let the OS resolve it
+        }
+        String path = System.getenv("PATH");
+        if (path == null || path.isBlank()) {
+            return executable;
+        }
+        String pathext = System.getenv("PATHEXT");
+        List<String> extensions =
+                (pathext == null || pathext.isBlank())
+                        ? List.of(".com", ".exe", ".bat", ".cmd")
+                        : java.util.Arrays.stream(pathext.split(";"))
+                                .map(String::trim)
+                                .filter(e -> !e.isEmpty())
+                                .map(String::toLowerCase)
+                                .toList();
+        for (String dir : path.split(java.io.File.pathSeparator)) {
+            if (dir.isBlank()) {
+                continue;
+            }
+            for (String ext : extensions) {
+                Path candidate = Path.of(dir, executable + ext);
+                if (Files.isRegularFile(candidate)) {
+                    return candidate.toString();
+                }
+            }
+        }
+        return executable;
+    }
+
+    /**
+     * Waits for {@code p} respecting the timeout. A zero/negative {@code timeout} means "no cap" -
+     * blocks until the process exits naturally (used by {@code run_command(timeout=0)}). Returns
+     * {@code false} only when the cap elapses before exit.
+     */
+    private static boolean waitForCap(@NonNull Process p, @NonNull Duration timeout)
+            throws InterruptedException {
+        if (timeout.isZero() || timeout.isNegative()) {
+            p.waitFor();
+            return true;
+        }
+        return p.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS);
+    }
+
     private @NonNull CommandResult runPipeline(
             @NonNull List<ProcessBuilder> builders, @NonNull Duration timeout)
             throws IOException, InterruptedException {
         List<Process> pipeline = ProcessBuilder.startPipeline(builders);
         pipeline.forEach(this::attachKernelWall);
         Process last = pipeline.get(pipeline.size() - 1);
-        String stdout = new String(last.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        String stderr = new String(last.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
-        boolean finished = last.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS);
-        if (!finished) {
+        CappedWait wait = waitCapped(last, timeout);
+        String stdout = wait.stdout();
+        String stderr = wait.stderr();
+        if (!wait.finished()) {
             pipeline.forEach(Process::destroyForcibly);
             return new CommandResult(-1, stdout, stderr + "\n[timeout]", List.of(-1));
         }
@@ -152,16 +258,26 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
         StringBuilder stdout = new StringBuilder();
         StringBuilder stderr = new StringBuilder();
         List<Integer> codes = new ArrayList<>();
+        // One deadline for the whole chain: `timeout` bounds the blocking wait of the call, so a
+        // 3-command chain with timeout=90 gets 90s TOTAL, not 90s each. Zero/negative = no cap.
+        long deadlineNanos =
+                timeout.isZero() || timeout.isNegative()
+                        ? Long.MAX_VALUE
+                        : System.nanoTime() + timeout.toNanos();
+        boolean capped = !timeout.isZero() && !timeout.isNegative();
         for (ProcessBuilder pb : builders) {
+            Duration remaining =
+                    capped ? Duration.ofNanos(deadlineNanos - System.nanoTime()) : timeout;
+            if (capped && remaining.isNegative()) {
+                codes.add(-1);
+                return new CommandResult(-1, stdout.toString(), stderr + "\n[timeout]", codes);
+            }
             Process p = pb.start();
             attachKernelWall(p);
-            String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            String err = new String(p.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
-            stdout.append(out);
-            stderr.append(err);
-            boolean finished = p.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS);
-            if (!finished) {
-                p.destroyForcibly();
+            CappedWait wait = waitCapped(p, remaining);
+            stdout.append(wait.stdout());
+            stderr.append(wait.stderr());
+            if (!wait.finished()) {
                 codes.add(-1);
                 return new CommandResult(-1, stdout.toString(), stderr + "\n[timeout]", codes);
             }
@@ -173,6 +289,62 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
         }
         int overall = codes.isEmpty() ? 0 : codes.get(codes.size() - 1);
         return new CommandResult(overall, stdout.toString(), stderr.toString(), codes);
+    }
+
+    /** A capped wait plus the output drained while waiting. */
+    private record CappedWait(boolean finished, @NonNull String stdout, @NonNull String stderr) {}
+
+    /**
+     * Waits for {@code p} under the timeout cap while draining stdout/stderr concurrently. The
+     * streams only reach EOF when the process exits, so reading them must run alongside the capped
+     * wait — reading them first would block until exit and silently void the cap (a runaway `dir
+     * /s` scan held an agent thread for minutes past its timeout this way). On cap expiry the
+     * process is force-killed (the kernel wall takes its process tree with it), the drains observe
+     * EOF and join, and whatever output landed is returned with {@code finished=false}.
+     */
+    private @NonNull CappedWait waitCapped(@NonNull Process p, @NonNull Duration timeout)
+            throws InterruptedException {
+        // Raw bytes first, decoded once at the end: a multi-byte character can straddle two read
+        // chunks, and the writer population is mixed — console CLIs emit the platform codepage,
+        // node/python emit UTF-8 — so {@link SubprocessOutput} sniffs per buffer.
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        java.io.ByteArrayOutputStream err = new java.io.ByteArrayOutputStream();
+        Thread outDrain =
+                Thread.ofVirtual()
+                        .name("sandbox-drain-out")
+                        .start(() -> drain(p.getInputStream(), out));
+        Thread errDrain =
+                Thread.ofVirtual()
+                        .name("sandbox-drain-err")
+                        .start(() -> drain(p.getErrorStream(), err));
+        boolean finished = waitForCap(p, timeout);
+        if (!finished) {
+            p.destroyForcibly();
+            p.waitFor(); // reap: streams close, the drain threads observe EOF and exit
+        }
+        outDrain.join();
+        errDrain.join();
+        // Strip ANSI/VT escapes at the decode seam: the agent's context, the persisted history,
+        // and the UI ledger all consume this same string, and escape bytes are noise to all three.
+        return new CappedWait(
+                finished,
+                AnsiEscapes.strip(SubprocessOutput.decode(out.toByteArray())),
+                AnsiEscapes.strip(SubprocessOutput.decode(err.toByteArray())));
+    }
+
+    /** One writer (the drain thread) per buffer; the main thread reads only after join(). */
+    private static void drain(
+            java.io.@NonNull InputStream in, java.io.@NonNull ByteArrayOutputStream sink) {
+        try {
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) != -1) {
+                sink.write(buf, 0, n);
+            }
+        } catch (IOException e) {
+            // The process was killed or the pipe broke mid-read — the captured prefix is the
+            // output; the [timeout]/exit annotation on the result carries the rest of the story.
+        }
     }
 
     /**

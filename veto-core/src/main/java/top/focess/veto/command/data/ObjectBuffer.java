@@ -1,6 +1,5 @@
 package top.focess.veto.command.data;
 
-import org.jetbrains.annotations.NotNull;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import top.focess.command.data.DataBuffer;
@@ -34,8 +33,7 @@ public final class ObjectBuffer<T> extends DataBuffer<T> {
      * @param <T> the element type
      * @return a new {@code ObjectBuffer}
      */
-    @NotNull
-    public static <T> ObjectBuffer<T> allocate(final int size) {
+    public static <T> @NonNull ObjectBuffer<T> allocate(final int size) {
         return new ObjectBuffer<>(size);
     }
 

@@ -1,23 +1,18 @@
 package top.focess.veto.controller;
 
-import java.time.Duration;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CopyOnWriteArrayList;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import top.focess.veto.agent.AgentResult;
 import top.focess.veto.agent.AgentRunner;
-import top.focess.veto.agent.VetoAgent;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.session.SessionService;
@@ -25,19 +20,18 @@ import top.focess.veto.session.SessionService.SessionConfig;
 import top.focess.veto.vault.KeysteadVault;
 
 /**
- * REST prompt submission endpoint. The IPC (terminal) path streams Deltas/ToolCalls/ToolResults
- * over ZMQ; this controller exposes the same agent dispatch over a synchronous HTTP call so a
- * non-terminal client (curl, a web UI, a test script) can submit a prompt and get the full response
- * (messages, thoughts, tool calls, tool results) in one JSON body.
- *
- * <p>The call blocks until the agent episode finishes (or times out). No streaming.
+ * REST prompt submission endpoint — the command half of the transport rule (commands -> REST POST,
+ * events -> WebSocket, authoritative reads -> REST GET). The episode starts and this call acks
+ * immediately with 202 + the session id; progress (thoughts, tool calls/results, HITL vetoes) and
+ * the episode outcome arrive as {@code DeltaFrame} events on the WS bus, and {@code GET
+ * /api/sessions/{name}/history} is the durable source of truth. A blocking collect-and-return call
+ * would cap episode length at the HTTP timeout — HITL pauses alone outlast any such cap.
  */
 @RestController
 @RequestMapping("/api/sessions")
 public class PromptController {
 
     private static final Logger log = LoggerFactory.getLogger(PromptController.class);
-    private static final Duration EPISODE_TIMEOUT = Duration.ofMinutes(5);
 
     private final @NonNull SessionService sessionService;
     private final top.focess.veto.agent.@NonNull AgentService agentService;
@@ -55,7 +49,7 @@ public class PromptController {
     /**
      * POST /api/sessions/{name}/prompt - submit a prompt to the agent bound to the named session.
      * The caller must be authenticated (the SecurityContextInterceptor sets the vault's currentUser
-     * from the X-Veto-Session-Token header).
+     * from the X-Veto-Session-Token header). Returns 202 as soon as the episode is enqueued.
      */
     @PostMapping("/{name}/prompt")
     public ResponseEntity<?> prompt(
@@ -87,75 +81,13 @@ public class PromptController {
                         null,
                         cfg.config().baseUrl());
 
-        // Collect all streamed artifacts so the response carries the full interaction.
-        List<String> messages = new CopyOnWriteArrayList<>();
-        List<String> thoughts = new CopyOnWriteArrayList<>();
-        List<Map<String, Object>> toolCalls = new CopyOnWriteArrayList<>();
-        List<Map<String, Object>> toolResults = new CopyOnWriteArrayList<>();
-
         try {
-            AgentResult result =
-                    agentService.submit(
-                            cfg.sessionId(),
-                            body.prompt(),
-                            binding,
-                            EPISODE_TIMEOUT,
-                            messages::add,
-                            null, // no veto sink (REST can't render a picker)
-                            thoughts::add,
-                            call ->
-                                    toolCalls.add(
-                                            Map.of(
-                                                    "toolName",
-                                                    call.toolName(),
-                                                    "args",
-                                                    call.args())),
-                            tr ->
-                                    toolResults.add(
-                                            Map.of("body", tr.body(), "success", tr.success())));
-
-            // Also grab the full turn history so the caller can verify what the model saw.
-            List<Map<String, Object>> history = new ArrayList<>();
-            VetoAgent agent = agentService.agent(cfg.sessionId());
-            if (agent != null) {
-                for (var turn : agent.history()) {
-                    history.add(
-                            Map.of(
-                                    "turnNumber",
-                                    turn.turnNumber(),
-                                    "type",
-                                    turn.type().name(),
-                                    "payload",
-                                    turn.payload()));
-                }
-            }
-
-            return ResponseEntity.ok(
-                    Map.of(
-                            "success",
-                            result.success(),
-                            "message",
-                            result.message() != null ? result.message() : "",
-                            "messages",
-                            messages,
-                            "thoughts",
-                            thoughts,
-                            "toolCalls",
-                            toolCalls,
-                            "toolResults",
-                            toolResults,
-                            "history",
-                            history));
+            agentService.submitNow(cfg.sessionId(), body.prompt(), binding);
+            log.info("Prompt accepted for session {} (agent {})", name, cfg.sessionId());
+            return ResponseEntity.status(HttpStatus.ACCEPTED)
+                    .body(Map.of("status", "started", "sessionId", cfg.sessionId()));
         } catch (Exception e) {
-            log.warn("Prompt failed for session {}", name, e);
-            // e.getMessage() is null for bare TimeoutException/NPE - Map.of rejects null values,
-            // which would mask the real failure behind another NPE. A TimeoutException is the
-            // 5-minute episode deadline hit; anything else gets the generic keyed message with
-            // the raw detail as the parameter.
-            if (e instanceof java.util.concurrent.TimeoutException) {
-                return ResponseEntity.internalServerError()
-                        .body(Map.of("error", Msg.get("error.agent.episodeTimeout")));
-            }
+            log.warn("Prompt submit failed for session {}", name, e);
             String message = e.getMessage();
             return ResponseEntity.internalServerError()
                     .body(

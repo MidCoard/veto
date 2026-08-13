@@ -4,7 +4,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.RecordComponent;
+import java.lang.reflect.Type;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -90,16 +92,23 @@ public final class ToolSchemaCompiler {
             String name = component.getName();
             Class<?> type = component.getType();
 
-            ObjectNode paramNode = MAPPER.createObjectNode();
-            paramNode.put("type", mapJavaTypeToSchemaType(type));
+            ObjectNode paramNode;
+            if (type.isArray() || Collection.class.isAssignableFrom(type)) {
+                paramNode = MAPPER.createObjectNode();
+                paramNode.put("type", "array");
+                paramNode.set("items", itemsSchemaOf(component));
+            } else if (type.isRecord()) {
+                // A nested record component (not wrapped in a collection) - emit its full object
+                // schema inline so the provider sees the structured shape, not a bare "object".
+                paramNode = (ObjectNode) compileFromRecord(type);
+            } else {
+                paramNode = MAPPER.createObjectNode();
+                paramNode.put("type", mapJavaTypeToSchemaType(type));
+            }
 
             Doc doc = component.getAnnotation(Doc.class);
             if (doc != null && !doc.value().isEmpty()) {
                 paramNode.put("description", doc.value());
-            }
-
-            if (Collection.class.isAssignableFrom(type) || type.isArray()) {
-                paramNode.putArray("items").addObject().put("type", "string");
             }
 
             properties.set(name, paramNode);
@@ -192,5 +201,54 @@ public final class ToolSchemaCompiler {
         if (type == boolean.class || type == Boolean.class) return "boolean";
         if (Collection.class.isAssignableFrom(type) || type.isArray()) return "array";
         return "object";
+    }
+
+    /**
+     * Builds the {@code items} schema for an array/collection component. When the element type is
+     * itself a record, its full object schema is emitted recursively - without this a {@code
+     * List<NestedRecord>} is advertised as {@code items: {type: string}} and the model has to guess
+     * the nested shape from the prose description (observed live: a model then formatted an inner
+     * {@code List<String>} field as a bracketed string, which Jackson could not deserialize). For
+     * scalar elements the proper JSON-Schema type is used; raw (unparameterized) collections fall
+     * back to {@code string} items.
+     */
+    private static @NonNull JsonNode itemsSchemaOf(@NonNull RecordComponent component) {
+        Class<?> elementType = elementClassOf(component);
+        if (elementType != null && elementType.isRecord()) {
+            return compileFromRecord(elementType);
+        }
+        ObjectNode items = MAPPER.createObjectNode();
+        items.put("type", elementType != null ? mapJavaTypeToSchemaType(elementType) : "string");
+        return items;
+    }
+
+    /**
+     * Resolves the element class of an array or collection component, or {@code null} for a raw
+     * (unparameterized) collection whose element type is unknown at compile time.
+     */
+    private static @Nullable Class<?> elementClassOf(@NonNull RecordComponent component) {
+        Class<?> type = component.getType();
+        if (type.isArray()) {
+            return type.getComponentType();
+        }
+        if (Collection.class.isAssignableFrom(type)) {
+            Type generic = component.getGenericType();
+            if (generic instanceof ParameterizedType pt) {
+                Type[] args = pt.getActualTypeArguments();
+                if (args.length > 0) {
+                    Type arg = args[0];
+                    if (arg instanceof Class<?> c) {
+                        return c;
+                    }
+                    // e.g. List<List<String>> - take the raw outer class of the nested
+                    // parameterized type.
+                    if (arg instanceof ParameterizedType nested
+                            && nested.getRawType() instanceof Class<?> c) {
+                        return c;
+                    }
+                }
+            }
+        }
+        return null;
     }
 }

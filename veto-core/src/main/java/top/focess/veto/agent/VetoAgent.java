@@ -192,15 +192,13 @@ public class VetoAgent implements Agent {
      * tool result.
      */
     public void addToolCallListener(
-            java.util.function.@NonNull Consumer<top.focess.veto.contract.IpcFrame.ToolCall>
-                    listener) {
+            java.util.function.@NonNull Consumer<AgentRunner.ToolCallEvent> listener) {
         runner.addToolCallListener(listener);
     }
 
     /** Unsubscribes a tool-call listener. */
     public void removeToolCallListener(
-            java.util.function.@NonNull Consumer<top.focess.veto.contract.IpcFrame.ToolCall>
-                    listener) {
+            java.util.function.@NonNull Consumer<AgentRunner.ToolCallEvent> listener) {
         runner.removeToolCallListener(listener);
     }
 
@@ -210,15 +208,13 @@ public class VetoAgent implements Agent {
      * agent's virtual thread when a TOOL_RESPONSE turn is appended.
      */
     public void addToolResultListener(
-            java.util.function.@NonNull Consumer<top.focess.veto.contract.IpcFrame.ToolResult>
-                    listener) {
+            java.util.function.@NonNull Consumer<AgentRunner.ToolResultEvent> listener) {
         runner.addToolResultListener(listener);
     }
 
     /** Unsubscribes a tool-result listener. */
     public void removeToolResultListener(
-            java.util.function.@NonNull Consumer<top.focess.veto.contract.IpcFrame.ToolResult>
-                    listener) {
+            java.util.function.@NonNull Consumer<AgentRunner.ToolResultEvent> listener) {
         runner.removeToolResultListener(listener);
     }
 

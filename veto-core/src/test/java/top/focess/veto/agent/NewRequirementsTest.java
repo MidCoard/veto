@@ -154,7 +154,11 @@ class NewRequirementsTest {
                         "FULL_ACCESS",
                         "STRICT",
                         null,
-                        null);
+                        null,
+                        new top.focess.veto.sandbox.BackgroundTaskManager(
+                                new top.focess.veto.sandbox.SandboxManager(
+                                        new top.focess.veto.sandbox
+                                                .ConstrainedSubprocessSubstrate())));
 
         String agentKey = "refused-test";
         CompletableFuture<AgentResult> resultFuture =
@@ -202,7 +206,7 @@ class NewRequirementsTest {
 
         assertEquals(AgentState.INTERCEPTED, agent.state());
         assertNotNull(streamedMessage.get(), "streamed message should not be null");
-        assertTrue(streamedMessage.get().contains("dangerous/refused action"));
+        assertTrue(streamedMessage.get().contains("CRITICAL"));
 
         // Resolve the HITL hold (retrying in case of race with register)
         boolean resolved = false;
@@ -298,7 +302,11 @@ class NewRequirementsTest {
                         "FULL_ACCESS",
                         "STRICT",
                         null,
-                        null);
+                        null,
+                        new top.focess.veto.sandbox.BackgroundTaskManager(
+                                new top.focess.veto.sandbox.SandboxManager(
+                                        new top.focess.veto.sandbox
+                                                .ConstrainedSubprocessSubstrate())));
 
         String agentKey = "disconnect-test";
         AgentResult result =

@@ -83,24 +83,9 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
         String payload = message.getPayload();
         long seq = messageCounter.incrementAndGet();
 
-        log.debug(
-                "WS Bus: Received msg #{} from '{}' ({} bytes)",
-                seq,
-                session.getId(),
-                payload.length());
-
+        Map<String, Object> msg;
         try {
-            Map<String, Object> msg = objectMapper.readValue(payload, Map.class);
-            String type = (String) msg.getOrDefault("type", "");
-
-            switch (type) {
-                case "heartbeat" -> handleHeartbeat(session, msg, seq);
-                case "dag.payload" -> handleDAGPayload(session, msg, seq);
-                case "veto.process" -> handleVetoProcess(session, msg, seq);
-                case "subscribe" -> handleSubscribe(session, msg);
-                case "unsubscribe" -> handleUnsubscribe(session, msg);
-                default -> handleUnknownType(session, payload, seq);
-            }
+            msg = objectMapper.readValue(payload, Map.class);
         } catch (Exception e) {
             log.warn(
                     "WS Bus: Failed to parse message from '{}': {}",
@@ -115,6 +100,26 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
                             "Invalid message format: " + e.getMessage(),
                             "seq",
                             seq));
+            return;
+        }
+
+        String type = (String) msg.getOrDefault("type", "");
+        // Log the message TYPE — that is the actionable fact. Heartbeats arrive once per second
+        // per client and would drown every meaningful line, so they drop to TRACE; everything
+        // else keeps a single concise DEBUG line.
+        if ("heartbeat".equals(type)) {
+            log.trace("WS Bus: heartbeat from '{}' seq={}", session.getId(), seq);
+        } else {
+            log.debug("WS Bus: msg #{} type='{}' from '{}'", seq, type, session.getId());
+        }
+
+        switch (type) {
+            case "heartbeat" -> handleHeartbeat(session, msg, seq);
+            case "dag.payload" -> handleDAGPayload(session, msg, seq);
+            case "veto.process" -> handleVetoProcess(session, msg, seq);
+            case "subscribe" -> handleSubscribe(session, msg);
+            case "unsubscribe" -> handleUnsubscribe(session, msg);
+            default -> handleUnknownType(session, payload, seq);
         }
     }
 
@@ -217,9 +222,9 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
 
     private void handleUnknownType(WebSocketSession session, String payload, long seq) {
         log.debug(
-                "WS Bus: Unknown message type from '{}' ({} bytes)",
+                "WS Bus: Unknown message type from '{}', echoing payload head: {}",
                 session.getId(),
-                payload.length());
+                payload.length() > 160 ? payload.substring(0, 160) + "…" : payload);
         sendJson(
                 session,
                 Map.of(

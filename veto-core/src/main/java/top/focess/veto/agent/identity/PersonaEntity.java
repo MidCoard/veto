@@ -5,6 +5,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import top.focess.veto.agent.mcp.ToolDefinition;
 import top.focess.veto.agent.skills.Skill;
 
@@ -62,7 +63,7 @@ public class PersonaEntity {
                 Role.STANDALONE);
     }
 
-    private static java.util.List<Skill> parseSkillList(String s) {
+    private static java.util.@NonNull List<Skill> parseSkillList(@Nullable String s) {
         if (s == null || s.isBlank()) {
             return java.util.List.of();
         }

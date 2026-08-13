@@ -92,7 +92,7 @@ public class Scope {
         return out;
     }
 
-    private String stringify(Object value) {
+    private @NonNull String stringify(@Nullable Object value) {
         return value == null ? "" : value.toString();
     }
 
@@ -128,7 +128,7 @@ public class Scope {
         }
     }
 
-    private JsonNode parseContent(String content) {
+    private @Nullable JsonNode parseContent(@Nullable String content) {
         if (content == null || content.isBlank()) {
             return null;
         }
@@ -139,7 +139,8 @@ public class Scope {
         }
     }
 
-    private Object extractField(JsonNode node, String field, String rawContent) {
+    private @Nullable Object extractField(
+            @Nullable JsonNode node, @Nullable String field, @Nullable String rawContent) {
         if (node == null || field == null || field.isBlank() || "content".equals(field)) {
             return rawContent;
         }

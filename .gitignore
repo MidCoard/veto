@@ -143,3 +143,4 @@ docs/
 ARCHITECTURE.md
 .playwright-mcp/
 prompt-dump/
+release/

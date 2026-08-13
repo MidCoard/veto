@@ -38,6 +38,10 @@ public class LlmJacksonConfig {
     public @NonNull ObjectMapper llmObjectMapper() {
         return new ObjectMapper()
                 .registerModule(new JavaTimeModule())
+                // Models (notably Anthropic-compatible clones) occasionally emit a string where the
+                // schema asks for a string array; recover the list instead of failing the tool
+                // call.
+                .registerModule(new LenientStringListModule())
                 .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     }
 }

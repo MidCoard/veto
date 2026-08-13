@@ -64,7 +64,10 @@ public final class RunCommandTool implements NativeTool<RunCommandTool.Args> {
                     no shell, Veto-controlled chaining. The `connect` mode decides how entries relate: \
                     `STOP_ON_FAILURE` (default) runs them in order and halts at the first non-zero exit; `RUN_ALL` \
                     runs every entry regardless of failures; `PIPE` feeds one entry's stdout into the next \
-                    entry's stdin.
+                    entry's stdin. `timeout` (seconds, REQUIRED; 0 = no cap) bounds the blocking wait - a \
+                    timed-out chain is forcibly killed and the result carries `[timeout]`. For a long-running \
+                    server that never exits (e.g. `npm run dev`), use `run_task` instead so the call does not \
+                    block the turn.
 
                     #### Return format
                     The sandbox substrate returns the combined output (stdout + stderr per the substrate's \
@@ -91,14 +94,14 @@ public final class RunCommandTool implements NativeTool<RunCommandTool.Args> {
                     cwd lock.
                     """,
             examples = {
-                "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"build\"]}], \"cwd\": \"/abs\", \"connect\": \"STOP_ON_FAILURE\"}",
-                "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"test\"]}], \"cwd\": \"/abs\"}",
-                "{\"commands\": [{\"executable\": \"git\", \"args\": [\"status\"]}], \"cwd\": \"/abs\"}",
-                "{\"commands\": [{\"executable\": \"git\", \"args\": [\"log\", \"--oneline\", \"-10\"]}], \"cwd\": \"/abs\"}",
-                "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"build\"]}, {\"executable\": \"gradle\", \"args\": [\"test\"]}], \"cwd\": \"/abs\", \"connect\": \"STOP_ON_FAILURE\"}",
-                "{\"commands\": [{\"executable\": \"grep\", \"args\": [\"-r\", \"TODO\", \"src\"]}, {\"executable\": \"wc\", \"args\": [\"-l\"]}], \"cwd\": \"/abs\", \"connect\": \"PIPE\"}",
-                "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"clean\", \"build\", \"test\"]}], \"cwd\": \"/abs\", \"connect\": \"RUN_ALL\"}",
-                "{\"commands\": [{\"executable\": \"node\", \"args\": [\"script.js\"]}], \"cwd\": \"/abs/app\"}"
+                "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"build\"]}], \"cwd\": \"/abs\", \"connect\": \"STOP_ON_FAILURE\", \"timeout\": 300}",
+                "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"test\"]}], \"cwd\": \"/abs\", \"timeout\": 300}",
+                "{\"commands\": [{\"executable\": \"git\", \"args\": [\"status\"]}], \"cwd\": \"/abs\", \"timeout\": 60}",
+                "{\"commands\": [{\"executable\": \"git\", \"args\": [\"log\", \"--oneline\", \"-10\"]}], \"cwd\": \"/abs\", \"timeout\": 60}",
+                "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"build\"]}, {\"executable\": \"gradle\", \"args\": [\"test\"]}], \"cwd\": \"/abs\", \"connect\": \"STOP_ON_FAILURE\", \"timeout\": 600}",
+                "{\"commands\": [{\"executable\": \"grep\", \"args\": [\"-r\", \"TODO\", \"src\"]}, {\"executable\": \"wc\", \"args\": [\"-l\"]}], \"cwd\": \"/abs\", \"connect\": \"PIPE\", \"timeout\": 120}",
+                "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"clean\", \"build\", \"test\"]}], \"cwd\": \"/abs\", \"connect\": \"RUN_ALL\", \"timeout\": 900}",
+                "{\"commands\": [{\"executable\": \"node\", \"args\": [\"script.js\"]}], \"cwd\": \"/abs/app\", \"timeout\": 120}"
             },
             returnExamples = {
                 "BUILD SUCCESSFUL in 12s",
@@ -114,9 +117,14 @@ public final class RunCommandTool implements NativeTool<RunCommandTool.Args> {
                     @NonNull String cwd,
             @Nullable
                     @Doc(
-                            /* annotation was: @Nullable */
                             "How Veto connects the commands: STOP_ON_FAILURE (default), RUN_ALL, or PIPE.")
-                    String connect) {}
+                    String connect,
+            @NonNull
+                    @Doc(
+                            "Timeout in seconds. REQUIRED - the agent must set it explicitly. 0 = no cap (run to"
+                                    + " completion). For run_command this bounds the blocking wait; for run_task it bounds"
+                                    + " the background task's lifetime (auto-killed after).")
+                    Integer timeout) {}
 
     @Override
     public @NonNull String getName() {

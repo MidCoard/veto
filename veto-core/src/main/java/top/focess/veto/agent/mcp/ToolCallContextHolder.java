@@ -99,6 +99,19 @@ public final class ToolCallContextHolder {
         CONTEXT.set(new ToolCallContext(agentId, userId, groupId, owner));
     }
 
+    /**
+     * Sets the tool call context including the caller's session id, so session-scoped events
+     * (background-task lifecycle) can be routed on the delta broker.
+     */
+    public static void set(
+            @NonNull String agentId,
+            @NonNull UUID userId,
+            @Nullable UUID groupId,
+            @Nullable String owner,
+            @Nullable UUID sessionId) {
+        CONTEXT.set(new ToolCallContext(agentId, userId, groupId, owner, sessionId));
+    }
+
     /** Sets the tool call context for the current thread. */
     public static void set(@NonNull ToolCallContext ctx) {
         CONTEXT.set(ctx);

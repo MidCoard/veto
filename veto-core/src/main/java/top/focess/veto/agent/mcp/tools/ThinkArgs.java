@@ -47,7 +47,8 @@ import top.focess.veto.agent.mcp.ToolDoc;
                 Agent tool (`RiskCategory.AGENT`). The Gateway does not screen it. It touches \
                 nothing. Safe to call any time.
                 """,
-        examples = {"{}"})
+        examples = {"{}"},
+        returnExamples = {"(empty - the call only keeps the loop alive)"})
 public record ThinkArgs() implements AgentTool<ThinkArgs> {
 
     @Override

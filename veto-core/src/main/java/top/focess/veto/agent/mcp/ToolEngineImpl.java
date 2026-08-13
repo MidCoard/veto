@@ -287,6 +287,18 @@ public class ToolEngineImpl implements ToolEngine {
      */
     private ToolResult executeRunCommand(ToolCall call) {
         RunCommandTool.Args args = mapper.convertValue(call.args(), RunCommandTool.Args.class);
+        // timeout is REQUIRED (schema-level) - enforce at runtime so a model that omits it gets a
+        // clear error instead of an NPE. 0 = no cap (the substrate waits indefinitely).
+        Integer timeout = args.timeout();
+        if (timeout == null) {
+            return new ToolResult(
+                    call.toolName(),
+                    call.callId(),
+                    false,
+                    errorEnvelope(
+                            "run_command requires an explicit 'timeout' (seconds; 0 = no cap)."));
+        }
+        Duration timeoutDur = timeout <= 0 ? Duration.ZERO : Duration.ofSeconds(timeout);
         List<Command> commands =
                 args.commands().stream().map(c -> new Command(c.executable(), c.args())).toList();
         ChainMode connect = parseChainMode(args.connect());
@@ -297,8 +309,7 @@ public class ToolEngineImpl implements ToolEngine {
         CommandResult result =
                 sandboxManager
                         .substrate()
-                        .runCommands(
-                                handle, commands, Path.of("."), connect, Duration.ofMinutes(10));
+                        .runCommands(handle, commands, Path.of("."), connect, timeoutDur);
         String content =
                 (result.stdout().isEmpty() ? "" : result.stdout())
                         + (result.stderr() == null || result.stderr().isEmpty()
@@ -359,7 +370,7 @@ public class ToolEngineImpl implements ToolEngine {
                                 + " is not implemented."));
     }
 
-    private static ChainMode parseChainMode(String connect) {
+    private static ChainMode parseChainMode(@Nullable String connect) {
         if (connect == null) return ChainMode.STOP_ON_FAILURE;
         return switch (connect) {
             case "RUN_ALL" -> ChainMode.RUN_ALL;

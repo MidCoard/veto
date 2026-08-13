@@ -131,7 +131,7 @@ public class LlmClientFactory {
     public @NonNull LlmClient anthropic(@NonNull String baseUrl, @NonNull String apiKey) {
         com.anthropic.client.AnthropicClient sdk =
                 get(com.anthropic.client.AnthropicClient.class, baseUrl, apiKey);
-        return new AnthropicLlmClient(sdk, objectMapper, capabilityTranslator);
+        return new AnthropicLlmClient(sdk, objectMapper);
     }
 
     /**

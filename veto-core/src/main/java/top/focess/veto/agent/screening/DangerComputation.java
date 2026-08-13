@@ -23,10 +23,27 @@ public class DangerComputation {
 
     private static final Set<String> EXEC_ALLOWLIST =
             Set.of(
-                    "mvn", "gradle", "gradlew", "npm", "git", "python", "python3", "gcc", "g++",
-                    "make", "java");
+                    "mvn", "gradle", "gradlew", "npm", "npx", "node", "git", "python", "python3",
+                    "gcc", "g++", "make", "java");
+
+    /** Windows launcher extensions stripped before allowlist/blacklist matching. */
+    private static final List<String> WINDOWS_EXEC_EXTENSIONS =
+            List.of(".exe", ".cmd", ".bat", ".com");
+
+    // curl is deliberately NOT blacklisted: it stays DANGEROUS via the network-scan rule below, so
+    // it is approval-gated (the user can grant a localhost API test) rather than auto-blocked.
     private static final Set<String> EXEC_BLACKLIST =
-            Set.of("nc", "ncat", "nmap", "curl", "wget", "ssh", "scp", "bash", "sh", "zsh", "fish");
+            Set.of("nc", "ncat", "nmap", "wget", "ssh", "scp", "bash", "sh", "zsh", "fish");
+
+    /**
+     * Process-termination executables. Terminating a process is always a user decision — classified
+     * DANGEROUS (HITL-gated, grantable) rather than left to the generic non-allowlist fallthrough,
+     * so the intent is explicit and survives future allowlist edits. The agent's OWN background
+     * tasks are stopped with the {@code stop_task} tool, not an OS kill.
+     */
+    private static final Set<String> PROCESS_KILLERS =
+            Set.of("taskkill", "tskill", "kill", "killall", "pkill");
+
     private static final Set<String> SECRET_PATTERNS =
             Set.of(
                     ".ssh",
@@ -195,16 +212,19 @@ public class DangerComputation {
                 return Danger.CRITICAL;
             }
             Object execObj = cmd.get("executable");
-            // Normalize the executable to its base name so a path-qualified blacklisted tool
-            // (/bin/bash, /usr/bin/nc) still matches EXEC_BLACKLIST/isNetworkScan rather than
-            // falling through to the grantable DANGEROUS bucket. (Restores the Gateway.baseName()
-            // behavior deleted with the dead shell-cluster.)
-            String exec = baseName(execObj == null ? "" : execObj.toString());
+            // Normalize the executable to its extensionless, lowercase base name so a
+            // path-qualified or Windows-style tool (/bin/bash, C:\nodejs\node.exe) still matches
+            // EXEC_BLACKLIST / EXEC_ALLOWLIST instead of falling through to the grantable
+            // DANGEROUS bucket. (Restores the Gateway.baseName() behavior deleted with the dead
+            // shell-cluster, extended for Windows launcher extensions.)
+            String exec = normalizeExec(baseName(execObj == null ? "" : execObj.toString()));
             Danger d;
             if (EXEC_BLACKLIST.contains(exec)) {
                 d = Danger.CRITICAL;
             } else if (isNetworkScan(exec)) {
                 d = Danger.DANGEROUS;
+            } else if (PROCESS_KILLERS.contains(exec)) {
+                d = Danger.DANGEROUS; // process termination is always a user decision
             } else if (!EXEC_ALLOWLIST.contains(exec)) {
                 d = Danger.DANGEROUS; // non-allowlisted executable bumps to DANGEROUS
             } else {
@@ -228,6 +248,20 @@ public class DangerComputation {
     private static @NonNull String baseName(@NonNull String exe) {
         int slash = Math.max(exe.lastIndexOf('/'), exe.lastIndexOf('\\'));
         return slash >= 0 ? exe.substring(slash + 1) : exe;
+    }
+
+    /**
+     * Lowercases and strips a Windows launcher extension ({@code node.EXE} → {@code node}) so the
+     * allowlist/blacklist sets — plain lowercase names — match executables on both platforms.
+     */
+    private static @NonNull String normalizeExec(@NonNull String exe) {
+        String name = exe.toLowerCase(java.util.Locale.ROOT);
+        for (String ext : WINDOWS_EXEC_EXTENSIONS) {
+            if (name.endsWith(ext)) {
+                return name.substring(0, name.length() - ext.length());
+            }
+        }
+        return name;
     }
 
     private static @NonNull Danger max(@NonNull Danger... ds) {

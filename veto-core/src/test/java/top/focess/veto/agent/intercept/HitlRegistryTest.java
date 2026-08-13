@@ -30,7 +30,7 @@ class HitlRegistryTest {
     void resolveOptionAcceptsAValidOptionName() throws Exception {
         HitlRegistry registry = new HitlRegistry();
         CompletableFuture<InterceptResolution> future =
-                registry.register("agent-1", "call-1", call(), null, E2_OPTIONS);
+                registry.register("agent-1", "call-1", call(), null, E2_OPTIONS, null);
 
         boolean resolved = registry.resolveOption("agent-1", "call-1", "ACCEPT_COMMAND");
 
@@ -44,7 +44,7 @@ class HitlRegistryTest {
     void resolveOptionIsCaseInsensitive() throws Exception {
         HitlRegistry registry = new HitlRegistry();
         CompletableFuture<InterceptResolution> future =
-                registry.register("agent-1", "call-2", call(), null, E2_OPTIONS);
+                registry.register("agent-1", "call-2", call(), null, E2_OPTIONS, null);
 
         assertTrue(registry.resolveOption("agent-1", "call-2", "exec_decline"));
         assertEquals(VetoOption.EXEC_DECLINE, future.get(1, TimeUnit.SECONDS).option());
@@ -54,7 +54,7 @@ class HitlRegistryTest {
     void resolveOptionFailsSafeOnAnInvalidName() throws Exception {
         HitlRegistry registry = new HitlRegistry();
         CompletableFuture<InterceptResolution> future =
-                registry.register("agent-1", "call-3", call(), null, E2_OPTIONS);
+                registry.register("agent-1", "call-3", call(), null, E2_OPTIONS, null);
 
         // An invalid choice resolves with the scenario's first refusal (EXEC_DECLINE) so the
         // agent unstucks fail-safe rather than executing a mis-approved call.
@@ -68,7 +68,7 @@ class HitlRegistryTest {
     void declineOptionResolvesWithTheFirstRefusal() throws Exception {
         HitlRegistry registry = new HitlRegistry();
         CompletableFuture<InterceptResolution> future =
-                registry.register("agent-1", "call-4", call(), null, E2_OPTIONS);
+                registry.register("agent-1", "call-4", call(), null, E2_OPTIONS, null);
 
         assertTrue(registry.declineOption("agent-1", "call-4"));
         InterceptResolution resolution = future.get(1, TimeUnit.SECONDS);

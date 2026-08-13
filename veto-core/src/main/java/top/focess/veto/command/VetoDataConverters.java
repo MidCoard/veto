@@ -1,6 +1,6 @@
 package top.focess.veto.command;
 
-import org.jetbrains.annotations.NotNull;
+import org.jspecify.annotations.NonNull;
 import top.focess.command.DataCollection;
 import top.focess.command.DataConverter;
 import top.focess.veto.command.data.ObjectBuffer;
@@ -26,8 +26,8 @@ public final class VetoDataConverters {
      * Converts a {@link ModelTier} name case-insensitively and tab-completes with the enum
      * constants. Used by {@code /pattern create <name> <tier>}.
      */
-    @NotNull
-    public static final DataConverter<ModelTier> MODEL_TIER = DataConverter.ofEnum(ModelTier.class);
+    public static final @NonNull DataConverter<ModelTier> MODEL_TIER =
+            DataConverter.ofEnum(ModelTier.class);
 
     static {
         DataCollection.register(MODEL_TIER, ObjectBuffer::allocate);

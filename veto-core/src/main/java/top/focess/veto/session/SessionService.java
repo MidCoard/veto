@@ -120,6 +120,27 @@ public class SessionService {
                                                         "error.session.patternNotFound",
                                                         patternName)));
 
+        // The workspace roots must exist before the agent can operate in them - create missing
+        // directories up front so the model never has to mkdir its own workspace (observed live:
+        // a model burning a turn on `cmd /c if not exist ... mkdir ...` for a fresh root).
+        for (String root : workspaceRoots.split(",")) {
+            String trimmed = root.trim();
+            if (trimmed.isEmpty()) {
+                continue;
+            }
+            try {
+                java.nio.file.Files.createDirectories(Path.of(trimmed));
+            } catch (Exception e) {
+                throw new IllegalArgumentException(
+                        Msg.get(
+                                "error.session.workspaceInvalid",
+                                trimmed,
+                                e.getMessage() == null
+                                        ? e.getClass().getSimpleName()
+                                        : e.getMessage()));
+            }
+        }
+
         String resolvedName;
         if (sessionName == null || sessionName.isEmpty()) {
             // Implicit session name: always produce a workspace-unique name so `/session create ds`

@@ -34,19 +34,25 @@ import org.jspecify.annotations.NonNull;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface ToolDoc {
 
-    /** One-liner for the manifest header — what the tool is. */
-    @NonNull String description() default "";
+    /**
+     * One-liner for the manifest header — what the tool is. REQUIRED: every documented tool must
+     * state what it is.
+     */
+    @NonNull String description();
 
     /**
-     * 6-section long-form usage doc — how and when to use it. Surfaces as {@link
+     * Long-form usage doc — how and when to use it. Surfaces as {@link
      * ToolDefinition#longDescription()}. Rendered verbatim as the body of the tool's catalog entry
-     * by the prompt compiler. Empty by default (the tool's short {@code description} is used
-     * alone).
+     * by the prompt compiler. REQUIRED: every documented tool carries a real brief, so the model
+     * always sees when to reach for it, when not to, its behavior, return shape, and edges.
      */
-    @NonNull String usage() default "";
+    @NonNull String usage();
 
-    /** Concrete usage examples (args-object strings); empty by default. */
-    @NonNull String[] examples() default {};
+    /**
+     * Concrete usage examples (args-object strings). REQUIRED: one or more concrete {@code args}
+     * objects the model would place in a {@code calls[]} entry.
+     */
+    @NonNull String[] examples();
 
     /**
      * Concrete return-value examples - one or two REPRESENTATIVE shapes in the tool's declared
@@ -55,7 +61,7 @@ public @interface ToolDoc {
      * {@link #examples()}. Rendered fenced under the tool's catalog entry by the prompt compiler.
      * The uniform error envelope and the reserved REFUSED grammar are taught once in the "## Tool
      * Result Conventions" block, so per-tool entries should show success shapes (plus tool-specific
-     * edge markers like {@code (no matches)}), not repeat the error grammar. Empty by default.
+     * edge markers like {@code (no matches)}), not repeat the error grammar. REQUIRED.
      */
-    @NonNull String[] returnExamples() default {};
+    @NonNull String[] returnExamples();
 }

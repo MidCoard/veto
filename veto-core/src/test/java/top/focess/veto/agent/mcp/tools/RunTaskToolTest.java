@@ -1,0 +1,114 @@
+package top.focess.veto.agent.mcp.tools;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import top.focess.veto.agent.mcp.ToolCallContextHolder;
+import top.focess.veto.sandbox.BackgroundTaskManager;
+import top.focess.veto.sandbox.ConstrainedSubprocessSubstrate;
+import top.focess.veto.sandbox.SandboxManager;
+
+/**
+ * Exercises the {@code run_task} / {@code view_task} / {@code stop_task} tools end-to-end through
+ * their beans (no Spring): launch a quick-exit task, observe it finish via {@code view_task}, and
+ * confirm {@code stop_task} is idempotent on an already-exited task.
+ */
+class RunTaskToolTest {
+
+    private final ObjectMapper mapper = new ObjectMapper().registerModule(new JavaTimeModule());
+    private BackgroundTaskManager manager;
+    private RunTaskTool runTask;
+    private ViewTaskTool status;
+    private StopTaskTool stop;
+
+    @BeforeEach
+    void setUp() {
+        manager =
+                new BackgroundTaskManager(new SandboxManager(new ConstrainedSubprocessSubstrate()));
+        runTask = new RunTaskTool(manager, mapper);
+        status = new ViewTaskTool(manager, mapper);
+        stop = new StopTaskTool(manager, mapper);
+        ToolCallContextHolder.set("agent-x", UUID.randomUUID());
+    }
+
+    @AfterEach
+    void tearDown() {
+        ToolCallContextHolder.clear();
+        manager.stopAll("agent-x");
+        manager.shutdown();
+    }
+
+    @Test
+    void runTaskLaunchesAndStatusReportsExit(@TempDir Path tempDir) throws Exception {
+        boolean win = System.getProperty("os.name").toLowerCase().contains("win");
+        String exe =
+                Path.of(System.getProperty("java.home"), "bin", win ? "java.exe" : "java")
+                        .toString();
+        RunTaskTool.Args args =
+                new RunTaskTool.Args(
+                        List.of(new RunCommandTool.CommandInput(exe, List.of("-version"))),
+                        tempDir.toString(),
+                        null,
+                        0);
+
+        String startedJson = runTask.execute(args);
+        JsonNode started = mapper.readTree(startedJson);
+        assertEquals("started", started.get("status").asText());
+        String taskId = started.get("taskId").asText();
+        assertFalse(taskId.isBlank());
+
+        // Wait for the quick-exit task to finish, polling view_task.
+        JsonNode statusNode = null;
+        for (int i = 0; i < 200; i++) {
+            statusNode = mapper.readTree(status.execute(new ViewTaskTool.Args(taskId, 50)));
+            if (!statusNode.get("alive").asBoolean()) break;
+            Thread.sleep(50);
+        }
+        assertNotNull(statusNode);
+        assertFalse(statusNode.get("alive").asBoolean(), "task should have exited");
+        assertEquals(0, statusNode.get("exitCode").asInt(), "java -version exits 0");
+        assertFalse(statusNode.get("recentOutput").asText().isBlank(), "output captured");
+
+        // stop_task is idempotent on an already-exited task.
+        JsonNode stopped = mapper.readTree(stop.execute(new StopTaskTool.Args(taskId)));
+        assertEquals("stopped", stopped.get("status").asText());
+    }
+
+    @Test
+    void runTaskRejectsMultipleCommands(@TempDir Path tempDir) {
+        RunTaskTool.Args args =
+                new RunTaskTool.Args(
+                        List.of(
+                                new RunCommandTool.CommandInput("a", List.of()),
+                                new RunCommandTool.CommandInput("b", List.of())),
+                        tempDir.toString(),
+                        null,
+                        0);
+        String json = runTask.execute(args);
+        assertTrue(
+                json.contains("\"status\":\"error\""), "multi-command background must be rejected");
+        assertTrue(json.contains("exactly one command"));
+    }
+
+    @Test
+    void runTaskRequiresExplicitTimeout(@TempDir Path tempDir) {
+        RunTaskTool.Args args =
+                new RunTaskTool.Args(
+                        List.of(new RunCommandTool.CommandInput("a", List.of())),
+                        tempDir.toString(),
+                        null,
+                        null);
+        String json = runTask.execute(args);
+        assertTrue(json.contains("\"status\":\"error\""), "null timeout must be rejected");
+        assertTrue(json.contains("timeout"));
+    }
+}

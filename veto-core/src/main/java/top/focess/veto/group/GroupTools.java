@@ -187,7 +187,11 @@ public final class GroupTools {
                     #### Security
                     Agent tool (`RiskCategory.AGENT`). The Gateway does not screen it. Leader-only.
                     """,
-            examples = {"{}"})
+            examples = {"{}"},
+            returnExamples = {
+                "(empty on success - you continue as STANDALONE from the outcome brief)",
+                "Group not disbanded: Mates still RUNNING - wait for them to finish first."
+            })
     public static final class DisbandGroup implements AgentTool<DisbandGroup.Args> {
 
         private final @NonNull GroupSpawner spawner;
@@ -300,6 +304,11 @@ public final class GroupTools {
             examples = {
                 "{\"type\": \"TASK_DISPATCH\", \"receiver\": \"mate-coder\", \"payload\": \"node-5: Revise the JWT validation to check expiry\"}",
                 "{\"type\": \"STATUS\", \"receiver\": \"LEADER\", \"payload\": \"node-5 re-planned; new node node-5b created\"}"
+            },
+            returnExamples = {
+                "posted",
+                "Not posted: unknown message type 'BROADCAST' - use one of"
+                        + " TASK_DISPATCH, ARTIFACT_REF, LOG_REF, FEEDBACK, STATUS, ACCEPT."
             })
     public static final class PostMessage implements AgentTool<PostMessage.Args> {
 

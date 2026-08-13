@@ -2,6 +2,8 @@ package top.focess.veto.agent.intercept;
 
 import java.util.List;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
+import top.focess.veto.agent.screening.Danger;
 
 /**
  * The {@link HitlRegistry}'s decision for one tool call, computed from the {@link GatewayResult}
@@ -32,8 +34,15 @@ public sealed interface ApprovalDecision
     /** Refuse outright with a refusal notice. */
     record Refused(@NonNull String reason) implements ApprovalDecision {}
 
-    /** Park the virtual thread on a HITL future; the user must resolve via the veto endpoint. */
-    record Prompt(@NonNull VetoScenario scenario, @NonNull List<VetoOption> options)
+    /**
+     * Park the virtual thread on a HITL future; the user must resolve via the veto endpoint.
+     * Carries the screening {@link Danger} so transports can warn the user prominently when the
+     * parked call is DANGEROUS/CRITICAL (null when no screening produced it, e.g. write-drift).
+     */
+    record Prompt(
+            @NonNull VetoScenario scenario,
+            @NonNull List<VetoOption> options,
+            @Nullable Danger danger)
             implements ApprovalDecision {
         public Prompt {
             options = List.copyOf(options);

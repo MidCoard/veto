@@ -58,7 +58,10 @@ class AgentRunnerTest {
                 "FULL_ACCESS",
                 "STRICT",
                 null,
-                null);
+                null,
+                new top.focess.veto.sandbox.BackgroundTaskManager(
+                        new top.focess.veto.sandbox.SandboxManager(
+                                new top.focess.veto.sandbox.ConstrainedSubprocessSubstrate())));
     }
 
     private static AgentRunner.LlmBinding binding(String systemPrompt) {

@@ -40,7 +40,6 @@ import top.focess.veto.agent.screening.ScreeningMode;
 import top.focess.veto.agent.screening.SlmRelevanceProvider;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.bus.DeltaBroker;
-import top.focess.veto.contract.IpcFrame;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.llm.config.LlmJacksonConfig;
 import top.focess.veto.llm.core.UniformLLMCaller;
@@ -78,6 +77,7 @@ public class AgentService {
     // The raw-turn write-through log — optional (nullable in tests); when present, threaded into
     // each AgentRunner so appendTurn persists to the raw-turn audit/replay log.
     private final top.focess.veto.memory.@Nullable TurnLogService turnLogService;
+    private final top.focess.veto.sandbox.@NonNull BackgroundTaskManager backgroundTaskManager;
 
     /**
      * The fallback memory-tenant userId for legacy/test paths that bypass session activation (the
@@ -104,7 +104,8 @@ public class AgentService {
                     @NonNull String deployerPolicyRaw,
             @Value("${veto.security.screening-mode:STRICT}") @NonNull String screeningModeRaw,
             @Nullable DeltaBroker deltaBroker,
-            top.focess.veto.memory.@Nullable TurnLogService turnLogService) {
+            top.focess.veto.memory.@Nullable TurnLogService turnLogService,
+            top.focess.veto.sandbox.@NonNull BackgroundTaskManager backgroundTaskManager) {
         this.mcpEngine = mcpEngine;
         this.hitlRegistry = hitlRegistry;
         this.ingressDefense = ingressDefense;
@@ -130,6 +131,7 @@ public class AgentService {
         this.hitlRegistry.setDefaultWorkspace(this.defaultWorkspace);
         this.deltaBroker = deltaBroker;
         this.turnLogService = turnLogService;
+        this.backgroundTaskManager = backgroundTaskManager;
     }
 
     /**
@@ -154,6 +156,24 @@ public class AgentService {
             return AgentResult.failure(
                     Msg.get(agent.locale(), "error.agent.interrupted"), Map.of());
         }
+    }
+
+    /**
+     * Fire-and-forget submit: resolves (or creates) the agent, binds the model configuration, and
+     * starts the episode, returning as soon as the run is enqueued. The episode's progress and
+     * outcome travel as {@link top.focess.veto.bus.DeltaFrame} events on the {@code DeltaBroker}
+     * (session-scoped), and the durable result lands in the turn log — callers subscribe and read,
+     * they do not block here. This is the transport shape the web UI uses: REST submits, WebSocket
+     * streams, REST GET history stays the authoritative read.
+     */
+    public void submitNow(
+            @NonNull String agentKey,
+            @NonNull String prompt,
+            AgentRunner.@NonNull LlmBinding binding) {
+        VetoAgent agent = agents.computeIfAbsent(agentKey, k -> createAgent(k, binding));
+        agent.bind(binding);
+        agent.setLocale(LocaleContextHolder.getLocale());
+        agent.submit(prompt);
     }
 
     /** Synchronous submit with a live result message (for the terminal path). */
@@ -242,8 +262,8 @@ public class AgentService {
             @Nullable Consumer<String> messageSink,
             @Nullable Consumer<VetoPrompt> vetoSink,
             @Nullable Consumer<String> thoughtSink,
-            @Nullable Consumer<IpcFrame.ToolCall> toolCallSink,
-            @Nullable Consumer<IpcFrame.ToolResult> toolResultSink)
+            @Nullable Consumer<AgentRunner.ToolCallEvent> toolCallSink,
+            @Nullable Consumer<AgentRunner.ToolResultEvent> toolResultSink)
             throws TimeoutException, InterruptedException {
         VetoAgent agent = agents.computeIfAbsent(agentKey, k -> createAgent(k, binding));
         agent.bind(binding);
@@ -422,14 +442,17 @@ public class AgentService {
     }
 
     /** Removes an agent (logout / disconnect). */
-    public void remove(String agentKey) {
+    public void remove(@NonNull String agentKey) {
         VetoAgent a = agents.remove(agentKey);
         if (a != null) {
             a.terminate();
+            // Kill any background tasks the agent launched so they don't outlive their owner.
+            backgroundTaskManager.stopAll(a.id());
         }
     }
 
-    private VetoAgent createAgent(String agentKey, AgentRunner.LlmBinding binding) {
+    private @NonNull VetoAgent createAgent(
+            @NonNull String agentKey, AgentRunner.@NonNull LlmBinding binding) {
         return createAgent(agentKey, binding, DEFAULT_USER_ID, defaultWorkspace);
     }
 
@@ -491,7 +514,8 @@ public class AgentService {
                         binding,
                         deltaBroker,
                         userId,
-                        turnLogService);
+                        turnLogService,
+                        backgroundTaskManager);
         // Stamp the session owner so group-spawned Mates / Leaders resolve their tier against the
         // user's active model-tier profile via the ToolCallContext.
         runner.setOwner(owner);
@@ -599,7 +623,8 @@ public class AgentService {
                         binding,
                         deltaBroker,
                         userId,
-                        turnLogService);
+                        turnLogService,
+                        backgroundTaskManager);
         // Stamp the session owner so the Mate (or one-shot Leader) resolves its tier against the
         // user's active model-tier profile via the ToolCallContext.
         runner.setOwner(owner);
@@ -613,7 +638,8 @@ public class AgentService {
      * resolution (skills, per-agent tool grants) is not yet wired — the default grants all
      * registered tools.
      */
-    private AgentPersona buildPersona(String agentKey, AgentRunner.LlmBinding binding) {
+    private @NonNull AgentPersona buildPersona(
+            @NonNull String agentKey, AgentRunner.@NonNull LlmBinding binding) {
         return buildPersona(agentKey, null, binding);
     }
 
@@ -692,7 +718,8 @@ public class AgentService {
      * non-FULL_ACCESS policy. Listed as specific subpaths so a workspace nested under the launch
      * dir is unaffected.
      */
-    private ProtectedSet protectedSetFor(String vetoUserId, Workspace workspace) {
+    private @NonNull ProtectedSet protectedSetFor(
+            @NonNull String vetoUserId, @NonNull Workspace workspace) {
         if (this.deployerPolicy == DeployerPolicy.FULL_ACCESS) {
             return ProtectedSet.empty();
         }
@@ -700,12 +727,12 @@ public class AgentService {
                 .withSystemProtected(systemProtectedPaths());
     }
 
-    private static DeployerPolicy parseDeployerPolicy(String raw) {
+    private static @NonNull DeployerPolicy parseDeployerPolicy(@NonNull String raw) {
         return DeployerPolicy.parse(raw);
     }
 
     /** Parses the screening mode (case-insensitive; defaults to STRICT on blank/unknown). */
-    private static ScreeningMode parseScreeningMode(String raw) {
+    private static @NonNull ScreeningMode parseScreeningMode(@Nullable String raw) {
         if (raw == null || raw.isBlank()) {
             return ScreeningMode.STRICT;
         }

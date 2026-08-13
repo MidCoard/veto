@@ -154,10 +154,35 @@ class ToolEngineImplTest {
                                         "cwd",
                                         tempDir.toString(),
                                         "connect",
-                                        "STOP_ON_FAILURE"),
+                                        "STOP_ON_FAILURE",
+                                        "timeout",
+                                        30),
                                 "cid-2"),
                         engine.resolveDefinition("run_command"));
         assertTrue(result.success(), "java -version should exit 0");
         assertNotNull(result.content());
+    }
+
+    @Test
+    void runCommandWithoutTimeoutIsRejected(@TempDir Path tempDir) {
+        ToolEngineImpl engine = newEngine();
+        ToolResult result =
+                engine.execute(
+                        new ToolCall(
+                                "run_command",
+                                Map.of(
+                                        "commands",
+                                        List.of(
+                                                Map.of(
+                                                        "executable",
+                                                        "java",
+                                                        "args",
+                                                        List.of("-version"))),
+                                        "cwd",
+                                        tempDir.toString()),
+                                "cid-no-timeout"),
+                        engine.resolveDefinition("run_command"));
+        assertFalse(result.success(), "run_command without an explicit timeout must fail");
+        assertTrue(result.content().contains("timeout"), "error must name the missing timeout");
     }
 }

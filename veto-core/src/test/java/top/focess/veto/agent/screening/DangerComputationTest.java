@@ -254,5 +254,67 @@ class DangerComputationTest {
                         ProtectedSet.empty()));
     }
 
+    @Test
+    void curlIsDangerousNotCritical() throws Exception {
+        // curl is off the blacklist: it stays DANGEROUS via the network-scan rule (HITL-gated,
+        // grantable — e.g. a localhost API test) instead of auto-blocked CRITICAL.
+        NativeToolDefinition execDef =
+                new NativeToolDefinition(
+                        "run_command",
+                        "exec",
+                        RiskCategory.SHELL_EXEC,
+                        false,
+                        ExecArgs.class,
+                        Map.of());
+        ToolCall call =
+                new ToolCall(
+                        "run_command",
+                        Map.of(
+                                "commands",
+                                List.of(
+                                        Map.of(
+                                                "executable",
+                                                "curl",
+                                                "args",
+                                                List.of("http://localhost:5188/"))),
+                                "cwd",
+                                root.toString()));
+        assertEquals(
+                Danger.DANGEROUS,
+                dc.compute(
+                        execDef, call, ws(root), DeployerPolicy.FULL_ACCESS, ProtectedSet.empty()));
+    }
+
+    @Test
+    void processKillerIsDangerous() throws Exception {
+        // Process termination (taskkill) is always a user decision: DANGEROUS (grantable), never
+        // auto-approved and never CRITICAL.
+        NativeToolDefinition execDef =
+                new NativeToolDefinition(
+                        "run_command",
+                        "exec",
+                        RiskCategory.SHELL_EXEC,
+                        false,
+                        ExecArgs.class,
+                        Map.of());
+        ToolCall call =
+                new ToolCall(
+                        "run_command",
+                        Map.of(
+                                "commands",
+                                List.of(
+                                        Map.of(
+                                                "executable",
+                                                "taskkill.exe",
+                                                "args",
+                                                List.of("/F", "/PID", "1234"))),
+                                "cwd",
+                                root.toString()));
+        assertEquals(
+                Danger.DANGEROUS,
+                dc.compute(
+                        execDef, call, ws(root), DeployerPolicy.FULL_ACCESS, ProtectedSet.empty()));
+    }
+
     public record ExecArgs(Map<String, Object> commands, String cwd) {}
 }

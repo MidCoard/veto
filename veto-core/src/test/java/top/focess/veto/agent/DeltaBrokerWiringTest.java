@@ -54,7 +54,10 @@ class DeltaBrokerWiringTest {
                 "FULL_ACCESS",
                 "STRICT",
                 broker,
-                null);
+                null,
+                new top.focess.veto.sandbox.BackgroundTaskManager(
+                        new top.focess.veto.sandbox.SandboxManager(
+                                new top.focess.veto.sandbox.ConstrainedSubprocessSubstrate())));
     }
 
     private static AgentRunner.LlmBinding binding(String systemPrompt) {
@@ -99,11 +102,12 @@ class DeltaBrokerWiringTest {
 
         assertTrue(result.success(), "episode should finish successfully");
         assertFalse(frames.isEmpty(), "a DeltaFrame should be published on emitMessage");
-        // The response carries both a thought and a message, so the broker now receives TWO frames:
-        // the thought first (emitThought runs from appendThought before emitMessage), then the
-        // message. Both are part of the per-session stream the DeltaBusBridge forwards to WS
-        // clients.
-        assertEquals(2, frames.size(), "thought + message each publish their own DeltaFrame");
+        // The response carries a thought, a message, and the episode completion, so the broker
+        // receives THREE frames: the thought first (emitThought runs from appendThought before
+        // emitMessage), then the message, then EPISODE_DONE when the loop completes. All are part
+        // of the per-session stream the DeltaBusBridge forwards to WS clients.
+        assertEquals(
+                3, frames.size(), "thought + message + episode-done each publish a DeltaFrame");
         DeltaFrame thoughtFrame = frames.get(0);
         assertEquals(DeltaFrame.Kind.ASSISTANT_THOUGHT, thoughtFrame.kind());
         assertEquals("2 + 2 = 4.", thoughtFrame.text());
@@ -113,6 +117,9 @@ class DeltaBrokerWiringTest {
         assertEquals(DeltaFrame.Kind.ASSISTANT_MESSAGE, messageFrame.kind());
         assertEquals("The answer is 4.", messageFrame.text());
         assertEquals(2L, messageFrame.sequence(), "the message follows the thought in sequence");
+        DeltaFrame doneFrame = frames.get(2);
+        assertEquals(DeltaFrame.Kind.EPISODE_DONE, doneFrame.kind());
+        assertEquals(3L, doneFrame.sequence(), "episode-done closes the stream");
     }
 
     @Test
