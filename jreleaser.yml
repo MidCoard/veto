@@ -43,5 +43,3 @@ distributions:
         platform: linux-x86_64
       - path: artifacts/veto-windows-latest/veto.exe
         platform: windows-x86_64
-      - path: artifacts/veto-macos-latest/veto
-        platform: osx-aarch_64

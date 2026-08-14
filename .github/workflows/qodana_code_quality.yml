@@ -1,12 +1,6 @@
 name: Qodana
 on:
   workflow_dispatch:
-    inputs:
-      apply_fixes:
-        description: 'Apply Qodana quick-fixes to the selected branch'
-        required: false
-        default: false
-        type: boolean
   pull_request:
     branches:
       - master
@@ -26,7 +20,7 @@ jobs:
       github.actor != 'dependabot[bot]')
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
       pull-requests: write
       checks: write
     steps:
@@ -40,8 +34,6 @@ jobs:
           pr-mode: false
           upload-result: true
           cache-default-branch-only: true
-          args: ${{ inputs.apply_fixes && '--apply-fixes' || '' }}
-          push-fixes: ${{ inputs.apply_fixes && 'branch' || 'none' }}
         env:
           QODANA_TOKEN: ${{ secrets.QODANA_TOKEN_251269344 }}
           QODANA_ENDPOINT: 'https://qodana.cloud'
