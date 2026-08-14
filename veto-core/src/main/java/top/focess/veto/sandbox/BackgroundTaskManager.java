@@ -64,14 +64,7 @@ public class BackgroundTaskManager {
 
     private final @NonNull ScheduledExecutorService killer =
             Executors.newSingleThreadScheduledExecutor(
-                    r -> {
-                        Thread t =
-                                Thread.ofPlatform()
-                                        .name("bg-task-killer")
-                                        .daemon(true)
-                                        .unstarted(r);
-                        return t;
-                    });
+                    r -> Thread.ofPlatform().name("bg-task-killer").daemon(true).unstarted(r));
 
     @Autowired
     public BackgroundTaskManager(@NonNull SandboxManager sandboxManager) {
@@ -114,7 +107,7 @@ public class BackgroundTaskManager {
 
         // Schedule auto-kill when a positive cap is set; cancelled on natural exit / explicit stop.
         if (timeoutSeconds > 0) {
-            ScheduledFuture<?> f =
+            task.killer =
                     killer.schedule(
                             () -> {
                                 if (task.alive) {
@@ -128,7 +121,6 @@ public class BackgroundTaskManager {
                             },
                             timeoutSeconds,
                             TimeUnit.SECONDS);
-            task.killer = f;
         }
         log.info(
                 "Background task {} started (agent={}, pid={}, cmd={})",
@@ -209,7 +201,7 @@ public class BackgroundTaskManager {
             log.debug(
                     "Background task {} drain ended: {}",
                     task.taskId,
-                    String.valueOf(e.getMessage()));
+                    java.util.Objects.toString(e.getMessage()));
         }
         try {
             process.waitFor();
@@ -239,7 +231,7 @@ public class BackgroundTaskManager {
         log.debug(
                 "Background task {} exited (code={}, cause={})",
                 task.taskId,
-                String.valueOf(task.exitCode),
+                java.util.Objects.toString(task.exitCode),
                 task.cause);
         notifyExited(task.toInfo());
         // Queue an exit notice so the owning agent is actively told about it on its next turn

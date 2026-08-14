@@ -24,7 +24,7 @@ import org.springframework.stereotype.Component;
  * deployer-hardening follow-up. This implementation provides the load-bearing security property
  * that is constructively enforceable from pure Java: <b>no shell, ever</b> — each command is exec'd
  * directly as {@code executable + argv[]} via {@link ProcessBuilder}, so there is no string the
- * model can inject {@code;}/{@code &&}/{@code |}/ {@code $}/backticks into (injection impossible by
+ * model can inject {@code ;}/{@code &&}/{@code |}/{@code $}/backticks into (injection impossible by
  * construction, not by filtering), the cwd is locked under the workspace root, the environment is
  * sanitized to an allowlist, and a wall-clock timeout bounds runaway processes. The kernel-level
  * token/namespace/cgroup enforcement is a deployer follow-up.
@@ -120,11 +120,10 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
             builders.add(processBuilderFor(c, workdir));
         }
 
-        Duration effectiveTimeout = timeout;
         try {
             return switch (connect) {
-                case PIPE -> runPipeline(builders, effectiveTimeout);
-                case RUN_ALL, STOP_ON_FAILURE -> runSequential(builders, connect, effectiveTimeout);
+                case PIPE -> runPipeline(builders, timeout);
+                case RUN_ALL, STOP_ON_FAILURE -> runSequential(builders, connect, timeout);
             };
         } catch (InterruptedException e) {
             // A genuine interrupt (cancel/shutdown): restore the flag so the loop sees it.
@@ -268,7 +267,7 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
                     capped ? Duration.ofNanos(deadlineNanos - System.nanoTime()) : timeout;
             if (capped && remaining.isNegative()) {
                 codes.add(-1);
-                return new CommandResult(-1, stdout.toString(), stderr + "\n[timeout]", codes);
+                return timeoutResult(stdout, stderr, codes);
             }
             Process p = pb.start();
             attachKernelWall(p);
@@ -277,7 +276,7 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
             stderr.append(wait.stderr());
             if (!wait.finished()) {
                 codes.add(-1);
-                return new CommandResult(-1, stdout.toString(), stderr + "\n[timeout]", codes);
+                return timeoutResult(stdout, stderr, codes);
             }
             codes.add(p.exitValue());
             if (connect == ChainMode.STOP_ON_FAILURE && p.exitValue() != 0) {
@@ -287,6 +286,13 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
         }
         int overall = codes.isEmpty() ? 0 : codes.get(codes.size() - 1);
         return new CommandResult(overall, stdout.toString(), stderr.toString(), codes);
+    }
+
+    private static @NonNull CommandResult timeoutResult(
+            @NonNull StringBuilder stdout,
+            @NonNull StringBuilder stderr,
+            @NonNull List<Integer> codes) {
+        return new CommandResult(-1, stdout.toString(), stderr + "\n[timeout]", codes);
     }
 
     /** A capped wait plus the output drained while waiting. */
@@ -358,7 +364,7 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
             // The wall is best-effort hardening — a failure to attach must not break the run.
             log.debug(
                     "ConstrainedSubprocessSubstrate: kernel-wall attach failed: {}",
-                    String.valueOf(t.getMessage()));
+                    java.util.Objects.toString(t.getMessage()));
         }
     }
 

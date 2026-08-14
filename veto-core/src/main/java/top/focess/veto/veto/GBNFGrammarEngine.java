@@ -66,7 +66,7 @@ public class GBNFGrammarEngine {
         return """
                 root ::= veto-response
                 veto-response ::= "{" ws "veto_decision" ws ":" ws decision ws "," ws "data" ws ":" ws data-block ws "}"
-                decision ::= "\"pass\"" | "\"redact\"" | "\"block\""
+                decision ::= ""pass"" | ""redact"" | ""block""
                 data-block ::= "{" ws data-fields ws "}"
                 data-fields ::= data-field ("," ws data-field)*
                 data-field ::= string ":" ws (string | number | "null")
@@ -87,7 +87,7 @@ public class GBNFGrammarEngine {
                 boolean ::= "true" | "false"
                 violations-list ::= "[" ws (violation ("," ws violation)*)? ws "]"
                 violation ::= "{" ws "type" ws ":" ws string ws "," ws "field" ws ":" ws string ws "," ws "severity" ws ":" ws severity ws "}"
-                severity ::= "\"low\"" | "\"medium\"" | "\"high\"" | "\"critical\""
+                severity ::= ""low"" | ""medium"" | ""high"" | ""critical""
                 redacted-block ::= "{" ws (redacted-field ("," ws redacted-field)*)? ws "}"
                 redacted-field ::= string ":" ws string
                 string ::= "\\"" [^"]* "\\""

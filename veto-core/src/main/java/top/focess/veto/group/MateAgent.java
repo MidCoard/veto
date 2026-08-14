@@ -61,7 +61,6 @@ public class MateAgent {
     private final @NonNull AtomicBoolean running = new AtomicBoolean(false);
     private final @NonNull ScheduledExecutorService scheduler;
     private ScheduledFuture<?> pollTask;
-    private final long maxCallsPerEpisode;
 
     public MateAgent(
             @NonNull String mateId,
@@ -99,7 +98,6 @@ public class MateAgent {
         this.agent = agent;
         this.blackboard = blackboard;
         this.breakers = breakers;
-        this.maxCallsPerEpisode = maxCallsPerEpisode;
         this.pollIntervalMs = pollIntervalMs;
         this.taskTimeoutMs = taskTimeoutMs;
         this.scheduler =

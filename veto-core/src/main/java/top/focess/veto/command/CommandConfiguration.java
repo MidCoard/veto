@@ -61,13 +61,17 @@ public class CommandConfiguration {
      *   <li>{@code /help} — list available commands
      * </ol>
      *
-     * @param vault the credential vault used by auth-related commands
      * @param users the user registry for signup/login lookups
-     * @param keys the key manager for credential creation and rotation
      * @param promptHandler the prompt handler bean; passed to logout/status commands so they can
      *     clear or inspect the agent session
      * @param patternRepo the pattern repository used by the pattern command
+     * @param authLifecycleManager coordinates login and logout lifecycle changes
+     * @param sessionService manages persistent and active sessions
+     * @param keysteadVault the credential vault used by auth-related commands
+     * @param signupPolicy controls whether new user registration is allowed
+     * @param userAdminService manages administrative user operations
      * @param tierRegistry the model-tier registry used to resolve pattern tiers
+     * @param profileService manages model-tier profiles and bindings
      * @return the fully-configured {@link CommandRegistry} singleton
      */
     @Bean
@@ -94,7 +98,7 @@ public class CommandConfiguration {
         registry.register(new PatternCommand(patternRepo, tierRegistry));
         registry.register(new ModelTierCommand(profileService, tierRegistry));
         registry.register(new CredentialCommand(keysteadVault));
-        registry.register(new SessionCommand(sessionService, promptHandler));
+        registry.register(new SessionCommand(sessionService));
         registry.register(new CompactCommand(promptHandler));
         registry.register(new UserAdminCommand(userAdminService, signupPolicy));
         registry.register(new HelpCommand(registry));

@@ -167,8 +167,7 @@ public class ModelTierCommand extends VetoCommand {
                 (sender, args) -> {
                     VetoCommandSender s = vetoSender(sender);
                     if (s == null) return CommandResult.REFUSE;
-                    String profile = args.get("profile");
-                    String target = profile;
+                    String target = args.get("profile");
                     if (target == null) {
                         target = tierRegistry.activeProfile(s.requireUsername());
                         if (target == null) {

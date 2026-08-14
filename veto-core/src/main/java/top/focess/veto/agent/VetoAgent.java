@@ -23,14 +23,13 @@ public class VetoAgent implements Agent {
     private final @NonNull AgentPersona persona;
     private final @NonNull Set<String> whitelistedTools;
     private final @NonNull AgentRunner runner;
-    private final @NonNull Thread virtualThread;
 
     public VetoAgent(@NonNull AgentPersona persona, @NonNull AgentRunner runner) {
         this.id = persona.id();
         this.persona = persona;
         this.whitelistedTools = runner.whitelistedToolsView();
         this.runner = runner;
-        this.virtualThread = Thread.ofVirtual().name("agent-" + id).start(runner::run);
+        Thread.ofVirtual().name("agent-" + id).start(runner::run);
     }
 
     @Override

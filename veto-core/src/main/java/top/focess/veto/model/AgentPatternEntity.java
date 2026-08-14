@@ -137,7 +137,7 @@ public class AgentPatternEntity {
     }
 
     /** The cached provider (value of the tier binding at create; not live). */
-    public String getProvider() {
+    public @NonNull String getProvider() {
         return provider;
     }
 
@@ -146,7 +146,7 @@ public class AgentPatternEntity {
     }
 
     /** The cached model (value of the tier binding at create; not live). */
-    public String getModel() {
+    public @NonNull String getModel() {
         return model;
     }
 
@@ -155,7 +155,7 @@ public class AgentPatternEntity {
     }
 
     /** The cached credential-key (value of the tier binding at create; not live). */
-    public String getCredentialKey() {
+    public @NonNull String getCredentialKey() {
         return credentialKey;
     }
 
@@ -164,7 +164,7 @@ public class AgentPatternEntity {
     }
 
     /** The cached top model (mirror of {@link #getModel()}; retained for NOT NULL compat). */
-    public String getTopModel() {
+    public @NonNull String getTopModel() {
         return topModel;
     }
 

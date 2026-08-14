@@ -412,11 +412,10 @@ public class TrainingManager {
             return false;
         }
 
-        Path targetDir = modelRoot;
-        Path target = targetDir.resolve(config.getDefaultGgufName());
+        Path target = modelRoot.resolve(config.getDefaultGgufName());
 
         try {
-            Files.createDirectories(targetDir);
+            Files.createDirectories(modelRoot);
             // source has passed lexical and real-path root checks; target is configuration-derived.
             //noinspection tainting
             Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
@@ -542,7 +541,9 @@ public class TrainingManager {
                             "%.1f%%",
                             evalReport.decisionAccuracy().accuracy() * 100.0));
         } catch (Exception e) {
-            log.warn("Failed to parse evaluation report: {}", String.valueOf(e.getMessage()));
+            log.warn(
+                    "Failed to parse evaluation report: {}",
+                    java.util.Objects.toString(e.getMessage()));
         }
     }
 
@@ -742,12 +743,19 @@ public class TrainingManager {
                     }
                 }
                 case "epoch_start" ->
-                        log.info("Epoch {} started", String.valueOf(parsed.get("epoch")));
-                case "epoch_end" -> log.info("Epoch {} ended", String.valueOf(parsed.get("epoch")));
+                        log.info(
+                                "Epoch {} started",
+                                java.util.Objects.toString(parsed.get("epoch")));
+                case "epoch_end" ->
+                        log.info("Epoch {} ended", java.util.Objects.toString(parsed.get("epoch")));
                 case "phase_complete" ->
-                        log.info("Phase {} complete", String.valueOf(parsed.get("phase")));
+                        log.info(
+                                "Phase {} complete",
+                                java.util.Objects.toString(parsed.get("phase")));
                 case "error" ->
-                        log.error("Training error: {}", String.valueOf(parsed.get("message")));
+                        log.error(
+                                "Training error: {}",
+                                java.util.Objects.toString(parsed.get("message")));
                 default -> log.debug("Unknown progress type: {}", type);
             }
         } catch (Exception e) {

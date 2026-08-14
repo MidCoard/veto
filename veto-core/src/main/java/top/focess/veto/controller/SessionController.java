@@ -58,6 +58,8 @@ public class SessionController {
      *     roots explicitly - the request is rejected with 400 when either is missing/blank.
      */
     @PostMapping
+    @SuppressWarnings(
+            "JvmTaintAnalysis") // SessionService validates every root as normalized absolute input.
     public @NonNull SessionEntity create(@RequestBody @NonNull CreateSessionRequest body) {
         String user = vault.currentUser();
         if (user == null) throw new IllegalStateException(Msg.get("error.auth.notLoggedIn"));
@@ -99,7 +101,7 @@ public class SessionController {
      */
     @GetMapping(value = "/{name}/history", produces = MediaType.APPLICATION_JSON_VALUE)
     // Turn payloads intentionally preserve code and model text; Jackson supplies JSON encoding.
-    //noinspection tainting
+    @SuppressWarnings("JvmTaintAnalysis")
     public @NonNull ResponseEntity<?> history(@PathVariable @NonNull String name) {
         String user = vault.currentUser();
         if (user == null) {

@@ -290,7 +290,7 @@ public final class ClientSession {
                 }
                 case IpcFrame.Terminate t -> {
                     String receivedReason = t.reason();
-                    @NonNull String reason =
+                    String reason =
                             receivedReason != null
                                     ? receivedReason
                                     : "Server terminated the session.";

@@ -138,9 +138,8 @@ public final class RunTaskTool implements NativeTool<RunTaskTool.Args> {
     }
 
     @Override
+    @SuppressWarnings("ConstantValue") // Jackson can violate @NonNull when validation is bypassed.
     public @NonNull String execute(@NonNull Args args) {
-        @SuppressWarnings(
-                "ConstantValue") // Jackson can violate @NonNull when validation is bypassed.
         Integer timeout = args.timeout();
         if (timeout == null) {
             return error("run_task requires an explicit 'timeout' (seconds; 0 = no cap).");

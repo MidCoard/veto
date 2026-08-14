@@ -74,7 +74,7 @@ public class UserAdminService {
             log.debug(
                     "UserAdminService: logout during delete of '{}' skipped: {}",
                     username,
-                    String.valueOf(e.getMessage()));
+                    java.util.Objects.toString(e.getMessage()));
         }
         for (SessionEntity s : sessions.findByOwner(username)) {
             agents.deleteBySessionId(s.getId());

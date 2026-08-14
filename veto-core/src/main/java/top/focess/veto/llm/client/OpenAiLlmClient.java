@@ -173,10 +173,6 @@ final class OpenAiLlmClient extends LlmClient {
      */
     private static @NonNull ChatCompletionMessageParam toSdkMessage(@NonNull ChatMessage msg) {
         switch (msg.role()) {
-            case "user" -> {
-                return ChatCompletionMessageParam.ofUser(
-                        ChatCompletionUserMessageParam.builder().content(msg.content()).build());
-            }
             case "assistant" -> {
                 String callId = msg.callId();
                 if (callId != null) {

@@ -7,9 +7,4 @@ import org.jspecify.annotations.NonNull;
  * exits).
  */
 public record StopAction(@NonNull String id, @NonNull String label, String resultBinding)
-        implements Action {
-
-    public StopAction {
-        // resultBinding nullable → scope.synthesize
-    }
-}
+        implements Action {}

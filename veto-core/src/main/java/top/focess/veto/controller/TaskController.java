@@ -104,9 +104,9 @@ public class TaskController {
     /** GET /api/tasks/{id} - Get DAG task status and details. */
     @GetMapping(value = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
     // DAG parameters are intentionally preserved as JSON; Jackson supplies JSON encoding.
-    //noinspection tainting
+    @SuppressWarnings("JvmTaintAnalysis")
     public @NonNull ResponseEntity<Map<String, @NonNull Object>> getTask(
-            @PathVariable("id") @NonNull String id) {
+            @PathVariable @NonNull String id) {
         DAGPayload payload = taskStore.get(id);
         if (payload == null) {
             return ResponseEntity.status(404)
@@ -162,9 +162,9 @@ public class TaskController {
     /** DELETE /api/tasks/{id} - Cancel a task. */
     @DeleteMapping(value = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
     // The validated task identifier is serialized as JSON, never rendered as HTML.
-    //noinspection tainting
+    @SuppressWarnings("JvmTaintAnalysis")
     public @NonNull ResponseEntity<Map<String, @NonNull Object>> cancelTask(
-            @PathVariable("id") @NonNull String id) {
+            @PathVariable @NonNull String id) {
         DAGPayload existing = taskStore.get(id);
         if (existing == null) {
             return ResponseEntity.status(404)

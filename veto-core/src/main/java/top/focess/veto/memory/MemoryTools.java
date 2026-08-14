@@ -458,13 +458,7 @@ public final class MemoryTools {
 
     /** Clamps a score-floor value into [0, 1] (the {@link MemoryQuery} validity range). */
     static float clamp01(float v) {
-        if (v < 0f) {
-            return 0f;
-        }
-        if (v > 1f) {
-            return 1f;
-        }
-        return v;
+        return Math.clamp(v, 0f, 1f);
     }
 
     /** Parses a UUID string, returning null on blank/invalid input (for optional id args). */

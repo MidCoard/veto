@@ -89,7 +89,7 @@ public class PgvectorMemoryStore implements MemoryStore {
             log.error(
                     "PgvectorMemoryStore: provisioning failed (pgvector extension/Postgres required) — "
                             + "searches will error: {}",
-                    String.valueOf(e.getMessage()));
+                    java.util.Objects.toString(e.getMessage()));
         }
     }
 

@@ -118,7 +118,7 @@ public class ToolEngineImpl implements ToolEngine {
             log.warn(
                     "ToolEngine: tools/list discovery failed for {}: {}",
                     transport,
-                    String.valueOf(e.getMessage()));
+                    java.util.Objects.toString(e.getMessage()));
             return java.util.List.of();
         }
     }

@@ -14,7 +14,7 @@ import top.focess.veto.client.core.Theme;
  *
  * <p>JLine's {@link Status} is <b>not thread-safe</b> (no synchronization on its mutable fields:
  * {@code lines}, {@code suspended}, {@code scrollRegion}, {@code display.oldLines}). The consumer
- * thread and the main thread both reach {@link #refresh} and {@link #clear} through {@code
+ * thread and the main thread both reach {@link #refresh()} and {@link #close()} through {@code
  * ClientSession.fire} (which runs outside the session lock), so concurrent calls are possible. All
  * {@link Status#update} calls are serialized on {@link #statusLock} to prevent data races on the
  * underlying JLine object.
@@ -32,7 +32,7 @@ public final class TerminalStatus {
 
     /**
      * Guards all calls to {@link Status#update} — JLine's {@code Status} is not thread-safe, and
-     * both the consumer thread and the main thread can call {@link #refresh}/{@link #clear}
+     * both the consumer thread and the main thread can call {@link #refresh()}/{@link #close()}
      * concurrently via {@code ClientSession.fire}.
      */
     private final @NonNull Object statusLock = new Object();

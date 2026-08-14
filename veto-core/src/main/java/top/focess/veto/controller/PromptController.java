@@ -57,7 +57,7 @@ public class PromptController {
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
     // Responses are Jackson-serialized JSON, never an HTML rendering context.
-    //noinspection tainting
+    @SuppressWarnings("JvmTaintAnalysis")
     public ResponseEntity<?> prompt(
             @PathVariable @NonNull String name, @RequestBody @NonNull PromptRequest body) {
         String user = vault.currentUser();

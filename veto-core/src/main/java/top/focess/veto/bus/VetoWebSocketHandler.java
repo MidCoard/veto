@@ -93,7 +93,7 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
             log.warn(
                     "WS Bus: Failed to parse message from '{}': {}",
                     session.getId(),
-                    String.valueOf(e.getMessage()));
+                    java.util.Objects.toString(e.getMessage()));
             sendJson(
                     session,
                     Map.of(
@@ -271,7 +271,7 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
                 "WS Bus: Client '{}' disconnected (code={}, reason='{}')",
                 session.getId(),
                 status.getCode(),
-                String.valueOf(status.getReason()));
+                java.util.Objects.toString(status.getReason()));
     }
 
     @Override
@@ -280,7 +280,7 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
         log.error(
                 "WS Bus: Transport error for '{}': {}",
                 session.getId(),
-                String.valueOf(exception.getMessage()));
+                java.util.Objects.toString(exception.getMessage()));
         sessions.remove(session);
         sessionRoutes.remove(session.getId());
     }

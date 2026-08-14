@@ -44,8 +44,8 @@ import top.focess.veto.terminal.IpcServer;
  *       in-flight request (the server calls {@code task.cancel(true)}).
  * </ol>
  *
- * <p>Whether the command is prompted is determined by {@link #isPrompted()}, which checks the
- * {@code inputFutures} queue inherited from {@link AbstractCommandSender} for an incomplete future.
+ * <p>Whether the command is prompted is determined by whether the {@code inputFutures} queue
+ * inherited from {@link AbstractCommandSender} contains an incomplete future.
  */
 public final class VetoCommandSender extends AbstractCommandSender {
 

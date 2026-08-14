@@ -14,7 +14,7 @@ import top.focess.veto.model.tier.ModelTier;
  * {@link GroupTickScheduler} thread when a Mate is lazily provisioned - outside any tool-call
  * scope, so the owner cannot be read from the {@link
  * top.focess.veto.agent.mcp.ToolCallContextHolder} thread-local there. It is stamped on the {@link
- * Group} at {@code create_group} time and flows here via {@link GroupSpawner#startMate}.
+ * Group} at {@code create_group} time and flows here through the group spawner.
  *
  * @param tier the model tier this Mate runs on
  * @param systemPromptBase the Mate's system-prompt base (null/blank → persona-derived)

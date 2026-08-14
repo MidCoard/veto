@@ -12,6 +12,8 @@ import org.jspecify.annotations.NonNull;
  * apply output masking to the result before it enters context; the plain {@code ACCEPT_*} variants
  * do not.
  */
+@SuppressWarnings(
+        "DeprecatedIsStillUsed") // Legacy aliases intentionally remain behaviorally active.
 public enum VetoOption {
     // ── Scenario R (read tools: view_file / list_dir / grep_search) ───────────
     /** Read tool: scrub secrets from the result (default-on if user did not explicitly choose). */

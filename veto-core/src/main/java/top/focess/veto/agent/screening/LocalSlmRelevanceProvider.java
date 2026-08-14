@@ -59,21 +59,20 @@ public class LocalSlmRelevanceProvider implements SlmRelevanceProvider {
         } catch (Exception e) {
             log.warn(
                     "LocalSlmRelevanceProvider: inference failed, defaulting HIGH: {}",
-                    String.valueOf(e.getMessage()));
+                    java.util.Objects.toString(e.getMessage()));
             return Relevance.HIGH;
         }
     }
 
     private static @NonNull String buildPrompt(
             @NonNull ToolCall call, @NonNull ToolDefinition def, String thought) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("Given the agent's thought: \"").append(safe(thought)).append("\"\n");
-        sb.append("And the tool call: ").append(call.toolName()).append("(");
-        sb.append(call.args());
-        sb.append(")\n");
-        sb.append(
-                "Is this call plausibly in service of the agent's stated task? Reply with one of: HIGH MEDIUM LOW\n");
-        return sb.toString();
+        return "Given the agent's thought: \""
+                + safe(thought)
+                + "\"\nAnd the tool call: "
+                + call.toolName()
+                + "("
+                + call.args()
+                + ")\nIs this call plausibly in service of the agent's stated task? Reply with one of: HIGH MEDIUM LOW\n";
     }
 
     private static @NonNull String safe(String s) {

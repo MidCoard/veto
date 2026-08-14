@@ -51,7 +51,7 @@ public class SessionTasksController {
     /** GET /api/sessions/{name}/tasks — the session's background tasks, running first. */
     @GetMapping("/{name}/tasks")
     public @NonNull ResponseEntity<Map<String, @NonNull Object>> list(
-            @PathVariable("name") @NonNull String name) {
+            @PathVariable @NonNull String name) {
         String agentId = requireAgentId(name);
         List<BackgroundTaskManager.TaskInfo> tasks = taskManager.list(agentId);
         List<Map<String, Object>> rows = new ArrayList<>(tasks.size());
@@ -78,10 +78,9 @@ public class SessionTasksController {
      */
     @DeleteMapping(value = "/{name}/tasks/{taskId}", produces = MediaType.APPLICATION_JSON_VALUE)
     // Task metadata is intentionally returned as JSON; it is not inserted into an HTML context.
-    //noinspection tainting
+    @SuppressWarnings("JvmTaintAnalysis")
     public @NonNull ResponseEntity<Map<String, @NonNull Object>> stopOrRemove(
-            @PathVariable("name") @NonNull String name,
-            @PathVariable("taskId") @NonNull String taskId) {
+            @PathVariable @NonNull String name, @PathVariable @NonNull String taskId) {
         String agentId = requireAgentId(name);
         boolean alive =
                 taskManager
@@ -111,7 +110,7 @@ public class SessionTasksController {
                                             BackgroundTaskManager.ExitCause.USER_STOP)
                                     .map(info -> Map.entry("stopped", info));
         }
-        return result.<ResponseEntity<Map<String, @NonNull Object>>>map(
+        return result.map(
                         entry ->
                                 ResponseEntity.ok(
                                         Map.of(

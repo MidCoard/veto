@@ -105,11 +105,10 @@ public class HnswIndex {
      */
     private void insertAtLayer(
             @NonNull Node node, float @NonNull [] v, int level, @NonNull UUID entryCurrent) {
-        UUID current = entryCurrent;
-        float[] curVec = vectors.get(current);
+        float[] curVec = vectors.get(entryCurrent);
         float dist = curVec == null ? Float.POSITIVE_INFINITY : distance(v, curVec);
         List<SearchResult> candidates =
-                searchLayer(v, List.of(new SearchResult(current, dist)), level);
+                searchLayer(v, List.of(new SearchResult(entryCurrent, dist)), level);
         List<SearchResult> selected = selectNeighbors(candidates, level == 0 ? M0 : M);
         Set<UUID> myNeighbors = node.neighborsByLevel.computeIfAbsent(level, k -> new HashSet<>());
         for (SearchResult r : selected) {

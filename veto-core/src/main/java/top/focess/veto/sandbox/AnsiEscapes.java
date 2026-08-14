@@ -26,7 +26,7 @@ public final class AnsiEscapes {
      */
     private static final @NonNull Pattern ESCAPE_PATTERN =
             Pattern.compile(
-                    "\\u001B\\][^\\u0007\\u001B]*(?:\\u0007|\\u001B\\\\)"
+                    "\\u001B][^\\u0007\\u001B]*(?:\\u0007|\\u001B\\\\)"
                             + "|\\u001B\\[[0-?]*[ -/]*[@-~]"
                             + "|\\u009B[0-?]*[ -/]*[@-~]"
                             + "|\\u001B[()][0-9A-Za-z]"

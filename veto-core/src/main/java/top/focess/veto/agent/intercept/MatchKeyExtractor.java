@@ -61,12 +61,16 @@ public final class MatchKeyExtractor {
                 if (res.inScope() && res.hostPath() != null) {
                     return res.hostPath();
                 }
-                return Path.of(s).toAbsolutePath().normalize();
+                return normalizedAbsolute(s);
             } catch (RuntimeException e) {
-                return Path.of(s).toAbsolutePath().normalize();
+                return normalizedAbsolute(s);
             }
         }
         return null;
+    }
+
+    private static @NonNull Path normalizedAbsolute(@NonNull String path) {
+        return Path.of(path).toAbsolutePath().normalize();
     }
 
     /**

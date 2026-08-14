@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.translation.CapabilityTranslator;
 import top.focess.veto.llm.config.LlmJacksonConfig;
+import top.focess.veto.util.Nullness;
 
 /**
  * Generic, type-safe cache for LLM SDK clients. SDK clients (the expensive part with OkHttp pools)
@@ -29,7 +30,7 @@ public class LlmClientFactory {
             new ConcurrentHashMap<>();
 
     @FunctionalInterface
-    public interface ClientBuilder<T extends @NonNull Object> {
+    public interface ClientBuilder<T> {
         @NonNull T build(String baseUrl, @NonNull String apiKey);
     }
 
@@ -59,8 +60,7 @@ public class LlmClientFactory {
      * @param clientType the class of the client
      * @param builder a function that accepts {@code (baseUrl, apiKey)} and returns a new client
      */
-    public <T extends @NonNull Object> void register(
-            @NonNull Class<T> clientType, @NonNull ClientBuilder<T> builder) {
+    public <T> void register(@NonNull Class<T> clientType, @NonNull ClientBuilder<T> builder) {
         builders.compute(
                 clientType,
                 (k, existing) -> {
@@ -85,7 +85,7 @@ public class LlmClientFactory {
      * @return the client instance
      */
     @SuppressWarnings("unchecked")
-    public <T extends @NonNull Object> @NonNull T get(
+    public <T> @NonNull T get(
             @NonNull Class<T> clientType, String baseUrl, @NonNull String apiKey) {
         ConcurrentHashMap<String, Object> cache = caches.get(clientType);
         if (cache == null) {
@@ -98,7 +98,8 @@ public class LlmClientFactory {
                     "No builder registered for client type: " + clientType.getName());
         }
         String key = cacheKey(baseUrl, apiKey);
-        return (T) cache.computeIfAbsent(key, k -> builder.build(baseUrl, apiKey));
+        T client = (T) cache.computeIfAbsent(key, k -> builder.build(baseUrl, apiKey));
+        return Nullness.requireNonNull(client, "Client cache returned null");
     }
 
     // ── Convenience methods (return our own LlmClient, not SDK types) ────────
@@ -156,7 +157,6 @@ public class LlmClientFactory {
     }
 
     private static @NonNull String cacheKey(String baseUrl, @NonNull String apiKey) {
-        String base = baseUrl;
-        return base + "|" + Integer.toHexString(apiKey.hashCode());
+        return baseUrl + "|" + Integer.toHexString(apiKey.hashCode());
     }
 }

@@ -147,8 +147,8 @@ public class DAGPayload {
     public static class Builder {
         private String id;
         private String taskType;
-        private @NonNull Map<String, Object> parameters = new HashMap<>();
-        private @NonNull Set<String> dependencies = new HashSet<>();
+        private final @NonNull Map<String, Object> parameters = new HashMap<>();
+        private final @NonNull Set<String> dependencies = new HashSet<>();
         private String sourceComponent;
         private String targetComponent;
 

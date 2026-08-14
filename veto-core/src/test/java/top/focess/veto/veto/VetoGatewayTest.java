@@ -15,7 +15,6 @@ import top.focess.veto.observability.AuditLogger;
 class VetoGatewayTest {
 
     @Mock private @NonNull LlamaCppBridge llamaCppBridge;
-    @Mock private @NonNull GBNFGrammarEngine grammarEngine;
     @Mock private @NonNull AuditLogger auditLogger;
 
     private @NonNull VetoGatewayConfiguration config;
@@ -31,9 +30,7 @@ class VetoGatewayTest {
         config.setEnforceStructuralConstraints(true);
 
         semanticRedactor = new SemanticRedactor();
-        vetoGateway =
-                new VetoGateway(
-                        config, llamaCppBridge, semanticRedactor, grammarEngine, auditLogger);
+        vetoGateway = new VetoGateway(config, llamaCppBridge, semanticRedactor, auditLogger);
     }
 
     @Test
@@ -78,12 +75,7 @@ class VetoGatewayTest {
         disabledConfig.setEnabled(false);
 
         VetoGateway disabledGateway =
-                new VetoGateway(
-                        disabledConfig,
-                        llamaCppBridge,
-                        semanticRedactor,
-                        grammarEngine,
-                        auditLogger);
+                new VetoGateway(disabledConfig, llamaCppBridge, semanticRedactor, auditLogger);
 
         String sensitivePayload = "Secret: my-api-key-12345";
         VetoGateway.VetoResult result =

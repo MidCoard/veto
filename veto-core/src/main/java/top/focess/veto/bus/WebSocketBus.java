@@ -157,7 +157,7 @@ public class WebSocketBus extends TextWebSocketHandler {
         log.warn(
                 "Bus: Connection closed (code={}, reason={})",
                 status.getCode(),
-                String.valueOf(status.getReason()));
+                java.util.Objects.toString(status.getReason()));
         this.session = null;
         heartbeatManager.stop();
         String backendUrl = reconnectionHandler.getLastBackendUrl();

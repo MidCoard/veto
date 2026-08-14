@@ -22,17 +22,14 @@ public class AuditLogger {
 
     private final @NonNull ObservabilityConfiguration config;
     private final @NonNull TamperProofStore tamperProofStore;
-    private final @NonNull DiffCalculator diffCalculator;
 
     private final @NonNull AtomicLong totalRecordsWritten = new AtomicLong(0);
 
     public AuditLogger(
             @NonNull ObservabilityConfiguration config,
-            @NonNull TamperProofStore tamperProofStore,
-            @NonNull DiffCalculator diffCalculator) {
+            @NonNull TamperProofStore tamperProofStore) {
         this.config = config;
         this.tamperProofStore = tamperProofStore;
-        this.diffCalculator = diffCalculator;
     }
 
     @PostConstruct

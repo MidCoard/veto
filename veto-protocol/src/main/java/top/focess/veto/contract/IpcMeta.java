@@ -4,10 +4,10 @@ import java.util.Map;
 import org.jspecify.annotations.NonNull;
 
 /**
- * Standard metadata keys used in {@link IpcFrame.Done#meta}.
+ * Standard metadata keys used in {@link IpcFrame.Done#meta()}.
  *
  * <p>Use these constants instead of raw strings to prevent typos and make metadata usage
- * discoverable across the codebase. The typed {@code...Value} accessors perform the safe casts so
+ * discoverable across the codebase. The typed {@code ...Value} accessors perform the safe casts so
  * callers never hand-cast the loosely-typed map (which risked {@link ClassCastException} when a
  * peer sent an unexpected value type).
  */

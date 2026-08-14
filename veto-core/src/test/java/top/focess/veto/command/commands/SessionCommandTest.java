@@ -10,7 +10,6 @@ import top.focess.command.CommandManager;
 import top.focess.command.CommandPermission;
 import top.focess.command.CommandResult;
 import top.focess.command.ExecutionResult;
-import top.focess.veto.command.PromptHandler;
 import top.focess.veto.command.VetoCommandSender;
 import top.focess.veto.llm.core.ProviderType;
 import top.focess.veto.model.SessionEntity;
@@ -33,8 +32,6 @@ class SessionCommandTest {
     void createAutoActivatesWhenIdle() {
         SessionService service =
                 mock(top.focess.veto.agent.mcp.ToolDocs.nonNullClass(SessionService.class));
-        PromptHandler handler =
-                mock(top.focess.veto.agent.mcp.ToolDocs.nonNullClass(PromptHandler.class));
         SessionEntity session = new SessionEntity("alice", "coder");
         when(service.createSession("alice", "coder", null, CWD)).thenReturn(session);
         when(service.activeSession("term-1")).thenReturn(Optional.empty());
@@ -55,7 +52,7 @@ class SessionCommandTest {
         when(sender.cwd()).thenReturn(CWD);
 
         CommandManager manager = new CommandManager();
-        manager.register(new SessionCommand(service, handler));
+        manager.register(new SessionCommand(service));
 
         ExecutionResult result = manager.dispatch(sender, "session create coder");
 
@@ -68,8 +65,6 @@ class SessionCommandTest {
     void createDoesNotAutoActivateWhenBusy() {
         SessionService service =
                 mock(top.focess.veto.agent.mcp.ToolDocs.nonNullClass(SessionService.class));
-        PromptHandler handler =
-                mock(top.focess.veto.agent.mcp.ToolDocs.nonNullClass(PromptHandler.class));
         SessionEntity session = new SessionEntity("alice", "coder");
         when(service.createSession("alice", "coder", null, CWD)).thenReturn(session);
         // A session is already active on this terminal -> do not auto-activate.
@@ -89,7 +84,7 @@ class SessionCommandTest {
         when(sender.cwd()).thenReturn(CWD);
 
         CommandManager manager = new CommandManager();
-        manager.register(new SessionCommand(service, handler));
+        manager.register(new SessionCommand(service));
 
         ExecutionResult result = manager.dispatch(sender, "session create coder");
 
@@ -102,8 +97,6 @@ class SessionCommandTest {
     void createRefusesUnknownPattern() {
         SessionService service =
                 mock(top.focess.veto.agent.mcp.ToolDocs.nonNullClass(SessionService.class));
-        PromptHandler handler =
-                mock(top.focess.veto.agent.mcp.ToolDocs.nonNullClass(PromptHandler.class));
         when(service.createSession("alice", "nope", null, CWD))
                 .thenThrow(new IllegalArgumentException("Pattern not found: nope"));
 
@@ -121,7 +114,7 @@ class SessionCommandTest {
         when(sender.cwd()).thenReturn(CWD);
 
         CommandManager manager = new CommandManager();
-        manager.register(new SessionCommand(service, handler));
+        manager.register(new SessionCommand(service));
 
         ExecutionResult result = manager.dispatch(sender, "session create nope");
         assertEquals(CommandResult.REFUSE, result.result());
@@ -132,8 +125,6 @@ class SessionCommandTest {
     void createWithCustomNamePersistsAndActivates() {
         SessionService service =
                 mock(top.focess.veto.agent.mcp.ToolDocs.nonNullClass(SessionService.class));
-        PromptHandler handler =
-                mock(top.focess.veto.agent.mcp.ToolDocs.nonNullClass(PromptHandler.class));
         SessionEntity session = new SessionEntity("alice", "mysession");
         when(service.createSession("alice", "coder", "mysession", CWD)).thenReturn(session);
         when(service.activeSession("term-1")).thenReturn(Optional.empty());
@@ -154,7 +145,7 @@ class SessionCommandTest {
         when(sender.cwd()).thenReturn(CWD);
 
         CommandManager manager = new CommandManager();
-        manager.register(new SessionCommand(service, handler));
+        manager.register(new SessionCommand(service));
 
         ExecutionResult result = manager.dispatch(sender, "session create coder mysession");
 

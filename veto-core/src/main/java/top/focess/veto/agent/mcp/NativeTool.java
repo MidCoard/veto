@@ -3,6 +3,7 @@ package top.focess.veto.agent.mcp;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.util.Nullness;
 
 /**
  * Contract for a native in-process tool. The implementing class (a Java record carrying the tool's
@@ -18,7 +19,7 @@ import org.jspecify.annotations.NonNull;
  *
  * @param <T> the Java record representing the tool's structured parameters
  */
-public interface NativeTool<T extends @NonNull Object> {
+public interface NativeTool<T> {
 
     /** The unique name of the tool (e.g. {@code "view_file"}). */
     @NonNull String getName();
@@ -41,6 +42,6 @@ public interface NativeTool<T extends @NonNull Object> {
     default @NonNull String executeFromJson(
             @NonNull JsonNode jsonArgs, @NonNull ObjectMapper mapper) throws Exception {
         T typedArgs = mapper.treeToValue(jsonArgs, getArgsClass());
-        return execute(typedArgs);
+        return execute(Nullness.requireNonNull(typedArgs, "Tool arguments deserialized to null"));
     }
 }

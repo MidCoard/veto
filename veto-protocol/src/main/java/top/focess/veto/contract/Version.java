@@ -66,7 +66,7 @@ public record Version(int major, int minor, int patch, String preRelease, String
         }
         int major = parseCore(parts[0], raw);
         int minor = parts.length >= 2 ? parseCore(parts[1], raw) : 0;
-        int patch = parts.length >= 3 ? parseCore(parts[2], raw) : 0;
+        int patch = parts.length == 3 ? parseCore(parts[2], raw) : 0;
         return new Version(major, minor, patch, preRelease, build);
     }
 

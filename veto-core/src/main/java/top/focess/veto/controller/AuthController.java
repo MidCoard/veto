@@ -240,7 +240,7 @@ public class AuthController {
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
     // User-controlled fields below are validated and serialized as application/json by Jackson.
-    //noinspection tainting
+    @SuppressWarnings("JvmTaintAnalysis")
     public @NonNull ResponseEntity<Map<String, Object>> addUser(
             @RequestHeader(TOKEN_HEADER) @NonNull String token,
             @RequestBody @NonNull Map<String, String> request) {

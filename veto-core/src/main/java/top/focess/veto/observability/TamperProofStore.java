@@ -35,16 +35,13 @@ public class TamperProofStore {
 
     private final @NonNull ObservabilityConfiguration config;
     private final @NonNull Path auditDir;
-    private final @NonNull DiffCalculator diffCalculator;
 
     // In-memory hash chain tail (last record's hash for integrity)
     private volatile @NonNull String chainTailHash = "";
 
-    public TamperProofStore(
-            @NonNull ObservabilityConfiguration config, @NonNull DiffCalculator diffCalculator) {
+    public TamperProofStore(@NonNull ObservabilityConfiguration config) {
         this.config = config;
         this.auditDir = Path.of(config.getAuditLogPath());
-        this.diffCalculator = diffCalculator;
     }
 
     /** Initialize the tamper-proof store. Creates directories and loads chain tail. */

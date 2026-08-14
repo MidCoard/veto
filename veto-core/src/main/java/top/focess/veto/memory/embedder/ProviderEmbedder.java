@@ -21,11 +21,10 @@ import top.focess.veto.llm.credential.CredentialResolver;
  * veto.memory.embedder.provider} is configured; otherwise {@link HashEmbedder} is used.
  *
  * <p>Uses JDK {@code HttpClient} (no extra dependency) and the provider's stable REST surface,
- * mirroring {@link top.focess.veto.llm.client.DeepSeekLlmClient}'s approach. The API key is
- * resolved at call time from the {@link top.focess.veto.vault.KeysteadVault} via {@link
- * CredentialResolver}, so it never lives in config or the instance. Failures throw {@link
- * IllegalStateException} (best-effort memory is non-fatal to the agent loop - callers swallow and
- * continue, same as capture today).
+ * mirroring the DeepSeek client approach. The API key is resolved at call time from the {@link
+ * top.focess.veto.vault.KeysteadVault} via {@link CredentialResolver}, so it never lives in config
+ * or the instance. Failures throw {@link IllegalStateException} (best-effort memory is non-fatal to
+ * the agent loop - callers swallow and continue, same as capture today).
  *
  * <p>Phase 1 supports {@code openai} (any OpenAI-compatible {@code /v1/embeddings} endpoint, incl.
  * OpenRouter/local) and {@code gemini}. A local ONNX embedder is the fast-follow.

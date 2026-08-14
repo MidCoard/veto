@@ -28,7 +28,7 @@ import org.springframework.stereotype.Component;
  *       the Blackboard.
  *   <li>When a Mate posts {@code ACCEPT}, mark the node {@code VERIFIED}.
  *   <li>When a Mate posts {@code FEEDBACK}, mark the node {@code FAILED} (Leader re-plans via
- *       {@link #replanFailed(String, String)}).
+ *       {@link #replanFailed(UUID, String)}).
  *   <li>When a Mate posts a terminal {@code STATUS} (breaker trip), the node goes back to {@code
  *       PENDING} for re-assignment.
  *   <li>When the DAG has no more dispatchable nodes, mark the group {@code COMPLETE} and synthesize

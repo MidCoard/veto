@@ -28,7 +28,6 @@ public class VetoGateway {
     private final @NonNull VetoGatewayConfiguration config;
     private final @NonNull LlamaCppBridge llamaCppBridge;
     private final @NonNull SemanticRedactor semanticRedactor;
-    private final @NonNull GBNFGrammarEngine grammarEngine;
     private final @NonNull AuditLogger auditLogger;
 
     private final @NonNull AtomicLong totalVetoes = new AtomicLong(0);
@@ -39,12 +38,10 @@ public class VetoGateway {
             @NonNull VetoGatewayConfiguration config,
             @NonNull LlamaCppBridge llamaCppBridge,
             @NonNull SemanticRedactor semanticRedactor,
-            @NonNull GBNFGrammarEngine grammarEngine,
             @NonNull AuditLogger auditLogger) {
         this.config = config;
         this.llamaCppBridge = llamaCppBridge;
         this.semanticRedactor = semanticRedactor;
-        this.grammarEngine = grammarEngine;
         this.auditLogger = auditLogger;
     }
 

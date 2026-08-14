@@ -21,9 +21,9 @@ import top.focess.veto.agent.mcp.ToolDocs;
  * metadata (including tool dependencies), and instantiates the {@link Skill} model. Transcribed
  * from.
  *
- * <p>The {@link Skill#contentHash} (SHA-256 of the markdown body) is computed at load and verified
- * on every {@code load_skill} call. NATIVE hashes are pre-seeded at install time; PERSONAL/PROJECT
- * use trust-on-first-use.
+ * <p>The skill's {@code contentHash} (SHA-256 of the markdown body) is computed at load and
+ * verified on every {@code load_skill} call. NATIVE hashes are pre-seeded at install time;
+ * PERSONAL/PROJECT use trust-on-first-use.
  */
 public class MarkdownSkillLoader {
 

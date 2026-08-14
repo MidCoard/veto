@@ -71,7 +71,7 @@ public class HitlRegistry {
 
     /**
      * The fallback workspace for agents without a registered entry (e.g. a legacy call path that
-     * did not flow through {@link AgentService#createAgent}). Set by {@link AgentService} from the
+     * did not flow through {@code AgentService.createAgent}. Set by {@link AgentService} from the
      * process-wide {@code veto.workspace.path-mode} + the JVM working dir.
      */
     private volatile Workspace defaultWorkspace;
@@ -574,16 +574,20 @@ public class HitlRegistry {
                         res.inScope()
                                 ? top.focess.veto.util.Nullness.requireNonNull(
                                         res.hostPath(), "in-scope resolution has no host path")
-                                : Path.of(s).toAbsolutePath().normalize();
+                                : normalizedAbsolute(s);
                 Path parent = host.getParent();
                 return parent == null ? host : parent;
             } catch (RuntimeException e) {
-                Path host = Path.of(s).toAbsolutePath().normalize();
+                Path host = normalizedAbsolute(s);
                 Path parent = host.getParent();
                 return parent == null ? host : parent;
             }
         }
         return null;
+    }
+
+    private static @NonNull Path normalizedAbsolute(@NonNull String path) {
+        return Path.of(path).toAbsolutePath().normalize();
     }
 
     private static @NonNull Map<@NonNull String, @NonNull ParamCategory> paramHints(

@@ -50,12 +50,10 @@ public class KernelSandboxSubstrate {
             OS.contains("nix") || OS.contains("nux") || OS.contains("linux");
 
     private final WindowsKernel32 windowsKernel;
-    private final LinuxLibc linuxLibc;
     private final Kernel32 windowsStdKernel;
 
     public KernelSandboxSubstrate() {
         WindowsKernel32 w = null;
-        LinuxLibc l = null;
         Kernel32 wk = null;
         try {
             if (IS_WINDOWS) {
@@ -63,7 +61,7 @@ public class KernelSandboxSubstrate {
                 wk = Native.load("kernel32", ToolDocs.nonNullClass(Kernel32.class));
                 log.info("KernelSandboxSubstrate: Windows kernel32 loaded");
             } else if (IS_LINUX) {
-                l = Native.load("c", ToolDocs.nonNullClass(LinuxLibc.class));
+                Native.load("c", ToolDocs.nonNullClass(LinuxLibc.class));
                 log.info("KernelSandboxSubstrate: Linux libc loaded");
             } else {
                 log.warn(
@@ -71,11 +69,12 @@ public class KernelSandboxSubstrate {
                         OS);
             }
         } catch (Throwable t) {
-            log.warn("KernelSandboxSubstrate: JNA load failed: {}", String.valueOf(t.getMessage()));
+            log.warn(
+                    "KernelSandboxSubstrate: JNA load failed: {}",
+                    java.util.Objects.toString(t.getMessage()));
         }
         this.windowsKernel = w;
         this.windowsStdKernel = wk;
-        this.linuxLibc = l;
     }
 
     /** Whether this substrate can actually attach a kernel wall on the current platform. */
@@ -291,7 +290,7 @@ public class KernelSandboxSubstrate {
         } catch (java.io.IOException e) {
             log.debug(
                     "KernelSandboxSubstrate: cgroup.procs write failed: {}",
-                    String.valueOf(e.getMessage()));
+                    java.util.Objects.toString(e.getMessage()));
             return;
         }
         // 3. Apply default limits (memory.max = 512 MiB, cpu.max = 50% of one CPU).
@@ -302,7 +301,7 @@ public class KernelSandboxSubstrate {
         } catch (java.io.IOException e) {
             log.debug(
                     "KernelSandboxSubstrate: cgroup limit write failed: {}",
-                    String.valueOf(e.getMessage()));
+                    java.util.Objects.toString(e.getMessage()));
         }
         log.info(
                 "KernelSandboxSubstrate: attached Linux cgroup wall to pid {} at {}",
@@ -419,7 +418,7 @@ public class KernelSandboxSubstrate {
         } catch (Throwable t) {
             log.warn(
                     "KernelSandboxSubstrate: Windows attach failed: {}",
-                    String.valueOf(t.getMessage()));
+                    java.util.Objects.toString(t.getMessage()));
             return null;
         }
     }
@@ -443,7 +442,7 @@ public class KernelSandboxSubstrate {
                 } catch (Throwable t) {
                     log.warn(
                             "KernelSandboxSubstrate: CloseHandle failed: {}",
-                            String.valueOf(t.getMessage()));
+                            java.util.Objects.toString(t.getMessage()));
                 }
             }
         }
@@ -465,7 +464,7 @@ public class KernelSandboxSubstrate {
         } catch (Throwable t) {
             log.debug(
                     "KernelSandboxSubstrate: process.pid() failed: {}",
-                    String.valueOf(t.getMessage()));
+                    java.util.Objects.toString(t.getMessage()));
         }
         return -1;
     }

@@ -38,7 +38,6 @@ public class LlamaCppBridge {
     private final @NonNull GBNFGrammarEngine grammarEngine;
 
     private Process llamaProcess;
-    private Path grammarTempFile;
     private volatile int serverPort = -1;
     private final @NonNull HttpClient httpClient =
             HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
@@ -83,7 +82,6 @@ public class LlamaCppBridge {
             // Build the llama.cpp command with grammar-constrained decoding
             String gbnfGrammar = grammarEngine.loadVetoOutputGrammar();
             Path grammarFile = Files.createTempFile("veto-grammar-", ".gbnf");
-            this.grammarTempFile = grammarFile;
             grammarFile.toFile().deleteOnExit();
             Files.writeString(grammarFile, gbnfGrammar);
 

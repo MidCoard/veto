@@ -71,9 +71,7 @@ public class DangerComputation {
     private @NonNull Danger baseFromRisk(@NonNull RiskCategory risk) {
         return switch (risk) {
             case READ_ONLY -> Danger.SAFE;
-            case FILE_WRITE -> Danger.ELEVATED;
-            case SHELL_EXEC -> Danger.ELEVATED;
-            case NETWORK -> Danger.ELEVATED;
+            case FILE_WRITE, SHELL_EXEC, NETWORK -> Danger.ELEVATED;
             case AGENT -> Danger.SAFE; // not screened (early-routed)
         };
     }

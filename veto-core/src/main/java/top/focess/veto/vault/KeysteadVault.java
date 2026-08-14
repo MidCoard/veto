@@ -162,7 +162,7 @@ public class KeysteadVault {
             log.warn(
                     "KeysteadVault: could not fully delete vault store for '{}': {}",
                     username,
-                    String.valueOf(e.getMessage()));
+                    java.util.Objects.toString(e.getMessage()));
         }
     }
 

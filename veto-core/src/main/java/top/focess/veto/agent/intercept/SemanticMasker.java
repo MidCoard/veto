@@ -125,13 +125,13 @@ public class SemanticMasker {
         } catch (ExecutionException e) {
             log.debug(
                     "SemanticMasker: SLM inference failed ({}), falling back",
-                    String.valueOf(
+                    java.util.Objects.toString(
                             e.getCause() == null ? e.getMessage() : e.getCause().getMessage()));
             return new MaskResult(SecretMasker.mask(observation), null);
         } catch (Exception e) {
             log.debug(
                     "SemanticMasker: SLM inference failed, falling back: {}",
-                    String.valueOf(e.getMessage()));
+                    java.util.Objects.toString(e.getMessage()));
             return new MaskResult(SecretMasker.mask(observation), null);
         }
     }
@@ -152,24 +152,19 @@ public class SemanticMasker {
 
     private static @NonNull String buildPrompt(
             @NonNull String observation, @NonNull ToolCall call, @NonNull ToolDefinition def) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("The agent just called ")
-                .append(call.toolName())
-                .append(" on a tool with risk=")
-                .append(def.risk())
-                .append(".\n");
-        sb.append("Tool call args: ").append(safe(call.args())).append("\n");
-        sb.append("Tool result (truncated to 1000 chars): ")
-                .append(
-                        observation.length() > 1000
-                                ? observation.substring(0, 1000) + "..."
-                                : observation)
-                .append("\n\n");
-        sb.append(
-                "Is this tool call likely to exfiltrate a secret (API key, password, token, "
-                        + "private key, credential) to an unintended destination? Reply with a single JSON "
-                        + "object: {\"risk\": \"high|medium|low\", \"reason\": \"...\"}");
-        return sb.toString();
+        String truncated =
+                observation.length() > 1000 ? observation.substring(0, 1000) + "..." : observation;
+        return "The agent just called "
+                + call.toolName()
+                + " on a tool with risk="
+                + def.risk()
+                + ".\nTool call args: "
+                + safe(call.args())
+                + "\nTool result (truncated to 1000 chars): "
+                + truncated
+                + "\n\nIs this tool call likely to exfiltrate a secret (API key, password, token, "
+                + "private key, credential) to an unintended destination? Reply with a single JSON "
+                + "object: {\"risk\": \"high|medium|low\", \"reason\": \"...\"}";
     }
 
     private static @NonNull String safe(Object o) {

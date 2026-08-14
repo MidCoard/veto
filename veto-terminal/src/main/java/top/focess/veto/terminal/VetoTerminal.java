@@ -128,7 +128,7 @@ public class VetoTerminal {
      */
     // start(LineReader) is the lifecycle initializer: all remaining fields are assigned before any
     // private REPL or ClientView path is reachable. Checker cannot model this two-phase API.
-    @SuppressWarnings("initialization.fields.uninitialized")
+    @SuppressWarnings({"initialization.fields.uninitialized", "NotNullFieldNotInitialized"})
     public VetoTerminal(@NonNull Terminal t, @NonNull IpcClient client) {
         this.t = t;
         this.client = client;
@@ -679,7 +679,7 @@ public class VetoTerminal {
      *
      * @param args command line arguments, supports --debug or -d to enable log file output
      */
-    public static void main(@NonNull String @NonNull [] args) {
+    static void main(@NonNull String @NonNull [] args) {
         System.setProperty("file.encoding", "UTF-8");
 
         ClientOptions options = ClientOptions.parse(args);

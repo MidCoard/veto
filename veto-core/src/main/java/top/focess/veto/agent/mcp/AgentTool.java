@@ -3,6 +3,7 @@ package top.focess.veto.agent.mcp;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.util.Nullness;
 
 /**
  * Contract for an agent-internal control/meta tool. The implementing class (a Java record carrying
@@ -18,7 +19,7 @@ import org.jspecify.annotations.NonNull;
  *
  * @param <T> the Java record representing the tool's structured parameters
  */
-public interface AgentTool<T extends @NonNull Object> {
+public interface AgentTool<T> {
 
     /** The unique name of the tool (e.g. {@code "think"}). */
     @NonNull String getName();
@@ -41,6 +42,6 @@ public interface AgentTool<T extends @NonNull Object> {
     default @NonNull String executeFromJson(
             @NonNull JsonNode jsonArgs, @NonNull ObjectMapper mapper) throws Exception {
         T typedArgs = mapper.treeToValue(jsonArgs, getArgsClass());
-        return execute(typedArgs);
+        return execute(Nullness.requireNonNull(typedArgs, "Tool arguments deserialized to null"));
     }
 }

@@ -7,7 +7,6 @@ import top.focess.command.Command;
 import top.focess.command.CommandCompletion;
 import top.focess.command.CommandResult;
 import top.focess.command.CommandSender;
-import top.focess.veto.command.PromptHandler;
 import top.focess.veto.command.VetoCommand;
 import top.focess.veto.command.VetoCommandSender;
 import top.focess.veto.model.SessionEntity;
@@ -18,12 +17,10 @@ import top.focess.veto.session.SessionService;
 public class SessionCommand extends VetoCommand {
 
     private final @NonNull SessionService service;
-    private final @NonNull PromptHandler promptHandler;
 
-    public SessionCommand(@NonNull SessionService service, @NonNull PromptHandler promptHandler) {
+    public SessionCommand(@NonNull SessionService service) {
         super("session", "Manage sessions", "ses");
         this.service = service;
-        this.promptHandler = promptHandler;
     }
 
     @Override

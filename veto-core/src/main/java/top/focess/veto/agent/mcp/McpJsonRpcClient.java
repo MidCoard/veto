@@ -253,13 +253,13 @@ public final class McpJsonRpcClient {
             StringBuilder data = new StringBuilder();
             for (String line : response.body().split("\n")) {
                 if (line.startsWith("data:")) {
-                    if (data.length() > 0) {
+                    if (!data.isEmpty()) {
                         data.append("\n");
                     }
                     data.append(line.substring("data:".length()).strip());
                 }
             }
-            if (data.length() == 0) {
+            if (data.isEmpty()) {
                 throw new IOException("SSE MCP server returned no data");
             }
             return parseResponse(data.toString());
@@ -273,7 +273,7 @@ public final class McpJsonRpcClient {
         JsonNode node = mapper.readTree(line);
         JsonNode error = node.get("error");
         if (error != null) {
-            throw new IOException("MCP server error: " + error.toString());
+            throw new IOException("MCP server error: " + error);
         }
         JsonNode result = node.get("result");
         if (result == null) {

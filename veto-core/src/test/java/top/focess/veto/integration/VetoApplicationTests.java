@@ -143,7 +143,6 @@ class VetoApplicationTests {
                         disabledConfig,
                         context.getBean(ToolDocs.nonNullClass(LlamaCppBridge.class)),
                         semanticRedactor,
-                        grammarEngine,
                         context.getBean(ToolDocs.nonNullClass(AuditLogger.class)));
 
         String sensitive = "Secret: my-api-key";

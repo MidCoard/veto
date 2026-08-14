@@ -5,7 +5,7 @@ import java.util.Map;
 import org.jspecify.annotations.NonNull;
 
 /**
- * A single tool call from the LLM. Each element of {@link VetoResponse#calls} is a {@code
+ * A single tool call from the LLM. Each element of {@link VetoResponse#calls()} is a {@code
  * ToolCall}.
  *
  * <p>The model emits {@code tool_name} + {@code args} (the {@code calls[]} item schema has no

@@ -117,7 +117,7 @@ public abstract class AbstractLlmProvider implements LLMProviderStrategy {
                     calls == null ? 0 : calls.size(),
                     message != null ? message.length() : 0,
                     thought != null ? thought.length() : 0,
-                    String.valueOf(features != null ? features.guided() : null));
+                    java.util.Objects.toString(features != null ? features.guided() : null));
             return response;
         } catch (LlmException e) {
             // WARN, not DEBUG: a failed provider call is the actionable line when an episode
@@ -127,7 +127,7 @@ public abstract class AbstractLlmProvider implements LLMProviderStrategy {
                     requestId,
                     request.modelName(),
                     e.getClass().getSimpleName(),
-                    String.valueOf(e.getMessage()));
+                    java.util.Objects.toString(e.getMessage()));
             throw e;
         } catch (Exception e) {
             log.warn(
@@ -135,7 +135,7 @@ public abstract class AbstractLlmProvider implements LLMProviderStrategy {
                     requestId,
                     request.modelName(),
                     e.getClass().getSimpleName(),
-                    String.valueOf(e.getMessage()));
+                    java.util.Objects.toString(e.getMessage()));
             throw classify(e, request.modelName());
         }
     }

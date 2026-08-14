@@ -14,14 +14,9 @@ import top.focess.veto.llm.core.ProviderType;
  *
  * <p>Unique on (profileId, tier) - one binding per tier per profile.
  *
- * @param profileId the owning profile (FK to {@link ModelTierProfileEntity#getId()})
- * @param tier the model tier this binding configures
- * @param provider the LLM provider (nullable until {@code /modeltier set ... provider ...})
- * @param baseUrl the base-URL override (null -> provider default)
- * @param model the model id (nullable until set)
- * @param credentialKey vault SECURE_NOTE title holding the API key (nullable until set)
- * @param temperature the sampling temperature (nullable -> registry default)
- * @param maxOutputTokens the max output tokens (nullable -> registry default)
+ * <p>The binding stores the owning {@code profileId}, {@code tier}, provider, optional base URL,
+ * model, credential key, temperature, and maximum output token count. Configuration fields remain
+ * nullable until the profile is complete.
  */
 @Entity
 @Table(

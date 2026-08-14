@@ -445,7 +445,7 @@ public sealed interface IpcFrame
      * <p>The {@code type} id is bound via the {@code visible} {@link JsonTypeInfo} option. The
      * unrecognized body is intentionally <b>not</b> captured: nothing inspects it (handlers only
      * log the discriminator), and capturing it would force this to be a mutable class with {@link
-     * JsonAnySetter} rather than a plain record. Extra keys are silently ignored (the codec sets
+     * {@code JsonAnySetter} rather than a plain record. Extra keys are silently ignored (the codec sets
      * {@code FAIL_ON_UNKNOWN_PROPERTIES=false}).
      *
      * @param type the raw {@code type} discriminator from the unrecognized frame, or {@code null}

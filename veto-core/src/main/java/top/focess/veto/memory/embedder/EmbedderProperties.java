@@ -14,7 +14,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *       provider: openai            # or gemini; absent -> HashEmbedder
  *       model: text-embedding-3-small
  *       dimension: 1536             # must match the model; sizes the pgvector column
- *       base-url: https://api.openai.com   # optional; defaults per provider
+ *       base-url: {@code https://api.openai.com}   # optional; defaults per provider
  *       credential-key: openai-embeddings  # vault SECURE_NOTE title holding the API key
  * </pre>
  */

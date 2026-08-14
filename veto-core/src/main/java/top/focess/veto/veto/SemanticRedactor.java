@@ -88,7 +88,7 @@ public class SemanticRedactor {
                         "(?i)\\b(?:norm|peak|magnitude|amplitude|frequency|phase)_(?:max|min|avg|offset|val|value)\\s*[:=]\\s*[-+]?\\d+(?:\\.\\d+)?(?:e[+-]?\\d+)?\\b"));
         proprietaryParameterPatterns.add(
                 Pattern.compile(
-                        "(?i)\\b(?:array|grid|topology|mesh)_\\w+_(?:config|params|data|setup)\\s*[:=]\\s*\\{.*?\\}",
+                        "(?i)\\b(?:array|grid|topology|mesh)_\\w+_(?:config|params|data|setup)\\s*[:=]\\s*\\{.*?}",
                         Pattern.DOTALL));
     }
 

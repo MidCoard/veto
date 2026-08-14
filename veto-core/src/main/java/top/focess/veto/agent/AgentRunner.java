@@ -158,7 +158,6 @@ public class AgentRunner {
     private Consumer<AgentResult> callback;
     private volatile boolean sessionAlive = true;
     private double correctionFactor = 1.0;
-    private long lastEstimatedTokens = 0;
     // Set only when the model-call ceiling trips. The next exact "continue" prompt consumes it and
     // carries the prior task into a self-contained resume turn; any other prompt starts a new task.
     private boolean awaitingBreakerContinuation = false;
@@ -725,7 +724,7 @@ public class AgentRunner {
             log.warn(
                     "Agent {} actions program rejected: {}",
                     agentId,
-                    String.valueOf(e.getMessage()));
+                    java.util.Objects.toString(e.getMessage()));
             return false;
         }
     }
@@ -754,7 +753,7 @@ public class AgentRunner {
                         List.copyOf(history),
                         guidedSwitch,
                         this.correctionFactor);
-        this.lastEstimatedTokens = compiled.estimatedTokens();
+        long estimatedTokens = compiled.estimatedTokens();
         VetoRequest request = buildRequest(compiled);
         for (int attempt = 0; ; attempt++) {
             VetoResponse response;
@@ -767,8 +766,8 @@ public class AgentRunner {
                         top.focess.veto.llm.core.ReasoningContentHolder.getAndClear();
                 top.focess.veto.llm.core.LlmSystemUsage.Usage usage =
                         top.focess.veto.llm.core.LlmSystemUsage.getAndClear();
-                if (usage != null && this.lastEstimatedTokens > 0) {
-                    double ratio = (double) usage.promptTokens() / this.lastEstimatedTokens;
+                if (usage != null && estimatedTokens > 0) {
+                    double ratio = (double) usage.promptTokens() / estimatedTokens;
                     this.correctionFactor = this.correctionFactor * 0.9 + ratio * 0.1;
                 }
             } catch (LlmException e) {
@@ -788,7 +787,7 @@ public class AgentRunner {
                         "Agent {} schema violation (attempt {}): {}",
                         agentId,
                         attempt + 1,
-                        String.valueOf(e.getMessage()));
+                        java.util.Objects.toString(e.getMessage()));
                 if (attempt == MAX_SCHEMA_RETRIES) {
                     throw e;
                 }
@@ -1039,10 +1038,8 @@ public class AgentRunner {
         // (d) execute with tool call context (agentId + userId + groupId) threaded through.
         ToolCallContextHolder.set(agentId, userId, groupId, owner, sessionId);
         try {
-            ToolResult result = mcpEngine.execute(call, def);
-
             // (e) plugin postAction chain
-            ToolResult transformed = result;
+            ToolResult transformed = mcpEngine.execute(call, def);
             for (LoopInterceptor plugin : interceptors) {
                 transformed = plugin.postAction(agentId, call, transformed);
             }
@@ -1158,10 +1155,8 @@ public class AgentRunner {
         // (d) execute with tool call context (agentId + userId + groupId) threaded through.
         ToolCallContextHolder.set(agentId, userId, groupId, owner, sessionId);
         try {
-            ToolResult result = mcpEngine.execute(call, def);
-
             // (e) plugin postAction chain.
-            ToolResult transformed = result;
+            ToolResult transformed = mcpEngine.execute(call, def);
             for (LoopInterceptor plugin : interceptors) {
                 transformed = plugin.postAction(agentId, call, transformed);
             }
@@ -1885,7 +1880,7 @@ public class AgentRunner {
      * Stamps the session owner (username) whose model-tier profile resolves this agent's tier.
      * Called by the DB-backed create path ({@link AgentService#createMate} / {@code createAgent})
      * before the loop starts, so group-spawned Mates / Leaders resolve their tier against the
-     * user's active profile via the {@link ToolCallContext}.
+     * user's active profile via the {@link top.focess.veto.agent.mcp.ToolCallContext}.
      */
     public void setOwner(String owner) {
         this.owner = owner;

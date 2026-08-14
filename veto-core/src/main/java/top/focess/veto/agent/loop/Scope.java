@@ -165,7 +165,7 @@ public class Scope {
         }
         StringBuilder sb = new StringBuilder();
         for (var entry : bindings.entrySet()) {
-            if (sb.length() > 0) {
+            if (!sb.isEmpty()) {
                 sb.append("\n");
             }
             sb.append(entry.getKey()).append("=").append(stringify(entry.getValue()));

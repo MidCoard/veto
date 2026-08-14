@@ -18,7 +18,7 @@ import top.focess.veto.agent.mcp.ToolDocs;
 @EnableScheduling
 public class VetoApplication {
 
-    public static void main(@NonNull String @NonNull [] args) {
+    static void main(@NonNull String @NonNull [] args) {
         SpringApplication.run(ToolDocs.nonNullClass(VetoApplication.class), args);
     }
 }

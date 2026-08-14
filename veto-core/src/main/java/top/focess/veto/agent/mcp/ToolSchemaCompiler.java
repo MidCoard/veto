@@ -134,7 +134,7 @@ public final class ToolSchemaCompiler {
 
     /**
      * Compiles a key-value String DSL map ({@code "<name>": "<type><modifier> <description>"}) into
-     * a Draft-7 JSON Schema. {@code!} = required, {@code?}/omitted = optional.
+     * a Draft-7 JSON Schema. {@code !} = required, {@code ?}/omitted = optional.
      */
     public static @NonNull JsonNode compileFromStringDsl(@NonNull Map<String, String> dslMap) {
         ObjectNode schema = MAPPER.createObjectNode();

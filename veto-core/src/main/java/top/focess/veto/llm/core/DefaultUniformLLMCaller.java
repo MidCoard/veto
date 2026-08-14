@@ -94,7 +94,7 @@ public class DefaultUniformLLMCaller implements UniformLLMCaller {
                 "Retryable LLM failure (attempt {}/{}): {} - backing off {}ms",
                 attempt,
                 MAX_ATTEMPTS,
-                String.valueOf(cause.getMessage()),
+                java.util.Objects.toString(cause.getMessage()),
                 delay);
         try {
             Thread.sleep(delay);

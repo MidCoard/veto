@@ -90,7 +90,7 @@ public class LlmLeader {
         } catch (Exception e) {
             log.warn(
                     "LlmLeader: DAG authoring failed, falling back to heuristic: {}",
-                    String.valueOf(e.getMessage()));
+                    java.util.Objects.toString(e.getMessage()));
         }
         return ExecutionDag.linear(groupId, List.of("n1"));
     }
@@ -117,7 +117,9 @@ public class LlmLeader {
                 return parsePivotDecision(result.message());
             }
         } catch (Exception e) {
-            log.debug("LlmLeader: pivot reasoning failed: {}", String.valueOf(e.getMessage()));
+            log.debug(
+                    "LlmLeader: pivot reasoning failed: {}",
+                    java.util.Objects.toString(e.getMessage()));
         }
         return false;
     }

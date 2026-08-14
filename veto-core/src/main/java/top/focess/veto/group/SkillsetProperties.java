@@ -12,8 +12,8 @@ import top.focess.veto.model.tier.ModelTier;
  * global Mate defaults ({@code veto.group.mate.tier} / {@code veto.group.mate.system-prompt-base})
  * for Mates spawned under that skillset, so a coding skillset can run on a stronger tier with a
  * coding-focused prompt while a research skillset runs cheaper. This is the seam that makes Mate
- * creation cooperate with the skillset: {@link GroupSpawner#startMate} resolves the entry by
- * skillset and passes a {@link MateBinding} to the factory.
+ * creation cooperate with the skillset: the group spawner resolves the entry by skillset and passes
+ * a {@link MateBinding} to the factory.
  *
  * <pre>
  * veto:

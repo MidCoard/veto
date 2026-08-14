@@ -154,7 +154,7 @@ public class IpcServer {
      * @param registry the command registry used to dispatch requests and produce completions
      * @param agentService the agent service used to resolve/decline pending HITL vetoes
      */
-    @SuppressWarnings("initialization.fields.uninitialized")
+    @SuppressWarnings({"initialization.fields.uninitialized", "NotNullFieldNotInitialized"})
     public IpcServer(@NonNull CommandRegistry registry, @NonNull AgentService agentService) {
         this.registry = registry;
         this.agentService = agentService;

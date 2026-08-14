@@ -14,11 +14,11 @@ import org.jspecify.annotations.NonNull;
  * <p><b>Traversal safety:</b> after resolving a host path lexically, it is canonicalized and then
  * re-classified against the roots. Canonicalization resolves symlinks in the <i>existing prefix</i>
  * of the path (the common write/create case targets a non-existent file through a
- * possibly-symlinked directory): {@link Path#toRealPath()} the path itself when it exists, else
- * walk up to the deepest existing ancestor, {@code toRealPath()} <i>that</i> (resolving outward
- * symlinks the whole-path call could not), and re-append the non-existent tail. A {@code ..} or
- * symlink chain that escapes its root thus resolves to a host outside the roots and is reported
- * {@code outOfScope} — the real path's class decides, no special-casing.
+ * possibly-symlinked directory): {@code toRealPath()} the path itself when it exists, else walk up
+ * to the deepest existing ancestor, {@code toRealPath()} <i>that</i> (resolving outward symlinks
+ * the whole-path call could not), and re-append the non-existent tail. A {@code ..} or symlink
+ * chain that escapes its root thus resolves to a host outside the roots and is reported {@code
+ * outOfScope} — the real path's class decides, no special-casing.
  */
 public class PathResolver {
 
@@ -94,10 +94,10 @@ public class PathResolver {
      * <p>The subtlety is the common write/create case: the agent targets a <i>non-existent</i> path
      * that runs <i>through</i> an existing outward symlink (e.g. {@code /root/escape-link/newfile}
      * where {@code escape-link} → an outside directory and {@code newfile} is absent). A naive
-     * {@link Path#toRealPath()} of the whole path throws {@link IOException} because the final
-     * component is absent, and a pure-lexical fallback ({@code toAbsolutePath().normalize()})
-     * cannot resolve the symlink — leaving it invisible, so {@code startsWith(root)} is true and
-     * the path is falsely classified in-scope. A subsequent write then lands outside all roots.
+     * {@code toRealPath()} of the whole path throws {@link IOException} because the final component
+     * is absent, and a pure-lexical fallback ({@code toAbsolutePath().normalize()}) cannot resolve
+     * the symlink — leaving it invisible, so {@code startsWith(root)} is true and the path is
+     * falsely classified in-scope. A subsequent write then lands outside all roots.
      *
      * <p>To close that, canonicalize the <i>existing prefix</i> component-by-component: (1) if the
      * path itself exists, {@code toRealPath()} resolves everything in one shot; (2) otherwise walk

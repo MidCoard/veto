@@ -1,6 +1,5 @@
 package top.focess.veto.bus;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import java.util.concurrent.*;
@@ -23,20 +22,15 @@ public class RoutingBusService {
 
     private final @NonNull WebSocketBus webSocketBus;
     private final @NonNull BusConfiguration config;
-    private final @NonNull ObjectMapper objectMapper;
 
     private final @NonNull ConcurrentMap<String, DAGPayload> activePayloads =
             new ConcurrentHashMap<>();
     private final @NonNull ConcurrentMap<String, CompletableFuture<DAGPayload>> pendingFutures =
             new ConcurrentHashMap<>();
 
-    public RoutingBusService(
-            @NonNull WebSocketBus webSocketBus,
-            @NonNull BusConfiguration config,
-            @NonNull ObjectMapper objectMapper) {
+    public RoutingBusService(@NonNull WebSocketBus webSocketBus, @NonNull BusConfiguration config) {
         this.webSocketBus = webSocketBus;
         this.config = config;
-        this.objectMapper = objectMapper;
     }
 
     @PostConstruct
