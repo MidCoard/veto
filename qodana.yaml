@@ -8,3 +8,10 @@ profile:
   name: qodana.recommended
 include:
   - name: CheckDependencyLicenses
+  - name: VulnerableLibrariesLocal
+  - name: VulnerableCodeUsagesInspection
+bootstrap: >-
+  ./gradlew classes testClasses --warning-mode fail
+failureConditions:
+  severityThresholds:
+    any: 0
