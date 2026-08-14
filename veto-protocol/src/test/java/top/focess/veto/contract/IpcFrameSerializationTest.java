@@ -222,7 +222,11 @@ class IpcFrameSerializationTest {
         }
         IpcFrame.ToolCall tc = assertInstanceOf(IpcFrame.ToolCall.class, result);
         assertEquals("list_dir", tc.toolName());
-        assertEquals("E:\\minecraft\\.minecraft\\versions", tc.args().get("absolutePath"));
+        Map<String, String> args = tc.args();
+        if (args == null) {
+            throw new AssertionError("tool-call args were lost during round-trip");
+        }
+        assertEquals("E:\\minecraft\\.minecraft\\versions", args.get("absolutePath"));
         assertFalse(tc.isEmpty());
     }
 
