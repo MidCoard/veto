@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "top.focess"
-version = "1.0.95"
+version = "1.0.96"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_25
@@ -61,7 +61,7 @@ dependencies {
     implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml")
 
     // Focess Command API
-    implementation("top.focess:focess-command:2.2.0")
+    implementation("top.focess:focess-command:2.2.1")
     implementation("top.focess:focess-scheduler:2.0.0")
 
     // ZMQ transport (shared with veto-protocol)

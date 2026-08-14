@@ -1,6 +1,6 @@
 project:
   name: veto
-  version: 1.0.0-SNAPSHOT
+  version: 1.0.96
   description: Zero-Trust Cloud-Edge Agent Backend
   longDescription: |
     Project Veto is the core backend engine for the enterprise-grade, multi-tenant Agent Client.
@@ -11,7 +11,7 @@ project:
   links:
     homepage: https://github.com/MidCoard/veto
   java:
-    version: 17
+    version: 25
     groupId: top.focess
     artifactId: veto
 
@@ -27,7 +27,7 @@ distributions:
     executable:
       name: veto
     artifacts:
-      - path: build/libs/{{projectName}}-{{projectVersion}}.jar
+      - path: artifacts/veto-jar/veto-core-{{projectVersion}}.jar
     brew:
       active: NEVER
       formulaName: veto
@@ -39,9 +39,9 @@ distributions:
     executable:
       name: veto
     artifacts:
-      - path: artifacts/veto-backend-ubuntu-latest/veto
+      - path: artifacts/veto-ubuntu-latest/veto-core
         platform: linux-x86_64
-      - path: artifacts/veto-backend-windows-latest/veto.exe
+      - path: artifacts/veto-windows-latest/veto-core.exe
         platform: windows-x86_64
-      - path: artifacts/veto-backend-macos-latest/veto
+      - path: artifacts/veto-macos-latest/veto-core
         platform: osx-x86_64
