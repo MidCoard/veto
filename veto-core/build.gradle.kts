@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "top.focess"
-version = "1.0.97"
+version = "1.0.98"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_25
@@ -175,6 +175,7 @@ graalvmNative {
         named("main") {
             imageName.set("veto")
             mainClass.set("top.focess.veto.VetoApplication")
+            buildArgs.add("--initialize-at-build-time=ch.qos.logback.classic.Logger")
         }
     }
 }

@@ -1,6 +1,6 @@
 project:
   name: veto
-  version: 1.0.97
+  version: 1.0.98
   description: Zero-Trust Cloud-Edge Agent Backend
   longDescription: |
     Project Veto is the core backend engine for the enterprise-grade, multi-tenant Agent Client.
