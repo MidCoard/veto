@@ -222,7 +222,7 @@ class IpcFrameSerializationTest {
         }
         IpcFrame.ToolCall tc = assertInstanceOf(IpcFrame.ToolCall.class, result);
         assertEquals("list_dir", tc.toolName());
-        Map<String, String> args = tc.args();
+        Map<String, Object> args = tc.args();
         if (args == null) {
             throw new AssertionError("tool-call args were lost during round-trip");
         }
