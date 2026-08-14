@@ -175,7 +175,11 @@ graalvmNative {
         named("main") {
             imageName.set("veto")
             mainClass.set("top.focess.veto.VetoApplication")
-            buildArgs.add("--initialize-at-build-time=ch.qos.logback")
+            buildArgs.add(
+                "--initialize-at-build-time=" +
+                    "ch.qos.logback.classic,ch.qos.logback.classic.spi," +
+                    "ch.qos.logback.core,ch.qos.logback.core.spi,ch.qos.logback.core.status"
+            )
         }
     }
 }
