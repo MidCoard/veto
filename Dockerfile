@@ -1,22 +1,13 @@
 # Build stage
-FROM eclipse-temurin:21-jdk-alpine AS build
+FROM eclipse-temurin:25-jdk-alpine AS build
 WORKDIR /app
 COPY . .
-RUN ./gradlew bootJar --no-daemon
+RUN ./gradlew :veto-core:bootJar --no-daemon
 
-# Extraction stage
-FROM eclipse-temurin:21-jre-alpine AS extract
+# Runtime stage
+FROM eclipse-temurin:25-jre-alpine
 WORKDIR /app
-COPY --from=build /app/build/libs/*.jar app.jar
-RUN java -Djarmode=layertools -jar app.jar extract
-
-# Final stage
-FROM eclipse-temurin:21-jre-alpine
-WORKDIR /app
-COPY --from=extract /app/dependencies/ ./
-COPY --from=extract /app/spring-boot-loader/ ./
-COPY --from=extract /app/snapshot-dependencies/ ./
-COPY --from=extract /app/application/ ./
+COPY --from=build /app/veto-core/build/libs/veto-core-*.jar app.jar
 
 EXPOSE 8443
-ENTRYPOINT ["java", "org.springframework.boot.loader.launch.JarLauncher"]
+ENTRYPOINT ["java", "--enable-native-access=ALL-UNNAMED", "-jar", "app.jar"]

@@ -1,6 +1,6 @@
 project:
   name: veto
-  version: 1.0.96
+  version: 1.0.97
   description: Zero-Trust Cloud-Edge Agent Backend
   longDescription: |
     Project Veto is the core backend engine for the enterprise-grade, multi-tenant Agent Client.
@@ -39,9 +39,9 @@ distributions:
     executable:
       name: veto
     artifacts:
-      - path: artifacts/veto-ubuntu-latest/veto-core
+      - path: artifacts/veto-ubuntu-latest/veto
         platform: linux-x86_64
-      - path: artifacts/veto-windows-latest/veto-core.exe
+      - path: artifacts/veto-windows-latest/veto.exe
         platform: windows-x86_64
-      - path: artifacts/veto-macos-latest/veto-core
-        platform: osx-x86_64
+      - path: artifacts/veto-macos-latest/veto
+        platform: osx-aarch_64

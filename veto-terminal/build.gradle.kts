@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "top.focess"
-version = "1.0.96"
+version = "1.0.97"
 
 application {
     mainClass = "top.focess.veto.terminal.VetoTerminal"

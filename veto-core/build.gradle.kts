@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "top.focess"
-version = "1.0.96"
+version = "1.0.97"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_25
@@ -168,6 +168,15 @@ spotless {
 
 springBoot {
     mainClass = "top.focess.veto.VetoApplication"
+}
+
+graalvmNative {
+    binaries {
+        named("main") {
+            imageName.set("veto")
+            mainClass.set("top.focess.veto.VetoApplication")
+        }
+    }
 }
 
 tasks.named<org.springframework.boot.gradle.tasks.run.BootRun>("bootRun") {

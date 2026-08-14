@@ -36,6 +36,7 @@ jobs:
     name: Native on ${{ matrix.os }}
     needs: [ build-jar ]
     strategy:
+      fail-fast: false
       matrix:
         os: [ ubuntu-latest, windows-latest, macos-latest ]
     runs-on: ${{ matrix.os }}
