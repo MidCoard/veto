@@ -1,7 +1,5 @@
 package top.focess.veto.agent.intercept;
 
-import static top.focess.veto.util.LogValues.safe;
-
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;

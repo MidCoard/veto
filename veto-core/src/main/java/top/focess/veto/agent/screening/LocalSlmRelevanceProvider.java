@@ -1,7 +1,5 @@
 package top.focess.veto.agent.screening;
 
-import static top.focess.veto.util.LogValues.safe;
-
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
