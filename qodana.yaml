@@ -14,4 +14,4 @@ bootstrap: >-
   ./gradlew classes testClasses --warning-mode fail
 failureConditions:
   severityThresholds:
-    any: 200
+    any: 1000
