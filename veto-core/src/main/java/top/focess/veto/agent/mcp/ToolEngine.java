@@ -25,6 +25,8 @@ public interface ToolEngine {
     @NonNull List<ToolDefinition> getActiveTools(Set<String> whitelist);
 
     /** Resolves a tool name to its typed {@link ToolDefinition} (native / remote / agent). */
+    @SuppressWarnings(
+            "NullableProblems") // JSpecify and Checker defaults disagree on this override contract.
     ToolDefinition resolveDefinition(@NonNull String toolName);
 
     /** Executes a tool call, dispatching by the resolved definition's flavour. */

@@ -88,24 +88,7 @@ public class LlamaCppBridge {
             // Use a fixed port for reliability (0 = random, but we need to discover it)
             int port = findAvailablePort();
 
-            ProcessBuilder pb =
-                    new ProcessBuilder(
-                            "llama-server",
-                            "--model",
-                            modelPath,
-                            "--ctx-size",
-                            String.valueOf(config.getLlamaCpp().getNCtx()),
-                            "--n-gpu-layers",
-                            String.valueOf(config.getLlamaCpp().getNGpuLayers()),
-                            "--temp",
-                            String.valueOf(config.getLlamaCpp().getTemperature()),
-                            "--grammar-file",
-                            grammarFile.toAbsolutePath().toString(),
-                            "--port",
-                            String.valueOf(port),
-                            "--embedding",
-                            "false",
-                            "--cont-batching");
+            ProcessBuilder pb = llamaServerProcess(modelPath, grammarFile, port);
 
             pb.redirectErrorStream(true);
             llamaProcess = pb.start();
@@ -131,6 +114,27 @@ public class LlamaCppBridge {
             this.available = false;
             return false;
         }
+    }
+
+    private @NonNull ProcessBuilder llamaServerProcess(
+            @NonNull String modelPath, @NonNull Path grammarFile, int port) {
+        return new ProcessBuilder(
+                "llama-server",
+                "--model",
+                modelPath,
+                "--ctx-size",
+                String.valueOf(config.getLlamaCpp().getNCtx()),
+                "--n-gpu-layers",
+                String.valueOf(config.getLlamaCpp().getNGpuLayers()),
+                "--temp",
+                String.valueOf(config.getLlamaCpp().getTemperature()),
+                "--grammar-file",
+                grammarFile.toAbsolutePath().toString(),
+                "--port",
+                String.valueOf(port),
+                "--embedding",
+                "false",
+                "--cont-batching");
     }
 
     /**

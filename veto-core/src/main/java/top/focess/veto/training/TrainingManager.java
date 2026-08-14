@@ -1,5 +1,7 @@
 package top.focess.veto.training;
 
+import static top.focess.veto.util.LogValues.safe;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -26,6 +28,8 @@ import top.focess.veto.security.HostPathInput;
  * gate (Feature 6.3).
  */
 @Service
+@SuppressWarnings(
+        "DuplicatedCode") // Process teardown mirrors the other managed subprocess lifecycle.
 public class TrainingManager {
 
     private static final @NonNull Logger log =
@@ -541,9 +545,7 @@ public class TrainingManager {
                             "%.1f%%",
                             evalReport.decisionAccuracy().accuracy() * 100.0));
         } catch (Exception e) {
-            log.warn(
-                    "Failed to parse evaluation report: {}",
-                    java.util.Objects.toString(e.getMessage()));
+            log.warn("Failed to parse evaluation report: {}", safe(e.getMessage()));
         }
     }
 
@@ -742,20 +744,10 @@ public class TrainingManager {
                         }
                     }
                 }
-                case "epoch_start" ->
-                        log.info(
-                                "Epoch {} started",
-                                java.util.Objects.toString(parsed.get("epoch")));
-                case "epoch_end" ->
-                        log.info("Epoch {} ended", java.util.Objects.toString(parsed.get("epoch")));
-                case "phase_complete" ->
-                        log.info(
-                                "Phase {} complete",
-                                java.util.Objects.toString(parsed.get("phase")));
-                case "error" ->
-                        log.error(
-                                "Training error: {}",
-                                java.util.Objects.toString(parsed.get("message")));
+                case "epoch_start" -> log.info("Epoch {} started", safe(parsed.get("epoch")));
+                case "epoch_end" -> log.info("Epoch {} ended", safe(parsed.get("epoch")));
+                case "phase_complete" -> log.info("Phase {} complete", safe(parsed.get("phase")));
+                case "error" -> log.error("Training error: {}", safe(parsed.get("message")));
                 default -> log.debug("Unknown progress type: {}", type);
             }
         } catch (Exception e) {

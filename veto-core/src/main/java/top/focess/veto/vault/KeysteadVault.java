@@ -1,5 +1,7 @@
 package top.focess.veto.vault;
 
+import static top.focess.veto.util.LogValues.safe;
+
 import jakarta.annotation.PreDestroy;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -162,7 +164,7 @@ public class KeysteadVault {
             log.warn(
                     "KeysteadVault: could not fully delete vault store for '{}': {}",
                     username,
-                    java.util.Objects.toString(e.getMessage()));
+                    safe(e.getMessage()));
         }
     }
 

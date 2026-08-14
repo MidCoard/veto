@@ -85,6 +85,8 @@ import top.focess.veto.vault.UserContext;
  */
 @Component
 @ConditionalOnProperty(name = "veto.terminal.enabled", havingValue = "true", matchIfMissing = true)
+@SuppressWarnings(
+        "NotNullFieldNotInitialized") // Spring start() initializes transport lifecycle fields.
 public class IpcServer {
 
     private static final @NonNull Logger log =

@@ -1,5 +1,7 @@
 package top.focess.veto.agent.intercept;
 
+import static top.focess.veto.util.LogValues.safe;
+
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -125,13 +127,11 @@ public class SemanticMasker {
         } catch (ExecutionException e) {
             log.debug(
                     "SemanticMasker: SLM inference failed ({}), falling back",
-                    java.util.Objects.toString(
-                            e.getCause() == null ? e.getMessage() : e.getCause().getMessage()));
+                    safe(e.getCause() == null ? e.getMessage() : e.getCause().getMessage()));
             return new MaskResult(SecretMasker.mask(observation), null);
         } catch (Exception e) {
             log.debug(
-                    "SemanticMasker: SLM inference failed, falling back: {}",
-                    java.util.Objects.toString(e.getMessage()));
+                    "SemanticMasker: SLM inference failed, falling back: {}", safe(e.getMessage()));
             return new MaskResult(SecretMasker.mask(observation), null);
         }
     }

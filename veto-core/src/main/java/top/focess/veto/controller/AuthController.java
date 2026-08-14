@@ -22,6 +22,8 @@ import top.focess.veto.vault.*;
  */
 @RestController
 @RequestMapping("/api/auth")
+@SuppressWarnings(
+        "DuplicatedCode") // Setup and admin creation deliberately share validation responses.
 public class AuthController {
 
     private static final @NonNull Logger log =

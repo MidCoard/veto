@@ -28,6 +28,8 @@ import top.focess.veto.vault.KeysteadVault;
  */
 @RestController
 @RequestMapping("/api/sessions")
+@SuppressWarnings(
+        "DuplicatedCode") // Session-scoped controllers repeat the same auth/not-found guard.
 public class HitlController {
 
     private final @NonNull SessionService sessionService;

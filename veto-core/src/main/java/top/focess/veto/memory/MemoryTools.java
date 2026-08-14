@@ -21,6 +21,7 @@ import top.focess.veto.memory.embedder.Embedder;
  * {@link top.focess.veto.agent.mcp.RiskCategory#AGENT}; the Gateway returns {@code NotScreened}.
  * They still flow through the LoopInterceptor chain for audit.
  */
+@SuppressWarnings("DuplicatedCode") // Each native memory tool applies the same context guard.
 public final class MemoryTools {
 
     private MemoryTools() {}

@@ -1,5 +1,7 @@
 package top.focess.veto.memory;
 
+import static top.focess.veto.util.LogValues.safe;
+
 import jakarta.annotation.PostConstruct;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceException;
@@ -89,7 +91,7 @@ public class PgvectorMemoryStore implements MemoryStore {
             log.error(
                     "PgvectorMemoryStore: provisioning failed (pgvector extension/Postgres required) — "
                             + "searches will error: {}",
-                    java.util.Objects.toString(e.getMessage()));
+                    safe(e.getMessage()));
         }
     }
 

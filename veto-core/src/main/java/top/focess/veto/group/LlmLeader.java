@@ -1,5 +1,7 @@
 package top.focess.veto.group;
 
+import static top.focess.veto.util.LogValues.safe;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
@@ -90,7 +92,7 @@ public class LlmLeader {
         } catch (Exception e) {
             log.warn(
                     "LlmLeader: DAG authoring failed, falling back to heuristic: {}",
-                    java.util.Objects.toString(e.getMessage()));
+                    safe(e.getMessage()));
         }
         return ExecutionDag.linear(groupId, List.of("n1"));
     }
@@ -117,9 +119,7 @@ public class LlmLeader {
                 return parsePivotDecision(result.message());
             }
         } catch (Exception e) {
-            log.debug(
-                    "LlmLeader: pivot reasoning failed: {}",
-                    java.util.Objects.toString(e.getMessage()));
+            log.debug("LlmLeader: pivot reasoning failed: {}", safe(e.getMessage()));
         }
         return false;
     }

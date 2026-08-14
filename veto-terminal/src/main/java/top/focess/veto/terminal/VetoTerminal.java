@@ -53,6 +53,8 @@ import top.focess.veto.contract.Version;
  * through to {@code readLine} with a stale prompt and a null mask (a password echoed in plaintext).
  * See the catch in {@link #repl} for the full rationale.
  */
+@SuppressWarnings(
+        "NotNullFieldNotInitialized") // start(LineReader) initializes the REPL lifecycle fields.
 public class VetoTerminal {
 
     private static final @NonNull Logger log =
@@ -162,28 +164,7 @@ public class VetoTerminal {
         // --- incoming consumer thread ---
         // Drains frames from the connection through the session, which drives rendering back via
         // TerminalView and returns the next frame to dispatch (if any).
-        Thread consumerThread =
-                new Thread(
-                        () -> {
-                            while (running) {
-                                try {
-                                    IpcFrame.ServerFrame frame = client.receive();
-                                    if (frame == null) {
-                                        continue;
-                                    }
-                                    IpcFrame.ClientFrame reply = session.onFrame(frame);
-                                    if (reply != null) {
-                                        client.send(reply);
-                                    }
-                                } catch (Exception e) {
-                                    if (running) {
-                                        log.warn("Error in incoming loop, terminating thread", e);
-                                    }
-                                    break;
-                                }
-                            }
-                        },
-                        "veto-incoming");
+        Thread consumerThread = createConsumerThread();
         consumerThread.setDaemon(true);
         consumerThread.start();
 
@@ -200,6 +181,30 @@ public class VetoTerminal {
             status.close();
             client.close();
         }
+    }
+
+    private @NonNull Thread createConsumerThread() {
+        return new Thread(
+                () -> {
+                    while (running) {
+                        try {
+                            IpcFrame.ServerFrame frame = client.receive();
+                            if (frame == null) {
+                                continue;
+                            }
+                            IpcFrame.ClientFrame reply = session.onFrame(frame);
+                            if (reply != null) {
+                                client.send(reply);
+                            }
+                        } catch (Exception e) {
+                            if (running) {
+                                log.warn("Error in incoming loop, terminating thread", e);
+                            }
+                            break;
+                        }
+                    }
+                },
+                "veto-incoming");
     }
 
     // ── repl ──────────────────────────────────────────────────────────────

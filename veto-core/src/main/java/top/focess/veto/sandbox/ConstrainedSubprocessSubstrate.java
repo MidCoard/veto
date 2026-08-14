@@ -1,5 +1,7 @@
 package top.focess.veto.sandbox;
 
+import static top.focess.veto.util.LogValues.safe;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -364,7 +366,7 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
             // The wall is best-effort hardening — a failure to attach must not break the run.
             log.debug(
                     "ConstrainedSubprocessSubstrate: kernel-wall attach failed: {}",
-                    java.util.Objects.toString(t.getMessage()));
+                    safe(t.getMessage()));
         }
     }
 

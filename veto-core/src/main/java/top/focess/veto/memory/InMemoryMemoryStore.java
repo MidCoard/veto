@@ -29,6 +29,8 @@ import top.focess.veto.memory.embedder.Embedder;
  */
 @Component
 @ConditionalOnProperty(name = "veto.memory.store", havingValue = "memory", matchIfMissing = true)
+@SuppressWarnings(
+        "DuplicatedCode") // Store implementations intentionally share filtering and vector math.
 public class InMemoryMemoryStore implements MemoryStore {
 
     private final @NonNull Embedder embedder;

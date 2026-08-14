@@ -1,5 +1,7 @@
 package top.focess.veto.sandbox;
 
+import static top.focess.veto.util.LogValues.safe;
+
 import com.sun.jna.Library;
 import com.sun.jna.Native;
 import com.sun.jna.Pointer;
@@ -69,9 +71,7 @@ public class KernelSandboxSubstrate {
                         OS);
             }
         } catch (Throwable t) {
-            log.warn(
-                    "KernelSandboxSubstrate: JNA load failed: {}",
-                    java.util.Objects.toString(t.getMessage()));
+            log.warn("KernelSandboxSubstrate: JNA load failed: {}", safe(t.getMessage()));
         }
         this.windowsKernel = w;
         this.windowsStdKernel = wk;
@@ -289,8 +289,7 @@ public class KernelSandboxSubstrate {
                     childCgroup.toPath().resolve("cgroup.procs"), Integer.toString(pid));
         } catch (java.io.IOException e) {
             log.debug(
-                    "KernelSandboxSubstrate: cgroup.procs write failed: {}",
-                    java.util.Objects.toString(e.getMessage()));
+                    "KernelSandboxSubstrate: cgroup.procs write failed: {}", safe(e.getMessage()));
             return;
         }
         // 3. Apply default limits (memory.max = 512 MiB, cpu.max = 50% of one CPU).
@@ -300,8 +299,7 @@ public class KernelSandboxSubstrate {
                     childCgroup.toPath().resolve("cpu.max"), "50000 100000");
         } catch (java.io.IOException e) {
             log.debug(
-                    "KernelSandboxSubstrate: cgroup limit write failed: {}",
-                    java.util.Objects.toString(e.getMessage()));
+                    "KernelSandboxSubstrate: cgroup limit write failed: {}", safe(e.getMessage()));
         }
         log.info(
                 "KernelSandboxSubstrate: attached Linux cgroup wall to pid {} at {}",
@@ -416,9 +414,7 @@ public class KernelSandboxSubstrate {
             // Return a closeable that closes the Job handle
             return new JobHandle(job, pid);
         } catch (Throwable t) {
-            log.warn(
-                    "KernelSandboxSubstrate: Windows attach failed: {}",
-                    java.util.Objects.toString(t.getMessage()));
+            log.warn("KernelSandboxSubstrate: Windows attach failed: {}", safe(t.getMessage()));
             return null;
         }
     }
@@ -441,8 +437,7 @@ public class KernelSandboxSubstrate {
                     log.debug("KernelSandboxSubstrate: closed Job handle for pid {}", pid);
                 } catch (Throwable t) {
                     log.warn(
-                            "KernelSandboxSubstrate: CloseHandle failed: {}",
-                            java.util.Objects.toString(t.getMessage()));
+                            "KernelSandboxSubstrate: CloseHandle failed: {}", safe(t.getMessage()));
                 }
             }
         }
@@ -462,9 +457,7 @@ public class KernelSandboxSubstrate {
                 return (int) pid;
             }
         } catch (Throwable t) {
-            log.debug(
-                    "KernelSandboxSubstrate: process.pid() failed: {}",
-                    java.util.Objects.toString(t.getMessage()));
+            log.debug("KernelSandboxSubstrate: process.pid() failed: {}", safe(t.getMessage()));
         }
         return -1;
     }

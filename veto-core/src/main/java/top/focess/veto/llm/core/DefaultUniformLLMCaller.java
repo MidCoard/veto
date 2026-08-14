@@ -1,5 +1,7 @@
 package top.focess.veto.llm.core;
 
+import static top.focess.veto.util.LogValues.safe;
+
 import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
@@ -94,7 +96,7 @@ public class DefaultUniformLLMCaller implements UniformLLMCaller {
                 "Retryable LLM failure (attempt {}/{}): {} - backing off {}ms",
                 attempt,
                 MAX_ATTEMPTS,
-                java.util.Objects.toString(cause.getMessage()),
+                safe(cause.getMessage()),
                 delay);
         try {
             Thread.sleep(delay);

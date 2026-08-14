@@ -1,5 +1,7 @@
 package top.focess.veto.bus;
 
+import static top.focess.veto.util.LogValues.safe;
+
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
@@ -157,7 +159,7 @@ public class WebSocketBus extends TextWebSocketHandler {
         log.warn(
                 "Bus: Connection closed (code={}, reason={})",
                 status.getCode(),
-                java.util.Objects.toString(status.getReason()));
+                safe(status.getReason()));
         this.session = null;
         heartbeatManager.stop();
         String backendUrl = reconnectionHandler.getLastBackendUrl();

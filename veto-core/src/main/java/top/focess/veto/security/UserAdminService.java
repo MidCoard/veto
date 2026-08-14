@@ -1,5 +1,7 @@
 package top.focess.veto.security;
 
+import static top.focess.veto.util.LogValues.safe;
+
 import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
@@ -74,7 +76,7 @@ public class UserAdminService {
             log.debug(
                     "UserAdminService: logout during delete of '{}' skipped: {}",
                     username,
-                    java.util.Objects.toString(e.getMessage()));
+                    safe(e.getMessage()));
         }
         for (SessionEntity s : sessions.findByOwner(username)) {
             agents.deleteBySessionId(s.getId());

@@ -1,5 +1,7 @@
 package top.focess.veto.agent.screening;
 
+import static top.focess.veto.util.LogValues.safe;
+
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -59,7 +61,7 @@ public class LocalSlmRelevanceProvider implements SlmRelevanceProvider {
         } catch (Exception e) {
             log.warn(
                     "LocalSlmRelevanceProvider: inference failed, defaulting HIGH: {}",
-                    java.util.Objects.toString(e.getMessage()));
+                    safe(e.getMessage()));
             return Relevance.HIGH;
         }
     }

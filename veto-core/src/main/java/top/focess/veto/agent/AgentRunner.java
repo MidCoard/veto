@@ -1,5 +1,7 @@
 package top.focess.veto.agent;
 
+import static top.focess.veto.util.LogValues.safe;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
@@ -493,7 +495,7 @@ public class AgentRunner {
             try {
                 sb.append(objectMapper.writeValueAsString(turn.payload())).append("\n\n");
             } catch (Exception e) {
-                sb.append(turn.payload().toString()).append("\n\n");
+                sb.append(turn.payload()).append("\n\n");
             }
         }
         String contentToCompact = sb.toString();
@@ -721,10 +723,7 @@ public class AgentRunner {
             this.currentSteps = 0;
             return true;
         } catch (ProgramValidator.InvalidProgramException e) {
-            log.warn(
-                    "Agent {} actions program rejected: {}",
-                    agentId,
-                    java.util.Objects.toString(e.getMessage()));
+            log.warn("Agent {} actions program rejected: {}", agentId, safe(e.getMessage()));
             return false;
         }
     }
@@ -787,7 +786,7 @@ public class AgentRunner {
                         "Agent {} schema violation (attempt {}): {}",
                         agentId,
                         attempt + 1,
-                        java.util.Objects.toString(e.getMessage()));
+                        safe(e.getMessage()));
                 if (attempt == MAX_SCHEMA_RETRIES) {
                     throw e;
                 }
@@ -1019,12 +1018,15 @@ public class AgentRunner {
     private @NonNull ToolResult executeOneConfirmedCall(@NonNull ToolCall call) {
         ToolDefinition def = mcpEngine.resolveDefinition(call.toolName());
         if (def == null) {
-            String obs = "Tool not found: " + call.toolName();
-            appendTurn(TurnRecord.toolCall(++turnNumber, call));
-            appendObservation(call.toolName(), obs);
-            return new ToolResult(call.toolName(), call.callId(), false, obs);
+            return toolNotFound(call);
         }
+        return executeResolvedCall(call, def, ApprovalDecision.AUTO_APPROVE);
+    }
 
+    private @NonNull ToolResult executeResolvedCall(
+            @NonNull ToolCall call,
+            @NonNull ToolDefinition def,
+            @NonNull ApprovalDecision decision) {
         appendTurn(TurnRecord.toolCall(++turnNumber, call));
 
         // (c) plugin preAction chain
@@ -1046,8 +1048,7 @@ public class AgentRunner {
 
             // (f) ingress defense
             String observation =
-                    ingressDefense.maskAndFrame(
-                            call, def, transformed, ApprovalDecision.AUTO_APPROVE, readHistory);
+                    ingressDefense.maskAndFrame(call, def, transformed, decision, readHistory);
 
             // (g) plugin preObservation chain
             for (LoopInterceptor plugin : interceptors) {
@@ -1092,10 +1093,7 @@ public class AgentRunner {
         String callId = call.requireCallId();
         ToolDefinition def = mcpEngine.resolveDefinition(call.toolName());
         if (def == null) {
-            String obs = "Tool not found: " + call.toolName();
-            appendTurn(TurnRecord.toolCall(++turnNumber, call));
-            appendObservation(call.toolName(), obs);
-            return new ToolResult(call.toolName(), call.callId(), false, obs);
+            return toolNotFound(call);
         }
 
         // (a) early-route agent tools past the Gateway + HITL.
@@ -1142,65 +1140,14 @@ public class AgentRunner {
             }
         }
 
+        return executeResolvedCall(call, def, decision);
+    }
+
+    private @NonNull ToolResult toolNotFound(@NonNull ToolCall call) {
+        String observation = "Tool not found: " + call.toolName();
         appendTurn(TurnRecord.toolCall(++turnNumber, call));
-
-        // (c) plugin preAction chain (transform/observe/block — plugins only).
-        for (LoopInterceptor plugin : interceptors) {
-            if (!plugin.preAction(agentId, call)) {
-                appendObservation(call.toolName(), "Blocked by plugin.");
-                return new ToolResult(call.toolName(), call.callId(), false, "blocked by plugin");
-            }
-        }
-
-        // (d) execute with tool call context (agentId + userId + groupId) threaded through.
-        ToolCallContextHolder.set(agentId, userId, groupId, owner, sessionId);
-        try {
-            // (e) plugin postAction chain.
-            ToolResult transformed = mcpEngine.execute(call, def);
-            for (LoopInterceptor plugin : interceptors) {
-                transformed = plugin.postAction(agentId, call, transformed);
-            }
-
-            // (f) ingress defense (mask + frame + invalidate read-history on write).
-            String observation =
-                    ingressDefense.maskAndFrame(call, def, transformed, decision, readHistory);
-
-            // (g) plugin preObservation chain.
-            for (LoopInterceptor plugin : interceptors) {
-                observation = plugin.preObservation(agentId, observation);
-            }
-
-            appendTurn(
-                    TurnRecord.toolResponse(
-                            ++turnNumber, call.callId(), observation, transformed.success()));
-            // Drain any turn directives the tool requested during execution (e.g. a RECALL seeded
-            // by create_group to re-inject the authored brief). Each is appended with a
-            // runner-assigned turn number; the pending record's placeholder turnNumber is rewritten
-            // (type + payload preserved). Drained here, before clear() in the finally, so a tool
-            // that threw never leaks a directive to the next call on this thread.
-            for (TurnRecord pending : ToolCallContextHolder.drainPendingTurns()) {
-                appendTurn(new TurnRecord(++turnNumber, pending.type(), pending.payload(), null));
-            }
-            // A tool may request a delegation transform (create_group) or its reverse
-            // (disband_group).
-            // Apply it after the pending turn directives: a forward transform's REWIND discards
-            // this
-            // call's response + prior turns, then re-seeds the Leader; a reverse transform restores
-            // the STANDALONE persona. Drained before clear() in the finally so a throwing tool
-            // leaks
-            // no transform to the next call on this thread.
-            ToolCallContextHolder.TransformRequest transformRequest =
-                    ToolCallContextHolder.drainTransform();
-            if (transformRequest instanceof ToolCallContextHolder.TransformRequest.ToLeader t) {
-                transformToLeader(t.directive());
-            } else if (transformRequest
-                    instanceof ToolCallContextHolder.TransformRequest.ToStandalone t) {
-                transformToStandalone(t.brief());
-            }
-            return transformed;
-        } finally {
-            ToolCallContextHolder.clear();
-        }
+        appendObservation(call.toolName(), observation);
+        return new ToolResult(call.toolName(), call.callId(), false, observation);
     }
 
     /**

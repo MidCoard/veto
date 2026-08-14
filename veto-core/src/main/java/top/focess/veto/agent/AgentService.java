@@ -53,6 +53,8 @@ import top.focess.veto.llm.core.UniformLLMCaller;
  * a prompt, and blocks for the result. Owns agent lifecycle + veto resolution.
  */
 @Service
+@SuppressWarnings(
+        "DuplicatedCode") // Standalone and group-agent factories intentionally mirror setup.
 public class AgentService {
 
     private static final @NonNull Logger log =

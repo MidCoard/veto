@@ -1,5 +1,7 @@
 package top.focess.veto.bus;
 
+import static top.focess.veto.util.LogValues.safe;
+
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
@@ -93,7 +95,7 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
             log.warn(
                     "WS Bus: Failed to parse message from '{}': {}",
                     session.getId(),
-                    java.util.Objects.toString(e.getMessage()));
+                    safe(e.getMessage()));
             sendJson(
                     session,
                     Map.of(
@@ -271,7 +273,7 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
                 "WS Bus: Client '{}' disconnected (code={}, reason='{}')",
                 session.getId(),
                 status.getCode(),
-                java.util.Objects.toString(status.getReason()));
+                safe(status.getReason()));
     }
 
     @Override
@@ -280,7 +282,7 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
         log.error(
                 "WS Bus: Transport error for '{}': {}",
                 session.getId(),
-                java.util.Objects.toString(exception.getMessage()));
+                safe(exception.getMessage()));
         sessions.remove(session);
         sessionRoutes.remove(session.getId());
     }

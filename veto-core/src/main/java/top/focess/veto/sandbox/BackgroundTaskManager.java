@@ -1,5 +1,7 @@
 package top.focess.veto.sandbox;
 
+import static top.focess.veto.util.LogValues.safe;
+
 import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -56,8 +58,8 @@ public class BackgroundTaskManager {
     /**
      * Per-agent exit notices for tasks that ended since the agent last ran. The UI is pushed
      * TASK_EXITED live, but the agent only executes during an episode, so it is told about these
-     * the next time it runs: {@link AgentRunner} drains them into its context at episode start.
-     * Keyed by agentId; entries are consumed (cleared) on drain.
+     * the next time it runs: {@link top.focess.veto.agent.AgentRunner} drains them into its context
+     * at episode start. Keyed by agentId; entries are consumed (cleared) on drain.
      */
     private final @NonNull ConcurrentHashMap<String, java.util.Queue<TaskExitNotice>> exitNotices =
             new ConcurrentHashMap<>();
@@ -198,10 +200,7 @@ public class BackgroundTaskManager {
                 emitLine(task, line); // final line without a trailing break
             }
         } catch (IOException e) {
-            log.debug(
-                    "Background task {} drain ended: {}",
-                    task.taskId,
-                    java.util.Objects.toString(e.getMessage()));
+            log.debug("Background task {} drain ended: {}", task.taskId, safe(e.getMessage()));
         }
         try {
             process.waitFor();
@@ -231,7 +230,7 @@ public class BackgroundTaskManager {
         log.debug(
                 "Background task {} exited (code={}, cause={})",
                 task.taskId,
-                java.util.Objects.toString(task.exitCode),
+                safe(task.exitCode),
                 task.cause);
         notifyExited(task.toInfo());
         // Queue an exit notice so the owning agent is actively told about it on its next turn

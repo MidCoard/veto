@@ -50,20 +50,7 @@ public class GroupAgentFactory implements GroupSpawner.AgentFactory {
             throw new IllegalStateException(
                     "Cannot provision a group agent without the session owner");
         }
-        ModelBinding resolved = tierRegistry.resolve(owner, mateBinding.tier());
-        String systemPromptBase = mateBinding.systemPromptBase();
-        AgentRunner.LlmBinding binding =
-                new AgentRunner.LlmBinding(
-                        resolved.provider(),
-                        resolved.model(),
-                        resolved.credentialKey(),
-                        new LlmOptions(
-                                resolved.temperature(),
-                                null,
-                                resolved.maxOutputTokens(),
-                                LlmOptions.defaults().timeout()),
-                        systemPromptBase,
-                        resolved.baseUrl());
+        AgentRunner.LlmBinding binding = resolveBinding(owner, mateBinding);
         // Inherit the calling session's workspace so the Mate / one-shot Leader resolves paths +
         // matches grants against the same roots as the delegating agent. The calling agent's
         // persona id is available on the tool-call thread-local (set by AgentRunner around each
@@ -78,5 +65,21 @@ public class GroupAgentFactory implements GroupSpawner.AgentFactory {
         // the MateBinding — same user as the Leader, not the shared placeholder.
         UUID userId = ctx != null ? ctx.userId() : agentService.userIdForOwner(owner);
         return agentService.createMate(persona, binding, userId, owner, workspace);
+    }
+
+    private AgentRunner.@NonNull LlmBinding resolveBinding(
+            @NonNull String owner, @NonNull MateBinding mateBinding) {
+        ModelBinding resolved = tierRegistry.resolve(owner, mateBinding.tier());
+        return new AgentRunner.LlmBinding(
+                resolved.provider(),
+                resolved.model(),
+                resolved.credentialKey(),
+                new LlmOptions(
+                        resolved.temperature(),
+                        null,
+                        resolved.maxOutputTokens(),
+                        LlmOptions.defaults().timeout()),
+                mateBinding.systemPromptBase(),
+                resolved.baseUrl());
     }
 }

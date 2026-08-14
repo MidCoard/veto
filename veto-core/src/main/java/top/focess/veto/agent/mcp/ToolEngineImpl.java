@@ -1,5 +1,7 @@
 package top.focess.veto.agent.mcp;
 
+import static top.focess.veto.util.LogValues.safe;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
@@ -49,6 +51,7 @@ import top.focess.veto.sandbox.SandboxSubstrate;
  * #registerRemoteTool}.
  */
 @Service
+@SuppressWarnings("DuplicatedCode") // Native and remote dispatch keep the same result envelope.
 public class ToolEngineImpl implements ToolEngine {
 
     private static final @NonNull Logger log =
@@ -118,7 +121,7 @@ public class ToolEngineImpl implements ToolEngine {
             log.warn(
                     "ToolEngine: tools/list discovery failed for {}: {}",
                     transport,
-                    java.util.Objects.toString(e.getMessage()));
+                    safe(e.getMessage()));
             return java.util.List.of();
         }
     }
@@ -323,6 +326,11 @@ public class ToolEngineImpl implements ToolEngine {
                 sandboxManager
                         .substrate()
                         .runCommands(handle, commands, Path.of("."), connect, timeoutDur);
+        String content = commandOutput(result);
+        return new ToolResult(call.toolName(), call.callId(), result.success(), content);
+    }
+
+    private static @NonNull String commandOutput(@NonNull CommandResult result) {
         String stderr = result.stderr();
         String content =
                 (result.stdout().isEmpty() ? "" : result.stdout())
@@ -330,10 +338,9 @@ public class ToolEngineImpl implements ToolEngine {
         // A non-zero exit is not an error envelope - the command ran and its output is the truth
         // the model asked for. The exit code rides as a trailing CONTENT line so the model can
         // branch on it without a separate status channel.
-        if (result.exitCode() != 0) {
-            content += "\n(exit code: " + result.exitCode() + ")";
-        }
-        return new ToolResult(call.toolName(), call.callId(), result.success(), content);
+        return result.exitCode() == 0
+                ? content
+                : content + "\n(exit code: " + result.exitCode() + ")";
     }
 
     private @NonNull ToolResult executeAgent(
