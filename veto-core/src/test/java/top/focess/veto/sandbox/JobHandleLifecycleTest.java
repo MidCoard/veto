@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 
@@ -36,8 +37,7 @@ class JobHandleLifecycleTest {
         Process process = pb.start();
 
         // Attach should return a Closeable handle
-        AutoCloseable handle = substrate.attachWithHandle(process);
-        assertNotNull(handle, "attachWithHandle should return a non-null handle on Windows");
+        @NonNull AutoCloseable handle = requireHandle(substrate.attachWithHandle(process));
 
         // Wait for process to complete
         process.waitFor();
@@ -77,5 +77,12 @@ class JobHandleLifecycleTest {
 
         // If we got here without exceptions, handles were properly managed
         assertTrue(true, "All handles closed successfully");
+    }
+
+    private static @NonNull AutoCloseable requireHandle(AutoCloseable handle) {
+        if (handle != null) {
+            return handle;
+        }
+        throw new AssertionError("attachWithHandle should return a non-null handle on Windows");
     }
 }

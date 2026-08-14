@@ -1,16 +1,21 @@
 package top.focess.veto.agent.screening;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.mock;
 
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.mcp.NativeToolDefinition;
 import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RiskCategory;
+import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.llm.core.ToolCall;
+import top.focess.veto.veto.GBNFGrammarEngine;
 import top.focess.veto.veto.LlamaCppBridge;
+import top.focess.veto.veto.VetoGatewayConfiguration;
 
 /** Tests for the Part 3.2 local-SLM-backed relevance provider. */
 class LocalSlmRelevanceProviderTest {
@@ -18,10 +23,12 @@ class LocalSlmRelevanceProviderTest {
     /** A test double for LlamaCppBridge that returns canned responses. */
     static class FakeBridge extends LlamaCppBridge {
         private final boolean available;
-        private final String cannedResponse;
+        private final @NonNull String cannedResponse;
 
-        FakeBridge(boolean available, String cannedResponse) {
-            super(null, null);
+        FakeBridge(boolean available, @NonNull String cannedResponse) {
+            super(
+                    mock(ToolDocs.nonNullClass(VetoGatewayConfiguration.class)),
+                    mock(ToolDocs.nonNullClass(GBNFGrammarEngine.class)));
             this.available = available;
             this.cannedResponse = cannedResponse;
         }
@@ -32,7 +39,8 @@ class LocalSlmRelevanceProviderTest {
         }
 
         @Override
-        public CompletableFuture<String> infer(String prompt, String grammarName) {
+        public @NonNull CompletableFuture<String> infer(
+                @NonNull String prompt, @NonNull String grammarName) {
             return CompletableFuture.completedFuture(cannedResponse);
         }
     }
@@ -47,7 +55,7 @@ class LocalSlmRelevanceProviderTest {
                         "read",
                         RiskCategory.READ_ONLY,
                         false,
-                        Object.class,
+                        ToolDocs.nonNullClass(Object.class),
                         Map.of("path", ParamCategory.FILESYSTEM_PATH));
         ToolCall call = new ToolCall("view_file", Map.of("path", "/a/b"));
         assertEquals(
@@ -66,7 +74,7 @@ class LocalSlmRelevanceProviderTest {
                         "read",
                         RiskCategory.READ_ONLY,
                         false,
-                        Object.class,
+                        ToolDocs.nonNullClass(Object.class),
                         Map.of("path", ParamCategory.FILESYSTEM_PATH));
         ToolCall call = new ToolCall("view_file", Map.of("path", "/a/b"));
         assertEquals(Relevance.HIGH, provider.relevance(call, def, "reading b"));
@@ -82,7 +90,7 @@ class LocalSlmRelevanceProviderTest {
                         "write",
                         RiskCategory.FILE_WRITE,
                         false,
-                        Object.class,
+                        ToolDocs.nonNullClass(Object.class),
                         Map.of("path", ParamCategory.FILESYSTEM_PATH));
         ToolCall call = new ToolCall("write_to_file", Map.of("path", "/x", "content", "y"));
         assertEquals(Relevance.MEDIUM, provider.relevance(call, def, "writing a side file"));
@@ -98,7 +106,7 @@ class LocalSlmRelevanceProviderTest {
                         "exec",
                         RiskCategory.SHELL_EXEC,
                         false,
-                        Object.class,
+                        ToolDocs.nonNullClass(Object.class),
                         Map.of());
         ToolCall call = new ToolCall("run_command", Map.of("commands", List.of()));
         // Note: Real run_command would route via sandbox. This is just exercising the relevance

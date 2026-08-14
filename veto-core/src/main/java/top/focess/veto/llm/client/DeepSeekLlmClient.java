@@ -12,7 +12,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.agent.translation.CapabilityTranslator;
 import top.focess.veto.llm.core.ChatMessage;
 import top.focess.veto.llm.core.LlmOptions;
@@ -39,7 +38,7 @@ import top.focess.veto.llm.exceptions.ModelCapabilityException;
  */
 final class DeepSeekLlmClient extends LlmClient {
 
-    private static final HttpClient HTTP =
+    private static final @NonNull HttpClient HTTP =
             HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
 
     private final @NonNull String baseUrl;
@@ -64,9 +63,10 @@ final class DeepSeekLlmClient extends LlmClient {
     @Override
     public @NonNull RawCompletion complete(@NonNull ResolvedRequest resolved) {
         VetoRequest request = resolved.request();
+        JsonNode configuredSchema = request.responseSchema();
         JsonNode responseSchema =
-                request.responseSchema() != null
-                        ? request.responseSchema()
+                configuredSchema != null
+                        ? configuredSchema
                         : capabilityTranslator.vetoResponseSchema(false);
 
         try {
@@ -97,12 +97,13 @@ final class DeepSeekLlmClient extends LlmClient {
             body.put("text", Map.of("format", textFormat));
 
             LlmOptions options = request.options();
-            if (options.maxTokens() != null) {
-                body.put("max_output_tokens", options.maxTokens());
+            Integer maxTokens = options.maxTokens();
+            if (maxTokens != null) {
+                body.put("max_output_tokens", maxTokens);
             }
 
             String json = objectMapper.writeValueAsString(body);
-            org.slf4j.LoggerFactory.getLogger(DeepSeekLlmClient.class)
+            org.slf4j.LoggerFactory.getLogger("top.focess.veto.llm.client.DeepSeekLlmClient")
                     .debug(
                             "DeepSeek Responses API request ({} chars): {}",
                             json.length(),
@@ -145,7 +146,7 @@ final class DeepSeekLlmClient extends LlmClient {
                 }
             }
 
-            org.slf4j.LoggerFactory.getLogger(DeepSeekLlmClient.class)
+            org.slf4j.LoggerFactory.getLogger("top.focess.veto.llm.client.DeepSeekLlmClient")
                     .debug(
                             "DeepSeek Responses API response: contentLen={} contentBlank={}",
                             content == null ? 0 : content.length(),
@@ -190,8 +191,7 @@ final class DeepSeekLlmClient extends LlmClient {
      * with {@code output_text} content parts.
      */
     @SuppressWarnings("unchecked")
-    private static @Nullable String extractResponsesContent(
-            @NonNull Map<String, Object> responseMap) {
+    private static String extractResponsesContent(@NonNull Map<String, Object> responseMap) {
         // Try output_text first (simple string field)
         Object outputText = responseMap.get("output_text");
         if (outputText instanceof String s && !s.isBlank()) {
@@ -238,7 +238,7 @@ final class DeepSeekLlmClient extends LlmClient {
      * calls as prose ("Calling view_file(...)") taught the model to answer in prose and broke
      * {@code text.format: json_schema} enforcement on multi-turn conversations.
      */
-    private Map<String, Object> toInputItem(@NonNull ChatMessage msg)
+    private @NonNull Map<String, Object> toInputItem(@NonNull ChatMessage msg)
             throws com.fasterxml.jackson.core.JsonProcessingException {
         if ("tool".equals(msg.role())) {
             Map<String, Object> m = new LinkedHashMap<>();
@@ -255,9 +255,10 @@ final class DeepSeekLlmClient extends LlmClient {
             Map<String, Object> root = new LinkedHashMap<>();
             if (msg.callId() != null) {
                 Map<String, Object> call = new LinkedHashMap<>();
-                call.put("tool_name", msg.toolName() != null ? msg.toolName() : "");
+                String toolName = msg.toolName();
+                call.put("tool_name", toolName != null ? toolName : "");
                 call.put("args", parseArgsObject(msg.toolArgs()));
-                if (msg.content() != null && !msg.content().isEmpty()) {
+                if (!msg.content().isEmpty()) {
                     root.put("thought", msg.content());
                 }
                 root.put("calls", List.of(call));
@@ -281,7 +282,7 @@ final class DeepSeekLlmClient extends LlmClient {
      * veto_pulse history. Returns an empty object node when the args are null/blank/invalid so the
      * rendered call is always well-formed JSON.
      */
-    private JsonNode parseArgsObject(@Nullable String toolArgs) {
+    private @NonNull JsonNode parseArgsObject(String toolArgs) {
         if (toolArgs == null || toolArgs.isBlank()) {
             return objectMapper.createObjectNode();
         }

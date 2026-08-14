@@ -3,7 +3,6 @@ package top.focess.veto.llm.core;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
 /**
  * Standardized request for the Veto Agent Loop.
@@ -24,14 +23,14 @@ import org.jspecify.annotations.Nullable;
 public record VetoRequest(
         @NonNull String systemPrompt,
         @NonNull String userPrompt,
-        @NonNull List<ToolDefinition> tools,
+        @NonNull List<@NonNull ToolDefinition> tools,
         @NonNull ProviderType providerType,
         @NonNull String modelName,
         @NonNull String credentialKey,
         @NonNull LlmOptions options,
-        @NonNull List<ChatMessage> messages,
-        @Nullable JsonNode responseSchema,
-        @Nullable String baseUrl) {
+        @NonNull List<@NonNull ChatMessage> messages,
+        JsonNode responseSchema,
+        String baseUrl) {
 
     /**
      * 9-arg convenience: no per-turn schema and no base-URL override (null -> provider default).
@@ -39,13 +38,13 @@ public record VetoRequest(
     public VetoRequest(
             @NonNull String systemPrompt,
             @NonNull String userPrompt,
-            @NonNull List<ToolDefinition> tools,
+            @NonNull List<@NonNull ToolDefinition> tools,
             @NonNull ProviderType providerType,
             @NonNull String modelName,
             @NonNull String credentialKey,
             @NonNull LlmOptions options,
-            @NonNull List<ChatMessage> messages,
-            @Nullable JsonNode responseSchema) {
+            @NonNull List<@NonNull ChatMessage> messages,
+            JsonNode responseSchema) {
         this(
                 systemPrompt,
                 userPrompt,
@@ -65,7 +64,7 @@ public record VetoRequest(
     public VetoRequest(
             @NonNull String systemPrompt,
             @NonNull String userPrompt,
-            @NonNull List<ToolDefinition> tools,
+            @NonNull List<@NonNull ToolDefinition> tools,
             @NonNull ProviderType providerType,
             @NonNull String modelName,
             @NonNull String credentialKey,
@@ -83,20 +82,8 @@ public record VetoRequest(
                 null);
     }
 
-    public VetoRequest {
-        if (options == null) {
-            options = LlmOptions.defaults();
-        }
-        if (messages == null) {
-            messages = List.of();
-        }
-        if (tools == null) {
-            tools = List.of();
-        }
-    }
-
     /** Whether this request carries a compiled multi-turn message list. */
     public boolean hasMessages() {
-        return messages != null && !messages.isEmpty();
+        return !messages.isEmpty();
     }
 }

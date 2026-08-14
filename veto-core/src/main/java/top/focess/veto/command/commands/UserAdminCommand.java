@@ -40,7 +40,7 @@ public class UserAdminCommand extends VetoCommand {
                         s instanceof VetoCommandSender vs
                                 && vs.isLoggedIn()
                                 && policy.multiUser()
-                                && admin.isAdmin(vs.username()));
+                                && admin.isAdmin(vs.requireUsername()));
 
         // /user create <name> [admin]
         addExecutor(
@@ -48,7 +48,7 @@ public class UserAdminCommand extends VetoCommand {
                     VetoCommandSender s = vetoSender(sender);
                     if (s == null) return CommandResult.REFUSE;
 
-                    String name = args.get("name");
+                    String name = requiredArg(args.get("name"), "name");
                     boolean asAdmin = "admin".equalsIgnoreCase(args.get("role"));
                     String pw = s.input("Password for " + name + ":", true);
                     if (pw == null) {
@@ -81,8 +81,8 @@ public class UserAdminCommand extends VetoCommand {
                     VetoCommandSender s = vetoSender(sender);
                     if (s == null) return CommandResult.REFUSE;
 
-                    String name = args.get("name");
-                    if (name.equals(s.username())) {
+                    String name = requiredArg(args.get("name"), "name");
+                    if (name.equals(s.requireUsername())) {
                         s.output("Cannot delete your own account.");
                         return CommandResult.REFUSE;
                     }
@@ -141,7 +141,7 @@ public class UserAdminCommand extends VetoCommand {
                     VetoCommandSender s = vetoSender(sender);
                     if (s == null) return CommandResult.REFUSE;
 
-                    String name = args.get("name");
+                    String name = requiredArg(args.get("name"), "name");
                     String pw = s.input("New password for " + name + ":", true);
                     if (pw == null) {
                         s.output("Cancelled.");

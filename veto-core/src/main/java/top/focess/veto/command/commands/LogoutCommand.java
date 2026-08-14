@@ -31,10 +31,8 @@ public class LogoutCommand extends VetoCommand {
                     VetoCommandSender s = vetoSender(sender);
                     if (s == null) return CommandResult.REFUSE;
 
-                    String user = s.username();
-                    if (user != null) {
-                        authLifecycleManager.logout(user);
-                    }
+                    String user = s.requireUsername();
+                    authLifecycleManager.logout(user);
                     s.setUsername(null);
                     promptHandler.deactivate(s.terminalId());
                     s.output("Logged out.");

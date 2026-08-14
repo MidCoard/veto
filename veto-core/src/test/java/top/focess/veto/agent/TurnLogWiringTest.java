@@ -6,6 +6,7 @@ import static org.mockito.Mockito.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
 import java.util.List;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.agent.identity.SystemPromptResolver;
@@ -13,6 +14,7 @@ import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.mcp.DefaultToolEngine;
+import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.llm.core.ProviderType;
@@ -29,11 +31,11 @@ import top.focess.veto.memory.TurnRecordRepository;
  */
 class TurnLogWiringTest {
 
-    private static final Duration EPISODE_TIMEOUT = Duration.ofSeconds(10);
+    private static final @NonNull Duration EPISODE_TIMEOUT = Duration.ofSeconds(10);
 
     @Test
     void submittedEpisodeLogsTurnsIntoRawLog() throws Exception {
-        TurnRecordRepository repo = mock(TurnRecordRepository.class);
+        TurnRecordRepository repo = mock(ToolDocs.nonNullClass(TurnRecordRepository.class));
         TurnLogService turnLog = new TurnLogService(repo, new ObjectMapper());
 
         ObjectMapper mapper = new ObjectMapper();
@@ -78,10 +80,10 @@ class TurnLogWiringTest {
                         EPISODE_TIMEOUT);
 
         assertTrue(result.success(), "the episode finishes");
-        verify(repo, atLeastOnce()).save(any(TurnRecordEntity.class));
+        verify(repo, atLeastOnce()).save(any(ToolDocs.nonNullClass(TurnRecordEntity.class)));
     }
 
-    private static UniformLLMCaller callerFinishingImmediately() {
+    private static @NonNull UniformLLMCaller callerFinishingImmediately() {
         return request ->
                 new VetoResponse("done", List.of(), "4", new VetoResponse.Features(false), null);
     }

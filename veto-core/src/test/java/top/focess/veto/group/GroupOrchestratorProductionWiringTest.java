@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.List;
 import java.util.UUID;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -18,11 +19,12 @@ import org.springframework.boot.test.context.SpringBootTest;
  * GroupOrchestrator#tick} (returned {@code null}), making the whole engine inert in production.
  */
 @SpringBootTest
+@SuppressWarnings("initialization.field.uninitialized")
 class GroupOrchestratorProductionWiringTest {
 
-    @Autowired GroupOrchestrator orchestrator;
-    @Autowired GroupRegistry registry;
-    @Autowired Blackboard blackboard;
+    @Autowired @NonNull GroupOrchestrator orchestrator;
+    @Autowired @NonNull GroupRegistry registry;
+    @Autowired @NonNull Blackboard blackboard;
 
     @Test
     void componentBeanSeesGroupsRegisteredInTheSharedRegistry() {
@@ -37,10 +39,11 @@ class GroupOrchestratorProductionWiringTest {
         registry.put(group);
         try {
             Group ticked = orchestrator.tick(gid);
-            assertNotNull(
-                    ticked,
-                    "the @Component orchestrator must see groups in the SHARED registry (not a"
-                            + " private copy)");
+            if (ticked == null) {
+                fail(
+                        "the @Component orchestrator must see groups in the SHARED registry (not a"
+                                + " private copy)");
+            }
         } finally {
             registry.remove(gid);
         }

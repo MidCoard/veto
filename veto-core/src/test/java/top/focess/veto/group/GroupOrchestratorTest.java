@@ -5,15 +5,17 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /** Tests for the Part 2 group orchestration engine (leader_mate_topology.md §3). */
+@SuppressWarnings("initialization.field.uninitialized")
 class GroupOrchestratorTest {
 
-    private Blackboard blackboard;
-    private GroupRegistry registry;
-    private GroupOrchestrator orchestrator;
+    private @NonNull Blackboard blackboard;
+    private @NonNull GroupRegistry registry;
+    private @NonNull GroupOrchestrator orchestrator;
 
     @BeforeEach
     void setUp() {
@@ -49,7 +51,7 @@ class GroupOrchestratorTest {
         g = g.withDag(dag);
         registry.put(g);
 
-        Group ticked = orchestrator.tick(g.groupId());
+        Group ticked = requireGroup(orchestrator.tick(g.groupId()));
         // After tick: n1 should be RUNNING (dispatched), blackboard has a TASK_DISPATCH for Mate-A.
         DagNode n1 = findNode(ticked, "n1");
         assertEquals(DagNode.NodeState.RUNNING, n1.state());
@@ -64,7 +66,7 @@ class GroupOrchestratorTest {
         registry.put(g);
         // Simulate Mate-A accepting n1.
         orchestrator.simulateAccept(g.groupId(), "Mate-A", "n1");
-        Group ticked = orchestrator.tick(g.groupId());
+        Group ticked = requireGroup(orchestrator.tick(g.groupId()));
         assertEquals(DagNode.NodeState.VERIFIED, findNode(ticked, "n1").state());
     }
 
@@ -73,7 +75,7 @@ class GroupOrchestratorTest {
         Group g = setupGroup();
         registry.put(g);
         orchestrator.simulateFeedback(g.groupId(), "Mate-A", "n1", "test failure");
-        Group ticked = orchestrator.tick(g.groupId());
+        Group ticked = requireGroup(orchestrator.tick(g.groupId()));
         assertEquals(DagNode.NodeState.FAILED, findNode(ticked, "n1").state());
     }
 
@@ -83,12 +85,12 @@ class GroupOrchestratorTest {
         registry.put(g);
 
         // Step 1: tick — n1 dispatched.
-        Group t1 = orchestrator.tick(g.groupId());
+        Group t1 = requireGroup(orchestrator.tick(g.groupId()));
         assertEquals(DagNode.NodeState.RUNNING, findNode(t1, "n1").state());
 
         // Step 2: Mate-A accepts n1.
         orchestrator.simulateAccept(g.groupId(), "Mate-A", "n1");
-        Group t2 = orchestrator.tick(g.groupId());
+        Group t2 = requireGroup(orchestrator.tick(g.groupId()));
         assertEquals(DagNode.NodeState.VERIFIED, findNode(t2, "n1").state());
         // Now n2 has its deps (n1) VERIFIED, so n2 is dispatched in the same tick.
         assertEquals(DagNode.NodeState.RUNNING, findNode(t2, "n2").state());
@@ -98,9 +100,9 @@ class GroupOrchestratorTest {
         // ACCEPT — but the group-completion check sees the just-dispatched n2 as RUNNING.
         // Run two more ticks to drain.
         orchestrator.simulateAccept(g.groupId(), "Mate-B", "n2");
-        Group t3a = orchestrator.tick(g.groupId());
+        Group t3a = requireGroup(orchestrator.tick(g.groupId()));
         assertEquals(DagNode.NodeState.VERIFIED, findNode(t3a, "n2").state());
-        Group t3 = orchestrator.tick(g.groupId());
+        Group t3 = requireGroup(orchestrator.tick(g.groupId()));
 
         // Step 4: group should be complete (DISBANDED).
         assertEquals(Group.GroupState.DISBANDED, t3.state());
@@ -111,11 +113,11 @@ class GroupOrchestratorTest {
         Group g = setupGroup();
         registry.put(g);
         orchestrator.simulateFeedback(g.groupId(), "Mate-A", "n1", "needs another pass");
-        Group ticked = orchestrator.tick(g.groupId());
+        Group ticked = requireGroup(orchestrator.tick(g.groupId()));
         assertEquals(DagNode.NodeState.FAILED, findNode(ticked, "n1").state());
 
         // Leader re-plans: the failed node goes back to PENDING.
-        Group replanned = orchestrator.replanFailed(g.groupId(), "n1");
+        Group replanned = requireGroup(orchestrator.replanFailed(g.groupId(), "n1"));
         assertEquals(DagNode.NodeState.PENDING, findNode(replanned, "n1").state());
     }
 
@@ -140,7 +142,7 @@ class GroupOrchestratorTest {
                         "terminal:n1:breaker-trip",
                         0);
         blackboard.post(terminal);
-        Group ticked = orchestrator.tick(g.groupId());
+        Group ticked = requireGroup(orchestrator.tick(g.groupId()));
         // The terminal status caused n1 to be marked PENDING (via ingest), then the dispatch
         // phase re-dispatched it (PENDING → RUNNING). The Blackboard shows the cycle: one
         // terminal STATUS, two TASK_DISPATCH messages (the original + the re-dispatch).
@@ -164,7 +166,7 @@ class GroupOrchestratorTest {
                         ExecutionDag.linear(groupId, List.of("n1", "n2")));
         // Don't add a mate or assign n1.
         registry.put(g);
-        Group ticked = orchestrator.tick(g.groupId());
+        Group ticked = requireGroup(orchestrator.tick(g.groupId()));
         // n1 stays PENDING (Leader must assign a Mate first).
         assertEquals(DagNode.NodeState.PENDING, findNode(ticked, "n1").state());
     }
@@ -190,11 +192,11 @@ class GroupOrchestratorTest {
         registry.put(g);
         // A late ACCEPT for the stale node must not flip it.
         orchestrator.simulateAccept(g.groupId(), "Mate-A", "n1");
-        Group ticked = orchestrator.tick(g.groupId());
+        Group ticked = requireGroup(orchestrator.tick(g.groupId()));
         assertEquals(DagNode.NodeState.STALE, findNode(ticked, "n1").state());
     }
 
-    private Group setupGroup() {
+    private @NonNull Group setupGroup() {
         UUID groupId = UUID.randomUUID();
         Group g =
                 Group.create(
@@ -231,12 +233,17 @@ class GroupOrchestratorTest {
         return g;
     }
 
-    private static DagNode findNode(Group g, String nodeId) {
+    private static @NonNull DagNode findNode(@NonNull Group g, @NonNull String nodeId) {
         for (DagNode n : g.dag().nodes()) {
             if (n.nodeId().equals(nodeId)) {
                 return n;
             }
         }
         throw new IllegalStateException("node not found: " + nodeId);
+    }
+
+    private static @NonNull Group requireGroup(Group group) {
+        if (group == null) throw new AssertionError("expected group");
+        return group;
     }
 }

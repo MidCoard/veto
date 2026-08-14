@@ -25,23 +25,28 @@ public class ProxyEgress implements LlmEgress {
      *
      * @param properties the configuration properties for LLM egress
      */
-    public
-    @NonNull
-    ProxyEgress(@NonNull LlmEgressProperties properties) {
+    public ProxyEgress(@NonNull LlmEgressProperties properties) {
         this.properties = properties;
     }
 
     @Override
-    public EgressEndpoint resolve(
-            ProviderType providerType, String defaultBaseUrl, String credentialKey) {
+    public @NonNull EgressEndpoint resolve(
+            @NonNull ProviderType providerType,
+            String defaultBaseUrl,
+            @NonNull String credentialKey) {
         String brokerBaseUrl = properties.baseUrlFor(providerType);
         if (brokerBaseUrl == null || brokerBaseUrl.isEmpty()) {
             throw new ModelCapabilityException(
                     "Egress proxy mode is enabled but no broker base URL is configured for "
                             + providerType);
         }
+        String internalToken = properties.getInternalToken();
+        if (internalToken == null || internalToken.isBlank()) {
+            throw new ModelCapabilityException(
+                    "Egress proxy mode is enabled but no internal token is configured");
+        }
         // The credential reference is encoded by the broker route; the engine only proves it is the
         // engine via the internal token. The real secret is never resolved or held here.
-        return new EgressEndpoint(brokerBaseUrl, properties.getInternalToken());
+        return new EgressEndpoint(brokerBaseUrl, internalToken);
     }
 }

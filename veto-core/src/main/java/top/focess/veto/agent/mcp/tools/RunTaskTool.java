@@ -6,7 +6,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.mcp.Doc;
@@ -16,6 +15,7 @@ import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.SecurityHint;
 import top.focess.veto.agent.mcp.ToolCallContextHolder;
 import top.focess.veto.agent.mcp.ToolDoc;
+import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.mcp.ToolSecurity;
 import top.focess.veto.llm.config.LlmJacksonConfig;
 import top.focess.veto.sandbox.BackgroundTaskManager;
@@ -110,8 +110,7 @@ public final class RunTaskTool implements NativeTool<RunTaskTool.Args> {
             @SecurityHint(ParamCategory.FILESYSTEM_PATH)
                     @Doc("Working directory; must be under an allowed root (Gateway-checked).")
                     @NonNull String cwd,
-            @Nullable
-                    @Doc(
+            @Doc(
                             "How Veto connects the commands: STOP_ON_FAILURE (default), RUN_ALL, or PIPE."
                                     + " Background mode runs a single command, so this is effectively unused.")
                     String connect,
@@ -135,11 +134,13 @@ public final class RunTaskTool implements NativeTool<RunTaskTool.Args> {
 
     @Override
     public @NonNull Class<Args> getArgsClass() {
-        return Args.class;
+        return ToolDocs.nonNullClass(Args.class);
     }
 
     @Override
     public @NonNull String execute(@NonNull Args args) {
+        @SuppressWarnings(
+                "ConstantValue") // Jackson can violate @NonNull when validation is bypassed.
         Integer timeout = args.timeout();
         if (timeout == null) {
             return error("run_task requires an explicit 'timeout' (seconds; 0 = no cap).");

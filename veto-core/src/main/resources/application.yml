@@ -74,22 +74,6 @@ veto:
       #     tier: LOW
       #     system-prompt-base: "You are a research Mate. Gather and summarize."
 
-  orchestrator:
-    max-workers: 4
-    worker-idle-timeout-ms: 60000
-    circuit-breaker-threshold: 3
-    circuit-breaker-reset-ms: 30000
-
-  sandbox:
-    allowed-capabilities:
-      - read_safe_file
-      - compile_cpp_target
-      - list_directory
-      - diff_text_files
-      - search_in_files
-    forbid-generic-shell: true
-    temp-dir: ${VETO_TEMP_DIR:./work/sandbox}
-
   security:
     # Install-time deployer policy: FULL_ACCESS (no path is CRITICAL) | PROTECTED (deny-list) | SANDBOXED (scoped to root) | TENANT (multi-user workspace).
     # Runtime screening matrix: STRICT | BALANCED | BYPASS_ALL.
@@ -104,11 +88,6 @@ veto:
     # blocked from reading application.yml/config/audit via the ProtectedSet.
     signup:
       mode: ${VETO_SIGNUP_MODE:invite}
-
-  terminal:
-    max-concurrent-connections: 16
-    request-timeout-ms: 60000
-    watch-poll-interval-ms: 200
 
   vault:
     vault-home: ${VETO_VAULT_HOME:~/.veto}
@@ -149,10 +128,6 @@ veto:
     restart-bridge-on-deploy: true
     quality-filter-enabled: true
     custom-data-dir: ""
-
-  mcp:
-    server-registry-path: ./mcp/servers/
-    discovery-interval-ms: 60000
 
 logging:
   level:

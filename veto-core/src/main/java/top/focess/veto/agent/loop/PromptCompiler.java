@@ -6,7 +6,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.TurnRecord;
@@ -66,13 +65,11 @@ public class PromptCompiler {
     private double contextFillRatio;
 
     @Value("${veto.security.deployer-policy:FULL_ACCESS}")
-    private @NonNull String deployerPolicyRaw;
+    private @NonNull String deployerPolicyRaw = "FULL_ACCESS";
 
     private @NonNull DeployerPolicy deployerPolicy = DeployerPolicy.FULL_ACCESS;
 
-    public
-    @NonNull
-    PromptCompiler(
+    public PromptCompiler(
             @NonNull CapabilityTranslator translator,
             @NonNull SystemPromptResolver systemPromptResolver,
             com.fasterxml.jackson.databind.@NonNull ObjectMapper objectMapper) {
@@ -102,8 +99,8 @@ public class PromptCompiler {
     public @NonNull CompiledPrompt compile(
             @NonNull AgentPersona persona,
             @NonNull Workspace sessionWorkspace,
-            @Nullable String systemPromptBase,
-            @Nullable List<TurnRecord> history,
+            String systemPromptBase,
+            List<TurnRecord> history,
             boolean guidedSwitch,
             double correctionFactor) {
 
@@ -120,10 +117,7 @@ public class PromptCompiler {
         int trimmed = conversation.size() - budgeted.size();
         long estimate = Math.round(ceilChars(systemMessage.length()) * correctionFactor);
         for (ChatMessage msg : messages) {
-            estimate +=
-                    Math.round(
-                            ceilChars(msg.content() == null ? 0 : msg.content().length())
-                                    * correctionFactor);
+            estimate += Math.round(ceilChars(msg.content().length()) * correctionFactor);
         }
         return new CompiledPrompt(
                 systemMessage, messages, flatTools, responseSchema, trimmed, estimate);
@@ -134,7 +128,7 @@ public class PromptCompiler {
     private @NonNull String buildSystemMessage(
             @NonNull AgentPersona persona,
             @NonNull Workspace sessionWorkspace,
-            @Nullable String base,
+            String base,
             @NonNull List<top.focess.veto.llm.core.ToolDefinition> flatTools) {
         String law = sessionWorkspace.vetoMdResolver().resolve();
         // A caller-supplied base (e.g. veto.group.mate.system-prompt-base) overrides the persona
@@ -161,7 +155,7 @@ public class PromptCompiler {
     /**
      * Walks history ascending, applying REWIND suffix-drops; returns the effective compiled list.
      */
-    private @NonNull List<ChatMessage> resolveRewinds(@Nullable List<TurnRecord> history) {
+    private @NonNull List<ChatMessage> resolveRewinds(List<TurnRecord> history) {
         List<ChatMessage> compiled = new ArrayList<>();
         if (history == null) {
             return compiled;
@@ -173,14 +167,14 @@ public class PromptCompiler {
         String pendingReasoning = null;
         for (TurnRecord turn : history) {
             if (turn.type() == TurnType.REWIND) {
-                int fromIndex = ((Number) turn.payload().get("from_index")).intValue();
+                int fromIndex = number(turn.payload(), "from_index").intValue();
                 truncate(compiled, fromIndex);
                 pendingThought = null;
                 pendingReasoning = null;
                 continue;
             }
             if (turn.type() == TurnType.RECALL) {
-                int fromIndex = ((Number) turn.payload().get("from_index")).intValue();
+                int fromIndex = number(turn.payload(), "from_index").intValue();
                 truncate(compiled, fromIndex);
                 compiled.add(ChatMessage.user(str(turn.payload(), "content")));
                 pendingThought = null;
@@ -226,13 +220,11 @@ public class PromptCompiler {
      * merges into the next TOOL_CALL or ASSISTANT_RESPONSE). The pending thought/reasoning are
      * passed so the merged assistant message carries both content and reasoning_content.
      */
-    private @Nullable ChatMessage mapRole(
-            @NonNull TurnRecord turn,
-            @Nullable String pendingThought,
-            @Nullable String pendingReasoning) {
+    private ChatMessage mapRole(
+            @NonNull TurnRecord turn, String pendingThought, String pendingReasoning) {
         String thoughtContent = pendingThought != null ? pendingThought : "";
         return switch (turn.type()) {
-            case USER_PROMPT -> ChatMessage.user(str(turn.payload(), "content"));
+            case USER_PROMPT -> ChatMessage.user(renderUserPrompt(turn.payload()));
             case USER_INTERRUPT ->
                     ChatMessage.user("[User feedback]: " + str(turn.payload(), "feedback"));
             case ASSISTANT_THOUGHT -> null; // handled by resolveRewinds
@@ -269,7 +261,7 @@ public class PromptCompiler {
     }
 
     /** Serializes the args map to a JSON string for the toolCall arguments field. */
-    private @NonNull String serializeArgs(@Nullable Object args) {
+    private @NonNull String serializeArgs(Object args) {
         if (args == null) {
             return "{}";
         }
@@ -280,12 +272,23 @@ public class PromptCompiler {
         }
     }
 
-    private static @NonNull String str(@Nullable Map<String, Object> payload, @NonNull String key) {
+    private static @NonNull String str(Map<String, Object> payload, @NonNull String key) {
         if (payload == null) {
             return "";
         }
         Object v = payload.get(key);
         return v == null ? "" : v.toString();
+    }
+
+    private static @NonNull String renderUserPrompt(@NonNull Map<String, Object> payload) {
+        String resumeContext = str(payload, "resume_context");
+        if (resumeContext.isBlank()) {
+            return str(payload, "content");
+        }
+        return "Continue the unfinished task from the prior episode. The prior episode stopped "
+                + "only because the model-call limit was reached; do not repeat the limit notice. "
+                + "Resume from the existing observations and progress.\n\nOriginal user request:\n"
+                + resumeContext;
     }
 
     // ── Token budget ──────────────────────────────────────────────────
@@ -374,10 +377,11 @@ public class PromptCompiler {
         List<ChatMessage> out = new ArrayList<>(window.size());
         for (int i = 0; i < window.size(); i++) {
             ChatMessage m = window.get(i);
-            if ("assistant".equals(m.role()) && m.callId() != null && !m.callId().isBlank()) {
+            String callId = m.callId();
+            if ("assistant".equals(m.role()) && callId != null && !callId.isBlank()) {
                 out.add(m);
                 if (!isAnsweredImmediately(window, i, m)) {
-                    out.add(ChatMessage.toolResult(m.callId(), INTERRUPTED_TOOL_RESULT));
+                    out.add(ChatMessage.toolResult(callId, INTERRUPTED_TOOL_RESULT));
                 }
                 continue;
             }
@@ -386,8 +390,8 @@ public class PromptCompiler {
                 boolean paired =
                         prev != null
                                 && "assistant".equals(prev.role())
-                                && m.callId() != null
-                                && m.callId().equals(prev.callId());
+                                && callId != null
+                                && callId.equals(prev.callId());
                 if (!paired) {
                     out.add(ChatMessage.user(m.content()));
                     continue;
@@ -408,14 +412,25 @@ public class PromptCompiler {
     private static boolean isAnsweredImmediately(
             @NonNull List<ChatMessage> window, int index, @NonNull ChatMessage call) {
         ChatMessage next = index + 1 < window.size() ? window.get(index + 1) : null;
-        return next != null && "tool".equals(next.role()) && call.callId().equals(next.callId());
+        return next != null
+                && "tool".equals(next.role())
+                && java.util.Objects.equals(call.callId(), next.callId());
+    }
+
+    private static @NonNull Number number(
+            @NonNull Map<String, Object> payload, @NonNull String key) {
+        Object value = payload.get(key);
+        if (value instanceof Number number) {
+            return number;
+        }
+        throw new IllegalArgumentException("Turn payload '" + key + "' must be numeric");
     }
 
     /** The content of the last user-role message (the episode's opening prompt), or null. */
-    private static @Nullable String lastUserContent(@NonNull List<ChatMessage> messages) {
+    private static String lastUserContent(@NonNull List<ChatMessage> messages) {
         for (int i = messages.size() - 1; i >= 0; i--) {
             ChatMessage m = messages.get(i);
-            if ("user".equals(m.role()) && m.content() != null && !m.content().isBlank()) {
+            if ("user".equals(m.role()) && !m.content().isBlank()) {
                 return m.content();
             }
         }
@@ -423,7 +438,7 @@ public class PromptCompiler {
     }
 
     private static int contentLen(@NonNull ChatMessage msg) {
-        return msg.content() == null ? 0 : msg.content().length();
+        return msg.content().length();
     }
 
     private static long ceilChars(int chars) {

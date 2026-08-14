@@ -15,7 +15,8 @@ import top.focess.veto.veto.LlamaCppBridge;
 @Configuration
 public class TrainingAutoConfiguration {
 
-    private static final Logger log = LoggerFactory.getLogger(TrainingAutoConfiguration.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.training.TrainingAutoConfiguration");
 
     private final @NonNull TrainingManager trainingManager;
     private final @NonNull LlamaCppBridge llamaCppBridge;

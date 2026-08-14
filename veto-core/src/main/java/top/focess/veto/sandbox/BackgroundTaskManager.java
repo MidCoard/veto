@@ -18,7 +18,6 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -44,7 +43,8 @@ import org.springframework.stereotype.Service;
 @Service
 public class BackgroundTaskManager {
 
-    private static final Logger log = LoggerFactory.getLogger(BackgroundTaskManager.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.sandbox.BackgroundTaskManager");
 
     /** Ring-buffer cap: the last N lines of merged output kept per task. */
     private static final int MAX_LINES = 5000;
@@ -92,7 +92,7 @@ public class BackgroundTaskManager {
             @NonNull Command cmd,
             @NonNull Path cwd,
             int timeoutSeconds,
-            @Nullable UUID sessionId) {
+            UUID sessionId) {
         String taskId = "bg-" + idSeq.incrementAndGet();
         SandboxHandle handle = sandboxManager.substrate().provision(SandboxProfile.defaults(cwd));
         Process process = sandboxManager.substrate().startBackground(handle, cmd, Path.of("."));
@@ -148,10 +148,10 @@ public class BackgroundTaskManager {
         void onTaskExited(@NonNull TaskInfo info);
     }
 
-    private volatile @Nullable TaskListener taskListener;
+    private volatile TaskListener taskListener;
 
     /** Registers the task lifecycle listener (the event bridge); null clears it. */
-    public void setTaskListener(@Nullable TaskListener listener) {
+    public void setTaskListener(TaskListener listener) {
         this.taskListener = listener;
     }
 
@@ -206,7 +206,10 @@ public class BackgroundTaskManager {
                 emitLine(task, line); // final line without a trailing break
             }
         } catch (IOException e) {
-            log.debug("Background task {} drain ended: {}", task.taskId, e.getMessage());
+            log.debug(
+                    "Background task {} drain ended: {}",
+                    task.taskId,
+                    String.valueOf(e.getMessage()));
         }
         try {
             process.waitFor();
@@ -229,18 +232,20 @@ public class BackgroundTaskManager {
         task.exitCode = process.exitValue();
         task.finishedAt = Instant.now();
         task.alive = false;
-        if (task.killer != null) {
-            task.killer.cancel(false);
+        ScheduledFuture<?> scheduledKiller = task.killer;
+        if (scheduledKiller != null) {
+            scheduledKiller.cancel(false);
         }
         log.debug(
                 "Background task {} exited (code={}, cause={})",
                 task.taskId,
-                task.exitCode,
+                String.valueOf(task.exitCode),
                 task.cause);
         notifyExited(task.toInfo());
         // Queue an exit notice so the owning agent is actively told about it on its next turn
         // (the UI already got TASK_EXITED above). exitCode is set just above, so it is non-null.
-        int code = task.exitCode != null ? task.exitCode : -1;
+        Integer recordedExitCode = task.exitCode;
+        int code = recordedExitCode != null ? recordedExitCode : -1;
         exitNotices
                 .computeIfAbsent(
                         task.agentId, k -> new java.util.concurrent.ConcurrentLinkedQueue<>())
@@ -348,7 +353,7 @@ public class BackgroundTaskManager {
     }
 
     /** Returns the task iff it belongs to {@code agentId}; {@code null} otherwise (isolation). */
-    private @Nullable ManagedTask owned(@NonNull String agentId, @NonNull String taskId) {
+    private ManagedTask owned(@NonNull String agentId, @NonNull String taskId) {
         ManagedTask t = tasks.get(taskId);
         if (t == null || !agentId.equals(t.agentId)) return null;
         return t;
@@ -366,12 +371,12 @@ public class BackgroundTaskManager {
         final @NonNull String cwd;
         final @NonNull Instant startedAt;
         final long pid;
-        final @Nullable UUID sessionId;
+        final UUID sessionId;
         final @NonNull LineBuffer buffer = new LineBuffer(MAX_LINES);
         volatile boolean alive = true;
-        volatile @Nullable Integer exitCode = null;
-        volatile @Nullable Instant finishedAt = null;
-        volatile @Nullable ScheduledFuture<?> killer = null;
+        volatile Integer exitCode = null;
+        volatile Instant finishedAt = null;
+        volatile ScheduledFuture<?> killer = null;
 
         /** Why the task ended; set before any forced kill, read by the drain thread. */
         volatile @NonNull ExitCause cause = ExitCause.NATURAL;
@@ -384,7 +389,7 @@ public class BackgroundTaskManager {
                 @NonNull String cwd,
                 @NonNull Instant startedAt,
                 long pid,
-                @Nullable UUID sessionId) {
+                UUID sessionId) {
             this.taskId = taskId;
             this.agentId = agentId;
             this.process = process;
@@ -445,10 +450,10 @@ public class BackgroundTaskManager {
             @NonNull String cwd,
             @NonNull Instant startedAt,
             boolean alive,
-            @Nullable Integer exitCode,
+            Integer exitCode,
             long pid,
-            @Nullable Instant finishedAt,
-            @Nullable UUID sessionId) {
+            Instant finishedAt,
+            UUID sessionId) {
 
         /** Convenience: elapsed seconds since start (0 if somehow negative). */
         public long uptimeSeconds() {

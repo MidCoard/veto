@@ -3,15 +3,14 @@ package top.focess.veto.llm.exceptions;
 import org.jspecify.annotations.NonNull;
 
 /** Authentication/authorization failure (missing or rejected credential). Never retryable. */
+@SuppressWarnings("serial")
 public class LlmAuthException extends LlmException {
     /**
      * Constructs a new LlmAuthException with the specified message.
      *
      * @param message the detail message
      */
-    public
-    @NonNull
-    LlmAuthException(@NonNull String message) {
+    public LlmAuthException(@NonNull String message) {
         super(message, false);
     }
 
@@ -21,9 +20,7 @@ public class LlmAuthException extends LlmException {
      * @param message the detail message
      * @param cause the cause of the exception
      */
-    public
-    @NonNull
-    LlmAuthException(@NonNull String message, @NonNull Throwable cause) {
+    public LlmAuthException(@NonNull String message, @NonNull Throwable cause) {
         super(message, cause, false);
     }
 }

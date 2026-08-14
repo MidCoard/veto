@@ -1,5 +1,6 @@
 package top.focess.veto.agent.translation;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -8,7 +9,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 import top.focess.veto.agent.mcp.ParameterSchema;
 import top.focess.veto.agent.mcp.ToolDefinition;
@@ -40,11 +40,11 @@ import top.focess.veto.llm.core.VetoResponse;
 @Service
 public class VetoCapabilityTranslator implements CapabilityTranslator {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final @NonNull ObjectMapper MAPPER = new ObjectMapper();
 
     @Override
     public @NonNull List<top.focess.veto.llm.core.ToolDefinition> translateTools(
-            @Nullable List<ToolDefinition> manifest) {
+            List<ToolDefinition> manifest) {
         List<top.focess.veto.llm.core.ToolDefinition> flat = new ArrayList<>();
         if (manifest == null) return flat;
         for (ToolDefinition def : manifest) {
@@ -148,7 +148,7 @@ public class VetoCapabilityTranslator implements CapabilityTranslator {
                     case ParameterSchema.Raw r -> r.jsonSchema();
                 };
         // AgentToolDefinition has no inputSchema field; derive from its Structured argsClass above.
-        return MAPPER.convertValue(schema, Map.class);
+        return MAPPER.convertValue(schema, new TypeReference<Map<String, Object>>() {});
     }
 
     private static @NonNull ObjectNode stringNode(@NonNull String description) {
@@ -156,8 +156,7 @@ public class VetoCapabilityTranslator implements CapabilityTranslator {
     }
 
     /** Builds a typed schema node (boolean/object/...) with an optional description. */
-    private static @NonNull ObjectNode typedSchemaNode(
-            @NonNull String type, @Nullable String description) {
+    private static @NonNull ObjectNode typedSchemaNode(@NonNull String type, String description) {
         ObjectNode node = MAPPER.createObjectNode();
         node.put("type", type);
         if (description != null) {

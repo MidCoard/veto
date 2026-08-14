@@ -17,7 +17,8 @@ import top.focess.veto.model.AuditRecord;
 @Service
 public class AuditLogger {
 
-    private static final Logger log = LoggerFactory.getLogger(AuditLogger.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.observability.AuditLogger");
 
     private final @NonNull ObservabilityConfiguration config;
     private final @NonNull TamperProofStore tamperProofStore;

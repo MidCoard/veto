@@ -4,6 +4,7 @@ import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.mcp.AgentTool;
 import top.focess.veto.agent.mcp.ToolDoc;
+import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.skills.SkillRegistry;
 
 /**
@@ -32,13 +33,15 @@ public final class LoadSkillTool implements AgentTool<LoadSkillArgs> {
 
     @Override
     public @NonNull String getDescription() {
-        ToolDoc doc = LoadSkillArgs.class.getAnnotation(ToolDoc.class);
+        ToolDoc doc =
+                ToolDocs.nonNullClass(LoadSkillArgs.class)
+                        .getAnnotation(ToolDocs.nonNullClass(ToolDoc.class));
         return (doc != null && !doc.description().isEmpty()) ? doc.description() : "";
     }
 
     @Override
     public @NonNull Class<LoadSkillArgs> getArgsClass() {
-        return LoadSkillArgs.class;
+        return ToolDocs.nonNullClass(LoadSkillArgs.class);
     }
 
     @Override
@@ -49,6 +52,9 @@ public final class LoadSkillTool implements AgentTool<LoadSkillArgs> {
                     + args.skillName()
                     + "' not found or tampered.\"}";
         }
-        return skill.get().promptInstructions();
+        String instructions = skill.get().promptInstructions();
+        return instructions == null
+                ? "{\"status\":\"error\",\"error\":\"Skill body is not loaded.\"}"
+                : instructions;
     }
 }

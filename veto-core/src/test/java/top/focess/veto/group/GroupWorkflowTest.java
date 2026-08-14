@@ -5,14 +5,16 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /** Tests for the Part 2 group workflow core (Group, ExecutionDag, Blackboard, GroupRegistry). */
+@SuppressWarnings("initialization.field.uninitialized")
 class GroupWorkflowTest {
 
-    private Blackboard blackboard;
-    private GroupRegistry registry;
+    private @NonNull Blackboard blackboard;
+    private @NonNull GroupRegistry registry;
 
     @BeforeEach
     void setUp() {
@@ -157,10 +159,10 @@ class GroupWorkflowTest {
         ExecutionDag dag = ExecutionDag.linear(groupId, List.of("n1"));
         Group g = Group.create("Leader-1", "user-1", "build feature X", blackboard, dag);
         registry.put(g);
-        assertEquals(Group.GroupState.ACTIVE, registry.get(g.groupId()).state());
+        assertEquals(Group.GroupState.ACTIVE, requireGroup(registry.get(g.groupId())).state());
 
         registry.disband(g.groupId(), java.time.Instant.now());
-        assertEquals(Group.GroupState.DISBANDED, registry.get(g.groupId()).state());
+        assertEquals(Group.GroupState.DISBANDED, requireGroup(registry.get(g.groupId())).state());
     }
 
     @Test
@@ -177,5 +179,12 @@ class GroupWorkflowTest {
         assertEquals("coding", g.mates().get("Mate-A"));
         g = g.withoutMate("Mate-T");
         assertEquals(1, g.mates().size());
+    }
+
+    private static @NonNull Group requireGroup(Group group) {
+        if (group != null) {
+            return group;
+        }
+        throw new AssertionError("expected group to remain registered");
     }
 }

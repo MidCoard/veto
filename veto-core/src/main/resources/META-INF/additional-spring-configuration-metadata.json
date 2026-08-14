@@ -1,0 +1,33 @@
+{
+  "properties": [
+    {
+      "name": "veto.memory.store",
+      "type": "java.lang.String",
+      "description": "Memory backend: memory, jpa, vector, or pgvector.",
+      "defaultValue": "jpa"
+    },
+    {
+      "name": "veto.terminal.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Whether the local terminal IPC server is enabled.",
+      "defaultValue": true
+    },
+    {
+      "name": "veto.terminal.bind-address",
+      "type": "java.lang.String",
+      "description": "ZeroMQ bind address for the local terminal IPC server.",
+      "defaultValue": "tcp://127.0.0.1:5555"
+    }
+  ],
+  "hints": [
+    {
+      "name": "veto.memory.store",
+      "values": [
+        { "value": "memory", "description": "In-process memory store." },
+        { "value": "jpa", "description": "JPA-backed persistent store." },
+        { "value": "vector", "description": "In-process vector index." },
+        { "value": "pgvector", "description": "PostgreSQL pgvector store." }
+      ]
+    }
+  ]
+}

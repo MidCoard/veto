@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 
 /** Unit tests for {@link SeqCorrelator} — no socket, no I/O, pure correlation logic. */
@@ -40,7 +41,7 @@ class SeqCorrelatorTest {
                 new IpcFrame.CompleteResult(
                         List.of(new IpcFrame.Completion("/x", null, null)), seq);
         c.deliver(result);
-        IpcFrame.SeqResponse got = c.await(seq, 1, TimeUnit.SECONDS);
+        IpcFrame.@NonNull SeqResponse got = requireResponse(c.await(seq, 1, TimeUnit.SECONDS));
         assertSame(result, got);
     }
 
@@ -89,5 +90,12 @@ class SeqCorrelatorTest {
         // After discard, deliver is dropped and await returns null.
         c.deliver(new IpcFrame.CompleteResult(List.of(), seq));
         assertNull(c.await(seq, 50, TimeUnit.MILLISECONDS));
+    }
+
+    private static IpcFrame.@NonNull SeqResponse requireResponse(IpcFrame.SeqResponse response) {
+        if (response != null) {
+            return response;
+        }
+        throw new AssertionError("expected correlated response");
     }
 }

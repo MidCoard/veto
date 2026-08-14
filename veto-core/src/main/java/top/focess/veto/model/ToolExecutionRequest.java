@@ -3,7 +3,6 @@ package top.focess.veto.model;
 import java.time.Instant;
 import java.util.*;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
 /** A request to execute a specific atomic tool capability within sandbox Sandbox. */
 public class ToolExecutionRequest {
@@ -16,20 +15,19 @@ public class ToolExecutionRequest {
     private final @NonNull String workflowId;
     private final @NonNull Instant createdAt;
     private volatile @NonNull ToolExecutionStatus status;
-    private volatile @Nullable String resultPayload;
-    private volatile @Nullable String errorMessage;
+    private volatile String resultPayload;
+    private volatile String errorMessage;
 
-    public
-    @NonNull
-    ToolExecutionRequest(@NonNull String capabilityName, @NonNull Map<String, Object> arguments) {
+    public ToolExecutionRequest(
+            @NonNull String capabilityName, @NonNull Map<String, Object> arguments) {
         this(UUID.randomUUID().toString(), capabilityName, arguments, Set.of(), "", "");
     }
 
     public ToolExecutionRequest(
             @NonNull String id,
             @NonNull String capabilityName,
-            @Nullable Map<String, Object> arguments,
-            @Nullable Set<String> requiredCredentials,
+            Map<String, Object> arguments,
+            Set<String> requiredCredentials,
             @NonNull String sessionId,
             @NonNull String workflowId) {
         this.id = id;
@@ -82,11 +80,11 @@ public class ToolExecutionRequest {
         return status;
     }
 
-    public synchronized @Nullable String getResultPayload() {
+    public synchronized String getResultPayload() {
         return resultPayload;
     }
 
-    public synchronized @Nullable String getErrorMessage() {
+    public synchronized String getErrorMessage() {
         return errorMessage;
     }
 
@@ -118,7 +116,7 @@ public class ToolExecutionRequest {
     }
 
     @Override
-    public boolean equals(@NonNull Object o) {
+    public boolean equals(Object o) {
         if (this == o) return true;
         if (!(o instanceof ToolExecutionRequest)) return false;
         ToolExecutionRequest that = (ToolExecutionRequest) o;

@@ -2,7 +2,6 @@ package top.focess.veto.command;
 
 import java.util.function.Predicate;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.command.Command;
 import top.focess.command.CommandArgument;
 import top.focess.command.CommandPermission;
@@ -30,9 +29,8 @@ public abstract class VetoCommand extends Command {
             s -> s instanceof VetoCommandSender vs && vs.isLoggedIn();
 
     protected VetoCommand(
-            @NonNull String name, @NonNull String description, @NonNull String... aliases) {
+            @NonNull String name, @NonNull String description, String @NonNull ... aliases) {
         super(name, description, aliases);
-        setPermission(CommandPermission.EVERYONE);
     }
 
     // ── argument factories ─────────────────────────────────────────────────
@@ -52,10 +50,21 @@ public abstract class VetoCommand extends Command {
         return CommandArgument.of(value);
     }
 
+    /**
+     * Reasserts the command framework's required-argument contract at the application boundary. A
+     * malformed dispatch therefore produces a named contract error instead of a later NPE.
+     */
+    protected static <T> @NonNull T requiredArg(T value, @NonNull String name) {
+        if (value == null) {
+            throw new IllegalArgumentException("Missing required command argument: " + name);
+        }
+        return value;
+    }
+
     // ── sender helpers ─────────────────────────────────────────────────────
 
     /** Cast the sender to a {@link VetoCommandSender}, or null if it's a different type. */
-    protected static @Nullable VetoCommandSender vetoSender(@NonNull CommandSender sender) {
+    protected static VetoCommandSender vetoSender(@NonNull CommandSender sender) {
         return sender instanceof VetoCommandSender vs ? vs : null;
     }
 }

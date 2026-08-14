@@ -7,7 +7,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -19,18 +18,17 @@ import org.springframework.stereotype.Component;
 @Component
 public class HeartbeatManager {
 
-    private static final Logger log = LoggerFactory.getLogger(HeartbeatManager.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.bus.HeartbeatManager");
 
     private final @NonNull BusConfiguration config;
     private final @NonNull AtomicInteger heartbeatCount = new AtomicInteger(0);
     private final @NonNull AtomicLong lastHeartbeatAck = new AtomicLong(0);
-    private @Nullable ScheduledExecutorService scheduler;
-    private @Nullable ScheduledFuture<?> heartbeatFuture;
-    private volatile @Nullable WebSocketBus bus;
+    private ScheduledExecutorService scheduler;
+    private ScheduledFuture<?> heartbeatFuture;
+    private volatile WebSocketBus bus;
 
-    public
-    @NonNull
-    HeartbeatManager(@NonNull BusConfiguration config) {
+    public HeartbeatManager(@NonNull BusConfiguration config) {
         this.config = config;
     }
 
@@ -50,8 +48,12 @@ public class HeartbeatManager {
         this.lastHeartbeatAck.set(System.currentTimeMillis());
 
         int intervalMs = config.getWebsocket().getHeartbeatIntervalMs();
+        ScheduledExecutorService activeScheduler = scheduler;
+        if (activeScheduler == null) {
+            throw new IllegalStateException("heartbeat scheduler was not initialized");
+        }
         heartbeatFuture =
-                scheduler.scheduleAtFixedRate(
+                activeScheduler.scheduleAtFixedRate(
                         this::sendHeartbeat, intervalMs, intervalMs, TimeUnit.MILLISECONDS);
         log.info("bus Heartbeat: Started (interval={}ms)", intervalMs);
     }
@@ -71,8 +73,9 @@ public class HeartbeatManager {
 
     private void sendHeartbeat() {
         try {
-            if (bus != null && bus.isConnected()) {
-                bus.sendMessage(
+            WebSocketBus activeBus = bus;
+            if (activeBus != null && activeBus.isConnected()) {
+                activeBus.sendMessage(
                         "{\"type\":\"heartbeat\",\"seq\":"
                                 + heartbeatCount.incrementAndGet()
                                 + "}");

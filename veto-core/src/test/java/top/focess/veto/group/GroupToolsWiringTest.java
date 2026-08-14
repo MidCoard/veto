@@ -6,7 +6,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.identity.RoleToolFilter;
 import top.focess.veto.agent.mcp.ToolCallContextHolder;
@@ -37,7 +36,8 @@ class GroupToolsWiringTest {
     private final ModelTierRegistry tierRegistry =
             new ModelTierRegistry() {
                 @Override
-                public ModelBinding resolve(String username, ModelTier tier) {
+                public @NonNull ModelBinding resolve(
+                        @NonNull String username, @NonNull ModelTier tier) {
                     return new ModelBinding(
                             ProviderType.DEEPSEEK,
                             "deepseek-chat",
@@ -48,7 +48,7 @@ class GroupToolsWiringTest {
                 }
 
                 @Override
-                public String activeProfile(String username) {
+                public @NonNull String activeProfile(@NonNull String username) {
                     return "default";
                 }
             };
@@ -62,12 +62,12 @@ class GroupToolsWiringTest {
      */
     private static final class StubToolEngine implements ToolEngine {
         @Override
-        public @NonNull List<ToolDefinition> getActiveTools(@Nullable Set<String> whitelist) {
+        public @NonNull List<ToolDefinition> getActiveTools(Set<String> whitelist) {
             return List.of();
         }
 
         @Override
-        public @Nullable ToolDefinition resolveDefinition(@NonNull String toolName) {
+        public ToolDefinition resolveDefinition(@NonNull String toolName) {
             return null;
         }
 
@@ -81,16 +81,19 @@ class GroupToolsWiringTest {
     void createGroupRegistersEmptyGroupAndRequestsTransform() {
         CreateGroup create = new CreateGroup(spawner, leaderBinding, roleToolFilter);
 
-        ToolCallContextHolder.set("agent-1", UUID.randomUUID());
+        ToolCallContextHolder.set("agent-1", UUID.randomUUID(), null, "owner");
         try {
             String result = create.execute(new CreateGroup.Args("do the thing"));
             assertEquals("", result, "create_group returns an empty result on success");
 
             // A forward transform (STANDALONE -> Leader) is requested - not a recall.
             ToolCallContextHolder.TransformRequest request = ToolCallContextHolder.drainTransform();
-            assertInstanceOf(ToolCallContextHolder.TransformRequest.ToLeader.class, request);
             ToolCallContextHolder.TransformDirective directive =
-                    ((ToolCallContextHolder.TransformRequest.ToLeader) request).directive();
+                    assertInstanceOf(
+                                    top.focess.veto.agent.mcp.ToolDocs.nonNullClass(
+                                            ToolCallContextHolder.TransformRequest.ToLeader.class),
+                                    requireTransform(request))
+                            .directive();
             assertEquals("do the thing", directive.brief());
             assertEquals("deepseek-chat", directive.leaderBinding().model());
 
@@ -133,15 +136,20 @@ class GroupToolsWiringTest {
 
             // A reverse transform (Leader -> STANDALONE) is requested.
             ToolCallContextHolder.TransformRequest request = ToolCallContextHolder.drainTransform();
-            assertInstanceOf(ToolCallContextHolder.TransformRequest.ToStandalone.class, request);
-            String brief = ((ToolCallContextHolder.TransformRequest.ToStandalone) request).brief();
+            String brief =
+                    assertInstanceOf(
+                                    top.focess.veto.agent.mcp.ToolDocs.nonNullClass(
+                                            ToolCallContextHolder.TransformRequest.ToStandalone
+                                                    .class),
+                                    requireTransform(request))
+                            .brief();
             assertTrue(
                     brief.contains("Delegation complete"),
                     "the reverse-transform brief carries the outcome");
 
             assertEquals(
                     Group.GroupState.DISBANDED,
-                    registry.get(g.groupId()).state(),
+                    requireGroup(registry.get(g.groupId())).state(),
                     "disband flips the group to DISBANDED");
         } finally {
             ToolCallContextHolder.clear();
@@ -197,5 +205,20 @@ class GroupToolsWiringTest {
         } finally {
             ToolCallContextHolder.clear();
         }
+    }
+
+    private static ToolCallContextHolder.@NonNull TransformRequest requireTransform(
+            ToolCallContextHolder.TransformRequest request) {
+        if (request != null) {
+            return request;
+        }
+        throw new AssertionError("expected a transform request");
+    }
+
+    private static @NonNull Group requireGroup(Group group) {
+        if (group != null) {
+            return group;
+        }
+        throw new AssertionError("expected group to remain registered");
     }
 }

@@ -6,7 +6,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.mcp.Doc;
@@ -14,6 +13,7 @@ import top.focess.veto.agent.mcp.NativeTool;
 import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.ToolCallContextHolder;
 import top.focess.veto.agent.mcp.ToolDoc;
+import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.mcp.ToolSecurity;
 import top.focess.veto.llm.config.LlmJacksonConfig;
 import top.focess.veto.sandbox.BackgroundTaskManager;
@@ -82,11 +82,9 @@ public final class ViewTaskTool implements NativeTool<ViewTaskTool.Args> {
                         + " \"exitCode\": null}]}"
             })
     public record Args(
-            @Nullable
-                    @Doc(
-                            "The task id (from run_task). Omit to list every task the calling agent owns.")
+            @Doc("The task id (from run_task). Omit to list every task the calling agent owns.")
                     String taskId,
-            @Nullable @Doc("Max recent output lines to include (default 50).") Integer lines) {}
+            @Doc("Max recent output lines to include (default 50).") Integer lines) {}
 
     @Override
     public @NonNull String getName() {
@@ -101,7 +99,7 @@ public final class ViewTaskTool implements NativeTool<ViewTaskTool.Args> {
 
     @Override
     public @NonNull Class<Args> getArgsClass() {
-        return Args.class;
+        return ToolDocs.nonNullClass(Args.class);
     }
 
     @Override
@@ -109,23 +107,26 @@ public final class ViewTaskTool implements NativeTool<ViewTaskTool.Args> {
         String agentId = currentAgentId();
         int lines = args.lines() != null && args.lines() > 0 ? args.lines() : 50;
         try {
-            if (args.taskId() == null || args.taskId().isBlank()) {
+            String taskId = args.taskId();
+            if (taskId == null || taskId.isBlank()) {
                 List<BackgroundTaskManager.TaskInfo> all = taskManager.list(agentId);
                 Map<String, Object> envelope = new LinkedHashMap<>();
                 envelope.put("count", all.size());
                 envelope.put("tasks", all);
                 return mapper.writeValueAsString(envelope);
             }
-            Optional<BackgroundTaskManager.TaskInfo> info =
-                    taskManager.status(agentId, args.taskId());
+            Optional<BackgroundTaskManager.TaskInfo> info = taskManager.status(agentId, taskId);
             if (info.isEmpty()) {
-                return error("task not found: " + args.taskId());
+                return error("task not found: " + taskId);
             }
-            Optional<String> out = taskManager.output(agentId, args.taskId(), lines);
+            Optional<String> out = taskManager.output(agentId, taskId, lines);
             Map<String, Object> envelope = new LinkedHashMap<>();
             envelope.put("taskId", info.get().taskId());
             envelope.put("alive", info.get().alive());
-            envelope.put("exitCode", info.get().exitCode());
+            Integer exitCode = info.get().exitCode();
+            if (exitCode != null) {
+                envelope.put("exitCode", exitCode);
+            }
             envelope.put("pid", info.get().pid());
             envelope.put("startedAt", info.get().startedAt());
             envelope.put("uptimeSeconds", info.get().uptimeSeconds());

@@ -55,9 +55,10 @@ final class OpenAiLlmClient extends LlmClient {
     @Override
     public @NonNull RawCompletion complete(@NonNull ResolvedRequest resolved) {
         VetoRequest request = resolved.request();
+        JsonNode configuredSchema = request.responseSchema();
         JsonNode rawSchema =
-                request.responseSchema() != null
-                        ? request.responseSchema()
+                configuredSchema != null
+                        ? configuredSchema
                         : capabilityTranslator.vetoResponseSchema(false);
         Map<String, Object> responseSchema =
                 objectMapper.convertValue(rawSchema, new TypeReference<Map<String, Object>>() {});
@@ -74,7 +75,7 @@ final class OpenAiLlmClient extends LlmClient {
                                             ResponseFormatJsonSchema.JsonSchema.builder()
                                                     .name("veto_pulse")
                                                     .strict(true)
-                                                    .schema(JsonValue.from(responseSchema))
+                                                    .schema(responseSchemaOf(responseSchema))
                                                     .build())
                                     .build()));
         } else {
@@ -125,6 +126,15 @@ final class OpenAiLlmClient extends LlmClient {
         return new RawCompletion(summary, content);
     }
 
+    private static ResponseFormatJsonSchema.JsonSchema.@NonNull Schema responseSchemaOf(
+            @NonNull Map<String, Object> responseSchema) {
+        ResponseFormatJsonSchema.JsonSchema.Schema.Builder builder =
+                ResponseFormatJsonSchema.JsonSchema.Schema.builder();
+        responseSchema.forEach(
+                (name, value) -> builder.putAdditionalProperty(name, JsonValue.from(value)));
+        return builder.build();
+    }
+
     private void applyOptions(
             ChatCompletionCreateParams.@NonNull Builder builder, @NonNull LlmOptions options) {
         if (options.temperature() != null) {
@@ -133,8 +143,9 @@ final class OpenAiLlmClient extends LlmClient {
         if (options.topP() != null) {
             builder.topP(options.topP());
         }
-        if (options.maxTokens() != null) {
-            builder.maxCompletionTokens(options.maxTokens().longValue());
+        Integer maxTokens = options.maxTokens();
+        if (maxTokens != null) {
+            builder.maxCompletionTokens(maxTokens.longValue());
         }
     }
 
@@ -160,23 +171,26 @@ final class OpenAiLlmClient extends LlmClient {
      * Tool-call assistant messages carry native {@code tool_calls}; tool-result messages carry
      * {@code tool_call_id}. Both are linked by the shared {@code callId}.
      */
-    private static ChatCompletionMessageParam toSdkMessage(@NonNull ChatMessage msg) {
+    private static @NonNull ChatCompletionMessageParam toSdkMessage(@NonNull ChatMessage msg) {
         switch (msg.role()) {
             case "user" -> {
                 return ChatCompletionMessageParam.ofUser(
                         ChatCompletionUserMessageParam.builder().content(msg.content()).build());
             }
             case "assistant" -> {
-                if (msg.callId() != null) {
+                String callId = msg.callId();
+                if (callId != null) {
+                    String toolName = msg.toolName();
+                    String toolArgs = msg.toolArgs();
                     // Native tool_call on the assistant message
                     ChatCompletionMessageFunctionToolCall.Function function =
                             ChatCompletionMessageFunctionToolCall.Function.builder()
-                                    .name(msg.toolName() != null ? msg.toolName() : "")
-                                    .arguments(msg.toolArgs() != null ? msg.toolArgs() : "{}")
+                                    .name(toolName != null ? toolName : "")
+                                    .arguments(toolArgs != null ? toolArgs : "{}")
                                     .build();
                     ChatCompletionMessageFunctionToolCall toolCall =
                             ChatCompletionMessageFunctionToolCall.builder()
-                                    .id(msg.callId())
+                                    .id(callId)
                                     .function(function)
                                     .build();
                     ChatCompletionAssistantMessageParam.Builder ab =
@@ -192,12 +206,13 @@ final class OpenAiLlmClient extends LlmClient {
                                 .build());
             }
             case "tool" -> {
+                String callId = msg.callId();
                 return ChatCompletionMessageParam.ofTool(
                         ChatCompletionToolMessageParam.builder()
                                 .content(
                                         ChatCompletionToolMessageParam.Content.ofText(
                                                 msg.content()))
-                                .toolCallId(msg.callId() != null ? msg.callId() : "")
+                                .toolCallId(callId != null ? callId : "")
                                 .build());
             }
             default -> {

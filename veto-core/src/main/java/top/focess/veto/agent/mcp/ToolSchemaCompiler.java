@@ -13,7 +13,6 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
 /**
  * Compiles the two human-friendly input-schema formats into canonical {@link ToolDefinition}
@@ -26,9 +25,10 @@ import org.jspecify.annotations.Nullable;
  */
 public final class ToolSchemaCompiler {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final @NonNull ObjectMapper MAPPER = new ObjectMapper();
 
-    private static final Pattern DSL_PATTERN = Pattern.compile("^([a-zA-Z]+)([!?]?)\\s*(.*)$");
+    private static final @NonNull Pattern DSL_PATTERN =
+            Pattern.compile("^([a-zA-Z]+)([!?]?)\\s*(.*)$");
 
     private ToolSchemaCompiler() {}
 
@@ -39,8 +39,8 @@ public final class ToolSchemaCompiler {
      * reflects over the class to derive the schema + security hints.
      */
     public static @NonNull NativeToolDefinition compileNative(@NonNull NativeTool<?> toolBean) {
-        Class<?> toolClass = toolBean.getClass();
-        ToolSecurity security = toolClass.getAnnotation(ToolSecurity.class);
+        Class<?> toolClass = ToolDocs.nonNullClass(toolBean.getClass());
+        ToolSecurity security = toolClass.getAnnotation(ToolDocs.nonNullClass(ToolSecurity.class));
         if (security == null) {
             throw new IllegalArgumentException(
                     toolClass.getName() + " must be annotated with @ToolSecurity");
@@ -64,10 +64,11 @@ public final class ToolSchemaCompiler {
      * parameter name to {@link ParamCategory}. Extracted from {@link #compileNative}'s inline loop
      * so it can be reused by {@link AgentToolDefinition#from(Class)}.
      */
-    public static @NonNull Map<String, ParamCategory> hintsOf(@NonNull Class<?> argsClass) {
-        Map<String, ParamCategory> hints = new LinkedHashMap<>();
+    public static @NonNull Map<@NonNull String, @NonNull ParamCategory> hintsOf(
+            @NonNull Class<?> argsClass) {
+        Map<@NonNull String, @NonNull ParamCategory> hints = new LinkedHashMap<>();
         for (RecordComponent c : argsClass.getRecordComponents()) {
-            SecurityHint h = c.getAnnotation(SecurityHint.class);
+            SecurityHint h = c.getAnnotation(ToolDocs.nonNullClass(SecurityHint.class));
             hints.put(c.getName(), h != null ? h.value() : ParamCategory.GENERIC);
         }
         return hints;
@@ -106,21 +107,20 @@ public final class ToolSchemaCompiler {
                 paramNode.put("type", mapJavaTypeToSchemaType(type));
             }
 
-            Doc doc = component.getAnnotation(Doc.class);
+            Doc doc = component.getAnnotation(ToolDocs.nonNullClass(Doc.class));
             if (doc != null && !doc.value().isEmpty()) {
                 paramNode.put("description", doc.value());
             }
 
             properties.set(name, paramNode);
 
-            // JSpecify @Nullable is @Target(TYPE_USE) only, so it lives on the component's
-            // annotated type, not as a declaration annotation on the component itself
-            // (RecordComponent.isAnnotationPresent would miss it). Check both surfaces so any
-            // nullability marker - declaration or type-use - makes the param optional.
-            boolean nullable =
-                    component.isAnnotationPresent(Nullable.class)
-                            || component.getAnnotatedType().isAnnotationPresent(Nullable.class);
-            if (type.isPrimitive() || !nullable) {
+            // Repository contracts are nullable by default. JSpecify is @Target(TYPE_USE), so the
+            // explicit @NonNull marker normally lives on the annotated component type; checking
+            // both reflection surfaces also supports declaration-capable non-null annotations.
+            boolean explicitlyNonNull =
+                    component.isAnnotationPresent(NonNull.class)
+                            || component.getAnnotatedType().isAnnotationPresent(NonNull.class);
+            if (type.isPrimitive() || explicitlyNonNull) {
                 required.add(name);
             }
         }
@@ -149,9 +149,14 @@ public final class ToolSchemaCompiler {
 
             ObjectNode paramNode = MAPPER.createObjectNode();
             if (matcher.matches()) {
-                String type = matcher.group(1).toLowerCase();
+                String typeGroup = matcher.group(1);
                 String modifier = matcher.group(2);
-                String description = matcher.group(3).trim();
+                String descriptionGroup = matcher.group(3);
+                if (typeGroup == null || descriptionGroup == null) {
+                    throw new IllegalArgumentException("Malformed tool parameter DSL: " + dslValue);
+                }
+                String type = typeGroup.toLowerCase();
+                String description = descriptionGroup.trim();
                 paramNode.put("type", type);
                 if (!description.isEmpty()) {
                     paramNode.put("description", description);
@@ -226,7 +231,7 @@ public final class ToolSchemaCompiler {
      * Resolves the element class of an array or collection component, or {@code null} for a raw
      * (unparameterized) collection whose element type is unknown at compile time.
      */
-    private static @Nullable Class<?> elementClassOf(@NonNull RecordComponent component) {
+    private static Class<?> elementClassOf(@NonNull RecordComponent component) {
         Class<?> type = component.getType();
         if (type.isArray()) {
             return type.getComponentType();

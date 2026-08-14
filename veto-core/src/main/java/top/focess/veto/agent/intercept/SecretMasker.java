@@ -25,7 +25,7 @@ public final class SecretMasker {
      * this list conservative; false positives (over-scrubbing) are preferred to false negatives
      * (leaking a secret).
      */
-    private static final LinkedHashMap<Pattern, String> PATTERNS = buildPatterns();
+    private static final @NonNull LinkedHashMap<Pattern, String> PATTERNS = buildPatterns();
 
     private static @NonNull LinkedHashMap<Pattern, String> buildPatterns() {
         LinkedHashMap<Pattern, String> m = new LinkedHashMap<>();

@@ -10,7 +10,6 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.agent.Agent;
@@ -43,7 +42,8 @@ import top.focess.veto.agent.TurnRecord;
  */
 public class MateAgent {
 
-    private static final Logger log = LoggerFactory.getLogger(MateAgent.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.group.MateAgent");
 
     private final @NonNull String mateId;
     private final @NonNull UUID groupId;
@@ -60,7 +60,7 @@ public class MateAgent {
 
     private final @NonNull AtomicBoolean running = new AtomicBoolean(false);
     private final @NonNull ScheduledExecutorService scheduler;
-    private @Nullable ScheduledFuture<?> pollTask;
+    private ScheduledFuture<?> pollTask;
     private final long maxCallsPerEpisode;
 
     public MateAgent(
@@ -241,20 +241,20 @@ public class MateAgent {
             }
             postAccept(nodeId, artifact);
         } else {
-            postFeedback(nodeId, result.message() == null ? "agent failure" : result.message());
+            postFeedback(nodeId, result.message());
         }
     }
 
-    private @Nullable String extractArtifact(@NonNull AgentResult result) {
+    private String extractArtifact(@NonNull AgentResult result) {
         // Heuristic: the last assistant message is the artifact description. For a real
         // deployment the Mate would write to a workspace path; the path is what we post.
-        if (result.message() == null || result.message().isBlank()) {
+        if (result.message().isBlank()) {
             return null;
         }
         return "/mate/" + mateId + "/" + System.currentTimeMillis();
     }
 
-    private void postAccept(@NonNull String nodeId, @Nullable String artifactPath) {
+    private void postAccept(@NonNull String nodeId, String artifactPath) {
         String payload = nodeId + ":accept:" + (artifactPath == null ? "/artifact" : artifactPath);
         blackboard.post(
                 new BlackboardMessage(
@@ -279,7 +279,7 @@ public class MateAgent {
                         0));
     }
 
-    private void postFeedback(@NonNull String nodeId, @Nullable String reason) {
+    private void postFeedback(@NonNull String nodeId, String reason) {
         blackboard.post(
                 new BlackboardMessage(
                         UUID.randomUUID().toString(),

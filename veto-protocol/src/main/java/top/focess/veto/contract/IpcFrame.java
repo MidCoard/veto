@@ -6,7 +6,6 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
 /**
  * Sealed hierarchy for all IPC protocol frames exchanged between the terminal (client) and the
@@ -193,8 +192,7 @@ public sealed interface IpcFrame
      * @param description optional helpful description or context
      * @param group optional category/group name for JLine rendering grouping
      */
-    record Completion(
-            @NonNull String value, @Nullable String description, @Nullable String group) {}
+    record Completion(@NonNull String value, String description, String group) {}
 
     /**
      * Response containing autocomplete candidates.
@@ -210,9 +208,9 @@ public sealed interface IpcFrame
      * @param placeholder the template or placeholder representing the expected argument
      * @param description a helpful description explaining the argument
      */
-    record HintInfo(@Nullable String placeholder, @Nullable String description) {
+    record HintInfo(String placeholder, String description) {
         /** Empty placeholder instance. */
-        public static final HintInfo EMPTY = new HintInfo(null, null);
+        public static final @NonNull HintInfo EMPTY = new HintInfo(null, null);
 
         /**
          * Returns the display text to render.
@@ -245,10 +243,9 @@ public sealed interface IpcFrame
      * @param meta session metadata (username, turn number, flags, etc.)
      * @param content optional content string
      */
-    record Done(@NonNull Map<String, Object> meta, @Nullable String content)
-            implements TerminalResponse {
+    record Done(@NonNull Map<String, Object> meta, String content) implements TerminalResponse {
         /** Typed, null-safe accessor for {@link IpcMeta#USERNAME}. */
-        public @Nullable String username() {
+        public String username() {
             return IpcMeta.username(meta);
         }
 
@@ -303,7 +300,10 @@ public sealed interface IpcFrame
          * Canonical constructor. Normalizes a null {@code kind} (e.g. from a peer that omits the
          * field) to {@link Kind#MESSAGE} so the dispatch path never sees null.
          */
-        public Delta(@NonNull String content, @NonNull Kind kind) {
+        @SuppressWarnings(
+                "ConstantValue") // Jackson peers may omit kind despite the non-null accessor
+        // contract.
+        public Delta(@NonNull String content, Kind kind) {
             this.content = content;
             this.kind = kind == null ? Kind.MESSAGE : kind;
         }
@@ -340,8 +340,7 @@ public sealed interface IpcFrame
      * @param toolName the tool the agent is calling
      * @param args the call's arguments (the model-provided input, not the engine's framed form)
      */
-    record ToolCall(@NonNull String toolName, @NonNull Map<String, Object> args)
-            implements ServerFrame {
+    record ToolCall(@NonNull String toolName, Map<String, Object> args) implements ServerFrame {
 
         /** True when the call carries no arguments. */
         public boolean isEmpty() {
@@ -399,8 +398,7 @@ public sealed interface IpcFrame
      *     {@code false} for a veto picker
      * @param veto the optional HITL veto payload; {@code null} for a free-text prompt
      */
-    record Prompt(@NonNull String content, boolean mask, @Nullable VetoPayload veto)
-            implements ServerFrame {
+    record Prompt(@NonNull String content, boolean mask, VetoPayload veto) implements ServerFrame {
         /** Free-text prompt constructor (no veto payload) - keeps existing callers unchanged. */
         public Prompt(@NonNull String content, boolean mask) {
             this(content, mask, null);
@@ -433,7 +431,7 @@ public sealed interface IpcFrame
      *
      * @param reason the reason for termination
      */
-    record Terminate(@Nullable String reason) implements TerminalResponse {}
+    record Terminate(String reason) implements TerminalResponse {}
 
     // ══════════════════════════════════════════════════════════════════════
     // Fallback
@@ -452,5 +450,5 @@ public sealed interface IpcFrame
      *
      * @param type the raw {@code type} discriminator from the unrecognized frame, or {@code null}
      */
-    record Unknown(@Nullable String type) implements IpcFrame {}
+    record Unknown(String type) implements IpcFrame {}
 }

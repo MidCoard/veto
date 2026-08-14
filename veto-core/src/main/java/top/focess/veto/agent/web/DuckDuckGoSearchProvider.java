@@ -32,14 +32,15 @@ import org.springframework.stereotype.Component;
         matchIfMissing = true)
 public class DuckDuckGoSearchProvider implements SearchProvider {
 
-    private static final Logger log = LoggerFactory.getLogger(DuckDuckGoSearchProvider.class);
-    private static final String ENDPOINT = "https://html.duckduckgo.com/html/?q=";
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.agent.web.DuckDuckGoSearchProvider");
+    private static final @NonNull String ENDPOINT = "https://html.duckduckgo.com/html/?q=";
     // A browser-like UA; the default Java client UA is frequently blocked.
-    private static final String USER_AGENT =
+    private static final @NonNull String USER_AGENT =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)"
                     + " Chrome/124.0 Safari/537.36";
 
-    private final HttpClient httpClient =
+    private final @NonNull HttpClient httpClient =
             HttpClient.newBuilder()
                     .connectTimeout(Duration.ofSeconds(15))
                     .followRedirects(HttpClient.Redirect.NORMAL)
@@ -122,8 +123,10 @@ public class DuckDuckGoSearchProvider implements SearchProvider {
     /** Applies the allowed/blocked domain filters (host suffix match, www-insensitive). */
     private @NonNull List<SearchResult> applyDomainFilters(
             @NonNull List<SearchResult> results, @NonNull SearchOptions options) {
-        if ((options.allowedDomains() == null || options.allowedDomains().isEmpty())
-                && (options.blockedDomains() == null || options.blockedDomains().isEmpty())) {
+        List<String> allowedDomains = options.allowedDomains();
+        List<String> blockedDomains = options.blockedDomains();
+        if ((allowedDomains == null || allowedDomains.isEmpty())
+                && (blockedDomains == null || blockedDomains.isEmpty())) {
             return results;
         }
         List<SearchResult> out = new ArrayList<>();
@@ -132,12 +135,12 @@ public class DuckDuckGoSearchProvider implements SearchProvider {
             if (host == null) {
                 continue;
             }
-            if (options.blockedDomains() != null && matchesAny(host, options.blockedDomains())) {
+            if (blockedDomains != null && matchesAny(host, blockedDomains)) {
                 continue;
             }
-            if (options.allowedDomains() != null
-                    && !options.allowedDomains().isEmpty()
-                    && !matchesAny(host, options.allowedDomains())) {
+            if (allowedDomains != null
+                    && !allowedDomains.isEmpty()
+                    && !matchesAny(host, allowedDomains)) {
                 continue;
             }
             out.add(r);

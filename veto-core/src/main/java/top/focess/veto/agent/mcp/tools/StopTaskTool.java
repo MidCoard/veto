@@ -12,6 +12,7 @@ import top.focess.veto.agent.mcp.NativeTool;
 import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.ToolCallContextHolder;
 import top.focess.veto.agent.mcp.ToolDoc;
+import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.mcp.ToolSecurity;
 import top.focess.veto.llm.config.LlmJacksonConfig;
 import top.focess.veto.sandbox.BackgroundTaskManager;
@@ -93,7 +94,7 @@ public final class StopTaskTool implements NativeTool<StopTaskTool.Args> {
 
     @Override
     public @NonNull Class<Args> getArgsClass() {
-        return Args.class;
+        return ToolDocs.nonNullClass(Args.class);
     }
 
     @Override
@@ -110,7 +111,10 @@ public final class StopTaskTool implements NativeTool<StopTaskTool.Args> {
             envelope.put("status", "stopped");
             envelope.put("taskId", info.get().taskId());
             envelope.put("alive", info.get().alive());
-            envelope.put("exitCode", info.get().exitCode());
+            Integer exitCode = info.get().exitCode();
+            if (exitCode != null) {
+                envelope.put("exitCode", exitCode);
+            }
             return mapper.writeValueAsString(envelope);
         } catch (Exception e) {
             return error("stop_task failed: " + e.getMessage());

@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -12,7 +11,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -21,6 +19,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 import top.focess.veto.i18n.Msg;
+import top.focess.veto.security.HostPathInput;
 import top.focess.veto.vault.KeysteadVault;
 
 /**
@@ -49,8 +48,7 @@ public class FsController {
      * entries: [{name, path}]}}, with {@code path}/{@code parent} null at the root level.
      */
     @GetMapping("/browse")
-    public @NonNull ResponseEntity<?> browse(
-            @Nullable @RequestParam(required = false) String path) {
+    public @NonNull ResponseEntity<?> browse(@RequestParam(required = false) String path) {
         String user = vault.currentUser();
         if (user == null) {
             return ResponseEntity.status(401)
@@ -64,7 +62,15 @@ public class FsController {
             }
             return ResponseEntity.ok(body(null, null, roots));
         }
-        Path dir = Paths.get(path).toAbsolutePath().normalize();
+        Path dir;
+        try {
+            // absoluteNormalized rejects traversal syntax; toRealPath resolves symlinks before use.
+            //noinspection tainting
+            dir = HostPathInput.absoluteNormalized(path, "path").toRealPath();
+        } catch (IllegalArgumentException | IOException e) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, Msg.get("error.fs.notDirectory", path));
+        }
         if (!Files.isDirectory(dir)) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST, Msg.get("error.fs.notDirectory", path));
@@ -75,24 +81,23 @@ public class FsController {
                     // Dotfiles and Windows system dirs ($RECYCLE.BIN, System Volume Information)
                     .filter(
                             child -> {
-                                String name = child.getFileName().toString();
+                                String name = fileName(child);
                                 return !name.startsWith(".") && !name.startsWith("$");
                             })
                     .filter(Files::isReadable)
-                    .sorted(
-                            Comparator.comparing(
-                                    child -> child.getFileName().toString().toLowerCase()))
+                    .sorted(Comparator.comparing(child -> fileName(child).toLowerCase()))
                     .forEach(
                             child ->
                                     entries.add(
                                             Map.of(
                                                     "name",
-                                                    child.getFileName().toString(),
+                                                    fileName(child),
                                                     "path",
                                                     child.toString())));
         } catch (IOException e) {
             throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST, Msg.get("error.fs.cannotList", dir, e.getMessage()));
+                    HttpStatus.BAD_REQUEST,
+                    Msg.get("error.fs.cannotList", dir, String.valueOf(e.getMessage())));
         }
         Path parent = dir.getParent();
         return ResponseEntity.ok(
@@ -100,14 +105,21 @@ public class FsController {
     }
 
     private static @NonNull Map<String, Object> body(
-            @Nullable String path,
-            @Nullable String parent,
-            @NonNull List<Map<String, String>> entries) {
+            String path, String parent, @NonNull List<Map<String, String>> entries) {
         // LinkedHashMap: Map.of rejects the null path/parent of the root listing.
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("path", path);
-        body.put("parent", parent);
+        if (path != null) {
+            body.put("path", path);
+        }
+        if (parent != null) {
+            body.put("parent", parent);
+        }
         body.put("entries", entries);
         return body;
+    }
+
+    private static @NonNull String fileName(@NonNull Path path) {
+        Path fileName = path.getFileName();
+        return fileName == null ? path.toString() : fileName.toString();
     }
 }

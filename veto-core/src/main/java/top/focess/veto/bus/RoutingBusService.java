@@ -18,7 +18,8 @@ import top.focess.veto.model.DAGPayload;
 @Service
 public class RoutingBusService {
 
-    private static final Logger log = LoggerFactory.getLogger(RoutingBusService.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.bus.RoutingBusService");
 
     private final @NonNull WebSocketBus webSocketBus;
     private final @NonNull BusConfiguration config;
@@ -64,6 +65,7 @@ public class RoutingBusService {
         CompletableFuture<DAGPayload> future = new CompletableFuture<>();
         activePayloads.put(payload.getId(), payload);
         pendingFutures.put(payload.getId(), future);
+        webSocketBus.registerDAGRoute(payload.getTaskType(), this::completeDAGPayload);
 
         webSocketBus.sendDAGPayload(payload);
 
@@ -76,6 +78,16 @@ public class RoutingBusService {
                         });
 
         return future;
+    }
+
+    private void completeDAGPayload(@NonNull DAGPayload payload) {
+        CompletableFuture<DAGPayload> future = pendingFutures.remove(payload.getId());
+        activePayloads.remove(payload.getId());
+        if (future != null) {
+            future.complete(payload);
+        } else {
+            log.debug("Bus: Received DAG payload {} with no pending request", payload.getId());
+        }
     }
 
     /** Connect to the cloud backend. */

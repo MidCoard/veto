@@ -12,9 +12,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Stream;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import top.focess.veto.agent.mcp.ToolDocs;
 
 /**
  * Scans the filesystem for {@code SKILL.md} files, parses the YAML frontmatter boundary, reads the
@@ -27,7 +27,8 @@ import org.slf4j.LoggerFactory;
  */
 public class MarkdownSkillLoader {
 
-    private static final Logger log = LoggerFactory.getLogger(MarkdownSkillLoader.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.agent.skills.MarkdownSkillLoader");
 
     private final @NonNull YAMLMapper yamlMapper = new YAMLMapper();
 
@@ -39,7 +40,11 @@ public class MarkdownSkillLoader {
             return skillsMap;
         }
         try (Stream<Path> walk = Files.walk(skillsDir)) {
-            walk.filter(path -> path.getFileName().toString().equals("SKILL.md"))
+            walk.filter(
+                            path -> {
+                                Path fileName = path.getFileName();
+                                return fileName != null && fileName.toString().equals("SKILL.md");
+                            })
                     .map(path -> parseSkillFile(path, sourceType))
                     .flatMap(Optional::stream)
                     .forEach(skill -> skillsMap.put(skill.name(), skill));
@@ -65,7 +70,11 @@ public class MarkdownSkillLoader {
             }
             String markdownBody = markdownBodyBuilder.toString().trim();
 
-            SkillMetadata metadata = yamlMapper.readValue(yamlContent, SkillMetadata.class);
+            SkillMetadata metadata =
+                    yamlMapper.readValue(yamlContent, ToolDocs.nonNullClass(SkillMetadata.class));
+            if (metadata == null) {
+                return Optional.empty();
+            }
 
             List<String> requiredTools = List.of();
             if (metadata.tools() != null && metadata.tools().required() != null) {
@@ -73,13 +82,17 @@ public class MarkdownSkillLoader {
                         metadata.tools().required().stream().map(ToolRequirement::name).toList();
             }
 
+            Path skillDirectory = path.toAbsolutePath().normalize().getParent();
+            if (skillDirectory == null) {
+                return Optional.empty();
+            }
             Skill skill =
                     new Skill(
                             metadata.name(),
                             metadata.description(),
                             markdownBody,
                             sourceType,
-                            path.getParent().toAbsolutePath().normalize(),
+                            skillDirectory,
                             requiredTools,
                             computeSha256(markdownBody));
             return Optional.of(skill);
@@ -91,7 +104,11 @@ public class MarkdownSkillLoader {
 
     /** Recomputes the SHA-256 of the on-disk SKILL.md body and compares it to the stored hash. */
     public boolean verifyIntegrity(@NonNull Skill skill) {
-        Path skillFile = skill.skillDirectory().resolve("SKILL.md");
+        Path skillDirectory = skill.skillDirectory();
+        if (skillDirectory == null) {
+            return false;
+        }
+        Path skillFile = skillDirectory.resolve("SKILL.md");
         try {
             String content = Files.readString(skillFile, StandardCharsets.UTF_8);
             String[] parts = content.split("(?m)^---$");
@@ -127,9 +144,8 @@ public class MarkdownSkillLoader {
     private record ToolRequirement(@NonNull String name) {}
 
     private record ToolRequirements(
-            @Nullable List<ToolRequirement> required,
-            @Nullable List<ToolRequirement> recommended) {}
+            List<ToolRequirement> required, List<ToolRequirement> recommended) {}
 
     private record SkillMetadata(
-            @NonNull String name, @NonNull String description, @Nullable ToolRequirements tools) {}
+            @NonNull String name, @NonNull String description, ToolRequirements tools) {}
 }

@@ -10,11 +10,11 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.mcp.AgentToolDefinition;
 import top.focess.veto.agent.mcp.NativeToolDefinition;
+import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.ToolDefinition;
 import top.focess.veto.agent.screening.Danger;
@@ -58,7 +58,7 @@ public class HitlRegistry {
      * ScreeningMode#STRICT}; {@link AgentService} sets it from {@code
      * veto.security.screening-mode}.
      */
-    private ScreeningMode screeningMode = ScreeningMode.STRICT;
+    private @NonNull ScreeningMode screeningMode = ScreeningMode.STRICT;
 
     /**
      * Per-agent workspaces (needed to canonicalize path args for grant matching). Registered by
@@ -66,7 +66,8 @@ public class HitlRegistry {
      * each session's grants match against its own workspace - not a process-global one. Cleared by
      * {@link #clear}.
      */
-    private final ConcurrentHashMap<String, Workspace> workspaces = new ConcurrentHashMap<>();
+    private final @NonNull ConcurrentHashMap<@NonNull String, @NonNull Workspace> workspaces =
+            new ConcurrentHashMap<>();
 
     /**
      * The fallback workspace for agents without a registered entry (e.g. a legacy call path that
@@ -81,29 +82,33 @@ public class HitlRegistry {
      * supplying them (the transport cannot reach a {@link ToolDefinition}).
      */
     record Pending(
-            CompletableFuture<InterceptResolution> future,
+            @NonNull CompletableFuture<@NonNull InterceptResolution> future,
             ToolCall call,
             ToolDefinition def,
-            List<VetoOption> options,
-            @Nullable Danger danger) {}
+            List<@NonNull VetoOption> options,
+            Danger danger) {}
 
     /** Pending veto futures keyed by {@code agentId + "|" + callId}. */
-    private final ConcurrentHashMap<String, Pending> pending = new ConcurrentHashMap<>();
+    private final @NonNull ConcurrentHashMap<@NonNull String, @NonNull Pending> pending =
+            new ConcurrentHashMap<>();
 
     /** Permission grants per agent (session-scoped; cleared on terminate). */
-    private final ConcurrentHashMap<String, Set<PermissionGrant>> grants =
-            new ConcurrentHashMap<>();
+    private final @NonNull
+            ConcurrentHashMap<@NonNull String, @NonNull Set<@NonNull PermissionGrant>>
+            grants = new ConcurrentHashMap<>();
 
     /** Audit log of every grant created (read grants, write grants, command grants) per agent. */
-    private final ConcurrentHashMap<String, List<PermissionGrant>> grantLog =
-            new ConcurrentHashMap<>();
+    private final @NonNull
+            ConcurrentHashMap<@NonNull String, @NonNull List<@NonNull PermissionGrant>>
+            grantLog = new ConcurrentHashMap<>();
 
     /**
      * Per-agent message locale for user-facing refusal reasons (decide runs on the agent's virtual
      * thread, off the request thread). Stamped by {@code AgentRunner.setLocale}; English default.
      * Cleared by {@link #clear}.
      */
-    private final ConcurrentHashMap<String, Locale> locales = new ConcurrentHashMap<>();
+    private final @NonNull ConcurrentHashMap<@NonNull String, @NonNull Locale> locales =
+            new ConcurrentHashMap<>();
 
     // ── Decide ──────────────────────────────────────────────────────────────
 
@@ -116,8 +121,11 @@ public class HitlRegistry {
      * AutoApprove on a matching grant, else {@link ApprovalDecision.Prompt} with the tool-declared
      * option set.
      */
-    public ApprovalDecision decide(
-            String agentId, ToolCall call, ToolDefinition def, GatewayResult result) {
+    public @NonNull ApprovalDecision decide(
+            @NonNull String agentId,
+            @NonNull ToolCall call,
+            ToolDefinition def,
+            @NonNull GatewayResult result) {
         if (result instanceof GatewayResult.NotScreened) {
             return ApprovalDecision.AUTO_APPROVE;
         }
@@ -135,9 +143,7 @@ public class HitlRegistry {
                                     localeFor(agentId),
                                     "error.hitl.refusedCritical",
                                     call.toolName(),
-                                    call.args() != null && !call.args().isEmpty()
-                                            ? " " + call.args()
-                                            : ""));
+                                    !call.args().isEmpty() ? " " + call.args() : ""));
             case ASK -> {
                 VetoScenario scenario = scenarioFor(call, def, screening);
                 if (grantCovers(agentId, call, def, screening)) {
@@ -187,7 +193,14 @@ public class HitlRegistry {
      */
     public @NonNull Workspace workspace(@NonNull String agentId) {
         Workspace ws = workspaces.get(agentId);
-        return ws != null ? ws : defaultWorkspace;
+        if (ws != null) {
+            return ws;
+        }
+        Workspace fallback = defaultWorkspace;
+        if (fallback == null) {
+            throw new IllegalStateException("No workspace registered for agent " + agentId);
+        }
+        return fallback;
     }
 
     // ── Tool-declared scenarios + option sets (screening_model.md §8) ────────
@@ -198,7 +211,7 @@ public class HitlRegistry {
      * EXEC_FIRST_TIME based on danger; external MCP tools → GENERIC.
      */
     public @NonNull VetoScenario scenarioFor(
-            @NonNull ToolCall call, @NonNull ToolDefinition def, @NonNull Screening screening) {
+            @NonNull ToolCall call, ToolDefinition def, @NonNull Screening screening) {
         if (def == null) {
             return VetoScenario.GENERIC;
         }
@@ -228,7 +241,7 @@ public class HitlRegistry {
      * The option set for a {@link VetoScenario} (screening_model.md §8). R/W/E1/E2/E3/generic per
      * the LLD table.
      */
-    public @NonNull List<VetoOption> optionsFor(@NonNull VetoScenario scenario) {
+    public @NonNull List<@NonNull VetoOption> optionsFor(@NonNull VetoScenario scenario) {
         return switch (scenario) {
             case READ -> R_OPTIONS;
             case WRITE -> W_OPTIONS;
@@ -241,7 +254,7 @@ public class HitlRegistry {
     }
 
     // Per-scenario option sets (screening_model.md §8). Constants avoid per-call allocation.
-    static final List<VetoOption> R_OPTIONS =
+    static final @NonNull List<@NonNull VetoOption> R_OPTIONS =
             List.of(
                     VetoOption.ACCEPT_AND_MASK_READ,
                     VetoOption.ACCEPT_AND_MASK_READ_LIKE_THIS,
@@ -251,33 +264,34 @@ public class HitlRegistry {
     // Write offers no mask variants: masking protects content the agent READS back (secrets
     // entering the model's context); a write's observation carries no user content worth
     // scrubbing, so the choice is just accept / accept-like-this / decline.
-    static final List<VetoOption> W_OPTIONS =
+    static final @NonNull List<@NonNull VetoOption> W_OPTIONS =
             List.of(
                     VetoOption.ACCEPT_WRITE,
                     VetoOption.ACCEPT_WRITE_LIKE_THIS,
                     VetoOption.EXEC_DECLINE);
-    static final List<VetoOption> DRIFT_OPTIONS =
+    static final @NonNull List<@NonNull VetoOption> DRIFT_OPTIONS =
             List.of(
                     VetoOption.ABORT_WRITE,
                     VetoOption.REREAD,
                     VetoOption.FORCE_OVERWRITE,
                     VetoOption.EDIT);
-    static final List<VetoOption> E1_OPTIONS = List.of(VetoOption.BLOCK, VetoOption.OVERRIDE);
+    static final @NonNull List<@NonNull VetoOption> E1_OPTIONS =
+            List.of(VetoOption.BLOCK, VetoOption.OVERRIDE);
     // Exec offers no mask variants (1.0.72): per the user's HITL principle, the explicit
     // accept_and_mask choice belongs to READ only; an exec observation's masking is the
     // IngressDefense default-on behavior, not a per-veto user choice. The ACCEPT_AND_MASK_COMMAND*
     // enum constants are retained for backward compatibility.
-    static final List<VetoOption> E2_OPTIONS =
+    static final @NonNull List<@NonNull VetoOption> E2_OPTIONS =
             List.of(
                     VetoOption.ACCEPT_COMMAND,
                     VetoOption.ACCEPT_COMMAND_LIKE_THIS,
                     VetoOption.EXEC_DECLINE);
-    static final List<VetoOption> E3_OPTIONS =
+    static final @NonNull List<@NonNull VetoOption> E3_OPTIONS =
             List.of(
                     VetoOption.ACCEPT_COMMAND_ONCE,
                     VetoOption.ACCEPT_COMMAND_AS_SESSION_RULE,
                     VetoOption.EXEC_DECLINE);
-    static final List<VetoOption> GENERIC_OPTIONS =
+    static final @NonNull List<@NonNull VetoOption> GENERIC_OPTIONS =
             List.of(
                     VetoOption.ACCEPT_GENERIC,
                     VetoOption.ACCEPT_GENERIC_LIKE_THIS,
@@ -291,11 +305,14 @@ public class HitlRegistry {
      * even with a grant, §7.2 #3).
      */
     private boolean grantCovers(
-            String agentId, ToolCall call, ToolDefinition def, Screening screening) {
+            @NonNull String agentId,
+            @NonNull ToolCall call,
+            ToolDefinition def,
+            @NonNull Screening screening) {
         if (screening.danger() == Danger.CRITICAL) {
             return false; // CRITICAL is grant-immune
         }
-        Set<PermissionGrant> agentGrants = grants.get(agentId);
+        Set<@NonNull PermissionGrant> agentGrants = grants.get(agentId);
         if (agentGrants == null || agentGrants.isEmpty()) {
             return false;
         }
@@ -316,7 +333,7 @@ public class HitlRegistry {
      * agent's virtual thread parks on it. No call/def/options are stashed (the Refused-park path
      * uses this - it is resolved via {@link #declineAll}, never builds a grant).
      */
-    public @NonNull CompletableFuture<InterceptResolution> register(
+    public @NonNull CompletableFuture<@NonNull InterceptResolution> register(
             @NonNull String agentId, @NonNull String callId) {
         return register(agentId, callId, null, null, null, null);
     }
@@ -328,14 +345,14 @@ public class HitlRegistry {
      * supplying the call/def (the transport cannot reach a {@link ToolDefinition}). The stashed
      * {@code danger} is surfaced to transports so they can warn the user on DANGEROUS calls.
      */
-    public @NonNull CompletableFuture<InterceptResolution> register(
+    public @NonNull CompletableFuture<@NonNull InterceptResolution> register(
             @NonNull String agentId,
             @NonNull String callId,
-            @Nullable ToolCall call,
-            @Nullable ToolDefinition def,
-            @Nullable List<VetoOption> options,
-            @Nullable Danger danger) {
-        CompletableFuture<InterceptResolution> future = new CompletableFuture<>();
+            ToolCall call,
+            ToolDefinition def,
+            List<@NonNull VetoOption> options,
+            Danger danger) {
+        CompletableFuture<@NonNull InterceptResolution> future = new CompletableFuture<>();
         pending.put(key(agentId, callId), new Pending(future, call, def, options, danger));
         return future;
     }
@@ -416,8 +433,8 @@ public class HitlRegistry {
     }
 
     /** Parses the option name against the offered set (case-insensitive); null if not offered. */
-    private static @Nullable VetoOption parseOption(
-            @NonNull String optionName, @Nullable List<VetoOption> offered) {
+    private static VetoOption parseOption(
+            @NonNull String optionName, List<@NonNull VetoOption> offered) {
         if (offered == null || offered.isEmpty()) {
             return null;
         }
@@ -432,7 +449,7 @@ public class HitlRegistry {
     /**
      * The first refusal option in the offered set, falling back to {@link VetoOption#EXEC_DECLINE}.
      */
-    private static @NonNull VetoOption firstRefusal(@Nullable List<VetoOption> offered) {
+    private static @NonNull VetoOption firstRefusal(List<@NonNull VetoOption> offered) {
         if (offered != null) {
             for (VetoOption o : offered) {
                 if (o.isRefusal()) {
@@ -450,22 +467,24 @@ public class HitlRegistry {
      * arg or the first command's executable+subcommands.
      */
     PermissionGrant buildGrant(
-            String agentId, ToolCall call, ToolDefinition def, InterceptResolution resolution) {
+            @NonNull String agentId,
+            @NonNull ToolCall call,
+            ToolDefinition def,
+            @NonNull InterceptResolution resolution) {
         VetoOption opt = resolution.option();
         if (def == null) {
             return null;
         }
         // Generic grant (no per-tool match key): ACCEPT_GENERIC_LIKE_THIS / ACCEPT_AS_SESSION_RULE
         // legacy alias.
-        if (opt == VetoOption.ACCEPT_GENERIC_LIKE_THIS
-                || opt == VetoOption.ACCEPT_AS_SESSION_RULE) {
+        if (opt.isGenericGrant()) {
             // Synthesize a generic command-equivalent grant from the call's args if run_command.
             if ("run_command".equals(call.toolName())) {
                 return buildCommandGrant(agentId, call);
             }
             // Fall back to a per-tool record grant (legacy "session rule" semantics).
-            Map<String, Object> args =
-                    resolution.editedArgs() != null ? resolution.editedArgs() : call.args();
+            var editedArgs = resolution.editedArgs();
+            var args = editedArgs != null ? editedArgs : call.args();
             return new PermissionGrant.LegacySessionRule(call.toolName(), args);
         }
         // Per-tool shape: read / write / command.
@@ -481,10 +500,10 @@ public class HitlRegistry {
         return null;
     }
 
-    private PermissionGrant.ReadGrant buildReadGrant(
-            String agentId, ToolCall call, ToolDefinition def) {
+    private PermissionGrant.@NonNull ReadGrant buildReadGrant(
+            @NonNull String agentId, @NonNull ToolCall call, @NonNull ToolDefinition def) {
         Path dir = directoryOfFirstPathArg(agentId, call, def);
-        List<String> flagShape =
+        List<@NonNull String> flagShape =
                 MatchKeyExtractor.extract(call, def, workspace(agentId)).flagShape();
         // Scope by the exact tool (like-this = same tool + directory subtree): a list_dir grant
         // must not auto-approve view_file / grep_search calls under the same prefix.
@@ -492,10 +511,10 @@ public class HitlRegistry {
                 def.name(), dir == null ? Path.of(".") : dir, flagShape);
     }
 
-    private PermissionGrant.WriteGrant buildWriteGrant(
-            String agentId, ToolCall call, ToolDefinition def) {
+    private PermissionGrant.@NonNull WriteGrant buildWriteGrant(
+            @NonNull String agentId, @NonNull ToolCall call, @NonNull ToolDefinition def) {
         Path dir = directoryOfFirstPathArg(agentId, call, def);
-        List<String> flagShape =
+        List<@NonNull String> flagShape =
                 MatchKeyExtractor.extract(call, def, workspace(agentId)).flagShape();
         return new PermissionGrant.WriteGrant(
                 call.toolName(), dir == null ? Path.of(".") : dir, flagShape);
@@ -504,9 +523,6 @@ public class HitlRegistry {
     private PermissionGrant.@NonNull CommandGrant buildCommandGrant(
             @NonNull String agentId, @NonNull ToolCall call) {
         Map<String, Object> args = call.args();
-        if (args == null) {
-            return new PermissionGrant.CommandGrant("", List.of(), List.of());
-        }
         Object commandsObj = args.get("commands");
         if (!(commandsObj instanceof List<?> commands) || commands.isEmpty()) {
             return new PermissionGrant.CommandGrant("", List.of(), List.of());
@@ -518,7 +534,7 @@ public class HitlRegistry {
         Object execObj = cmd.get("executable");
         Object cmdArgsObj = cmd.get("args");
         String executable = execObj == null ? "" : execObj.toString();
-        List<String> subcommands = new ArrayList<>();
+        List<@NonNull String> subcommands = new ArrayList<>();
         if (cmdArgsObj instanceof List<?> cmdArgs) {
             for (Object a : cmdArgs) {
                 if (a instanceof String s && !s.startsWith("-")) {
@@ -528,25 +544,22 @@ public class HitlRegistry {
                 }
             }
         }
-        List<String> flagShape =
+        List<@NonNull String> flagShape =
                 MatchKeyExtractor.extract(call, null, workspace(agentId)).flagShape();
         return new PermissionGrant.CommandGrant(executable, subcommands, flagShape);
     }
 
-    private @Nullable Path directoryOfFirstPathArg(
-            @NonNull String agentId, @NonNull ToolCall call, @Nullable ToolDefinition def) {
+    private Path directoryOfFirstPathArg(
+            @NonNull String agentId, @NonNull ToolCall call, ToolDefinition def) {
         Workspace ws = workspace(agentId);
-        if (def == null || ws == null) {
+        if (def == null) {
             return null;
         }
-        Map<String, top.focess.veto.agent.mcp.ParamCategory> hints = paramHints(def);
+        Map<@NonNull String, @NonNull ParamCategory> hints = paramHints(def);
         if (hints.isEmpty()) {
             return null;
         }
         Map<String, Object> args = call.args();
-        if (args == null) {
-            return null;
-        }
         for (var entry : hints.entrySet()) {
             if (entry.getValue() != top.focess.veto.agent.mcp.ParamCategory.FILESYSTEM_PATH) {
                 continue;
@@ -558,7 +571,10 @@ public class HitlRegistry {
             try {
                 top.focess.veto.agent.workspace.Resolution res = ws.pathResolver().resolveToHost(s);
                 Path host =
-                        res.inScope() ? res.hostPath() : Path.of(s).toAbsolutePath().normalize();
+                        res.inScope()
+                                ? top.focess.veto.util.Nullness.requireNonNull(
+                                        res.hostPath(), "in-scope resolution has no host path")
+                                : Path.of(s).toAbsolutePath().normalize();
                 Path parent = host.getParent();
                 return parent == null ? host : parent;
             } catch (RuntimeException e) {
@@ -570,7 +586,7 @@ public class HitlRegistry {
         return null;
     }
 
-    private static Map<String, top.focess.veto.agent.mcp.ParamCategory> paramHints(
+    private static @NonNull Map<@NonNull String, @NonNull ParamCategory> paramHints(
             ToolDefinition def) {
         if (def instanceof NativeToolDefinition n) {
             return n.paramHints();
@@ -586,25 +602,29 @@ public class HitlRegistry {
      * offered to the user. Entries without a stashed call (the Refused-park path) are skipped -
      * they resolve via {@link #declineAll}, never through a picker.
      */
-    public @NonNull List<Map<String, Object>> pendingFor(@NonNull String agentId) {
-        List<Map<String, Object>> out = new ArrayList<>();
+    public @NonNull List<@NonNull Map<@NonNull String, Object>> pendingFor(
+            @NonNull String agentId) {
+        List<@NonNull Map<@NonNull String, Object>> out = new ArrayList<>();
         String prefix = agentId + "|";
         pending.forEach(
                 (k, p) -> {
-                    if (!k.startsWith(prefix) || p.call() == null) {
+                    ToolCall call = p.call();
+                    if (!k.startsWith(prefix) || call == null) {
                         return;
                     }
-                    Map<String, Object> view = new LinkedHashMap<>();
-                    view.put("callId", p.call().callId());
-                    view.put("toolName", p.call().toolName());
-                    view.put("args", p.call().args() != null ? p.call().args() : Map.of());
+                    Map<@NonNull String, Object> view = new LinkedHashMap<>();
+                    view.put("callId", call.requireCallId());
+                    view.put("toolName", call.toolName());
+                    view.put("args", call.args());
                     view.put(
                             "options",
                             p.options() != null
                                     ? p.options().stream().map(VetoOption::name).toList()
                                     : List.<String>of());
                     // Danger level so the UI can warn prominently on DANGEROUS/CRITICAL calls.
-                    view.put("danger", p.danger() != null ? p.danger().name() : null);
+                    if (p.danger() != null) {
+                        view.put("danger", p.danger().name());
+                    }
                     out.add(view);
                 });
         return out;
@@ -641,7 +661,7 @@ public class HitlRegistry {
 
     /** Revoke a single grant (audited + revocable, screening_model.md §7.2 #5). */
     public boolean revokeGrant(@NonNull String agentId, @NonNull PermissionGrant grant) {
-        Set<PermissionGrant> agentGrants = grants.get(agentId);
+        Set<@NonNull PermissionGrant> agentGrants = grants.get(agentId);
         if (agentGrants == null) {
             return false;
         }
@@ -649,8 +669,8 @@ public class HitlRegistry {
     }
 
     /** Returns the audit log of grants created for the agent (screening_model.md §7.2 #5). */
-    public @NonNull List<PermissionGrant> grantLog(@NonNull String agentId) {
-        List<PermissionGrant> log = grantLog.get(agentId);
+    public @NonNull List<@NonNull PermissionGrant> grantLog(@NonNull String agentId) {
+        List<@NonNull PermissionGrant> log = grantLog.get(agentId);
         return log == null ? List.of() : List.copyOf(log);
     }
 

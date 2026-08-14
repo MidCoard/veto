@@ -2,7 +2,6 @@ package top.focess.veto.contract;
 
 import java.nio.charset.StandardCharsets;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.zeromq.SocketType;
@@ -33,11 +32,12 @@ import org.zeromq.ZMsg;
  */
 public abstract class ZmqChannel {
 
-    private static final Logger log = LoggerFactory.getLogger(ZmqChannel.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.contract.ZmqChannel");
 
-    protected final ZMQ.Socket socket;
-    private final ZMQ.Poller poller;
-    private final SocketType type;
+    protected final ZMQ.@NonNull Socket socket;
+    private final ZMQ.@NonNull Poller poller;
+    private final @NonNull SocketType type;
 
     private ZmqChannel(
             ZMQ.@NonNull Socket socket, @NonNull SocketType type, @NonNull ZContext ctx) {
@@ -55,7 +55,7 @@ public abstract class ZmqChannel {
      * @param timeoutMillis {@code 0} non-blocking, {@code >0} up to N ms, {@code <0} infinite
      * @return the next message, or {@code null} on timeout or dropped malformed payload
      */
-    public Transport.@Nullable FramedMsg recv(long timeoutMillis) {
+    public Transport.FramedMsg recv(long timeoutMillis) {
         long rc = poller.poll(timeoutMillis < 0 ? -1 : timeoutMillis);
         if (rc <= 0 || !poller.pollin(0)) return null;
         ZMsg msg = ZMsg.recvMsg(socket, ZMQ.DONTWAIT);
@@ -82,7 +82,7 @@ public abstract class ZmqChannel {
 
     // ── envelope decode ──────────────────────────────────────────────────
 
-    private Transport.@Nullable FramedMsg decode(@Nullable ZMsg msg) {
+    private Transport.FramedMsg decode(ZMsg msg) {
         if (msg == null || msg.isEmpty()) {
             if (msg != null) msg.destroy();
             return null;
@@ -96,11 +96,10 @@ public abstract class ZmqChannel {
                 return null;
             }
             identity = new String(msg.pop().getData(), StandardCharsets.UTF_8);
-            payload = msg.pop().getData();
         } else {
             identity = "";
-            payload = msg.pop().getData();
         }
+        payload = msg.pop().getData();
         msg.destroy();
 
         IpcFrame frame = IpcCodec.decode(payload);

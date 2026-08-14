@@ -7,6 +7,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.agent.identity.SystemPromptResolver;
@@ -18,6 +19,7 @@ import top.focess.veto.agent.mcp.NativeToolDefinition;
 import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.ToolDefinition;
+import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.mcp.ToolEngine;
 import top.focess.veto.agent.mcp.ToolResult;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
@@ -35,21 +37,22 @@ import top.focess.veto.llm.core.VetoResponse;
  */
 class PersonaToolWhitelistTest {
 
-    private static final Duration EPISODE_TIMEOUT = Duration.ofSeconds(10);
+    private static final @NonNull Duration EPISODE_TIMEOUT = Duration.ofSeconds(10);
 
     /** A ToolEngine stub that advertises one native tool (read_file). */
-    private static ToolEngine engineWithReadFile() {
+    @SuppressWarnings("type.arguments.not.inferred")
+    private static @NonNull ToolEngine engineWithReadFile() {
         NativeToolDefinition read =
                 new NativeToolDefinition(
                         "read_file",
                         "Read a file",
                         RiskCategory.READ_ONLY,
                         false,
-                        Void.class,
+                        ToolDocs.nonNullClass(Void.class),
                         Map.of("path", ParamCategory.FILESYSTEM_PATH));
         return new ToolEngine() {
             @Override
-            public List<ToolDefinition> getActiveTools(java.util.Set<String> whitelist) {
+            public @NonNull List<ToolDefinition> getActiveTools(java.util.Set<String> whitelist) {
                 return List.of(read);
             }
 
@@ -59,13 +62,15 @@ class PersonaToolWhitelistTest {
             }
 
             @Override
-            public ToolResult execute(ToolCall call, ToolDefinition def) {
+            public @NonNull ToolResult execute(
+                    @NonNull ToolCall call, @NonNull ToolDefinition def) {
                 return new ToolResult(call.toolName(), call.callId(), true, "");
             }
         };
     }
 
-    private static AgentService serviceWith(ToolEngine engine, UniformLLMCaller caller) {
+    private static @NonNull AgentService serviceWith(
+            @NonNull ToolEngine engine, @NonNull UniformLLMCaller caller) {
         ObjectMapper mapper = new ObjectMapper();
         PromptCompiler compiler =
                 new PromptCompiler(
@@ -94,7 +99,7 @@ class PersonaToolWhitelistTest {
                                 new top.focess.veto.sandbox.ConstrainedSubprocessSubstrate())));
     }
 
-    private static AgentRunner.LlmBinding binding() {
+    private static AgentRunner.@NonNull LlmBinding binding() {
         return new AgentRunner.LlmBinding(
                 ProviderType.DEEPSEEK, "stub-model", "stub-key", LlmOptions.defaults(), "sys");
     }

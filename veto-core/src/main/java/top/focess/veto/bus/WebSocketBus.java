@@ -1,5 +1,6 @@
 package top.focess.veto.bus;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.util.Map;
@@ -23,7 +24,8 @@ import top.focess.veto.model.DAGPayload;
 @Component
 public class WebSocketBus extends TextWebSocketHandler {
 
-    private static final Logger log = LoggerFactory.getLogger(WebSocketBus.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.bus.WebSocketBus");
 
     private final @NonNull BusConfiguration config;
     private final @NonNull ObjectMapper objectMapper;
@@ -31,14 +33,16 @@ public class WebSocketBus extends TextWebSocketHandler {
     private final @NonNull ReconnectionHandler reconnectionHandler;
 
     private volatile WebSocketSession session;
-    private final Map<String, Consumer<DAGPayload>> dagRouteTable = new ConcurrentHashMap<>();
-    private final Map<String, Consumer<String>> messageRouteTable = new ConcurrentHashMap<>();
+    private final @NonNull Map<@NonNull String, @NonNull Consumer<DAGPayload>> dagRouteTable =
+            new ConcurrentHashMap<>();
+    private final @NonNull Map<@NonNull String, @NonNull Consumer<String>> messageRouteTable =
+            new ConcurrentHashMap<>();
 
     public WebSocketBus(
-            BusConfiguration config,
-            ObjectMapper objectMapper,
-            HeartbeatManager heartbeatManager,
-            ReconnectionHandler reconnectionHandler) {
+            @NonNull BusConfiguration config,
+            @NonNull ObjectMapper objectMapper,
+            @NonNull HeartbeatManager heartbeatManager,
+            @NonNull ReconnectionHandler reconnectionHandler) {
         this.config = config;
         this.objectMapper = objectMapper;
         this.heartbeatManager = heartbeatManager;
@@ -91,13 +95,14 @@ public class WebSocketBus extends TextWebSocketHandler {
 
     /** Send a DAG payload to the cloud backend. */
     public synchronized void sendDAGPayload(@NonNull DAGPayload payload) {
-        if (!isConnected()) {
+        WebSocketSession current = session;
+        if (current == null || !current.isOpen()) {
             log.warn("Bus: Cannot send DAG payload, not connected");
             return;
         }
         try {
             String json = objectMapper.writeValueAsString(payload);
-            session.sendMessage(new TextMessage(json));
+            current.sendMessage(new TextMessage(json));
             log.debug(
                     "Bus: Sent DAG payload id={}, type={}", payload.getId(), payload.getTaskType());
         } catch (IOException e) {
@@ -107,12 +112,13 @@ public class WebSocketBus extends TextWebSocketHandler {
 
     /** Send a raw message. */
     public synchronized void sendMessage(@NonNull String message) {
-        if (!isConnected()) {
+        WebSocketSession current = session;
+        if (current == null || !current.isOpen()) {
             log.warn("Bus: Cannot send message, not connected");
             return;
         }
         try {
-            session.sendMessage(new TextMessage(message));
+            current.sendMessage(new TextMessage(message));
         } catch (IOException e) {
             log.error("Bus: Failed to send message", e);
         }
@@ -123,7 +129,11 @@ public class WebSocketBus extends TextWebSocketHandler {
             @NonNull WebSocketSession session, @NonNull TextMessage message) {
         String payload = message.getPayload();
         try {
-            DAGPayload dagPayload = objectMapper.readValue(payload, DAGPayload.class);
+            DAGPayload dagPayload =
+                    objectMapper.readValue(payload, new TypeReference<DAGPayload>() {});
+            if (dagPayload == null) {
+                throw new IOException("Bus received an empty DAG payload");
+            }
             Consumer<DAGPayload> handler = dagRouteTable.get(dagPayload.getTaskType());
             if (handler != null) {
                 handler.accept(dagPayload);
@@ -147,10 +157,13 @@ public class WebSocketBus extends TextWebSocketHandler {
         log.warn(
                 "Bus: Connection closed (code={}, reason={})",
                 status.getCode(),
-                status.getReason());
+                String.valueOf(status.getReason()));
         this.session = null;
         heartbeatManager.stop();
-        reconnectionHandler.scheduleReconnect(this, reconnectionHandler.getLastBackendUrl());
+        String backendUrl = reconnectionHandler.getLastBackendUrl();
+        if (backendUrl != null) {
+            reconnectionHandler.scheduleReconnect(this, backendUrl);
+        }
     }
 
     @Override
@@ -160,14 +173,16 @@ public class WebSocketBus extends TextWebSocketHandler {
     }
 
     public boolean isConnected() {
-        return session != null && session.isOpen();
+        WebSocketSession current = session;
+        return current != null && current.isOpen();
     }
 
     public void disconnect() {
         heartbeatManager.stop();
-        if (session != null && session.isOpen()) {
+        WebSocketSession current = session;
+        if (current != null && current.isOpen()) {
             try {
-                session.close(CloseStatus.NORMAL);
+                current.close(CloseStatus.NORMAL);
             } catch (IOException e) {
                 log.warn("Bus: Error during disconnect", e);
             }

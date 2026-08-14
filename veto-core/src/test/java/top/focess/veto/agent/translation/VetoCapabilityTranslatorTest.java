@@ -5,11 +5,13 @@ import static org.junit.jupiter.api.Assertions.*;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.mcp.AgentToolDefinition;
 import top.focess.veto.agent.mcp.NativeToolDefinition;
 import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RiskCategory;
+import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.mcp.tools.LoadSkillArgs;
 
 /**
@@ -18,7 +20,7 @@ import top.focess.veto.agent.mcp.tools.LoadSkillArgs;
  */
 class VetoCapabilityTranslatorTest {
 
-    private final VetoCapabilityTranslator translator = new VetoCapabilityTranslator();
+    private final @NonNull VetoCapabilityTranslator translator = new VetoCapabilityTranslator();
 
     @Test
     void autonomousHasOptionalThoughtCallsNoActions() {
@@ -68,13 +70,13 @@ class VetoCapabilityTranslatorTest {
                         "Read a file.",
                         RiskCategory.READ_ONLY,
                         false,
-                        LoadSkillArgs.class,
+                        ToolDocs.nonNullClass(LoadSkillArgs.class),
                         Map.<String, ParamCategory>of());
         AgentToolDefinition agent =
                 new AgentToolDefinition(
                         "load_skill",
                         "Load a skill.",
-                        LoadSkillArgs.class,
+                        ToolDocs.nonNullClass(LoadSkillArgs.class),
                         Map.<String, ParamCategory>of());
         List<top.focess.veto.llm.core.ToolDefinition> flat =
                 translator.translateTools(List.of(nativeDef, agent));
@@ -97,7 +99,7 @@ class VetoCapabilityTranslatorTest {
                 "agent tool @ToolDoc longDescription flows through translateTools");
     }
 
-    private static boolean contains(JsonNode array, String value) {
+    private static boolean contains(JsonNode array, @NonNull String value) {
         if (array == null || !array.isArray()) return false;
         for (JsonNode n : array) {
             if (value.equals(n.asText())) return true;

@@ -73,7 +73,7 @@ public record ExecutionDag(@NonNull UUID groupId, @NonNull List<DagNode> nodes) 
 
     /** Returns the set of node ids in the DAG. */
     public @NonNull Set<String> nodeIds() {
-        return index().keySet();
+        return Set.copyOf(index().keySet());
     }
 
     private @NonNull Map<String, DagNode> index() {

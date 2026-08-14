@@ -3,7 +3,6 @@ package top.focess.veto.memory;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,16 +24,17 @@ import top.focess.veto.agent.TurnType;
 @Component
 public class TurnLogService {
 
-    private static final Logger log = LoggerFactory.getLogger(TurnLogService.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.memory.TurnLogService");
 
     private final @NonNull ObjectMapper mapper;
-    private final @Nullable TurnRecordRepository turnRecordRepository;
+    private final TurnRecordRepository turnRecordRepository;
     private volatile boolean enabled = true;
 
     @Autowired
     public TurnLogService(
-            @Autowired(required = false) @Nullable TurnRecordRepository turnRecordRepository,
-            ObjectMapper mapper) {
+            @Autowired(required = false) TurnRecordRepository turnRecordRepository,
+            @NonNull ObjectMapper mapper) {
         this.turnRecordRepository = turnRecordRepository;
         this.mapper = mapper;
     }
@@ -56,11 +56,8 @@ public class TurnLogService {
             @NonNull TurnRecord turn,
             @NonNull UUID sessionId,
             @NonNull UUID userId,
-            @Nullable String agentId) {
+            String agentId) {
         if (!enabled) {
-            return;
-        }
-        if (turn == null || sessionId == null || userId == null) {
             return;
         }
         if (!isLoggable(turn.type())) {
@@ -83,7 +80,7 @@ public class TurnLogService {
      * dropping them on persist would corrupt the compiled view on resume (a rewound session would
      * replay its pre-rewind turns; a transformed Leader would lose its AGENT_INIT anchor).
      */
-    private static boolean isLoggable(TurnType type) {
+    private static boolean isLoggable(@NonNull TurnType type) {
         return true;
     }
 }

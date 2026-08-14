@@ -34,7 +34,7 @@ public final class VetoHintWidgets extends Widgets {
 
     private static final long HINT_TIMEOUT_MS = 500;
 
-    private final IpcClient client;
+    private final @NonNull IpcClient client;
     private boolean enabled;
 
     /**

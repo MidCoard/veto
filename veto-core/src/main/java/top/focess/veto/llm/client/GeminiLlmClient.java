@@ -12,6 +12,7 @@ import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.translation.CapabilityTranslator;
 import top.focess.veto.llm.core.ResolvedRequest;
 import top.focess.veto.llm.core.VetoRequest;
+import top.focess.veto.llm.exceptions.ModelCapabilityException;
 
 /**
  * Adapter wrapping a Gemini {@link Client}. Uses native JSON mode with the per-turn {@code
@@ -35,9 +36,10 @@ final class GeminiLlmClient extends LlmClient {
     @Override
     public @NonNull RawCompletion complete(@NonNull ResolvedRequest resolved) {
         VetoRequest request = resolved.request();
+        JsonNode configuredSchema = request.responseSchema();
         JsonNode rawSchema =
-                request.responseSchema() != null
-                        ? request.responseSchema()
+                configuredSchema != null
+                        ? configuredSchema
                         : capabilityTranslator.vetoResponseSchema(false);
         Schema responseSchema = objectMapper.convertValue(rawSchema, Schema.class);
 
@@ -47,11 +49,13 @@ final class GeminiLlmClient extends LlmClient {
                         .responseMimeType("application/json")
                         .responseSchema(responseSchema);
 
-        if (request.options().temperature() != null) {
-            configBuilder.temperature(request.options().temperature().floatValue());
+        Double temperature = request.options().temperature();
+        if (temperature != null) {
+            configBuilder.temperature(temperature.floatValue());
         }
-        if (request.options().maxTokens() != null) {
-            configBuilder.maxOutputTokens(request.options().maxTokens());
+        Integer maxTokens = request.options().maxTokens();
+        if (maxTokens != null) {
+            configBuilder.maxOutputTokens(maxTokens);
         }
 
         GenerateContentResponse response =
@@ -64,7 +68,11 @@ final class GeminiLlmClient extends LlmClient {
             top.focess.veto.llm.core.LlmSystemUsage.set(prompt, candidates);
         }
 
+        String text = response.text();
+        if (text == null) {
+            throw new ModelCapabilityException("Gemini returned a response without text");
+        }
         String summary = "model=" + request.modelName() + ", tools=" + request.tools().size();
-        return new RawCompletion(summary, response.text());
+        return new RawCompletion(summary, text);
     }
 }

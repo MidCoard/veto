@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 
 /** Tests for the LlmLeader + Strategic Pivot triggers. */
@@ -119,7 +120,7 @@ class LlmLeaderTest {
                             0));
         }
         // One tick should detect the deadlock and pivot (n1 → STALE → re-plan).
-        Group ticked = orch.tick(g.groupId());
+        Group ticked = requireGroup(orch.tick(g.groupId()));
         // After pivot, n1 should be STALE (re-plan will un-stale it).
         // (The re-plan puts it back to PENDING via Leader.pivot().)
         // The point is: the tick didn't crash and the leader's pivot was invoked.
@@ -142,5 +143,12 @@ class LlmLeaderTest {
                         ExecutionDag.linear(groupId, List.of("n1")));
         g = g.withMate("Mate-A", "coding");
         assertFalse(leader.shouldPivot(g, 1, 0.5));
+    }
+
+    private static @NonNull Group requireGroup(Group group) {
+        if (group != null) {
+            return group;
+        }
+        throw new AssertionError("orchestrator tick must return the active group");
     }
 }

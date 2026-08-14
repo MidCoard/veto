@@ -43,7 +43,7 @@ public class ModelTierController {
     }
 
     @PostMapping
-    public @NonNull Map<String, Object> create(@NonNull @RequestBody Map<String, String> body) {
+    public @NonNull Map<String, Object> create(@RequestBody @NonNull Map<String, String> body) {
         String user = requireUser();
         String name = body.get("name");
         if (name == null || name.isBlank()) {
@@ -65,7 +65,7 @@ public class ModelTierController {
     }
 
     @PostMapping("/{name}/activate")
-    public @NonNull ResponseEntity<Void> activate(@NonNull @PathVariable String name) {
+    public @NonNull ResponseEntity<Void> activate(@PathVariable @NonNull String name) {
         String user = requireUser();
         try {
             profiles.activateProfile(user, name);
@@ -76,7 +76,7 @@ public class ModelTierController {
     }
 
     @DeleteMapping("/{name}")
-    public @NonNull ResponseEntity<Void> delete(@NonNull @PathVariable String name) {
+    public @NonNull ResponseEntity<Void> delete(@PathVariable @NonNull String name) {
         String user = requireUser();
         if (!profiles.deleteProfile(user, name)) {
             throw new ResponseStatusException(
@@ -86,7 +86,7 @@ public class ModelTierController {
     }
 
     @GetMapping("/{name}/bindings")
-    public @NonNull List<Map<String, Object>> bindings(@NonNull @PathVariable String name) {
+    public @NonNull List<Map<String, Object>> bindings(@PathVariable @NonNull String name) {
         String user = requireUser();
         if (profiles.profile(user, name).isEmpty()) {
             throw new ResponseStatusException(
@@ -106,13 +106,15 @@ public class ModelTierController {
      */
     @PutMapping("/{name}/bindings/{tier}")
     public @NonNull ResponseEntity<Void> setBinding(
-            @NonNull @PathVariable String name,
-            @NonNull @PathVariable String tier,
-            @NonNull @RequestBody Map<String, String> body) {
+            @PathVariable @NonNull String name,
+            @PathVariable @NonNull String tier,
+            @RequestBody @NonNull Map<String, String> body) {
         String user = requireUser();
         ModelTier parsedTier;
         try {
-            parsedTier = ModelTier.valueOf(tier.toUpperCase());
+            parsedTier =
+                    top.focess.veto.util.Nullness.requireNonNull(
+                            ModelTier.valueOf(tier.toUpperCase()));
         } catch (IllegalArgumentException e) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST, Msg.get("error.tier.unknownTier", tier));
@@ -136,7 +138,10 @@ public class ModelTierController {
             } catch (IllegalArgumentException e) {
                 throw new ResponseStatusException(
                         HttpStatus.BAD_REQUEST,
-                        Msg.get("error.tier.fieldInvalid", field.field(), e.getMessage()));
+                        Msg.get(
+                                "error.tier.fieldInvalid",
+                                field.field(),
+                                String.valueOf(e.getMessage())));
             }
         }
         return ResponseEntity.noContent().build();
@@ -153,13 +158,19 @@ public class ModelTierController {
         // A hand-built map (not Map.of) because binding fields are nullable mid-configuration.
         java.util.Map<String, Object> view = new java.util.LinkedHashMap<>();
         view.put("tier", b.getTier().name());
-        view.put("provider", b.getProvider() == null ? null : b.getProvider().name());
-        view.put("baseUrl", b.getBaseUrl());
-        view.put("model", b.getModel());
-        view.put("credKey", b.getCredentialKey());
-        view.put("temp", b.getTemperature());
-        view.put("max", b.getMaxOutputTokens());
+        var provider = b.getProvider();
+        if (provider != null) view.put("provider", provider.name());
+        putIfPresent(view, "baseUrl", b.getBaseUrl());
+        putIfPresent(view, "model", b.getModel());
+        putIfPresent(view, "credKey", b.getCredentialKey());
+        putIfPresent(view, "temp", b.getTemperature());
+        putIfPresent(view, "max", b.getMaxOutputTokens());
         return view;
+    }
+
+    private static void putIfPresent(
+            @NonNull Map<String, Object> target, @NonNull String key, Object value) {
+        if (value != null) target.put(key, value);
     }
 
     private @NonNull String requireUser() {

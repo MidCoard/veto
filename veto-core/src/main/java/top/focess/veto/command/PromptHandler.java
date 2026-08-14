@@ -5,7 +5,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.agent.Agent;
@@ -34,10 +33,11 @@ import top.focess.veto.vault.KeysteadVault;
  */
 public class PromptHandler {
 
-    private static final Logger log = LoggerFactory.getLogger(PromptHandler.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.command.PromptHandler");
 
     /** How long to block for one agent episode before timing the terminal out. */
-    private static final Duration EPISODE_TIMEOUT = Duration.ofMinutes(5);
+    private static final @NonNull Duration EPISODE_TIMEOUT = Duration.ofMinutes(5);
 
     private final @NonNull KeysteadVault vault;
     private final @NonNull AgentService agentService;
@@ -66,18 +66,16 @@ public class PromptHandler {
      * meta). Callers must not mutate the returned map.
      */
     public @NonNull Map<String, Agent> sessions() {
-        Map<String, Agent> snapshot = new HashMap<>();
-        agentService.agentsView().forEach(snapshot::put);
-        return snapshot;
+        return new HashMap<>(agentService.agentsView());
     }
 
     /** The active agent for the terminal (if any), for {@code /compact}. */
-    public @Nullable Agent activeAgent(@NonNull String terminalId) {
+    public Agent activeAgent(@NonNull String terminalId) {
         return sessionService.activeAgent(terminalId).orElse(null);
     }
 
     /** The active session id for the terminal (if any), for done-meta / status. */
-    public @Nullable String activeSession(@NonNull String terminalId) {
+    public String activeSession(@NonNull String terminalId) {
         return sessionService.activeSession(terminalId).orElse(null);
     }
 
@@ -162,10 +160,8 @@ public class PromptHandler {
                 return new IpcFrame.Done(doneMeta, null);
             }
             // Failure (breaker trip / error): the reason was not streamed, so surface it in Error.
-            String reason =
-                    result.message() == null || result.message().isBlank()
-                            ? "Agent failed."
-                            : result.message();
+            String resultMessage = result.message();
+            String reason = resultMessage.isBlank() ? "Agent failed." : resultMessage;
             return IpcFrame.Error.ofError(reason);
         } catch (java.util.concurrent.TimeoutException e) {
             log.warn("Agent episode timed out for session {}", sessionId);
@@ -182,10 +178,7 @@ public class PromptHandler {
     /**
      * Reads the episode's turn count from the result metadata ({@code turns}, set by the runner).
      */
-    private static int turnsOf(@Nullable AgentResult result) {
-        if (result == null || result.metadata() == null) {
-            return 0;
-        }
+    private static int turnsOf(@NonNull AgentResult result) {
         Object v = result.metadata().get("turns");
         return v instanceof Number n ? n.intValue() : 0;
     }

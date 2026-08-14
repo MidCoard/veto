@@ -2,7 +2,6 @@ package top.focess.veto.group;
 
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.identity.Role;
 import top.focess.veto.agent.identity.RoleToolFilter;
@@ -13,6 +12,7 @@ import top.focess.veto.agent.mcp.SecurityHint;
 import top.focess.veto.agent.mcp.ToolCallContext;
 import top.focess.veto.agent.mcp.ToolCallContextHolder;
 import top.focess.veto.agent.mcp.ToolDoc;
+import top.focess.veto.agent.mcp.ToolDocs;
 
 /**
  * The agent-facing group management tools (delegation_spawning.md, blackboard.md). Model B: the
@@ -103,7 +103,7 @@ public final class GroupTools {
                 @SecurityHint(ParamCategory.GENERIC)
                         @Doc(
                                 "Short brief of the work to be done (seeds your investigation as Leader).")
-                        @Nullable String task) {}
+                        String task) {}
 
         @Override
         public @NonNull String getName() {
@@ -118,7 +118,7 @@ public final class GroupTools {
 
         @Override
         public @NonNull Class<Args> getArgsClass() {
-            return Args.class;
+            return ToolDocs.nonNullClass(Args.class);
         }
 
         @Override
@@ -132,6 +132,9 @@ public final class GroupTools {
             String leaderId = ctx != null ? ctx.agentId() : "leader";
             String userId = ctx != null ? ctx.userId().toString() : "default";
             String owner = ctx != null ? ctx.owner() : null;
+            if (owner == null || owner.isBlank()) {
+                return "Group not created: no authenticated session owner is available.";
+            }
 
             // Register an empty group - no DAG yet, no Mates. The Leader (the transformed caller)
             // authors the DAG node by node via create_node; the engine provisions Mates lazily on
@@ -216,7 +219,7 @@ public final class GroupTools {
 
         @Override
         public @NonNull Class<Args> getArgsClass() {
-            return Args.class;
+            return ToolDocs.nonNullClass(Args.class);
         }
 
         @Override
@@ -240,7 +243,7 @@ public final class GroupTools {
         /**
          * Builds the outcome brief seeded into the now-STANDALONE agent's context after disband.
          */
-        private static @NonNull String buildDisbandBrief(@Nullable Group g) {
+        private static @NonNull String buildDisbandBrief(Group g) {
             StringBuilder sb = new StringBuilder();
             sb.append("Delegation complete. You led a group to the following outcome.\n");
             if (g == null) {
@@ -322,14 +325,14 @@ public final class GroupTools {
                 @SecurityHint(ParamCategory.GENERIC)
                         @Doc(
                                 "Message type: TASK_DISPATCH, ARTIFACT_REF, LOG_REF, FEEDBACK, STATUS, ACCEPT.")
-                        @Nullable String type,
+                        String type,
                 @SecurityHint(ParamCategory.GENERIC)
                         @Doc("Receiver id (a Mate id, or 'LEADER' for a self-note).")
-                        @Nullable String receiver,
+                        String receiver,
                 @SecurityHint(ParamCategory.GENERIC)
                         @Doc(
                                 "Small payload (path / status / short feedback). No file contents - paths only.")
-                        @Nullable String payload) {}
+                        String payload) {}
 
         @Override
         public @NonNull String getName() {
@@ -343,7 +346,7 @@ public final class GroupTools {
 
         @Override
         public @NonNull Class<Args> getArgsClass() {
-            return Args.class;
+            return ToolDocs.nonNullClass(Args.class);
         }
 
         @Override
@@ -357,12 +360,22 @@ public final class GroupTools {
             // The Blackboard identifies the Leader by the literal "LEADER" (its hub-and-spoke guard
             // + the orchestrator's ingest both key on it), so the Leader posts as "LEADER".
             BlackboardMessage.MessageType type;
+            String typeName = args.type();
+            if (typeName == null || typeName.isBlank()) {
+                return "Not posted: missing required message type.";
+            }
             try {
-                type = BlackboardMessage.MessageType.valueOf(args.type());
+                type =
+                        top.focess.veto.util.Nullness.requireNonNull(
+                                BlackboardMessage.MessageType.valueOf(typeName));
             } catch (IllegalArgumentException e) {
-                return "Not posted: unknown message type '" + args.type() + "'.";
+                return "Not posted: unknown message type '" + typeName + "'.";
             }
             String receiver = args.receiver() == null ? "LEADER" : args.receiver();
+            String payload = args.payload();
+            if (payload == null) {
+                return "Not posted: missing required payload.";
+            }
             blackboard.post(
                     new BlackboardMessage(
                             UUID.randomUUID().toString(),
@@ -370,7 +383,7 @@ public final class GroupTools {
                             "LEADER",
                             receiver,
                             type,
-                            args.payload(),
+                            payload,
                             0));
             return "posted";
         }

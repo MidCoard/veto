@@ -5,10 +5,10 @@ import com.sun.jna.Native;
 import com.sun.jna.Pointer;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import top.focess.veto.agent.mcp.ToolDocs;
 
 /**
  * The Part 5 §4.1 seccomp(2) syscall-allowlist <b>detector + spec</b>. Probes whether libseccomp is
@@ -31,15 +31,16 @@ import org.springframework.stereotype.Component;
 @Component
 public class SeccompWall {
 
-    private static final Logger log = LoggerFactory.getLogger(SeccompWall.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.sandbox.SeccompWall");
 
     /** The loaded libseccomp binding, or {@code null} when libseccomp is unavailable. */
-    private final @Nullable LinuxLibSeccomp lib;
+    private final LinuxLibSeccomp lib;
 
     public SeccompWall() {
         LinuxLibSeccomp loaded = null;
         try {
-            loaded = Native.load("seccomp", LinuxLibSeccomp.class);
+            loaded = Native.load("seccomp", ToolDocs.nonNullClass(LinuxLibSeccomp.class));
             log.info(
                     "SeccompWall: libseccomp loadable; syscall wall available (applied via a wrapper)");
         } catch (Throwable t) {
@@ -90,12 +91,12 @@ public class SeccompWall {
         /**
          * {@code seccomp_init(SCMP_ACT_KILL)} — create a filter context that kills on violation.
          */
-        @Nullable Pointer seccomp_init(int action);
+        Pointer seccomp_init(int action);
 
-        int seccomp_rule_add(@Nullable Pointer ctx, int action, int syscall, int argCount);
+        int seccomp_rule_add(Pointer ctx, int action, int syscall, int argCount);
 
-        int seccomp_load(@Nullable Pointer ctx);
+        int seccomp_load(Pointer ctx);
 
-        void seccomp_release(@Nullable Pointer ctx);
+        void seccomp_release(Pointer ctx);
     }
 }

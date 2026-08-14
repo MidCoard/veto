@@ -46,6 +46,10 @@ public class GroupAgentFactory implements GroupSpawner.AgentFactory {
         // flows here via GroupSpawner.startMate → resolveMateBinding. Resolving against the owner's
         // active profile means a Mate runs on the same user's configured model as the Leader.
         String owner = mateBinding.owner();
+        if (owner == null) {
+            throw new IllegalStateException(
+                    "Cannot provision a group agent without the session owner");
+        }
         ModelBinding resolved = tierRegistry.resolve(owner, mateBinding.tier());
         String systemPromptBase = mateBinding.systemPromptBase();
         AgentRunner.LlmBinding binding =

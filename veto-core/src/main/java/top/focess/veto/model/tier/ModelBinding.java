@@ -1,7 +1,6 @@
 package top.focess.veto.model.tier;
 
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.llm.core.ProviderType;
 
 /**
@@ -31,7 +30,7 @@ public record ModelBinding(
         @NonNull String credentialKey,
         double temperature,
         int maxOutputTokens,
-        @Nullable String baseUrl) {
+        String baseUrl) {
 
     /** Convenience constructor for callers that do not override the base URL (null -> default). */
     public ModelBinding(

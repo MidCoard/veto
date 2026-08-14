@@ -2,7 +2,6 @@ package top.focess.veto.i18n;
 
 import java.util.Locale;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.springframework.context.MessageSource;
 import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.context.support.ResourceBundleMessageSource;
@@ -32,12 +31,8 @@ public final class Msg {
      * English default when no locale is bound to the thread or the key is unknown (then the code
      * itself is returned rather than throwing).
      */
-    public static @NonNull String get(@NonNull String code, @Nullable Object... args) {
+    public static @NonNull String get(@NonNull String code, Object... args) {
         Locale locale = LocaleContextHolder.getLocale();
-        if (locale == null) {
-            // No request locale on this thread (agent/IPC/test) - default to English.
-            locale = Locale.ENGLISH;
-        }
         return MESSAGES.getMessage(code, args, locale);
     }
 
@@ -47,7 +42,7 @@ public final class Msg {
      * empty off the request thread.
      */
     public static @NonNull String get(
-            @NonNull Locale locale, @NonNull String code, @Nullable Object... args) {
+            @NonNull Locale locale, @NonNull String code, Object... args) {
         return MESSAGES.getMessage(code, args, locale);
     }
 

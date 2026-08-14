@@ -3,7 +3,6 @@ package top.focess.veto.model.tier;
 import java.util.List;
 import java.util.Optional;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import top.focess.veto.i18n.Msg;
@@ -58,37 +57,34 @@ public class DefaultModelTierService implements ModelTierRegistry, ModelTierProf
                                                         "error.tier.noBinding",
                                                         profile.getName(),
                                                         tier)));
-        if (binding.getProvider() == null
-                || binding.getModel() == null
-                || binding.getCredentialKey() == null) {
+        var provider = binding.getProvider();
+        String model = binding.getModel();
+        String credentialKey = binding.getCredentialKey();
+        if (provider == null || model == null || credentialKey == null) {
             throw new ModelTierConfigException(
                     Msg.get("error.tier.incomplete", tier, profile.getName()));
         }
+        Double configuredTemperature = binding.getTemperature();
         double temperature =
-                binding.getTemperature() != null ? binding.getTemperature() : DEFAULT_TEMPERATURE;
+                configuredTemperature == null ? DEFAULT_TEMPERATURE : configuredTemperature;
+        Integer configuredMaxOutputTokens = binding.getMaxOutputTokens();
         int maxOutputTokens =
-                binding.getMaxOutputTokens() != null
-                        ? binding.getMaxOutputTokens()
-                        : DEFAULT_MAX_OUTPUT_TOKENS;
+                configuredMaxOutputTokens == null
+                        ? DEFAULT_MAX_OUTPUT_TOKENS
+                        : configuredMaxOutputTokens;
         return new ModelBinding(
-                binding.getProvider(),
-                binding.getModel(),
-                binding.getCredentialKey(),
-                temperature,
-                maxOutputTokens,
-                binding.getBaseUrl());
+                provider, model, credentialKey, temperature, maxOutputTokens, binding.getBaseUrl());
     }
 
     @Override
     @Transactional(readOnly = true)
-    public @Nullable String activeProfile(@NonNull String username) {
+    public String activeProfile(@NonNull String username) {
         return profileRepo
                 .findByOwnerAndActiveTrue(username)
                 .map(ModelTierProfileEntity::getName)
                 .orElse(null);
     }
 
-    @Transactional(readOnly = true)
     private @NonNull ModelTierProfileEntity activeProfileEntity(@NonNull String username) {
         return profileRepo
                 .findByOwnerAndActiveTrue(username)

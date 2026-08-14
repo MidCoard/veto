@@ -1,5 +1,7 @@
 package top.focess.veto.llm.core;
 
+import org.jspecify.annotations.NonNull;
+
 /**
  * Thread-local holder for a provider's reasoning content (e.g. DeepSeek's {@code reasoning_content}
  * field from thinking mode). The provider client sets it after each call; {@code
@@ -13,18 +15,21 @@ package top.focess.veto.llm.core;
  */
 public final class ReasoningContentHolder {
 
-    private static final ThreadLocal<String> HOLDER = new ThreadLocal<>();
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static final @NonNull ThreadLocal HOLDER = new ThreadLocal();
 
     private ReasoningContentHolder() {}
 
     /** Sets the reasoning content for the current thread's most recent LLM call. */
-    public static void set(@org.jspecify.annotations.Nullable String content) {
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    public static void set(String content) {
         HOLDER.set(content);
     }
 
     /** Returns and clears the reasoning content (null if none was set). */
-    public static @org.jspecify.annotations.Nullable String getAndClear() {
-        String v = HOLDER.get();
+    public static String getAndClear() {
+        Object value = HOLDER.get();
+        String v = value instanceof String string ? string : null;
         HOLDER.remove();
         return v;
     }

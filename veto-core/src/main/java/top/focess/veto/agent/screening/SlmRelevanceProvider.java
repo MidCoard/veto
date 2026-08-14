@@ -11,7 +11,7 @@ import top.focess.veto.llm.core.ToolCall;
  */
 public interface SlmRelevanceProvider {
     @NonNull Relevance relevance(
-            @NonNull ToolCall call, @NonNull ToolDefinition def, @NonNull String thought);
+            @NonNull ToolCall call, @NonNull ToolDefinition def, String thought);
 
     /** Degraded: always HIGH. */
     static @NonNull SlmRelevanceProvider degraded() {

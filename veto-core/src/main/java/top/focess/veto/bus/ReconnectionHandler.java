@@ -5,7 +5,6 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -14,7 +13,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class ReconnectionHandler {
 
-    private static final Logger log = LoggerFactory.getLogger(ReconnectionHandler.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.bus.ReconnectionHandler");
 
     private final @NonNull BusConfiguration config;
     private final @NonNull AtomicInteger reconnectAttempts = new AtomicInteger(0);
@@ -26,12 +26,10 @@ public class ReconnectionHandler {
                         return t;
                     });
 
-    private volatile @Nullable String lastBackendUrl;
+    private volatile String lastBackendUrl;
     private volatile boolean reconnecting = false;
 
-    public
-    @NonNull
-    ReconnectionHandler(@NonNull BusConfiguration config) {
+    public ReconnectionHandler(@NonNull BusConfiguration config) {
         this.config = config;
     }
 
@@ -92,7 +90,7 @@ public class ReconnectionHandler {
         return reconnectAttempts.get();
     }
 
-    public @Nullable String getLastBackendUrl() {
+    public String getLastBackendUrl() {
         return lastBackendUrl;
     }
 }

@@ -12,10 +12,10 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import top.focess.veto.security.HostPathInput;
 
 /**
  * Orchestrates the model training lifecycle. Launches Python training scripts as subprocesses (same
@@ -28,7 +28,8 @@ import org.springframework.stereotype.Service;
 @Service
 public class TrainingManager {
 
-    private static final Logger log = LoggerFactory.getLogger(TrainingManager.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.training.TrainingManager");
 
     /** Pattern for structured JSON progress lines emitted by train.py. */
     private static final @NonNull Pattern STRUCTURED_PROGRESS_PATTERN =
@@ -40,7 +41,7 @@ public class TrainingManager {
     private final @NonNull TrainingProgress progress = new TrainingProgress();
     private final @NonNull AtomicBoolean running = new AtomicBoolean(false);
 
-    private @Nullable Process trainingProcess;
+    private Process trainingProcess;
     private final @NonNull ExecutorService processExecutor =
             Executors.newSingleThreadExecutor(
                     r -> {
@@ -55,11 +56,10 @@ public class TrainingManager {
         void deploy(@NonNull String modelPath);
     }
 
-    private @Nullable ModelDeployCallback deployCallback = null;
+    private ModelDeployCallback deployCallback = null;
 
-    public
-    @NonNull
-    TrainingManager(@NonNull TrainingConfiguration config, @NonNull ObjectMapper objectMapper) {
+    public TrainingManager(
+            @NonNull TrainingConfiguration config, @NonNull ObjectMapper objectMapper) {
         this.config = config;
         this.objectMapper = objectMapper;
     }
@@ -103,7 +103,7 @@ public class TrainingManager {
      *
      * @return true if training was successfully started
      */
-    public synchronized boolean startTraining(@Nullable TrainingRequest request) {
+    public synchronized boolean startTraining(TrainingRequest request) {
         if (running.get()) {
             log.warn("Training already in progress");
             return false;
@@ -116,12 +116,17 @@ public class TrainingManager {
         // Resolve effective parameters (request overrides config)
         String effectiveBaseModel =
                 request.baseModel() != null ? request.baseModel() : config.getBaseModel();
-        int effectiveEpochs = request.epochs() != null ? request.epochs() : 3;
-        double effectiveLr = request.learningRate() != null ? request.learningRate() : 2e-4;
-        int effectiveBatchSize = request.batchSize() != null ? request.batchSize() : 4;
-        int effectiveLoraRank = request.loraRank() != null ? request.loraRank() : 16;
+        Integer requestedEpochs = request.epochs();
+        Double requestedLearningRate = request.learningRate();
+        Integer requestedBatchSize = request.batchSize();
+        Integer requestedLoraRank = request.loraRank();
+        Boolean requestedSkipQualityFilter = request.skipQualityFilter();
+        int effectiveEpochs = requestedEpochs != null ? requestedEpochs : 3;
+        double effectiveLr = requestedLearningRate != null ? requestedLearningRate : 2e-4;
+        int effectiveBatchSize = requestedBatchSize != null ? requestedBatchSize : 4;
+        int effectiveLoraRank = requestedLoraRank != null ? requestedLoraRank : 16;
         boolean effectiveSkipQualityFilter =
-                request.skipQualityFilter() != null ? request.skipQualityFilter() : false;
+                requestedSkipQualityFilter != null ? requestedSkipQualityFilter : false;
 
         // Validate training directory
         Path trainingDir = Path.of(config.getTrainingDir()).toAbsolutePath();
@@ -271,7 +276,11 @@ public class TrainingManager {
 
                     } catch (Exception e) {
                         log.error("Training pipeline failed", e);
-                        progress.fail(e.getMessage());
+                        String message = e.getMessage();
+                        progress.fail(
+                                message == null || message.isBlank()
+                                        ? e.getClass().getSimpleName()
+                                        : message);
                     } finally {
                         running.set(false);
                     }
@@ -296,7 +305,7 @@ public class TrainingManager {
      *
      * @return the quality filter report as a Map, or null on failure
      */
-    public @Nullable Map<String, Object> runStandaloneQualityCheck() {
+    public Map<String, Object> runStandaloneQualityCheck() {
         Path trainingDir = Path.of(config.getTrainingDir()).toAbsolutePath();
         Path pythonDir = trainingDir.resolve("python");
         Path dataPath = trainingDir.resolve("data").resolve("veto_training_data.jsonl");
@@ -333,9 +342,7 @@ public class TrainingManager {
             Process process = pb.start();
             try (BufferedReader reader =
                     new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-                while (reader.readLine() != null) {
-                    // Drain output
-                }
+                reader.transferTo(java.io.Writer.nullWriter());
             }
             boolean finished = process.waitFor(5, TimeUnit.MINUTES);
             if (!finished) {
@@ -365,17 +372,53 @@ public class TrainingManager {
      * @return true if deployment succeeded
      */
     public boolean deployModel(@NonNull String modelPath) {
-        Path source = Path.of(modelPath);
-        if (!Files.exists(source)) {
-            log.error("Model file not found: {}", modelPath);
+        Path source;
+        try {
+            // The source is subsequently confined to configured roots and resolved to a real path.
+            //noinspection tainting
+            source = HostPathInput.normalized(modelPath, "modelPath");
+        } catch (IllegalArgumentException e) {
+            log.error("Refusing to deploy an invalid model path", e);
+            return false;
+        }
+        Path trainingRoot = Path.of(config.getTrainingDir()).toAbsolutePath().normalize();
+        Path modelRoot = Path.of(config.getModelOutputDir()).toAbsolutePath().normalize();
+        if (!source.startsWith(trainingRoot) && !source.startsWith(modelRoot)) {
+            log.error("Refusing to deploy a model outside the configured training directories");
+            return false;
+        }
+        Path fileName = source.getFileName();
+        // The preceding lexical root check confines this first existence/type probe.
+        //noinspection tainting
+        if (!Files.isRegularFile(source)
+                || fileName == null
+                || !fileName.toString().toLowerCase(java.util.Locale.ROOT).endsWith(".gguf")) {
+            log.error("Model path is not a regular GGUF file: {}", modelPath);
             return false;
         }
 
-        Path targetDir = Path.of(config.getModelOutputDir()).toAbsolutePath();
+        try {
+            // Resolve symlinks, then repeat the configured-root check on the real path.
+            //noinspection tainting
+            source = source.toRealPath();
+            Path realTrainingRoot = existingRealPath(trainingRoot);
+            Path realModelRoot = existingRealPath(modelRoot);
+            if (!source.startsWith(realTrainingRoot) && !source.startsWith(realModelRoot)) {
+                log.error("Refusing to deploy a model through a path outside the configured roots");
+                return false;
+            }
+        } catch (IOException e) {
+            log.error("Could not resolve model path", e);
+            return false;
+        }
+
+        Path targetDir = modelRoot;
         Path target = targetDir.resolve(config.getDefaultGgufName());
 
         try {
             Files.createDirectories(targetDir);
+            // source has passed lexical and real-path root checks; target is configuration-derived.
+            //noinspection tainting
             Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
             log.info("Model deployed: {} -> {}", source, target);
 
@@ -391,12 +434,21 @@ public class TrainingManager {
         }
     }
 
+    private static @NonNull Path existingRealPath(@NonNull Path path) throws IOException {
+        return Files.exists(path) ? path.toRealPath() : path;
+    }
+
     // ── Internal helpers ──
 
     /** Run the quality filter Python script on the given data path. */
     private boolean runQualityFilter(@NonNull Path pythonDir, @NonNull Path dataPath) {
         String python = resolvePythonPath();
-        Path reportPath = dataPath.getParent().resolve("quality_report.json");
+        Path dataDirectory = dataPath.getParent();
+        if (dataDirectory == null) {
+            log.error("Training data path has no parent directory: {}", dataPath);
+            return false;
+        }
+        Path reportPath = dataDirectory.resolve("quality_report.json");
 
         String[] cmd =
                 new String[] {
@@ -447,54 +499,86 @@ public class TrainingManager {
             @SuppressWarnings("unchecked")
             Map<String, Object> report = objectMapper.readValue(reportPath.toFile(), Map.class);
 
-            @SuppressWarnings("unchecked")
-            Map<String, Object> gbnf = (Map<String, Object>) report.get("gbnfCompliance");
-            @SuppressWarnings("unchecked")
-            Map<String, Object> decision = (Map<String, Object>) report.get("decisionAccuracy");
-            @SuppressWarnings("unchecked")
-            Map<String, Object> redaction = (Map<String, Object>) report.get("redactionAccuracy");
-            @SuppressWarnings("unchecked")
-            Map<String, Object> structural =
-                    (Map<String, Object>) report.get("structuralValidation");
+            Map<String, Object> gbnf = requiredMap(report, "gbnfCompliance");
+            Map<String, Object> decision = requiredMap(report, "decisionAccuracy");
+            Map<String, Object> redaction = requiredMap(report, "redactionAccuracy");
+            Map<String, Object> structural = requiredMap(report, "structuralValidation");
 
             TrainingProgress.EvaluationReport evalReport =
                     new TrainingProgress.EvaluationReport(
                             (String) report.get("modelPath"),
                             (String) report.get("datasetPath"),
                             (String) report.get("timestamp"),
-                            ((Number) report.get("totalSamples")).intValue(),
-                            ((Number) report.get("elapsedSeconds")).doubleValue(),
+                            requiredNumber(report, "totalSamples").intValue(),
+                            requiredNumber(report, "elapsedSeconds").doubleValue(),
                             new TrainingProgress.EvaluationReport.GbnfCompliance(
-                                    ((Number) gbnf.get("validJsonCount")).intValue(),
-                                    ((Number) gbnf.get("validJsonRate")).doubleValue()),
+                                    requiredNumber(gbnf, "validJsonCount").intValue(),
+                                    requiredNumber(gbnf, "validJsonRate").doubleValue()),
                             new TrainingProgress.EvaluationReport.DecisionAccuracy(
-                                    ((Number) decision.get("correct")).intValue(),
-                                    ((Number) decision.get("total")).intValue(),
-                                    ((Number) decision.get("accuracy")).doubleValue()),
+                                    requiredNumber(decision, "correct").intValue(),
+                                    requiredNumber(decision, "total").intValue(),
+                                    requiredNumber(decision, "accuracy").doubleValue()),
                             new TrainingProgress.EvaluationReport.RedactionAccuracy(
-                                    ((Number) redaction.get("truePositives")).intValue(),
-                                    ((Number) redaction.get("falsePositives")).intValue(),
-                                    ((Number) redaction.get("falseNegatives")).intValue(),
-                                    ((Number) redaction.get("precision")).doubleValue(),
-                                    ((Number) redaction.get("recall")).doubleValue(),
-                                    ((Number) redaction.get("f1")).doubleValue()),
+                                    requiredNumber(redaction, "truePositives").intValue(),
+                                    requiredNumber(redaction, "falsePositives").intValue(),
+                                    requiredNumber(redaction, "falseNegatives").intValue(),
+                                    requiredNumber(redaction, "precision").doubleValue(),
+                                    requiredNumber(redaction, "recall").doubleValue(),
+                                    requiredNumber(redaction, "f1").doubleValue()),
                             new TrainingProgress.EvaluationReport.StructuralValidation(
-                                    ((Number) structural.get("correct")).intValue(),
-                                    ((Number) structural.get("total")).intValue(),
-                                    ((Number) structural.get("accuracy")).doubleValue()));
+                                    requiredNumber(structural, "correct").intValue(),
+                                    requiredNumber(structural, "total").intValue(),
+                                    requiredNumber(structural, "accuracy").doubleValue()));
 
             progress.setEvaluation(evalReport);
             log.info(
-                    "Evaluation report parsed: GBNF compliance={:.1%}, decision accuracy={:.1%}",
-                    evalReport.gbnfCompliance().validJsonRate(),
-                    evalReport.decisionAccuracy().accuracy());
+                    "Evaluation report parsed: GBNF compliance={}, decision accuracy={}",
+                    String.format(
+                            java.util.Locale.ROOT,
+                            "%.1f%%",
+                            evalReport.gbnfCompliance().validJsonRate() * 100.0),
+                    String.format(
+                            java.util.Locale.ROOT,
+                            "%.1f%%",
+                            evalReport.decisionAccuracy().accuracy() * 100.0));
         } catch (Exception e) {
-            log.warn("Failed to parse evaluation report: {}", e.getMessage());
+            log.warn("Failed to parse evaluation report: {}", String.valueOf(e.getMessage()));
         }
     }
 
+    private static @NonNull Number requiredNumber(
+            @NonNull Map<String, Object> values, @NonNull String key) {
+        Object value = values.get(key);
+        if (value instanceof Number number) {
+            return number;
+        }
+        throw new IllegalArgumentException(
+                "Evaluation report field '" + key + "' must be a number");
+    }
+
+    private static @NonNull Map<String, Object> requiredMap(
+            @NonNull Map<String, Object> values, @NonNull String key) {
+        Object value = values.get(key);
+        if (!(value instanceof Map<?, ?> raw)) {
+            throw new IllegalArgumentException(
+                    "Evaluation report field '" + key + "' must be an object");
+        }
+        Map<String, Object> result = new java.util.LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : raw.entrySet()) {
+            if (!(entry.getKey() instanceof String entryKey)) {
+                throw new IllegalArgumentException(
+                        "Evaluation report object '" + key + "' has a non-string key");
+            }
+            Object entryValue = entry.getValue();
+            if (entryValue != null) {
+                result.put(entryKey, entryValue);
+            }
+        }
+        return result;
+    }
+
     private @NonNull Path resolveTrainingDataPath(
-            @NonNull Path trainingDir, @Nullable String requestDataPath) {
+            @NonNull Path trainingDir, String requestDataPath) {
         if (requestDataPath != null && !requestDataPath.isEmpty()) {
             Path custom = Path.of(requestDataPath);
             if (Files.exists(custom)) {
@@ -597,7 +681,7 @@ public class TrainingManager {
      * {"type":"progress","epoch":1,"step":50,"loss":0.45}} {@code
      * {"type":"phase","phase":"training","message":"Starting QLoRA fine-tuning..."}}
      */
-    private void parseProgressLine(@Nullable String line) {
+    private void parseProgressLine(String line) {
         if (line == null || line.isBlank()) {
             return;
         }
@@ -616,6 +700,11 @@ public class TrainingManager {
             @SuppressWarnings("unchecked")
             Map<String, Object> parsed = objectMapper.readValue(trimmed, Map.class);
             String type = (String) parsed.get("type");
+
+            if (type == null) {
+                log.debug("Structured training progress line omitted type: {}", trimmed);
+                return;
+            }
 
             switch (type) {
                 case "phase" -> {
@@ -652,10 +741,13 @@ public class TrainingManager {
                         }
                     }
                 }
-                case "epoch_start" -> log.info("Epoch {} started", parsed.get("epoch"));
-                case "epoch_end" -> log.info("Epoch {} ended", parsed.get("epoch"));
-                case "phase_complete" -> log.info("Phase {} complete", parsed.get("phase"));
-                case "error" -> log.error("Training error: {}", parsed.get("message"));
+                case "epoch_start" ->
+                        log.info("Epoch {} started", String.valueOf(parsed.get("epoch")));
+                case "epoch_end" -> log.info("Epoch {} ended", String.valueOf(parsed.get("epoch")));
+                case "phase_complete" ->
+                        log.info("Phase {} complete", String.valueOf(parsed.get("phase")));
+                case "error" ->
+                        log.error("Training error: {}", String.valueOf(parsed.get("message")));
                 default -> log.debug("Unknown progress type: {}", type);
             }
         } catch (Exception e) {
@@ -681,16 +773,17 @@ public class TrainingManager {
     }
 
     private void killProcess() {
-        if (trainingProcess != null && trainingProcess.isAlive()) {
-            trainingProcess.destroy();
+        Process process = trainingProcess;
+        if (process != null && process.isAlive()) {
+            process.destroy();
             try {
-                trainingProcess.waitFor(5, TimeUnit.SECONDS);
-                if (trainingProcess.isAlive()) {
-                    trainingProcess.destroyForcibly();
+                process.waitFor(5, TimeUnit.SECONDS);
+                if (process.isAlive()) {
+                    process.destroyForcibly();
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                trainingProcess.destroyForcibly();
+                process.destroyForcibly();
             }
         }
     }

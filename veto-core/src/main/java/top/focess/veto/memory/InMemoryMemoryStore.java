@@ -32,7 +32,7 @@ import top.focess.veto.memory.embedder.Embedder;
 public class InMemoryMemoryStore implements MemoryStore {
 
     private final @NonNull Embedder embedder;
-    private final ConcurrentMap<MemoryId, Memory> store = new ConcurrentHashMap<>();
+    private final @NonNull ConcurrentMap<MemoryId, Memory> store = new ConcurrentHashMap<>();
 
     public InMemoryMemoryStore(@NonNull Embedder embedder) {
         this.embedder = embedder;
@@ -52,11 +52,13 @@ public class InMemoryMemoryStore implements MemoryStore {
                 continue;
             }
             // Session filter (session-scoped queries only see their session).
-            if (query.sessionFilter() != null && !query.sessionFilter().equals(m.sessionId())) {
+            var sessionFilter = query.sessionFilter();
+            if (sessionFilter != null && !sessionFilter.equals(m.sessionId())) {
                 continue;
             }
             // Project filter.
-            if (query.projectFilter() != null && !query.projectFilter().equals(m.projectId())) {
+            var projectFilter = query.projectFilter();
+            if (projectFilter != null && !projectFilter.equals(m.projectId())) {
                 continue;
             }
             if (m.embedding().length == 0) {
@@ -82,9 +84,6 @@ public class InMemoryMemoryStore implements MemoryStore {
 
     @Override
     public void capture(@NonNull TurnRecord turn, @NonNull UUID sessionId, @NonNull UUID userId) {
-        if (turn == null || sessionId == null || userId == null) {
-            return;
-        }
         String content = captureText(turn);
         if (content == null || content.isBlank()) {
             return;
@@ -130,7 +129,7 @@ public class InMemoryMemoryStore implements MemoryStore {
         store.remove(id);
     }
 
-    private static float cosineSimilarity(float[] a, float[] b) {
+    private static float cosineSimilarity(float @NonNull [] a, float @NonNull [] b) {
         int n = Math.min(a.length, b.length);
         float dot = 0f, na = 0f, nb = 0f;
         for (int i = 0; i < n; i++) {
@@ -144,7 +143,7 @@ public class InMemoryMemoryStore implements MemoryStore {
         return dot / ((float) Math.sqrt(na) * (float) Math.sqrt(nb));
     }
 
-    private static String captureText(TurnRecord turn) {
+    private static String captureText(@NonNull TurnRecord turn) {
         return switch (turn.type()) {
             case ASSISTANT_THOUGHT -> {
                 Object thought = turn.payload().get("response");
@@ -166,7 +165,7 @@ public class InMemoryMemoryStore implements MemoryStore {
     }
 
     /** Test-only inspection of the store contents. */
-    public Map<MemoryId, Memory> snapshot() {
+    public @NonNull Map<MemoryId, Memory> snapshot() {
         return Map.copyOf(store);
     }
 

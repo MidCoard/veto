@@ -7,6 +7,8 @@ import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.agent.identity.SystemPromptResolver;
@@ -14,6 +16,7 @@ import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.mcp.DefaultToolEngine;
+import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.llm.core.ProviderType;
@@ -32,11 +35,12 @@ import top.focess.veto.vault.UserContext;
  */
 class PerUserIdentityTest {
 
-    private static final Duration EPISODE_TIMEOUT = Duration.ofSeconds(10);
-    private static final UUID TEST_USER_ID =
+    private static final @NonNull Duration EPISODE_TIMEOUT = Duration.ofSeconds(10);
+    private static final @NonNull UUID TEST_USER_ID =
             UUID.fromString("12345678-1234-1234-1234-123456789abc");
 
-    private static AgentService serviceWith(UniformLLMCaller caller, TurnLogService turnLog) {
+    private static @NonNull AgentService serviceWith(
+            @NonNull UniformLLMCaller caller, @NonNull TurnLogService turnLog) {
         ObjectMapper mapper = new ObjectMapper();
         PromptCompiler compiler =
                 new PromptCompiler(
@@ -65,7 +69,7 @@ class PerUserIdentityTest {
                                 new top.focess.veto.sandbox.ConstrainedSubprocessSubstrate())));
     }
 
-    private static AgentRunner.LlmBinding binding() {
+    private static AgentRunner.@NonNull LlmBinding binding() {
         return new AgentRunner.LlmBinding(
                 ProviderType.DEEPSEEK,
                 "stub-model",
@@ -80,7 +84,8 @@ class PerUserIdentityTest {
      */
     @Test
     void suppliedUserIdFlowsToTurnLog() throws Exception {
-        TurnRecordRepository repo = org.mockito.Mockito.mock(TurnRecordRepository.class);
+        TurnRecordRepository repo =
+                org.mockito.Mockito.mock(ToolDocs.nonNullClass(TurnRecordRepository.class));
         TurnLogService turnLog = new TurnLogService(repo, new ObjectMapper());
 
         List<VetoRequest> seenRequests = new CopyOnWriteArrayList<>();
@@ -105,7 +110,7 @@ class PerUserIdentityTest {
 
         // Verify turns were logged under the supplied userId, not DEFAULT_USER_ID
         org.mockito.ArgumentCaptor<TurnRecordEntity> captor =
-                org.mockito.ArgumentCaptor.forClass(TurnRecordEntity.class);
+                org.mockito.ArgumentCaptor.forClass(ToolDocs.nonNullClass(TurnRecordEntity.class));
         org.mockito.Mockito.verify(repo, org.mockito.Mockito.atLeastOnce()).save(captor.capture());
         TurnRecordEntity first = captor.getAllValues().get(0);
         assertEquals(
@@ -124,7 +129,8 @@ class PerUserIdentityTest {
      */
     @Test
     void defaultUserIdUsedWhenNotSupplied() throws Exception {
-        TurnRecordRepository repo = org.mockito.Mockito.mock(TurnRecordRepository.class);
+        TurnRecordRepository repo =
+                org.mockito.Mockito.mock(ToolDocs.nonNullClass(TurnRecordRepository.class));
         TurnLogService turnLog = new TurnLogService(repo, new ObjectMapper());
 
         UniformLLMCaller caller =
@@ -145,7 +151,7 @@ class PerUserIdentityTest {
 
         // Turns logged under DEFAULT_USER_ID
         org.mockito.ArgumentCaptor<TurnRecordEntity> captor =
-                org.mockito.ArgumentCaptor.forClass(TurnRecordEntity.class);
+                org.mockito.ArgumentCaptor.forClass(ToolDocs.nonNullClass(TurnRecordEntity.class));
         org.mockito.Mockito.verify(repo, org.mockito.Mockito.atLeastOnce()).save(captor.capture());
         TurnRecordEntity first = captor.getAllValues().get(0);
         assertEquals(AgentService.DEFAULT_USER_ID.toString(), first.getUserId());
@@ -159,13 +165,15 @@ class PerUserIdentityTest {
      */
     @Test
     void ownerStampedOnAgentThreadForCredentialResolution() throws Exception {
-        TurnRecordRepository repo = org.mockito.Mockito.mock(TurnRecordRepository.class);
+        TurnRecordRepository repo =
+                org.mockito.Mockito.mock(ToolDocs.nonNullClass(TurnRecordRepository.class));
         TurnLogService turnLog = new TurnLogService(repo, new ObjectMapper());
 
         List<String> seen = new CopyOnWriteArrayList<>();
         UniformLLMCaller caller =
                 request -> {
-                    seen.add(UserContext.get());
+                    String currentUser = UserContext.get();
+                    if (currentUser != null) seen.add(currentUser);
                     return new VetoResponse(
                             "Done.",
                             List.of(),
@@ -204,13 +212,14 @@ class PerUserIdentityTest {
      */
     @Test
     void nullOwnerLeavesUserContextUnset() throws Exception {
-        TurnRecordRepository repo = org.mockito.Mockito.mock(TurnRecordRepository.class);
+        TurnRecordRepository repo =
+                org.mockito.Mockito.mock(ToolDocs.nonNullClass(TurnRecordRepository.class));
         TurnLogService turnLog = new TurnLogService(repo, new ObjectMapper());
 
-        List<String> seen = new CopyOnWriteArrayList<>();
+        AtomicBoolean sawNullContext = new AtomicBoolean();
         UniformLLMCaller caller =
                 request -> {
-                    seen.add(UserContext.get());
+                    sawNullContext.set(UserContext.get() == null);
                     return new VetoResponse(
                             "Done.",
                             List.of(),
@@ -226,7 +235,6 @@ class PerUserIdentityTest {
                 service.submit(agentKey, "Hello", binding(), EPISODE_TIMEOUT, TEST_USER_ID);
 
         assertTrue(result.success(), "Episode should complete successfully");
-        assertFalse(seen.isEmpty(), "Caller should have been invoked on the agent thread");
-        assertNull(seen.get(0), "UserContext must be unset when no owner is threaded");
+        assertTrue(sawNullContext.get(), "UserContext must be unset when no owner is threaded");
     }
 }

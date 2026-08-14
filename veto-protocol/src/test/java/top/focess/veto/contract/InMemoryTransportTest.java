@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -17,11 +18,12 @@ import org.junit.jupiter.api.Test;
  * Request frames so the connection's handshake, seq correlation, streaming receive, and
  * flush-on-close paths are exercised without a socket.
  */
+@SuppressWarnings("initialization.field.uninitialized")
 class InMemoryTransportTest {
 
-    private InMemoryTransport transport;
-    private IpcClient conn;
-    private Thread responder;
+    private @NonNull InMemoryTransport transport;
+    private @NonNull IpcClient conn;
+    private @NonNull Thread responder;
     private volatile boolean responderRunning;
 
     @BeforeEach
@@ -56,7 +58,7 @@ class InMemoryTransportTest {
         conn.close();
     }
 
-    private void respond(IpcFrame.ClientFrame frame) {
+    private void respond(IpcFrame.@NonNull ClientFrame frame) {
         if (frame instanceof IpcFrame.Hello) {
             // The transport already auto-replied with Welcome in send(); nothing more to do.
             return;
@@ -85,7 +87,10 @@ class InMemoryTransportTest {
 
     @Test
     void completeReturnsCandidates() {
-        IpcFrame.CompleteResult result = conn.complete("/log", 2, TimeUnit.SECONDS);
+        IpcFrame.@NonNull CompleteResult result =
+                requireValue(
+                        conn.complete("/log", 2, TimeUnit.SECONDS),
+                        "complete result should not be null");
         assertNotNull(result);
         assertEquals(1, result.candidates().size());
         assertEquals("/login", result.candidates().get(0).value());
@@ -93,7 +98,10 @@ class InMemoryTransportTest {
 
     @Test
     void hintReturnsPlaceholder() {
-        IpcFrame.HintResult result = conn.hint("/login ", 2, TimeUnit.SECONDS);
+        IpcFrame.@NonNull HintResult result =
+                requireValue(
+                        conn.hint("/login ", 2, TimeUnit.SECONDS),
+                        "hint result should not be null");
         assertNotNull(result);
         assertEquals("<user>", result.hint().placeholder());
     }
@@ -102,12 +110,19 @@ class InMemoryTransportTest {
     void streamingRequestDeliversDeltaThenDone() throws InterruptedException {
         conn.send(new IpcFrame.Request("do something"));
         // The responder emits Delta, Delta, Done. Receive them in order from the incoming queue.
-        IpcFrame.ServerFrame f1 = conn.receive(2, TimeUnit.SECONDS);
-        IpcFrame.ServerFrame f2 = conn.receive(2, TimeUnit.SECONDS);
-        IpcFrame.ServerFrame f3 = conn.receive(2, TimeUnit.SECONDS);
-        assertInstanceOf(IpcFrame.Delta.class, f1);
-        assertInstanceOf(IpcFrame.Delta.class, f2);
-        assertInstanceOf(IpcFrame.Done.class, f3);
+        IpcFrame.@NonNull ServerFrame f1 =
+                requireValue(
+                        conn.receive(2, TimeUnit.SECONDS), "first server frame should not be null");
+        IpcFrame.@NonNull ServerFrame f2 =
+                requireValue(
+                        conn.receive(2, TimeUnit.SECONDS),
+                        "second server frame should not be null");
+        IpcFrame.@NonNull ServerFrame f3 =
+                requireValue(
+                        conn.receive(2, TimeUnit.SECONDS), "third server frame should not be null");
+        assertInstanceOf(nonNullClass(IpcFrame.Delta.class), f1);
+        assertInstanceOf(nonNullClass(IpcFrame.Delta.class), f2);
+        assertInstanceOf(nonNullClass(IpcFrame.Done.class), f3);
     }
 
     @Test
@@ -119,20 +134,36 @@ class InMemoryTransportTest {
         conn.close();
         assertTrue(conn.isClosed());
         // Drain what was sent; the Bye must have been flushed by the IO loop's final drain.
-        List<IpcFrame.ClientFrame> sent = new ArrayList<>();
+        @NonNull List<IpcFrame.@NonNull ClientFrame> sent = new ArrayList<>();
         transport.sent.drainTo(sent);
         assertTrue(
                 sent.stream().anyMatch(f -> f instanceof IpcFrame.Bye),
                 "close() must flush a Bye frame, got: " + sent);
     }
 
+    private static <T extends Object> @NonNull T requireValue(T value, String message) {
+        if (value != null) {
+            return value;
+        }
+        throw new AssertionError(message);
+    }
+
+    private static <T extends @NonNull Object> @NonNull Class<T> nonNullClass(Class<T> type) {
+        if (type != null) {
+            return type;
+        }
+        throw new AssertionError("Class token should not be null");
+    }
+
     /** Minimal in-memory {@link ClientTransport} that auto-replies to Hello with Welcome. */
     static final class InMemoryTransport implements ClientTransport {
-        final BlockingQueue<IpcFrame.ClientFrame> sent = new LinkedBlockingQueue<>();
-        final BlockingQueue<Transport.FramedMsg> inbox = new LinkedBlockingQueue<>();
+        final @NonNull BlockingQueue<IpcFrame.@NonNull ClientFrame> sent =
+                new LinkedBlockingQueue<>();
+        final @NonNull BlockingQueue<Transport.@NonNull FramedMsg> inbox =
+                new LinkedBlockingQueue<>();
 
         @Override
-        public void send(IpcFrame.ClientFrame frame) {
+        public void send(IpcFrame.@NonNull ClientFrame frame) {
             sent.offer(frame);
             if (frame instanceof IpcFrame.Hello h) {
                 inbox.offer(
@@ -156,7 +187,7 @@ class InMemoryTransportTest {
         @Override
         public void close() {}
 
-        void deliver(IpcFrame.ServerFrame frame) {
+        void deliver(IpcFrame.@NonNull ServerFrame frame) {
             inbox.offer(new Transport.FramedMsg("", frame));
         }
     }

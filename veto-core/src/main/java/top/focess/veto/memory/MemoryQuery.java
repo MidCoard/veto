@@ -3,7 +3,6 @@ package top.focess.veto.memory;
 import java.util.List;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
 /**
  * A query against the {@link MemoryStore}. Carries the query text (to be embedded at search time),
@@ -13,8 +12,8 @@ import org.jspecify.annotations.Nullable;
 public record MemoryQuery(
         @NonNull String queryText,
         @NonNull List<MemoryTier> tiers,
-        @Nullable UUID sessionFilter,
-        @Nullable UUID projectFilter,
+        UUID sessionFilter,
+        UUID projectFilter,
         @NonNull UUID userId,
         int topK,
         float scoreFloor) {

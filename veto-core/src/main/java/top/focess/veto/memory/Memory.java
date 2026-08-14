@@ -4,7 +4,6 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
 /**
  * A single memory entry stored by the {@link MemoryStore}. Carries the captured content (already
@@ -18,12 +17,12 @@ import org.jspecify.annotations.Nullable;
 public record Memory(
         @NonNull MemoryId id,
         @NonNull UUID userId,
-        @Nullable UUID sessionId,
+        UUID sessionId,
         @NonNull MemoryTier tier,
-        @Nullable UUID projectId,
+        UUID projectId,
         @NonNull String content,
-        float @Nullable [] embedding,
-        @Nullable SourceRef sourceRef,
+        float[] embedding,
+        SourceRef sourceRef,
         @NonNull Instant createdAt) {
 
     public Memory {
@@ -34,6 +33,16 @@ public record Memory(
             throw new IllegalArgumentException("CROSS_SESSION-tier memory must not have sessionId");
         }
         embedding = embedding == null ? new float[0] : embedding.clone();
+    }
+
+    /** The canonical constructor normalizes a missing embedding to an empty vector. */
+    @Override
+    public float @NonNull [] embedding() {
+        float[] value = embedding;
+        if (value == null) {
+            throw new IllegalStateException("Memory embedding was not normalized");
+        }
+        return value.clone();
     }
 
     /**

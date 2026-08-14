@@ -3,13 +3,11 @@ package top.focess.veto.session;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Arrays;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import top.focess.veto.agent.Agent;
@@ -26,6 +24,7 @@ import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTierRegistry;
+import top.focess.veto.security.HostPathInput;
 
 /**
  * Owns the session lifecycle: create/list/activate/deactivate, plus the per-terminal active-session
@@ -87,7 +86,7 @@ public class SessionService {
      */
     @Transactional
     public @NonNull SessionEntity createSession(
-            @NonNull String owner, @NonNull String patternName, @Nullable String sessionName) {
+            @NonNull String owner, @NonNull String patternName, String sessionName) {
         return createSession(owner, patternName, sessionName, System.getProperty("user.dir"));
     }
 
@@ -109,7 +108,7 @@ public class SessionService {
     public @NonNull SessionEntity createSession(
             @NonNull String owner,
             @NonNull String patternName,
-            @Nullable String sessionName,
+            String sessionName,
             @NonNull String workspaceRoots) {
         AgentPatternEntity pattern =
                 patterns.findByNameAndOwner(patternName, owner)
@@ -129,7 +128,10 @@ public class SessionService {
                 continue;
             }
             try {
-                java.nio.file.Files.createDirectories(Path.of(trimmed));
+                // Only normalized absolute workspace roots reach the filesystem operation.
+                //noinspection tainting
+                java.nio.file.Files.createDirectories(
+                        HostPathInput.absoluteNormalized(trimmed, "workspace root"));
             } catch (Exception e) {
                 throw new IllegalArgumentException(
                         Msg.get(
@@ -251,17 +253,7 @@ public class SessionService {
                 sessions.findByOwner(owner).stream()
                         .filter(s -> sessionName.equals(s.getName()))
                         .filter(s -> isInWorkspace(s.getWorkspaceRoots(), cwd))
-                        .sorted(
-                                // Concrete workspace first (workspaceRoots != null), then by
-                                // lastActiveAt descending; legacy (null) sessions come last as a
-                                // fallback when no concrete match exists.
-                                Comparator.<SessionEntity, Boolean>comparing(
-                                                s -> s.getWorkspaceRoots() == null)
-                                        .thenComparing(
-                                                SessionEntity::getLastActiveAt,
-                                                Comparator.nullsFirst(
-                                                        Comparator.<Instant>naturalOrder()
-                                                                .reversed())))
+                        .sorted(SessionService::compareActivationCandidates)
                         .toList();
         if (candidates.isEmpty()) {
             // Disambiguate the error: is it "not found at all" or "found but in a different
@@ -315,10 +307,7 @@ public class SessionService {
             @NonNull String terminalId, @NonNull String owner, @NonNull String cwd) {
         return sessions.findByOwner(owner).stream()
                 .filter(s -> isInWorkspace(s.getWorkspaceRoots(), cwd))
-                .max(
-                        Comparator.comparing(
-                                SessionEntity::getLastActiveAt,
-                                Comparator.nullsFirst(Comparator.naturalOrder())))
+                .max(SessionService::compareLastActiveAscending)
                 .flatMap(session -> activate(terminalId, session.getName(), owner, cwd));
     }
 
@@ -483,9 +472,27 @@ public class SessionService {
         return Optional.ofNullable(agentService.agentsView().get(sessionId));
     }
 
-    private @Nullable AgentEntity primaryAgent(@NonNull SessionEntity session) {
-        if (session.getPrimaryAgentId() == null) return null;
-        return agents.findById(session.getPrimaryAgentId()).orElse(null);
+    private AgentEntity primaryAgent(@NonNull SessionEntity session) {
+        String primaryAgentId = session.getPrimaryAgentId();
+        if (primaryAgentId == null) return null;
+        return agents.findById(primaryAgentId).orElse(null);
+    }
+
+    private static int compareActivationCandidates(
+            @NonNull SessionEntity left, @NonNull SessionEntity right) {
+        boolean leftLegacy = left.getWorkspaceRoots() == null;
+        boolean rightLegacy = right.getWorkspaceRoots() == null;
+        int specificity = Boolean.compare(leftLegacy, rightLegacy);
+        return specificity != 0 ? specificity : -compareLastActiveAscending(left, right);
+    }
+
+    private static int compareLastActiveAscending(
+            @NonNull SessionEntity left, @NonNull SessionEntity right) {
+        Instant leftTime = left.getLastActiveAt();
+        Instant rightTime = right.getLastActiveAt();
+        if (leftTime == null) return rightTime == null ? 0 : -1;
+        if (rightTime == null) return 1;
+        return leftTime.compareTo(rightTime);
     }
 
     /**
@@ -495,9 +502,7 @@ public class SessionService {
      * whether the wrong-workspace session was filtered out or surfaced via the fallback lookup.
      */
     private static @NonNull String workspaceMismatchMessage(
-            @NonNull String sessionName,
-            @Nullable String sessionWorkspaceRoots,
-            @NonNull String cwd) {
+            @NonNull String sessionName, String sessionWorkspaceRoots, @NonNull String cwd) {
         return Msg.get(
                 "error.session.workspaceMismatch",
                 sessionName,
@@ -519,8 +524,7 @@ public class SessionService {
      * session-routing purposes; the agent's tool calls will then resolve symlinks per their own
      * canonicalization rules.
      */
-    private static boolean isInWorkspace(
-            @Nullable String sessionWorkspaceRoots, @NonNull String cwd) {
+    private static boolean isInWorkspace(String sessionWorkspaceRoots, @NonNull String cwd) {
         if (sessionWorkspaceRoots == null || sessionWorkspaceRoots.isBlank()) {
             return true;
         }

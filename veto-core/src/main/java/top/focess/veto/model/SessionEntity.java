@@ -4,7 +4,6 @@ import jakarta.persistence.*;
 import java.time.Instant;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
 /**
  * A session - the conversation container a terminal/frontend attaches to. Holds one primary agent
@@ -14,13 +13,13 @@ import org.jspecify.annotations.Nullable;
 @Table(name = "sessions")
 public class SessionEntity {
 
-    @Id private @NonNull String id;
+    @Id private @NonNull String id = "";
 
     @Column(nullable = false)
-    private @NonNull String owner;
+    private @NonNull String owner = "";
 
     @Column(nullable = false)
-    private @NonNull String name;
+    private @NonNull String name = "";
 
     /**
      * CSV of host paths backing the session's workspace (the roots the session's agents resolve
@@ -29,16 +28,16 @@ public class SessionEntity {
      * non-blank at creation (the "path required" contract).
      */
     @Column(name = "workspace_roots")
-    private @Nullable String workspaceRoots;
+    private String workspaceRoots;
 
     @Column(name = "primary_agent_id")
-    private @Nullable String primaryAgentId;
+    private String primaryAgentId;
 
     @Column(name = "created_at", nullable = false)
-    private @NonNull Instant createdAt;
+    private @NonNull Instant createdAt = Instant.EPOCH;
 
     @Column(name = "last_active_at")
-    private @Nullable Instant lastActiveAt;
+    private Instant lastActiveAt;
 
     protected SessionEntity() {}
 
@@ -53,8 +52,7 @@ public class SessionEntity {
      *     back to the JVM working dir at activation (see {@link
      *     top.focess.veto.agent.AgentService})
      */
-    public SessionEntity(
-            @NonNull String owner, @NonNull String name, @Nullable String workspaceRoots) {
+    public SessionEntity(@NonNull String owner, @NonNull String name, String workspaceRoots) {
         this.id = UUID.randomUUID().toString();
         this.owner = owner;
         this.name = name;
@@ -79,19 +77,19 @@ public class SessionEntity {
         this.name = name;
     }
 
-    public @Nullable String getWorkspaceRoots() {
+    public String getWorkspaceRoots() {
         return workspaceRoots;
     }
 
-    public void setWorkspaceRoots(@Nullable String workspaceRoots) {
+    public void setWorkspaceRoots(String workspaceRoots) {
         this.workspaceRoots = workspaceRoots;
     }
 
-    public @Nullable String getPrimaryAgentId() {
+    public String getPrimaryAgentId() {
         return primaryAgentId;
     }
 
-    public void setPrimaryAgentId(@Nullable String primaryAgentId) {
+    public void setPrimaryAgentId(String primaryAgentId) {
         this.primaryAgentId = primaryAgentId;
     }
 
@@ -99,7 +97,7 @@ public class SessionEntity {
         return createdAt;
     }
 
-    public @Nullable Instant getLastActiveAt() {
+    public Instant getLastActiveAt() {
         return lastActiveAt;
     }
 

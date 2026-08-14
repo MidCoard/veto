@@ -12,9 +12,13 @@ import org.slf4j.LoggerFactory;
  * path, whether it's a Git repo (+ current branch if so), and its trust marker.
  */
 public record WorkspaceRoot(
-        Path hostPath, boolean isGitRepo, String currentBranch, TrustMarker trust) {
+        @NonNull Path hostPath,
+        boolean isGitRepo,
+        String currentBranch,
+        @NonNull TrustMarker trust) {
 
-    private static final Logger log = LoggerFactory.getLogger(WorkspaceRoot.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.agent.workspace.WorkspaceRoot");
 
     /** Probes a host path: is it a git repo, what branch, with the given trust. */
     public static @NonNull WorkspaceRoot probe(@NonNull Path hostPath, @NonNull TrustMarker trust) {
@@ -24,7 +28,7 @@ public record WorkspaceRoot(
         return new WorkspaceRoot(normalized, isGit, branch, trust);
     }
 
-    private static String readBranch(Path gitRoot) {
+    private static String readBranch(@NonNull Path gitRoot) {
         ProcessBuilder pb =
                 new ProcessBuilder("git", "rev-parse", "--abbrev-ref", "HEAD")
                         .directory(gitRoot.toFile());

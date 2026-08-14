@@ -4,7 +4,10 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import org.jspecify.annotations.NonNull;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
@@ -28,12 +31,9 @@ public class VectorIndexMemoryStore implements MemoryStore {
     private final @NonNull Embedder embedder;
 
     /** Memories are stored separately so we can attach metadata for the search result. */
-    private final java.util.concurrent.ConcurrentMap<UUID, Memory> store =
-            new java.util.concurrent.ConcurrentHashMap<>();
+    private final @NonNull ConcurrentMap<UUID, Memory> store = new ConcurrentHashMap<>();
 
-    public
-    @NonNull
-    VectorIndexMemoryStore(@NonNull VectorIndex index, @NonNull Embedder embedder) {
+    public VectorIndexMemoryStore(@NonNull VectorIndex index, @NonNull Embedder embedder) {
         this.index = index;
         this.embedder = embedder;
     }
@@ -50,7 +50,7 @@ public class VectorIndexMemoryStore implements MemoryStore {
         final int initialBudget = query.topK() * 4;
         final int cap = query.topK() * QUERY_WIDENING_CAP;
         int budget = initialBudget;
-        List<ScoredMemory> results = List.of();
+        List<ScoredMemory> results;
         while (true) {
             List<VectorIndex.Match> matches = index.topK(queryVec, budget);
             results = new ArrayList<>();
@@ -65,10 +65,12 @@ public class VectorIndexMemoryStore implements MemoryStore {
                 if (!query.tiers().contains(m.tier())) {
                     continue;
                 }
-                if (query.sessionFilter() != null && !query.sessionFilter().equals(m.sessionId())) {
+                var sessionFilter = query.sessionFilter();
+                if (sessionFilter != null && !sessionFilter.equals(m.sessionId())) {
                     continue;
                 }
-                if (query.projectFilter() != null && !query.projectFilter().equals(m.projectId())) {
+                var projectFilter = query.projectFilter();
+                if (projectFilter != null && !projectFilter.equals(m.projectId())) {
                     continue;
                 }
                 if (match.score() >= query.scoreFloor()) {
@@ -104,9 +106,6 @@ public class VectorIndexMemoryStore implements MemoryStore {
 
     @Override
     public void capture(@NonNull TurnRecord turn, @NonNull UUID sessionId, @NonNull UUID userId) {
-        if (turn == null || sessionId == null || userId == null) {
-            return;
-        }
         String content = captureText(turn);
         if (content == null || content.isBlank()) {
             return;
@@ -160,15 +159,15 @@ public class VectorIndexMemoryStore implements MemoryStore {
     }
 
     /** Test-only inspection of the store contents. */
-    public java.util.Map<UUID, Memory> snapshot() {
-        return java.util.Map.copyOf(store);
+    public @NonNull Map<UUID, Memory> snapshot() {
+        return Map.copyOf(store);
     }
 
-    private static UUID idOf(MemoryId id) {
+    private static @NonNull UUID idOf(@NonNull MemoryId id) {
         return id.value();
     }
 
-    private static String captureText(TurnRecord turn) {
+    private static String captureText(@NonNull TurnRecord turn) {
         return switch (turn.type()) {
             case ASSISTANT_THOUGHT -> {
                 Object thought = turn.payload().get("response");

@@ -1,5 +1,6 @@
 package top.focess.veto.agent.intercept;
 
+import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,7 +29,8 @@ import top.focess.veto.llm.core.ToolCall;
 @Component
 public class IngressDefense {
 
-    private static final Logger log = LoggerFactory.getLogger(IngressDefense.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.agent.intercept.IngressDefense");
 
     /**
      * The advisory semantic masker (Part 3.3). Layered over the deterministic {@link SecretMasker}
@@ -36,13 +38,11 @@ public class IngressDefense {
      * applying the deterministic redaction regardless of SLM availability. Nullable so the no-arg
      * construction path (existing tests, no SLM configured) degrades to deterministic-only.
      */
-    private final @NonNull SemanticMasker semanticMasker;
+    private final SemanticMasker semanticMasker;
 
     /** Spring-injected constructor — the SLM-backed masker is optional (degrades if absent). */
     @Autowired
-    public
-    @NonNull
-    IngressDefense(@NonNull @Autowired(required = false) SemanticMasker semanticMasker) {
+    public IngressDefense(@Autowired(required = false) SemanticMasker semanticMasker) {
         this.semanticMasker = semanticMasker;
     }
 
@@ -66,13 +66,13 @@ public class IngressDefense {
      * @param readHistory this agent's read-history (invalidated on a successful write)
      * @return the framed observation string
      */
-    public String maskAndFrame(
-            ToolCall call,
-            ToolDefinition def,
-            top.focess.veto.agent.mcp.ToolResult result,
+    public @NonNull String maskAndFrame(
+            @NonNull ToolCall call,
+            @NonNull ToolDefinition def,
+            top.focess.veto.agent.mcp.@NonNull ToolResult result,
             boolean maskObservation,
-            ReadHistory readHistory) {
-        String body = result.content() == null ? "" : result.content();
+            @NonNull ReadHistory readHistory) {
+        String body = result.content();
 
         // On a successful write, the recorded read-snapshot is now stale — invalidate it.
         if (result.success() && def.risk() == RiskCategory.FILE_WRITE) {
@@ -91,14 +91,15 @@ public class IngressDefense {
             if (semanticMasker != null) {
                 SemanticMasker.MaskResult masked = semanticMasker.maskWithSignal(body, call, def);
                 body = masked.masked();
-                if (masked.highRisk() != null) {
+                var highRisk = masked.highRisk();
+                if (highRisk != null) {
                     // The observation is already redacted; the signal is advisory — the caller
                     // (AgentRunner) cannot reject post-execution, so it is surfaced for
                     // observability/alerting rather than gating the call.
                     log.warn(
                             "SemanticMasker flagged high-risk exfiltration for tool {}: {}",
-                            masked.highRisk().toolName(),
-                            masked.highRisk().reason());
+                            highRisk.toolName(),
+                            highRisk.reason());
                 }
             } else {
                 body = SecretMasker.mask(body);
@@ -125,33 +126,24 @@ public class IngressDefense {
     }
 
     /**
-     * Renders the call's args as a compact {@code (key=value, ...)} suffix for the observation
-     * header, so each observation is self-describing (the model sees the args alongside the result
-     * body and cannot misattribute an observation to a different path). Empty string when args are
-     * null/empty.
-     */
-
-    /**
      * Backward-compat overload (sub-spec B callers pass an {@link ApprovalDecision} decision).
      * AutoApprove → mask-on (default); Prompt → mask-on (the resolution's per-call mask flag
      * defaults true; callers that have the {@link InterceptResolution} should use the boolean
      * overload). Refused / AutoBlock → mask-on.
      */
-    public String maskAndFrame(
-            ToolCall call,
-            ToolDefinition def,
-            top.focess.veto.agent.mcp.ToolResult result,
-            ApprovalDecision decision,
-            ReadHistory readHistory) {
+    public @NonNull String maskAndFrame(
+            @NonNull ToolCall call,
+            @NonNull ToolDefinition def,
+            top.focess.veto.agent.mcp.@NonNull ToolResult result,
+            @NonNull ApprovalDecision decision,
+            @NonNull ReadHistory readHistory) {
         boolean mask = true;
         return maskAndFrame(call, def, result, mask, readHistory);
     }
 
-    private void invalidateWritePath(ToolCall call, ToolDefinition def, ReadHistory readHistory) {
-        if (call.args() == null) {
-            return;
-        }
-        var hints =
+    private void invalidateWritePath(
+            @NonNull ToolCall call, @NonNull ToolDefinition def, @NonNull ReadHistory readHistory) {
+        Map<@NonNull String, @NonNull ParamCategory> hints =
                 switch (def) {
                     case NativeToolDefinition n -> n.paramHints();
                     case AgentToolDefinition a -> a.paramHints();

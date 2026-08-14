@@ -2,13 +2,16 @@ package top.focess.veto.training;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.time.Instant;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /** Unit tests for {@link TrainingProgress} state transitions. */
+@SuppressWarnings("initialization.field.uninitialized")
 class TrainingProgressTest {
 
-    private TrainingProgress progress;
+    private @NonNull TrainingProgress progress;
 
     @BeforeEach
     void setUp() {
@@ -29,7 +32,7 @@ class TrainingProgressTest {
     void testStartTransition() {
         progress.start();
         assertEquals(TrainingProgress.Status.PREPARING_DATA, progress.getStatus());
-        assertNotNull(progress.getStartedAt());
+        requireInstant(progress.getStartedAt(), "start time should be present");
         assertNull(progress.getCompletedAt());
     }
 
@@ -40,7 +43,7 @@ class TrainingProgressTest {
         assertEquals(TrainingProgress.Status.COMPLETED, progress.getStatus());
         assertEquals(1.0, progress.getProgress());
         assertEquals("/path/to/model.gguf", progress.getTrainedModelPath());
-        assertNotNull(progress.getCompletedAt());
+        requireInstant(progress.getCompletedAt(), "completion time should be present");
     }
 
     @Test
@@ -49,7 +52,7 @@ class TrainingProgressTest {
         progress.fail("Something went wrong");
         assertEquals(TrainingProgress.Status.FAILED, progress.getStatus());
         assertEquals("Something went wrong", progress.getErrorMessage());
-        assertNotNull(progress.getCompletedAt());
+        requireInstant(progress.getCompletedAt(), "failure time should be present");
     }
 
     @Test
@@ -57,7 +60,7 @@ class TrainingProgressTest {
         progress.start();
         progress.cancel();
         assertEquals(TrainingProgress.Status.CANCELLED, progress.getStatus());
-        assertNotNull(progress.getCompletedAt());
+        requireInstant(progress.getCompletedAt(), "cancellation time should be present");
     }
 
     @Test
@@ -96,10 +99,26 @@ class TrainingProgressTest {
                         new TrainingProgress.EvaluationReport.StructuralValidation(90, 100, 0.90));
 
         progress.setEvaluation(report);
-        assertNotNull(progress.getEvaluation());
-        assertEquals(0.95, progress.getEvaluation().gbnfCompliance().validJsonRate());
-        assertEquals(0.88, progress.getEvaluation().decisionAccuracy().accuracy());
-        assertEquals(0.89, progress.getEvaluation().redactionAccuracy().f1());
-        assertEquals(0.90, progress.getEvaluation().structuralValidation().accuracy());
+        TrainingProgress.@NonNull EvaluationReport evaluation =
+                requireEvaluation(progress.getEvaluation());
+        assertEquals(0.95, evaluation.gbnfCompliance().validJsonRate());
+        assertEquals(0.88, evaluation.decisionAccuracy().accuracy());
+        assertEquals(0.89, evaluation.redactionAccuracy().f1());
+        assertEquals(0.90, evaluation.structuralValidation().accuracy());
+    }
+
+    private static TrainingProgress.@NonNull EvaluationReport requireEvaluation(
+            TrainingProgress.EvaluationReport evaluation) {
+        if (evaluation != null) {
+            return evaluation;
+        }
+        throw new AssertionError("evaluation report should be present");
+    }
+
+    private static @NonNull Instant requireInstant(Instant instant, @NonNull String message) {
+        if (instant != null) {
+            return instant;
+        }
+        throw new AssertionError(message);
     }
 }

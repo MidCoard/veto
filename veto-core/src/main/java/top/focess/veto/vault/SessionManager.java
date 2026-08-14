@@ -16,7 +16,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class SessionManager {
 
-    private static final Logger log = LoggerFactory.getLogger(SessionManager.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.vault.SessionManager");
 
     private final @NonNull ConcurrentHashMap<String, Session> sessions = new ConcurrentHashMap<>();
 

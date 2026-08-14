@@ -18,7 +18,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.agent.drift.ReadHistory;
@@ -83,7 +82,8 @@ import top.focess.veto.vault.UserContext;
  */
 public class AgentRunner {
 
-    private static final Logger log = LoggerFactory.getLogger(AgentRunner.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.agent.AgentRunner");
     private static final int MAX_SCHEMA_RETRIES = 2;
 
     // --- identity / deps ---
@@ -107,7 +107,7 @@ public class AgentRunner {
     // The Part-8 Delta-broker seam: when present, each loop emission is published as a DeltaFrame
     // (per-session, broker-assigned sequence) so transports (WebSocket) can stream it. Nullable so
     // non-Spring callers (tests) keep working without a broker.
-    private final @Nullable DeltaBroker deltaBroker;
+    private final DeltaBroker deltaBroker;
     // The session this agent's turns belong to. Defaults to the agent's own id (a UUID) at
     // construction; the DB-backed create path overrides it with the real session id so the
     // turn_records.session_id column groups a session's 1+N agent streams correctly. Volatile: set
@@ -116,15 +116,15 @@ public class AgentRunner {
     // The raw-turn write-through log. Nullable — when null (tests / no durability configured),
     // appendTurn only updates the in-memory history; when present, each turn is also persisted to
     // the raw-turn audit/replay log.
-    private final top.focess.veto.memory.@Nullable TurnLogService turnLogService;
+    private final top.focess.veto.memory.TurnLogService turnLogService;
     private final @NonNull UUID userId;
-    private final @Nullable BackgroundTaskManager backgroundTaskManager;
+    private final BackgroundTaskManager backgroundTaskManager;
     // The session owner (username) whose model-tier profile resolves this agent's tier. Threaded
     // into each tool's ToolCallContext so group-spawned Mates / Leaders resolve against the user's
     // active profile (per-user model-tier configuration). Nullable in legacy/test paths that bypass
     // session activation (those tests stub the registry). Volatile: set once at creation before the
     // loop processes any tool call.
-    private volatile @Nullable String owner;
+    private volatile String owner;
     // The session's message locale for user-facing strings emitted on the agent's virtual thread
     // (breaker notices, compaction summaries, failure reasons). Stamped by AgentService.submit
     // from the REST request's Accept-Language; English default covers the terminal/IPC path.
@@ -134,15 +134,15 @@ public class AgentRunner {
     // a single-agent (STANDALONE) loop. Stamped by group-spawning code and threaded into each
     // tool's ToolCallContext so group-scoped tools (create_node, post_message, ...) resolve the
     // caller's group without a groupId argument.
-    private volatile @Nullable UUID groupId;
+    private volatile UUID groupId;
 
     // --- model binding (provider/model/credential), set per prompt ---
     private volatile @NonNull LlmBinding binding;
 
     // The pre-transform STANDALONE persona + binding, stashed when the agent transforms into a
     // Leader so disband_group can reverse the transform and restore them. Null when not leading.
-    private volatile @Nullable AgentPersona preTransformPersona;
-    private volatile @Nullable LlmBinding preTransformBinding;
+    private volatile AgentPersona preTransformPersona;
+    private volatile LlmBinding preTransformBinding;
 
     // --- loop state (mutated only by the runner's virtual thread) ---
     private final @NonNull BlockingQueue<AgentAction> actionQueue = new LinkedBlockingQueue<>();
@@ -150,20 +150,22 @@ public class AgentRunner {
     private final @NonNull List<TurnRecord> history = new ArrayList<>();
     private int turnNumber = 0;
     private boolean guided = false;
-    private @Nullable ActionsProgram activeProgram = null;
+    private ActionsProgram activeProgram = null;
     private int programCounter = 0;
     private int currentSteps = 0;
     private @NonNull Scope scope;
-    private @NonNull CompletableFuture<AgentResult> resultFuture =
-            CompletableFuture.completedFuture(null);
-    private @Nullable Consumer<AgentResult> callback;
+    private @NonNull CompletableFuture<AgentResult> resultFuture = new CompletableFuture<>();
+    private Consumer<AgentResult> callback;
     private volatile boolean sessionAlive = true;
     private double correctionFactor = 1.0;
     private long lastEstimatedTokens = 0;
+    // Set only when the model-call ceiling trips. The next exact "continue" prompt consumes it and
+    // carries the prior task into a self-contained resume turn; any other prompt starts a new task.
+    private boolean awaitingBreakerContinuation = false;
     // The provider's reasoning content (DeepSeek thinking mode) from the most recent model call.
     // Captured in callModel via ReasoningContentHolder, stored in the ASSISTANT_THOUGHT turn by
     // appendThought, and echoed back on the next request's assistant message by PromptCompiler.
-    private @Nullable String lastReasoningContent = null;
+    private String lastReasoningContent = null;
 
     // User-facing message listeners (the emission seam). emitMessage notifies these so a
     // transport (the terminal PromptHandler) can forward each assistantResponse to its client as a
@@ -210,16 +212,16 @@ public class AgentRunner {
             @NonNull Gateway gateway,
             @NonNull HitlRegistry hitlRegistry,
             @NonNull IngressDefense ingressDefense,
-            @Nullable List<LoopInterceptor> interceptors,
+            List<LoopInterceptor> interceptors,
             @NonNull PromptCompiler promptCompiler,
             @NonNull UniformLLMCaller caller,
             @NonNull ObjectMapper objectMapper,
             long maxCallsPerEpisode,
             @NonNull LlmBinding binding,
-            @Nullable DeltaBroker deltaBroker,
+            DeltaBroker deltaBroker,
             @NonNull UUID userId,
-            top.focess.veto.memory.@Nullable TurnLogService turnLogService,
-            @Nullable BackgroundTaskManager backgroundTaskManager) {
+            top.focess.veto.memory.TurnLogService turnLogService,
+            BackgroundTaskManager backgroundTaskManager) {
         this.agentId = agentId;
         this.persona = persona;
         this.whitelistedTools =
@@ -257,8 +259,9 @@ public class AgentRunner {
         // the embedder path resolve against the owner's vault rather than the single-active-handle
         // fallback. Owner is set once by AgentService before this thread starts, so a single set at
         // entry covers every turn; clear on exit so the thread never leaks a stale user.
-        if (owner != null) {
-            UserContext.set(owner);
+        String currentOwner = owner;
+        if (currentOwner != null) {
+            UserContext.set(currentOwner);
         }
         try {
             while (sessionAlive && state != AgentState.TERMINATED) {
@@ -286,7 +289,11 @@ public class AgentRunner {
                             completeFailure(failureMessage(e));
                         } finally {
                             // Clear a stale interrupt flag (see the UserPromptAction finally).
-                            Thread.interrupted();
+                            if (Thread.interrupted()) {
+                                log.debug(
+                                        "Agent {} cleared a stale interrupt after compaction",
+                                        agentId);
+                            }
                             transitionTo(AgentState.IDLE);
                         }
                         continue;
@@ -309,7 +316,11 @@ public class AgentRunner {
                             // crashed though nothing cancelled it. The round is already aborted
                             // (the cancel intent, if any, is honored), so clear the stale flag; a
                             // genuine cancel while PARKED still interrupts take() and breaks.
-                            Thread.interrupted();
+                            if (Thread.interrupted()) {
+                                log.debug(
+                                        "Agent {} cleared a stale interrupt after a prompt",
+                                        agentId);
+                            }
                             transitionTo(AgentState.IDLE);
                         }
                     }
@@ -331,8 +342,19 @@ public class AgentRunner {
         // the push half of the task lifecycle (the UI gets TASK_EXITED live; the agent gets it
         // here on its next turn instead of having to remember to poll view_task).
         injectPendingTaskExitNotices();
-        // Fresh UserPromptAction: reset guided state and program counter.
-        appendTurn(TurnRecord.userPrompt(++turnNumber, prompt));
+        // Fresh UserPromptAction: reset guided state and program counter. An exact "continue" has
+        // special semantics only immediately after a breaker trip. Preserve the literal user input
+        // in history while attaching the prior task for prompt compilation; otherwise a long,
+        // budget-trimmed episode re-anchors on the context-free word "continue".
+        String resumeContext =
+                awaitingBreakerContinuation && "continue".equalsIgnoreCase(prompt.strip())
+                        ? latestUserTaskContext()
+                        : null;
+        awaitingBreakerContinuation = false;
+        appendTurn(
+                resumeContext != null
+                        ? TurnRecord.breakerContinuation(++turnNumber, prompt, resumeContext)
+                        : TurnRecord.userPrompt(++turnNumber, prompt));
         this.guided = false;
         this.activeProgram = null;
         this.programCounter = 0;
@@ -344,6 +366,26 @@ public class AgentRunner {
         } else {
             runAutonomous();
         }
+    }
+
+    private String latestUserTaskContext() {
+        synchronized (history) {
+            for (int i = history.size() - 1; i >= 0; i--) {
+                TurnRecord turn = history.get(i);
+                if (turn.type() != TurnType.USER_PROMPT) {
+                    continue;
+                }
+                Object resumed = turn.payload().get("resume_context");
+                if (resumed instanceof String text && !text.isBlank()) {
+                    return text;
+                }
+                Object content = turn.payload().get("content");
+                if (content instanceof String text && !text.isBlank()) {
+                    return text;
+                }
+            }
+        }
+        return null;
     }
 
     /**
@@ -528,9 +570,9 @@ public class AgentRunner {
                         null,
                         binding.baseUrl());
         VetoResponse response = caller.call(request);
-        return response.message() != null && !response.message().isBlank()
-                ? response.message()
-                : (response.thought() != null ? response.thought() : "{}");
+        String message = response.message();
+        String thought = response.thought();
+        return message != null && !message.isBlank() ? message : (thought != null ? thought : "{}");
     }
 
     private void runAutonomous() {
@@ -548,16 +590,19 @@ public class AgentRunner {
             breaker.recordModelCall();
 
             // Read NEXT-status features (the mode the NEXT iteration enters).
-            if (response.features() != null) {
-                this.guided = response.features().guided();
+            var features = response.features();
+            if (features != null) {
+                this.guided = features.guided();
             }
 
             // Agent requested guided mode for the next iteration → load + validate program.
-            if (this.guided && response.actions() != null) {
-                if (loadProgram(response.actions())) {
+            var actions = response.actions();
+            if (this.guided && actions != null) {
+                if (loadProgram(actions)) {
                     appendThought(response);
-                    if (response.message() != null && !response.message().isBlank()) {
-                        emitMessage(response.message());
+                    String message = response.message();
+                    if (message != null && !message.isBlank()) {
+                        emitMessage(message);
                     }
                     runGuided();
                     return; // guided mode finished, back to idle
@@ -570,11 +615,13 @@ public class AgentRunner {
             }
 
             appendThought(response);
-            if (response.message() != null && !response.message().isBlank()) {
-                emitMessage(response.message());
+            String message = response.message();
+            if (message != null && !message.isBlank()) {
+                emitMessage(message);
             }
-            if (response.hasCalls()) {
-                executeToolCalls(assignCallIds(response.calls()));
+            List<ToolCall> responseCalls = response.calls();
+            if (responseCalls != null && !responseCalls.isEmpty()) {
+                executeToolCalls(assignCallIds(responseCalls));
             } else {
                 // No tool calls: the agent has emitted its answer with nothing further to act
                 // on. Termination routes on call presence - calls absent means stop. The agent
@@ -588,15 +635,21 @@ public class AgentRunner {
 
     // ── Guided loop (drives the actions program IR) ─────────────────────────
 
+    @SuppressWarnings(
+            "ConstantValue") // activeProgram can be cleared concurrently after the state read.
     private void runGuided() {
-        while (state == AgentState.RUNNING && activeProgram != null) {
+        while (state == AgentState.RUNNING) {
+            ActionsProgram program = activeProgram;
+            if (program == null) {
+                return;
+            }
             // Same mid-episode task-lifecycle drain as the autonomous loop.
             injectPendingTaskExitNotices();
-            if (programCounter < 0 || programCounter >= activeProgram.actions().size()) {
+            if (programCounter < 0 || programCounter >= program.actions().size()) {
                 escapeToAutonomous("program counter out of bounds");
                 return;
             }
-            var action = activeProgram.actions().get(programCounter);
+            var action = program.actions().get(programCounter);
             currentSteps++;
 
             switch (action) {
@@ -623,9 +676,10 @@ public class AgentRunner {
                     programCounter = cg.nextPc(passed, programCounter + 1);
                 }
                 case StopAction stop -> {
+                    String resultBinding = stop.resultBinding();
                     String result =
-                            stop.resultBinding() != null
-                                    ? scope.opt(stop.resultBinding())
+                            resultBinding != null
+                                    ? scope.opt(resultBinding)
                                             .map(Object::toString)
                                             .orElse(scope.synthesize())
                                     : scope.synthesize();
@@ -652,7 +706,8 @@ public class AgentRunner {
         // The generate prompt is fed as a user turn; the model responds in veto_pulse.
         appendTurn(TurnRecord.userPrompt(++turnNumber, gen.resolvePrompt(scope)));
         VetoResponse response = callModel(false);
-        if (gen.thought() == null || gen.thought()) {
+        Boolean includeThought = gen.thought();
+        if (includeThought == null || includeThought) {
             appendThought(response);
         }
         return response;
@@ -667,7 +722,10 @@ public class AgentRunner {
             this.currentSteps = 0;
             return true;
         } catch (ProgramValidator.InvalidProgramException e) {
-            log.warn("Agent {} actions program rejected: {}", agentId, e.getMessage());
+            log.warn(
+                    "Agent {} actions program rejected: {}",
+                    agentId,
+                    String.valueOf(e.getMessage()));
             return false;
         }
     }
@@ -698,8 +756,7 @@ public class AgentRunner {
                         this.correctionFactor);
         this.lastEstimatedTokens = compiled.estimatedTokens();
         VetoRequest request = buildRequest(compiled);
-        ModelSchemaException last = null;
-        for (int attempt = 0; attempt <= MAX_SCHEMA_RETRIES; attempt++) {
+        for (int attempt = 0; ; attempt++) {
             VetoResponse response;
             try {
                 response = caller.call(request);
@@ -716,19 +773,22 @@ public class AgentRunner {
                 }
             } catch (LlmException e) {
                 // LLM failure → record error, break the loop ( table: LLM Error → IDLE).
-                appendObservation("llm_error", e.getMessage());
+                appendObservation(
+                        "llm_error",
+                        e.getMessage() == null
+                                ? "LLM call failed without a message"
+                                : e.getMessage());
                 this.state = AgentState.IDLE;
                 throw e;
             }
             try {
                 return ResponseEnforcer.enforce(response, guidedSwitch);
             } catch (ModelSchemaException e) {
-                last = e;
                 log.warn(
                         "Agent {} schema violation (attempt {}): {}",
                         agentId,
                         attempt + 1,
-                        e.getMessage());
+                        String.valueOf(e.getMessage()));
                 if (attempt == MAX_SCHEMA_RETRIES) {
                     throw e;
                 }
@@ -736,7 +796,6 @@ public class AgentRunner {
                 request = injectSchemaRejection(request, e);
             }
         }
-        throw last;
     }
 
     private @NonNull VetoRequest buildRequest(@NonNull CompiledPrompt compiled) {
@@ -746,7 +805,7 @@ public class AgentRunner {
         LlmBinding b = binding;
         return new VetoRequest(
                 compiled.systemMessage(),
-                messages.isEmpty() ? "" : messages.get(messages.size() - 1).content(),
+                messages.get(messages.size() - 1).content(),
                 compiled.tools(),
                 b.provider(),
                 b.model(),
@@ -793,6 +852,9 @@ public class AgentRunner {
      */
     private @NonNull String getExpectedDescription(@NonNull ModelSchemaException e) {
         String msg = e.getMessage();
+        if (msg == null) {
+            return "a valid veto_pulse response matching the schema";
+        }
         if (msg.contains("message required")) {
             return "message field is required when stopping (no tool calls or actions)";
         }
@@ -846,14 +908,15 @@ public class AgentRunner {
 
                 for (int i = 0; i < calls.size(); i++) {
                     ToolCall call = calls.get(i);
+                    String callId = call.requireCallId();
                     ApprovalDecision decision = decisions.get(i);
                     ToolDefinition def = mcpEngine.resolveDefinition(call.toolName());
 
                     if (decision instanceof ApprovalDecision.Refused r) {
                         emitMessage(r.reason());
                         transitionTo(AgentState.INTERCEPTED);
-                        hitlRegistry.register(agentId, call.callId());
-                        InterceptResolution res = awaitResolution(call.callId());
+                        hitlRegistry.register(agentId, callId);
+                        InterceptResolution res = awaitResolution(callId);
                         refusalDetail =
                                 "refused by the security policy (CRITICAL - no approval path)";
                         batchApproved = false;
@@ -866,10 +929,14 @@ public class AgentRunner {
                         // (a hang). EDIT is filtered from the offered set in v1 (a raw-string
                         // reply can't carry edited args).
                         List<VetoOption> offered = VetoOption.withoutEdit(p.options());
-                        hitlRegistry.register(
-                                agentId, call.callId(), call, def, offered, p.danger());
+                        if (def == null) {
+                            throw new IllegalStateException(
+                                    "Prompt decision without a tool definition for "
+                                            + call.toolName());
+                        }
+                        hitlRegistry.register(agentId, callId, call, def, offered, p.danger());
                         emitVetoRequired(call, p, offered);
-                        InterceptResolution resolution = awaitResolution(call.callId());
+                        InterceptResolution resolution = awaitResolution(callId);
 
                         if (resolution.option() == VetoOption.DECLINE_AND_CONTINUE) {
                             skippedCalls.add(call);
@@ -878,13 +945,12 @@ public class AgentRunner {
                                     "declined by the user (" + resolution.option().name() + ")";
                             batchApproved = false;
                             break;
-                        } else if (resolution.option() == VetoOption.EDIT
-                                && resolution.editedArgs() != null) {
-                            ToolCall edited =
-                                    new ToolCall(
-                                            call.toolName(),
-                                            resolution.editedArgs(),
-                                            call.callId());
+                        } else if (resolution.option() == VetoOption.EDIT) {
+                            var editedArgs = resolution.editedArgs();
+                            if (editedArgs == null) {
+                                continue;
+                            }
+                            ToolCall edited = new ToolCall(call.toolName(), editedArgs, callId);
                             var r2 = gateway.screen(edited, def);
                             if (r2 instanceof GatewayResult.Screened sc
                                     && sc.screening().danger() == Danger.CRITICAL) {
@@ -1026,6 +1092,7 @@ public class AgentRunner {
     }
 
     private @NonNull ToolResult executeOneCall(@NonNull ToolCall call) {
+        String callId = call.requireCallId();
         ToolDefinition def = mcpEngine.resolveDefinition(call.toolName());
         if (def == null) {
             String obs = "Tool not found: " + call.toolName();
@@ -1048,8 +1115,8 @@ public class AgentRunner {
             if (decision instanceof ApprovalDecision.Refused r) {
                 emitMessage(r.reason());
                 transitionTo(AgentState.INTERCEPTED);
-                hitlRegistry.register(agentId, call.callId());
-                InterceptResolution res = hitlRegistry.await(agentId, call.callId());
+                hitlRegistry.register(agentId, callId);
+                InterceptResolution res = hitlRegistry.await(agentId, callId);
 
                 appendTurn(TurnRecord.toolCall(++turnNumber, call));
                 appendTurn(
@@ -1069,11 +1136,12 @@ public class AgentRunner {
                                 "refused by the security policy (CRITICAL - no approval path)"));
             }
             if (decision instanceof ApprovalDecision.Prompt p) {
-                call = awaitVeto(call, def, p);
-                if (call == null) {
+                ToolCall resolvedCall = awaitVeto(call, def, p);
+                if (resolvedCall == null) {
                     this.state = AgentState.IDLE;
                     return new ToolResult("", "", false, "declined");
                 }
+                call = resolvedCall;
             }
         }
 
@@ -1148,7 +1216,6 @@ public class AgentRunner {
         return RefusalObservation.of(detail);
     }
 
-    /** Parks the virtual thread on a HITL future; applies the resolution (EDIT re-screens). */
     /**
      * Parks on a veto's resolution future and, when the user's decision arrives, publishes {@link
      * DeltaFrame.Kind#VETO_RESOLVED} so subscribers can drop the prompt without polling. The single
@@ -1168,7 +1235,7 @@ public class AgentRunner {
         return resolution;
     }
 
-    private @Nullable ToolCall awaitVeto(
+    private ToolCall awaitVeto(
             @NonNull ToolCall call,
             @NonNull ToolDefinition def,
             ApprovalDecision.@NonNull Prompt p) {
@@ -1176,10 +1243,10 @@ public class AgentRunner {
         // Register the await target BEFORE advertising the prompt (see executeToolCalls for the
         // race rationale). EDIT is filtered from the offered set in v1.
         List<VetoOption> offered = VetoOption.withoutEdit(p.options());
-        hitlRegistry.register(agentId, call.callId(), call, def, offered, p.danger());
+        String callId = call.requireCallId();
+        hitlRegistry.register(agentId, callId, call, def, offered, p.danger());
         emitVetoRequired(call, p, offered);
-        top.focess.veto.agent.intercept.InterceptResolution resolution =
-                awaitResolution(call.callId());
+        top.focess.veto.agent.intercept.InterceptResolution resolution = awaitResolution(callId);
         transitionTo(AgentState.WAITING);
         if (resolution.isRefusal()) {
             appendTurn(TurnRecord.toolCall(++turnNumber, call));
@@ -1192,8 +1259,9 @@ public class AgentRunner {
                             false));
             return null;
         }
-        if (resolution.option() == VetoOption.EDIT && resolution.editedArgs() != null) {
-            ToolCall edited = new ToolCall(call.toolName(), resolution.editedArgs(), call.callId());
+        var editedArgs = resolution.editedArgs();
+        if (resolution.option() == VetoOption.EDIT && editedArgs != null) {
+            ToolCall edited = new ToolCall(call.toolName(), editedArgs, callId);
             // re-screen the edited call.
             var r2 = gateway.screen(edited, def);
             if (r2 instanceof GatewayResult.Screened sc
@@ -1226,10 +1294,11 @@ public class AgentRunner {
             @NonNull ToolCall call,
             ApprovalDecision.@NonNull Prompt p,
             @NonNull List<VetoOption> offered) {
+        String callId = call.requireCallId();
         log.info(
                 "VETO_REQUIRED agent={} callId={} tool={} scenario={} options={}",
                 agentId,
-                call.callId(),
+                callId,
                 call.toolName(),
                 p.scenario(),
                 offered);
@@ -1240,7 +1309,7 @@ public class AgentRunner {
             VetoPrompt vp =
                     new VetoPrompt(
                             agentId,
-                            call.callId(),
+                            callId,
                             call.toolName(),
                             p.scenario(),
                             offered,
@@ -1262,14 +1331,15 @@ public class AgentRunner {
                         .sessionId(sessionId)
                         .kind(DeltaFrame.Kind.VETO_REQUIRED)
                         .attr("agentId", agentId)
-                        .attr("callId", call.callId())
+                        .attr("callId", callId)
                         .attr("toolName", call.toolName())
                         .attr("scenario", p.scenario().name())
                         .attr("options", objectMapper.valueToTree(offered))
                         .attr("args", objectMapper.valueToTree(call.args()));
         // Danger rides the frame so the UI can warn prominently on DANGEROUS/CRITICAL calls.
-        if (p.danger() != null) {
-            frame.attr("danger", p.danger().name());
+        var danger = p.danger();
+        if (danger != null) {
+            frame.attr("danger", danger.name());
         }
         publishFrame(frame.text(call.toolName()).build());
     }
@@ -1277,12 +1347,13 @@ public class AgentRunner {
     // ── Turn history + messaging ────────────────────────────────────────────
 
     private void appendThought(@NonNull VetoResponse response) {
-        if (response.thought() != null && !response.thought().isBlank()) {
+        String thought = response.thought();
+        if (thought != null && !thought.isBlank()) {
             // Store the thought text + the provider's reasoning_content (if any). The
             // reasoning_content is echoed back on the next request's assistant message so DeepSeek
             // thinking mode accepts the conversation history.
             Map<String, Object> payload = new HashMap<>();
-            payload.put("response", response.thought());
+            payload.put("response", thought);
             if (lastReasoningContent != null && !lastReasoningContent.isBlank()) {
                 payload.put("reasoning_content", lastReasoningContent);
             }
@@ -1291,7 +1362,7 @@ public class AgentRunner {
             // Stream the thought to transports now (after it is durably recorded). The terminal
             // renders it dimmed/muted ahead of the user-facing message that follows, so the user
             // can follow the reasoning without it competing with the answer.
-            emitThought(response.thought());
+            emitThought(thought);
         }
     }
 
@@ -1330,7 +1401,7 @@ public class AgentRunner {
      * is already recorded by {@link #appendThought} before calling here.
      */
     private void emitThought(@NonNull String thought) {
-        if (thought == null || thought.isBlank()) return;
+        if (thought.isBlank()) return;
         if (!thoughtListeners.isEmpty()) {
             for (Consumer<String> listener : thoughtListeners) {
                 try {
@@ -1372,6 +1443,7 @@ public class AgentRunner {
      * message. The caller still throws {@code BreakerTripException} to end the episode.
      */
     private void tripBreaker() {
+        awaitingBreakerContinuation = true;
         String notice = LoopBreaker.tripNotice(locale);
         emitMessage(notice);
         publishFrame(
@@ -1388,7 +1460,7 @@ public class AgentRunner {
         appendTurn(TurnRecord.toolResponse(++turnNumber, null, content, false));
     }
 
-    private void appendTurn(TurnRecord turn) {
+    private void appendTurn(@NonNull TurnRecord turn) {
         TurnRecord numbered;
         synchronized (this) {
             // turn_number is the durable unique key (uk_turn_records_agent_turn on
@@ -1533,11 +1605,11 @@ public class AgentRunner {
      * actionQueue.take()} while IDLE and only touches {@code history} when compiling a submitted
      * prompt - so seeding right after creation, before the first {@code submit}, is safe.
      *
-     * <p>Idempotent: a no-op if {@code history} is already non-empty (or the replay is empty/null),
-     * so a second get-or-create on an already-live agent does not duplicate turns.
+     * <p>Idempotent: a no-op if {@code history} is already non-empty or the replay is empty, so a
+     * second get-or-create on an already-live agent does not duplicate turns.
      */
     public synchronized void seedHistory(java.util.@NonNull List<TurnRecord> replayed) {
-        if (!history.isEmpty() || replayed == null || replayed.isEmpty()) {
+        if (!history.isEmpty() || replayed.isEmpty()) {
             return;
         }
         history.addAll(replayed);
@@ -1570,7 +1642,7 @@ public class AgentRunner {
         complete(AgentResult.failure(lastMessage, meta));
     }
 
-    private void completeFailure(@Nullable String message) {
+    private void completeFailure(String message) {
         // Domain event: the episode failed. Subscribers that surface an error banner use this; the
         // EPISODE_DONE below (success=false) is the authoritative "stop waiting" signal.
         publishFrame(
@@ -1582,7 +1654,7 @@ public class AgentRunner {
                         .build());
         Map<String, Object> meta = new HashMap<>();
         meta.put("turns", turnNumber);
-        complete(AgentResult.failure(message, meta));
+        complete(AgentResult.failure(message == null ? "" : message, meta));
     }
 
     /**
@@ -1627,14 +1699,14 @@ public class AgentRunner {
             if (t instanceof IllegalStateException
                     && String.valueOf(t.getMessage()).contains("embed")) {
                 // ProviderEmbedder failures surface as IllegalStateException (best-effort memory).
-                return Msg.get(locale, "error.agent.embedFailed", t.getMessage());
+                return Msg.get(locale, "error.agent.embedFailed", String.valueOf(t.getMessage()));
             }
         }
         String detail = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
         return Msg.get(locale, "error.agent.taskFailed", detail);
     }
 
-    private void complete(AgentResult result) {
+    private void complete(@NonNull AgentResult result) {
         // Domain event: the episode finished. Carries the authoritative success flag so subscribers
         // (the web UI, the terminal adapter) can stop waiting on the episode without blocking on
         // the
@@ -1661,7 +1733,7 @@ public class AgentRunner {
 
     // ── state + API ops (called by VetoAgent / transport) ────────────────────
 
-    private void transitionTo(AgentState next) {
+    private void transitionTo(@NonNull AgentState next) {
         this.state = next;
     }
 
@@ -1671,7 +1743,7 @@ public class AgentRunner {
      * before enqueueing removes the submit→await race — await always snapshots the future this task
      * will complete, not the previous episode's already-completed one.
      */
-    public void startTask(@Nullable Consumer<AgentResult> callback, @NonNull AgentAction action) {
+    public void startTask(Consumer<AgentResult> callback, @NonNull AgentAction action) {
         this.callback = callback;
         this.resultFuture = new CompletableFuture<>();
         if (this.state == AgentState.INTERCEPTED) {
@@ -1698,16 +1770,12 @@ public class AgentRunner {
      * #emitMessage}).
      */
     public void addMessageListener(@NonNull Consumer<String> listener) {
-        if (listener != null) {
-            messageListeners.add(listener);
-        }
+        messageListeners.add(listener);
     }
 
     /** Unsubscribes a user-facing-message listener. */
     public void removeMessageListener(@NonNull Consumer<String> listener) {
-        if (listener != null) {
-            messageListeners.remove(listener);
-        }
+        messageListeners.remove(listener);
     }
 
     /**
@@ -1716,16 +1784,12 @@ public class AgentRunner {
      * runs before {@link #emitMessage} in the loop.
      */
     public void addThoughtListener(@NonNull Consumer<String> listener) {
-        if (listener != null) {
-            thoughtListeners.add(listener);
-        }
+        thoughtListeners.add(listener);
     }
 
     /** Unsubscribes an interim-thought listener. */
     public void removeThoughtListener(@NonNull Consumer<String> listener) {
-        if (listener != null) {
-            thoughtListeners.remove(listener);
-        }
+        thoughtListeners.remove(listener);
     }
 
     /**
@@ -1733,16 +1797,12 @@ public class AgentRunner {
      * #emitVetoRequired}). Fires on the agent's virtual thread when a tool call parks for approval.
      */
     public void addVetoListener(@NonNull Consumer<VetoPrompt> listener) {
-        if (listener != null) {
-            vetoListeners.add(listener);
-        }
+        vetoListeners.add(listener);
     }
 
     /** Unsubscribes a HITL-veto listener. */
     public void removeVetoListener(@NonNull Consumer<VetoPrompt> listener) {
-        if (listener != null) {
-            vetoListeners.remove(listener);
-        }
+        vetoListeners.remove(listener);
     }
 
     /**
@@ -1751,16 +1811,12 @@ public class AgentRunner {
      * immediately before the model receives the tool result for that call.
      */
     public void addToolCallListener(@NonNull Consumer<ToolCallEvent> listener) {
-        if (listener != null) {
-            toolCallListeners.add(listener);
-        }
+        toolCallListeners.add(listener);
     }
 
     /** Unsubscribes a tool-call listener. */
     public void removeToolCallListener(@NonNull Consumer<ToolCallEvent> listener) {
-        if (listener != null) {
-            toolCallListeners.remove(listener);
-        }
+        toolCallListeners.remove(listener);
     }
 
     /**
@@ -1769,16 +1825,12 @@ public class AgentRunner {
      * — i.e. immediately after the model receives the observation.
      */
     public void addToolResultListener(@NonNull Consumer<ToolResultEvent> listener) {
-        if (listener != null) {
-            toolResultListeners.add(listener);
-        }
+        toolResultListeners.add(listener);
     }
 
     /** Unsubscribes a tool-result listener. */
     public void removeToolResultListener(@NonNull Consumer<ToolResultEvent> listener) {
-        if (listener != null) {
-            toolResultListeners.remove(listener);
-        }
+        toolResultListeners.remove(listener);
     }
 
     public @NonNull AgentResult await(@NonNull Duration timeout)
@@ -1820,12 +1872,12 @@ public class AgentRunner {
     }
 
     /** The group this agent belongs to, or null for a single-agent (STANDALONE) loop. */
-    public @Nullable UUID groupId() {
+    public UUID groupId() {
         return groupId;
     }
 
     /** Stamps the group this agent belongs to (called by group-spawning code / the transform). */
-    public void setGroupId(@Nullable UUID groupId) {
+    public void setGroupId(UUID groupId) {
         this.groupId = groupId;
     }
 
@@ -1835,7 +1887,7 @@ public class AgentRunner {
      * before the loop starts, so group-spawned Mates / Leaders resolve their tier against the
      * user's active profile via the {@link ToolCallContext}.
      */
-    public void setOwner(@Nullable String owner) {
+    public void setOwner(String owner) {
         this.owner = owner;
     }
 
@@ -1844,7 +1896,7 @@ public class AgentRunner {
      * AgentService at submit time); a null locale resets to English. Also propagated to the HITL
      * registry under this agent's id so refusal reasons render in the same locale.
      */
-    public void setLocale(@Nullable Locale locale) {
+    public void setLocale(Locale locale) {
         this.locale = locale != null ? locale : Locale.ENGLISH;
         hitlRegistry.setLocale(agentId, this.locale);
     }
@@ -1909,7 +1961,7 @@ public class AgentRunner {
 
         appendTurn(TurnRecord.rewind(++turnNumber, 0));
         appendTurn(TurnRecord.agentInit(++turnNumber, "leader"));
-        if (summary != null && !summary.isBlank() && !"{}".equals(summary)) {
+        if (!summary.isBlank() && !"{}".equals(summary)) {
             appendTurn(TurnRecord.compactionSummary(++turnNumber, summary));
         }
         appendTurn(TurnRecord.userPrompt(++turnNumber, directive.brief()));
@@ -1962,19 +2014,18 @@ public class AgentRunner {
 
         appendTurn(TurnRecord.rewind(++turnNumber, 0));
         appendTurn(TurnRecord.agentInit(++turnNumber, "standalone"));
-        if (summary != null && !summary.isBlank() && !"{}".equals(summary)) {
+        if (!summary.isBlank() && !"{}".equals(summary)) {
             appendTurn(TurnRecord.compactionSummary(++turnNumber, summary));
         }
         appendTurn(TurnRecord.userPrompt(++turnNumber, brief));
 
         // Restore the stashed STANDALONE persona + binding. Null-safe: if no transform was stashed
         // (the agent never led a group), flip the role back to STANDALONE on the current persona.
+        AgentPersona stashedPersona = preTransformPersona;
         AgentPersona restored =
-                preTransformPersona != null
-                        ? preTransformPersona
-                        : persona.withRole(Role.STANDALONE);
-        LlmBinding restoredBinding =
-                preTransformBinding != null ? preTransformBinding : this.binding;
+                stashedPersona != null ? stashedPersona : persona.withRole(Role.STANDALONE);
+        LlmBinding stashedBinding = preTransformBinding;
+        LlmBinding restoredBinding = stashedBinding != null ? stashedBinding : this.binding;
         applyPersona(restored);
         bind(restoredBinding);
         setGroupId(null);
@@ -1997,8 +2048,8 @@ public class AgentRunner {
 
     // ── helpers ──────────────────────────────────────────────────────────────
 
-    private List<ToolCall> assignCallIds(List<ToolCall> calls) {
-        List<ToolCall> withIds = new ArrayList<>();
+    private @NonNull List<@NonNull ToolCall> assignCallIds(@NonNull List<@NonNull ToolCall> calls) {
+        List<@NonNull ToolCall> withIds = new ArrayList<>();
         for (ToolCall c : calls) {
             if (c.callId() == null) {
                 withIds.add(new ToolCall(c.toolName(), c.args(), nextCallId()));
@@ -2009,7 +2060,7 @@ public class AgentRunner {
         return withIds;
     }
 
-    private String nextCallId() {
+    private @NonNull String nextCallId() {
         return "call_" + UUID.randomUUID().toString().substring(0, 8);
     }
 
@@ -2023,8 +2074,8 @@ public class AgentRunner {
             @NonNull String model,
             @NonNull String credentialKey,
             @NonNull LlmOptions options,
-            @Nullable String systemPromptBase,
-            @Nullable String baseUrl) {
+            String systemPromptBase,
+            String baseUrl) {
 
         /**
          * Convenience constructor for callers that do not override the base URL (null -> default).
@@ -2034,12 +2085,13 @@ public class AgentRunner {
                 @NonNull String model,
                 @NonNull String credentialKey,
                 @NonNull LlmOptions options,
-                @Nullable String systemPromptBase) {
+                String systemPromptBase) {
             this(provider, model, credentialKey, options, systemPromptBase, null);
         }
     }
 
     /** Signals a breaker trip (caught at the action boundary → IDLE + notice). */
+    @SuppressWarnings("serial")
     private static final class BreakerTripException extends RuntimeException {}
 
     /**
@@ -2047,5 +2099,6 @@ public class AgentRunner {
      * completeFailure). Carries no message; the failure seam maps the type to the keyed, localized
      * "veto refused" message.
      */
+    @SuppressWarnings("serial")
     private static final class VetoRefusedException extends RuntimeException {}
 }

@@ -30,26 +30,24 @@ public final class MatchKeyExtractor {
      * and positional subcommand(s).
      */
     public static PermissionGrant.@NonNull ToolCallSpec extract(
-            @NonNull ToolCall call, @NonNull ToolDefinition def, @NonNull Workspace workspace) {
-        Map<String, Object> args = call.args() == null ? Map.of() : call.args();
+            @NonNull ToolCall call, ToolDefinition def, @NonNull Workspace workspace) {
+        Map<@NonNull String, Object> args = call.args();
         Path canonical = canonicalPathArg(call, def, workspace);
-        List<String> flagShape = flagShape(call, def);
+        List<@NonNull String> flagShape = flagShape(call, def);
         return new PermissionGrant.ToolCallSpec(call.toolName(), args, flagShape, canonical);
     }
 
     /** Extract the canonicalized path argument (the first FILESYSTEM_PATH param, if any). */
-    private static Path canonicalPathArg(ToolCall call, ToolDefinition def, Workspace workspace) {
-        if (def == null || workspace == null) {
+    private static Path canonicalPathArg(
+            @NonNull ToolCall call, ToolDefinition def, @NonNull Workspace workspace) {
+        if (def == null) {
             return null;
         }
-        Map<String, ParamCategory> hints = paramHints(def);
+        Map<@NonNull String, @NonNull ParamCategory> hints = paramHints(def);
         if (hints.isEmpty()) {
             return null;
         }
-        Map<String, Object> args = call.args();
-        if (args == null) {
-            return null;
-        }
+        Map<@NonNull String, Object> args = call.args();
         for (var entry : hints.entrySet()) {
             if (entry.getValue() != ParamCategory.FILESYSTEM_PATH) {
                 continue;
@@ -78,17 +76,15 @@ public final class MatchKeyExtractor {
      * args map is scanned for boolean/flag-shaped values (present keys) — this is a coarse first
      * cut; a refined extractor can be plugged in later.
      */
-    private static List<String> flagShape(ToolCall call, ToolDefinition def) {
+    private static @NonNull List<@NonNull String> flagShape(
+            @NonNull ToolCall call, ToolDefinition def) {
         if (def != null && def.risk() == RiskCategory.SHELL_EXEC) {
             return commandFlagShape(call);
         }
         // For native read/write: take the sorted set of args keys that look like flags.
         // Boolean / non-string keys count as flag-presence; their values are wildcarded.
-        Map<String, Object> args = call.args();
-        if (args == null) {
-            return List.of();
-        }
-        TreeSet<String> flags = new TreeSet<>();
+        Map<@NonNull String, Object> args = call.args();
+        TreeSet<@NonNull String> flags = new TreeSet<>();
         for (var entry : args.entrySet()) {
             String key = entry.getKey();
             Object val = entry.getValue();
@@ -103,11 +99,8 @@ public final class MatchKeyExtractor {
     }
 
     @SuppressWarnings("unchecked")
-    private static List<String> commandFlagShape(ToolCall call) {
-        Map<String, Object> args = call.args();
-        if (args == null) {
-            return List.of();
-        }
+    private static @NonNull List<@NonNull String> commandFlagShape(@NonNull ToolCall call) {
+        Map<@NonNull String, Object> args = call.args();
         Object commandsObj = args.get("commands");
         if (!(commandsObj instanceof List<?> commands) || commands.isEmpty()) {
             return List.of();
@@ -120,7 +113,7 @@ public final class MatchKeyExtractor {
         if (!(argsObj instanceof List<?> argList)) {
             return List.of();
         }
-        TreeSet<String> flags = new TreeSet<>();
+        TreeSet<@NonNull String> flags = new TreeSet<>();
         for (Object a : argList) {
             if (a instanceof String s && s.startsWith("-")) {
                 flags.add(s);
@@ -129,7 +122,8 @@ public final class MatchKeyExtractor {
         return new ArrayList<>(flags);
     }
 
-    private static Map<String, ParamCategory> paramHints(ToolDefinition def) {
+    private static @NonNull Map<@NonNull String, @NonNull ParamCategory> paramHints(
+            @NonNull ToolDefinition def) {
         if (def instanceof NativeToolDefinition n) {
             return n.paramHints();
         }

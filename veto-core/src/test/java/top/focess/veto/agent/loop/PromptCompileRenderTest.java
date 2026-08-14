@@ -3,11 +3,13 @@ package top.focess.veto.agent.loop;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.identity.Role;
 import top.focess.veto.agent.identity.SystemPromptResolver;
@@ -27,7 +29,7 @@ import top.focess.veto.llm.core.ToolDefinition;
  */
 class PromptCompileRenderTest {
 
-    private final SystemPromptResolver resolver = new SystemPromptResolver();
+    private final @NonNull SystemPromptResolver resolver = new SystemPromptResolver();
 
     @Test
     void renderStandaloneFullAccess() {
@@ -65,8 +67,11 @@ class PromptCompileRenderTest {
         assertTrue(prompt.contains("SANDBOXED deployer policy"));
     }
 
-    private String render(
-            Role role, DeployerPolicy policy, String base, List<ToolDefinition> tools) {
+    private @NonNull String render(
+            @NonNull Role role,
+            @NonNull DeployerPolicy policy,
+            String base,
+            @NonNull List<@NonNull ToolDefinition> tools) {
         Map<String, String> blocks = new LinkedHashMap<>();
         blocks.put("LAW", PromptBlocks.law(""));
         blocks.put(
@@ -129,14 +134,16 @@ class PromptCompileRenderTest {
         ObjectMapper mapper = new ObjectMapper();
         Map<String, Object> schema =
                 mapper.convertValue(
-                        ToolSchemaCompiler.compileFromRecord(GrepSearchTool.Args.class), Map.class);
+                        ToolSchemaCompiler.compileFromRecord(
+                                ToolDocs.nonNullClass(GrepSearchTool.Args.class)),
+                        new TypeReference<Map<String, Object>>() {});
         ToolDefinition tool =
                 new ToolDefinition(
                         "grep_search",
                         "Search for exact pattern matches inside files.",
                         schema,
-                        ToolDocs.examplesOf(GrepSearchTool.Args.class),
-                        ToolDocs.descriptionOf(GrepSearchTool.Args.class));
+                        ToolDocs.examplesOf(ToolDocs.nonNullClass(GrepSearchTool.Args.class)),
+                        ToolDocs.descriptionOf(ToolDocs.nonNullClass(GrepSearchTool.Args.class)));
         String block = PromptBlocks.tools(List.of(tool));
         System.out.println("===== REAL grep_search catalog entry =====\n" + block);
         assertTrue(block.contains("### `grep_search`"), "tool heading rendered:\n" + block);
@@ -145,7 +152,7 @@ class PromptCompileRenderTest {
                 "long-form @ToolDoc description rendered:\n" + block);
         assertTrue(block.contains("#### Security"), "security section rendered:\n" + block);
         assertTrue(
-                block.contains("`searchPath` (string, required)"),
+                block.contains("`absolutePath` (string, required)"),
                 "required string arg typed + flagged:\n" + block);
         assertTrue(
                 block.contains("`caseInsensitive` (boolean, optional)"),
@@ -154,14 +161,14 @@ class PromptCompileRenderTest {
                 block.contains("Absolute path to search under."),
                 "real @Doc arg description rendered:\n" + block);
         assertFalse(
-                ToolDocs.descriptionOf(GrepSearchTool.Args.class).isBlank(),
+                ToolDocs.descriptionOf(ToolDocs.nonNullClass(GrepSearchTool.Args.class)).isBlank(),
                 "grep_search has a long-form @ToolDoc description");
         assertTrue(
-                ToolDocs.examplesOf(GrepSearchTool.Args.class).size() >= 5,
+                ToolDocs.examplesOf(ToolDocs.nonNullClass(GrepSearchTool.Args.class)).size() >= 5,
                 "grep_search carries many examples");
     }
 
-    private static List<ToolDefinition> sampleTools() {
+    private static @NonNull List<@NonNull ToolDefinition> sampleTools() {
         return List.of(
                 new ToolDefinition(
                         "run_command",
@@ -177,7 +184,8 @@ class PromptCompileRenderTest {
                         Map.of("type", "object", "properties", Map.of("absolutePath", Map.of()))));
     }
 
-    private static void assertCompiled(String prompt, String... expected) {
+    private static void assertCompiled(
+            @NonNull String prompt, @NonNull String @NonNull ... expected) {
         assertFalse(prompt.contains("{{"), "unsubstituted marker remains:\n" + prompt);
         assertFalse(prompt.contains("=== This Turn"), "old Layer-3 header leaked:\n" + prompt);
         for (String e : expected) {

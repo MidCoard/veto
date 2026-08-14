@@ -7,7 +7,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.contract.IpcClient;
@@ -60,7 +59,8 @@ import top.focess.veto.contract.IpcMeta;
  */
 public final class ClientSession {
 
-    private static final Logger log = LoggerFactory.getLogger(ClientSession.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.client.core.ClientSession");
 
     /** Session interaction state — IDLE / RUNNING / PROMPTED. */
     public enum State {
@@ -70,8 +70,7 @@ public final class ClientSession {
     }
 
     /** Immutable snapshot of session metadata for view rendering. */
-    public record SessionMeta(
-            @Nullable String username, int turnCount, @Nullable String sessionId) {}
+    public record SessionMeta(String username, int turnCount, String sessionId) {}
 
     /**
      * Immutable snapshot of everything the prompt renderer needs at one instant: the interaction
@@ -84,10 +83,7 @@ public final class ClientSession {
      * (e.g. a {@link IpcFrame.Prompt} arriving) between the reads, so the renderer could act on a
      * {@code state} and an {@code activePrompt} that never coexisted.
      */
-    public record PromptView(
-            @NonNull State state,
-            IpcFrame.@Nullable Prompt activePrompt,
-            @Nullable String username) {}
+    public record PromptView(@NonNull State state, IpcFrame.Prompt activePrompt, String username) {}
 
     /**
      * Immutable snapshot of everything the status bar renders at one instant: session metadata and
@@ -99,14 +95,13 @@ public final class ClientSession {
      * username, or a {@code submit} adding to the queue), so the bar could show a username and a
      * queue that never coexisted.
      */
-    public record StatusView(
-            @Nullable String username, int turnCount, @NonNull List<String> pending) {}
+    public record StatusView(String username, int turnCount, @NonNull List<String> pending) {}
 
-    private final ClientView view;
-    private final Object lock = new Object();
-    private final Deque<String> pendingRequests = new ArrayDeque<>();
+    private final @NonNull ClientView view;
+    private final @NonNull Object lock = new Object();
+    private final @NonNull Deque<@NonNull String> pendingRequests = new ArrayDeque<>();
 
-    private State state = State.IDLE;
+    private @NonNull State state = State.IDLE;
     private IpcFrame.Prompt activePrompt;
     private String username;
     private int turnCount;
@@ -136,7 +131,7 @@ public final class ClientSession {
      * @param line the submitted line
      * @return the client frame to send, or {@code null} if only enqueued
      */
-    public IpcFrame.@Nullable ClientFrame submit(@NonNull String line) {
+    public IpcFrame.ClientFrame submit(@NonNull String line) {
         List<Runnable> events = new ArrayList<>();
         IpcFrame.ClientFrame frame;
         synchronized (lock) {
@@ -177,7 +172,7 @@ public final class ClientSession {
      *
      * @return the Cancel frame, or {@code null} to signal shutdown
      */
-    public IpcFrame.@Nullable Cancel cancel() {
+    public IpcFrame.Cancel cancel() {
         List<Runnable> events = new ArrayList<>();
         IpcFrame.Cancel frame;
         synchronized (lock) {
@@ -209,7 +204,8 @@ public final class ClientSession {
      * @return the client frame to send (a dispatched next {@link IpcFrame.Request}), or {@code
      *     null}
      */
-    public IpcFrame.@Nullable ClientFrame onFrame(IpcFrame.@NonNull ServerFrame frame) {
+    @SuppressWarnings("EmptyStatementBody")
+    public IpcFrame.ClientFrame onFrame(IpcFrame.@NonNull ServerFrame frame) {
         List<Runnable> events = new ArrayList<>();
         IpcFrame.ClientFrame reply = null;
         synchronized (lock) {
@@ -273,10 +269,9 @@ public final class ClientSession {
                     if (snap != null) {
                         events.add(() -> view.onMetaChanged(snap));
                     }
-                    if (state == State.IDLE) {
-                        // A late/duplicate completion (cancel racing normal completion): apply
-                        // meta and stay IDLE — no dispatch, no display.
-                    } else {
+                    // A late/duplicate completion (cancel racing normal completion) applies meta
+                    // and stays IDLE; only an active request needs dispatch or prompt cleanup.
+                    if (state != State.IDLE) {
                         if (state == State.PROMPTED) {
                             activePrompt = null; // clear the prompt the terminal frame resolved
                         }
@@ -285,9 +280,8 @@ public final class ClientSession {
                 }
                 case IpcFrame.Error e -> {
                     events.add(() -> view.onError(StyledText.error("Error: " + e.content())));
-                    if (state == State.IDLE) {
-                        // Display and stay IDLE.
-                    } else {
+                    // An IDLE client only displays the late error; active requests also advance.
+                    if (state != State.IDLE) {
                         if (state == State.PROMPTED) {
                             activePrompt = null;
                         }
@@ -295,8 +289,11 @@ public final class ClientSession {
                     }
                 }
                 case IpcFrame.Terminate t -> {
-                    String reason =
-                            t.reason() != null ? t.reason() : "Server terminated the session.";
+                    String receivedReason = t.reason();
+                    @NonNull String reason =
+                            receivedReason != null
+                                    ? receivedReason
+                                    : "Server terminated the session.";
                     activePrompt = null; // teardown — no stale prompt in a final snapshot
                     events.add(() -> view.onTerminate(StyledText.muted(reason)));
                 }
@@ -328,7 +325,7 @@ public final class ClientSession {
      * @param events the event list to append a state-transition signal to
      * @return the next Request to send, or {@code null} if idle
      */
-    private IpcFrame.@Nullable ClientFrame dispatchNextOrIdle(@NonNull List<Runnable> events) {
+    private IpcFrame.ClientFrame dispatchNextOrIdle(@NonNull List<Runnable> events) {
         if (!pendingRequests.isEmpty()) {
             String next = pendingRequests.removeFirst();
             state = State.RUNNING;
@@ -348,7 +345,7 @@ public final class ClientSession {
      * @return a {@link SessionMeta} snapshot if anything changed (so the view can refresh), or
      *     {@code null} if unchanged
      */
-    private @Nullable SessionMeta applyMeta(@NonNull Map<String, Object> meta) {
+    private SessionMeta applyMeta(@NonNull Map<@NonNull String, Object> meta) {
         boolean changed = false;
         if (meta.containsKey(IpcMeta.USERNAME)) {
             String u = IpcMeta.username(meta);

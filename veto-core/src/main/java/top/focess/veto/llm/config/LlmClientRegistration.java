@@ -29,9 +29,7 @@ public class LlmClientRegistration {
      *
      * @param factory the factory to register builders with
      */
-    public
-    @NonNull
-    LlmClientRegistration(@NonNull LlmClientFactory factory) {
+    public LlmClientRegistration(@NonNull LlmClientFactory factory) {
         this.factory = factory;
     }
 

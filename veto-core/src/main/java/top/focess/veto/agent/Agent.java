@@ -7,7 +7,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.identity.AgentPersona;
 
@@ -37,7 +36,7 @@ public interface Agent {
     /**
      * Non-blocking submit with a callback fired on the agent's virtual thread when the task done.
      */
-    void submit(@NonNull String prompt, @Nullable Consumer<AgentResult> callback);
+    void submit(@NonNull String prompt, Consumer<AgentResult> callback);
 
     /** Block the caller until the current task completes (or the timeout elapses). */
     @NonNull AgentResult await(@NonNull Duration timeout)

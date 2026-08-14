@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -24,16 +23,15 @@ import org.springframework.stereotype.Component;
 @Component
 public class DeltaBusBridge {
 
-    private static final Logger log = LoggerFactory.getLogger(DeltaBusBridge.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.bus.DeltaBusBridge");
 
     private final @NonNull DeltaBroker broker;
     private final @NonNull VetoWebSocketHandler handler;
     private final @NonNull ObjectMapper mapper;
-    private @Nullable AutoCloseable subscription;
+    private AutoCloseable subscription;
 
-    public
-    @NonNull
-    DeltaBusBridge(
+    public DeltaBusBridge(
             @NonNull DeltaBroker broker,
             @NonNull VetoWebSocketHandler handler,
             @NonNull ObjectMapper mapper) {

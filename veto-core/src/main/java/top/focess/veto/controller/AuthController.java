@@ -2,9 +2,9 @@ package top.focess.veto.controller;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
@@ -24,7 +24,8 @@ import top.focess.veto.vault.*;
 @RequestMapping("/api/auth")
 public class AuthController {
 
-    private static final Logger log = LoggerFactory.getLogger(AuthController.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.controller.AuthController");
 
     private static final String TOKEN_HEADER = "X-Veto-Session-Token";
 
@@ -52,7 +53,7 @@ public class AuthController {
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
     public @NonNull ResponseEntity<Map<String, @NonNull Object>> setup(
-            @NonNull @RequestBody Map<String, String> request) {
+            @RequestBody @NonNull Map<String, String> request) {
         String username = request.get("username");
         String password = request.get("password");
 
@@ -64,6 +65,15 @@ public class AuthController {
                                     "error",
                                     "message",
                                     Msg.get("error.auth.credentialsRequired")));
+        }
+        if (!UserRegistry.isValidUsername(username)) {
+            return ResponseEntity.badRequest()
+                    .body(
+                            Map.of(
+                                    "status",
+                                    "error",
+                                    "message",
+                                    Msg.get("error.auth.invalidUsername")));
         }
         if (password.length() < 8) {
             return ResponseEntity.badRequest()
@@ -100,12 +110,7 @@ public class AuthController {
         } catch (Exception e) {
             log.error("Setup failed", e);
             return ResponseEntity.internalServerError()
-                    .body(
-                            Map.of(
-                                    "status",
-                                    "error",
-                                    "message",
-                                    Msg.get("error.auth.setupFailed", e.getMessage())));
+                    .body(Map.of("status", "error", "message", Msg.get("error.auth.setupFailed")));
         }
     }
 
@@ -117,7 +122,7 @@ public class AuthController {
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
     public @NonNull ResponseEntity<Map<String, @NonNull Object>> login(
-            @NonNull @RequestBody Map<String, String> request) {
+            @RequestBody @NonNull Map<String, String> request) {
         String username = request.get("username");
         String password = request.get("password");
 
@@ -160,12 +165,7 @@ public class AuthController {
         } catch (Exception e) {
             log.error("Login failed for user '{}'", username, e);
             return ResponseEntity.internalServerError()
-                    .body(
-                            Map.of(
-                                    "status",
-                                    "error",
-                                    "message",
-                                    Msg.get("error.auth.loginFailed", e.getMessage())));
+                    .body(Map.of("status", "error", "message", Msg.get("error.auth.loginFailed")));
         }
     }
 
@@ -174,7 +174,7 @@ public class AuthController {
     /** POST /api/auth/logout - Invalidate session and lock vault if no other sessions active. */
     @PostMapping(value = "/logout", produces = MediaType.APPLICATION_JSON_VALUE)
     public @NonNull ResponseEntity<Map<String, @NonNull Object>> logout(
-            @NonNull @RequestHeader(TOKEN_HEADER) String token) {
+            @RequestHeader(TOKEN_HEADER) @NonNull String token) {
         var session = sessionManager.validate(token);
         if (session.isEmpty()) {
             return ResponseEntity.status(401)
@@ -207,7 +207,7 @@ public class AuthController {
     /** GET /api/auth/status - Returns vault and session state. */
     @GetMapping(value = "/status", produces = MediaType.APPLICATION_JSON_VALUE)
     public @NonNull ResponseEntity<Map<String, Object>> status(
-            @Nullable @RequestHeader(value = TOKEN_HEADER, required = false) String token) {
+            @RequestHeader(value = TOKEN_HEADER, required = false) String token) {
         boolean setupNeeded = !userRegistry.anyUserExists();
         boolean vaultLocked = !vault.isUnlocked();
 
@@ -215,7 +215,10 @@ public class AuthController {
         result.put("setupNeeded", setupNeeded);
         result.put("vaultLocked", vaultLocked);
         result.put("activeSessions", sessionManager.activeSessionCount());
-        result.put("currentUser", vault.currentUser());
+        String currentUser = vault.currentUser();
+        if (currentUser != null) {
+            result.put("currentUser", currentUser);
+        }
         result.put("timestamp", Instant.now().toString());
 
         if (token != null) {
@@ -236,9 +239,11 @@ public class AuthController {
             value = "/users",
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
+    // User-controlled fields below are validated and serialized as application/json by Jackson.
+    //noinspection tainting
     public @NonNull ResponseEntity<Map<String, Object>> addUser(
-            @NonNull @RequestHeader(TOKEN_HEADER) String token,
-            @NonNull @RequestBody Map<String, String> request) {
+            @RequestHeader(TOKEN_HEADER) @NonNull String token,
+            @RequestBody @NonNull Map<String, String> request) {
 
         var session = sessionManager.validate(token);
         if (session.isEmpty()) {
@@ -265,7 +270,11 @@ public class AuthController {
 
         String username = request.get("username");
         String password = request.get("password");
-        String role = request.getOrDefault("role", "USER");
+        String requestedRole = request.get("role");
+        String role =
+                requestedRole == null
+                        ? UserRegistry.Role.USER
+                        : requestedRole.trim().toUpperCase(Locale.ROOT);
 
         if (username == null || username.isEmpty() || password == null || password.isEmpty()) {
             return ResponseEntity.badRequest()
@@ -276,6 +285,15 @@ public class AuthController {
                                     "message",
                                     Msg.get("error.auth.credentialsRequired")));
         }
+        if (!UserRegistry.isValidUsername(username)) {
+            return ResponseEntity.badRequest()
+                    .body(
+                            Map.of(
+                                    "status",
+                                    "error",
+                                    "message",
+                                    Msg.get("error.auth.invalidUsername")));
+        }
         if (password.length() < 8) {
             return ResponseEntity.badRequest()
                     .body(
@@ -284,6 +302,10 @@ public class AuthController {
                                     "error",
                                     "message",
                                     Msg.get("error.auth.passwordTooShort")));
+        }
+        if (!UserRegistry.isValidRole(role)) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("status", "error", "message", Msg.get("error.auth.invalidRole")));
         }
 
         try {
@@ -323,7 +345,7 @@ public class AuthController {
                                     "status",
                                     "error",
                                     "message",
-                                    Msg.get("error.auth.createUserFailed", e.getMessage())));
+                                    Msg.get("error.auth.createUserFailed")));
         }
     }
 }

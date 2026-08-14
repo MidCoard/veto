@@ -21,7 +21,8 @@ val slf4jVersion: String by rootProject.extra
 val logbackVersion: String by rootProject.extra
 
 dependencies {
-    compileOnly("org.jspecify:jspecify:1.0.0")
+    // Public protocol signatures expose JSpecify type-use annotations to consumers.
+    api("org.jspecify:jspecify:1.0.0")
     api("com.fasterxml.jackson.core:jackson-databind:$jacksonVersion")
     api("org.zeromq:jeromq:$jeromqVersion")
 

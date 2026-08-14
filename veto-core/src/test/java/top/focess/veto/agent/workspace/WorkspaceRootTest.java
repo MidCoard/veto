@@ -10,7 +10,8 @@ import org.junit.jupiter.api.io.TempDir;
 class WorkspaceRootTest {
 
     @Test
-    void probesGitRepoAndBranch(@TempDir Path dir) throws Exception {
+    void probesGitRepoAndBranch(@TempDir @org.jspecify.annotations.NonNull Path dir)
+            throws Exception {
         Files.createDirectories(dir.resolve(".git"));
         WorkspaceRoot root = WorkspaceRoot.probe(dir, TrustMarker.OWNED);
         assertTrue(root.isGitRepo());
@@ -20,7 +21,7 @@ class WorkspaceRootTest {
     }
 
     @Test
-    void nonGitRootIsNotGitRepo(@TempDir Path dir) {
+    void nonGitRootIsNotGitRepo(@TempDir @org.jspecify.annotations.NonNull Path dir) {
         WorkspaceRoot root = WorkspaceRoot.probe(dir, TrustMarker.SHARED_GRANT);
         assertFalse(root.isGitRepo());
         assertNull(root.currentBranch());

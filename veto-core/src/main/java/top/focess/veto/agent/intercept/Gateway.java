@@ -8,7 +8,6 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.agent.drift.ReadHistory;
@@ -45,7 +44,8 @@ import top.focess.veto.llm.core.ToolCall;
  */
 public class Gateway {
 
-    private static final Logger log = LoggerFactory.getLogger(Gateway.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.agent.intercept.Gateway");
 
     private final @NonNull Workspace workspace;
     private final @NonNull DangerComputation dangerComputation;
@@ -95,7 +95,7 @@ public class Gateway {
         if (def instanceof AgentToolDefinition) {
             return new GatewayResult.NotScreened();
         }
-        List<String> paths = extractPathArgs(call, def);
+        List<@NonNull String> paths = extractPathArgs(call, def);
         // drift is a correctness check on writes — checked before danger.
         if (def.risk() == RiskCategory.FILE_WRITE) {
             GatewayResult.DriftResult drift = checkWriteDrift(paths);
@@ -131,17 +131,14 @@ public class Gateway {
     // ── Path extraction ───────────────────────────────────────────────────
 
     /** Extracts filesystem-path arguments using the definition's {@link ParamCategory} hints. */
-    private @NonNull List<String> extractPathArgs(
+    private @NonNull List<@NonNull String> extractPathArgs(
             @NonNull ToolCall call, @NonNull ToolDefinition def) {
-        List<String> paths = new ArrayList<>();
-        Map<String, ParamCategory> hints = parameterHints(def);
+        List<@NonNull String> paths = new ArrayList<>();
+        Map<@NonNull String, @NonNull ParamCategory> hints = parameterHints(def);
         if (hints.isEmpty()) {
             return paths; // remote tools carry no hints → no path extraction
         }
-        Map<String, Object> args = call.args();
-        if (args == null) {
-            return paths;
-        }
+        Map<@NonNull String, Object> args = call.args();
         for (var entry : hints.entrySet()) {
             if (entry.getValue() == ParamCategory.FILESYSTEM_PATH) {
                 Object v = args.get(entry.getKey());
@@ -153,7 +150,8 @@ public class Gateway {
         return paths;
     }
 
-    private @NonNull Map<String, ParamCategory> parameterHints(@NonNull ToolDefinition def) {
+    private @NonNull Map<@NonNull String, @NonNull ParamCategory> parameterHints(
+            @NonNull ToolDefinition def) {
         return switch (def) {
             case NativeToolDefinition n -> n.paramHints();
             case AgentToolDefinition a -> a.paramHints();
@@ -164,14 +162,14 @@ public class Gateway {
     // ── Write drift ─────────────
 
     /** Returns a drift result if a write target changed since the agent last read it, else null. */
-    private GatewayResult.@Nullable DriftResult checkWriteDrift(@NonNull List<String> paths) {
+    private GatewayResult.DriftResult checkWriteDrift(@NonNull List<@NonNull String> paths) {
         for (String path : paths) {
             ReadHistory.Snapshot prior = readHistory.lookup(path).orElse(null);
             if (prior == null) {
                 continue; // write without prior read — nothing to compare, proceed
             }
-            String currentHash =
-                    computeHash(workspace.pathResolver().resolveToHost(path).hostPath());
+            Path hostPath = workspace.pathResolver().resolveToHost(path).hostPath();
+            String currentHash = hostPath == null ? "<unresolved>" : computeHash(hostPath);
             if (!prior.sha256Hash().equals(currentHash)) {
                 return new GatewayResult.DriftResult(path, buildDiff(path, prior, currentHash));
             }
@@ -214,12 +212,12 @@ public class Gateway {
     }
 
     /** This Gateway's read-history (the agent's drift state; passed to the runner). */
-    public ReadHistory readHistory() {
+    public @NonNull ReadHistory readHistory() {
         return readHistory;
     }
 
     /** The operational workspace root this Gateway resolves against (for tests). */
-    public Path workspaceRoot() {
+    public @NonNull Path workspaceRoot() {
         return workspace.pathResolver().operationalRoot();
     }
 

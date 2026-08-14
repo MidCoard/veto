@@ -74,8 +74,8 @@ public abstract class LlmClient {
             try {
                 if (objectMapper.readTree(trimmed.substring(span[0], span[1]))
                         instanceof com.fasterxml.jackson.databind.node.ObjectNode obj) {
-                    obj.fields()
-                            .forEachRemaining(
+                    obj.properties()
+                            .forEach(
                                     entry -> {
                                         com.fasterxml.jackson.databind.JsonNode existing =
                                                 merged.get(entry.getKey());

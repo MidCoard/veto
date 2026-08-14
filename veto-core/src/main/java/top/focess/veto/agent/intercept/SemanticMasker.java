@@ -6,7 +6,6 @@ import java.util.concurrent.TimeoutException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,7 +34,8 @@ import top.focess.veto.veto.LlamaCppBridge;
 @Component
 public class SemanticMasker {
 
-    private static final Logger log = LoggerFactory.getLogger(SemanticMasker.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.agent.intercept.SemanticMasker");
 
     /**
      * Maximum time to wait for the local SLM to score a tool observation. A wedged bridge (native
@@ -44,22 +44,20 @@ public class SemanticMasker {
      */
     static final long SLM_TIMEOUT_MS = 2_000L;
 
-    private static final Pattern RISK_PATTERN =
+    private static final @NonNull Pattern RISK_PATTERN =
             Pattern.compile("\"risk\"\\s*:\\s*\"(high|medium|low)\"");
-    private static final Pattern EXFIL_PATTERN =
+    private static final @NonNull Pattern EXFIL_PATTERN =
             Pattern.compile(
                     "(?i)\\b(secret|token|password|api[_-]?key|credential|private[_-]?key)\\b");
 
-    private final @NonNull LlamaCppBridge bridge;
+    private final LlamaCppBridge bridge;
 
     public SemanticMasker() {
         this(null);
     }
 
     @Autowired
-    public
-    @NonNull
-    SemanticMasker(@NonNull @Autowired(required = false) LlamaCppBridge bridge) {
+    public SemanticMasker(@Autowired(required = false) LlamaCppBridge bridge) {
         this.bridge = bridge;
     }
 
@@ -74,7 +72,7 @@ public class SemanticMasker {
      */
     public @NonNull MaskResult maskWithSignal(
             @NonNull String observation, @NonNull ToolCall call, @NonNull ToolDefinition def) {
-        if (observation == null || observation.isBlank()) {
+        if (observation.isBlank()) {
             return new MaskResult(observation, null);
         }
         // 1. Fast path: no obvious secret keywords → skip the SLM call.
@@ -97,7 +95,11 @@ public class SemanticMasker {
             if (!m.find()) {
                 return new MaskResult(SecretMasker.mask(observation), null);
             }
-            String risk = m.group(1).toLowerCase();
+            String riskGroup = m.group(1);
+            if (riskGroup == null) {
+                return new MaskResult(SecretMasker.mask(observation), null);
+            }
+            String risk = riskGroup.toLowerCase();
             if ("high".equals(risk)) {
                 log.warn(
                         "SemanticMasker: SLM rated exfiltration risk HIGH for call {} — redaction"
@@ -123,10 +125,13 @@ public class SemanticMasker {
         } catch (ExecutionException e) {
             log.debug(
                     "SemanticMasker: SLM inference failed ({}), falling back",
-                    e.getCause() == null ? e.getMessage() : e.getCause().getMessage());
+                    String.valueOf(
+                            e.getCause() == null ? e.getMessage() : e.getCause().getMessage()));
             return new MaskResult(SecretMasker.mask(observation), null);
         } catch (Exception e) {
-            log.debug("SemanticMasker: SLM inference failed, falling back: {}", e.getMessage());
+            log.debug(
+                    "SemanticMasker: SLM inference failed, falling back: {}",
+                    String.valueOf(e.getMessage()));
             return new MaskResult(SecretMasker.mask(observation), null);
         }
     }
@@ -143,7 +148,7 @@ public class SemanticMasker {
     }
 
     /** The masker's output: a redacted observation plus an optional high-risk signal. */
-    public record MaskResult(@NonNull String masked, @NonNull HighRiskSignal highRisk) {}
+    public record MaskResult(@NonNull String masked, HighRiskSignal highRisk) {}
 
     private static @NonNull String buildPrompt(
             @NonNull String observation, @NonNull ToolCall call, @NonNull ToolDefinition def) {
@@ -167,7 +172,7 @@ public class SemanticMasker {
         return sb.toString();
     }
 
-    private static @NonNull String safe(@Nullable Object o) {
+    private static @NonNull String safe(Object o) {
         if (o == null) {
             return "";
         }

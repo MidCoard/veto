@@ -6,7 +6,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
 /**
  * Parses the raw {@code actions} {@link JsonNode} - a flat, ordered array emitted by the agent -
@@ -72,7 +71,7 @@ public final class ActionsProgramParser {
         };
     }
 
-    private static @NonNull Check parseCheck(@Nullable JsonNode c) {
+    private static @NonNull Check parseCheck(JsonNode c) {
         if (c == null || !c.has("kind")) {
             throw new ProgramValidator.InvalidProgramException("check missing 'kind'");
         }
@@ -92,31 +91,34 @@ public final class ActionsProgramParser {
         };
     }
 
-    private static @NonNull String text(@Nullable JsonNode n, @NonNull String field) {
+    private static @NonNull String text(JsonNode n, @NonNull String field) {
         if (n == null || !n.has(field) || n.get(field).isNull()) {
             return "";
         }
         return n.get(field).asText();
     }
 
-    private static @Nullable String nullableText(@Nullable JsonNode n, @NonNull String field) {
+    private static String nullableText(JsonNode n, @NonNull String field) {
         if (n == null || !n.has(field) || n.get(field).isNull()) {
             return null;
         }
         return n.get(field).asText();
     }
 
-    private static @NonNull Map<String, String> toStringMap(@Nullable JsonNode node) {
-        Map<String, String> map = new HashMap<>();
+    private static @NonNull Map<@NonNull String, @NonNull String> toStringMap(JsonNode node) {
+        Map<@NonNull String, @NonNull String> map = new HashMap<>();
         if (node == null || !node.isObject()) {
             return map;
         }
-        node.fields()
-                .forEachRemaining(
-                        e ->
-                                map.put(
-                                        e.getKey(),
-                                        e.getValue().isNull() ? null : e.getValue().asText()));
+        node.properties()
+                .forEach(
+                        e -> {
+                            if (!e.getValue().isTextual()) {
+                                throw new ProgramValidator.InvalidProgramException(
+                                        "action binding '" + e.getKey() + "' must be a string");
+                            }
+                            map.put(e.getKey(), e.getValue().asText());
+                        });
         return map;
     }
 }

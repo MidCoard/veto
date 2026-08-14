@@ -5,7 +5,6 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
 /**
  * A group is a Leader-Mate collaboration spawned via {@code create_group} (delegation_spawning.md).
@@ -31,8 +30,8 @@ public record Group(
         @NonNull Map<String, String> mates, // mateId → skillset
         @NonNull GroupState state,
         @NonNull Instant createdAt,
-        @Nullable Instant disbandedAt,
-        @Nullable String owner) {
+        Instant disbandedAt,
+        String owner) {
 
     public Group {
         mates = Map.copyOf(mates);
@@ -46,7 +45,7 @@ public record Group(
     public static @NonNull Group create(
             @NonNull String leaderId,
             @NonNull String userId,
-            @Nullable String contextBrief,
+            String contextBrief,
             @NonNull Blackboard blackboard,
             @NonNull ExecutionDag dag) {
         return create(leaderId, userId, contextBrief, blackboard, dag, null);
@@ -62,10 +61,10 @@ public record Group(
     public static @NonNull Group create(
             @NonNull String leaderId,
             @NonNull String userId,
-            @Nullable String contextBrief,
+            String contextBrief,
             @NonNull Blackboard blackboard,
             @NonNull ExecutionDag dag,
-            @Nullable String owner) {
+            String owner) {
         UUID id = UUID.randomUUID();
         return new Group(
                 id,

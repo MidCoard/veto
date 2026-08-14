@@ -2,19 +2,20 @@ package top.focess.veto.agent.intercept;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import top.focess.veto.agent.mcp.AgentToolDefinition;
 import top.focess.veto.agent.mcp.NativeToolDefinition;
 import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RiskCategory;
+import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.ToolCall;
@@ -34,7 +35,7 @@ import top.focess.veto.llm.core.ToolCall;
 class PermissionGrantTest {
 
     @Test
-    void readGrantMatchesUnderDirectoryPrefix(@TempDir Path tmp) throws Exception {
+    void readGrantMatchesUnderDirectoryPrefix(@TempDir @NonNull Path tmp) throws Exception {
         Path root = tmp.resolve("auth-svc");
         Files.createDirectories(root.resolve("src"));
         Files.writeString(root.resolve("src/Main.java"), "class Main {}");
@@ -46,7 +47,7 @@ class PermissionGrantTest {
                         "read",
                         RiskCategory.READ_ONLY,
                         false,
-                        Object.class,
+                        ToolDocs.nonNullClass(Object.class),
                         Map.of("path", ParamCategory.FILESYSTEM_PATH));
         ToolCall call =
                 new ToolCall("view_file", Map.of("path", subdir.resolve("Main.java").toString()));
@@ -63,7 +64,7 @@ class PermissionGrantTest {
     }
 
     @Test
-    void readGrantDoesNotMatchOutsideDirectory(@TempDir Path tmp) throws Exception {
+    void readGrantDoesNotMatchOutsideDirectory(@TempDir @NonNull Path tmp) throws Exception {
         Path root = tmp.resolve("auth-svc");
         Files.createDirectories(root.resolve("src"));
         Path other = tmp.resolve("other");
@@ -75,7 +76,7 @@ class PermissionGrantTest {
                         "read",
                         RiskCategory.READ_ONLY,
                         false,
-                        Object.class,
+                        ToolDocs.nonNullClass(Object.class),
                         Map.of("path", ParamCategory.FILESYSTEM_PATH));
         ToolCall call =
                 new ToolCall("view_file", Map.of("path", other.resolve("x.txt").toString()));
@@ -86,7 +87,7 @@ class PermissionGrantTest {
     }
 
     @Test
-    void writeGrantMatchesByToolAndDirectory(@TempDir Path tmp) throws Exception {
+    void writeGrantMatchesByToolAndDirectory(@TempDir @NonNull Path tmp) throws Exception {
         Path root = tmp.resolve("auth-svc");
         Files.createDirectories(root.resolve("src"));
         Workspace ws = Workspace.single(root, PathMode.REAL);
@@ -96,7 +97,7 @@ class PermissionGrantTest {
                         "write",
                         RiskCategory.FILE_WRITE,
                         false,
-                        Object.class,
+                        ToolDocs.nonNullClass(Object.class),
                         Map.of("path", ParamCategory.FILESYSTEM_PATH));
         ToolCall call =
                 new ToolCall(
@@ -109,7 +110,7 @@ class PermissionGrantTest {
     }
 
     @Test
-    void commandGrantMatchesByExecutableAndSubcommand(@TempDir Path tmp) {
+    void commandGrantMatchesByExecutableAndSubcommand(@TempDir @NonNull Path tmp) {
         Workspace ws = Workspace.single(tmp, PathMode.REAL);
         ToolCall gitStatus =
                 new ToolCall(
@@ -130,7 +131,7 @@ class PermissionGrantTest {
                         "exec",
                         RiskCategory.SHELL_EXEC,
                         false,
-                        Object.class,
+                        ToolDocs.nonNullClass(Object.class),
                         Map.of());
         PermissionGrant.ToolCallSpec spec = MatchKeyExtractor.extract(gitStatus, execDef, ws);
         PermissionGrant.CommandGrant grant =
@@ -139,7 +140,7 @@ class PermissionGrantTest {
     }
 
     @Test
-    void commandGrantDoesNotMatchDifferentSubcommand(@TempDir Path tmp) {
+    void commandGrantDoesNotMatchDifferentSubcommand(@TempDir @NonNull Path tmp) {
         Workspace ws = Workspace.single(tmp, PathMode.REAL);
         ToolCall gitPush =
                 new ToolCall(
@@ -155,7 +156,7 @@ class PermissionGrantTest {
                         "exec",
                         RiskCategory.SHELL_EXEC,
                         false,
-                        Object.class,
+                        ToolDocs.nonNullClass(Object.class),
                         Map.of());
         PermissionGrant.ToolCallSpec spec = MatchKeyExtractor.extract(gitPush, execDef, ws);
         PermissionGrant.CommandGrant grant =
@@ -164,7 +165,7 @@ class PermissionGrantTest {
     }
 
     @Test
-    void hitlRegistryPersistsGrantOnLikeThis(@TempDir Path tmp) {
+    void hitlRegistryPersistsGrantOnLikeThis(@TempDir @NonNull Path tmp) {
         HitlRegistry registry = new HitlRegistry();
         Path root = tmp.resolve("svc");
         Workspace ws = Workspace.single(root, PathMode.REAL);
@@ -177,7 +178,7 @@ class PermissionGrantTest {
                         "read",
                         RiskCategory.READ_ONLY,
                         false,
-                        Object.class,
+                        ToolDocs.nonNullClass(Object.class),
                         Map.of("path", ParamCategory.FILESYSTEM_PATH));
         ToolCall call = new ToolCall("view_file", Map.of("path", root.resolve("a.txt").toString()));
 
@@ -185,7 +186,7 @@ class PermissionGrantTest {
                 new InterceptResolution(VetoOption.ACCEPT_READ_LIKE_THIS, call.args());
         // resolve requires a registered future; simulate by direct buildGrant path
         PermissionGrant grant = registry.buildGrant(agentId, call, readDef, res);
-        assertNotNull(grant);
+        assertTrue(grant != null);
         assertTrue(grant instanceof PermissionGrant.ReadGrant);
     }
 

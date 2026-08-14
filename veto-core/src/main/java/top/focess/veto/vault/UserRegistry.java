@@ -5,6 +5,7 @@ import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.regex.Pattern;
 import org.bouncycastle.crypto.generators.Argon2BytesGenerator;
 import org.bouncycastle.crypto.params.Argon2Parameters;
 import org.jspecify.annotations.NonNull;
@@ -23,25 +24,33 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional
 public class UserRegistry {
 
-    private static final Logger log = LoggerFactory.getLogger(UserRegistry.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.vault.UserRegistry");
 
     private static final int ARGON2_MEMORY_KB = 64 * 1024;
     private static final int ARGON2_ITERATIONS = 3;
     private static final int ARGON2_PARALLELISM = 4;
     private static final int HASH_LENGTH = 32;
     private static final int SALT_LENGTH = 16;
+    private static final @NonNull Pattern USERNAME_PATTERN =
+            Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]{0,63}");
 
     private final @NonNull UserRepository repo;
 
-    public
-    @NonNull
-    UserRegistry(@NonNull UserRepository repo) {
+    public UserRegistry(@NonNull UserRepository repo) {
         this.repo = repo;
     }
 
     /** Creates a user with the given role. Use Role.ADMIN for the first user. */
     public @NonNull UserEntity create(
             @NonNull String username, @NonNull String password, @NonNull String role) {
+        if (!isValidUsername(username)) {
+            throw new IllegalArgumentException(
+                    "Username must be 1-64 characters and contain only letters, digits, '.', '_', or '-'");
+        }
+        if (!isValidRole(role)) {
+            throw new IllegalArgumentException("Role must be ADMIN or USER");
+        }
         if (repo.existsById(username)) {
             throw new IllegalArgumentException("User '" + username + "' already exists");
         }
@@ -52,6 +61,16 @@ public class UserRegistry {
         repo.save(user);
         log.info("User '{}' created with role '{}'", username, role);
         return user;
+    }
+
+    /** Whether a username is safe as both a database key and a single vault-directory name. */
+    public static boolean isValidUsername(@NonNull String username) {
+        return USERNAME_PATTERN.matcher(username).matches();
+    }
+
+    /** Whether a role is one of the two persisted authorization roles. */
+    public static boolean isValidRole(@NonNull String role) {
+        return Role.ADMIN.equals(role) || Role.USER.equals(role);
     }
 
     /** Authenticates by verifying the password against the stored Argon2id hash. */
@@ -148,8 +167,8 @@ public class UserRegistry {
 
     /** Role constants. */
     public static final class Role {
-        public static final String ADMIN = "ADMIN";
-        public static final String USER = "USER";
+        public static final @NonNull String ADMIN = "ADMIN";
+        public static final @NonNull String USER = "USER";
 
         private Role() {}
     }

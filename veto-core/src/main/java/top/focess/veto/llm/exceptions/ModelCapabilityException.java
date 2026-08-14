@@ -7,15 +7,14 @@ import org.jspecify.annotations.NonNull;
  * Strict JSON Mode, Constrained Sampling), or when no provider matches the request. Permanent — not
  * retryable.
  */
+@SuppressWarnings("serial")
 public class ModelCapabilityException extends LlmException {
     /**
      * Constructs a new ModelCapabilityException with the specified message.
      *
      * @param message the detail message
      */
-    public
-    @NonNull
-    ModelCapabilityException(@NonNull String message) {
+    public ModelCapabilityException(@NonNull String message) {
         super(message, false);
     }
 
@@ -27,9 +26,7 @@ public class ModelCapabilityException extends LlmException {
      * @param message the detail message
      * @param retryable whether the exception is retryable
      */
-    public
-    @NonNull
-    ModelCapabilityException(@NonNull String message, boolean retryable) {
+    public ModelCapabilityException(@NonNull String message, boolean retryable) {
         super(message, retryable);
     }
 
@@ -39,9 +36,7 @@ public class ModelCapabilityException extends LlmException {
      * @param message the detail message
      * @param cause the cause of the exception
      */
-    public
-    @NonNull
-    ModelCapabilityException(@NonNull String message, @NonNull Throwable cause) {
+    public ModelCapabilityException(@NonNull String message, @NonNull Throwable cause) {
         super(message, cause, false);
     }
 }

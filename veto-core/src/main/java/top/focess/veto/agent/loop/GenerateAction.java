@@ -3,7 +3,6 @@ package top.focess.veto.agent.loop;
 import java.util.HashMap;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
 /**
  * A model-invoked content action. The only action that calls the model — invoked within the same
@@ -17,9 +16,9 @@ public record GenerateAction(
         @NonNull String prompt,
         @NonNull Map<String, String> inputs,
         @NonNull Map<String, String> outputs,
-        @Nullable Boolean thought,
-        @Nullable String modelTier,
-        @Nullable Double temperature)
+        Boolean thought,
+        String modelTier,
+        Double temperature)
         implements Action {
 
     public GenerateAction {

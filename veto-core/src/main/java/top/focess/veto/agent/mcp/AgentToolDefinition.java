@@ -22,7 +22,7 @@ public record AgentToolDefinition(
         @NonNull String name,
         @NonNull String description,
         @NonNull Class<?> argsClass,
-        @NonNull Map<String, ParamCategory> paramHints)
+        @NonNull Map<@NonNull String, @NonNull ParamCategory> paramHints)
         implements ToolDefinition {
 
     @Override
@@ -36,12 +36,12 @@ public record AgentToolDefinition(
     }
 
     @Override
-    public @NonNull List<String> examples() {
+    public @NonNull List<@NonNull String> examples() {
         return ToolDocs.examplesOf(argsClass);
     }
 
     @Override
-    public @NonNull List<String> returnExamples() {
+    public @NonNull List<@NonNull String> returnExamples() {
         return ToolDocs.returnExamplesOf(argsClass);
     }
 
@@ -76,7 +76,7 @@ public record AgentToolDefinition(
                 (doc != null && !doc.description().isEmpty())
                         ? doc.description()
                         : ToolDocs.firstSentenceOf(doc != null ? doc.usage() : "");
-        Map<String, ParamCategory> hints = ToolSchemaCompiler.hintsOf(argsClass);
+        Map<@NonNull String, @NonNull ParamCategory> hints = ToolSchemaCompiler.hintsOf(argsClass);
         return new AgentToolDefinition(name, description, argsClass, hints);
     }
 }

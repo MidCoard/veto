@@ -2,7 +2,6 @@ package top.focess.veto.agent.intercept;
 
 import java.util.List;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.agent.screening.Danger;
 
 /**
@@ -26,7 +25,7 @@ public sealed interface ApprovalDecision
                 ApprovalDecision.Refused {
 
     /** Singleton: proceed with the call, no HITL round-trip. */
-    AutoApprove AUTO_APPROVE = new AutoApprove();
+    @NonNull AutoApprove AUTO_APPROVE = new AutoApprove();
 
     /** Proceed with the call, no HITL round-trip. */
     record AutoApprove() implements ApprovalDecision {}
@@ -41,8 +40,8 @@ public sealed interface ApprovalDecision
      */
     record Prompt(
             @NonNull VetoScenario scenario,
-            @NonNull List<VetoOption> options,
-            @Nullable Danger danger)
+            @NonNull List<@NonNull VetoOption> options,
+            Danger danger)
             implements ApprovalDecision {
         public Prompt {
             options = List.copyOf(options);

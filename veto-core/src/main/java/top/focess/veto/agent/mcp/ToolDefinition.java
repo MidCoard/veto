@@ -41,7 +41,7 @@ public sealed interface ToolDefinition
      * Concrete usage examples (args-object strings) reflected from a {@link ToolDoc} on the tool's
      * args record; rendered under the tool entry by the prompt compiler. Empty by default.
      */
-    default @NonNull List<String> examples() {
+    default @NonNull List<@NonNull String> examples() {
         return List.of();
     }
 
@@ -49,7 +49,7 @@ public sealed interface ToolDefinition
      * Concrete return-value examples reflected from a {@link ToolDoc} on the tool's args record;
      * the i-th entry corresponds to the i-th {@link #examples()} entry. Empty by default.
      */
-    default @NonNull List<String> returnExamples() {
+    default @NonNull List<@NonNull String> returnExamples() {
         return List.of();
     }
 

@@ -21,7 +21,8 @@ import top.focess.veto.model.tier.ModelTierRegistry;
 
 public class PatternCommand extends VetoCommand {
 
-    private static final Logger log = LoggerFactory.getLogger(PatternCommand.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.command.commands.PatternCommand");
 
     private final @NonNull AgentPatternRepository repo;
     private final @NonNull ModelTierRegistry tierRegistry;
@@ -55,11 +56,11 @@ public class PatternCommand extends VetoCommand {
                 (sender, args) -> {
                     VetoCommandSender s = vetoSender(sender);
                     if (s == null) return CommandResult.REFUSE;
-                    String n = args.get("name");
-                    ModelTier tier = args.get("tier");
+                    String n = requiredArg(args.get("name"), "name");
+                    ModelTier tier = requiredArg(args.get("tier"), "tier");
                     ModelBinding cache;
                     try {
-                        cache = tierRegistry.resolve(s.username(), tier);
+                        cache = tierRegistry.resolve(s.requireUsername(), tier);
                     } catch (ModelTierConfigException e) {
                         s.output(
                                 "Cannot resolve tier "
@@ -71,7 +72,7 @@ public class PatternCommand extends VetoCommand {
                         return CommandResult.REFUSE;
                     }
                     AgentPatternEntity entity =
-                            new AgentPatternEntity(n, tier, cache, s.username());
+                            new AgentPatternEntity(n, tier, cache, s.requireUsername());
                     repo.save(entity);
                     s.output(
                             "Pattern '"
@@ -94,7 +95,7 @@ public class PatternCommand extends VetoCommand {
                 (sender, args) -> {
                     VetoCommandSender s = vetoSender(sender);
                     if (s == null) return CommandResult.REFUSE;
-                    var pats = repo.findByOwner(s.username());
+                    var pats = repo.findByOwner(s.requireUsername());
                     if (pats.isEmpty()) {
                         s.output("No patterns configured. Use /pattern create ...");
                         return CommandResult.ALLOW;
@@ -103,7 +104,7 @@ public class PatternCommand extends VetoCommand {
                     for (var p : pats) {
                         ModelBinding live;
                         try {
-                            live = tierRegistry.resolve(s.username(), p.getTier());
+                            live = tierRegistry.resolve(s.requireUsername(), p.getTier());
                         } catch (ModelTierConfigException e) {
                             s.output(
                                     String.format(
@@ -125,13 +126,13 @@ public class PatternCommand extends VetoCommand {
                 (sender, args) -> {
                     VetoCommandSender s = vetoSender(sender);
                     if (s == null) return CommandResult.REFUSE;
-                    String n = args.get("name");
-                    var pats = repo.findByOwner(s.username());
+                    String n = requiredArg(args.get("name"), "name");
+                    var pats = repo.findByOwner(s.requireUsername());
                     if (pats.stream().noneMatch(p -> p.getName().equals(n))) {
                         s.output("Pattern not found: " + n);
                         return CommandResult.REFUSE;
                     }
-                    repo.deleteByNameAndOwner(n, s.username());
+                    repo.deleteByNameAndOwner(n, s.requireUsername());
                     s.output("Pattern '" + n + "' deleted.");
                     return CommandResult.ALLOW;
                 },
@@ -145,7 +146,7 @@ public class PatternCommand extends VetoCommand {
                     if (s == null) return CommandResult.REFUSE;
                     String n = args.get("name");
                     var found =
-                            repo.findByOwner(s.username()).stream()
+                            repo.findByOwner(s.requireUsername()).stream()
                                     .filter(p -> p.getName().equals(n))
                                     .findFirst();
                     if (found.isEmpty()) {
@@ -155,7 +156,7 @@ public class PatternCommand extends VetoCommand {
                     var p = found.get();
                     ModelBinding live;
                     try {
-                        live = tierRegistry.resolve(s.username(), p.getTier());
+                        live = tierRegistry.resolve(s.requireUsername(), p.getTier());
                     } catch (ModelTierConfigException e) {
                         s.output(
                                 "Cannot resolve tier "
@@ -168,7 +169,7 @@ public class PatternCommand extends VetoCommand {
                     }
                     s.output("Pattern: " + p.getName());
                     s.output("  Tier:          " + p.getTier());
-                    s.output("  Active config: " + tierRegistry.activeProfile(s.username()));
+                    s.output("  Active config: " + tierRegistry.activeProfile(s.requireUsername()));
                     s.output("  Resolved:      " + live.provider() + "/" + live.model());
                     s.output(
                             "  Credential:    "
@@ -181,9 +182,9 @@ public class PatternCommand extends VetoCommand {
     }
 
     private @NonNull List<CommandCompletion> completePatternName(
-            @NonNull CommandSender sender, @NonNull Command cmd, @NonNull String[] argv) {
+            @NonNull CommandSender sender, @NonNull Command cmd, @NonNull String @NonNull [] argv) {
         if (!LOGGED_IN.test(sender)) return List.of();
-        String u = ((VetoCommandSender) sender).username();
+        String u = ((VetoCommandSender) sender).requireUsername();
         String prefix = argv.length > 0 ? argv[argv.length - 1].toLowerCase() : "";
         return repo.findByOwner(u).stream()
                 .filter(p -> p.getName().toLowerCase().startsWith(prefix))

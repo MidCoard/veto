@@ -22,14 +22,14 @@ import org.springframework.stereotype.Component;
 @Component
 public class GroupTickScheduler {
 
-    private static final Logger log = LoggerFactory.getLogger(GroupTickScheduler.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.group.GroupTickScheduler");
 
     private final @NonNull GroupOrchestrator orchestrator;
     private final @NonNull GroupRegistry registry;
 
-    public
-    @NonNull
-    GroupTickScheduler(@NonNull GroupOrchestrator orchestrator, @NonNull GroupRegistry registry) {
+    public GroupTickScheduler(
+            @NonNull GroupOrchestrator orchestrator, @NonNull GroupRegistry registry) {
         this.orchestrator = orchestrator;
         this.registry = registry;
     }

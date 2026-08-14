@@ -2,6 +2,7 @@ package top.focess.veto.agent.screening;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 
 class ScreeningModeTest {
@@ -52,14 +53,26 @@ class ScreeningModeTest {
 
     @Test
     void criticalIsRefusedInEveryMode() {
-        for (ScreeningMode m : ScreeningMode.values()) {
-            for (Relevance r : Relevance.values()) {
+        for (ScreeningMode m : modes()) {
+            for (Relevance r : relevances()) {
                 assertEquals(
                         ScreeningOutcome.REFUSED,
                         m.cell(r, Danger.CRITICAL),
                         m + "/" + r + "/CRITICAL must be REFUSED");
             }
         }
+    }
+
+    private static @NonNull ScreeningMode @NonNull [] modes() {
+        ScreeningMode[] values = ScreeningMode.values();
+        if (values == null) throw new AssertionError("ScreeningMode.values returned null");
+        return values;
+    }
+
+    private static @NonNull Relevance @NonNull [] relevances() {
+        Relevance[] values = Relevance.values();
+        if (values == null) throw new AssertionError("Relevance.values returned null");
+        return values;
     }
 
     @Test

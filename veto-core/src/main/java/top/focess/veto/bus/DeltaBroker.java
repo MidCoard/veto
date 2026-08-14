@@ -36,9 +36,7 @@ public class DeltaBroker {
     /** Per-session monotonic sequence. */
     private final @NonNull ConcurrentMap<UUID, AtomicLong> sequences = new ConcurrentHashMap<>();
 
-    public
-    @NonNull
-    DeltaBroker(@NonNull ObjectMapper mapper) {
+    public DeltaBroker(@NonNull ObjectMapper mapper) {
         this.mapper = mapper;
     }
 
@@ -85,7 +83,7 @@ public class DeltaBroker {
             } catch (RuntimeException e) {
                 // Don't let one bad subscriber block the others, but log it so a broken
                 // transport is diagnosable (was previously swallowed silently).
-                org.slf4j.LoggerFactory.getLogger(DeltaBroker.class)
+                org.slf4j.LoggerFactory.getLogger("top.focess.veto.bus.DeltaBroker")
                         .warn(
                                 "DeltaBroker: subscriber threw on session {} (frame seq={},"
                                         + " kind={})",
@@ -99,7 +97,7 @@ public class DeltaBroker {
             try {
                 sub.accept(sequenced);
             } catch (RuntimeException e) {
-                org.slf4j.LoggerFactory.getLogger(DeltaBroker.class)
+                org.slf4j.LoggerFactory.getLogger("top.focess.veto.bus.DeltaBroker")
                         .warn(
                                 "DeltaBroker: wildcard subscriber threw on session {} (frame"
                                         + " seq={}, kind={})",

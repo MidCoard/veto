@@ -3,7 +3,6 @@ package top.focess.veto.agent.translation;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.agent.mcp.ToolDefinition;
 import top.focess.veto.llm.core.VetoResponse;
 
@@ -35,7 +34,7 @@ public interface CapabilityTranslator {
      * top.focess.veto.llm.core.ToolDefinition} list carried by {@code VetoRequest.tools}.
      */
     @NonNull List<top.focess.veto.llm.core.ToolDefinition> translateTools(
-            @Nullable List<ToolDefinition> manifest);
+            List<ToolDefinition> manifest);
 
     /**
      * Builds the per-turn {@code veto_pulse} response schema that constrains the model to a {@link

@@ -2,6 +2,7 @@ package top.focess.veto.bus;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -9,11 +10,12 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
+@SuppressWarnings("initialization.field.uninitialized")
 class HeartbeatManagerTest {
 
-    @Mock private BusConfiguration config;
+    @Mock private @NonNull BusConfiguration config;
 
-    @InjectMocks private HeartbeatManager heartbeatManager;
+    @InjectMocks private @NonNull HeartbeatManager heartbeatManager;
 
     @Test
     void testInitialState() {

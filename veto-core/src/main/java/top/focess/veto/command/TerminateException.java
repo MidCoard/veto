@@ -13,6 +13,7 @@ import top.focess.veto.contract.IpcFrame;
  *
  * <p>This is a control-flow exception, not an error condition.
  */
+@SuppressWarnings("serial")
 public class TerminateException extends RuntimeException {
 
     /** Human-readable explanation shown to the terminal user before the connection is closed. */
@@ -23,9 +24,7 @@ public class TerminateException extends RuntimeException {
      *
      * @param reason the message to display to the user; must not be {@code null}
      */
-    public
-    @NonNull
-    TerminateException(@NonNull String reason) {
+    public TerminateException(@NonNull String reason) {
         super(reason);
         this.reason = reason;
     }

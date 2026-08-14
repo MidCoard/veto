@@ -39,16 +39,15 @@ import top.focess.veto.memory.embedder.Embedder;
 @ConditionalOnProperty(name = "veto.memory.store", havingValue = "pgvector")
 public class PgvectorMemoryStore implements MemoryStore {
 
-    private static final Logger log = LoggerFactory.getLogger(PgvectorMemoryStore.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.memory.PgvectorMemoryStore");
     private static final String TABLE = "pgvector_memories";
 
     private final @NonNull EntityManager em;
     private final @NonNull Embedder embedder;
     private volatile boolean provisioned = false;
 
-    public
-    @NonNull
-    PgvectorMemoryStore(@NonNull EntityManager em, @NonNull Embedder embedder) {
+    public PgvectorMemoryStore(@NonNull EntityManager em, @NonNull Embedder embedder) {
         this.em = em;
         this.embedder = embedder;
     }
@@ -90,17 +89,16 @@ public class PgvectorMemoryStore implements MemoryStore {
             log.error(
                     "PgvectorMemoryStore: provisioning failed (pgvector extension/Postgres required) — "
                             + "searches will error: {}",
-                    e.getMessage());
+                    String.valueOf(e.getMessage()));
         }
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public @NonNull List<ScoredMemory> search(@NonNull MemoryQuery query) {
         String q = vecToString(embedder.embed(query.queryText()));
         // Over-fetch to absorb the post-filters (session/project) before trimming to topK.
         int limit = Math.max(query.topK() * 4, query.topK() + 8);
-        List<Object[]> rows =
+        List<?> rows =
                 em.createNativeQuery(
                                 "SELECT id, user_id, session_id, tier, project_id, content,"
                                         + " source_ref, created_at,"
@@ -118,13 +116,19 @@ public class PgvectorMemoryStore implements MemoryStore {
                         .setParameter("limit", limit)
                         .getResultList();
         List<ScoredMemory> matches = new ArrayList<>();
-        for (Object[] row : rows) {
+        for (Object result : rows) {
+            if (!(result instanceof Object[] row)) {
+                throw new IllegalStateException(
+                        "Native memory search returned an unexpected row type");
+            }
             Memory m = rowToMemory(row);
             // Tenant/tier already filtered in SQL; apply session/project in Java.
-            if (query.sessionFilter() != null && !query.sessionFilter().equals(m.sessionId())) {
+            var sessionFilter = query.sessionFilter();
+            if (sessionFilter != null && !sessionFilter.equals(m.sessionId())) {
                 continue;
             }
-            if (query.projectFilter() != null && !query.projectFilter().equals(m.projectId())) {
+            var projectFilter = query.projectFilter();
+            if (projectFilter != null && !projectFilter.equals(m.projectId())) {
                 continue;
             }
             float score = ((Number) row[8]).floatValue();
@@ -138,7 +142,12 @@ public class PgvectorMemoryStore implements MemoryStore {
     }
 
     @Override
+    @SuppressWarnings(
+            "argument") // JPA setParameter accepts SQL null despite its external nullness model.
     public @NonNull MemoryId add(@NonNull Memory memory) {
+        UUID sessionId = memory.sessionId();
+        UUID projectId = memory.projectId();
+        Memory.SourceRef sourceRef = memory.sourceRef();
         em.createNativeQuery(
                         "INSERT INTO "
                                 + TABLE
@@ -148,14 +157,12 @@ public class PgvectorMemoryStore implements MemoryStore {
                                 + " (:vec)::vector, :sref, :cat)")
                 .setParameter("id", memory.id().value().toString())
                 .setParameter("uid", memory.userId().toString())
-                .setParameter(
-                        "sid", memory.sessionId() == null ? null : memory.sessionId().toString())
+                .setParameter("sid", sessionId == null ? null : sessionId.toString())
                 .setParameter("tier", memory.tier().name())
-                .setParameter(
-                        "pid", memory.projectId() == null ? null : memory.projectId().toString())
+                .setParameter("pid", projectId == null ? null : projectId.toString())
                 .setParameter("content", memory.content())
                 .setParameter("vec", vecToString(memory.embedding()))
-                .setParameter("sref", memory.sourceRef().kind())
+                .setParameter("sref", sourceRef == null ? null : sourceRef.kind())
                 .setParameter("cat", java.sql.Timestamp.from(memory.createdAt()))
                 .executeUpdate();
         return memory.id();
@@ -163,9 +170,6 @@ public class PgvectorMemoryStore implements MemoryStore {
 
     @Override
     public void capture(@NonNull TurnRecord turn, @NonNull UUID sessionId, @NonNull UUID userId) {
-        if (turn == null || sessionId == null || userId == null) {
-            return;
-        }
         String content = captureText(turn);
         if (content == null || content.isBlank()) {
             return;
@@ -216,8 +220,8 @@ public class PgvectorMemoryStore implements MemoryStore {
 
     // ── helpers ──────────────────────────────────────────────────────────────
 
-    private Memory findById(MemoryId id) {
-        List<Object[]> rows =
+    private Memory findById(@NonNull MemoryId id) {
+        List<?> rows =
                 em.createNativeQuery(
                                 "SELECT id, user_id, session_id, tier, project_id, content,"
                                         + " source_ref, created_at FROM "
@@ -225,18 +229,29 @@ public class PgvectorMemoryStore implements MemoryStore {
                                         + " WHERE id = :id")
                         .setParameter("id", id.value().toString())
                         .getResultList();
-        return rows.isEmpty() ? null : rowToMemory(rows.get(0));
+        if (rows.isEmpty()) {
+            return null;
+        }
+        if (!(rows.get(0) instanceof Object[] row)) {
+            throw new IllegalStateException("Native memory query returned an unexpected row type");
+        }
+        return rowToMemory(row);
     }
 
-    private static Memory rowToMemory(Object[] row) {
+    @SuppressWarnings("ConstantValue")
+    private static @NonNull Memory rowToMemory(Object @NonNull [] row) {
         UUID sessionId = row[2] == null ? null : UUID.fromString((String) row[2]);
         UUID projectId = row[4] == null ? null : UUID.fromString((String) row[4]);
         java.sql.Timestamp ts = (java.sql.Timestamp) row[7];
+        MemoryTier tier = MemoryTier.valueOf((String) row[3]);
+        if (tier == null) {
+            throw new IllegalStateException("Native memory row contains an unknown tier");
+        }
         return new Memory(
                 new MemoryId(UUID.fromString((String) row[0])),
                 UUID.fromString((String) row[1]),
                 sessionId,
-                MemoryTier.valueOf((String) row[3]),
+                tier,
                 projectId,
                 (String) row[5],
                 new float[0], // embedding not read back for result delivery
@@ -248,8 +263,8 @@ public class PgvectorMemoryStore implements MemoryStore {
      * Render a vector as the pgvector literal form {@code "[v0,v1,...]"} for the {@code ::vector}
      * cast.
      */
-    private static String vecToString(float[] vec) {
-        if (vec == null || vec.length == 0) {
+    private static @NonNull String vecToString(float @NonNull [] vec) {
+        if (vec.length == 0) {
             return "[]";
         }
         StringBuilder sb = new StringBuilder("[");
@@ -262,7 +277,7 @@ public class PgvectorMemoryStore implements MemoryStore {
         return sb.append(']').toString();
     }
 
-    private static String captureText(TurnRecord turn) {
+    private static String captureText(@NonNull TurnRecord turn) {
         return switch (turn.type()) {
             case ASSISTANT_THOUGHT -> {
                 Object thought = turn.payload().get("response");

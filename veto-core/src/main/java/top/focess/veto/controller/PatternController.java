@@ -24,9 +24,7 @@ public class PatternController {
     private final @NonNull KeysteadVault vault;
     private final @NonNull ModelTierRegistry tierRegistry;
 
-    public
-    @NonNull
-    PatternController(
+    public PatternController(
             @NonNull AgentPatternRepository repo,
             @NonNull KeysteadVault vault,
             @NonNull ModelTierRegistry tierRegistry) {
@@ -42,7 +40,7 @@ public class PatternController {
     }
 
     @PostMapping
-    public @NonNull AgentPatternEntity create(@NonNull @RequestBody Map<String, String> body) {
+    public @NonNull AgentPatternEntity create(@RequestBody @NonNull Map<String, String> body) {
         String user = vault.currentUser();
         if (user == null) throw new IllegalStateException(Msg.get("error.auth.notLoggedIn"));
         String name = body.get("name");
@@ -57,7 +55,15 @@ public class PatternController {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT, Msg.get("error.pattern.duplicate", name));
         }
-        ModelTier tier = ModelTier.valueOf(tierValue.toUpperCase());
+        ModelTier tier;
+        try {
+            tier =
+                    top.focess.veto.util.Nullness.requireNonNull(
+                            ModelTier.valueOf(tierValue.toUpperCase()));
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, Msg.get("error.pattern.missingFields"));
+        }
         ModelBinding binding;
         try {
             binding = tierRegistry.resolve(user, tier);
@@ -71,7 +77,7 @@ public class PatternController {
     }
 
     @DeleteMapping("/{name}")
-    public @NonNull ResponseEntity<?> delete(@NonNull @PathVariable String name) {
+    public @NonNull ResponseEntity<?> delete(@PathVariable @NonNull String name) {
         String user = vault.currentUser();
         if (user == null) {
             return ResponseEntity.status(401)

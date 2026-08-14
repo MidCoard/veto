@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.mcp.tools.RunCommandTool;
 
@@ -15,7 +16,9 @@ class ToolSchemaCompilerTest {
 
     @Test
     void nestedRecordCollectionGetsObjectItemsSchema() {
-        JsonNode schema = ToolSchemaCompiler.compileFromRecord(RunCommandTool.Args.class);
+        JsonNode schema =
+                ToolSchemaCompiler.compileFromRecord(
+                        ToolDocs.nonNullClass(RunCommandTool.Args.class));
 
         JsonNode commands = schema.path("properties").path("commands");
         assertEquals("array", commands.path("type").asText(), "commands is an array");
@@ -44,7 +47,7 @@ class ToolSchemaCompilerTest {
         assertTrue(contains(items.path("required"), "args"), "args required in item schema");
     }
 
-    private static boolean contains(JsonNode array, String value) {
+    private static boolean contains(@NonNull JsonNode array, @NonNull String value) {
         if (!array.isArray()) return false;
         for (JsonNode n : array) {
             if (value.equals(n.asText())) return true;
@@ -58,7 +61,9 @@ class ToolSchemaCompilerTest {
      */
     @Test
     void schemaRoundTripsThroughObjectMapper() throws Exception {
-        JsonNode schema = ToolSchemaCompiler.compileFromRecord(RunCommandTool.Args.class);
+        JsonNode schema =
+                ToolSchemaCompiler.compileFromRecord(
+                        ToolDocs.nonNullClass(RunCommandTool.Args.class));
         String json = new ObjectMapper().writeValueAsString(schema);
         assertTrue(json.contains("\"commands\""), "serialized schema keeps commands");
         assertTrue(json.contains("\"executable\""), "serialized schema keeps nested executable");

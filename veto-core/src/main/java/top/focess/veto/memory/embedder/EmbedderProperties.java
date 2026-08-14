@@ -1,6 +1,5 @@
 package top.focess.veto.memory.embedder;
 
-import org.jspecify.annotations.Nullable;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
@@ -26,10 +25,10 @@ public class EmbedderProperties {
      * Provider: {@code openai} (OpenAI-compatible REST) or {@code gemini}. Null/blank -> local
      * stub.
      */
-    private @Nullable String provider;
+    private String provider;
 
     /** Embedding model name, e.g. {@code text-embedding-3-small} or {@code text-embedding-004}. */
-    private @Nullable String model;
+    private String model;
 
     /**
      * Vector dimension the model produces; must match the model. Used for pgvector DDL. Default 64.
@@ -37,24 +36,24 @@ public class EmbedderProperties {
     private int dimension = 64;
 
     /** Base URL override; null/blank uses the provider default. */
-    private @Nullable String baseUrl;
+    private String baseUrl;
 
     /** Vault secure-note title holding the API key. */
-    private @Nullable String credentialKey;
+    private String credentialKey;
 
-    public @Nullable String getProvider() {
+    public String getProvider() {
         return provider;
     }
 
-    public void setProvider(@Nullable String provider) {
+    public void setProvider(String provider) {
         this.provider = provider;
     }
 
-    public @Nullable String getModel() {
+    public String getModel() {
         return model;
     }
 
-    public void setModel(@Nullable String model) {
+    public void setModel(String model) {
         this.model = model;
     }
 
@@ -66,19 +65,19 @@ public class EmbedderProperties {
         this.dimension = dimension;
     }
 
-    public @Nullable String getBaseUrl() {
+    public String getBaseUrl() {
         return baseUrl;
     }
 
-    public void setBaseUrl(@Nullable String baseUrl) {
+    public void setBaseUrl(String baseUrl) {
         this.baseUrl = baseUrl;
     }
 
-    public @Nullable String getCredentialKey() {
+    public String getCredentialKey() {
         return credentialKey;
     }
 
-    public void setCredentialKey(@Nullable String credentialKey) {
+    public void setCredentialKey(String credentialKey) {
         this.credentialKey = credentialKey;
     }
 }

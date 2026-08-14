@@ -1,6 +1,7 @@
 package top.focess.veto.llm.config;
 
 import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.ObjectCodec;
 import com.fasterxml.jackson.databind.BeanDescription;
 import com.fasterxml.jackson.databind.DeserializationConfig;
 import com.fasterxml.jackson.databind.DeserializationContext;
@@ -17,7 +18,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
 /**
  * Jackson module that leniently deserializes string-element collections on the {@linkplain
@@ -35,6 +35,7 @@ import org.jspecify.annotations.Nullable;
  * on {@link top.focess.veto.llm.core.VetoResponse}) keep Jackson's default collection deserializer,
  * so response parsing is untouched. Real JSON arrays pass through unchanged.
  */
+@SuppressWarnings("serial")
 public final class LenientStringListModule extends SimpleModule {
 
     public LenientStringListModule() {
@@ -42,7 +43,7 @@ public final class LenientStringListModule extends SimpleModule {
     }
 
     @Override
-    public void setupModule(SetupContext context) {
+    public void setupModule(@NonNull SetupContext context) {
         super.setupModule(context);
         context.addDeserializers(new StringCollectionDeserializers());
     }
@@ -52,26 +53,28 @@ public final class LenientStringListModule extends SimpleModule {
      */
     private static final class StringCollectionDeserializers extends Deserializers.Base {
         @Override
-        public @Nullable JsonDeserializer<?> findCollectionDeserializer(
+        @SuppressWarnings("override.return")
+        public JsonDeserializer<?> findCollectionDeserializer(
                 @NonNull CollectionType collectionType,
                 @NonNull DeserializationConfig config,
                 @NonNull BeanDescription beanDesc,
-                @Nullable TypeDeserializer elementTypeDeserializer,
-                @Nullable JsonDeserializer<?> elementDeserializer) {
+                TypeDeserializer elementTypeDeserializer,
+                JsonDeserializer<?> elementDeserializer) {
             return lenientIfStringElement(collectionType);
         }
 
         @Override
-        public @Nullable JsonDeserializer<?> findCollectionLikeDeserializer(
+        @SuppressWarnings("override.return")
+        public JsonDeserializer<?> findCollectionLikeDeserializer(
                 @NonNull CollectionLikeType collectionType,
                 @NonNull DeserializationConfig config,
                 @NonNull BeanDescription beanDesc,
-                @Nullable TypeDeserializer elementTypeDeserializer,
-                @Nullable JsonDeserializer<?> elementDeserializer) {
+                TypeDeserializer elementTypeDeserializer,
+                JsonDeserializer<?> elementDeserializer) {
             return lenientIfStringElement(collectionType);
         }
 
-        private static @Nullable JsonDeserializer<?> lenientIfStringElement(
+        private static JsonDeserializer<?> lenientIfStringElement(
                 @NonNull JavaType collectionType) {
             JavaType elementType = collectionType.getContentType();
             if (elementType != null && elementType.isTypeOrSubTypeOf(String.class)) {
@@ -91,18 +94,28 @@ public final class LenientStringListModule extends SimpleModule {
         static final LenientStringListDeserializer INSTANCE = new LenientStringListDeserializer();
 
         @Override
-        public @NonNull List<String> deserialize(JsonParser p, DeserializationContext ctxt)
-                throws IOException {
-            JsonNode node = p.getCodec().readTree(p);
+        public @NonNull List<String> deserialize(
+                @NonNull JsonParser p, @NonNull DeserializationContext ctxt) throws IOException {
+            ObjectCodec codec = p.getCodec();
+            if (codec == null) {
+                return List.of();
+            }
+            JsonNode node = codec.readTree(p);
+            if (node == null) {
+                return List.of();
+            }
             if (node.isArray()) {
                 return toStringList(node);
             }
             if (node.isTextual()) {
-                return parseStringAsList(node.asText(), (ObjectMapper) p.getCodec());
+                ObjectMapper mapper =
+                        codec instanceof ObjectMapper objectMapper
+                                ? objectMapper
+                                : new ObjectMapper();
+                return parseStringAsList(node.asText(), mapper);
             }
             if (node.isNull()) {
-                // JSON null -> empty list (safer than null for @NonNull List fields; a @Nullable
-                // field
+                // JSON null -> empty list (safer than null for @NonNull List fields; a // field
                 // getting empty-instead-of-null is harmless for tool args).
                 return List.of();
             }

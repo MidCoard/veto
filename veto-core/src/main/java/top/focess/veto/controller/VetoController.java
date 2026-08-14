@@ -20,13 +20,12 @@ import top.focess.veto.veto.VetoGateway;
 @RequestMapping("/api/veto")
 public class VetoController {
 
-    private static final Logger log = LoggerFactory.getLogger(VetoController.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.controller.VetoController");
 
     private final @NonNull VetoGateway vetoGateway;
 
-    public
-    @NonNull
-    VetoController(@NonNull VetoGateway vetoGateway) {
+    public VetoController(@NonNull VetoGateway vetoGateway) {
         this.vetoGateway = vetoGateway;
     }
 
@@ -38,7 +37,7 @@ public class VetoController {
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
     public @NonNull ResponseEntity<Map<String, Object>> processPayload(
-            @NonNull @RequestBody Map<String, Object> request) {
+            @RequestBody @NonNull Map<String, Object> request) {
         String payload = (String) request.getOrDefault("payload", "");
         if (payload.isEmpty()) {
             return ResponseEntity.badRequest()
@@ -93,7 +92,7 @@ public class VetoController {
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
     public @NonNull ResponseEntity<Map<String, Object>> checkPayload(
-            @NonNull @RequestBody Map<String, Object> request) {
+            @RequestBody @NonNull Map<String, Object> request) {
         String payload = (String) request.getOrDefault("payload", "");
         if (payload.isEmpty()) {
             return ResponseEntity.badRequest()

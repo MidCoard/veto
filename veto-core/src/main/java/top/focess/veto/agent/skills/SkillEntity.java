@@ -9,7 +9,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
 /**
  * JPA persistence for a skill's integrity hash (Part 5 "skill DB hash storage"). The hash is the
@@ -24,36 +23,42 @@ import org.jspecify.annotations.Nullable;
 @Table(name = "skill_hashes")
 public class SkillEntity {
 
-    @Id private @NonNull String id;
+    @Id private @NonNull String id = "";
 
     @Column(nullable = false)
-    private @NonNull String name;
+    private @NonNull String name = "";
 
     @Column(name = "source_type", nullable = false)
-    private @NonNull String sourceType;
+    private @NonNull String sourceType = "";
 
     @Column(name = "content_hash", nullable = false, length = 64)
-    private @NonNull String contentHash;
+    private @NonNull String contentHash = "";
 
     @Column(name = "skill_directory")
-    private @Nullable String skillDirectory;
+    private String skillDirectory;
 
     @Column(name = "required_tools", columnDefinition = "TEXT")
-    private @Nullable String requiredTools;
+    private String requiredTools;
 
     @Column(name = "description", columnDefinition = "TEXT")
-    private @Nullable String description;
+    private String description;
 
     protected SkillEntity() {}
 
-    public
-    @NonNull
-    SkillEntity(@NonNull Skill skill) {
+    public SkillEntity(@NonNull Skill skill) {
         this.id = UUID.randomUUID().toString();
         this.name = skill.name();
-        this.sourceType = skill.sourceType().name();
+        SkillSourceType source = skill.sourceType();
+        if (source == null) {
+            throw new IllegalArgumentException("persisted skill requires sourceType");
+        }
+        this.sourceType = source.name();
         this.contentHash = skill.contentHash();
-        this.skillDirectory = skill.skillDirectory().toString();
+        Path directory = skill.skillDirectory();
+        if (directory == null) {
+            throw new IllegalArgumentException("persisted skill requires skillDirectory");
+        }
+        this.skillDirectory = directory.toString();
         this.requiredTools = String.join(",", skill.requiredTools());
         this.description = skill.description();
     }
@@ -91,15 +96,15 @@ public class SkillEntity {
         this.contentHash = contentHash;
     }
 
-    public @Nullable String getSkillDirectory() {
+    public String getSkillDirectory() {
         return skillDirectory;
     }
 
-    public @Nullable String getRequiredTools() {
+    public String getRequiredTools() {
         return requiredTools;
     }
 
-    public @Nullable String getDescription() {
+    public String getDescription() {
         return description;
     }
 }

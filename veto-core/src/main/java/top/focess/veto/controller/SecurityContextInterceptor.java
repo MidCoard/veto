@@ -3,7 +3,6 @@ package top.focess.veto.controller;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 import top.focess.veto.vault.SessionManager;
@@ -44,7 +43,7 @@ public class SecurityContextInterceptor implements HandlerInterceptor {
             @NonNull HttpServletRequest request,
             @NonNull HttpServletResponse response,
             @NonNull Object handler,
-            @Nullable Exception ex) {
+            Exception ex) {
         UserContext.clear();
     }
 }

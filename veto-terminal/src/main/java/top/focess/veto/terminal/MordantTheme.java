@@ -14,7 +14,7 @@ import top.focess.veto.client.core.Theme;
  */
 public final class MordantTheme implements Theme {
 
-    private final Terminal terminal;
+    private final @NonNull Terminal terminal;
 
     public MordantTheme(@NonNull Terminal terminal) {
         this.terminal = terminal;

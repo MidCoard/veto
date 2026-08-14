@@ -3,7 +3,6 @@ package top.focess.veto.model.tier;
 import jakarta.persistence.*;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.llm.core.ProviderType;
 
 /**
@@ -30,33 +29,33 @@ import top.focess.veto.llm.core.ProviderType;
         uniqueConstraints = @UniqueConstraint(columnNames = {"profile_id", "tier"}))
 public class ModelTierBindingEntity {
 
-    @Id private @NonNull String id;
+    @Id private @NonNull String id = "";
 
     @Column(name = "profile_id", nullable = false)
-    private @NonNull String profileId;
+    private @NonNull String profileId = "";
 
     @Enumerated(EnumType.STRING)
     @Column(name = "tier", nullable = false)
-    private @NonNull ModelTier tier;
+    private @NonNull ModelTier tier = ModelTier.TOP;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "provider")
-    private @Nullable ProviderType provider;
+    private ProviderType provider;
 
     @Column(name = "base_url")
-    private @Nullable String baseUrl;
+    private String baseUrl;
 
     @Column(name = "model")
-    private @Nullable String model;
+    private String model;
 
     @Column(name = "credential_key")
-    private @Nullable String credentialKey;
+    private String credentialKey;
 
     @Column(name = "temperature")
-    private @Nullable Double temperature;
+    private Double temperature;
 
     @Column(name = "max_output_tokens")
-    private @Nullable Integer maxOutputTokens;
+    private Integer maxOutputTokens;
 
     protected ModelTierBindingEntity() {}
 
@@ -78,51 +77,51 @@ public class ModelTierBindingEntity {
         return tier;
     }
 
-    public @Nullable ProviderType getProvider() {
+    public ProviderType getProvider() {
         return provider;
     }
 
-    public void setProvider(@Nullable ProviderType provider) {
+    public void setProvider(ProviderType provider) {
         this.provider = provider;
     }
 
-    public @Nullable String getBaseUrl() {
+    public String getBaseUrl() {
         return baseUrl;
     }
 
-    public void setBaseUrl(@Nullable String baseUrl) {
+    public void setBaseUrl(String baseUrl) {
         this.baseUrl = baseUrl;
     }
 
-    public @Nullable String getModel() {
+    public String getModel() {
         return model;
     }
 
-    public void setModel(@Nullable String model) {
+    public void setModel(String model) {
         this.model = model;
     }
 
-    public @Nullable String getCredentialKey() {
+    public String getCredentialKey() {
         return credentialKey;
     }
 
-    public void setCredentialKey(@Nullable String credentialKey) {
+    public void setCredentialKey(String credentialKey) {
         this.credentialKey = credentialKey;
     }
 
-    public @Nullable Double getTemperature() {
+    public Double getTemperature() {
         return temperature;
     }
 
-    public void setTemperature(@Nullable Double temperature) {
+    public void setTemperature(Double temperature) {
         this.temperature = temperature;
     }
 
-    public @Nullable Integer getMaxOutputTokens() {
+    public Integer getMaxOutputTokens() {
         return maxOutputTokens;
     }
 
-    public void setMaxOutputTokens(@Nullable Integer maxOutputTokens) {
+    public void setMaxOutputTokens(Integer maxOutputTokens) {
         this.maxOutputTokens = maxOutputTokens;
     }
 }

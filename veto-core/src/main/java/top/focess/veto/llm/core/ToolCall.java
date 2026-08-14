@@ -3,7 +3,6 @@ package top.focess.veto.llm.core;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
 /**
  * A single tool call from the LLM. Each element of {@link VetoResponse#calls} is a {@code
@@ -24,11 +23,19 @@ import org.jspecify.annotations.Nullable;
  */
 public record ToolCall(
         @JsonProperty("tool_name") @NonNull String toolName,
-        @JsonProperty("args") @NonNull Map<String, Object> args,
-        @JsonProperty("call_id") @Nullable String callId) {
+        @JsonProperty("args") @NonNull Map<@NonNull String, Object> args,
+        @JsonProperty("call_id") String callId) {
 
     /** Convenience constructor for model-parsed calls (callId assigned later by the harness). */
-    public ToolCall(@NonNull String toolName, @NonNull Map<String, Object> args) {
+    public ToolCall(@NonNull String toolName, @NonNull Map<@NonNull String, Object> args) {
         this(toolName, args, null);
+    }
+
+    /** Returns the harness id after assignment, failing fast if a pre-assignment call leaked. */
+    public @NonNull String requireCallId() {
+        if (callId == null) {
+            throw new IllegalStateException("Tool call id has not been assigned for " + toolName);
+        }
+        return callId;
     }
 }

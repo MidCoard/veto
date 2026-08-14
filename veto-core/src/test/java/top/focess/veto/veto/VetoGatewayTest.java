@@ -2,6 +2,7 @@ package top.focess.veto.veto;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -10,15 +11,16 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import top.focess.veto.observability.AuditLogger;
 
 @ExtendWith(MockitoExtension.class)
+@SuppressWarnings("initialization.field.uninitialized")
 class VetoGatewayTest {
 
-    @Mock private LlamaCppBridge llamaCppBridge;
-    @Mock private GBNFGrammarEngine grammarEngine;
-    @Mock private AuditLogger auditLogger;
+    @Mock private @NonNull LlamaCppBridge llamaCppBridge;
+    @Mock private @NonNull GBNFGrammarEngine grammarEngine;
+    @Mock private @NonNull AuditLogger auditLogger;
 
-    private VetoGatewayConfiguration config;
-    private SemanticRedactor semanticRedactor;
-    private VetoGateway vetoGateway;
+    private @NonNull VetoGatewayConfiguration config;
+    private @NonNull SemanticRedactor semanticRedactor;
+    private @NonNull VetoGateway vetoGateway;
 
     @BeforeEach
     void setUp() {

@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.mcp.AgentTool;
 import top.focess.veto.agent.mcp.Doc;
@@ -14,6 +13,7 @@ import top.focess.veto.agent.mcp.SecurityHint;
 import top.focess.veto.agent.mcp.ToolCallContext;
 import top.focess.veto.agent.mcp.ToolCallContextHolder;
 import top.focess.veto.agent.mcp.ToolDoc;
+import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.group.GroupOrchestrator.NodeEdit;
 
 /**
@@ -32,7 +32,7 @@ public final class DagTools {
     private DagTools() {}
 
     /** Resolve the caller's group id from the tool call context, or null when not in a group. */
-    private static @Nullable UUID contextGroupId() {
+    private static UUID contextGroupId() {
         ToolCallContext ctx = ToolCallContextHolder.get();
         return ctx != null ? ctx.groupId() : null;
     }
@@ -106,16 +106,15 @@ public final class DagTools {
         public record Args(
                 @SecurityHint(ParamCategory.GENERIC)
                         @Doc("New node's id (unique within the plan, e.g. 'node-1').")
-                        @Nullable String nodeId,
+                        String nodeId,
                 @SecurityHint(ParamCategory.GENERIC)
                         @Doc(
                                 "What the node does - concrete enough for a mate to execute without asking.")
-                        @Nullable String description,
+                        String description,
                 @SecurityHint(ParamCategory.GENERIC)
                         @Doc("The skillset this node requires (e.g. 'coding', 'testing').")
-                        @Nullable String skillset,
+                        String skillset,
                 @SecurityHint(ParamCategory.GENERIC)
-                        @Nullable
                         @Doc(
                                 "Ids of existing nodes that must verify before this one dispatches; "
                                         + "omit for a root node.")
@@ -128,13 +127,15 @@ public final class DagTools {
 
         @Override
         public @NonNull String getDescription() {
-            ToolDoc doc = Args.class.getAnnotation(ToolDoc.class);
+            ToolDoc doc =
+                    ToolDocs.nonNullClass(Args.class)
+                            .getAnnotation(ToolDocs.nonNullClass(ToolDoc.class));
             return (doc != null && !doc.description().isEmpty()) ? doc.description() : "";
         }
 
         @Override
         public @NonNull Class<Args> getArgsClass() {
-            return Args.class;
+            return ToolDocs.nonNullClass(Args.class);
         }
 
         @Override
@@ -229,7 +230,7 @@ public final class DagTools {
 
         public record Args(
                 @SecurityHint(ParamCategory.GENERIC) @Doc("The id of the node to retire.")
-                        @Nullable String nodeId) {}
+                        String nodeId) {}
 
         @Override
         public @NonNull String getName() {
@@ -238,13 +239,15 @@ public final class DagTools {
 
         @Override
         public @NonNull String getDescription() {
-            ToolDoc doc = Args.class.getAnnotation(ToolDoc.class);
+            ToolDoc doc =
+                    ToolDocs.nonNullClass(Args.class)
+                            .getAnnotation(ToolDocs.nonNullClass(ToolDoc.class));
             return (doc != null && !doc.description().isEmpty()) ? doc.description() : "";
         }
 
         @Override
         public @NonNull Class<Args> getArgsClass() {
-            return Args.class;
+            return ToolDocs.nonNullClass(Args.class);
         }
 
         @Override

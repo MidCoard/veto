@@ -6,16 +6,19 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import top.focess.veto.agent.mcp.NativeToolDefinition;
 import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RiskCategory;
+import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.ToolCall;
 
+@SuppressWarnings("initialization.field.uninitialized")
 class DangerComputationTest {
 
     // JUnit's @TempDir may sit under a junction / 8.3 short-name (Windows: ADMINI~1) so its lexical
@@ -23,36 +26,36 @@ class DangerComputationTest {
     // toRealPath(), so the root must be canonicalized to match (same accommodation as
     // PathResolverTest#canonicalizeTempDir). Without this, in-scope temp paths are misclassified
     // out-of-scope (CRITICAL) on Windows.
-    @TempDir Path root;
+    @TempDir @NonNull Path root;
 
     @BeforeEach
     void canonicalizeRoot() throws Exception {
         root = root.toRealPath();
     }
 
-    private DangerComputation dc = new DangerComputation();
+    private final @NonNull DangerComputation dc = new DangerComputation();
 
-    private Workspace ws(Path root) {
+    private @NonNull Workspace ws(@NonNull Path root) {
         return Workspace.single(root, PathMode.REAL);
     }
 
-    private NativeToolDefinition readDef() {
+    private @NonNull NativeToolDefinition readDef() {
         return new NativeToolDefinition(
                 "view_file",
                 "read",
                 RiskCategory.READ_ONLY,
                 false,
-                ReadArgs.class,
+                ToolDocs.nonNullClass(ReadArgs.class),
                 Map.of("path", ParamCategory.FILESYSTEM_PATH));
     }
 
-    private NativeToolDefinition writeDef() {
+    private @NonNull NativeToolDefinition writeDef() {
         return new NativeToolDefinition(
                 "write_to_file",
                 "write",
                 RiskCategory.FILE_WRITE,
                 false,
-                WriteArgs.class,
+                ToolDocs.nonNullClass(WriteArgs.class),
                 Map.of("path", ParamCategory.FILESYSTEM_PATH));
     }
 
@@ -105,7 +108,7 @@ class DangerComputationTest {
     @Test
     void protectedPathUnderProtectSensitiveIsCritical() throws Exception {
         Path protectedFile = root.resolve(".ssh/id_rsa");
-        Files.createDirectories(protectedFile.getParent());
+        Files.createDirectories(parentOf(protectedFile));
         Files.writeString(protectedFile, "k");
         ProtectedSet ps = new ProtectedSet(java.util.Set.of(root.resolve(".ssh")));
         ToolCall call = new ToolCall("view_file", Map.of("path", protectedFile.toString()));
@@ -117,7 +120,7 @@ class DangerComputationTest {
     @Test
     void protectedPathHasNoEffectUnderFull() throws Exception {
         Path protectedFile = root.resolve(".ssh/id_rsa");
-        Files.createDirectories(protectedFile.getParent());
+        Files.createDirectories(parentOf(protectedFile));
         Files.writeString(protectedFile, "k");
         ProtectedSet ps = new ProtectedSet(java.util.Set.of(root.resolve(".ssh")));
         ToolCall call = new ToolCall("view_file", Map.of("path", protectedFile.toString()));
@@ -153,7 +156,7 @@ class DangerComputationTest {
                         "exec",
                         RiskCategory.SHELL_EXEC,
                         false,
-                        ExecArgs.class,
+                        ToolDocs.nonNullClass(ExecArgs.class),
                         Map.of());
         ToolCall call =
                 new ToolCall(
@@ -180,7 +183,7 @@ class DangerComputationTest {
                         "exec",
                         RiskCategory.SHELL_EXEC,
                         false,
-                        ExecArgs.class,
+                        ToolDocs.nonNullClass(ExecArgs.class),
                         Map.of());
         ToolCall call =
                 new ToolCall(
@@ -264,7 +267,7 @@ class DangerComputationTest {
                         "exec",
                         RiskCategory.SHELL_EXEC,
                         false,
-                        ExecArgs.class,
+                        ToolDocs.nonNullClass(ExecArgs.class),
                         Map.of());
         ToolCall call =
                 new ToolCall(
@@ -295,7 +298,7 @@ class DangerComputationTest {
                         "exec",
                         RiskCategory.SHELL_EXEC,
                         false,
-                        ExecArgs.class,
+                        ToolDocs.nonNullClass(ExecArgs.class),
                         Map.of());
         ToolCall call =
                 new ToolCall(
@@ -317,4 +320,10 @@ class DangerComputationTest {
     }
 
     public record ExecArgs(Map<String, Object> commands, String cwd) {}
+
+    private static @NonNull Path parentOf(@NonNull Path path) {
+        Path parent = path.getParent();
+        if (parent == null) throw new AssertionError("expected parent for " + path);
+        return parent;
+    }
 }

@@ -12,4 +12,4 @@ import org.jspecify.annotations.NonNull;
  * @param baseUrl the effective base URL for the call
  * @param apiKey the API key or internal token to use
  */
-public record EgressEndpoint(@NonNull String baseUrl, @NonNull String apiKey) {}
+public record EgressEndpoint(String baseUrl, @NonNull String apiKey) {}

@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.time.Duration;
 import java.util.List;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,20 +21,21 @@ import top.focess.veto.llm.core.VetoResponse;
 /** Integration test that calls the real DeepSeek API. Requires {@code application-local.yml}. */
 @SpringBootTest
 @ActiveProfiles("local")
+@SuppressWarnings("initialization.field.uninitialized")
 class DeepSeekProviderIntegrationTest {
 
-    @Autowired private DeepSeekProvider provider;
+    @Autowired private @NonNull DeepSeekProvider provider;
 
     @Value("${veto.test.deepseek.api-key:}")
-    private String apiKey;
+    private @NonNull String apiKey;
 
     @Value("${veto.test.deepseek.model:deepseek-v4-pro}")
-    private String model;
+    private @NonNull String model;
 
     @BeforeEach
     void requireKey() {
         assumeTrue(
-                apiKey != null && !apiKey.isBlank() && !apiKey.startsWith("sk-placeholder"),
+                !apiKey.isBlank() && !apiKey.startsWith("sk-placeholder"),
                 "Skipped: set veto.test.deepseek.api-key in application-local.yml");
     }
 
@@ -52,7 +54,7 @@ class DeepSeekProviderIntegrationTest {
         ResolvedRequest resolved = new ResolvedRequest(request, "https://api.deepseek.com", apiKey);
         VetoResponse response = provider.execute(resolved);
 
-        assertNotNull(response.thought(), "thought should not be null");
+        requireThought(response.thought());
         // calls is OPTIONAL in the veto_pulse schema (a model that answers directly emits
         // thought + message, no calls). The real invariant is "no empty turn"
         // (prompt_react_syntax Rule 3): the response must carry at least one of
@@ -80,8 +82,15 @@ class DeepSeekProviderIntegrationTest {
         ResolvedRequest resolved = new ResolvedRequest(request, "https://api.deepseek.com", apiKey);
         VetoResponse response = provider.execute(resolved);
 
-        assertNotNull(response.thought());
-        assertFalse(response.thought().isBlank(), "thought should not be blank");
+        String thought = requireThought(response.thought());
+        assertFalse(thought.isBlank(), "thought should not be blank");
         assertFalse(response.hasCalls(), "simple prompt should finish immediately (no tool calls)");
+    }
+
+    private static @NonNull String requireThought(String thought) {
+        if (thought != null) {
+            return thought;
+        }
+        throw new AssertionError("thought should not be null");
     }
 }

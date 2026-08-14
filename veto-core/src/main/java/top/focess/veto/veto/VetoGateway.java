@@ -22,7 +22,8 @@ import top.focess.veto.observability.AuditLogger;
 @Service
 public class VetoGateway {
 
-    private static final Logger log = LoggerFactory.getLogger(VetoGateway.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.veto.VetoGateway");
 
     private final @NonNull VetoGatewayConfiguration config;
     private final @NonNull LlamaCppBridge llamaCppBridge;
@@ -110,7 +111,7 @@ public class VetoGateway {
 
             // Step 2: SLM semantic analysis (for complex structural enforcement)
             String slmAnalysis = "";
-            String llmGuidedPayload = payload;
+            String llmGuidedPayload = deterministicReport.redactedPayload();
 
             if (llamaCppBridge.isAvailable()) {
                 try {
@@ -129,8 +130,6 @@ public class VetoGateway {
                     log.error("Local SLM failed (OOM/error); applying deterministic fallback.", e);
                     llmGuidedPayload = deterministicReport.redactedPayload();
                 }
-            } else {
-                llmGuidedPayload = deterministicReport.redactedPayload();
             }
 
             // Step 3: Structural constraint enforcement
@@ -166,7 +165,7 @@ public class VetoGateway {
                     finalPayload,
                     diff,
                     previousRecordHash(),
-                    decision == VetoDecision.REDACT || decision == VetoDecision.BLOCK);
+                    decision == VetoDecision.REDACT);
 
             if (wasRedacted) {
                 totalRedactions.addAndGet(deterministicReport.getTotalRedactions());
@@ -184,7 +183,8 @@ public class VetoGateway {
 
         } catch (Exception e) {
             log.error("gateway VetoGateway: Processing error  - falling back to BLOCK", e);
-            auditLogger.logError(dagPayloadId, requestId, componentSource, e.getMessage());
+            String detail = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+            auditLogger.logError(dagPayloadId, requestId, componentSource, detail);
             return VetoResult.block("Veto gateway processing error: " + e.getMessage());
         }
     }

@@ -3,7 +3,6 @@ package top.focess.veto.group;
 import java.util.HashMap;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 import top.focess.veto.model.tier.ModelTier;
@@ -43,7 +42,7 @@ public class SkillsetProperties {
     }
 
     /** The config for a skillset, or {@code null} if the skillset has no override. */
-    public @Nullable SkillsetConfig forSkillset(@Nullable String name) {
+    public SkillsetConfig forSkillset(String name) {
         if (name == null) {
             return null;
         }
@@ -53,22 +52,22 @@ public class SkillsetProperties {
     /** Per-skillset overrides for a Mate's tier and system-prompt base. */
     public static class SkillsetConfig {
 
-        private @Nullable ModelTier tier;
-        private @Nullable String systemPromptBase;
+        private ModelTier tier;
+        private String systemPromptBase;
 
-        public @Nullable ModelTier getTier() {
+        public ModelTier getTier() {
             return tier;
         }
 
-        public void setTier(@Nullable ModelTier tier) {
+        public void setTier(ModelTier tier) {
             this.tier = tier;
         }
 
-        public @Nullable String getSystemPromptBase() {
+        public String getSystemPromptBase() {
             return systemPromptBase;
         }
 
-        public void setSystemPromptBase(@Nullable String systemPromptBase) {
+        public void setSystemPromptBase(String systemPromptBase) {
             this.systemPromptBase = systemPromptBase;
         }
     }

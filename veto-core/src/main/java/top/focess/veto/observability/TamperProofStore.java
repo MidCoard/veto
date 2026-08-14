@@ -10,7 +10,6 @@ import java.util.*;
 import javax.crypto.*;
 import javax.crypto.spec.GCMParameterSpec;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -24,7 +23,8 @@ import top.focess.veto.model.AuditRecord;
 @Component
 public class TamperProofStore {
 
-    private static final Logger log = LoggerFactory.getLogger(TamperProofStore.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.observability.TamperProofStore");
 
     private static final String STORE_FILE_PREFIX = "veto-audit-";
     private static final String STORE_FILE_SUFFIX = ".enc";
@@ -40,9 +40,7 @@ public class TamperProofStore {
     // In-memory hash chain tail (last record's hash for integrity)
     private volatile @NonNull String chainTailHash = "";
 
-    public
-    @NonNull
-    TamperProofStore(
+    public TamperProofStore(
             @NonNull ObservabilityConfiguration config, @NonNull DiffCalculator diffCalculator) {
         this.config = config;
         this.auditDir = Path.of(config.getAuditLogPath());
@@ -170,7 +168,11 @@ public class TamperProofStore {
                     Files.newDirectoryStream(
                             auditDir, STORE_FILE_PREFIX + "*" + STORE_FILE_SUFFIX)) {
                 for (Path file : stream) {
-                    String fileName = file.getFileName().toString();
+                    Path namePath = file.getFileName();
+                    if (namePath == null) {
+                        continue;
+                    }
+                    String fileName = namePath.toString();
                     LocalDate fileDate = extractDate(fileName);
                     if (fileDate != null && !fileDate.isBefore(from) && !fileDate.isAfter(to)) {
                         byte[] encrypted = Files.readAllBytes(file);
@@ -202,7 +204,7 @@ public class TamperProofStore {
                 String.valueOf(record.isVetoApplied()));
     }
 
-    private @NonNull byte[] encryptRecord(@NonNull String plaintext) throws Exception {
+    private byte @NonNull [] encryptRecord(@NonNull String plaintext) throws Exception {
         if (!config.isEncryptionEnabled()) {
             return plaintext.getBytes(StandardCharsets.UTF_8);
         }
@@ -222,7 +224,7 @@ public class TamperProofStore {
         return Base64.getEncoder().encodeToString(combined).getBytes(StandardCharsets.UTF_8);
     }
 
-    private @NonNull String decryptRecord(@NonNull byte[] encryptedBlob) throws Exception {
+    private @NonNull String decryptRecord(byte @NonNull [] encryptedBlob) throws Exception {
         if (!config.isEncryptionEnabled()) {
             return new String(encryptedBlob, StandardCharsets.UTF_8);
         }
@@ -298,7 +300,7 @@ public class TamperProofStore {
         }
     }
 
-    private @Nullable LocalDate extractDate(@NonNull String fileName) {
+    private LocalDate extractDate(@NonNull String fileName) {
         try {
             String dateStr = fileName.replace(STORE_FILE_PREFIX, "").replace(STORE_FILE_SUFFIX, "");
             return LocalDate.parse(dateStr, DateTimeFormatter.ISO_LOCAL_DATE);

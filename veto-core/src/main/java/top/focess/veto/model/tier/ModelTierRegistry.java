@@ -1,7 +1,6 @@
 package top.focess.veto.model.tier;
 
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
 /**
  * Resolves a {@link ModelTier} to its concrete {@link ModelBinding} from a user's <em>active</em>
@@ -37,5 +36,5 @@ public interface ModelTierRegistry {
      * @param username the session owner
      * @return the active profile name, or {@code null} if the user has no active profile
      */
-    @Nullable String activeProfile(@NonNull String username);
+    String activeProfile(@NonNull String username);
 }

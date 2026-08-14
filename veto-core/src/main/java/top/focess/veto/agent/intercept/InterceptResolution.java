@@ -2,7 +2,6 @@ package top.focess.veto.agent.intercept;
 
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
 /**
  * The user's resolution of a veto pause, delivered via the veto endpoint and used to complete the
@@ -21,14 +20,10 @@ import org.jspecify.annotations.Nullable;
  *     explicitly choose otherwise (screening_model.md §4.2, §8).
  */
 public record InterceptResolution(
-        @NonNull VetoOption option,
-        @Nullable Map<String, Object> editedArgs,
-        boolean maskObservation) {
+        @NonNull VetoOption option, Map<String, Object> editedArgs, boolean maskObservation) {
 
     /** Compact constructor — back-compat for callers that do not specify masking. */
-    public
-    @NonNull
-    InterceptResolution(@NonNull VetoOption option, @Nullable Map<String, Object> editedArgs) {
+    public InterceptResolution(@NonNull VetoOption option, Map<String, Object> editedArgs) {
         this(option, editedArgs, true);
     }
 

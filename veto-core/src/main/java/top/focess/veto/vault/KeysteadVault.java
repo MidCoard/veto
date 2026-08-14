@@ -13,7 +13,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -47,7 +46,8 @@ import top.focess.keystead.service.VaultService;
 @Service
 public class KeysteadVault {
 
-    private static final Logger log = LoggerFactory.getLogger(KeysteadVault.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.vault.KeysteadVault");
 
     private final @NonNull Path vaultBase;
     private final @NonNull VaultService vaultService = new DefaultVaultService();
@@ -130,7 +130,7 @@ public class KeysteadVault {
      */
     public void deleteVaultStore(@NonNull String username) {
         logout(username);
-        Path path = vaultBase.resolve(username);
+        Path path = userVaultDirectory(username);
         if (!Files.exists(path)) {
             return;
         }
@@ -149,7 +149,7 @@ public class KeysteadVault {
 
                             @Override
                             public @NonNull FileVisitResult postVisitDirectory(
-                                    @NonNull Path d, @Nullable IOException exc) throws IOException {
+                                    @NonNull Path d, IOException exc) throws IOException {
                                 Files.delete(d);
                                 return FileVisitResult.CONTINUE;
                             }
@@ -162,7 +162,7 @@ public class KeysteadVault {
             log.warn(
                     "KeysteadVault: could not fully delete vault store for '{}': {}",
                     username,
-                    e.getMessage());
+                    String.valueOf(e.getMessage()));
         }
     }
 
@@ -203,7 +203,7 @@ public class KeysteadVault {
     }
 
     /** The currently authenticated username, or {@code null} if none/unlocked. */
-    public @Nullable String currentUser() {
+    public String currentUser() {
         String user = UserContext.get();
         if (user != null && handles.containsKey(user)) {
             return user;
@@ -278,7 +278,10 @@ public class KeysteadVault {
         }
     }
 
-    /** Lists all credential titles (keys). */
+    /**
+     * Lists all credential titles (keys). The current handle is borrowed and owned by the vault.
+     */
+    @SuppressWarnings("resource")
     public @NonNull Set<String> listTitles() {
         VaultHandle handle = currentHandle();
         synchronized (handle) {
@@ -309,7 +312,7 @@ public class KeysteadVault {
 
     // ── internals ──────────────────────────────────────────────────────────
 
-    private @Nullable SecretId findNoteByTitle(@NonNull VaultHandle handle, @NonNull String title) {
+    private SecretId findNoteByTitle(@NonNull VaultHandle handle, @NonNull String title) {
         return handle.listSecrets().stream()
                 .filter(
                         m ->
@@ -321,12 +324,26 @@ public class KeysteadVault {
     }
 
     private @NonNull Path vaultPath(@NonNull String username) {
-        return vaultBase.resolve(username).resolve("vault.keystead");
+        return userVaultDirectory(username).resolve("vault.keystead");
+    }
+
+    private @NonNull Path userVaultDirectory(@NonNull String username) {
+        if (!UserRegistry.isValidUsername(username)) {
+            throw new IllegalArgumentException("Invalid vault username");
+        }
+        Path normalizedBase = vaultBase.toAbsolutePath().normalize();
+        Path directory = normalizedBase.resolve(username).normalize();
+        if (!normalizedBase.equals(directory.getParent())) {
+            throw new IllegalArgumentException("Invalid vault username");
+        }
+        return directory;
     }
 
     private void ensureVaultDir(@NonNull String username) {
         try {
-            Files.createDirectories(vaultBase.resolve(username));
+            // userVaultDirectory validates one safe child of vaultBase.
+            //noinspection tainting
+            Files.createDirectories(userVaultDirectory(username));
         } catch (IOException e) {
             throw new UncheckedIOException(
                     "Could not create vault directory for user '" + username + "'", e);
@@ -338,6 +355,7 @@ public class KeysteadVault {
     }
 
     /** Thrown when an operation is attempted on a locked vault. */
+    @SuppressWarnings("serial")
     public static class VaultLockedException extends RuntimeException {
         public VaultLockedException(@NonNull String message) {
             super(message);

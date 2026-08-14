@@ -25,15 +25,16 @@ import org.springframework.stereotype.Component;
 @Component
 public class SystemPromptResolver {
 
-    private static final Logger log = LoggerFactory.getLogger(SystemPromptResolver.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.agent.identity.SystemPromptResolver");
 
-    private static final String RESOURCE = "veto/default-system-prompt.md";
+    private static final @NonNull String RESOURCE = "veto/default-system-prompt.md";
 
     /** §4.1 default agent name. */
-    public static final String NAME = "VetoCoreAgent";
+    public static final @NonNull String NAME = "VetoCoreAgent";
 
     /** §4.1 default agent description. */
-    public static final String DESCRIPTION =
+    public static final @NonNull String DESCRIPTION =
             "General-purpose engineering assistant for workspace and code automation.";
 
     private final @NonNull String defaultPrompt;

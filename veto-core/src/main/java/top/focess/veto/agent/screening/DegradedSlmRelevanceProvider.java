@@ -8,7 +8,7 @@ import top.focess.veto.llm.core.ToolCall;
 public class DegradedSlmRelevanceProvider implements SlmRelevanceProvider {
     @Override
     public @NonNull Relevance relevance(
-            @NonNull ToolCall call, @NonNull ToolDefinition def, @NonNull String thought) {
+            @NonNull ToolCall call, @NonNull ToolDefinition def, String thought) {
         return Relevance.HIGH;
     }
 }

@@ -4,7 +4,6 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.llm.core.ToolCall;
 
 /**
@@ -20,7 +19,7 @@ public record TurnRecord(
         int turnNumber,
         @NonNull TurnType type,
         @NonNull Map<String, Object> payload,
-        @Nullable Instant timestamp) {
+        Instant timestamp) {
 
     public TurnRecord {
         // Null-tolerant unmodifiable copy: the payload schema has OPTIONAL fields (e.g. a
@@ -30,6 +29,16 @@ public record TurnRecord(
         if (timestamp == null) {
             timestamp = Instant.now();
         }
+    }
+
+    /** The canonical constructor normalizes a missing timestamp before publication. */
+    @Override
+    public @NonNull Instant timestamp() {
+        Instant normalized = timestamp;
+        if (normalized == null) {
+            throw new IllegalStateException("Turn timestamp was not normalized");
+        }
+        return normalized;
     }
 
     // ── Factories ───────────────────────────────────────────────────────────
@@ -46,6 +55,19 @@ public record TurnRecord(
     /** A user prompt ({@code payload.content}). */
     public static @NonNull TurnRecord userPrompt(int turnNumber, @NonNull String content) {
         return new TurnRecord(turnNumber, TurnType.USER_PROMPT, Map.of("content", content), null);
+    }
+
+    /**
+     * A literal {@code continue} entered after a breaker trip. {@code content} preserves exactly
+     * what the user typed for audit/UI; {@code resume_context} lets the prompt compiler render a
+     * self-contained continuation request even when token budgeting trimmed the earlier task.
+     */
+    public static @NonNull TurnRecord breakerContinuation(
+            int turnNumber, @NonNull String content, @NonNull String resumeContext) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("content", content);
+        payload.put("resume_context", resumeContext);
+        return new TurnRecord(turnNumber, TurnType.USER_PROMPT, payload, null);
     }
 
     /** A user interrupt/feedback ({@code payload.feedback}). */
@@ -72,7 +94,7 @@ public record TurnRecord(
     /** A tool call the agent issued ({@code payload.call_id/tool_name/args}). */
     public static @NonNull TurnRecord toolCall(int turnNumber, @NonNull ToolCall call) {
         Map<String, Object> p = new LinkedHashMap<>();
-        p.put("call_id", call.callId());
+        p.put("call_id", call.requireCallId());
         p.put("tool_name", call.toolName());
         p.put("args", call.args());
         return new TurnRecord(turnNumber, TurnType.TOOL_CALL, p, null);
@@ -82,11 +104,13 @@ public record TurnRecord(
      * The framed observation returned for a tool call ({@code payload.call_id/content/success}).
      */
     public static @NonNull TurnRecord toolResponse(
-            int turnNumber, @Nullable String callId, @NonNull String content, boolean success) {
+            int turnNumber, String callId, @NonNull String content, boolean success) {
         // callId is OPTIONAL (absent for synthetic observations — guided-escape, llm-error,
         // tool-not-found), so Map.of's null-hostile builder would throw; use a null-tolerant map.
         Map<String, Object> p = new LinkedHashMap<>();
-        p.put("call_id", callId);
+        if (callId != null) {
+            p.put("call_id", callId);
+        }
         p.put("content", content);
         p.put("success", success);
         return new TurnRecord(turnNumber, TurnType.TOOL_RESPONSE, p, null);

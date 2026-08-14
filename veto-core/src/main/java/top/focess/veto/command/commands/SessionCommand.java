@@ -36,12 +36,12 @@ public class SessionCommand extends VetoCommand {
                 (sender, args) -> {
                     VetoCommandSender s = vetoSender(sender);
                     if (s == null) return CommandResult.REFUSE;
-                    String pattern = args.get("pattern");
+                    String pattern = requiredArg(args.get("pattern"), "pattern");
                     String requestedName = args.get("name");
                     try {
                         SessionEntity session =
                                 service.createSession(
-                                        s.username(), pattern, requestedName, s.cwd());
+                                        s.requireUsername(), pattern, requestedName, s.cwd());
                         s.output(
                                 "Session '"
                                         + session.getName()
@@ -53,7 +53,10 @@ public class SessionCommand extends VetoCommand {
                         // activate() trivially passes.
                         if (service.activeSession(s.terminalId()).isEmpty()) {
                             service.activate(
-                                    s.terminalId(), session.getName(), s.username(), s.cwd());
+                                    s.terminalId(),
+                                    session.getName(),
+                                    s.requireUsername(),
+                                    s.cwd());
                             s.output("Activated session '" + session.getName() + "'.");
                         }
                         return CommandResult.ALLOW;
@@ -71,7 +74,8 @@ public class SessionCommand extends VetoCommand {
                 (sender, args) -> {
                     VetoCommandSender s = vetoSender(sender);
                     if (s == null) return CommandResult.REFUSE;
-                    List<SessionEntity> sessions = service.listSessions(s.username(), s.cwd());
+                    List<SessionEntity> sessions =
+                            service.listSessions(s.requireUsername(), s.cwd());
                     if (sessions.isEmpty()) {
                         s.output(
                                 "No sessions in this workspace ('"
@@ -96,10 +100,10 @@ public class SessionCommand extends VetoCommand {
                 (sender, args) -> {
                     VetoCommandSender s = vetoSender(sender);
                     if (s == null) return CommandResult.REFUSE;
-                    String n = args.get("name");
+                    String n = requiredArg(args.get("name"), "name");
                     try {
                         Optional<LlmConfig> cfg =
-                                service.activate(s.terminalId(), n, s.username(), s.cwd());
+                                service.activate(s.terminalId(), n, s.requireUsername(), s.cwd());
                         if (cfg.isEmpty()) {
                             s.output("Session has no primary agent.");
                             return CommandResult.REFUSE;
@@ -156,20 +160,19 @@ public class SessionCommand extends VetoCommand {
     }
 
     private @NonNull List<CommandCompletion> completeSessionName(
-            @NonNull CommandSender sender, @NonNull Command cmd, @NonNull String[] argv) {
+            @NonNull CommandSender sender, @NonNull Command cmd, @NonNull String @NonNull [] argv) {
         if (!LOGGED_IN.test(sender)) return List.of();
         VetoCommandSender v = (VetoCommandSender) sender;
-        String u = v.username();
+        String u = v.requireUsername();
         String prefix = argv.length > 0 ? argv[argv.length - 1].toLowerCase() : "";
         return service.listSessions(u, v.cwd()).stream()
                 .filter(se -> se.getName().toLowerCase().startsWith(prefix))
                 .map(
-                        se ->
-                                CommandCompletion.of(
-                                        se.getName(),
-                                        se.getLastActiveAt() == null
-                                                ? ""
-                                                : se.getLastActiveAt().toString()))
+                        se -> {
+                            java.time.Instant lastActive = se.getLastActiveAt();
+                            return CommandCompletion.of(
+                                    se.getName(), lastActive == null ? "" : lastActive.toString());
+                        })
                 .toList();
     }
 

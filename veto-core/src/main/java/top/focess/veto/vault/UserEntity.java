@@ -11,19 +11,19 @@ public class UserEntity {
 
     @Id
     @Column(length = 64)
-    private @NonNull String username;
+    private @NonNull String username = "";
 
     @Column(name = "password_hash", nullable = false)
-    private byte @NonNull [] passwordHash;
+    private byte @NonNull [] passwordHash = new byte[0];
 
     @Column(name = "password_salt", nullable = false)
-    private byte @NonNull [] passwordSalt;
+    private byte @NonNull [] passwordSalt = new byte[0];
 
     @Column(length = 16, nullable = false)
-    private @NonNull String role;
+    private @NonNull String role = "";
 
     @Column(name = "created_at", nullable = false)
-    private @NonNull Instant createdAt;
+    private @NonNull Instant createdAt = Instant.EPOCH;
 
     protected UserEntity() {}
 

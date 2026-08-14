@@ -22,14 +22,14 @@ import org.jspecify.annotations.NonNull;
  */
 public class PathResolver {
 
-    private final @NonNull List<WorkspaceRoot> roots;
+    private final @NonNull List<@NonNull WorkspaceRoot> roots;
     private final @NonNull PathMode pathMode;
     private final int currentRootIndex;
 
-    public
-    @NonNull
-    PathResolver(
-            @NonNull List<WorkspaceRoot> roots, @NonNull PathMode pathMode, int currentRootIndex) {
+    public PathResolver(
+            @NonNull List<@NonNull WorkspaceRoot> roots,
+            @NonNull PathMode pathMode,
+            int currentRootIndex) {
         this.roots = roots;
         this.pathMode = pathMode;
         this.currentRootIndex = currentRootIndex;

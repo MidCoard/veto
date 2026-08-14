@@ -24,7 +24,7 @@ public final class AnsiEscapes {
      * opener would otherwise be eaten by the two-byte Fe rule), then CSI (incl. the 8-bit form),
      * charset designators, then remaining two-byte Fe escapes.
      */
-    private static final Pattern ESCAPE_PATTERN =
+    private static final @NonNull Pattern ESCAPE_PATTERN =
             Pattern.compile(
                     "\\u001B\\][^\\u0007\\u001B]*(?:\\u0007|\\u001B\\\\)"
                             + "|\\u001B\\[[0-?]*[ -/]*[@-~]"

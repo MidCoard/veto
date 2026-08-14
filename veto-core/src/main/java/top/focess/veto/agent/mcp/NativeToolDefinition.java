@@ -15,7 +15,7 @@ public record NativeToolDefinition(
         @NonNull RiskCategory risk,
         boolean requiresSemanticScreening,
         @NonNull Class<?> argsClass,
-        @NonNull Map<String, ParamCategory> paramHints)
+        @NonNull Map<@NonNull String, @NonNull ParamCategory> paramHints)
         implements ToolDefinition {
 
     @Override
@@ -24,12 +24,12 @@ public record NativeToolDefinition(
     }
 
     @Override
-    public @NonNull List<String> examples() {
+    public @NonNull List<@NonNull String> examples() {
         return ToolDocs.examplesOf(argsClass);
     }
 
     @Override
-    public @NonNull List<String> returnExamples() {
+    public @NonNull List<@NonNull String> returnExamples() {
         return ToolDocs.returnExamplesOf(argsClass);
     }
 

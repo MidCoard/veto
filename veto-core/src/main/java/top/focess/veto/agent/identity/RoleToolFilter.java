@@ -42,18 +42,18 @@ import top.focess.veto.agent.mcp.ToolEngine;
 public class RoleToolFilter {
 
     /** Leader-only arrangement tools - never exposed to STANDALONE or MATE. */
-    private static final Set<String> ARRANGE =
+    private static final @NonNull Set<@NonNull String> ARRANGE =
             Set.of("create_node", "remove_node", "post_message", "disband_group");
 
     /** All group tools - never exposed to a MATE (it neither delegates nor arranges). */
-    private static final Set<String> GROUP =
+    private static final @NonNull Set<@NonNull String> GROUP =
             Set.of("create_group", "create_node", "remove_node", "post_message", "disband_group");
 
     /**
      * The Leader's strict allow-list: read-only investigation + arrangement + the always-on meta
      * tools. No file-write, no command exec, no memory, no create_group.
      */
-    private static final Set<String> LEADER_ALLOWED =
+    private static final @NonNull Set<@NonNull String> LEADER_ALLOWED =
             Set.of(
                     "view_file",
                     "grep_search",

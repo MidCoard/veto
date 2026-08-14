@@ -9,10 +9,10 @@ import com.sun.jna.platform.win32.WinNT;
 import java.util.Arrays;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import top.focess.veto.agent.mcp.ToolDocs;
 
 /**
  * The Part 5 §4.1 kernel-level sandbox hard wall — a wall-attacher that wraps a {@link
@@ -39,7 +39,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class KernelSandboxSubstrate {
 
-    private static final Logger log = LoggerFactory.getLogger(KernelSandboxSubstrate.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.sandbox.KernelSandboxSubstrate");
 
     /** Detect the current OS at class-load time. */
     private static final String OS = System.getProperty("os.name", "").toLowerCase();
@@ -48,9 +49,9 @@ public class KernelSandboxSubstrate {
     private static final boolean IS_LINUX =
             OS.contains("nix") || OS.contains("nux") || OS.contains("linux");
 
-    private final @Nullable WindowsKernel32 windowsKernel;
-    private final @Nullable LinuxLibc linuxLibc;
-    private final @Nullable Kernel32 windowsStdKernel;
+    private final WindowsKernel32 windowsKernel;
+    private final LinuxLibc linuxLibc;
+    private final Kernel32 windowsStdKernel;
 
     public KernelSandboxSubstrate() {
         WindowsKernel32 w = null;
@@ -58,11 +59,11 @@ public class KernelSandboxSubstrate {
         Kernel32 wk = null;
         try {
             if (IS_WINDOWS) {
-                w = Native.load("kernel32", WindowsKernel32.class);
-                wk = Native.load("kernel32", Kernel32.class);
+                w = Native.load("kernel32", ToolDocs.nonNullClass(WindowsKernel32.class));
+                wk = Native.load("kernel32", ToolDocs.nonNullClass(Kernel32.class));
                 log.info("KernelSandboxSubstrate: Windows kernel32 loaded");
             } else if (IS_LINUX) {
-                l = Native.load("c", LinuxLibc.class);
+                l = Native.load("c", ToolDocs.nonNullClass(LinuxLibc.class));
                 log.info("KernelSandboxSubstrate: Linux libc loaded");
             } else {
                 log.warn(
@@ -70,7 +71,7 @@ public class KernelSandboxSubstrate {
                         OS);
             }
         } catch (Throwable t) {
-            log.warn("KernelSandboxSubstrate: JNA load failed: {}", t.getMessage());
+            log.warn("KernelSandboxSubstrate: JNA load failed: {}", String.valueOf(t.getMessage()));
         }
         this.windowsKernel = w;
         this.windowsStdKernel = wk;
@@ -79,21 +80,21 @@ public class KernelSandboxSubstrate {
 
     /** Whether this substrate can actually attach a kernel wall on the current platform. */
     public boolean isAvailable() {
-        if (IS_WINDOWS) {
-            return windowsKernel != null;
-        }
-        if (IS_LINUX) {
+        if (!IS_WINDOWS) {
             // The MVP path is a stub — production would need libseccomp + libcgroup.
             return false;
         }
-        return false;
+        return windowsKernel != null;
     }
 
     /**
      * Attach the kernel-level wall to a spawned process. The base substrate has already started the
      * process. On unsupported platforms this is a no-op.
      */
-    public void attach(@NonNull Process process) {
+    public void attach(Process process) {
+        if (process == null) {
+            return;
+        }
         if (IS_WINDOWS && windowsKernel != null) {
             attachWindowsJobObject(process);
         } else if (IS_LINUX) {
@@ -104,7 +105,7 @@ public class KernelSandboxSubstrate {
             // we ship a wrapper-detecting helper (see spawnLinuxWrapper below).
             attachLinuxCgroup(process);
         } else {
-            log.debug("KernelSandboxSubstrate: no kernel wall available (platform={})", OS);
+            log.debug("Kernel wall attach skipped because platform {} is unsupported", OS);
         }
     }
 
@@ -125,7 +126,7 @@ public class KernelSandboxSubstrate {
      * @param process the spawned process to attach to; must not be null
      * @return a closeable handle, or null on unsupported platforms
      */
-    public @Nullable AutoCloseable attachWithHandle(@NonNull Process process) {
+    public AutoCloseable attachWithHandle(@NonNull Process process) {
         if (IS_WINDOWS && windowsKernel != null) {
             return attachWindowsJobObjectWithHandle(process);
         } else if (IS_LINUX) {
@@ -133,7 +134,7 @@ public class KernelSandboxSubstrate {
             // Linux cgroup doesn't need explicit cleanup (cgroup is per-pid)
             return null;
         } else {
-            log.debug("KernelSandboxSubstrate: no kernel wall available (platform={})", OS);
+            log.debug("Legacy kernel handle unavailable on platform {}", OS);
             return null;
         }
     }
@@ -143,8 +144,12 @@ public class KernelSandboxSubstrate {
      * {@code unshare(1)} to give the child a fresh mount/pid/net namespace. If {@code unshare} is
      * not on PATH, returns the original ProcessBuilder unchanged.
      */
-    public static @NonNull ProcessBuilder spawnLinuxWrapper(@Nullable List<String> command) {
-        if (!IS_LINUX || command == null || command.isEmpty()) {
+    public static @NonNull ProcessBuilder spawnLinuxWrapper(
+            @NonNull List<@NonNull String> command) {
+        if (command.isEmpty()) {
+            throw new IllegalArgumentException("command must not be empty");
+        }
+        if (!IS_LINUX) {
             return new ProcessBuilder(command);
         }
         // Probe: try `which unshare` via the PATH. If absent, fall back to a direct exec.
@@ -183,7 +188,7 @@ public class KernelSandboxSubstrate {
      */
     public static java.util.@NonNull List<String> wrapWithSystemdRun(
             java.util.@NonNull List<String> command,
-            @Nullable String systemdRunPath,
+            String systemdRunPath,
             java.util.@NonNull List<Integer> baselineSyscalls) {
         if (systemdRunPath == null || command.isEmpty()) {
             return command;
@@ -225,7 +230,7 @@ public class KernelSandboxSubstrate {
     }
 
     /** x86_64 syscall number to name mapping (baseline subset). */
-    private static final java.util.Map<Integer, String> SYSCALL_NAMES =
+    private static final java.util.@NonNull Map<Integer, String> SYSCALL_NAMES =
             java.util.Map.ofEntries(
                     java.util.Map.entry(0, "read"),
                     java.util.Map.entry(1, "write"),
@@ -242,7 +247,7 @@ public class KernelSandboxSubstrate {
                     java.util.Map.entry(231, "exit_group"),
                     java.util.Map.entry(318, "getrandom"));
 
-    private static @Nullable String locateOnPath(@NonNull String name) {
+    private static String locateOnPath(@NonNull String name) {
         String path = System.getenv("PATH");
         if (path == null) {
             return null;
@@ -284,7 +289,9 @@ public class KernelSandboxSubstrate {
             java.nio.file.Files.writeString(
                     childCgroup.toPath().resolve("cgroup.procs"), Integer.toString(pid));
         } catch (java.io.IOException e) {
-            log.debug("KernelSandboxSubstrate: cgroup.procs write failed: {}", e.getMessage());
+            log.debug(
+                    "KernelSandboxSubstrate: cgroup.procs write failed: {}",
+                    String.valueOf(e.getMessage()));
             return;
         }
         // 3. Apply default limits (memory.max = 512 MiB, cpu.max = 50% of one CPU).
@@ -293,7 +300,9 @@ public class KernelSandboxSubstrate {
             java.nio.file.Files.writeString(
                     childCgroup.toPath().resolve("cpu.max"), "50000 100000");
         } catch (java.io.IOException e) {
-            log.debug("KernelSandboxSubstrate: cgroup limit write failed: {}", e.getMessage());
+            log.debug(
+                    "KernelSandboxSubstrate: cgroup limit write failed: {}",
+                    String.valueOf(e.getMessage()));
         }
         log.info(
                 "KernelSandboxSubstrate: attached Linux cgroup wall to pid {} at {}",
@@ -302,19 +311,40 @@ public class KernelSandboxSubstrate {
     }
 
     private void attachWindowsJobObject(@NonNull Process process) {
-        // Delegate to attachWithHandle but don't track the handle (legacy API, leaks the handle)
-        attachWindowsJobObjectWithHandle(process);
+        // The handle must stay open while the child runs; process.onExit owns its eventual close.
+        //noinspection resource
+        AutoCloseable handle = attachWindowsJobObjectWithHandle(process);
+        if (handle == null) {
+            return;
+        }
+        process.onExit()
+                .whenComplete(
+                        (ignoredProcess, ignoredFailure) -> {
+                            try {
+                                handle.close();
+                            } catch (Exception e) {
+                                log.warn(
+                                        "KernelSandboxSubstrate: failed to close Windows Job Object",
+                                        e);
+                            }
+                        });
     }
 
     /**
      * Attach Windows Job Object and return a closeable handle. The handle should be closed after
      * the process exits to release the kernel Job Object resource.
      */
-    private @Nullable AutoCloseable attachWindowsJobObjectWithHandle(@NonNull Process process) {
+    private AutoCloseable attachWindowsJobObjectWithHandle(@NonNull Process process) {
+        WindowsKernel32 kernel = windowsKernel;
+        Kernel32 kernel32 = windowsStdKernel;
+        if (kernel == null || kernel32 == null) {
+            log.warn("KernelSandboxSubstrate: Windows kernel32 is unavailable");
+            return null;
+        }
         try {
             // 1. Create a Job Object with KILL_ON_JOB_CLOSE so the process is terminated
             //    if the parent (the Veto process) crashes.
-            WinNT.HANDLE job = windowsKernel.CreateJobObjectW(null, null);
+            WinNT.HANDLE job = kernel.CreateJobObjectW(null, null);
             if (job == null) {
                 log.warn("KernelSandboxSubstrate: CreateJobObjectW failed (returned null)");
                 return null;
@@ -338,13 +368,12 @@ public class KernelSandboxSubstrate {
             info.BasicLimitInformation.LimitFlags =
                     JobObjectLimit.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
             info.write();
-            if (!windowsKernel.SetInformationJobObject(
+            if (!kernel.SetInformationJobObject(
                     job, JobObjectInfoClass.JobObjectExtendedLimitInformation, info, info.size())) {
                 log.warn("KernelSandboxSubstrate: SetInformationJobObject failed");
                 return null;
             }
             // 3. AssignProcessToJobObject — pin the child to the Job.
-            Kernel32 kernel32 = windowsStdKernel;
             int pid = getProcessId(process);
             if (pid <= 0) {
                 log.warn("KernelSandboxSubstrate: could not determine child pid");
@@ -378,7 +407,7 @@ public class KernelSandboxSubstrate {
                         handleAddr);
                 return null;
             }
-            if (!windowsKernel.AssignProcessToJobObject(job, handle)) {
+            if (!kernel.AssignProcessToJobObject(job, handle)) {
                 log.warn(
                         "KernelSandboxSubstrate: AssignProcessToJobObject failed (Win32 error={})",
                         kernel32.GetLastError());
@@ -388,7 +417,9 @@ public class KernelSandboxSubstrate {
             // Return a closeable that closes the Job handle
             return new JobHandle(job, pid);
         } catch (Throwable t) {
-            log.warn("KernelSandboxSubstrate: Windows attach failed: {}", t.getMessage());
+            log.warn(
+                    "KernelSandboxSubstrate: Windows attach failed: {}",
+                    String.valueOf(t.getMessage()));
             return null;
         }
     }
@@ -410,7 +441,9 @@ public class KernelSandboxSubstrate {
                     windowsStdKernel.CloseHandle(job);
                     log.debug("KernelSandboxSubstrate: closed Job handle for pid {}", pid);
                 } catch (Throwable t) {
-                    log.warn("KernelSandboxSubstrate: CloseHandle failed: {}", t.getMessage());
+                    log.warn(
+                            "KernelSandboxSubstrate: CloseHandle failed: {}",
+                            String.valueOf(t.getMessage()));
                 }
             }
         }
@@ -420,7 +453,7 @@ public class KernelSandboxSubstrate {
      * Cross-platform process-id extraction via the public {@link Process#pid()} API (Java 9+).
      * Returns -1 if the process is null or the pid cannot be coerced to a positive int.
      */
-    private static int getProcessId(@Nullable Process process) {
+    private static int getProcessId(Process process) {
         if (process == null) {
             return -1;
         }
@@ -430,24 +463,24 @@ public class KernelSandboxSubstrate {
                 return (int) pid;
             }
         } catch (Throwable t) {
-            log.debug("KernelSandboxSubstrate: process.pid() failed: {}", t.getMessage());
+            log.debug(
+                    "KernelSandboxSubstrate: process.pid() failed: {}",
+                    String.valueOf(t.getMessage()));
         }
         return -1;
     }
 
     /** Minimal JNA interface for the Windows kernel32 calls we need. */
     public interface WindowsKernel32 extends Library {
-        WinNT.@Nullable HANDLE CreateJobObjectW(
-                @Nullable Pointer lpJobAttributes, @Nullable String lpName);
+        WinNT.HANDLE CreateJobObjectW(Pointer lpJobAttributes, String lpName);
 
         boolean SetInformationJobObject(
-                WinNT.@Nullable HANDLE hJob,
+                WinNT.HANDLE hJob,
                 int JobObjectInfoClass,
-                @Nullable Structure lpJobObjectInfo,
+                Structure lpJobObjectInfo,
                 int cbJobObjectInfoLength);
 
-        boolean AssignProcessToJobObject(
-                WinNT.@Nullable HANDLE hJob, WinNT.@Nullable HANDLE hProcess);
+        boolean AssignProcessToJobObject(WinNT.HANDLE hJob, WinNT.HANDLE hProcess);
     }
 
     /** Minimal JNA interface for the Linux libc calls we need (extensible to libseccomp). */

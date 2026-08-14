@@ -8,6 +8,7 @@ import org.jspecify.annotations.NonNull;
  * provider rejected the credential) so user-facing error mapping can point at the vault instead of
  * the provider. Never retryable (inherited).
  */
+@SuppressWarnings("serial")
 public class CredentialException extends LlmAuthException {
 
     /**
@@ -15,9 +16,7 @@ public class CredentialException extends LlmAuthException {
      *
      * @param message the detail message
      */
-    public
-    @NonNull
-    CredentialException(@NonNull String message) {
+    public CredentialException(@NonNull String message) {
         super(message);
     }
 
@@ -27,9 +26,7 @@ public class CredentialException extends LlmAuthException {
      * @param message the detail message
      * @param cause the cause of the exception
      */
-    public
-    @NonNull
-    CredentialException(@NonNull String message, @NonNull Throwable cause) {
+    public CredentialException(@NonNull String message, @NonNull Throwable cause) {
         super(message, cause);
     }
 }

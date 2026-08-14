@@ -57,16 +57,4 @@ public record ToolDefinition(
             @NonNull String longDescription) {
         this(name, description, inputSchema, examples, longDescription, List.of());
     }
-
-    public ToolDefinition {
-        if (examples == null) {
-            examples = List.of();
-        }
-        if (longDescription == null) {
-            longDescription = "";
-        }
-        if (returnExamples == null) {
-            returnExamples = List.of();
-        }
-    }
 }

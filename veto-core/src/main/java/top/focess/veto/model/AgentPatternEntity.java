@@ -4,7 +4,6 @@ import jakarta.persistence.*;
 import java.time.Instant;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTier;
 
@@ -25,33 +24,33 @@ import top.focess.veto.model.tier.ModelTier;
 @Table(name = "agent_patterns")
 public class AgentPatternEntity {
 
-    @Id private @NonNull String id;
+    @Id private @NonNull String id = "";
 
     @Column(nullable = false)
-    private @NonNull String name;
+    private @NonNull String name = "";
 
     @Enumerated(EnumType.STRING)
     @Column(name = "tier", nullable = false)
-    private @NonNull ModelTier tier;
+    private @NonNull ModelTier tier = ModelTier.TOP;
 
     @Column(name = "owner", nullable = false)
-    private @NonNull String owner;
+    private @NonNull String owner = "";
 
     @Column(name = "created_at", nullable = false)
-    private @NonNull Instant createdAt;
+    private @NonNull Instant createdAt = Instant.EPOCH;
 
     // ── vestigial NOT NULL cache (populated from the tier binding at create; not live-read) ──
     @Column(nullable = false)
-    private @NonNull String provider;
+    private @NonNull String provider = "";
 
     @Column(nullable = false)
-    private @NonNull String model;
+    private @NonNull String model = "";
 
     @Column(name = "top_model", nullable = false)
-    private @NonNull String topModel;
+    private @NonNull String topModel = "";
 
     @Column(name = "credential_key", nullable = false)
-    private @NonNull String credentialKey;
+    private @NonNull String credentialKey = "";
 
     protected AgentPatternEntity() {}
 
@@ -93,7 +92,6 @@ public class AgentPatternEntity {
             @NonNull String owner) {
         this.id = UUID.randomUUID().toString();
         this.name = name;
-        this.tier = ModelTier.TOP;
         this.owner = owner;
         this.createdAt = Instant.now();
         this.provider = provider;
@@ -139,7 +137,7 @@ public class AgentPatternEntity {
     }
 
     /** The cached provider (value of the tier binding at create; not live). */
-    public @Nullable String getProvider() {
+    public String getProvider() {
         return provider;
     }
 
@@ -148,7 +146,7 @@ public class AgentPatternEntity {
     }
 
     /** The cached model (value of the tier binding at create; not live). */
-    public @Nullable String getModel() {
+    public String getModel() {
         return model;
     }
 
@@ -157,7 +155,7 @@ public class AgentPatternEntity {
     }
 
     /** The cached credential-key (value of the tier binding at create; not live). */
-    public @Nullable String getCredentialKey() {
+    public String getCredentialKey() {
         return credentialKey;
     }
 
@@ -166,7 +164,7 @@ public class AgentPatternEntity {
     }
 
     /** The cached top model (mirror of {@link #getModel()}; retained for NOT NULL compat). */
-    public @Nullable String getTopModel() {
+    public String getTopModel() {
         return topModel;
     }
 

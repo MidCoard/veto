@@ -3,7 +3,6 @@ package top.focess.veto.command.commands;
 import java.util.Arrays;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.command.Command;
@@ -46,7 +45,8 @@ import top.focess.veto.model.tier.ModelTierRegistry;
  */
 public class ModelTierCommand extends VetoCommand {
 
-    private static final Logger log = LoggerFactory.getLogger(ModelTierCommand.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.command.commands.ModelTierCommand");
 
     private final @NonNull ModelTierProfileService profileService;
     private final @NonNull ModelTierRegistry tierRegistry;
@@ -80,9 +80,9 @@ public class ModelTierCommand extends VetoCommand {
                 (sender, args) -> {
                     VetoCommandSender s = vetoSender(sender);
                     if (s == null) return CommandResult.REFUSE;
-                    String name = args.get("name");
+                    String name = requiredArg(args.get("name"), "name");
                     try {
-                        profileService.createProfile(s.username(), name);
+                        profileService.createProfile(s.requireUsername(), name);
                     } catch (IllegalArgumentException e) {
                         s.output("Cannot create profile: " + e.getMessage());
                         return CommandResult.REFUSE;
@@ -98,10 +98,10 @@ public class ModelTierCommand extends VetoCommand {
                 (sender, args) -> {
                     VetoCommandSender s = vetoSender(sender);
                     if (s == null) return CommandResult.REFUSE;
-                    String profile = args.get("profile");
-                    ModelTier tier = args.get("tier");
-                    String fieldStr = args.get("field");
-                    String value = args.get("value");
+                    String profile = requiredArg(args.get("profile"), "profile");
+                    ModelTier tier = requiredArg(args.get("tier"), "tier");
+                    String fieldStr = requiredArg(args.get("field"), "field");
+                    String value = requiredArg(args.get("value"), "value");
                     ModelTierField field = ModelTierField.fromField(fieldStr);
                     if (field == null) {
                         s.output(
@@ -112,7 +112,7 @@ public class ModelTierCommand extends VetoCommand {
                         return CommandResult.REFUSE;
                     }
                     try {
-                        profileService.setField(s.username(), profile, tier, field, value);
+                        profileService.setField(s.requireUsername(), profile, tier, field, value);
                     } catch (IllegalArgumentException e) {
                         s.output("Cannot set " + fieldStr + ": " + e.getMessage());
                         return CommandResult.REFUSE;
@@ -131,9 +131,9 @@ public class ModelTierCommand extends VetoCommand {
                 (sender, args) -> {
                     VetoCommandSender s = vetoSender(sender);
                     if (s == null) return CommandResult.REFUSE;
-                    String profile = args.get("profile");
+                    String profile = requiredArg(args.get("profile"), "profile");
                     try {
-                        profileService.activateProfile(s.username(), profile);
+                        profileService.activateProfile(s.requireUsername(), profile);
                     } catch (IllegalArgumentException e) {
                         s.output("Cannot activate profile: " + e.getMessage());
                         return CommandResult.REFUSE;
@@ -149,7 +149,7 @@ public class ModelTierCommand extends VetoCommand {
                 (sender, args) -> {
                     VetoCommandSender s = vetoSender(sender);
                     if (s == null) return CommandResult.REFUSE;
-                    var profiles = profileService.listProfiles(s.username());
+                    var profiles = profileService.listProfiles(s.requireUsername());
                     if (profiles.isEmpty()) {
                         s.output("No model-tier profiles. Use /modeltier create <name> ...");
                         return CommandResult.ALLOW;
@@ -170,19 +170,19 @@ public class ModelTierCommand extends VetoCommand {
                     String profile = args.get("profile");
                     String target = profile;
                     if (target == null) {
-                        target = tierRegistry.activeProfile(s.username());
+                        target = tierRegistry.activeProfile(s.requireUsername());
                         if (target == null) {
                             s.output("No active profile. Use /modeltier use <profile>.");
                             return CommandResult.ALLOW;
                         }
                     }
-                    var found = profileService.profile(s.username(), target);
+                    var found = profileService.profile(s.requireUsername(), target);
                     if (found.isEmpty()) {
                         s.output("Profile not found: " + target);
                         return CommandResult.REFUSE;
                     }
                     s.output("Profile: " + target + (found.get().isActive() ? " (active)" : ""));
-                    var bindings = profileService.bindings(s.username(), target);
+                    var bindings = profileService.bindings(s.requireUsername(), target);
                     if (bindings.isEmpty()) {
                         s.output(
                                 "  No tier bindings configured. Use /modeltier set "
@@ -203,8 +203,8 @@ public class ModelTierCommand extends VetoCommand {
                 (sender, args) -> {
                     VetoCommandSender s = vetoSender(sender);
                     if (s == null) return CommandResult.REFUSE;
-                    String profile = args.get("profile");
-                    if (profileService.deleteProfile(s.username(), profile)) {
+                    String profile = requiredArg(args.get("profile"), "profile");
+                    if (profileService.deleteProfile(s.requireUsername(), profile)) {
                         s.output("Profile '" + profile + "' deleted.");
                         return CommandResult.ALLOW;
                     }
@@ -231,14 +231,14 @@ public class ModelTierCommand extends VetoCommand {
                 + (b.getMaxOutputTokens() != null ? b.getMaxOutputTokens() : "(unset)");
     }
 
-    private static @NonNull String orUnset(@Nullable Object o) {
+    private static @NonNull String orUnset(Object o) {
         return o != null ? String.valueOf(o) : "(unset)";
     }
 
     private @NonNull List<CommandCompletion> completeProfile(
-            @NonNull CommandSender sender, @NonNull Command cmd, @NonNull String[] argv) {
+            @NonNull CommandSender sender, @NonNull Command cmd, @NonNull String @NonNull [] argv) {
         if (!LOGGED_IN.test(sender)) return List.of();
-        String u = ((VetoCommandSender) sender).username();
+        String u = ((VetoCommandSender) sender).requireUsername();
         String prefix = argv.length > 0 ? argv[argv.length - 1].toLowerCase() : "";
         return profileService.listProfiles(u).stream()
                 .map(p -> p.getName())
@@ -248,10 +248,11 @@ public class ModelTierCommand extends VetoCommand {
     }
 
     private @NonNull List<CommandCompletion> completeField(
-            @NonNull CommandSender sender, @NonNull Command cmd, @NonNull String[] argv) {
+            @NonNull CommandSender sender, @NonNull Command cmd, @NonNull String @NonNull [] argv) {
         if (!LOGGED_IN.test(sender)) return List.of();
         String prefix = argv.length > 0 ? argv[argv.length - 1].toLowerCase() : "";
-        return Arrays.stream(ModelTierField.values())
+        var fields = top.focess.veto.util.Nullness.requireNonNull(ModelTierField.values());
+        return Arrays.stream(fields)
                 .map(ModelTierField::field)
                 .filter(f -> f.startsWith(prefix))
                 .map(f -> CommandCompletion.of(f, "field"))

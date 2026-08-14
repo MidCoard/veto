@@ -26,25 +26,26 @@ import top.focess.veto.client.core.Theme;
  */
 public final class TerminalStatus {
 
-    private final Theme theme;
-    private final Status status;
-    private final ClientSession session;
+    private final @NonNull Theme theme;
+    private final @NonNull Status status;
+    private final @NonNull ClientSession session;
 
     /**
      * Guards all calls to {@link Status#update} — JLine's {@code Status} is not thread-safe, and
      * both the consumer thread and the main thread can call {@link #refresh}/{@link #clear}
      * concurrently via {@code ClientSession.fire}.
      */
-    private final Object statusLock = new Object();
+    private final @NonNull Object statusLock = new Object();
 
     public TerminalStatus(
             @NonNull Terminal terminal, @NonNull ClientSession session, @NonNull Theme theme) {
         this.theme = theme;
         this.session = session;
-        this.status = Status.getStatus(terminal);
-        if (this.status == null) {
+        Status detectedStatus = Status.getStatus(terminal);
+        if (detectedStatus == null) {
             throw new IllegalStateException("Terminal does not support JLine Status bar");
         }
+        this.status = detectedStatus;
     }
 
     /**

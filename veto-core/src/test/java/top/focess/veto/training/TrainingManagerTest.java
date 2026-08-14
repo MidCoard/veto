@@ -3,14 +3,22 @@ package top.focess.veto.training;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /** Unit tests for {@link TrainingManager} lifecycle and progress tracking. */
+@SuppressWarnings("initialization.field.uninitialized")
 class TrainingManagerTest {
 
-    private TrainingManager manager;
-    private TrainingConfiguration config;
+    private @NonNull TrainingManager manager;
+    private @NonNull TrainingConfiguration config;
+
+    @TempDir private @NonNull Path tempDir;
 
     @BeforeEach
     void setUp() {
@@ -64,6 +72,31 @@ class TrainingManagerTest {
     void testDeployNonexistentModel() {
         boolean deployed = manager.deployModel("/nonexistent/model.gguf");
         assertFalse(deployed);
+    }
+
+    @Test
+    void deployRejectsNonGgufFile() throws IOException {
+        Path trainingDir = Files.createDirectories(tempDir.resolve("training"));
+        Path modelDir = tempDir.resolve("deployed");
+        Path source = Files.writeString(trainingDir.resolve("payload.txt"), "not a model");
+        config.setTrainingDir(trainingDir.toString());
+        config.setModelOutputDir(modelDir.toString());
+
+        assertFalse(manager.deployModel(source.toString()));
+    }
+
+    @Test
+    void deployCopiesRegularGgufInsideConfiguredRoot() throws IOException {
+        Path trainingDir = Files.createDirectories(tempDir.resolve("training"));
+        Path modelDir = tempDir.resolve("deployed");
+        Path source = Files.write(trainingDir.resolve("candidate.gguf"), new byte[] {1, 2, 3});
+        config.setTrainingDir(trainingDir.toString());
+        config.setModelOutputDir(modelDir.toString());
+
+        assertTrue(manager.deployModel(source.toString()));
+        assertArrayEquals(
+                new byte[] {1, 2, 3},
+                Files.readAllBytes(modelDir.resolve(config.getDefaultGgufName())));
     }
 
     @Test

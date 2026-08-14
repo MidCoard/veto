@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.mcp.AgentTool;
 import top.focess.veto.agent.mcp.Doc;
@@ -14,6 +13,7 @@ import top.focess.veto.agent.mcp.SecurityHint;
 import top.focess.veto.agent.mcp.ToolCallContext;
 import top.focess.veto.agent.mcp.ToolCallContextHolder;
 import top.focess.veto.agent.mcp.ToolDoc;
+import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.memory.embedder.Embedder;
 
 /**
@@ -74,33 +74,32 @@ public final class MemoryTools {
             })
     public static final class RecallSession implements AgentTool<RecallSession.Args> {
 
-        private final MemoryStore store;
+        private final @NonNull MemoryStore store;
 
-        public RecallSession(MemoryStore store) {
+        public RecallSession(@NonNull MemoryStore store) {
             this.store = store;
         }
 
         public record Args(
                 @SecurityHint(ParamCategory.GENERIC) @Doc("Free-text query to embed + search.")
                         String query,
-                @Nullable @Doc("Optional top-K; defaults to 5.") Integer topK,
-                @Nullable @Doc("Optional score floor in [0,1]; defaults to 0.5.")
-                        Float scoreFloor) {}
+                @Doc("Optional top-K; defaults to 5.") Integer topK,
+                @Doc("Optional score floor in [0,1]; defaults to 0.5.") Float scoreFloor) {}
 
         @Override
-        public String getName() {
+        public @NonNull String getName() {
             return "recall_session";
         }
 
         @Override
-        public String getDescription() {
+        public @NonNull String getDescription() {
             return "Search the current session's captured long-term memory (Session LTM) "
                     + "for relevant context.";
         }
 
         @Override
-        public Class<Args> getArgsClass() {
-            return Args.class;
+        public @NonNull Class<Args> getArgsClass() {
+            return ToolDocs.nonNullClass(Args.class);
         }
 
         @Override
@@ -172,33 +171,32 @@ public final class MemoryTools {
             })
     public static final class RecallInsights implements AgentTool<RecallInsights.Args> {
 
-        private final MemoryStore store;
+        private final @NonNull MemoryStore store;
 
-        public RecallInsights(MemoryStore store) {
+        public RecallInsights(@NonNull MemoryStore store) {
             this.store = store;
         }
 
         public record Args(
                 @SecurityHint(ParamCategory.GENERIC) @Doc("Free-text query to embed + search.")
                         String query,
-                @Nullable @Doc("Optional top-K; defaults to 5.") Integer topK,
-                @Nullable @Doc("Optional score floor in [0,1]; defaults to 0.5.")
-                        Float scoreFloor) {}
+                @Doc("Optional top-K; defaults to 5.") Integer topK,
+                @Doc("Optional score floor in [0,1]; defaults to 0.5.") Float scoreFloor) {}
 
         @Override
-        public String getName() {
+        public @NonNull String getName() {
             return "recall_insights";
         }
 
         @Override
-        public String getDescription() {
+        public @NonNull String getDescription() {
             return "Search the user's distilled insights (Cross-Session LTM) for knowledge "
                     + "that spans multiple sessions.";
         }
 
         @Override
-        public Class<Args> getArgsClass() {
-            return Args.class;
+        public @NonNull Class<Args> getArgsClass() {
+            return ToolDocs.nonNullClass(Args.class);
         }
 
         @Override
@@ -276,10 +274,10 @@ public final class MemoryTools {
             })
     public static final class WriteInsight implements AgentTool<WriteInsight.Args> {
 
-        private final MemoryStore store;
-        private final Embedder embedder;
+        private final @NonNull MemoryStore store;
+        private final @NonNull Embedder embedder;
 
-        public WriteInsight(MemoryStore store, Embedder embedder) {
+        public WriteInsight(@NonNull MemoryStore store, @NonNull Embedder embedder) {
             this.store = store;
             this.embedder = embedder;
         }
@@ -288,24 +286,24 @@ public final class MemoryTools {
                 @SecurityHint(ParamCategory.GENERIC)
                         @Doc("The insight text to remember (already masked).")
                         String content,
-                @Nullable @Doc("Optional Session-LTM memory id to promote (curating boundary).")
+                @Doc("Optional Session-LTM memory id to promote (curating boundary).")
                         String promoteMemoryId,
-                @Nullable @Doc("Optional project id to tag the insight with.") String projectId) {}
+                @Doc("Optional project id to tag the insight with.") String projectId) {}
 
         @Override
-        public String getName() {
+        public @NonNull String getName() {
             return "write_insight";
         }
 
         @Override
-        public String getDescription() {
+        public @NonNull String getDescription() {
             return "Write a new insight to Cross-Session LTM, or promote a Session LTM memory "
                     + "to cross-session visibility.";
         }
 
         @Override
-        public Class<Args> getArgsClass() {
-            return Args.class;
+        public @NonNull Class<Args> getArgsClass() {
+            return ToolDocs.nonNullClass(Args.class);
         }
 
         @Override
@@ -379,9 +377,9 @@ public final class MemoryTools {
             returnExamples = {"forgotten", "invalid memoryId; nothing forgotten"})
     public static final class Forget implements AgentTool<Forget.Args> {
 
-        private final MemoryStore store;
+        private final @NonNull MemoryStore store;
 
-        public Forget(MemoryStore store) {
+        public Forget(@NonNull MemoryStore store) {
             this.store = store;
         }
 
@@ -390,18 +388,18 @@ public final class MemoryTools {
                         String memoryId) {}
 
         @Override
-        public String getName() {
+        public @NonNull String getName() {
             return "forget";
         }
 
         @Override
-        public String getDescription() {
+        public @NonNull String getDescription() {
             return "Explicitly drop a memory from the agent's long-term store.";
         }
 
         @Override
-        public Class<Args> getArgsClass() {
-            return Args.class;
+        public @NonNull Class<Args> getArgsClass() {
+            return ToolDocs.nonNullClass(Args.class);
         }
 
         @Override
@@ -424,13 +422,14 @@ public final class MemoryTools {
      * framing is applied at ingress via {@code IngressDefense}).
      */
     public static @NonNull String formatResults(@NonNull List<MemoryStore.ScoredMemory> results) {
-        if (results == null || results.isEmpty()) {
+        if (results.isEmpty()) {
             return "no matching memories";
         }
         StringBuilder sb = new StringBuilder();
         sb.append(results.size()).append(" memories:\n");
         for (MemoryStore.ScoredMemory sm : results) {
             Memory m = sm.memory();
+            Memory.SourceRef sourceRef = m.sourceRef();
             sb.append("- [")
                     .append(m.tier())
                     .append("] id=")
@@ -438,12 +437,12 @@ public final class MemoryTools {
                     .append(" score=")
                     .append(String.format("%.3f", sm.score()))
                     .append(" src=")
-                    .append(m.sourceRef().kind())
+                    .append(sourceRef == null ? "unknown" : sourceRef.kind())
                     .append(" ")
-                    .append(m.sourceRef().attrs())
+                    .append(sourceRef == null ? Map.of() : sourceRef.attrs())
                     .append("\n");
             String content = m.content();
-            if (content != null && content.length() > 240) {
+            if (content.length() > 240) {
                 content = content.substring(0, 240) + "...";
             }
             sb.append("  ").append(content).append("\n");
@@ -452,10 +451,7 @@ public final class MemoryTools {
     }
 
     /** Helper to extract the userId from a context map (the agent's per-session user). */
-    public static @NonNull UUID userIdFromContext(@NonNull Map<String, Object> context) {
-        if (context == null) {
-            return null;
-        }
+    public static UUID userIdFromContext(@NonNull Map<String, Object> context) {
         Object v = context.get("userId");
         return v instanceof UUID u ? u : null;
     }
@@ -472,7 +468,7 @@ public final class MemoryTools {
     }
 
     /** Parses a UUID string, returning null on blank/invalid input (for optional id args). */
-    static @Nullable UUID parseUuidOrNull(@Nullable String s) {
+    static UUID parseUuidOrNull(String s) {
         if (s == null || s.isBlank()) {
             return null;
         }

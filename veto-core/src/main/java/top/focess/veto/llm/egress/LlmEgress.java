@@ -1,5 +1,6 @@
 package top.focess.veto.llm.egress;
 
+import org.jspecify.annotations.NonNull;
 import top.focess.veto.llm.core.ProviderType;
 
 /**
@@ -17,5 +18,8 @@ public interface LlmEgress {
      * @param defaultBaseUrl the provider's own base URL (may be {@code null} for the SDK default)
      * @param credentialKey the Vault reference for the credential (never the secret value)
      */
-    EgressEndpoint resolve(ProviderType providerType, String defaultBaseUrl, String credentialKey);
+    @NonNull EgressEndpoint resolve(
+            @NonNull ProviderType providerType,
+            String defaultBaseUrl,
+            @NonNull String credentialKey);
 }

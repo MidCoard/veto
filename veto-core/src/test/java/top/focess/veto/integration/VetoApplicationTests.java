@@ -3,14 +3,17 @@ package top.focess.veto.integration;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.Map;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.ApplicationContext;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.*;
 import org.springframework.web.client.RestTemplate;
 import top.focess.veto.VetoApplication;
+import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.mcp.ToolEngine;
 import top.focess.veto.agent.mcp.ToolEngineImpl;
 import top.focess.veto.bus.DeltaBroker;
@@ -36,21 +39,25 @@ import top.focess.veto.veto.VetoGatewayConfiguration;
             "veto.vault.master-key-env=veto.test.key",
             "veto.observability.encryption-enabled=false"
         })
+@SuppressWarnings("initialization.fields.uninitialized")
 class VetoApplicationTests {
+
+    private static final @NonNull ParameterizedTypeReference<Map<String, Object>> MAP_RESPONSE =
+            new ParameterizedTypeReference<>() {};
 
     @LocalServerPort private int port;
 
-    @Autowired private ApplicationContext context;
+    @Autowired private @NonNull ApplicationContext context;
 
-    @Autowired private VetoGateway vetoGateway;
+    @Autowired private @NonNull VetoGateway vetoGateway;
 
-    @Autowired private SemanticRedactor semanticRedactor;
+    @Autowired private @NonNull SemanticRedactor semanticRedactor;
 
-    @Autowired private GBNFGrammarEngine grammarEngine;
+    @Autowired private @NonNull GBNFGrammarEngine grammarEngine;
 
-    private final RestTemplate restTemplate = new RestTemplate();
+    private final @NonNull RestTemplate restTemplate = new RestTemplate();
 
-    @Autowired private AuditLogger auditLogger;
+    @Autowired private @NonNull AuditLogger auditLogger;
 
     public VetoApplicationTests() {
         // Don't throw exceptions on non-2xx responses - we test error codes
@@ -74,21 +81,23 @@ class VetoApplicationTests {
 
     @Test
     void mcpEngineImplIsActive() {
-        ToolEngine engine = context.getBean(ToolEngine.class);
+        ToolEngine engine = context.getBean(ToolDocs.nonNullClass(ToolEngine.class));
         assertNotNull(engine, "ToolEngine bean should exist");
         assertInstanceOf(
-                ToolEngineImpl.class, engine, "ToolEngineImpl should win over DefaultToolEngine");
+                ToolDocs.nonNullClass(ToolEngineImpl.class),
+                engine,
+                "ToolEngineImpl should win over DefaultToolEngine");
     }
 
     @Test
     void deltaBrokerIsInjected() {
-        DeltaBroker broker = context.getBean(DeltaBroker.class);
+        DeltaBroker broker = context.getBean(ToolDocs.nonNullClass(DeltaBroker.class));
         assertNotNull(broker, "DeltaBroker should be injected as a Spring bean");
     }
 
     @Test
     void turnLogServiceIsInjected() {
-        TurnLogService turnLog = context.getBean(TurnLogService.class);
+        TurnLogService turnLog = context.getBean(ToolDocs.nonNullClass(TurnLogService.class));
         assertNotNull(turnLog, "TurnLogService should be injected as a Spring bean");
     }
 
@@ -132,10 +141,10 @@ class VetoApplicationTests {
         VetoGateway disabledGateway =
                 new VetoGateway(
                         disabledConfig,
-                        context.getBean(LlamaCppBridge.class),
+                        context.getBean(ToolDocs.nonNullClass(LlamaCppBridge.class)),
                         semanticRedactor,
                         grammarEngine,
-                        context.getBean(AuditLogger.class));
+                        context.getBean(ToolDocs.nonNullClass(AuditLogger.class)));
 
         String sensitive = "Secret: my-api-key";
         VetoGateway.VetoResult result =
@@ -188,13 +197,14 @@ class VetoApplicationTests {
     @Test
     void restEndpointVetoStatus() {
         String url = "http://localhost:" + port + "/api/veto/status";
-        ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
+        @NonNull ResponseEntity<Map<String, Object>> response =
+                restTemplate.exchange(url, HttpMethod.GET, null, MAP_RESPONSE);
 
         assertEquals(HttpStatus.OK, response.getStatusCode(), "Status endpoint should return 200");
-        assertNotNull(response.getBody());
-        assertEquals("ok", response.getBody().get("status"));
-        assertNotNull(response.getBody().get("totalVetoes"));
-        assertNotNull(response.getBody().get("enabled"));
+        @NonNull Map<String, Object> body = requireBody(response);
+        assertEquals("ok", requireMapValue(body, "status"));
+        requireMapValue(body, "totalVetoes");
+        requireMapValue(body, "enabled");
     }
 
     @Test
@@ -206,12 +216,13 @@ class VetoApplicationTests {
         HttpEntity<Map<String, Object>> request =
                 new HttpEntity<>(Map.of("payload", "Test IP: 10.0.0.55 for processing"), headers);
 
-        ResponseEntity<Map> response = restTemplate.postForEntity(url, request, Map.class);
+        @NonNull ResponseEntity<Map<String, Object>> response =
+                restTemplate.exchange(url, HttpMethod.POST, request, MAP_RESPONSE);
 
         assertEquals(HttpStatus.OK, response.getStatusCode(), "Process endpoint should return 200");
-        assertNotNull(response.getBody());
-        assertTrue(response.getBody().containsKey("decision"));
-        assertTrue(response.getBody().containsKey("processedPayload"));
+        @NonNull Map<String, Object> body = requireBody(response);
+        assertTrue(body.containsKey("decision"));
+        assertTrue(body.containsKey("processedPayload"));
     }
 
     @Test
@@ -222,7 +233,8 @@ class VetoApplicationTests {
         headers.setContentType(MediaType.APPLICATION_JSON);
         HttpEntity<Map<String, Object>> request = new HttpEntity<>(Map.of("payload", ""), headers);
 
-        ResponseEntity<Map> response = restTemplate.postForEntity(url, request, Map.class);
+        @NonNull ResponseEntity<Map<String, Object>> response =
+                restTemplate.exchange(url, HttpMethod.POST, request, MAP_RESPONSE);
 
         assertEquals(
                 HttpStatus.BAD_REQUEST,
@@ -245,29 +257,54 @@ class VetoApplicationTests {
                                 Map.of("key", "value")),
                         headers);
 
-        ResponseEntity<Map> createResponse =
-                restTemplate.postForEntity(createUrl, createRequest, Map.class);
+        @NonNull ResponseEntity<Map<String, Object>> createResponse =
+                restTemplate.exchange(createUrl, HttpMethod.POST, createRequest, MAP_RESPONSE);
         assertEquals(HttpStatus.OK, createResponse.getStatusCode());
-        assertNotNull(createResponse.getBody());
-        String taskId = (String) createResponse.getBody().get("id");
-        assertNotNull(taskId, "Created task should have an ID");
+        @NonNull Map<String, Object> createBody = requireBody(createResponse);
+        String taskId = requireStringMapValue(createBody, "id");
 
         String getUrl = "http://localhost:" + port + "/api/tasks/" + taskId;
-        ResponseEntity<Map> getResponse = restTemplate.getForEntity(getUrl, Map.class);
+        @NonNull ResponseEntity<Map<String, Object>> getResponse =
+                restTemplate.exchange(getUrl, HttpMethod.GET, null, MAP_RESPONSE);
         assertEquals(HttpStatus.OK, getResponse.getStatusCode());
-        assertNotNull(getResponse.getBody());
-        assertEquals(taskId, getResponse.getBody().get("id"));
+        @NonNull Map<String, Object> getBody = requireBody(getResponse);
+        assertEquals(taskId, requireMapValue(getBody, "id"));
 
-        ResponseEntity<Map> listResponse = restTemplate.getForEntity(createUrl, Map.class);
+        @NonNull ResponseEntity<Map<String, Object>> listResponse =
+                restTemplate.exchange(createUrl, HttpMethod.GET, null, MAP_RESPONSE);
         assertEquals(HttpStatus.OK, listResponse.getStatusCode());
 
-        ResponseEntity<Map> deleteResponse =
-                restTemplate.exchange(getUrl, HttpMethod.DELETE, null, Map.class);
+        @NonNull ResponseEntity<Map<String, Object>> deleteResponse =
+                restTemplate.exchange(getUrl, HttpMethod.DELETE, null, MAP_RESPONSE);
         assertEquals(HttpStatus.OK, deleteResponse.getStatusCode());
 
-        ResponseEntity<Map> notFoundResponse =
-                restTemplate.getForEntity(
-                        "http://localhost:" + port + "/api/tasks/nonexistent", Map.class);
+        @NonNull ResponseEntity<Map<String, Object>> notFoundResponse =
+                restTemplate.exchange(
+                        "http://localhost:" + port + "/api/tasks/nonexistent",
+                        HttpMethod.GET,
+                        null,
+                        MAP_RESPONSE);
         assertEquals(HttpStatus.NOT_FOUND, notFoundResponse.getStatusCode());
+    }
+
+    private static <T extends @NonNull Object> @NonNull T requireBody(
+            @NonNull ResponseEntity<T> response) {
+        T body = response.getBody();
+        if (body == null) throw new AssertionError("Response body should not be null");
+        return body;
+    }
+
+    private static @NonNull Object requireMapValue(
+            @NonNull Map<String, Object> body, @NonNull String key) {
+        Object value = body.get(key);
+        if (value == null) throw new AssertionError("Response field should not be null: " + key);
+        return value;
+    }
+
+    private static @NonNull String requireStringMapValue(
+            @NonNull Map<String, Object> body, @NonNull String key) {
+        Object value = requireMapValue(body, key);
+        if (value instanceof String stringValue) return stringValue;
+        throw new AssertionError("Response field should be a string: " + key);
     }
 }

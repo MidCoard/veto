@@ -13,7 +13,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -56,27 +55,28 @@ import top.focess.veto.llm.core.UniformLLMCaller;
 @Service
 public class AgentService {
 
-    private static final Logger log = LoggerFactory.getLogger(AgentService.class);
-    private static final Duration DEFAULT_AWAIT = Duration.ofMinutes(5);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.agent.AgentService");
+    private static final @NonNull Duration DEFAULT_AWAIT = Duration.ofMinutes(5);
 
-    private final ToolEngine mcpEngine;
-    private final HitlRegistry hitlRegistry;
-    private final IngressDefense ingressDefense;
-    private final PromptCompiler promptCompiler;
-    private final UniformLLMCaller caller;
-    private final ObjectMapper objectMapper;
-    private final List<LoopInterceptor> interceptors;
-    private final Workspace defaultWorkspace;
-    private final String pathMode;
-    private final RoleToolFilter roleToolFilter;
+    private final @NonNull ToolEngine mcpEngine;
+    private final @NonNull HitlRegistry hitlRegistry;
+    private final @NonNull IngressDefense ingressDefense;
+    private final @NonNull PromptCompiler promptCompiler;
+    private final @NonNull UniformLLMCaller caller;
+    private final @NonNull ObjectMapper objectMapper;
+    private final @NonNull List<@NonNull LoopInterceptor> interceptors;
+    private final @NonNull Workspace defaultWorkspace;
+    private final @NonNull String pathMode;
+    private final @NonNull RoleToolFilter roleToolFilter;
     private final long maxCallsPerEpisode;
-    private final DeployerPolicy deployerPolicy;
+    private final @NonNull DeployerPolicy deployerPolicy;
     // The Part-8 Delta-broker — optional (nullable in tests); when present, threaded into each
     // AgentRunner so loop emissions publish per-session DeltaFrames for transports to stream.
-    private final @Nullable DeltaBroker deltaBroker;
+    private final DeltaBroker deltaBroker;
     // The raw-turn write-through log — optional (nullable in tests); when present, threaded into
     // each AgentRunner so appendTurn persists to the raw-turn audit/replay log.
-    private final top.focess.veto.memory.@Nullable TurnLogService turnLogService;
+    private final top.focess.veto.memory.TurnLogService turnLogService;
     private final top.focess.veto.sandbox.@NonNull BackgroundTaskManager backgroundTaskManager;
 
     /**
@@ -85,9 +85,11 @@ public class AgentService {
      * {@link #userIdForOwner(String)} instead, so memories and turn logs attribute to the actual
      * session owner.
      */
-    static final UUID DEFAULT_USER_ID = UUID.fromString("00000000-0000-0000-0000-000000000000");
+    static final @NonNull UUID DEFAULT_USER_ID =
+            UUID.fromString("00000000-0000-0000-0000-000000000000");
 
-    private final ConcurrentHashMap<String, VetoAgent> agents = new ConcurrentHashMap<>();
+    private final @NonNull ConcurrentHashMap<@NonNull String, @NonNull VetoAgent> agents =
+            new ConcurrentHashMap<>();
 
     public AgentService(
             @NonNull ToolEngine mcpEngine,
@@ -96,15 +98,15 @@ public class AgentService {
             @NonNull PromptCompiler promptCompiler,
             @NonNull UniformLLMCaller caller,
             @Qualifier(LlmJacksonConfig.LLM_OBJECT_MAPPER) @NonNull ObjectMapper objectMapper,
-            @Nullable List<LoopInterceptor> interceptors,
+            List<LoopInterceptor> interceptors,
             @NonNull RoleToolFilter roleToolFilter,
             @Value("${veto.workspace.path-mode:REAL}") @NonNull String pathMode,
             @Value("${veto.breaker.max_calls_per_episode:50}") long maxCallsPerEpisode,
             @Value("${veto.security.deployer-policy:FULL_ACCESS}")
                     @NonNull String deployerPolicyRaw,
             @Value("${veto.security.screening-mode:STRICT}") @NonNull String screeningModeRaw,
-            @Nullable DeltaBroker deltaBroker,
-            top.focess.veto.memory.@Nullable TurnLogService turnLogService,
+            DeltaBroker deltaBroker,
+            top.focess.veto.memory.TurnLogService turnLogService,
             top.focess.veto.sandbox.@NonNull BackgroundTaskManager backgroundTaskManager) {
         this.mcpEngine = mcpEngine;
         this.hitlRegistry = hitlRegistry;
@@ -138,7 +140,7 @@ public class AgentService {
      * Resolves (or creates) the agent for the transport id, binds the model configuration, submits
      * the prompt, and blocks for the result. Returns the {@link AgentResult}.
      */
-    public AgentResult submit(
+    public @NonNull AgentResult submit(
             @NonNull String agentKey,
             @NonNull String prompt,
             AgentRunner.@NonNull LlmBinding binding) {
@@ -177,7 +179,7 @@ public class AgentService {
     }
 
     /** Synchronous submit with a live result message (for the terminal path). */
-    public AgentResult submit(
+    public @NonNull AgentResult submit(
             @NonNull String agentKey,
             @NonNull String prompt,
             AgentRunner.@NonNull LlmBinding binding,
@@ -198,12 +200,12 @@ public class AgentService {
      * broker will eventually sit between the agent and the wire; this is the direct in-process
      * handoff for the terminal path until then.
      */
-    public AgentResult submit(
+    public @NonNull AgentResult submit(
             @NonNull String agentKey,
             @NonNull String prompt,
             AgentRunner.@NonNull LlmBinding binding,
             @NonNull Duration timeout,
-            @Nullable Consumer<String> messageSink)
+            Consumer<String> messageSink)
             throws TimeoutException, InterruptedException {
         return submit(agentKey, prompt, binding, timeout, messageSink, null);
     }
@@ -215,13 +217,13 @@ public class AgentService {
      * finally (no leak across episodes / stale senders). The veto sink renders a picker; the user's
      * reply resolves the parked veto via {@link #resolveVeto}.
      */
-    public AgentResult submit(
+    public @NonNull AgentResult submit(
             @NonNull String agentKey,
             @NonNull String prompt,
             AgentRunner.@NonNull LlmBinding binding,
             @NonNull Duration timeout,
-            @Nullable Consumer<String> messageSink,
-            @Nullable Consumer<VetoPrompt> vetoSink)
+            Consumer<String> messageSink,
+            Consumer<VetoPrompt> vetoSink)
             throws TimeoutException, InterruptedException {
         return submit(agentKey, prompt, binding, timeout, messageSink, vetoSink, null);
     }
@@ -232,14 +234,14 @@ public class AgentService {
      * detached alongside the message and veto sinks so a transport sees the full thought-then-
      * message sequence for every turn with no leak across episodes.
      */
-    public AgentResult submit(
+    public @NonNull AgentResult submit(
             @NonNull String agentKey,
             @NonNull String prompt,
             AgentRunner.@NonNull LlmBinding binding,
             @NonNull Duration timeout,
-            @Nullable Consumer<String> messageSink,
-            @Nullable Consumer<VetoPrompt> vetoSink,
-            @Nullable Consumer<String> thoughtSink)
+            Consumer<String> messageSink,
+            Consumer<VetoPrompt> vetoSink,
+            Consumer<String> thoughtSink)
             throws TimeoutException, InterruptedException {
         return submit(
                 agentKey, prompt, binding, timeout, messageSink, vetoSink, thoughtSink, null, null);
@@ -254,16 +256,16 @@ public class AgentService {
      * call it belongs to by the self-describing "Observation (tool(args)) [...]" header
      * IngressDefense writes.
      */
-    public AgentResult submit(
+    public @NonNull AgentResult submit(
             @NonNull String agentKey,
             @NonNull String prompt,
             AgentRunner.@NonNull LlmBinding binding,
             @NonNull Duration timeout,
-            @Nullable Consumer<String> messageSink,
-            @Nullable Consumer<VetoPrompt> vetoSink,
-            @Nullable Consumer<String> thoughtSink,
-            @Nullable Consumer<AgentRunner.ToolCallEvent> toolCallSink,
-            @Nullable Consumer<AgentRunner.ToolResultEvent> toolResultSink)
+            Consumer<String> messageSink,
+            Consumer<VetoPrompt> vetoSink,
+            Consumer<String> thoughtSink,
+            Consumer<AgentRunner.ToolCallEvent> toolCallSink,
+            Consumer<AgentRunner.ToolResultEvent> toolResultSink)
             throws TimeoutException, InterruptedException {
         VetoAgent agent = agents.computeIfAbsent(agentKey, k -> createAgent(k, binding));
         agent.bind(binding);
@@ -317,7 +319,7 @@ public class AgentService {
      * @param userId the authenticated user's id (for memory/group isolation)
      * @return the agent result
      */
-    public AgentResult submit(
+    public @NonNull AgentResult submit(
             @NonNull String agentKey,
             @NonNull String prompt,
             AgentRunner.@NonNull LlmBinding binding,
@@ -337,7 +339,7 @@ public class AgentService {
      * interface attached to the session. Seeding runs before the first {@code submit} (the loop
      * parks on its action queue while IDLE), and is idempotent via {@link AgentRunner#seedHistory}.
      */
-    public Agent getOrCreateAgent(
+    public @NonNull Agent getOrCreateAgent(
             @NonNull String sessionId,
             AgentRunner.@NonNull LlmBinding binding,
             @NonNull List<TurnRecord> history,
@@ -357,12 +359,12 @@ public class AgentService {
      * AgentRunner#seedHistory}. The workspace is fixed at first creation; later calls with a
      * different {@code workspaceRoots} reuse the existing agent (and its original workspace).
      */
-    public Agent getOrCreateAgent(
+    public @NonNull Agent getOrCreateAgent(
             @NonNull String sessionId,
             AgentRunner.@NonNull LlmBinding binding,
             @NonNull List<TurnRecord> history,
             @NonNull UUID userId,
-            @Nullable String workspaceRoots) {
+            String workspaceRoots) {
         return getOrCreateAgent(sessionId, null, binding, history, userId, null, workspaceRoots);
     }
 
@@ -377,14 +379,14 @@ public class AgentService {
      *     threaded onto the runner's {@link top.focess.veto.agent.mcp.ToolCallContext} so group
      *     spawns resolve per-user. Null in legacy/test paths.
      */
-    public Agent getOrCreateAgent(
+    public @NonNull Agent getOrCreateAgent(
             @NonNull String sessionId,
-            @Nullable String primaryAgentId,
+            String primaryAgentId,
             AgentRunner.@NonNull LlmBinding binding,
             @NonNull List<TurnRecord> history,
             @NonNull UUID userId,
-            @Nullable String owner,
-            @Nullable String workspaceRoots) {
+            String owner,
+            String workspaceRoots) {
         boolean[] created = {false};
         Workspace workspace = buildWorkspace(workspaceRoots);
         VetoAgent agent =
@@ -396,7 +398,7 @@ public class AgentService {
                                     k, primaryAgentId, binding, userId, owner, workspace);
                         });
         agent.bind(binding);
-        if (created[0] && history != null && !history.isEmpty()) {
+        if (created[0] && !history.isEmpty()) {
             agent.seedHistory(history);
         }
         return agent;
@@ -429,7 +431,7 @@ public class AgentService {
     }
 
     /** The live agent for a transport id (for history / state inspection). */
-    public @Nullable VetoAgent agent(@NonNull String agentKey) {
+    public VetoAgent agent(@NonNull String agentKey) {
         return agents.get(agentKey);
     }
 
@@ -437,7 +439,7 @@ public class AgentService {
      * A live unmodifiable view of all managed agents (for the terminal facade's session inspection
      * — turn counts for the status bar / {@code /status}). Callers must not mutate.
      */
-    public Map<String, VetoAgent> agentsView() {
+    public @NonNull Map<@NonNull String, @NonNull VetoAgent> agentsView() {
         return Collections.unmodifiableMap(agents);
     }
 
@@ -456,14 +458,14 @@ public class AgentService {
         return createAgent(agentKey, binding, DEFAULT_USER_ID, defaultWorkspace);
     }
 
-    private VetoAgent createAgent(
+    private @NonNull VetoAgent createAgent(
             @NonNull String agentKey,
             AgentRunner.@NonNull LlmBinding binding,
             @NonNull UUID userId) {
         return createAgent(agentKey, binding, userId, defaultWorkspace);
     }
 
-    private VetoAgent createAgent(
+    private @NonNull VetoAgent createAgent(
             @NonNull String agentKey,
             AgentRunner.@NonNull LlmBinding binding,
             @NonNull UUID userId,
@@ -477,12 +479,12 @@ public class AgentService {
     // session_id column groups the session's 1+N agent streams. When primaryAgentId is null (legacy
     // /
     // test path) the runner keeps its constructor default (persona.id()) as the session id.
-    private VetoAgent createAgent(
+    private @NonNull VetoAgent createAgent(
             @NonNull String agentKey,
-            @Nullable String primaryAgentId,
+            String primaryAgentId,
             AgentRunner.@NonNull LlmBinding binding,
             @NonNull UUID userId,
-            @Nullable String owner,
+            String owner,
             @NonNull Workspace workspace) {
         AgentPersona persona = buildPersona(agentKey, primaryAgentId, binding);
         // Register this agent's workspace on the HITL registry under its persona id so grant
@@ -532,7 +534,8 @@ public class AgentService {
      * ProtectedSet} (Mates inherit screening via the Gateway; per-user isolation is not wired for
      * spawned Mates yet).
      */
-    public Agent createMate(AgentPersona persona, AgentRunner.LlmBinding binding) {
+    public @NonNull Agent createMate(
+            @NonNull AgentPersona persona, AgentRunner.@NonNull LlmBinding binding) {
         return createMate(persona, binding, DEFAULT_USER_ID, null, defaultWorkspace);
     }
 
@@ -541,7 +544,7 @@ public class AgentService {
      * Used by the group engine to spawn a Mate / one-shot Leader in the calling session's
      * workspace.
      */
-    public Agent createMate(
+    public @NonNull Agent createMate(
             @NonNull AgentPersona persona,
             AgentRunner.@NonNull LlmBinding binding,
             @NonNull Workspace workspace) {
@@ -552,7 +555,7 @@ public class AgentService {
      * Builds a Mate {@link Agent} with explicit user identity for multi-user tenant isolation. The
      * Mate inherits the Leader's userId so its memory capture is scoped to the same tenant.
      */
-    public Agent createMate(
+    public @NonNull Agent createMate(
             @NonNull AgentPersona persona,
             AgentRunner.@NonNull LlmBinding binding,
             @NonNull UUID userId) {
@@ -564,7 +567,7 @@ public class AgentService {
      * inherits the session's workspace so its tool calls resolve paths + match grants against the
      * same roots as the delegating agent.
      */
-    public Agent createMate(
+    public @NonNull Agent createMate(
             @NonNull AgentPersona persona,
             AgentRunner.@NonNull LlmBinding binding,
             @NonNull UUID userId,
@@ -580,11 +583,11 @@ public class AgentService {
      * {@link top.focess.veto.agent.mcp.ToolCallContext} so the Mate resolves its model against the
      * same user's active profile as the Leader.
      */
-    public Agent createMate(
+    public @NonNull Agent createMate(
             @NonNull AgentPersona persona,
             AgentRunner.@NonNull LlmBinding binding,
             @NonNull UUID userId,
-            @Nullable String owner,
+            String owner,
             @NonNull Workspace workspace) {
         // Re-scope the persona's tools to its role. The persona may have been built with the full
         // standalone manifest before its role (MATE/LEADER) was known; the RoleToolFilter narrows
@@ -649,8 +652,10 @@ public class AgentService {
     // verbatim so persisted turns group under the right agent stream and resume can find them;
     // absent
     // that (legacy/test path) we mint a fresh UUID just as before.
-    private AgentPersona buildPersona(
-            String agentKey, @Nullable String primaryAgentId, AgentRunner.LlmBinding binding) {
+    private @NonNull AgentPersona buildPersona(
+            @NonNull String agentKey,
+            String primaryAgentId,
+            AgentRunner.@NonNull LlmBinding binding) {
         Set<ToolDefinition> tools = roleToolFilter.resolve(Role.STANDALONE);
         String personaId = primaryAgentId != null ? primaryAgentId : UUID.randomUUID().toString();
         return new AgentPersona(
@@ -665,7 +670,7 @@ public class AgentService {
      * The fallback workspace agents resolve paths against when no session workspace is set (for
      * tests).
      */
-    public Workspace workspace() {
+    public @NonNull Workspace workspace() {
         return defaultWorkspace;
     }
 
@@ -688,7 +693,7 @@ public class AgentService {
      * Leader (the calling agent's persona id is read from the {@link
      * top.focess.veto.agent.mcp.ToolCallContextHolder}).
      */
-    public Workspace workspaceOf(@NonNull String agentId) {
+    public @NonNull Workspace workspaceOf(@NonNull String agentId) {
         return hitlRegistry.workspace(agentId);
     }
 
@@ -696,7 +701,7 @@ public class AgentService {
      * Builds a per-session workspace from a CSV of host paths. Null/blank falls back to the default
      * (JVM working dir) to avoid re-probing the filesystem on every call.
      */
-    public Workspace buildWorkspace(@Nullable String workspaceRoots) {
+    public @NonNull Workspace buildWorkspace(String workspaceRoots) {
         if (workspaceRoots == null || workspaceRoots.isBlank()) {
             return defaultWorkspace;
         }
@@ -706,7 +711,7 @@ public class AgentService {
     /**
      * The app's own config/audit paths the agent must never read (shielded under non-FULL_ACCESS).
      */
-    private static List<Path> systemProtectedPaths() {
+    private static @NonNull List<@NonNull Path> systemProtectedPaths() {
         return ProtectedSet.standardSystemProtected(Path.of(System.getProperty("user.dir", ".")));
     }
 
@@ -732,11 +737,12 @@ public class AgentService {
     }
 
     /** Parses the screening mode (case-insensitive; defaults to STRICT on blank/unknown). */
-    private static @NonNull ScreeningMode parseScreeningMode(@Nullable String raw) {
+    private static @NonNull ScreeningMode parseScreeningMode(String raw) {
         if (raw == null || raw.isBlank()) {
             return ScreeningMode.STRICT;
         }
-        for (ScreeningMode m : ScreeningMode.values()) {
+        var modes = top.focess.veto.util.Nullness.requireNonNull(ScreeningMode.values());
+        for (ScreeningMode m : modes) {
             if (m.name().equalsIgnoreCase(raw.trim())) {
                 return m;
             }

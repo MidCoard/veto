@@ -21,6 +21,12 @@ java {
     targetCompatibility = JavaVersion.VERSION_25
 }
 
+kotlin {
+    compilerOptions {
+        allWarningsAsErrors.set(true)
+    }
+}
+
 repositories {
     mavenCentral()
 }
@@ -30,8 +36,8 @@ val slf4jVersion: String by rootProject.extra
 val logbackVersion: String by rootProject.extra
 
 dependencies {
-    // JSpecify nullability annotations
-    compileOnly("org.jspecify:jspecify:1.0.0")
+    // JSpecify nullability contracts are part of normal compilation and reflection metadata.
+    implementation("org.jspecify:jspecify:1.0.0")
 
     // veto-protocol (wire types + shared interaction protocol + palette + logging).
     // Deliberately NOT veto-core (no Spring).
@@ -65,12 +71,15 @@ val generateVersion by tasks.registering {
         pkgDir.mkdirs()
         val sb = StringBuilder()
         sb.append("package ").append(pkg).append(";\n\n")
+        sb.append("import org.jspecify.annotations.NonNull;\n")
         sb.append("import top.focess.veto.contract.Version;\n\n")
         sb.append("/** Build-time generated version descriptor. Do not edit by hand. */\n")
         sb.append("public final class VetoVersion {\n")
         sb.append("    private VetoVersion() {}\n\n")
-        sb.append("    public static final String COMPONENT = \"").append(component).append("\";\n\n")
-        sb.append("    public static final Version VERSION = Version.parse(\"")
+        sb.append("    public static final @NonNull String COMPONENT = \"")
+                .append(component)
+                .append("\";\n\n")
+        sb.append("    public static final @NonNull Version VERSION = Version.parse(\"")
                 .append(versionStr)
                 .append("\");\n")
         sb.append("}\n")
@@ -105,6 +114,12 @@ tasks.withType<JavaCompile> {
     options.encoding = "UTF-8"
     options.compilerArgs.add("-encoding")
     options.compilerArgs.add("UTF-8")
+}
+
+// src/test currently contains HintTest, a manual live-backend harness with main(), not a JUnit
+// test. Keep compiling it (including NullAway) without treating zero discovered tests as failure.
+tasks.named<Test>("test") {
+    failOnNoDiscoveredTests = false
 }
 
 tasks.named<JavaExec>("run") {

@@ -21,18 +21,18 @@ import top.focess.veto.llm.core.ToolCall;
  */
 public class DangerComputation {
 
-    private static final Set<String> EXEC_ALLOWLIST =
+    private static final @NonNull Set<String> EXEC_ALLOWLIST =
             Set.of(
                     "mvn", "gradle", "gradlew", "npm", "npx", "node", "git", "python", "python3",
                     "gcc", "g++", "make", "java");
 
     /** Windows launcher extensions stripped before allowlist/blacklist matching. */
-    private static final List<String> WINDOWS_EXEC_EXTENSIONS =
+    private static final @NonNull List<String> WINDOWS_EXEC_EXTENSIONS =
             List.of(".exe", ".cmd", ".bat", ".com");
 
     // curl is deliberately NOT blacklisted: it stays DANGEROUS via the network-scan rule below, so
     // it is approval-gated (the user can grant a localhost API test) rather than auto-blocked.
-    private static final Set<String> EXEC_BLACKLIST =
+    private static final @NonNull Set<String> EXEC_BLACKLIST =
             Set.of("nc", "ncat", "nmap", "wget", "ssh", "scp", "bash", "sh", "zsh", "fish");
 
     /**
@@ -41,10 +41,10 @@ public class DangerComputation {
      * so the intent is explicit and survives future allowlist edits. The agent's OWN background
      * tasks are stopped with the {@code stop_task} tool, not an OS kill.
      */
-    private static final Set<String> PROCESS_KILLERS =
+    private static final @NonNull Set<String> PROCESS_KILLERS =
             Set.of("taskkill", "tskill", "kill", "killall", "pkill");
 
-    private static final Set<String> SECRET_PATTERNS =
+    private static final @NonNull Set<String> SECRET_PATTERNS =
             Set.of(
                     ".ssh",
                     ".aws",
@@ -90,9 +90,6 @@ public class DangerComputation {
             return Danger.SAFE; // remote tools carry no path hints
         }
         Map<String, Object> args = call.args();
-        if (args == null) {
-            return Danger.SAFE;
-        }
         PathResolver resolver = workspace.pathResolver();
         Danger worst = Danger.SAFE;
         for (var entry : hints.entrySet()) {
@@ -117,6 +114,9 @@ public class DangerComputation {
             @NonNull ProtectedSet protectedSet,
             @NonNull Workspace workspace) {
         Path host = res.hostPath();
+        if (host == null) {
+            return Danger.CRITICAL;
+        }
         String str = host.toString();
 
         // 1. Check policies that make certain paths CRITICAL
@@ -199,9 +199,6 @@ public class DangerComputation {
             return Danger.SAFE;
         }
         Map<String, Object> args = call.args();
-        if (args == null) {
-            return Danger.CRITICAL; // malformed run_command
-        }
         Object commandsObj = args.get("commands");
         if (!(commandsObj instanceof List<?> commands) || commands.isEmpty()) {
             return Danger.CRITICAL;
@@ -264,7 +261,7 @@ public class DangerComputation {
         return name;
     }
 
-    private static @NonNull Danger max(@NonNull Danger... ds) {
+    private static @NonNull Danger max(Danger @NonNull ... ds) {
         Danger worst = Danger.SAFE;
         for (Danger d : ds) {
             if (d == null) continue;

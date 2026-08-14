@@ -2,7 +2,6 @@ package top.focess.veto.agent.mcp;
 
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.agent.AgentRunner;
 import top.focess.veto.group.GroupTools;
 
@@ -26,23 +25,16 @@ import top.focess.veto.group.GroupTools;
  *     (e.g. background-task lifecycle) on the delta broker. Null in legacy/test paths.
  */
 public record ToolCallContext(
-        @NonNull String agentId,
-        @NonNull UUID userId,
-        @Nullable UUID groupId,
-        @Nullable String owner,
-        @Nullable UUID sessionId) {
+        @NonNull String agentId, @NonNull UUID userId, UUID groupId, String owner, UUID sessionId) {
 
     /** Compatibility constructor without a session id. */
     public ToolCallContext(
-            @NonNull String agentId,
-            @NonNull UUID userId,
-            @Nullable UUID groupId,
-            @Nullable String owner) {
+            @NonNull String agentId, @NonNull UUID userId, UUID groupId, String owner) {
         this(agentId, userId, groupId, owner, null);
     }
 
     /** Compatibility constructor for callers without a group or an owner (STANDALONE / tests). */
-    public ToolCallContext(@NonNull String agentId, @NonNull UUID userId, @Nullable UUID groupId) {
+    public ToolCallContext(@NonNull String agentId, @NonNull UUID userId, UUID groupId) {
         this(agentId, userId, groupId, null, null);
     }
 

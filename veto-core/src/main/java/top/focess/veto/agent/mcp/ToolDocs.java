@@ -2,7 +2,6 @@ package top.focess.veto.agent.mcp;
 
 import java.util.List;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
 /**
  * Reflects {@link ToolDoc} off a tool's args class into the {@link ToolDefinition#examples()} and
@@ -21,42 +20,56 @@ public final class ToolDocs {
     private ToolDocs() {}
 
     /**
+     * Normalizes javac class-literal nullness for Checker Framework. A class literal cannot be
+     * null, but a nullable-by-default package otherwise gives the expression a nullable outer
+     * {@link Class} type.
+     */
+    public static <T extends @NonNull Object> @NonNull Class<T> nonNullClass(Class<T> type) {
+        if (type == null) {
+            throw new IllegalArgumentException("Class token is required");
+        }
+        return type;
+    }
+
+    /**
      * Resolves the {@link ToolDoc} for a tool from its args class. The annotation is read directly
      * off the args class; if absent there, off the args class's enclosing tool class - so a tool
      * may declare {@code @ToolDoc} on either its args record or its enclosing bean class. Returns
      * null when neither carries the annotation (or when {@code argsClass} is null).
      */
-    static @Nullable ToolDoc toolDocOf(@Nullable Class<?> argsClass) {
+    static ToolDoc toolDocOf(Class<?> argsClass) {
         if (argsClass == null) {
             return null;
         }
-        ToolDoc doc = argsClass.getAnnotation(ToolDoc.class);
+        ToolDoc doc = argsClass.getAnnotation(nonNullClass(ToolDoc.class));
         if (doc != null) {
             return doc;
         }
         Class<?> enclosing = argsClass.getEnclosingClass();
-        return enclosing != null ? enclosing.getAnnotation(ToolDoc.class) : null;
+        return enclosing != null ? enclosing.getAnnotation(nonNullClass(ToolDoc.class)) : null;
     }
 
-    public static @NonNull List<String> examplesOf(@Nullable Class<?> argsClass) {
+    public static @NonNull List<String> examplesOf(Class<?> argsClass) {
         ToolDoc doc = toolDocOf(argsClass);
-        return doc == null ? List.of() : List.of(doc.examples());
+        String[] examples = doc == null ? null : doc.examples();
+        return examples == null ? List.of() : List.of(examples);
     }
 
     /**
      * Returns the {@link ToolDoc#returnExamples()} for the given args class, or an empty list when
      * the class is null or has no {@code @ToolDoc}.
      */
-    public static @NonNull List<String> returnExamplesOf(@Nullable Class<?> argsClass) {
+    public static @NonNull List<String> returnExamplesOf(Class<?> argsClass) {
         ToolDoc doc = toolDocOf(argsClass);
-        return doc == null ? List.of() : List.of(doc.returnExamples());
+        String[] examples = doc == null ? null : doc.returnExamples();
+        return examples == null ? List.of() : List.of(examples);
     }
 
     /**
      * Returns the long-form {@link ToolDoc#usage()} for the given args class, or an empty string
      * when the class is null or has no {@code @ToolDoc}.
      */
-    public static @NonNull String descriptionOf(@Nullable Class<?> argsClass) {
+    public static @NonNull String descriptionOf(Class<?> argsClass) {
         ToolDoc doc = toolDocOf(argsClass);
         return doc == null ? "" : doc.usage();
     }

@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -12,13 +13,14 @@ import top.focess.veto.agent.mcp.ToolCallContextHolder;
 import top.focess.veto.group.GroupOrchestrator.NodeEdit;
 
 /** Tests for the Leader's node-authoring tools (group_management_lld.md §2-§3). */
+@SuppressWarnings("initialization.field.uninitialized")
 class DagToolsTest {
 
-    private Blackboard blackboard;
-    private GroupRegistry registry;
-    private GroupOrchestrator orchestrator;
-    private DagTools.CreateNode createNode;
-    private DagTools.RemoveNode removeNode;
+    private @NonNull Blackboard blackboard;
+    private @NonNull GroupRegistry registry;
+    private @NonNull GroupOrchestrator orchestrator;
+    private DagTools.@NonNull CreateNode createNode;
+    private DagTools.@NonNull RemoveNode removeNode;
 
     @BeforeEach
     void setUp() {
@@ -35,7 +37,7 @@ class DagToolsTest {
     }
 
     /** Registers an active group with an empty plan and returns its id. */
-    private UUID activeGroup() {
+    private @NonNull UUID activeGroup() {
         Group g =
                 Group.create(
                         "Leader-1",
@@ -47,7 +49,7 @@ class DagToolsTest {
         return g.groupId();
     }
 
-    private static DagNode findNode(Group g, String nodeId) {
+    private static @NonNull DagNode findNode(@NonNull Group g, @NonNull String nodeId) {
         return g.dag().nodes().stream()
                 .filter(n -> n.nodeId().equals(nodeId))
                 .findFirst()
@@ -61,8 +63,9 @@ class DagToolsTest {
         UUID groupId = activeGroup();
         NodeEdit edit =
                 orchestrator.addNode(groupId, "node-1", "Implement login", "coding", Set.of());
-        assertInstanceOf(NodeEdit.Applied.class, edit);
-        DagNode node = findNode(registry.get(groupId), "node-1");
+        assertInstanceOf(
+                top.focess.veto.agent.mcp.ToolDocs.nonNullClass(NodeEdit.Applied.class), edit);
+        DagNode node = findNode(requireGroup(registry.get(groupId)), "node-1");
         assertEquals(DagNode.NodeState.PENDING, node.state());
         assertEquals("coding", node.requiredSkillset());
     }
@@ -72,7 +75,10 @@ class DagToolsTest {
         UUID groupId = activeGroup();
         orchestrator.addNode(groupId, "node-1", "a", "coding", Set.of());
         NodeEdit edit = orchestrator.addNode(groupId, "node-1", "b", "testing", Set.of());
-        NodeEdit.Rejected r = assertInstanceOf(NodeEdit.Rejected.class, edit);
+        NodeEdit.Rejected r =
+                assertInstanceOf(
+                        top.focess.veto.agent.mcp.ToolDocs.nonNullClass(NodeEdit.Rejected.class),
+                        edit);
         assertTrue(r.reason().contains("already exists"), r.reason());
     }
 
@@ -80,7 +86,10 @@ class DagToolsTest {
     void addNodeRejectsUnknownDependency() {
         UUID groupId = activeGroup();
         NodeEdit edit = orchestrator.addNode(groupId, "node-1", "a", "coding", Set.of("node-9"));
-        NodeEdit.Rejected r = assertInstanceOf(NodeEdit.Rejected.class, edit);
+        NodeEdit.Rejected r =
+                assertInstanceOf(
+                        top.focess.veto.agent.mcp.ToolDocs.nonNullClass(NodeEdit.Rejected.class),
+                        edit);
         assertTrue(r.reason().contains("unknown dependency node-9"), r.reason());
     }
 
@@ -90,14 +99,18 @@ class DagToolsTest {
         orchestrator.addNode(groupId, "node-1", "a", "coding", Set.of());
         orchestrator.removeNode(groupId, "node-1");
         NodeEdit edit = orchestrator.addNode(groupId, "node-2", "b", "coding", Set.of("node-1"));
-        NodeEdit.Rejected r = assertInstanceOf(NodeEdit.Rejected.class, edit);
+        NodeEdit.Rejected r =
+                assertInstanceOf(
+                        top.focess.veto.agent.mcp.ToolDocs.nonNullClass(NodeEdit.Rejected.class),
+                        edit);
         assertTrue(r.reason().contains("stale"), r.reason());
     }
 
     @Test
     void addNodeRejectsUnknownGroup() {
         NodeEdit edit = orchestrator.addNode(UUID.randomUUID(), "node-1", "a", "coding", Set.of());
-        assertInstanceOf(NodeEdit.Rejected.class, edit);
+        assertInstanceOf(
+                top.focess.veto.agent.mcp.ToolDocs.nonNullClass(NodeEdit.Rejected.class), edit);
     }
 
     @Test
@@ -105,8 +118,11 @@ class DagToolsTest {
         UUID groupId = activeGroup();
         orchestrator.addNode(groupId, "node-1", "a", "coding", Set.of());
         NodeEdit edit = orchestrator.removeNode(groupId, "node-1");
-        assertInstanceOf(NodeEdit.Applied.class, edit);
-        assertEquals(DagNode.NodeState.STALE, findNode(registry.get(groupId), "node-1").state());
+        assertInstanceOf(
+                top.focess.veto.agent.mcp.ToolDocs.nonNullClass(NodeEdit.Applied.class), edit);
+        assertEquals(
+                DagNode.NodeState.STALE,
+                findNode(requireGroup(registry.get(groupId)), "node-1").state());
     }
 
     @Test
@@ -115,17 +131,22 @@ class DagToolsTest {
         orchestrator.addNode(groupId, "node-1", "a", "coding", Set.of());
         orchestrator.addNode(groupId, "node-2", "b", "testing", Set.of("node-1"));
         NodeEdit edit = orchestrator.removeNode(groupId, "node-1");
-        NodeEdit.Rejected r = assertInstanceOf(NodeEdit.Rejected.class, edit);
+        NodeEdit.Rejected r =
+                assertInstanceOf(
+                        top.focess.veto.agent.mcp.ToolDocs.nonNullClass(NodeEdit.Rejected.class),
+                        edit);
         assertTrue(r.reason().contains("node-2"), r.reason());
         // The node is untouched.
-        assertEquals(DagNode.NodeState.PENDING, findNode(registry.get(groupId), "node-1").state());
+        assertEquals(
+                DagNode.NodeState.PENDING,
+                findNode(requireGroup(registry.get(groupId)), "node-1").state());
     }
 
     @Test
     void removeNodeRefusesVerifiedNode() {
         UUID groupId = activeGroup();
         orchestrator.addNode(groupId, "node-1", "a", "coding", Set.of());
-        Group g = registry.get(groupId);
+        Group g = requireGroup(registry.get(groupId));
         DagNode verified =
                 new DagNode(
                         "node-1",
@@ -138,7 +159,10 @@ class DagToolsTest {
                         0);
         registry.put(g.withDag(g.dag().withNode("node-1", verified)));
         NodeEdit edit = orchestrator.removeNode(groupId, "node-1");
-        NodeEdit.Rejected r = assertInstanceOf(NodeEdit.Rejected.class, edit);
+        NodeEdit.Rejected r =
+                assertInstanceOf(
+                        top.focess.veto.agent.mcp.ToolDocs.nonNullClass(NodeEdit.Rejected.class),
+                        edit);
         assertTrue(r.reason().contains("verified"), r.reason());
     }
 
@@ -215,5 +239,10 @@ class DagToolsTest {
     void toolNamesAreSnakeCase() {
         assertEquals("create_node", createNode.getName());
         assertEquals("remove_node", removeNode.getName());
+    }
+
+    private static @NonNull Group requireGroup(Group group) {
+        if (group == null) throw new AssertionError("expected group");
+        return group;
     }
 }

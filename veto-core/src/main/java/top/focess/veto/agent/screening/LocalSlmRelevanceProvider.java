@@ -21,19 +21,18 @@ import top.focess.veto.veto.LlamaCppBridge;
  */
 public class LocalSlmRelevanceProvider implements SlmRelevanceProvider {
 
-    private static final Logger log = LoggerFactory.getLogger(LocalSlmRelevanceProvider.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.agent.screening.LocalSlmRelevanceProvider");
 
     private final @NonNull LlamaCppBridge bridge;
 
-    public
-    @NonNull
-    LocalSlmRelevanceProvider(@NonNull LlamaCppBridge bridge) {
+    public LocalSlmRelevanceProvider(@NonNull LlamaCppBridge bridge) {
         this.bridge = bridge;
     }
 
     @Override
     public @NonNull Relevance relevance(
-            @NonNull ToolCall call, @NonNull ToolDefinition def, @NonNull String thought) {
+            @NonNull ToolCall call, @NonNull ToolDefinition def, String thought) {
         if (!bridge.isAvailable()) {
             return Relevance.HIGH;
         }
@@ -60,26 +59,27 @@ public class LocalSlmRelevanceProvider implements SlmRelevanceProvider {
         } catch (Exception e) {
             log.warn(
                     "LocalSlmRelevanceProvider: inference failed, defaulting HIGH: {}",
-                    e.getMessage());
+                    String.valueOf(e.getMessage()));
             return Relevance.HIGH;
         }
     }
 
     private static @NonNull String buildPrompt(
-            @NonNull ToolCall call, @NonNull ToolDefinition def, @NonNull String thought) {
+            @NonNull ToolCall call, @NonNull ToolDefinition def, String thought) {
         StringBuilder sb = new StringBuilder();
         sb.append("Given the agent's thought: \"").append(safe(thought)).append("\"\n");
         sb.append("And the tool call: ").append(call.toolName()).append("(");
-        if (call.args() != null) {
-            sb.append(call.args().toString());
-        }
+        sb.append(call.args());
         sb.append(")\n");
         sb.append(
                 "Is this call plausibly in service of the agent's stated task? Reply with one of: HIGH MEDIUM LOW\n");
         return sb.toString();
     }
 
-    private static @NonNull String safe(@NonNull String s) {
+    private static @NonNull String safe(String s) {
+        if (s == null) {
+            return "";
+        }
         return s.length() > 200 ? s.substring(0, 200) + "..." : s;
     }
 }

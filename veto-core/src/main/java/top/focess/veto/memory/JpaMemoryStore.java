@@ -28,9 +28,7 @@ public class JpaMemoryStore implements MemoryStore {
     private final @NonNull MemoryRepository repository;
     private final @NonNull Embedder embedder;
 
-    public
-    @NonNull
-    JpaMemoryStore(@NonNull MemoryRepository repository, @NonNull Embedder embedder) {
+    public JpaMemoryStore(@NonNull MemoryRepository repository, @NonNull Embedder embedder) {
         this.repository = repository;
         this.embedder = embedder;
     }
@@ -47,11 +45,13 @@ public class JpaMemoryStore implements MemoryStore {
         for (MemoryEntity e : candidates) {
             Memory m = MemoryEntity.toMemory(e);
             // Session filter
-            if (query.sessionFilter() != null && !query.sessionFilter().equals(m.sessionId())) {
+            var sessionFilter = query.sessionFilter();
+            if (sessionFilter != null && !sessionFilter.equals(m.sessionId())) {
                 continue;
             }
             // Project filter
-            if (query.projectFilter() != null && !query.projectFilter().equals(m.projectId())) {
+            var projectFilter = query.projectFilter();
+            if (projectFilter != null && !projectFilter.equals(m.projectId())) {
                 continue;
             }
             float score = cosineSimilarity(queryVec, m.embedding());
@@ -74,9 +74,6 @@ public class JpaMemoryStore implements MemoryStore {
 
     @Override
     public void capture(@NonNull TurnRecord turn, @NonNull UUID sessionId, @NonNull UUID userId) {
-        if (turn == null || sessionId == null || userId == null) {
-            return;
-        }
         String content = captureText(turn);
         if (content == null || content.isBlank()) {
             return;
@@ -123,8 +120,8 @@ public class JpaMemoryStore implements MemoryStore {
         repository.deleteById(id.value().toString());
     }
 
-    private static float cosineSimilarity(float[] a, float[] b) {
-        if (a == null || b == null || a.length == 0 || b.length == 0) {
+    private static float cosineSimilarity(float @NonNull [] a, float @NonNull [] b) {
+        if (a.length == 0 || b.length == 0) {
             return 0f;
         }
         int n = Math.min(a.length, b.length);
@@ -140,7 +137,7 @@ public class JpaMemoryStore implements MemoryStore {
         return dot / ((float) Math.sqrt(na) * (float) Math.sqrt(nb));
     }
 
-    private static String captureText(TurnRecord turn) {
+    private static String captureText(@NonNull TurnRecord turn) {
         return switch (turn.type()) {
             case ASSISTANT_THOUGHT -> {
                 Object thought = turn.payload().get("response");

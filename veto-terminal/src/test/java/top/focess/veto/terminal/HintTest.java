@@ -1,12 +1,13 @@
 package top.focess.veto.terminal;
 
 import java.util.concurrent.TimeUnit;
+import org.jspecify.annotations.NonNull;
 import top.focess.veto.contract.IpcClient;
 import top.focess.veto.contract.IpcFrame;
 
 /** Standalone hint protocol test — connects to a running backend and tests live hints. */
 public class HintTest {
-    public static void main(String[] args) throws Exception {
+    public static void main(@NonNull String @NonNull [] args) throws Exception {
         String addr = args.length > 0 ? args[0] : "tcp://127.0.0.1:5555";
         System.out.println("Connecting to " + addr + " ...");
         IpcClient t = new IpcClient(addr);

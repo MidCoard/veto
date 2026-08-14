@@ -11,7 +11,4 @@ import org.jspecify.annotations.NonNull;
  * @param content stdout / structured JSON response on success; error message on failure
  */
 public record ToolResult(
-        @NonNull String toolName,
-        @NonNull String callId,
-        boolean success,
-        @NonNull String content) {}
+        @NonNull String toolName, String callId, boolean success, @NonNull String content) {}

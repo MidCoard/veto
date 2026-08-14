@@ -2,7 +2,6 @@ package top.focess.veto.training;
 
 import java.time.Instant;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
 /**
  * Represents the current state of a model training run. Thread-safe; read by the REST controller
@@ -27,12 +26,12 @@ public class TrainingProgress {
     private volatile @NonNull String currentPhase = "";
     private volatile @NonNull String message = "";
     private volatile @NonNull String trainedModelPath = "";
-    private volatile @Nullable Instant startedAt = null;
-    private volatile @Nullable Instant completedAt = null;
+    private volatile Instant startedAt = null;
+    private volatile Instant completedAt = null;
     private volatile @NonNull String errorMessage = "";
 
     /** Optional evaluation report attached after evaluation. */
-    private volatile @Nullable EvaluationReport evaluation = null;
+    private volatile EvaluationReport evaluation = null;
 
     public TrainingProgress() {}
 
@@ -110,11 +109,11 @@ public class TrainingProgress {
         return trainedModelPath;
     }
 
-    public @Nullable Instant getStartedAt() {
+    public Instant getStartedAt() {
         return startedAt;
     }
 
-    public @Nullable Instant getCompletedAt() {
+    public Instant getCompletedAt() {
         return completedAt;
     }
 
@@ -122,7 +121,7 @@ public class TrainingProgress {
         return errorMessage;
     }
 
-    public @Nullable EvaluationReport getEvaluation() {
+    public EvaluationReport getEvaluation() {
         return evaluation;
     }
 
@@ -133,9 +132,9 @@ public class TrainingProgress {
     // ── Record for evaluation report (mirrors Python schema) ──
 
     public record EvaluationReport(
-            @Nullable String modelPath,
-            @Nullable String datasetPath,
-            @Nullable String timestamp,
+            String modelPath,
+            String datasetPath,
+            String timestamp,
             int totalSamples,
             double elapsedSeconds,
             @NonNull GbnfCompliance gbnfCompliance,

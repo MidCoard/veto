@@ -12,6 +12,7 @@ import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.SecurityHint;
 import top.focess.veto.agent.mcp.ToolDoc;
+import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.mcp.ToolSecurity;
 
 /** {@code replace_file_content} — replace a single contiguous block of text in an existing file. */
@@ -43,7 +44,7 @@ public final class ReplaceFileContentTool implements NativeTool<ReplaceFileConte
                     `}`); include enough surrounding context to be unique.
 
                     #### Behavior
-                    Reads `targetFile` as UTF-8, locates the first occurrence of `targetContent` as an exact \
+                    Reads `absolutePath` as UTF-8, locates the first occurrence of `targetContent` as an exact \
                     substring, and replaces that span with `replacementContent`, preserving everything before \
                     and after. `startLine`/`endLine` are informational scoping hints (1-indexed, inclusive) \
                     carried for audit/context; the match is performed on the full file content, not \
@@ -56,7 +57,7 @@ public final class ReplaceFileContentTool implements NativeTool<ReplaceFileConte
 
                     #### Errors & edge cases
                     - `targetContent` not present -> error status; the file is left untouched.
-                    - `targetFile` is not a regular file -> error status.
+                    - `absolutePath` is not a regular file -> error status.
                     - Only the FIRST occurrence is replaced; subsequent matches are left as-is.
                     - `targetContent` and `replacementContent` are exact (whitespace, indentation, newlines all \
                     matter). A mismatched indent means "not found".
@@ -64,25 +65,25 @@ public final class ReplaceFileContentTool implements NativeTool<ReplaceFileConte
                     not a truncation window.
 
                     #### Security
-                    `targetFile` is a FILESYSTEM_PATH; `targetContent` and `replacementContent` are CODE_CONTENT. \
+                    `absolutePath` is a FILESYSTEM_PATH; `targetContent` and `replacementContent` are CODE_CONTENT. \
                     The Gateway screens the path and applies semantic screening to the replacement content \
                     before the write. The operation is `RiskCategory.FILE_WRITE` (elevated + audited). Do not \
                     attempt to patch deployer-fenced paths or smuggle disallowed content - the call is blocked \
                     upstream; change approach instead.
                     """,
             examples = {
-                "{\"targetFile\": \"/abs/src/Main.java\", \"startLine\": 5, \"endLine\": 8, \"targetContent\": \"old\", \"replacementContent\": \"new\"}",
-                "{\"targetFile\": \"/abs/src/Main.java\", \"startLine\": 12, \"endLine\": 12, \"targetContent\": \"int x = 1;\", \"replacementContent\": \"int x = 2;\"}",
-                "{\"targetFile\": \"/abs/src/Main.java\", \"startLine\": 1, \"endLine\": 1, \"targetContent\": \"package old;\", \"replacementContent\": \"package new;\"}",
-                "{\"targetFile\": \"/abs/README.md\", \"startLine\": 3, \"endLine\": 3, \"targetContent\": \"# Old Title\", \"replacementContent\": \"# New Title\"}",
-                "{\"targetFile\": \"/abs/config/app.yml\", \"startLine\": 10, \"endLine\": 10, \"targetContent\": \"port: 8080\", \"replacementContent\": \"port: 8443\"}",
-                "{\"targetFile\": \"/abs/src/Main.java\", \"startLine\": 20, \"endLine\": 24, \"targetContent\": \"// TODO\\n\", \"replacementContent\": \"// done\\n\"}",
-                "{\"targetFile\": \"/abs/src/Main.java\", \"startLine\": 8, \"endLine\": 8, \"targetContent\": \"    return null;\", \"replacementContent\": \"    return value;\"}"
+                "{\"absolutePath\": \"/abs/src/Main.java\", \"startLine\": 5, \"endLine\": 8, \"targetContent\": \"old\", \"replacementContent\": \"new\"}",
+                "{\"absolutePath\": \"/abs/src/Main.java\", \"startLine\": 12, \"endLine\": 12, \"targetContent\": \"int x = 1;\", \"replacementContent\": \"int x = 2;\"}",
+                "{\"absolutePath\": \"/abs/src/Main.java\", \"startLine\": 1, \"endLine\": 1, \"targetContent\": \"package old;\", \"replacementContent\": \"package new;\"}",
+                "{\"absolutePath\": \"/abs/README.md\", \"startLine\": 3, \"endLine\": 3, \"targetContent\": \"# Old Title\", \"replacementContent\": \"# New Title\"}",
+                "{\"absolutePath\": \"/abs/config/app.yml\", \"startLine\": 10, \"endLine\": 10, \"targetContent\": \"port: 8080\", \"replacementContent\": \"port: 8443\"}",
+                "{\"absolutePath\": \"/abs/src/Main.java\", \"startLine\": 20, \"endLine\": 24, \"targetContent\": \"// TODO\\n\", \"replacementContent\": \"// done\\n\"}",
+                "{\"absolutePath\": \"/abs/src/Main.java\", \"startLine\": 8, \"endLine\": 8, \"targetContent\": \"    return null;\", \"replacementContent\": \"    return value;\"}"
             },
             returnExamples = {"{\"status\":\"ok\",\"file\":\"/abs/src/Main.java\"}"})
     public record Args(
             @SecurityHint(ParamCategory.FILESYSTEM_PATH) @Doc("Absolute path of the file to patch.")
-                    @NonNull String targetFile,
+                    @NonNull String absolutePath,
             @Doc("1-indexed starting line (inclusive).") int startLine,
             @Doc("1-indexed ending line (inclusive).") int endLine,
             @SecurityHint(ParamCategory.CODE_CONTENT) @Doc("Exact text range to replace.")
@@ -102,15 +103,15 @@ public final class ReplaceFileContentTool implements NativeTool<ReplaceFileConte
 
     @Override
     public @NonNull Class<Args> getArgsClass() {
-        return Args.class;
+        return ToolDocs.nonNullClass(Args.class);
     }
 
     @Override
     public @NonNull String execute(@NonNull Args args) throws IOException {
-        Path path = Path.of(args.targetFile());
+        Path path = Path.of(args.absolutePath());
         if (!Files.isRegularFile(path)) {
             return "{\"status\":\"error\",\"error\":\"Not a regular file: "
-                    + args.targetFile()
+                    + args.absolutePath()
                     + "\"}";
         }
         String content = Files.readString(path, StandardCharsets.UTF_8);
@@ -123,6 +124,6 @@ public final class ReplaceFileContentTool implements NativeTool<ReplaceFileConte
                         + args.replacementContent()
                         + content.substring(idx + args.targetContent().length());
         Files.writeString(path, updated, StandardCharsets.UTF_8);
-        return "{\"status\":\"ok\",\"file\":\"" + args.targetFile() + "\"}";
+        return "{\"status\":\"ok\",\"file\":\"" + args.absolutePath() + "\"}";
     }
 }

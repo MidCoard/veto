@@ -3,7 +3,6 @@ package top.focess.veto.agent.loop;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.llm.core.ChatMessage;
 import top.focess.veto.llm.core.ToolDefinition;
 
@@ -26,6 +25,6 @@ public record CompiledPrompt(
         @NonNull String systemMessage,
         @NonNull List<ChatMessage> messages,
         @NonNull List<ToolDefinition> tools,
-        @Nullable JsonNode responseSchema,
+        JsonNode responseSchema,
         int trimmedTurns,
         long estimatedTokens) {}

@@ -4,8 +4,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
@@ -35,9 +35,7 @@ public class SessionController {
     private final @NonNull KeysteadVault vault;
     private final @NonNull SessionHistoryLoader historyLoader;
 
-    public
-    @NonNull
-    SessionController(
+    public SessionController(
             @NonNull SessionService service,
             @NonNull KeysteadVault vault,
             @NonNull SessionHistoryLoader historyLoader) {
@@ -60,7 +58,7 @@ public class SessionController {
      *     roots explicitly - the request is rejected with 400 when either is missing/blank.
      */
     @PostMapping
-    public @NonNull SessionEntity create(@NonNull @RequestBody CreateSessionRequest body) {
+    public @NonNull SessionEntity create(@RequestBody @NonNull CreateSessionRequest body) {
         String user = vault.currentUser();
         if (user == null) throw new IllegalStateException(Msg.get("error.auth.notLoggedIn"));
         String pattern = body.pattern();
@@ -73,7 +71,7 @@ public class SessionController {
     }
 
     @DeleteMapping("/{name}")
-    public @NonNull ResponseEntity<?> delete(@NonNull @PathVariable String name) {
+    public @NonNull ResponseEntity<?> delete(@PathVariable @NonNull String name) {
         String user = vault.currentUser();
         if (user == null) {
             return ResponseEntity.status(401)
@@ -99,8 +97,10 @@ public class SessionController {
      * {response} (raw veto_pulse JSON string), ASSISTANT_RESPONSE {content}, TOOL_CALL {call_id,
      * tool_name, args}, TOOL_RESPONSE {call_id, content, success}.
      */
-    @GetMapping("/{name}/history")
-    public @NonNull ResponseEntity<?> history(@NonNull @PathVariable String name) {
+    @GetMapping(value = "/{name}/history", produces = MediaType.APPLICATION_JSON_VALUE)
+    // Turn payloads intentionally preserve code and model text; Jackson supplies JSON encoding.
+    //noinspection tainting
+    public @NonNull ResponseEntity<?> history(@PathVariable @NonNull String name) {
         String user = vault.currentUser();
         if (user == null) {
             return ResponseEntity.status(401)
@@ -128,6 +128,5 @@ public class SessionController {
     }
 
     /** Request body for {@link #create}. */
-    public record CreateSessionRequest(
-            @NonNull String pattern, @Nullable String name, @NonNull String workspaceRoots) {}
+    public record CreateSessionRequest(String pattern, String name, String workspaceRoots) {}
 }

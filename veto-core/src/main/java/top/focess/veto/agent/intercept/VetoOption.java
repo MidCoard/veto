@@ -105,6 +105,11 @@ public enum VetoOption {
                 || this == ACCEPT_AS_SESSION_RULE; // legacy alias
     }
 
+    /** Whether this is the generic grant option or its legacy session-rule alias. */
+    public boolean isGenericGrant() {
+        return this == ACCEPT_GENERIC_LIKE_THIS || this == ACCEPT_AS_SESSION_RULE;
+    }
+
     /** Whether this option implies output masking should be applied to the observation. */
     public boolean impliesMasking() {
         return this == ACCEPT_AND_MASK_READ

@@ -2,7 +2,6 @@ package top.focess.veto.observability;
 
 import java.util.*;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -14,7 +13,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class DiffCalculator {
 
-    private static final Logger log = LoggerFactory.getLogger(DiffCalculator.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.observability.DiffCalculator");
 
     private static final int MAX_DIFF_LENGTH = 100_000; // 100 KB max diff excerpt
     private static final int MAX_DIFF_LINES = 1000;
@@ -96,7 +96,7 @@ public class DiffCalculator {
         return sb.toString();
     }
 
-    private @NonNull String truncate(@Nullable String s) {
+    private @NonNull String truncate(String s) {
         if (s == null || s.length() <= 120) return s != null ? s : "";
         return s.substring(0, 120) + "...";
     }

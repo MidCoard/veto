@@ -18,7 +18,8 @@ import top.focess.veto.model.ToolExecutionRequest;
 @Component
 public class InjectionService {
 
-    private static final Logger log = LoggerFactory.getLogger(InjectionService.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.vault.InjectionService");
 
     private final @NonNull KeysteadVault vault;
 

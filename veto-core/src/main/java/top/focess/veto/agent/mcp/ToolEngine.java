@@ -3,7 +3,6 @@ package top.focess.veto.agent.mcp;
 import java.util.List;
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.llm.core.ToolCall;
 
 /**
@@ -23,10 +22,10 @@ import top.focess.veto.llm.core.ToolCall;
 public interface ToolEngine {
 
     /** Queries all registered servers to compile a whitelisted tools list for the agent. */
-    @NonNull List<ToolDefinition> getActiveTools(@Nullable Set<String> whitelist);
+    @NonNull List<ToolDefinition> getActiveTools(Set<String> whitelist);
 
     /** Resolves a tool name to its typed {@link ToolDefinition} (native / remote / agent). */
-    @Nullable ToolDefinition resolveDefinition(@NonNull String toolName);
+    ToolDefinition resolveDefinition(@NonNull String toolName);
 
     /** Executes a tool call, dispatching by the resolved definition's flavour. */
     @NonNull ToolResult execute(@NonNull ToolCall call, @NonNull ToolDefinition def);

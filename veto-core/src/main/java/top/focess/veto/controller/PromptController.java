@@ -2,10 +2,10 @@ package top.focess.veto.controller;
 
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -31,7 +31,8 @@ import top.focess.veto.vault.KeysteadVault;
 @RequestMapping("/api/sessions")
 public class PromptController {
 
-    private static final Logger log = LoggerFactory.getLogger(PromptController.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.controller.PromptController");
 
     private final @NonNull SessionService sessionService;
     private final top.focess.veto.agent.@NonNull AgentService agentService;
@@ -51,7 +52,12 @@ public class PromptController {
      * The caller must be authenticated (the SecurityContextInterceptor sets the vault's currentUser
      * from the X-Veto-Session-Token header). Returns 202 as soon as the episode is enqueued.
      */
-    @PostMapping("/{name}/prompt")
+    @PostMapping(
+            value = "/{name}/prompt",
+            consumes = MediaType.APPLICATION_JSON_VALUE,
+            produces = MediaType.APPLICATION_JSON_VALUE)
+    // Responses are Jackson-serialized JSON, never an HTML rendering context.
+    //noinspection tainting
     public ResponseEntity<?> prompt(
             @PathVariable @NonNull String name, @RequestBody @NonNull PromptRequest body) {
         String user = vault.currentUser();
@@ -59,7 +65,8 @@ public class PromptController {
             return ResponseEntity.status(401)
                     .body(Map.of("error", Msg.get("error.auth.notAuthenticated")));
         }
-        if (body.prompt() == null || body.prompt().isBlank()) {
+        String prompt = body.prompt();
+        if (prompt == null || prompt.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("error", Msg.get("error.prompt.empty")));
         }
 
@@ -82,25 +89,17 @@ public class PromptController {
                         cfg.config().baseUrl());
 
         try {
-            agentService.submitNow(cfg.sessionId(), body.prompt(), binding);
+            agentService.submitNow(cfg.sessionId(), prompt, binding);
             log.info("Prompt accepted for session {} (agent {})", name, cfg.sessionId());
             return ResponseEntity.status(HttpStatus.ACCEPTED)
                     .body(Map.of("status", "started", "sessionId", cfg.sessionId()));
         } catch (Exception e) {
             log.warn("Prompt submit failed for session {}", name, e);
-            String message = e.getMessage();
             return ResponseEntity.internalServerError()
-                    .body(
-                            Map.of(
-                                    "error",
-                                    Msg.get(
-                                            "error.prompt.failed",
-                                            message != null
-                                                    ? message
-                                                    : e.getClass().getSimpleName())));
+                    .body(Map.of("error", Msg.get("error.prompt.failed")));
         }
     }
 
     /** Request body for {@link #prompt}. */
-    public record PromptRequest(@Nullable String prompt) {}
+    public record PromptRequest(String prompt) {}
 }

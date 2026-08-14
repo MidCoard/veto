@@ -6,15 +6,16 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.Optional;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /** Validates {@link MarkdownSkillLoader} parsing + SHA-256 integrity verification. */
 class MarkdownSkillLoaderTest {
 
-    private final MarkdownSkillLoader loader = new MarkdownSkillLoader();
+    private final @NonNull MarkdownSkillLoader loader = new MarkdownSkillLoader();
 
-    private static final String SKILL_MD =
+    private static final @NonNull String SKILL_MD =
             """
             ---
             name: verify_suite
@@ -29,7 +30,7 @@ class MarkdownSkillLoaderTest {
             2. Run `run_gradle` with args `tasks=compileJava` to compile.""";
 
     @Test
-    void parsesFrontmatterAndBody(@TempDir Path tempDir) throws Exception {
+    void parsesFrontmatterAndBody(@TempDir @NonNull Path tempDir) throws Exception {
         Path skillDir = tempDir.resolve("verify_suite");
         Files.createDirectories(skillDir);
         Files.writeString(skillDir.resolve("SKILL.md"), SKILL_MD);
@@ -41,14 +42,16 @@ class MarkdownSkillLoaderTest {
         assertEquals("verify_suite", skill.name());
         assertEquals(
                 "Compiles and tests the project to verify code integrity.", skill.description());
-        assertTrue(skill.promptInstructions().contains("execute these actions in order"));
+        String instructions = skill.promptInstructions();
+        if (instructions == null) throw new AssertionError("expected prompt instructions");
+        assertTrue(instructions.contains("execute these actions in order"));
         assertEquals(SkillSourceType.PERSONAL, skill.sourceType());
         assertEquals(java.util.List.of("run_gradle", "grep_search"), skill.requiredTools());
         assertNotNull(skill.contentHash());
     }
 
     @Test
-    void verifyIntegrityPassesForUnmodifiedFile(@TempDir Path tempDir) throws Exception {
+    void verifyIntegrityPassesForUnmodifiedFile(@TempDir @NonNull Path tempDir) throws Exception {
         Path skillDir = tempDir.resolve("verify_suite");
         Files.createDirectories(skillDir);
         Files.writeString(skillDir.resolve("SKILL.md"), SKILL_MD);
@@ -59,7 +62,7 @@ class MarkdownSkillLoaderTest {
     }
 
     @Test
-    void verifyIntegrityRejectsTamperedFile(@TempDir Path tempDir) throws Exception {
+    void verifyIntegrityRejectsTamperedFile(@TempDir @NonNull Path tempDir) throws Exception {
         Path skillDir = tempDir.resolve("verify_suite");
         Files.createDirectories(skillDir);
         Path file = skillDir.resolve("SKILL.md");
@@ -72,7 +75,7 @@ class MarkdownSkillLoaderTest {
     }
 
     @Test
-    void loadSkillsFromDirIndexesByName(@TempDir Path tempDir) throws Exception {
+    void loadSkillsFromDirIndexesByName(@TempDir @NonNull Path tempDir) throws Exception {
         Path skillDir = tempDir.resolve("verify_suite");
         Files.createDirectories(skillDir);
         Files.writeString(skillDir.resolve("SKILL.md"), SKILL_MD);

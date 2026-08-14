@@ -11,7 +11,8 @@ import org.junit.jupiter.api.io.TempDir;
 class VetoMdResolverTest {
 
     @Test
-    void rootWithOnlyPrimaryVetoMd(@TempDir Path tmp) throws Exception {
+    void rootWithOnlyPrimaryVetoMd(@TempDir @org.jspecify.annotations.NonNull Path tmp)
+            throws Exception {
         Path root = tmp.resolve("r1");
         Files.createDirectories(root);
         Files.writeString(root.resolve("VETO.md"), "# Law A\n- rule A1");
@@ -23,7 +24,8 @@ class VetoMdResolverTest {
     }
 
     @Test
-    void overrideVetoMdWinsAndIsAppended(@TempDir Path tmp) throws Exception {
+    void overrideVetoMdWinsAndIsAppended(@TempDir @org.jspecify.annotations.NonNull Path tmp)
+            throws Exception {
         Path root = tmp.resolve("r1");
         Files.createDirectories(root.resolve(".veto"));
         Files.writeString(root.resolve("VETO.md"), "# Law A\n- rule A1");
@@ -37,7 +39,8 @@ class VetoMdResolverTest {
     }
 
     @Test
-    void rootWithNeitherContributesNothing(@TempDir Path tmp) throws Exception {
+    void rootWithNeitherContributesNothing(@TempDir @org.jspecify.annotations.NonNull Path tmp)
+            throws Exception {
         Path root = tmp.resolve("r1");
         Files.createDirectories(root);
         VetoMdResolver r =
@@ -46,7 +49,8 @@ class VetoMdResolverTest {
     }
 
     @Test
-    void crossRootConcatInOrder(@TempDir Path tmp) throws Exception {
+    void crossRootConcatInOrder(@TempDir @org.jspecify.annotations.NonNull Path tmp)
+            throws Exception {
         Path r1 = tmp.resolve("r1");
         Files.createDirectories(r1);
         Path r2 = tmp.resolve("r2");
@@ -63,7 +67,8 @@ class VetoMdResolverTest {
     }
 
     @Test
-    void unreadableVetoMdIsSkipped(@TempDir Path tmp) throws Exception {
+    void unreadableVetoMdIsSkipped(@TempDir @org.jspecify.annotations.NonNull Path tmp)
+            throws Exception {
         Path root = tmp.resolve("r1");
         Files.createDirectories(root);
         Path veto = root.resolve("VETO.md");

@@ -50,8 +50,9 @@ public final class ProgramValidator {
                 if (c.trueGoto() < 0 || c.trueGoto() >= n) {
                     throw new InvalidProgramException("true_goto out of range: " + c.trueGoto());
                 }
-                if (c.falseGoto() != null && (c.falseGoto() < 0 || c.falseGoto() >= n)) {
-                    throw new InvalidProgramException("false_goto out of range: " + c.falseGoto());
+                Integer falseGoto = c.falseGoto();
+                if (falseGoto != null && (falseGoto < 0 || falseGoto >= n)) {
+                    throw new InvalidProgramException("false_goto out of range: " + falseGoto);
                 }
             }
         }
@@ -80,8 +81,8 @@ public final class ProgramValidator {
     private static boolean hasCycle(
             @NonNull ActionsProgram p,
             int i,
-            @NonNull boolean[] onStack,
-            @NonNull boolean[] visited) {
+            boolean @NonNull [] onStack,
+            boolean @NonNull [] visited) {
         if (onStack[i]) {
             return true;
         }
@@ -94,8 +95,6 @@ public final class ProgramValidator {
         boolean cycle = false;
         if (a instanceof GotoAction g) {
             cycle = hasCycle(p, g.index(), onStack, visited);
-        } else if (a instanceof StopAction) {
-            cycle = false; // terminal
         }
         // conditional_goto: a conditional cycle is bounded by CURRENT_STEPS checks ( note); we
         // only flag unconditional goto cycles here.
@@ -104,10 +103,9 @@ public final class ProgramValidator {
     }
 
     /** Thrown when an actions program fails validation. */
+    @SuppressWarnings("serial")
     public static final class InvalidProgramException extends RuntimeException {
-        public
-        @NonNull
-        InvalidProgramException(@NonNull String message) {
+        public InvalidProgramException(@NonNull String message) {
             super(message);
         }
     }

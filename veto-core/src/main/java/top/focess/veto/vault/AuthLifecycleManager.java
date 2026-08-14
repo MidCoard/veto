@@ -17,7 +17,8 @@ import top.focess.veto.command.PromptHandler;
 @Service
 public class AuthLifecycleManager {
 
-    private static final Logger log = LoggerFactory.getLogger(AuthLifecycleManager.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.vault.AuthLifecycleManager");
 
     private final @NonNull KeysteadVault vault;
     private final @NonNull PromptHandler promptHandler;

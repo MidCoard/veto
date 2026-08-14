@@ -2,9 +2,11 @@ package top.focess.veto.agent.screening;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.intercept.VetoScenario;
 import top.focess.veto.agent.mcp.AgentToolDefinition;
+import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.llm.core.ToolCall;
 
 class ScreeningTest {
@@ -27,7 +29,8 @@ class ScreeningTest {
         assertEquals("project write", s.reason());
     }
 
-    private static AgentToolDefinition anAgentToolDef() {
-        return new AgentToolDefinition("t", "d", Object.class, java.util.Map.of());
+    private static @NonNull AgentToolDefinition anAgentToolDef() {
+        return new AgentToolDefinition(
+                "t", "d", ToolDocs.nonNullClass(Object.class), java.util.Map.of());
     }
 }

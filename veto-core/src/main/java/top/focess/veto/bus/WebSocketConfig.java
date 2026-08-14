@@ -16,13 +16,12 @@ import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry
 @EnableWebSocket
 public class WebSocketConfig implements WebSocketConfigurer {
 
-    private static final Logger log = LoggerFactory.getLogger(WebSocketConfig.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.bus.WebSocketConfig");
 
     private final @NonNull VetoWebSocketHandler vetoWebSocketHandler;
 
-    public
-    @NonNull
-    WebSocketConfig(@NonNull VetoWebSocketHandler vetoWebSocketHandler) {
+    public WebSocketConfig(@NonNull VetoWebSocketHandler vetoWebSocketHandler) {
         this.vetoWebSocketHandler = vetoWebSocketHandler;
     }
 

@@ -18,7 +18,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class SignupPolicy {
 
-    private static final Logger log = LoggerFactory.getLogger(SignupPolicy.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.security.SignupPolicy");
 
     private final @NonNull SignupMode mode;
     private final @NonNull String deployerPolicy;
@@ -63,7 +64,8 @@ public class SignupPolicy {
             return SignupMode.SOLO;
         }
         try {
-            return SignupMode.valueOf(raw.trim().toUpperCase());
+            return top.focess.veto.util.Nullness.requireNonNull(
+                    SignupMode.valueOf(raw.trim().toUpperCase()));
         } catch (IllegalArgumentException e) {
             throw new IllegalStateException(
                     "Unknown veto.security.signup.mode '"

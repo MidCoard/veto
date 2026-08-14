@@ -1,11 +1,11 @@
 package top.focess.veto.contract;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -33,9 +33,10 @@ import org.slf4j.LoggerFactory;
  */
 public final class IpcCodec {
 
-    private static final Logger log = LoggerFactory.getLogger(IpcCodec.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.contract.IpcCodec");
 
-    static final ObjectMapper JSON = new ObjectMapper();
+    static final @NonNull ObjectMapper JSON = new ObjectMapper();
 
     static {
         // Forward-compat: a newer peer may add fields the receiver does not know. Ignore unknown
@@ -84,9 +85,9 @@ public final class IpcCodec {
      * @param payload the JSON bytes; must not be null
      * @return the deserialized frame, or {@code null} if the payload is malformed
      */
-    public static @Nullable IpcFrame decode(byte @NonNull [] payload) {
+    public static IpcFrame decode(byte @NonNull [] payload) {
         try {
-            return JSON.readValue(payload, IpcFrame.class);
+            return JSON.readValue(payload, new TypeReference<IpcFrame>() {});
         } catch (Exception e) {
             log.warn("Failed to deserialize payload ({} bytes)", payload.length, e);
             return null;
@@ -99,7 +100,7 @@ public final class IpcCodec {
      * @param payload the JSON string; must not be null
      * @return the deserialized frame, or {@code null} if the payload is malformed
      */
-    public static @Nullable IpcFrame decode(@NonNull String payload) {
+    public static IpcFrame decode(@NonNull String payload) {
         return decode(payload.getBytes(StandardCharsets.UTF_8));
     }
 }

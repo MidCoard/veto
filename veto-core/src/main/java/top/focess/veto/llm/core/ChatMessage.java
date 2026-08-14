@@ -1,7 +1,6 @@
 package top.focess.veto.llm.core;
 
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
 /**
  * A single chat message in a compiled conversation - the role-mapped form the {@code
@@ -21,10 +20,10 @@ import org.jspecify.annotations.Nullable;
 public record ChatMessage(
         @NonNull String role,
         @NonNull String content,
-        @Nullable String callId,
-        @Nullable String toolName,
-        @Nullable String toolArgs,
-        @Nullable String reasoningContent) {
+        String callId,
+        String toolName,
+        String toolArgs,
+        String reasoningContent) {
 
     // ── Backward-compatible factories (structured fields = null) ────────────
 
@@ -60,7 +59,7 @@ public record ChatMessage(
             @NonNull String toolName,
             @NonNull String toolArgs,
             @NonNull String content,
-            @Nullable String reasoningContent) {
+            String reasoningContent) {
         return new ChatMessage("assistant", content, callId, toolName, toolArgs, reasoningContent);
     }
 

@@ -7,7 +7,6 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.stream.Stream;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.mcp.Doc;
 import top.focess.veto.agent.mcp.NativeTool;
@@ -15,6 +14,7 @@ import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.SecurityHint;
 import top.focess.veto.agent.mcp.ToolDoc;
+import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.mcp.ToolSecurity;
 
 /** {@code grep_search} — search for exact pattern matches inside files. */
@@ -44,7 +44,7 @@ public final class GrepSearchTool implements NativeTool<GrepSearchTool.Args> {
                     not reach for it expecting `.*` or `^foo`; refine your literal pattern instead.
 
                     #### Behavior
-                    Walks `searchPath` recursively, opens every regular file as UTF-8, and reports each line that \
+                    Walks `absolutePath` recursively, opens every regular file as UTF-8, and reports each line that \
                     contains `query` as a substring. Matching is byte-exact against the decoded text. When \
                     `caseInsensitive` is true, both the query and each line are lowercased before the substring \
                     test, so casing in either is ignored. `includes`, when given, restricts the walk to files \
@@ -59,32 +59,32 @@ public final class GrepSearchTool implements NativeTool<GrepSearchTool.Args> {
                     empty string means "no hits".
 
                     #### Errors & edge cases
-                    - `searchPath` does not exist -> `{"status":"error","error":"Path not found: <path>"}`.
-                    - `searchPath` is a file rather than a directory -> it is still walked; that single file is \
+                    - `absolutePath` does not exist -> `{"status":"error","error":"Path not found: <path>"}`.
+                    - `absolutePath` is a file rather than a directory -> it is still walked; that single file is \
                     searched.
                     - An empty `query` matches every line of every file (the empty substring is in every string) - \
                     avoid passing an empty query.
-                    - Very large trees can produce a large report; narrow with `includes` or scope `searchPath` \
+                    - Very large trees can produce a large report; narrow with `includes` or scope `absolutePath` \
                     tighter first.
                     - `caseInsensitive` and `includes` are optional; omit them for a plain case-sensitive search \
                     of all files.
 
                     #### Security
-                    `searchPath` is a FILESYSTEM_PATH parameter: the Gateway screens it against the deployer \
+                    `absolutePath` is a FILESYSTEM_PATH parameter: the Gateway screens it against the deployer \
                     policy and allowed roots before the walk begins. The operation is read-only \
                     (`RiskCategory.READ_ONLY`); no file is modified. Matched content flows back as tool output \
                     and is subject to ingress masking. Do not attempt to search roots the deployer has fenced \
                     off - the call is blocked upstream; change scope instead.
                     """,
             examples = {
-                "{\"searchPath\": \"/abs/src\", \"query\": \"TODO\"}",
-                "{\"searchPath\": \"/abs/src\", \"query\": \"todo\", \"caseInsensitive\": true}",
-                "{\"searchPath\": \"/abs/src\", \"query\": \"public class \", \"includes\": [\"*.java\"]}",
-                "{\"searchPath\": \"/abs/src/Main.java\", \"query\": \"import \"}",
-                "{\"searchPath\": \"/abs\", \"query\": \"FIXME\", \"caseInsensitive\": true, \"includes\": [\"*.ts\", \"*.tsx\"]}",
-                "{\"searchPath\": \"/abs/config\", \"query\": \"password\"}",
-                "{\"searchPath\": \"/abs/src\", \"query\": \"@Override\"}",
-                "{\"searchPath\": \"/abs\", \"query\": \"TODO(jess)\"}"
+                "{\"absolutePath\": \"/abs/src\", \"query\": \"TODO\"}",
+                "{\"absolutePath\": \"/abs/src\", \"query\": \"todo\", \"caseInsensitive\": true}",
+                "{\"absolutePath\": \"/abs/src\", \"query\": \"public class \", \"includes\": [\"*.java\"]}",
+                "{\"absolutePath\": \"/abs/src/Main.java\", \"query\": \"import \"}",
+                "{\"absolutePath\": \"/abs\", \"query\": \"FIXME\", \"caseInsensitive\": true, \"includes\": [\"*.ts\", \"*.tsx\"]}",
+                "{\"absolutePath\": \"/abs/config\", \"query\": \"password\"}",
+                "{\"absolutePath\": \"/abs/src\", \"query\": \"@Override\"}",
+                "{\"absolutePath\": \"/abs\", \"query\": \"TODO(jess)\"}"
             },
             returnExamples = {
                 "/abs/src/Main.java:12: // TODO: refactor\n/abs/src/util/Helper.java:30: // TODO(jess): cleanup",
@@ -92,10 +92,10 @@ public final class GrepSearchTool implements NativeTool<GrepSearchTool.Args> {
             })
     public record Args(
             @SecurityHint(ParamCategory.FILESYSTEM_PATH) @Doc("Absolute path to search under.")
-                    @NonNull String searchPath,
+                    @NonNull String absolutePath,
             @Doc("The exact pattern to match.") @NonNull String query,
-            @Nullable @Doc("Whether to match case-insensitively.") Boolean caseInsensitive,
-            @Nullable @Doc("Glob filters for which files to include.") List<String> includes) {}
+            @Doc("Whether to match case-insensitively.") Boolean caseInsensitive,
+            @Doc("Glob filters for which files to include.") List<String> includes) {}
 
     @Override
     public @NonNull String getName() {
@@ -109,14 +109,16 @@ public final class GrepSearchTool implements NativeTool<GrepSearchTool.Args> {
 
     @Override
     public @NonNull Class<Args> getArgsClass() {
-        return Args.class;
+        return ToolDocs.nonNullClass(Args.class);
     }
 
     @Override
     public @NonNull String execute(@NonNull Args args) throws IOException {
-        Path root = Path.of(args.searchPath());
+        Path root = Path.of(args.absolutePath());
         if (!Files.exists(root)) {
-            return "{\"status\":\"error\",\"error\":\"Path not found: " + args.searchPath() + "\"}";
+            return "{\"status\":\"error\",\"error\":\"Path not found: "
+                    + args.absolutePath()
+                    + "\"}";
         }
         boolean ci = Boolean.TRUE.equals(args.caseInsensitive());
         String query = ci ? args.query().toLowerCase() : args.query();

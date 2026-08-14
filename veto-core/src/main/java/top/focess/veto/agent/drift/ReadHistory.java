@@ -18,7 +18,7 @@ import top.focess.veto.agent.workspace.Workspace;
  */
 public class ReadHistory {
 
-    private final ConcurrentHashMap<String, Snapshot> history = new ConcurrentHashMap<>();
+    private final @NonNull ConcurrentHashMap<String, Snapshot> history = new ConcurrentHashMap<>();
 
     /** A recorded file state at read time. */
     public record Snapshot(
@@ -49,8 +49,7 @@ public class ReadHistory {
     }
 
     /** Resolves an agent path string against the workspace's path resolver. */
-    public static @NonNull Path resolveHostPath(
-            @NonNull Workspace workspace, @NonNull String agentPath) {
+    public static Path resolveHostPath(@NonNull Workspace workspace, @NonNull String agentPath) {
         return workspace.pathResolver().resolveToHost(agentPath).hostPath();
     }
 }

@@ -1,6 +1,7 @@
 package top.focess.veto.contract;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static top.focess.veto.contract.ContractTestSupport.assertInstanceOf;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -16,12 +17,13 @@ class IpcCodecTest {
 
     @Test
     void roundTripsEveryFrameType() {
+        String userDir = System.getProperty("user.dir");
+        if (userDir == null) {
+            throw new AssertionError("user.dir system property is unavailable");
+        }
         IpcFrame[] frames = {
             new IpcFrame.Hello(
-                    IpcFrame.PROTOCOL_VERSION,
-                    7L,
-                    Version.parse("1.0.0-SNAPSHOT"),
-                    System.getProperty("user.dir")),
+                    IpcFrame.PROTOCOL_VERSION, 7L, Version.parse("1.0.0-SNAPSHOT"), userDir),
             new IpcFrame.Welcome(IpcFrame.PROTOCOL_VERSION, 7L, Version.parse("1.2.3")),
             new IpcFrame.Request("do the thing"),
             new IpcFrame.Complete("/log", 11L),
@@ -47,9 +49,11 @@ class IpcCodecTest {
 
         for (IpcFrame frame : frames) {
             byte[] encoded = IpcCodec.encode(frame);
-            assertNotNull(encoded, "encode returned null for " + frame.getClass().getSimpleName());
             IpcFrame decoded = IpcCodec.decode(encoded);
-            assertNotNull(decoded, "decode returned null for " + frame.getClass().getSimpleName());
+            if (decoded == null) {
+                throw new AssertionError(
+                        "decode returned null for " + frame.getClass().getSimpleName());
+            }
             assertEquals(
                     frame.getClass(),
                     decoded.getClass(),
@@ -71,11 +75,13 @@ class IpcCodecTest {
         // An unrecognized "type" discriminator must not throw — it degrades to IpcFrame.Unknown so
         // a newer-protocol peer is logged-and-skipped rather than rejected.
         IpcFrame decoded = IpcCodec.decode("{\"type\":\"some_future_frame\",\"content\":\"x\"}");
-        assertNotNull(decoded, "unknown type should degrade to Unknown, not null");
-        assertInstanceOf(IpcFrame.Unknown.class, decoded);
+        if (decoded == null) {
+            throw new AssertionError("unknown type should degrade to Unknown, not null");
+        }
+        IpcFrame.Unknown unknown = assertInstanceOf(IpcFrame.Unknown.class, decoded);
         // The discriminator is bound (via visible=true); the unrecognized body is intentionally not
         // captured — only the type is kept, so handlers can log "unknown type 'X'" and skip.
-        assertEquals("some_future_frame", ((IpcFrame.Unknown) decoded).type());
+        assertEquals("some_future_frame", unknown.type());
     }
 
     @Test
@@ -95,22 +101,34 @@ class IpcCodecTest {
     void handshakeFramesRoundTripWithOnlyVersionAndSeq() {
         // Handshake frames are pure: version + seq, no auth (auth is a transport/tunnel concern,
         // not a frame concern).
+        String userDir = System.getProperty("user.dir");
+        if (userDir == null) {
+            throw new AssertionError("user.dir system property is unavailable");
+        }
         String helloJson =
                 IpcCodec.encodeString(
                         new IpcFrame.Hello(
                                 IpcFrame.PROTOCOL_VERSION,
                                 1L,
                                 Version.parse("1.0.0-SNAPSHOT"),
-                                System.getProperty("user.dir")));
+                                userDir));
         assertFalse(helloJson.contains("\"auth\""));
-        IpcFrame.Hello helloBack = (IpcFrame.Hello) IpcCodec.decode(helloJson);
+        IpcFrame decodedHello = IpcCodec.decode(helloJson);
+        if (decodedHello == null) {
+            throw new AssertionError("Hello deserialization returned null");
+        }
+        IpcFrame.Hello helloBack = assertInstanceOf(IpcFrame.Hello.class, decodedHello);
         assertEquals(IpcFrame.PROTOCOL_VERSION, helloBack.version());
         assertEquals(1L, helloBack.seq());
         assertEquals(Version.parse("1.0.0-SNAPSHOT"), helloBack.productVersion());
 
         IpcFrame.Welcome w =
                 new IpcFrame.Welcome(IpcFrame.PROTOCOL_VERSION, 9L, Version.parse("1.2.3"));
-        IpcFrame.Welcome back = (IpcFrame.Welcome) IpcCodec.decode(IpcCodec.encode(w));
+        IpcFrame decodedWelcome = IpcCodec.decode(IpcCodec.encode(w));
+        if (decodedWelcome == null) {
+            throw new AssertionError("Welcome deserialization returned null");
+        }
+        IpcFrame.Welcome back = assertInstanceOf(IpcFrame.Welcome.class, decodedWelcome);
         assertEquals(IpcFrame.PROTOCOL_VERSION, back.version());
         assertEquals(9L, back.seq());
         assertEquals(Version.parse("1.2.3"), back.productVersion());

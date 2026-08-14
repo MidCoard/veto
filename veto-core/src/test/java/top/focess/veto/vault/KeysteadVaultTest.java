@@ -5,19 +5,22 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.nio.file.Path;
 import java.util.Optional;
 import java.util.Set;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import top.focess.veto.agent.mcp.ToolDocs;
 
 /**
  * Verifies {@link KeysteadVault} against the real keystead {@code OneFileVaultStore} crypto: signup
  * opens a handle, notes round-trip, logout/login reopens a persisted vault, upsert does not
  * duplicate, and a locked vault rejects operations.
  */
+@SuppressWarnings("initialization.field.uninitialized")
 class KeysteadVaultTest {
 
-    @TempDir Path tempDir;
+    @TempDir private @NonNull Path tempDir;
 
-    private KeysteadVault newVault() {
+    private @NonNull KeysteadVault newVault() {
         CredentialVaultConfiguration config = new CredentialVaultConfiguration();
         config.setVaultHome(tempDir.toString());
         return new KeysteadVault(config);
@@ -66,8 +69,11 @@ class KeysteadVaultTest {
     void lockedVaultRejectsOperations() {
         KeysteadVault vault = newVault();
         assertThrows(
-                KeysteadVault.VaultLockedException.class, () -> vault.readNoteBody("anything"));
-        assertThrows(KeysteadVault.VaultLockedException.class, () -> vault.saveNote("k", "v"));
+                ToolDocs.nonNullClass(KeysteadVault.VaultLockedException.class),
+                () -> vault.readNoteBody("anything"));
+        assertThrows(
+                ToolDocs.nonNullClass(KeysteadVault.VaultLockedException.class),
+                () -> vault.saveNote("k", "v"));
     }
 
     @Test
@@ -77,6 +83,8 @@ class KeysteadVaultTest {
         vault.logout("alice");
 
         KeysteadVault reopened = newVault();
-        assertThrows(Exception.class, () -> reopened.login("alice", "wrong-password"));
+        assertThrows(
+                ToolDocs.nonNullClass(Exception.class),
+                () -> reopened.login("alice", "wrong-password"));
     }
 }

@@ -9,7 +9,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
 /**
  * The Part 5.5 trust chain — a sealed record of the trust model for skillset authorizations in a
@@ -62,7 +61,7 @@ public sealed interface TrustChain
     @NonNull Instant issuedAt();
 
     /** When the chain expires (null = no expiry). */
-    @Nullable Instant expiresAt();
+    Instant expiresAt();
 
     /**
      * The SHA-256 of the canonical chain payload (root + subject + skillset + hops + trust +
@@ -120,7 +119,7 @@ public sealed interface TrustChain
         }
 
         @Override
-        public @Nullable Instant expiresAt() {
+        public Instant expiresAt() {
             return null; // owner-issued chains don't expire
         }
 
@@ -142,7 +141,7 @@ public sealed interface TrustChain
             @NonNull Set<String> scope,
             @NonNull List<Hop> hops,
             @NonNull Instant issuedAt,
-            @Nullable Instant expiresAt)
+            Instant expiresAt)
             implements TrustChain {
         public DeployerGranted {
             if (hops.isEmpty()) {
@@ -204,7 +203,7 @@ public sealed interface TrustChain
         }
 
         @Override
-        public @Nullable Instant expiresAt() {
+        public Instant expiresAt() {
             // Session-ephemeral chains expire on session end (when the group is disbanded).
             return null;
         }
@@ -228,7 +227,7 @@ public sealed interface TrustChain
      * <p>Returns true only if both checks pass.
      */
     default boolean verifyIntegrity() {
-        if (hops() == null || hops().isEmpty()) {
+        if (hops().isEmpty()) {
             return false;
         }
         if (!hops().get(0).fromAuthority().equals(rootAuthority())) {
@@ -243,9 +242,6 @@ public sealed interface TrustChain
             }
         }
         String expected = auditHash();
-        if (expected == null) {
-            return false;
-        }
         // Self-verify: the canonical hash of the current state must match the recorded auditHash
         // (which is itself derived from the current state at construction time). This is what
         // makes the chain tamper-evident: any later edit changes the input and therefore the
@@ -261,12 +257,12 @@ public sealed interface TrustChain
      * the issuedAt ISO string. SHA-256 of the UTF-8 bytes, hex-encoded (lowercase).
      */
     private static @NonNull String computeAuditHash(
-            @Nullable String root,
-            @Nullable String subject,
-            @Nullable String skillset,
-            @Nullable String trust,
-            @Nullable List<Hop> hops,
-            @Nullable Instant issuedAt) {
+            String root,
+            String subject,
+            String skillset,
+            String trust,
+            List<Hop> hops,
+            Instant issuedAt) {
         StringBuilder sb = new StringBuilder();
         sb.append("root=")
                 .append(safe(root))
@@ -289,7 +285,7 @@ public sealed interface TrustChain
                         .append('[')
                         .append(safe(h.trust()))
                         .append('@')
-                        .append(h.at() == null ? "" : h.at().toString())
+                        .append(h.at())
                         .append(']');
             }
         }
@@ -297,7 +293,7 @@ public sealed interface TrustChain
         return sha256Hex(sb.toString());
     }
 
-    private static @NonNull String safe(@Nullable String s) {
+    private static @NonNull String safe(String s) {
         return s == null ? "" : s;
     }
 

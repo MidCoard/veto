@@ -9,6 +9,7 @@ import org.jspecify.annotations.NonNull;
  * decide whether a transient failure (rate-limit, timeout) is worth a backoff retry, versus a
  * permanent failure (auth, capability) that must surface immediately.
  */
+@SuppressWarnings("serial")
 public class LlmException extends RuntimeException {
 
     private final boolean retryable;
@@ -19,9 +20,7 @@ public class LlmException extends RuntimeException {
      * @param message the detail message
      * @param retryable whether the exception is retryable
      */
-    public
-    @NonNull
-    LlmException(@NonNull String message, boolean retryable) {
+    public LlmException(@NonNull String message, boolean retryable) {
         super(message);
         this.retryable = retryable;
     }
@@ -33,9 +32,7 @@ public class LlmException extends RuntimeException {
      * @param cause the cause of the exception
      * @param retryable whether the exception is retryable
      */
-    public
-    @NonNull
-    LlmException(@NonNull String message, @NonNull Throwable cause, boolean retryable) {
+    public LlmException(@NonNull String message, Throwable cause, boolean retryable) {
         super(message, cause);
         this.retryable = retryable;
     }

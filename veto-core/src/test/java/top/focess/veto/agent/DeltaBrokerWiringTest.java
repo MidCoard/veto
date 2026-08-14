@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.agent.identity.SystemPromptResolver;
@@ -31,7 +32,8 @@ class DeltaBrokerWiringTest {
 
     private static final Duration EPISODE_TIMEOUT = Duration.ofSeconds(10);
 
-    private static AgentService serviceWithBroker(UniformLLMCaller caller, DeltaBroker broker) {
+    private static @NonNull AgentService serviceWithBroker(
+            @NonNull UniformLLMCaller caller, DeltaBroker broker) {
         ObjectMapper mapper = new ObjectMapper();
         PromptCompiler compiler =
                 new PromptCompiler(
@@ -60,7 +62,7 @@ class DeltaBrokerWiringTest {
                                 new top.focess.veto.sandbox.ConstrainedSubprocessSubstrate())));
     }
 
-    private static AgentRunner.LlmBinding binding(String systemPrompt) {
+    private static AgentRunner.@NonNull LlmBinding binding(@NonNull String systemPrompt) {
         return new AgentRunner.LlmBinding(
                 ProviderType.DEEPSEEK,
                 "stub-model",
@@ -69,7 +71,8 @@ class DeltaBrokerWiringTest {
                 systemPrompt);
     }
 
-    private static UniformLLMCaller scripted(VetoResponse... responses) {
+    private static @NonNull UniformLLMCaller scripted(
+            @NonNull VetoResponse @NonNull ... responses) {
         var queue = new java.util.ArrayDeque<>(List.of(responses));
         return request -> {
             VetoResponse r = queue.poll();
@@ -80,7 +83,7 @@ class DeltaBrokerWiringTest {
         };
     }
 
-    private static VetoResponse thoughtOn(String thought, String message) {
+    private static @NonNull VetoResponse thoughtOn(String thought, String message) {
         return new VetoResponse(
                 thought, List.of(), message, new VetoResponse.Features(false), null);
     }

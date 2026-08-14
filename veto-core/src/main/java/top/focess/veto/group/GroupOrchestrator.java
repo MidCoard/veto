@@ -10,7 +10,6 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -44,7 +43,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class GroupOrchestrator {
 
-    private static final Logger log = LoggerFactory.getLogger(GroupOrchestrator.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.group.GroupOrchestrator");
 
     private final @NonNull GroupRegistry registry;
     private final @NonNull Blackboard blackboard;
@@ -56,7 +56,7 @@ public class GroupOrchestrator {
      * spawning Mates upfront. Null in the test constructors, which fall back to {@link
      * HeuristicLeader#assignMates} + pre-assigned Mates.
      */
-    private final @Nullable MateProvisioner provisioner;
+    private final MateProvisioner provisioner;
 
     /** Per-group ledger of last-seen turnSeq so each tick only processes new messages. */
     private final @NonNull ConcurrentMap<UUID, Long> lastSeenSeq = new ConcurrentHashMap<>();
@@ -75,9 +75,7 @@ public class GroupOrchestrator {
         this(new GroupRegistry(), new Blackboard(), new HeuristicLeader(), null);
     }
 
-    public
-    @NonNull
-    GroupOrchestrator(@NonNull GroupRegistry registry, @NonNull Blackboard blackboard) {
+    public GroupOrchestrator(@NonNull GroupRegistry registry, @NonNull Blackboard blackboard) {
         this(registry, blackboard, new HeuristicLeader(), null);
     }
 
@@ -86,7 +84,7 @@ public class GroupOrchestrator {
             @NonNull GroupRegistry registry,
             @NonNull Blackboard blackboard,
             @NonNull HeuristicLeader leader,
-            @Lazy @Nullable MateProvisioner provisioner) {
+            @Lazy MateProvisioner provisioner) {
         this.registry = registry;
         this.blackboard = blackboard;
         this.leader = leader;
@@ -94,9 +92,7 @@ public class GroupOrchestrator {
     }
 
     /** Construct with an LlmLeader (extracts the heuristic fallback for direct calls). */
-    public
-    @NonNull
-    GroupOrchestrator(
+    public GroupOrchestrator(
             @NonNull GroupRegistry registry,
             @NonNull Blackboard blackboard,
             @NonNull LlmLeader llmLeader) {
@@ -282,12 +278,12 @@ public class GroupOrchestrator {
      * lastSeenSeq read-modify-write and the ingest/dispatch/maybeComplete sequence are atomic.
      * Different groups can tick concurrently.
      */
-    public @Nullable Group tick(@NonNull UUID groupId) {
+    public Group tick(@NonNull UUID groupId) {
         return withGroupLock(groupId, () -> tickInner(groupId));
     }
 
     /** Inner tick logic — called under the per-group lock. */
-    private @Nullable Group tickInner(@NonNull UUID groupId) {
+    private Group tickInner(@NonNull UUID groupId) {
         Group group = registry.get(groupId);
         if (group == null) {
             return null;
@@ -366,7 +362,7 @@ public class GroupOrchestrator {
      * to {@code PENDING} so the Leader can re-assign.
      */
     private @NonNull Group handleStatus(@NonNull Group group, @NonNull BlackboardMessage message) {
-        if (message.payload() == null || !message.payload().startsWith("terminal:")) {
+        if (!message.payload().startsWith("terminal:")) {
             return group;
         }
         // terminal:<nodeId>:<reason> — find a RUNNING node for this Mate; if none, no-op.
@@ -411,7 +407,7 @@ public class GroupOrchestrator {
         return group;
     }
 
-    private static DagNode.@NonNull NodeResult resultArtifact(@Nullable String result) {
+    private static DagNode.@NonNull NodeResult resultArtifact(String result) {
         if (result == null) {
             return new DagNode.ResultNone();
         }
@@ -425,7 +421,7 @@ public class GroupOrchestrator {
         return new DagNode.ResultNone();
     }
 
-    private static @Nullable String extractNodeId(@Nullable String payload) {
+    private static String extractNodeId(String payload) {
         if (payload == null) {
             return null;
         }
@@ -488,8 +484,7 @@ public class GroupOrchestrator {
     }
 
     /** Returns the id of any existing Mate of the given skillset, or null if none exists. */
-    private static @Nullable String existingMateOfSkillset(
-            @NonNull Group group, @Nullable String skillset) {
+    private static String existingMateOfSkillset(@NonNull Group group, String skillset) {
         if (skillset == null || skillset.isBlank()) {
             return null;
         }
@@ -506,7 +501,7 @@ public class GroupOrchestrator {
      * new node (or re-dispatches the same). The orchestrator exposes this hook so the Leader (or a
      * test) can drive re-planning.
      */
-    public @Nullable Group replanFailed(@NonNull UUID groupId, @NonNull String nodeId) {
+    public Group replanFailed(@NonNull UUID groupId, @NonNull String nodeId) {
         Group group = registry.get(groupId);
         if (group == null) {
             return null;
@@ -564,7 +559,7 @@ public class GroupOrchestrator {
                 @NonNull UUID groupId,
                 @NonNull String mateId,
                 @NonNull String nodeId,
-                @Nullable String artifactPath) {
+                String artifactPath) {
             String payload =
                     nodeId + ":accept:" + (artifactPath == null ? "/artifact" : artifactPath);
             return new BlackboardMessage(

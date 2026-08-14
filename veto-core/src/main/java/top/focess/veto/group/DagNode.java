@@ -3,7 +3,6 @@ package top.focess.veto.group;
 import java.util.List;
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
 /**
  * A single node in the group's Execution DAG (execution_dag.md). Each node is a unit of work
@@ -12,7 +11,7 @@ import org.jspecify.annotations.Nullable;
 public record DagNode(
         @NonNull String nodeId,
         @NonNull String description,
-        @Nullable String assignedMateId, // null if unassigned
+        String assignedMateId, // null if unassigned
         @NonNull String requiredSkillset, // e.g. "coding", "testing", "graphql"
         @NonNull Set<String> dependsOn, // nodeIds
         @NonNull NodeState state,
@@ -70,7 +69,7 @@ public record DagNode(
     public DagNode(
             @NonNull String nodeId,
             @NonNull String description,
-            @Nullable String assignedMateId,
+            String assignedMateId,
             @NonNull String requiredSkillset,
             @NonNull Set<String> dependsOn,
             @NonNull NodeState state,

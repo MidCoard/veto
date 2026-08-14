@@ -2,7 +2,6 @@ package top.focess.veto.llm.provider;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import top.focess.veto.llm.client.LlmClientFactory;
@@ -32,7 +31,7 @@ public class OpenAIProvider extends OpenAiCompatibleProvider {
     }
 
     @Override
-    public @Nullable String defaultBaseUrl() {
+    public String defaultBaseUrl() {
         return null;
     }
 

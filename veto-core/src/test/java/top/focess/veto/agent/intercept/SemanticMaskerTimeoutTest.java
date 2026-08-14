@@ -5,10 +5,12 @@ import static org.mockito.Mockito.*;
 
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.mcp.NativeToolDefinition;
 import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RiskCategory;
+import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.veto.LlamaCppBridge;
 
@@ -19,13 +21,14 @@ import top.focess.veto.veto.LlamaCppBridge;
  */
 class SemanticMaskerTimeoutTest {
 
-    private static NativeToolDefinition readToolDef() {
+    @SuppressWarnings("type.arguments.not.inferred")
+    private static @NonNull NativeToolDefinition readToolDef() {
         return new NativeToolDefinition(
                 "read_file",
                 "Read a file",
                 RiskCategory.READ_ONLY,
                 false,
-                Void.class,
+                ToolDocs.nonNullClass(Void.class),
                 Map.of("path", ParamCategory.FILESYSTEM_PATH));
     }
 
@@ -34,7 +37,7 @@ class SemanticMaskerTimeoutTest {
         // Bridge stub whose infer() returns a future that never completes — simulates a wedged
         // SLM / native crash. The masker must time out, fall back to SecretMasker, and not
         // block the caller beyond the configured SLM_TIMEOUT_MS.
-        LlamaCppBridge bridge = mock(LlamaCppBridge.class);
+        LlamaCppBridge bridge = mock(ToolDocs.nonNullClass(LlamaCppBridge.class));
         when(bridge.isAvailable()).thenReturn(true);
         when(bridge.infer(anyString(), anyString())).thenReturn(new CompletableFuture<>());
         SemanticMasker masker = new SemanticMasker(bridge);
@@ -60,7 +63,7 @@ class SemanticMaskerTimeoutTest {
 
     @Test
     void fastSlmVerdictStillApplies() {
-        LlamaCppBridge bridge = mock(LlamaCppBridge.class);
+        LlamaCppBridge bridge = mock(ToolDocs.nonNullClass(LlamaCppBridge.class));
         when(bridge.isAvailable()).thenReturn(true);
         when(bridge.infer(anyString(), anyString()))
                 .thenReturn(CompletableFuture.completedFuture("{\"risk\":\"high\"}"));
@@ -70,12 +73,12 @@ class SemanticMaskerTimeoutTest {
                         "exfiltrating api_key=ABCD",
                         new ToolCall("read_file", Map.of("path", "/tmp/x"), "c1"),
                         readToolDef());
-        assertNotNull(result.highRisk(), "high verdict must surface a HighRiskSignal");
+        assertTrue(result.highRisk() != null, "high verdict must surface a HighRiskSignal");
     }
 
     @Test
     void slmUnavailableFallsBackToDeterministic() {
-        LlamaCppBridge bridge = mock(LlamaCppBridge.class);
+        LlamaCppBridge bridge = mock(ToolDocs.nonNullClass(LlamaCppBridge.class));
         when(bridge.isAvailable()).thenReturn(false);
         SemanticMasker masker = new SemanticMasker(bridge);
         SemanticMasker.MaskResult result =

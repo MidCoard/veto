@@ -1,7 +1,6 @@
 package top.focess.veto.llm.credential;
 
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 import top.focess.veto.llm.core.ProviderType;
 import top.focess.veto.llm.exceptions.CredentialException;
@@ -34,18 +33,19 @@ public class CredentialResolver {
      * @throws CredentialException if the credential key is missing, no credential is found, or the
      *     vault is locked
      */
-    public @Nullable String resolve(
+    public @NonNull String resolve(
             @NonNull ProviderType providerType, @NonNull String credentialKey) {
         if (credentialKey.isEmpty()) {
             throw new CredentialException("Credential key is missing for provider " + providerType);
         }
         try {
-            return vault.readNoteBody(credentialKey)
-                    .orElseThrow(
-                            () ->
-                                    new CredentialException(
-                                            "No credential registered in Vault under key: "
-                                                    + credentialKey));
+            return java.util.Objects.requireNonNull(
+                    vault.readNoteBody(credentialKey)
+                            .orElseThrow(
+                                    () ->
+                                            new CredentialException(
+                                                    "No credential registered in Vault under key: "
+                                                            + credentialKey)));
         } catch (KeysteadVault.VaultLockedException e) {
             throw new CredentialException(
                     "Vault is locked - authenticate before making LLM calls", e);

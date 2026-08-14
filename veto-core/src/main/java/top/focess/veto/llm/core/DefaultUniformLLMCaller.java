@@ -23,7 +23,8 @@ import top.focess.veto.llm.provider.LLMProviderStrategy;
  */
 @Service
 public class DefaultUniformLLMCaller implements UniformLLMCaller {
-    private static final Logger log = LoggerFactory.getLogger(DefaultUniformLLMCaller.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.llm.core.DefaultUniformLLMCaller");
     private static final int MAX_ATTEMPTS = 5;
     private static final long BASE_BACKOFF_MILLIS = 250L;
     private final @NonNull List<LLMProviderStrategy> strategies;
@@ -35,9 +36,7 @@ public class DefaultUniformLLMCaller implements UniformLLMCaller {
      * @param strategies the list of available LLM provider strategies
      * @param egress the egress strategy for outgoing calls
      */
-    public
-    @NonNull
-    DefaultUniformLLMCaller(
+    public DefaultUniformLLMCaller(
             @NonNull List<LLMProviderStrategy> strategies, @NonNull LlmEgress egress) {
         this.strategies = strategies;
         this.egress = egress;
@@ -86,16 +85,16 @@ public class DefaultUniformLLMCaller implements UniformLLMCaller {
                 backoff(attempt, e);
             }
         }
-        throw last; // unreachable, retained for the compiler.
+        throw top.focess.veto.util.Nullness.requireNonNull(last);
     }
 
-    private void backoff(int attempt, LlmException cause) {
+    private void backoff(int attempt, @NonNull LlmException cause) {
         long delay = BASE_BACKOFF_MILLIS * (1L << (attempt - 1));
         log.warn(
                 "Retryable LLM failure (attempt {}/{}): {} - backing off {}ms",
                 attempt,
                 MAX_ATTEMPTS,
-                cause.getMessage(),
+                String.valueOf(cause.getMessage()),
                 delay);
         try {
             Thread.sleep(delay);

@@ -7,7 +7,6 @@ import java.nio.charset.CharsetDecoder;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
 /**
  * The decode strategy for sandboxed-process output. Two writer populations share the pipe: Windows
@@ -24,7 +23,7 @@ import org.jspecify.annotations.Nullable;
  */
 final class SubprocessOutput {
 
-    private static final Charset PLATFORM = resolvePlatform();
+    private static final @NonNull Charset PLATFORM = resolvePlatform();
 
     private SubprocessOutput() {}
 
@@ -53,7 +52,7 @@ final class SubprocessOutput {
     }
 
     /** Strict-decodes {@code bytes[0, len)} as UTF-8; {@code null} on any malformed input. */
-    private static @Nullable String tryUtf8(byte @NonNull [] bytes, int len) {
+    private static String tryUtf8(byte @NonNull [] bytes, int len) {
         CharsetDecoder decoder =
                 StandardCharsets.UTF_8
                         .newDecoder()

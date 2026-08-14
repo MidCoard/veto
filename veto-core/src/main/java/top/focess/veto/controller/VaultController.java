@@ -43,7 +43,7 @@ public class VaultController {
      * under the title.
      */
     @GetMapping("/notes/{title}")
-    public @NonNull Map<String, String> read(@NonNull @PathVariable String title) {
+    public @NonNull Map<String, String> read(@PathVariable @NonNull String title) {
         requireUser();
         String value =
                 vault.readNoteBody(title)
@@ -59,7 +59,7 @@ public class VaultController {
      * Create or overwrite a credential note ({@code title} = the credKey, {@code value} = the key).
      */
     @PutMapping("/notes")
-    public @NonNull ResponseEntity<Void> put(@NonNull @RequestBody Map<String, String> body) {
+    public @NonNull ResponseEntity<Void> put(@RequestBody @NonNull Map<String, String> body) {
         requireUser();
         String title = body.get("title");
         String value = body.get("value");
@@ -72,7 +72,7 @@ public class VaultController {
     }
 
     @DeleteMapping("/notes/{title}")
-    public @NonNull ResponseEntity<Void> delete(@NonNull @PathVariable String title) {
+    public @NonNull ResponseEntity<Void> delete(@PathVariable @NonNull String title) {
         requireUser();
         if (!vault.deleteNote(title)) {
             throw new ResponseStatusException(

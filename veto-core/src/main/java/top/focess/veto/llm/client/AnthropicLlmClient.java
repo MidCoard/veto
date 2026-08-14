@@ -19,7 +19,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.llm.core.ChatMessage;
 import top.focess.veto.llm.core.ResolvedRequest;
 import top.focess.veto.llm.core.ToolDefinition;
@@ -43,8 +42,8 @@ import top.focess.veto.llm.exceptions.ModelCapabilityException;
  */
 final class AnthropicLlmClient extends LlmClient {
 
-    private static final org.slf4j.Logger log =
-            org.slf4j.LoggerFactory.getLogger(AnthropicLlmClient.class);
+    private static final org.slf4j.@NonNull Logger log =
+            org.slf4j.LoggerFactory.getLogger("top.focess.veto.llm.client.AnthropicLlmClient");
 
     private final @NonNull AnthropicClient sdkClient;
     private final @NonNull ObjectMapper objectMapper;
@@ -63,24 +62,15 @@ final class AnthropicLlmClient extends LlmClient {
                         .model(Model.of(request.modelName()))
                         .maxTokens(request.options().maxTokensOrDefault())
                         .system(request.systemPrompt());
-        if (request.options().temperature() != null) {
-            builder.temperature(request.options().temperature());
-        }
-
         // The manifest as native tools; no forced tool_choice (the clones ignore it anyway).
         for (ToolDefinition t : request.tools()) {
-            Object properties = t.inputSchema().get("properties");
             builder.addTool(
                     Tool.builder()
                             .name(t.name())
                             .description(t.description())
                             .inputSchema(
                                     Tool.InputSchema.builder()
-                                            .properties(
-                                                    JsonValue.from(
-                                                            properties == null
-                                                                    ? Map.of()
-                                                                    : properties))
+                                            .properties(toolProperties(t.inputSchema()))
                                             .build())
                             .build());
         }
@@ -97,10 +87,8 @@ final class AnthropicLlmClient extends LlmClient {
         }
 
         Message message = sdkClient.messages().create(builder.build());
-        if (message.usage() != null) {
-            top.focess.veto.llm.core.LlmSystemUsage.set(
-                    message.usage().inputTokens(), message.usage().outputTokens());
-        }
+        top.focess.veto.llm.core.LlmSystemUsage.set(
+                message.usage().inputTokens(), message.usage().outputTokens());
         if (log.isDebugEnabled()) {
             log.debug("Anthropic raw response blocks: {}", describeBlocks(message));
         }
@@ -154,6 +142,25 @@ final class AnthropicLlmClient extends LlmClient {
         return new RawCompletion(summary, rawInput);
     }
 
+    private static Tool.InputSchema.@NonNull Properties toolProperties(
+            @NonNull Map<String, Object> inputSchema) {
+        Object value = inputSchema.get("properties");
+        Tool.InputSchema.Properties.Builder builder = Tool.InputSchema.Properties.builder();
+        if (value == null) {
+            return builder.build();
+        }
+        if (!(value instanceof Map<?, ?> properties)) {
+            throw new ModelCapabilityException("Anthropic tool properties must be a JSON object");
+        }
+        for (Map.Entry<?, ?> entry : properties.entrySet()) {
+            if (!(entry.getKey() instanceof String name)) {
+                throw new ModelCapabilityException("Anthropic tool property names must be strings");
+            }
+            builder.putAdditionalProperty(name, JsonValue.from(entry.getValue()));
+        }
+        return builder.build();
+    }
+
     /**
      * Maps the compiled conversation to Anthropic message params, merging consecutive same-role
      * messages (the API requires strict role alternation). System messages are dropped - the
@@ -190,23 +197,26 @@ final class AnthropicLlmClient extends LlmClient {
                                 ContentBlockParam.ofText(
                                         TextBlockParam.builder().text(m.content()).build()));
                     }
-                    if (m.toolName() != null && m.callId() != null) {
+                    String toolName = m.toolName();
+                    String callId = m.callId();
+                    if (toolName != null && callId != null) {
                         blocks.add(
                                 ContentBlockParam.ofToolUse(
                                         ToolUseBlockParam.builder()
-                                                .id(m.callId())
-                                                .name(m.toolName())
+                                                .id(callId)
+                                                .name(toolName)
                                                 .input(toolInputParam(m.toolArgs()))
                                                 .build()));
                     }
                 }
                 case "tool" -> {
                     role = MessageParam.Role.USER;
-                    if (m.callId() != null && !m.callId().isBlank()) {
+                    String callId = m.callId();
+                    if (callId != null && !callId.isBlank()) {
                         blocks.add(
                                 ContentBlockParam.ofToolResult(
                                         ToolResultBlockParam.builder()
-                                                .toolUseId(m.callId())
+                                                .toolUseId(callId)
                                                 .content(m.content())
                                                 .build()));
                     } else {
@@ -259,14 +269,14 @@ final class AnthropicLlmClient extends LlmClient {
             if (m.toolName() != null) {
                 sb.append(" tool=").append(m.toolName());
             }
-            sb.append(" contentLen=").append(m.content() == null ? 0 : m.content().length());
+            sb.append(" contentLen=").append(m.content().length());
             sb.append('\n');
         }
         return sb.toString().strip();
     }
 
     /** Parses a tool-call args JSON string into the SDK's input param; empty input on bad JSON. */
-    private ToolUseBlockParam.@NonNull Input toolInputParam(@Nullable String toolArgs) {
+    private ToolUseBlockParam.@NonNull Input toolInputParam(String toolArgs) {
         ToolUseBlockParam.Input.Builder input = ToolUseBlockParam.Input.builder();
         if (toolArgs != null && !toolArgs.isBlank()) {
             try {
@@ -285,7 +295,11 @@ final class AnthropicLlmClient extends LlmClient {
     /** A response tool_use block's input as a plain map (never the Java-Map {@code toString()}). */
     private @NonNull Map<String, Object> toolInputMap(@NonNull ToolUseBlock tu) {
         try {
-            return tu._input().convert(new TypeReference<>() {});
+            Map<String, Object> converted = tu._input().convert(new TypeReference<>() {});
+            if (converted == null) {
+                throw new ModelCapabilityException("Anthropic tool input decoded to null");
+            }
+            return converted;
         } catch (Exception e) {
             throw new ModelCapabilityException(
                     "Anthropic tool input was not a JSON object: " + e.getMessage());

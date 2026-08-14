@@ -33,7 +33,8 @@ class SessionHistoryLoaderTest {
                         agent,
                         new ObjectMapper());
 
-        TurnRecordRepository repo = mock(TurnRecordRepository.class);
+        TurnRecordRepository repo =
+                mock(top.focess.veto.agent.mcp.ToolDocs.nonNullClass(TurnRecordRepository.class));
         when(repo.findBySessionIdOrderByTurnNumberAsc(session.toString()))
                 .thenReturn(List.of(row1, row2));
 
@@ -67,7 +68,8 @@ class SessionHistoryLoaderTest {
                         mate,
                         new ObjectMapper());
 
-        TurnRecordRepository repo = mock(TurnRecordRepository.class);
+        TurnRecordRepository repo =
+                mock(top.focess.veto.agent.mcp.ToolDocs.nonNullClass(TurnRecordRepository.class));
         when(repo.findBySessionIdAndAgentIdOrderByTurnNumberAsc(session.toString(), mate))
                 .thenReturn(List.of(mateTurn));
 
@@ -84,7 +86,8 @@ class SessionHistoryLoaderTest {
 
     @Test
     void emptyWhenNoHistory() {
-        TurnRecordRepository repo = mock(TurnRecordRepository.class);
+        TurnRecordRepository repo =
+                mock(top.focess.veto.agent.mcp.ToolDocs.nonNullClass(TurnRecordRepository.class));
         when(repo.findBySessionIdOrderByTurnNumberAsc(anyString())).thenReturn(List.of());
         SessionHistoryLoader loader = new SessionHistoryLoader(repo, new ObjectMapper());
         assertTrue(loader.load("no-such-session").isEmpty());

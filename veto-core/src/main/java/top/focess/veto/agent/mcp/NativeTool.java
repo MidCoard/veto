@@ -18,7 +18,7 @@ import org.jspecify.annotations.NonNull;
  *
  * @param <T> the Java record representing the tool's structured parameters
  */
-public interface NativeTool<T> {
+public interface NativeTool<T extends @NonNull Object> {
 
     /** The unique name of the tool (e.g. {@code "view_file"}). */
     @NonNull String getName();
@@ -38,9 +38,8 @@ public interface NativeTool<T> {
      * Bridge method to parse raw JSON node parameters and execute the tool. Inherited automatically
      * by implementations.
      */
-    @NonNull
-    default String executeFromJson(@NonNull JsonNode jsonArgs, @NonNull ObjectMapper mapper)
-            throws Exception {
+    default @NonNull String executeFromJson(
+            @NonNull JsonNode jsonArgs, @NonNull ObjectMapper mapper) throws Exception {
         T typedArgs = mapper.treeToValue(jsonArgs, getArgsClass());
         return execute(typedArgs);
     }

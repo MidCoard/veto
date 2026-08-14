@@ -1,7 +1,6 @@
 package top.focess.veto.contract;
 
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
 /**
  * Transport-agnostic seam for exchanging {@link IpcFrame}s between a terminal (client) and the
@@ -41,7 +40,7 @@ public sealed interface Transport permits ClientTransport, ServerTransport {
      * @return the next message, or {@code null} if none arrived within the timeout or a malformed
      *     payload was dropped
      */
-    @Nullable FramedMsg recv(long timeoutMillis);
+    FramedMsg recv(long timeoutMillis);
 
     /** Closes the transport, releasing the underlying socket. */
     void close();

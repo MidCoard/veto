@@ -6,7 +6,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.mcp.Doc;
 import top.focess.veto.agent.mcp.NativeTool;
@@ -14,6 +13,7 @@ import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.SecurityHint;
 import top.focess.veto.agent.mcp.ToolDoc;
+import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.mcp.ToolSecurity;
 
 /** {@code view_file} — read lines of a text file from the local filesystem. */
@@ -88,8 +88,8 @@ public final class ViewFileTool implements NativeTool<ViewFileTool.Args> {
             @SecurityHint(ParamCategory.FILESYSTEM_PATH)
                     @Doc("The absolute path of the file to view.")
                     @NonNull String absolutePath,
-            @Nullable @Doc("1-indexed starting line (inclusive).") Integer startLine,
-            @Nullable @Doc("1-indexed ending line (inclusive).") Integer endLine) {}
+            @Doc("1-indexed starting line (inclusive).") Integer startLine,
+            @Doc("1-indexed ending line (inclusive).") Integer endLine) {}
 
     @Override
     public @NonNull String getName() {
@@ -103,7 +103,7 @@ public final class ViewFileTool implements NativeTool<ViewFileTool.Args> {
 
     @Override
     public @NonNull Class<Args> getArgsClass() {
-        return Args.class;
+        return ToolDocs.nonNullClass(Args.class);
     }
 
     @Override

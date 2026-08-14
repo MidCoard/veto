@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -23,30 +24,33 @@ class ConstrainedSubprocessSubstrateTimeoutTest {
             System.getProperty("os.name").toLowerCase().contains("win");
 
     /** A command that runs ~20s (well past every cap used here). */
-    private static Command sleeper() {
+    private static @NonNull Command sleeper() {
         return WINDOWS
                 ? new Command("ping", List.of("-n", "20", "127.0.0.1"))
                 : new Command("sleep", List.of("20"));
     }
 
     /** A command that exits fast with recognizable output. */
-    private static Command echoer(String word) {
+    private static @NonNull Command echoer(@NonNull String word) {
         return WINDOWS
                 ? new Command("cmd", List.of("/c", "echo " + word))
                 : new Command("echo", List.of(word));
     }
 
-    private static CommandResult run(
-            Path root, List<Command> commands, ChainMode mode, Duration timeout) {
+    private static @NonNull CommandResult run(
+            @NonNull Path root,
+            @NonNull List<@NonNull Command> commands,
+            @NonNull ChainMode mode,
+            @NonNull Duration timeout) {
         ConstrainedSubprocessSubstrate substrate = new ConstrainedSubprocessSubstrate();
         SandboxHandle handle = substrate.provision(SandboxProfile.defaults(root));
         return substrate.runCommands(handle, commands, Path.of("."), mode, timeout);
     }
 
     @Test
-    void runawayProcessIsKilledAtTheCap(@TempDir Path root) {
+    void runawayProcessIsKilledAtTheCap(@TempDir @org.jspecify.annotations.NonNull Path root) {
         long start = System.nanoTime();
-        CommandResult result =
+        @NonNull CommandResult result =
                 run(root, List.of(sleeper()), ChainMode.STOP_ON_FAILURE, Duration.ofSeconds(2));
         long elapsedMs = Duration.ofNanos(System.nanoTime() - start).toMillis();
 
@@ -54,12 +58,14 @@ class ConstrainedSubprocessSubstrateTimeoutTest {
                 elapsedMs < 10_000,
                 "cap of 2s should end the wait promptly, took " + elapsedMs + "ms");
         assertEquals(-1, result.exitCode());
-        assertTrue(result.stderr().contains("[timeout]"), "result should carry the timeout marker");
+        assertTrue(
+                requireStderr(result).contains("[timeout]"),
+                "result should carry the timeout marker");
     }
 
     @Test
-    void fastCommandStillReturnsItsOutput(@TempDir Path root) {
-        CommandResult result =
+    void fastCommandStillReturnsItsOutput(@TempDir @org.jspecify.annotations.NonNull Path root) {
+        @NonNull CommandResult result =
                 run(
                         root,
                         List.of(echoer("hello")),
@@ -68,15 +74,15 @@ class ConstrainedSubprocessSubstrateTimeoutTest {
 
         assertEquals(0, result.exitCode());
         assertTrue(result.stdout().contains("hello"));
-        assertFalse(result.stderr().contains("[timeout]"));
+        assertFalse(requireStderr(result).contains("[timeout]"));
     }
 
     @Test
-    void chainSharesOneDeadline(@TempDir Path root) {
+    void chainSharesOneDeadline(@TempDir @org.jspecify.annotations.NonNull Path root) {
         // The sleeper eats the whole 2s budget; the echo that follows must be cut off by the
         // shared deadline instead of getting its own 2s window.
         long start = System.nanoTime();
-        CommandResult result =
+        @NonNull CommandResult result =
                 run(
                         root,
                         List.of(sleeper(), echoer("late")),
@@ -88,15 +94,15 @@ class ConstrainedSubprocessSubstrateTimeoutTest {
                 elapsedMs < 10_000,
                 "chain should end at the shared deadline, took " + elapsedMs + "ms");
         assertEquals(-1, result.exitCode());
-        assertTrue(result.stderr().contains("[timeout]"));
+        assertTrue(requireStderr(result).contains("[timeout]"));
         assertFalse(
                 result.stdout().contains("late"),
                 "the second command must not run once the deadline is spent");
     }
 
     @Test
-    void zeroTimeoutMeansNoCapButStillDrains(@TempDir Path root) {
-        CommandResult result =
+    void zeroTimeoutMeansNoCapButStillDrains(@TempDir @org.jspecify.annotations.NonNull Path root) {
+        @NonNull CommandResult result =
                 run(root, List.of(echoer("unbounded")), ChainMode.STOP_ON_FAILURE, Duration.ZERO);
 
         assertEquals(0, result.exitCode());
@@ -110,9 +116,10 @@ class ConstrainedSubprocessSubstrateTimeoutTest {
      * of mojibake.
      */
     @Test
-    void bareNameResolvesAndCodepageOutputDecodes(@TempDir Path root) {
+    void bareNameResolvesAndCodepageOutputDecodes(
+            @TempDir @org.jspecify.annotations.NonNull Path root) {
         org.junit.jupiter.api.Assumptions.assumeTrue(WINDOWS, "Windows-specific behavior");
-        CommandResult result =
+        @NonNull CommandResult result =
                 run(
                         root,
                         List.of(new Command("cmd", List.of("/c", "echo 中文输出"))),
@@ -123,5 +130,13 @@ class ConstrainedSubprocessSubstrateTimeoutTest {
         assertTrue(
                 result.stdout().contains("中文输出"),
                 "console-codepage output must decode correctly, got: " + result.stdout());
+    }
+
+    private static @NonNull String requireStderr(@NonNull CommandResult result) {
+        String stderr = result.stderr();
+        if (stderr != null) {
+            return stderr;
+        }
+        throw new AssertionError("command result must include stderr text");
     }
 }

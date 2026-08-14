@@ -3,7 +3,6 @@ package top.focess.veto.command;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.command.*;
@@ -29,16 +28,17 @@ import top.focess.veto.terminal.IpcServer;
  */
 public class CommandRegistry {
 
-    private static final Logger log = LoggerFactory.getLogger(CommandRegistry.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.command.CommandRegistry");
 
     /** Underlying command manager that handles routing, parsing, and dispatch. */
-    private final CommandManager manager = new CommandManager();
+    private final @NonNull CommandManager manager = new CommandManager();
 
     /**
      * Optional handler for plain-text (non-slash) LLM prompts. When {@code null}, plain-text input
      * returns an "Agent not available" error.
      */
-    private final @Nullable PromptHandler promptHandler;
+    private final PromptHandler promptHandler;
 
     /**
      * Constructs a new {@code CommandRegistry}.
@@ -46,7 +46,7 @@ public class CommandRegistry {
      * @param promptHandler the handler for plain-text LLM prompts, or {@code null} if agent
      *     functionality is not available in this deployment
      */
-    public CommandRegistry(@Nullable PromptHandler promptHandler) {
+    public CommandRegistry(PromptHandler promptHandler) {
         this.promptHandler = promptHandler;
     }
 
@@ -83,7 +83,7 @@ public class CommandRegistry {
      *     or {@link IpcFrame.Terminate}); never {@code null}
      */
     public IpcFrame.@NonNull TerminalResponse dispatch(
-            @NonNull VetoCommandSender sender, @Nullable String raw) {
+            @NonNull VetoCommandSender sender, String raw) {
         if (raw == null || raw.isEmpty()) {
             return new IpcFrame.Done(Map.of(), null);
         }
@@ -147,7 +147,10 @@ public class CommandRegistry {
         if (wasLogout) {
             meta.put(IpcMeta.CLEAR_SESSION, true);
         } else if (sender.isLoggedIn()) {
-            meta.put(IpcMeta.USERNAME, sender.username());
+            String username = sender.username();
+            if (username != null) {
+                meta.put(IpcMeta.USERNAME, username);
+            }
             meta.put(IpcMeta.SESSION, sender.terminalId());
             if (promptHandler != null) {
                 var agent = promptHandler.activeAgent(sender.terminalId());
@@ -173,14 +176,15 @@ public class CommandRegistry {
      * @return a {@link HintInfo} describing the next argument, or {@link HintInfo#EMPTY} if no hint
      *     is available; never {@code null}
      */
-    public @NonNull HintInfo hint(@NonNull VetoCommandSender sender, @Nullable String raw) {
+    public @NonNull HintInfo hint(@NonNull VetoCommandSender sender, String raw) {
         if (raw == null || raw.isEmpty()) return HintInfo.EMPTY;
 
         String input = raw.stripLeading();
         if (input.startsWith("/")) input = input.substring(1);
 
         CommandRoute route = manager.route(sender, input);
-        if (route.getCommand() == null) return HintInfo.EMPTY;
+        Command command = route.getCommand();
+        if (command == null) return HintInfo.EMPTY;
         List<CommandArgument<?>> current = route.getCurrentArguments();
         if (current.isEmpty()) return HintInfo.EMPTY;
 
@@ -189,7 +193,7 @@ public class CommandRegistry {
         List<String> choices =
                 current.stream()
                         .filter(CommandArgument::isFixed)
-                        .flatMap(a -> a.complete(sender, route.getCommand(), args).stream())
+                        .flatMap(a -> a.complete(sender, command, args).stream())
                         .map(CommandCompletion::candidate)
                         .distinct()
                         .toList();
@@ -231,7 +235,7 @@ public class CommandRegistry {
      * @return a list of {@link IpcFrame.Completion} candidates; never {@code null}, may be empty
      */
     public @NonNull List<IpcFrame.Completion> complete(
-            @NonNull VetoCommandSender sender, @Nullable String partial) {
+            @NonNull VetoCommandSender sender, String partial) {
         if (partial == null || partial.isEmpty()) return List.of();
 
         String input = partial.stripLeading();

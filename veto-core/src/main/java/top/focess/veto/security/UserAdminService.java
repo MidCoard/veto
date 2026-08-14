@@ -26,7 +26,8 @@ import top.focess.veto.vault.UserRegistry;
 @Service
 public class UserAdminService {
 
-    private static final Logger log = LoggerFactory.getLogger(UserAdminService.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.security.UserAdminService");
 
     private final @NonNull UserRegistry users;
     private final @NonNull AgentPatternRepository patterns;
@@ -73,7 +74,7 @@ public class UserAdminService {
             log.debug(
                     "UserAdminService: logout during delete of '{}' skipped: {}",
                     username,
-                    e.getMessage());
+                    String.valueOf(e.getMessage()));
         }
         for (SessionEntity s : sessions.findByOwner(username)) {
             agents.deleteBySessionId(s.getId());

@@ -1,10 +1,12 @@
 package top.focess.veto.training;
 
+import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -27,14 +29,13 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/v1/training")
 public class TrainingController {
 
-    private static final Logger log = LoggerFactory.getLogger(TrainingController.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.training.TrainingController");
 
     private final @NonNull TrainingManager trainingManager;
     private final @NonNull TrainingConfiguration config;
 
-    public
-    @NonNull
-    TrainingController(
+    public TrainingController(
             @NonNull TrainingManager trainingManager, @NonNull TrainingConfiguration config) {
         this.trainingManager = trainingManager;
         this.config = config;
@@ -50,7 +51,7 @@ public class TrainingController {
      */
     @PostMapping("/start")
     public @NonNull ResponseEntity<Map<String, Object>> startTraining(
-            @Nullable @RequestBody(required = false) TrainingRequest request) {
+            @RequestBody(required = false) TrainingRequest request) {
         if (trainingManager.isRunning()) {
             return ResponseEntity.status(409)
                     .body(
@@ -119,17 +120,20 @@ public class TrainingController {
     @GetMapping("/progress")
     public @NonNull ResponseEntity<Map<String, Object>> getProgress() {
         TrainingProgress p = trainingManager.getProgress();
-        return ResponseEntity.ok(
-                Map.of(
-                        "status", p.getStatus().name(),
-                        "progress", p.getProgress(),
-                        "phase", p.getCurrentPhase(),
-                        "message", p.getMessage(),
-                        "startedAt", p.getStartedAt(),
-                        "completedAt", p.getCompletedAt(),
-                        "trainedModelPath", p.getTrainedModelPath(),
-                        "error", p.getErrorMessage(),
-                        "evaluation", p.getEvaluation()));
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("status", p.getStatus().name());
+        body.put("progress", p.getProgress());
+        body.put("phase", p.getCurrentPhase());
+        body.put("message", p.getMessage());
+        Instant startedAt = p.getStartedAt();
+        if (startedAt != null) body.put("startedAt", startedAt);
+        Instant completedAt = p.getCompletedAt();
+        if (completedAt != null) body.put("completedAt", completedAt);
+        body.put("trainedModelPath", p.getTrainedModelPath());
+        body.put("error", p.getErrorMessage());
+        TrainingProgress.EvaluationReport evaluation = p.getEvaluation();
+        if (evaluation != null) body.put("evaluation", evaluation);
+        return ResponseEntity.ok(body);
     }
 
     /**
@@ -138,7 +142,10 @@ public class TrainingController {
      *
      * <p>Request body: { "modelPath": "./training/models/veto-slm-q4_k_m.gguf" }
      */
-    @PostMapping("/deploy")
+    @PostMapping(
+            value = "/deploy",
+            consumes = MediaType.APPLICATION_JSON_VALUE,
+            produces = MediaType.APPLICATION_JSON_VALUE)
     public @NonNull ResponseEntity<Map<String, Object>> deployModel(
             @RequestBody @NonNull Map<String, String> request) {
         String modelPath = request.get("modelPath");
@@ -156,8 +163,6 @@ public class TrainingController {
                             true,
                             "message",
                             "Model deployed successfully",
-                            "modelPath",
-                            modelPath,
                             "targetPath",
                             config.getModelOutputDir() + "/" + config.getDefaultGgufName()));
         } else {
@@ -167,9 +172,7 @@ public class TrainingController {
                                     "success",
                                     false,
                                     "message",
-                                    "Failed to deploy model. Check that the file exists.",
-                                    "modelPath",
-                                    modelPath));
+                                    "Failed to deploy model. Check that the file exists."));
         }
     }
 

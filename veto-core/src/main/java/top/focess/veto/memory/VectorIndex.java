@@ -8,7 +8,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 
 /**
@@ -30,7 +29,7 @@ public class VectorIndex {
     private final @NonNull ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
 
     /** Insert a vector at the given id. Replaces any existing vector at that id. */
-    public void insert(@NonNull UUID id, float @Nullable [] vector) {
+    public void insert(@NonNull UUID id, float[] vector) {
         lock.writeLock().lock();
         try {
             vectors.put(id, vector == null ? new float[0] : vector.clone());
@@ -53,7 +52,7 @@ public class VectorIndex {
      * Brute-force cosine-similarity search. Returns the top-K (id, score) pairs ranked by
      * descending score. Vectors with zero norm (or zero overlap with the query) are skipped.
      */
-    public @NonNull List<Match> topK(float @Nullable [] query, int k) {
+    public @NonNull List<Match> topK(float[] query, int k) {
         if (query == null || query.length == 0 || k <= 0) {
             return List.of();
         }
@@ -80,7 +79,7 @@ public class VectorIndex {
         return vectors.size();
     }
 
-    private static float cosineSimilarity(float @Nullable [] a, float @Nullable [] b) {
+    private static float cosineSimilarity(float[] a, float[] b) {
         if (a == null || b == null || a.length == 0 || b.length == 0) {
             return 0f;
         }

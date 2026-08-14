@@ -1,0 +1,18 @@
+import org.checkerframework.checker.nullness.qual.NonNull;
+
+package org.jline.reader;
+
+class Candidate {
+    Candidate(
+            @NonNull String value,
+            @NonNull String displ,
+            String group,
+            String descr,
+            String suffix,
+            String key,
+            boolean complete);
+}
+
+interface LineReader {
+    @NonNull String readLine(@NonNull String prompt, Character mask);
+}

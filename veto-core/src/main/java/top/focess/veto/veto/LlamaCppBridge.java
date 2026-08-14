@@ -12,7 +12,6 @@ import java.util.concurrent.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -28,7 +27,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class LlamaCppBridge {
 
-    private static final Logger log = LoggerFactory.getLogger(LlamaCppBridge.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.veto.LlamaCppBridge");
 
     /** Pattern to extract the port from llama-server startup output. */
     private static final @NonNull Pattern PORT_PATTERN =
@@ -37,8 +37,8 @@ public class LlamaCppBridge {
     private final @NonNull VetoGatewayConfiguration config;
     private final @NonNull GBNFGrammarEngine grammarEngine;
 
-    private @Nullable Process llamaProcess;
-    private @Nullable Path grammarTempFile;
+    private Process llamaProcess;
+    private Path grammarTempFile;
     private volatile int serverPort = -1;
     private final @NonNull HttpClient httpClient =
             HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
@@ -52,9 +52,7 @@ public class LlamaCppBridge {
 
     private volatile boolean available = false;
 
-    public
-    @NonNull
-    LlamaCppBridge(
+    public LlamaCppBridge(
             @NonNull VetoGatewayConfiguration config, @NonNull GBNFGrammarEngine grammarEngine) {
         this.config = config;
         this.grammarEngine = grammarEngine;
@@ -84,9 +82,10 @@ public class LlamaCppBridge {
         try {
             // Build the llama.cpp command with grammar-constrained decoding
             String gbnfGrammar = grammarEngine.loadVetoOutputGrammar();
-            this.grammarTempFile = Files.createTempFile("veto-grammar-", ".gbnf");
-            this.grammarTempFile.toFile().deleteOnExit();
-            Files.writeString(this.grammarTempFile, gbnfGrammar);
+            Path grammarFile = Files.createTempFile("veto-grammar-", ".gbnf");
+            this.grammarTempFile = grammarFile;
+            grammarFile.toFile().deleteOnExit();
+            Files.writeString(grammarFile, gbnfGrammar);
 
             // Use a fixed port for reliability (0 = random, but we need to discover it)
             int port = findAvailablePort();
@@ -103,7 +102,7 @@ public class LlamaCppBridge {
                             "--temp",
                             String.valueOf(config.getLlamaCpp().getTemperature()),
                             "--grammar-file",
-                            this.grammarTempFile.toAbsolutePath().toString(),
+                            grammarFile.toAbsolutePath().toString(),
                             "--port",
                             String.valueOf(port),
                             "--embedding",
@@ -202,16 +201,17 @@ public class LlamaCppBridge {
     public synchronized void stop() {
         available = false;
         serverPort = -1;
-        if (llamaProcess != null && llamaProcess.isAlive()) {
-            llamaProcess.destroy();
+        Process process = llamaProcess;
+        if (process != null && process.isAlive()) {
+            process.destroy();
             try {
-                llamaProcess.waitFor(5, TimeUnit.SECONDS);
-                if (llamaProcess.isAlive()) {
-                    llamaProcess.destroyForcibly();
+                process.waitFor(5, TimeUnit.SECONDS);
+                if (process.isAlive()) {
+                    process.destroyForcibly();
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                llamaProcess.destroyForcibly();
+                process.destroyForcibly();
             }
         }
         log.info("gateway LlamaCpp: Stopped");
@@ -272,7 +272,11 @@ public class LlamaCppBridge {
                 startupOutput.append(line).append("\n");
                 Matcher m = PORT_PATTERN.matcher(line);
                 if (m.find()) {
-                    int parsedPort = Integer.parseInt(m.group(1));
+                    String portGroup = m.group(1);
+                    if (portGroup == null) {
+                        continue;
+                    }
+                    int parsedPort = Integer.parseInt(portGroup);
                     log.debug("gateway LlamaCpp: Parsed port {} from startup output", parsedPort);
                     return parsedPort;
                 }
@@ -283,7 +287,11 @@ public class LlamaCppBridge {
                     Pattern altPort = Pattern.compile(":(\\d+)\\s");
                     Matcher altM = altPort.matcher(line);
                     if (altM.find()) {
-                        int p = Integer.parseInt(altM.group(1));
+                        String portGroup = altM.group(1);
+                        if (portGroup == null) {
+                            continue;
+                        }
+                        int p = Integer.parseInt(portGroup);
                         if (p > 1024 && p < 65536) {
                             log.debug("gateway LlamaCpp: Parsed port {} from alt format", p);
                             return p;
@@ -328,6 +336,7 @@ public class LlamaCppBridge {
         return responseBody;
     }
 
+    @SuppressWarnings("BusyWait") // Deliberate 30-second process liveness poll, not a spin loop.
     private void startHealthMonitor() {
         startupExecutor.submit(
                 () -> {
@@ -347,7 +356,7 @@ public class LlamaCppBridge {
                 });
     }
 
-    private @NonNull String escapeJson(@Nullable String s) {
+    private @NonNull String escapeJson(String s) {
         if (s == null) return "";
         return s.replace("\\", "\\\\")
                 .replace("\"", "\\\"")
@@ -356,7 +365,7 @@ public class LlamaCppBridge {
                 .replace("\t", "\\t");
     }
 
-    private @NonNull String unescapeJson(@Nullable String s) {
+    private @NonNull String unescapeJson(String s) {
         if (s == null) return "";
         return s.replace("\\n", "\n")
                 .replace("\\r", "\r")

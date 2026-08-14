@@ -2,7 +2,6 @@ package top.focess.veto.llm.client;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.BiFunction;
 import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
@@ -17,8 +16,8 @@ import top.focess.veto.llm.config.LlmJacksonConfig;
  * client in a provider-specific {@link LlmClient} adapter — so the public API only ever returns our
  * own types, never a third-party SDK client.
  *
- * <p>Plugin providers register their own SDK types via {@link #register(Class, BiFunction)} and use
- * {@link #get(Class, String, String)} + their own {@link LlmClient} adapter.
+ * <p>Plugin providers register their own SDK types via {@link #register(Class, ClientBuilder)} and
+ * use {@link #get(Class, String, String)} + their own {@link LlmClient} adapter.
  */
 @Component
 public class LlmClientFactory {
@@ -26,8 +25,13 @@ public class LlmClientFactory {
     private final @NonNull ConcurrentHashMap<Class<?>, ConcurrentHashMap<String, Object>> caches =
             new ConcurrentHashMap<>();
 
-    private final @NonNull ConcurrentHashMap<Class<?>, BiFunction<String, String, ?>> builders =
+    private final @NonNull ConcurrentHashMap<Class<?>, ClientBuilder<?>> builders =
             new ConcurrentHashMap<>();
+
+    @FunctionalInterface
+    public interface ClientBuilder<T extends @NonNull Object> {
+        @NonNull T build(String baseUrl, @NonNull String apiKey);
+    }
 
     private final @NonNull ObjectMapper objectMapper;
     private final @NonNull CapabilityTranslator capabilityTranslator;
@@ -55,8 +59,8 @@ public class LlmClientFactory {
      * @param clientType the class of the client
      * @param builder a function that accepts {@code (baseUrl, apiKey)} and returns a new client
      */
-    public <T> void register(
-            @NonNull Class<T> clientType, @NonNull BiFunction<String, String, T> builder) {
+    public <T extends @NonNull Object> void register(
+            @NonNull Class<T> clientType, @NonNull ClientBuilder<T> builder) {
         builders.compute(
                 clientType,
                 (k, existing) -> {
@@ -81,17 +85,20 @@ public class LlmClientFactory {
      * @return the client instance
      */
     @SuppressWarnings("unchecked")
-    public <T> @NonNull T get(
-            @NonNull Class<T> clientType, @NonNull String baseUrl, @NonNull String apiKey) {
+    public <T extends @NonNull Object> @NonNull T get(
+            @NonNull Class<T> clientType, String baseUrl, @NonNull String apiKey) {
         ConcurrentHashMap<String, Object> cache = caches.get(clientType);
         if (cache == null) {
             throw new IllegalStateException(
                     "No builder registered for client type: " + clientType.getName());
         }
-        BiFunction<String, String, T> builder =
-                (BiFunction<String, String, T>) builders.get(clientType);
+        ClientBuilder<T> builder = (ClientBuilder<T>) builders.get(clientType);
+        if (builder == null) {
+            throw new IllegalStateException(
+                    "No builder registered for client type: " + clientType.getName());
+        }
         String key = cacheKey(baseUrl, apiKey);
-        return (T) cache.computeIfAbsent(key, k -> builder.apply(baseUrl, apiKey));
+        return (T) cache.computeIfAbsent(key, k -> builder.build(baseUrl, apiKey));
     }
 
     // ── Convenience methods (return our own LlmClient, not SDK types) ────────
@@ -101,7 +108,7 @@ public class LlmClientFactory {
      * providers that support strict {@code json_schema}.
      */
     public @NonNull LlmClient openAi(
-            @NonNull String baseUrl,
+            String baseUrl,
             @NonNull String apiKey,
             boolean supportsJsonSchema,
             @NonNull String providerName) {
@@ -116,9 +123,11 @@ public class LlmClientFactory {
      * OpenAI-compatible providers. No OpenAI SDK dependency — uses JDK {@code HttpClient} directly.
      */
     public @NonNull LlmClient deepSeek(
-            @NonNull String baseUrl, @NonNull String apiKey, @NonNull String providerName) {
+            String baseUrl, @NonNull String apiKey, @NonNull String providerName) {
+        String endpoint =
+                baseUrl == null || baseUrl.isBlank() ? "https://api.deepseek.com" : baseUrl;
         return new DeepSeekLlmClient(
-                baseUrl, apiKey, providerName, objectMapper, capabilityTranslator);
+                endpoint, apiKey, providerName, objectMapper, capabilityTranslator);
     }
 
     /**
@@ -128,7 +137,7 @@ public class LlmClientFactory {
      * @param apiKey the API key for authentication
      * @return the LlmClient adapter
      */
-    public @NonNull LlmClient anthropic(@NonNull String baseUrl, @NonNull String apiKey) {
+    public @NonNull LlmClient anthropic(String baseUrl, @NonNull String apiKey) {
         com.anthropic.client.AnthropicClient sdk =
                 get(com.anthropic.client.AnthropicClient.class, baseUrl, apiKey);
         return new AnthropicLlmClient(sdk, objectMapper);
@@ -141,12 +150,12 @@ public class LlmClientFactory {
      * @param apiKey the API key for authentication
      * @return the LlmClient adapter
      */
-    public @NonNull LlmClient gemini(@NonNull String baseUrl, @NonNull String apiKey) {
+    public @NonNull LlmClient gemini(String baseUrl, @NonNull String apiKey) {
         com.google.genai.Client sdk = get(com.google.genai.Client.class, baseUrl, apiKey);
         return new GeminiLlmClient(sdk, objectMapper, capabilityTranslator);
     }
 
-    private static @NonNull String cacheKey(@NonNull String baseUrl, @NonNull String apiKey) {
+    private static @NonNull String cacheKey(String baseUrl, @NonNull String apiKey) {
         String base = baseUrl;
         return base + "|" + Integer.toHexString(apiKey.hashCode());
     }

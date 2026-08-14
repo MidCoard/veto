@@ -18,7 +18,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class SemanticRedactor {
 
-    private static final Logger log = LoggerFactory.getLogger(SemanticRedactor.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.veto.SemanticRedactor");
 
     // Deterministic pattern-based redaction (first pass, before SLM)
     private static final @NonNull List<RedactionRule> REDACTION_RULES =

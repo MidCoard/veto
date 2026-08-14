@@ -5,11 +5,13 @@ import static org.mockito.Mockito.*;
 
 import java.util.List;
 import java.util.Optional;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.command.CommandManager;
 import top.focess.command.CommandPermission;
 import top.focess.command.CommandResult;
 import top.focess.command.ExecutionResult;
+import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.command.VetoCommandSender;
 import top.focess.veto.llm.core.ProviderType;
 import top.focess.veto.model.tier.ModelTier;
@@ -27,16 +29,21 @@ import top.focess.veto.model.tier.ModelTierRegistry;
  */
 class ModelTierCommandTest {
 
-    private static VetoCommandSender aliceSender() {
-        VetoCommandSender sender = mock(VetoCommandSender.class);
-        when(sender.hasPermission(any(CommandPermission.class))).thenReturn(true);
+    private static @NonNull VetoCommandSender aliceSender() {
+        VetoCommandSender sender = mock(ToolDocs.nonNullClass(VetoCommandSender.class));
+        when(sender.hasPermission(
+                        any(
+                                top.focess.veto.agent.mcp.ToolDocs.nonNullClass(
+                                        CommandPermission.class))))
+                .thenReturn(true);
         when(sender.isLoggedIn()).thenReturn(true);
         when(sender.username()).thenReturn("alice");
+        when(sender.requireUsername()).thenReturn("alice");
         return sender;
     }
 
-    private static CommandManager manager(
-            ModelTierProfileService profiles, ModelTierRegistry tiers) {
+    private static @NonNull CommandManager manager(
+            @NonNull ModelTierProfileService profiles, @NonNull ModelTierRegistry tiers) {
         CommandManager manager = new CommandManager();
         manager.register(new ModelTierCommand(profiles, tiers));
         return manager;
@@ -44,8 +51,9 @@ class ModelTierCommandTest {
 
     @Test
     void createDispatchesToService() {
-        ModelTierProfileService profiles = mock(ModelTierProfileService.class);
-        ModelTierRegistry tiers = mock(ModelTierRegistry.class);
+        ModelTierProfileService profiles =
+                mock(ToolDocs.nonNullClass(ModelTierProfileService.class));
+        ModelTierRegistry tiers = mock(ToolDocs.nonNullClass(ModelTierRegistry.class));
         ExecutionResult result =
                 manager(profiles, tiers).dispatch(aliceSender(), "modeltier create default");
 
@@ -55,8 +63,9 @@ class ModelTierCommandTest {
 
     @Test
     void createRefusesDuplicate() {
-        ModelTierProfileService profiles = mock(ModelTierProfileService.class);
-        ModelTierRegistry tiers = mock(ModelTierRegistry.class);
+        ModelTierProfileService profiles =
+                mock(ToolDocs.nonNullClass(ModelTierProfileService.class));
+        ModelTierRegistry tiers = mock(ToolDocs.nonNullClass(ModelTierRegistry.class));
         doThrow(new IllegalArgumentException("Profile 'default' already exists"))
                 .when(profiles)
                 .createProfile("alice", "default");
@@ -71,8 +80,9 @@ class ModelTierCommandTest {
 
     @Test
     void setDispatchesPerField() {
-        ModelTierProfileService profiles = mock(ModelTierProfileService.class);
-        ModelTierRegistry tiers = mock(ModelTierRegistry.class);
+        ModelTierProfileService profiles =
+                mock(ToolDocs.nonNullClass(ModelTierProfileService.class));
+        ModelTierRegistry tiers = mock(ToolDocs.nonNullClass(ModelTierRegistry.class));
         ExecutionResult result =
                 manager(profiles, tiers)
                         .dispatch(aliceSender(), "modeltier set default TOP provider deepseek");
@@ -84,8 +94,9 @@ class ModelTierCommandTest {
 
     @Test
     void setRefusesUnknownField() {
-        ModelTierProfileService profiles = mock(ModelTierProfileService.class);
-        ModelTierRegistry tiers = mock(ModelTierRegistry.class);
+        ModelTierProfileService profiles =
+                mock(ToolDocs.nonNullClass(ModelTierProfileService.class));
+        ModelTierRegistry tiers = mock(ToolDocs.nonNullClass(ModelTierRegistry.class));
         VetoCommandSender sender = aliceSender();
 
         ExecutionResult result =
@@ -98,8 +109,9 @@ class ModelTierCommandTest {
 
     @Test
     void setRefusesInvalidValue() {
-        ModelTierProfileService profiles = mock(ModelTierProfileService.class);
-        ModelTierRegistry tiers = mock(ModelTierRegistry.class);
+        ModelTierProfileService profiles =
+                mock(ToolDocs.nonNullClass(ModelTierProfileService.class));
+        ModelTierRegistry tiers = mock(ToolDocs.nonNullClass(ModelTierRegistry.class));
         doThrow(new IllegalArgumentException("Unknown provider: nope"))
                 .when(profiles)
                 .setField("alice", "default", ModelTier.TOP, ModelTierField.PROVIDER, "nope");
@@ -115,8 +127,9 @@ class ModelTierCommandTest {
 
     @Test
     void useActivatesProfile() {
-        ModelTierProfileService profiles = mock(ModelTierProfileService.class);
-        ModelTierRegistry tiers = mock(ModelTierRegistry.class);
+        ModelTierProfileService profiles =
+                mock(ToolDocs.nonNullClass(ModelTierProfileService.class));
+        ModelTierRegistry tiers = mock(ToolDocs.nonNullClass(ModelTierRegistry.class));
         VetoCommandSender sender = aliceSender();
 
         ExecutionResult result = manager(profiles, tiers).dispatch(sender, "modeltier use premium");
@@ -128,8 +141,9 @@ class ModelTierCommandTest {
 
     @Test
     void listReportsNoProfiles() {
-        ModelTierProfileService profiles = mock(ModelTierProfileService.class);
-        ModelTierRegistry tiers = mock(ModelTierRegistry.class);
+        ModelTierProfileService profiles =
+                mock(ToolDocs.nonNullClass(ModelTierProfileService.class));
+        ModelTierRegistry tiers = mock(ToolDocs.nonNullClass(ModelTierRegistry.class));
         when(profiles.listProfiles("alice")).thenReturn(List.of());
         VetoCommandSender sender = aliceSender();
 
@@ -141,8 +155,9 @@ class ModelTierCommandTest {
 
     @Test
     void listMarksActiveProfile() {
-        ModelTierProfileService profiles = mock(ModelTierProfileService.class);
-        ModelTierRegistry tiers = mock(ModelTierRegistry.class);
+        ModelTierProfileService profiles =
+                mock(ToolDocs.nonNullClass(ModelTierProfileService.class));
+        ModelTierRegistry tiers = mock(ToolDocs.nonNullClass(ModelTierRegistry.class));
         when(profiles.listProfiles("alice"))
                 .thenReturn(
                         List.of(
@@ -160,8 +175,9 @@ class ModelTierCommandTest {
 
     @Test
     void showDefaultsToActiveProfile() {
-        ModelTierProfileService profiles = mock(ModelTierProfileService.class);
-        ModelTierRegistry tiers = mock(ModelTierRegistry.class);
+        ModelTierProfileService profiles =
+                mock(ToolDocs.nonNullClass(ModelTierProfileService.class));
+        ModelTierRegistry tiers = mock(ToolDocs.nonNullClass(ModelTierRegistry.class));
         when(tiers.activeProfile("alice")).thenReturn("default");
         when(profiles.profile("alice", "default"))
                 .thenReturn(Optional.of(new ModelTierProfileEntity("default", "alice", true)));
@@ -184,8 +200,9 @@ class ModelTierCommandTest {
 
     @Test
     void showWithoutActiveProfileAdvisesUse() {
-        ModelTierProfileService profiles = mock(ModelTierProfileService.class);
-        ModelTierRegistry tiers = mock(ModelTierRegistry.class);
+        ModelTierProfileService profiles =
+                mock(ToolDocs.nonNullClass(ModelTierProfileService.class));
+        ModelTierRegistry tiers = mock(ToolDocs.nonNullClass(ModelTierRegistry.class));
         when(tiers.activeProfile("alice")).thenReturn(null);
         VetoCommandSender sender = aliceSender();
 
@@ -197,8 +214,9 @@ class ModelTierCommandTest {
 
     @Test
     void deleteDispatchesAndConfirms() {
-        ModelTierProfileService profiles = mock(ModelTierProfileService.class);
-        ModelTierRegistry tiers = mock(ModelTierRegistry.class);
+        ModelTierProfileService profiles =
+                mock(ToolDocs.nonNullClass(ModelTierProfileService.class));
+        ModelTierRegistry tiers = mock(ToolDocs.nonNullClass(ModelTierRegistry.class));
         when(profiles.deleteProfile("alice", "old")).thenReturn(true);
         VetoCommandSender sender = aliceSender();
 
@@ -210,8 +228,9 @@ class ModelTierCommandTest {
 
     @Test
     void deleteRefusesMissingProfile() {
-        ModelTierProfileService profiles = mock(ModelTierProfileService.class);
-        ModelTierRegistry tiers = mock(ModelTierRegistry.class);
+        ModelTierProfileService profiles =
+                mock(ToolDocs.nonNullClass(ModelTierProfileService.class));
+        ModelTierRegistry tiers = mock(ToolDocs.nonNullClass(ModelTierRegistry.class));
         when(profiles.deleteProfile("alice", "missing")).thenReturn(false);
         VetoCommandSender sender = aliceSender();
 

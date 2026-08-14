@@ -30,19 +30,19 @@ import top.focess.veto.agent.skills.Skill;
  * the persona means a tier-profile switch re-points every agent's model without touching identity.
  */
 public record AgentPersona(
-        String id,
-        String name,
-        String description,
-        Set<ToolDefinition> whitelistedTools,
-        List<Skill> registeredSkills,
-        Role role) {
+        @NonNull String id,
+        @NonNull String name,
+        @NonNull String description,
+        @NonNull Set<@NonNull ToolDefinition> whitelistedTools,
+        @NonNull List<@NonNull Skill> registeredSkills,
+        @NonNull Role role) {
 
     public AgentPersona(
-            String id,
-            String name,
-            String description,
-            Set<ToolDefinition> whitelistedTools,
-            List<Skill> registeredSkills) {
+            @NonNull String id,
+            @NonNull String name,
+            @NonNull String description,
+            @NonNull Set<@NonNull ToolDefinition> whitelistedTools,
+            @NonNull List<@NonNull Skill> registeredSkills) {
         this(id, name, description, whitelistedTools, registeredSkills, Role.STANDALONE);
     }
 
@@ -53,7 +53,7 @@ public record AgentPersona(
      * persona's tools to its {@link Role} (the persona may have been built with the full STANDALONE
      * manifest before its role was known).
      */
-    public @NonNull AgentPersona withWhitelistedTools(@NonNull Set<ToolDefinition> tools) {
+    public @NonNull AgentPersona withWhitelistedTools(@NonNull Set<@NonNull ToolDefinition> tools) {
         return new AgentPersona(id, name, description, tools, registeredSkills, role);
     }
 
@@ -72,7 +72,7 @@ public record AgentPersona(
      * role, so the next compile emits the Leader system message + Leader tool catalog atomically.
      */
     public @NonNull AgentPersona withRoleAndTools(
-            @NonNull Role role, @NonNull Set<ToolDefinition> tools) {
+            @NonNull Role role, @NonNull Set<@NonNull ToolDefinition> tools) {
         return new AgentPersona(id, name, description, tools, registeredSkills, role);
     }
 }

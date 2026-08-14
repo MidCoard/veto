@@ -13,7 +13,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -52,7 +51,8 @@ import top.focess.veto.sandbox.SandboxSubstrate;
 @Service
 public class ToolEngineImpl implements ToolEngine {
 
-    private static final Logger log = LoggerFactory.getLogger(ToolEngineImpl.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.agent.mcp.ToolEngineImpl");
 
     private final @NonNull ObjectMapper mapper;
     private final @NonNull List<NativeTool<?>> nativeToolBeans;
@@ -118,13 +118,13 @@ public class ToolEngineImpl implements ToolEngine {
             log.warn(
                     "ToolEngine: tools/list discovery failed for {}: {}",
                     transport,
-                    e.getMessage());
+                    String.valueOf(e.getMessage()));
             return java.util.List.of();
         }
     }
 
     @Override
-    public @NonNull List<ToolDefinition> getActiveTools(@Nullable Set<String> whitelist) {
+    public @NonNull List<ToolDefinition> getActiveTools(Set<String> whitelist) {
         List<ToolDefinition> active = new ArrayList<>();
         for (NativeToolDefinition def : nativeDefs.values()) {
             if (whitelist == null || whitelist.contains(def.name())) {
@@ -142,7 +142,7 @@ public class ToolEngineImpl implements ToolEngine {
     }
 
     @Override
-    public @Nullable ToolDefinition resolveDefinition(@NonNull String toolName) {
+    public ToolDefinition resolveDefinition(@NonNull String toolName) {
         ToolDefinition def = nativeDefs.get(toolName);
         if (def != null) return def;
         def = agentDefs.get(toolName);
@@ -161,11 +161,15 @@ public class ToolEngineImpl implements ToolEngine {
             };
         } catch (Exception e) {
             log.warn("Tool '{}' execution failed.", call.toolName(), e);
+            String detail = e.getMessage();
+            if (detail == null || detail.isBlank()) {
+                detail = "Unexpected error with no diagnostic message";
+            }
             return new ToolResult(
                     call.toolName(),
                     callId,
                     false,
-                    errorEnvelope("Tool execution failed: " + e.getMessage()));
+                    errorEnvelope("Tool execution failed: " + detail));
         }
     }
 
@@ -208,7 +212,15 @@ public class ToolEngineImpl implements ToolEngine {
 
     // ── Flavour dispatch ───────────────────────────────────────────────────────
 
-    private ToolResult executeNative(ToolCall call, NativeToolDefinition def) throws Exception {
+    private @NonNull ToolResult executeNative(
+            @NonNull ToolCall call, @NonNull NativeToolDefinition def) throws Exception {
+        JsonNode jsonArgs = mapper.valueToTree(call.args());
+        try {
+            NativeToolArgumentValidator.validate(def.name(), jsonArgs, def.argsClass());
+        } catch (NativeToolArgumentValidator.InvalidArgumentsException e) {
+            return new ToolResult(
+                    call.toolName(), call.callId(), false, errorEnvelope(e.getMessage()));
+        }
         if ("run_command".equals(def.name())) {
             return executeRunCommand(call);
         }
@@ -220,7 +232,6 @@ public class ToolEngineImpl implements ToolEngine {
                     false,
                     errorEnvelope("No bean for native tool: " + def.name()));
         }
-        JsonNode jsonArgs = mapper.valueToTree(call.args());
         String result = bean.executeFromJson(jsonArgs, mapper);
         // Native tools signal "this call did not do what you asked" by returning a JSON envelope
         // `{"status":"error", "error": "<message>"}` rather than throwing. The engine has not
@@ -239,7 +250,7 @@ public class ToolEngineImpl implements ToolEngine {
      * and tools that follow the documented convention get the correct {@code success} flag for
      * free.
      */
-    private static boolean isErrorJson(@Nullable String body) {
+    private static boolean isErrorJson(String body) {
         if (body == null) return false;
         // Trim leading whitespace - tools may indent their JSON before returning.
         int i = 0;
@@ -253,8 +264,12 @@ public class ToolEngineImpl implements ToolEngine {
      * engine synthesizes the same shape here so every tool error the model can ever see matches one
      * prefix - it learns a single branch: the call did not happen, read {@code error}, replan.
      */
-    private static @NonNull String errorEnvelope(@NonNull String message) {
-        return "{\"status\":\"error\",\"error\":\"" + jsonEscape(message) + "\"}";
+    private static @NonNull String errorEnvelope(String message) {
+        String detail =
+                message == null || message.isBlank()
+                        ? "Unexpected error with no diagnostic message"
+                        : message;
+        return "{\"status\":\"error\",\"error\":\"" + jsonEscape(detail) + "\"}";
     }
 
     /**
@@ -285,19 +300,17 @@ public class ToolEngineImpl implements ToolEngine {
     /**
      * {@code run_command} — routes through the Sandbox substrate (no shell, argv[] direct exec).
      */
-    private ToolResult executeRunCommand(ToolCall call) {
-        RunCommandTool.Args args = mapper.convertValue(call.args(), RunCommandTool.Args.class);
-        // timeout is REQUIRED (schema-level) - enforce at runtime so a model that omits it gets a
-        // clear error instead of an NPE. 0 = no cap (the substrate waits indefinitely).
-        Integer timeout = args.timeout();
-        if (timeout == null) {
+    private @NonNull ToolResult executeRunCommand(@NonNull ToolCall call) {
+        RunCommandTool.Args args =
+                mapper.convertValue(call.args(), ToolDocs.nonNullClass(RunCommandTool.Args.class));
+        if (args == null) {
             return new ToolResult(
                     call.toolName(),
                     call.callId(),
                     false,
-                    errorEnvelope(
-                            "run_command requires an explicit 'timeout' (seconds; 0 = no cap)."));
+                    errorEnvelope("run_command arguments must be a JSON object"));
         }
+        int timeout = args.timeout();
         Duration timeoutDur = timeout <= 0 ? Duration.ZERO : Duration.ofSeconds(timeout);
         List<Command> commands =
                 args.commands().stream().map(c -> new Command(c.executable(), c.args())).toList();
@@ -310,11 +323,10 @@ public class ToolEngineImpl implements ToolEngine {
                 sandboxManager
                         .substrate()
                         .runCommands(handle, commands, Path.of("."), connect, timeoutDur);
+        String stderr = result.stderr();
         String content =
                 (result.stdout().isEmpty() ? "" : result.stdout())
-                        + (result.stderr() == null || result.stderr().isEmpty()
-                                ? ""
-                                : "\n[stderr]\n" + result.stderr());
+                        + (stderr == null || stderr.isEmpty() ? "" : "\n[stderr]\n" + stderr);
         // A non-zero exit is not an error envelope - the command ran and its output is the truth
         // the model asked for. The exit code rides as a trailing CONTENT line so the model can
         // branch on it without a separate status channel.
@@ -324,7 +336,8 @@ public class ToolEngineImpl implements ToolEngine {
         return new ToolResult(call.toolName(), call.callId(), result.success(), content);
     }
 
-    private ToolResult executeAgent(ToolCall call, AgentToolDefinition def) {
+    private @NonNull ToolResult executeAgent(
+            @NonNull ToolCall call, @NonNull AgentToolDefinition def) {
         AgentTool<?> bean = agentBeans.get(def.name());
         if (bean == null) {
             return new ToolResult(
@@ -335,6 +348,7 @@ public class ToolEngineImpl implements ToolEngine {
         }
         try {
             JsonNode jsonArgs = mapper.valueToTree(call.args());
+            NativeToolArgumentValidator.validate(def.name(), jsonArgs, def.argsClass());
             String result = bean.executeFromJson(jsonArgs, mapper);
             return new ToolResult(call.toolName(), call.callId(), true, result);
         } catch (Exception e) {
@@ -351,7 +365,8 @@ public class ToolEngineImpl implements ToolEngine {
      * types but the JSON-RPC {@code tools/call} I/O over stdio/SSE/socket is beyond the schema
      * representation — not implemented.
      */
-    private ToolResult executeRemote(ToolCall call, RemoteToolDefinition def) {
+    private @NonNull ToolResult executeRemote(
+            @NonNull ToolCall call, @NonNull RemoteToolDefinition def) {
         McpTransport transport = transports.get(def.serverName());
         if (transport == null) {
             return new ToolResult(
@@ -370,7 +385,7 @@ public class ToolEngineImpl implements ToolEngine {
                                 + " is not implemented."));
     }
 
-    private static ChainMode parseChainMode(@Nullable String connect) {
+    private static @NonNull ChainMode parseChainMode(String connect) {
         if (connect == null) return ChainMode.STOP_ON_FAILURE;
         return switch (connect) {
             case "RUN_ALL" -> ChainMode.RUN_ALL;

@@ -11,12 +11,15 @@ import org.slf4j.LoggerFactory;
 
 /** A multi-root workspace entity. */
 public record Workspace(
-        @NonNull List<WorkspaceRoot> roots, @NonNull PathMode pathMode, int currentRootIndex) {
+        @NonNull List<@NonNull WorkspaceRoot> roots,
+        @NonNull PathMode pathMode,
+        int currentRootIndex) {
 
-    private static final Logger log = LoggerFactory.getLogger(Workspace.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.agent.workspace.Workspace");
 
     public Workspace {
-        if (roots == null || roots.isEmpty()) {
+        if (roots.isEmpty()) {
             throw new IllegalArgumentException("workspace must have >= 1 root");
         }
         if (currentRootIndex < 0 || currentRootIndex >= roots.size()) {
@@ -32,7 +35,7 @@ public record Workspace(
      * first-in-order wins is enforced by {@link PathResolver}, which matches the first segment
      * only.
      */
-    private static void warnOnRootNameCollisions(List<WorkspaceRoot> roots) {
+    private static void warnOnRootNameCollisions(@NonNull List<@NonNull WorkspaceRoot> roots) {
         Set<String> seen = new HashSet<>();
         for (WorkspaceRoot root : roots) {
             Path fileName = root.hostPath().getFileName();
@@ -47,7 +50,7 @@ public record Workspace(
         }
     }
 
-    public PathResolver pathResolver() {
+    public @NonNull PathResolver pathResolver() {
         return new PathResolver(roots, pathMode, currentRootIndex);
     }
 
@@ -55,11 +58,11 @@ public record Workspace(
      * The absolute host paths of each workspace root (canonicalized by {@link
      * WorkspaceRoot#probe}).
      */
-    public List<Path> hostRoots() {
+    public @NonNull List<@NonNull Path> hostRoots() {
         return roots.stream().map(WorkspaceRoot::hostPath).toList();
     }
 
-    public VetoMdResolver vetoMdResolver() {
+    public @NonNull VetoMdResolver vetoMdResolver() {
         return new VetoMdResolver(roots);
     }
 
@@ -77,8 +80,8 @@ public record Workspace(
     public static @NonNull Workspace fromConfig(
             @NonNull String legacyRoot, @NonNull String rootsCsv, @NonNull String pathMode) {
         PathMode mode = "VIRTUAL".equalsIgnoreCase(pathMode) ? PathMode.VIRTUAL : PathMode.REAL;
-        if (rootsCsv != null && !rootsCsv.isBlank()) {
-            List<WorkspaceRoot> roots =
+        if (!rootsCsv.isBlank()) {
+            List<@NonNull WorkspaceRoot> roots =
                     Arrays.stream(rootsCsv.split(","))
                             .map(String::trim)
                             .filter(s -> !s.isEmpty())
@@ -87,7 +90,7 @@ public record Workspace(
             return new Workspace(roots, mode, 0);
         }
         Path single =
-                (legacyRoot == null || legacyRoot.isBlank())
+                legacyRoot.isBlank()
                         ? Path.of(System.getProperty("user.dir", "."))
                         : Path.of(legacyRoot);
         return Workspace.single(single, mode);

@@ -1,7 +1,6 @@
 package top.focess.veto.agent.loop;
 
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
 /**
  * Branch on a programmatic {@link Check} over {@link Scope} vars ( {@code conditional_goto}). Zero
@@ -12,7 +11,7 @@ public record ConditionalGotoAction(
         @NonNull String label,
         @NonNull Check check,
         int trueGoto,
-        @Nullable Integer falseGoto)
+        Integer falseGoto)
         implements Action {
 
     /**

@@ -2,7 +2,6 @@ package top.focess.veto.agent.mcp.tools;
 
 import java.util.List;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.mcp.Doc;
 import top.focess.veto.agent.mcp.NativeTool;
@@ -10,6 +9,7 @@ import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.SecurityHint;
 import top.focess.veto.agent.mcp.ToolDoc;
+import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.mcp.ToolSecurity;
 import top.focess.veto.sandbox.SandboxSubstrate;
 
@@ -115,9 +115,7 @@ public final class RunCommandTool implements NativeTool<RunCommandTool.Args> {
             @SecurityHint(ParamCategory.FILESYSTEM_PATH)
                     @Doc("Working directory; must be under an allowed root (Gateway-checked).")
                     @NonNull String cwd,
-            @Nullable
-                    @Doc(
-                            "How Veto connects the commands: STOP_ON_FAILURE (default), RUN_ALL, or PIPE.")
+            @Doc("How Veto connects the commands: STOP_ON_FAILURE (default), RUN_ALL, or PIPE.")
                     String connect,
             @NonNull
                     @Doc(
@@ -139,7 +137,7 @@ public final class RunCommandTool implements NativeTool<RunCommandTool.Args> {
 
     @Override
     public @NonNull Class<Args> getArgsClass() {
-        return Args.class;
+        return ToolDocs.nonNullClass(Args.class);
     }
 
     @Override

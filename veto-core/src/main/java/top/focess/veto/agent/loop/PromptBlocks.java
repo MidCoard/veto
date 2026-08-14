@@ -6,7 +6,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.agent.identity.Role;
 import top.focess.veto.agent.screening.DeployerPolicy;
 import top.focess.veto.agent.skills.Skill;
@@ -36,12 +35,12 @@ public final class PromptBlocks {
     private PromptBlocks() {}
 
     /** The VETO.md Law block (raw, resolved per-root); empty when no VETO.md is present. */
-    public static @NonNull String law(@Nullable String law) {
+    public static @NonNull String law(String law) {
         return (law == null || law.isBlank()) ? "" : law.strip();
     }
 
     /** The persona identity line: "You are {name}, {description}." */
-    public static @NonNull String identity(@Nullable String name, @Nullable String description) {
+    public static @NonNull String identity(String name, String description) {
         String n = (name == null || name.isBlank()) ? "a Veto agent" : name;
         String d = (description == null || description.isBlank()) ? "" : description;
         if (d.isEmpty()) {
@@ -57,7 +56,7 @@ public final class PromptBlocks {
     }
 
     /** The role-specific "## Your Role" block, scoped to the agent's operational role. */
-    public static @NonNull String role(@Nullable Role role) {
+    public static @NonNull String role(Role role) {
         Role r = (role == null) ? Role.STANDALONE : role;
         return switch (r) {
             case STANDALONE ->
@@ -92,12 +91,12 @@ public final class PromptBlocks {
      * verbatim ({@link java.nio.file.Path#of}), so the agent must know its roots to construct them.
      * Empty when the workspace has no roots.
      */
-    public static @NonNull String workspace(@Nullable Workspace workspace) {
+    public static @NonNull String workspace(Workspace workspace) {
         if (workspace == null) {
             return "";
         }
         List<WorkspaceRoot> roots = workspace.roots();
-        if (roots == null || roots.isEmpty()) {
+        if (roots.isEmpty()) {
             return "";
         }
         Path operational = workspace.pathResolver().operationalRoot();
@@ -174,7 +173,7 @@ public final class PromptBlocks {
      * and the {@code tools[]} manifest can never disagree and role-based filtering upstream is
      * reflected automatically.
      */
-    public static @NonNull String tools(@Nullable List<ToolDefinition> flatTools) {
+    public static @NonNull String tools(List<ToolDefinition> flatTools) {
         if (flatTools == null || flatTools.isEmpty()) {
             return "";
         }
@@ -195,7 +194,7 @@ public final class PromptBlocks {
             sb.append("### `").append(t.name()).append("`\n");
             sb.append(t.description()).append('\n');
             String longDescription = t.longDescription();
-            if (longDescription != null && !longDescription.isBlank()) {
+            if (!longDescription.isBlank()) {
                 sb.append(longDescription.strip()).append('\n');
             }
             List<String> args = argDetails(t.inputSchema());
@@ -208,14 +207,14 @@ public final class PromptBlocks {
                 }
             }
             List<String> examples = t.examples();
-            if (examples != null && !examples.isEmpty()) {
+            if (!examples.isEmpty()) {
                 sb.append("**Examples:**\n");
                 for (String ex : examples) {
                     sb.append("- ").append(ex).append('\n');
                 }
             }
             List<String> returnExamples = t.returnExamples();
-            if (returnExamples != null && !returnExamples.isEmpty()) {
+            if (!returnExamples.isEmpty()) {
                 // Representative return shapes (multi-line CONTENT included), fenced so newlines
                 // survive verbatim - the model learns the output shape where it learned the usage.
                 sb.append("**Returns:**\n");
@@ -253,7 +252,7 @@ public final class PromptBlocks {
      * non-FULL_ACCESS; a one-line advisory under FULL_ACCESS. Defense-in-depth - the gateway
      * enforces these, but telling the model avoids wasted turns on blocked operations.
      */
-    public static @NonNull String boundaries(@Nullable DeployerPolicy policy) {
+    public static @NonNull String boundaries(DeployerPolicy policy) {
         if (policy == null) {
             return "";
         }
@@ -275,7 +274,7 @@ public final class PromptBlocks {
     }
 
     /** The "## Available Skills" catalog (name + description only); empty when no skills. */
-    public static @NonNull String skills(@Nullable List<Skill> skills) {
+    public static @NonNull String skills(List<Skill> skills) {
         if (skills == null || skills.isEmpty()) {
             return "";
         }
@@ -295,7 +294,7 @@ public final class PromptBlocks {
      * components, and marks required vs optional from the schema's {@code required[]} - so the
      * catalog matches what the gateway will actually accept.
      */
-    private static @NonNull List<String> argDetails(@Nullable Map<String, Object> inputSchema) {
+    private static @NonNull List<String> argDetails(Map<String, Object> inputSchema) {
         if (inputSchema == null) {
             return List.of();
         }

@@ -6,12 +6,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.mcp.DefaultToolEngine;
+import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.llm.core.ProviderType;
@@ -30,7 +32,10 @@ class AgentServiceHistorySeedTest {
     void getOrCreateSeedsHistoryOnFirstCall() {
         // The caller is never invoked: getOrCreateAgent creates + binds + seeds but does not
         // submit.
-        UniformLLMCaller caller = request -> null;
+        UniformLLMCaller caller =
+                request -> {
+                    throw new AssertionError("LLM call not expected");
+                };
         AgentService service = serviceWith(caller);
         UUID sessionId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -50,7 +55,10 @@ class AgentServiceHistorySeedTest {
 
     @Test
     void getOrCreateWithEmptyHistoryDoesNotSeed() {
-        UniformLLMCaller caller = request -> null;
+        UniformLLMCaller caller =
+                request -> {
+                    throw new AssertionError("LLM call not expected");
+                };
         AgentService service = serviceWith(caller);
         UUID sessionId = UUID.randomUUID();
         AgentRunner.LlmBinding binding = binding();
@@ -63,7 +71,10 @@ class AgentServiceHistorySeedTest {
 
     @Test
     void seedHistoryAdvancesTurnNumberPastReplayedTurns() {
-        UniformLLMCaller caller = request -> null;
+        UniformLLMCaller caller =
+                request -> {
+                    throw new AssertionError("LLM call not expected");
+                };
         AgentService service = serviceWith(caller);
         UUID sessionId = UUID.randomUUID();
         AgentRunner.LlmBinding binding = binding();
@@ -77,17 +88,21 @@ class AgentServiceHistorySeedTest {
         Agent a =
                 service.getOrCreateAgent(sessionId.toString(), binding, history, UUID.randomUUID());
         AgentRunner runner =
-                (AgentRunner)
-                        org.springframework.test.util.ReflectionTestUtils.getField(a, "runner");
-        assertNotNull(runner);
+                assertInstanceOf(
+                        ToolDocs.nonNullClass(AgentRunner.class),
+                        requireField(
+                                org.springframework.test.util.ReflectionTestUtils.getField(
+                                        a, "runner")));
         int turnNumber =
-                (int)
-                        org.springframework.test.util.ReflectionTestUtils.getField(
-                                runner, "turnNumber");
+                assertInstanceOf(
+                        ToolDocs.nonNullClass(Integer.class),
+                        requireField(
+                                org.springframework.test.util.ReflectionTestUtils.getField(
+                                        runner, "turnNumber")));
         assertEquals(5, turnNumber, "seedHistory advances turnNumber to the max replayed turn");
     }
 
-    private static AgentService serviceWith(UniformLLMCaller caller) {
+    private static @NonNull AgentService serviceWith(@NonNull UniformLLMCaller caller) {
         ObjectMapper mapper = new ObjectMapper();
         PromptCompiler compiler =
                 new PromptCompiler(
@@ -118,8 +133,13 @@ class AgentServiceHistorySeedTest {
                                 new top.focess.veto.sandbox.ConstrainedSubprocessSubstrate())));
     }
 
-    private static AgentRunner.LlmBinding binding() {
+    private static AgentRunner.@NonNull LlmBinding binding() {
         return new AgentRunner.LlmBinding(
                 ProviderType.DEEPSEEK, "stub-model", "stub-key", LlmOptions.defaults(), null);
+    }
+
+    private static @NonNull Object requireField(Object value) {
+        if (value == null) throw new AssertionError("expected reflected field");
+        return value;
     }
 }

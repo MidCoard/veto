@@ -10,7 +10,6 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
 /**
  * The Part 8 Delta-frame broker abstraction. A {@code DeltaFrame} is a single streaming update
@@ -37,10 +36,10 @@ import org.jspecify.annotations.Nullable;
 public record DeltaFrame(
         @NonNull UUID sessionId,
         long sequence,
-        @Nullable Instant emittedAt,
+        Instant emittedAt,
         @NonNull Kind kind,
-        @Nullable String text,
-        @Nullable Map<String, JsonNode> attrs) {
+        String text,
+        Map<String, JsonNode> attrs) {
 
     public enum Kind {
         ASSISTANT_THOUGHT,
@@ -76,16 +75,46 @@ public record DeltaFrame(
         }
     }
 
+    /** The canonical constructor normalizes a missing timestamp before publication. */
+    @Override
+    public @NonNull Instant emittedAt() {
+        Instant value = emittedAt;
+        if (value == null) {
+            throw new IllegalStateException("DeltaFrame timestamp was not normalized");
+        }
+        return value;
+    }
+
+    /** The canonical constructor normalizes missing text to an empty string. */
+    @Override
+    public @NonNull String text() {
+        String value = text;
+        if (value == null) {
+            throw new IllegalStateException("DeltaFrame text was not normalized");
+        }
+        return value;
+    }
+
+    /** The canonical constructor normalizes missing attributes to an immutable empty map. */
+    @Override
+    public @NonNull Map<@NonNull String, @NonNull JsonNode> attrs() {
+        Map<@NonNull String, @NonNull JsonNode> value = attrs;
+        if (value == null) {
+            throw new IllegalStateException("DeltaFrame attributes were not normalized");
+        }
+        return value;
+    }
+
     /** Serialize to JSON via the shared Jackson {@link ObjectMapper}. */
     public @NonNull String toJson(@NonNull ObjectMapper mapper) {
         try {
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("sessionId", sessionId.toString());
             payload.put("sequence", sequence);
-            payload.put("emittedAt", emittedAt.toString());
+            payload.put("emittedAt", emittedAt().toString());
             payload.put("kind", kind.name());
-            payload.put("text", text);
-            payload.put("attrs", attrs);
+            payload.put("text", text());
+            payload.put("attrs", attrs());
             return mapper.writeValueAsString(payload);
         } catch (Exception e) {
             throw new RuntimeException("DeltaFrame serialization failed", e);
@@ -96,11 +125,14 @@ public record DeltaFrame(
     public static @NonNull DeltaFrame fromJson(@NonNull ObjectMapper mapper, @NonNull String json) {
         try {
             JsonNode node = mapper.readTree(json);
+            Kind parsedKind =
+                    top.focess.veto.util.Nullness.requireNonNull(
+                            Kind.valueOf(node.path("kind").asText()), "DeltaFrame kind is missing");
             return new DeltaFrame(
                     UUID.fromString(node.path("sessionId").asText()),
                     node.path("sequence").asLong(),
                     Instant.parse(node.path("emittedAt").asText()),
-                    Kind.valueOf(node.path("kind").asText()),
+                    parsedKind,
                     node.path("text").asText(""),
                     mapper.convertValue(
                             node.path("attrs"),
@@ -117,9 +149,9 @@ public record DeltaFrame(
 
     /** Convenience builder. */
     public static final class Builder {
-        private @Nullable UUID sessionId;
+        private UUID sessionId;
         private long sequence;
-        private @Nullable Kind kind;
+        private Kind kind;
         private @NonNull String text = "";
         private final @NonNull Map<String, JsonNode> attrs = new LinkedHashMap<>();
 
@@ -169,7 +201,14 @@ public record DeltaFrame(
         }
 
         public @NonNull DeltaFrame build() {
-            return new DeltaFrame(sessionId, sequence, Instant.now(), kind, text, attrs);
+            if (sessionId == null) {
+                throw new IllegalStateException("DeltaFrame sessionId is required");
+            }
+            Kind frameKind = kind;
+            if (frameKind == null) {
+                throw new IllegalStateException("DeltaFrame kind is required");
+            }
+            return new DeltaFrame(sessionId, sequence, Instant.now(), frameKind, text, attrs);
         }
     }
 }

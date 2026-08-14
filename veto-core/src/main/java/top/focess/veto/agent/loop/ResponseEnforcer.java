@@ -37,7 +37,8 @@ public final class ResponseEnforcer {
         // (1) calls / actions mutual exclusion (a guided-switch turn emits no calls). thought is
         // always optional and unchecked here.
         boolean hasCalls = r.hasCalls();
-        boolean hasActions = r.actions() != null && r.actions().isArray() && !r.actions().isEmpty();
+        var actions = r.actions();
+        boolean hasActions = actions != null && actions.isArray() && !actions.isEmpty();
         if (hasCalls && hasActions) {
             throw new ModelSchemaException("calls and actions are mutually exclusive");
         }

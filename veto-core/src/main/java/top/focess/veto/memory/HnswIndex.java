@@ -12,7 +12,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 
 /**
@@ -44,10 +43,10 @@ public class HnswIndex {
     private final @NonNull Random random = new Random();
 
     /** The top layer's entry point (a node id); null if the index is empty. */
-    private volatile @Nullable UUID entryPoint;
+    private volatile UUID entryPoint;
 
     /** Insert a vector at the given id. Replaces any existing vector at that id. */
-    public void insert(@NonNull UUID id, float @Nullable [] vector) {
+    public void insert(@NonNull UUID id, float[] vector) {
         if (vector == null || vector.length == 0) {
             return;
         }
@@ -58,11 +57,11 @@ public class HnswIndex {
             int targetLevel = randomLevel();
             Node node = new Node(id, targetLevel);
             nodes.put(id, node);
-            if (entryPoint == null) {
+            UUID current = entryPoint;
+            if (current == null) {
                 entryPoint = id;
                 return;
             }
-            UUID current = entryPoint;
             float dist = distance(v, vectors.get(current));
             int currentMaxLevel = maxLevel();
             // Phase 1: greedy search from the current top layer down to min(targetLevel,
@@ -85,7 +84,7 @@ public class HnswIndex {
             for (int level = Math.min(targetLevel, currentMaxLevel); level >= 0; level--) {
                 insertAtLayer(node, v, level, current);
             }
-            for (int level = currentMaxLevel + 1; level <= targetLevel; level--) {
+            for (int level = currentMaxLevel + 1; level <= targetLevel; level++) {
                 // New layers above the previous top: the new node has no peers yet, so the
                 // greedy search starts at itself. We still set up the neighbor set so future
                 // inserts at this layer can find it.
@@ -144,7 +143,7 @@ public class HnswIndex {
                     }
                 }
             }
-            if (entryPoint != null && entryPoint.equals(id)) {
+            if (id.equals(entryPoint)) {
                 // Recompute entry point: pick the highest-level remaining node.
                 UUID newEntry = null;
                 int bestLevel = -1;
@@ -166,16 +165,16 @@ public class HnswIndex {
      * Approximate k-nearest-neighbor search. Returns up to {@code k} (id, score) pairs ranked by
      * descending similarity (higher = closer).
      */
-    public @NonNull List<VectorIndex.Match> topK(float @Nullable [] query, int k) {
+    public @NonNull List<VectorIndex.Match> topK(float[] query, int k) {
         if (query == null || query.length == 0 || k <= 0) {
             return List.of();
         }
         lock.readLock().lock();
         try {
-            if (entryPoint == null) {
+            UUID current = entryPoint;
+            if (current == null) {
                 return List.of();
             }
-            UUID current = entryPoint;
             float dist = distance(query, vectors.get(current));
             // Phase 1: greedy descent from the top layer down to layer 0.
             for (int level = maxLevel(); level > 0; level--) {
@@ -189,7 +188,7 @@ public class HnswIndex {
             // Phase 2: efSearch-candidate beam search at layer 0.
             List<SearchResult> result =
                     searchLayer(query, List.of(new SearchResult(current, dist)), 0);
-            result.sort(Comparator.comparingDouble((SearchResult sr) -> -sr.score));
+            result.sort(Comparator.comparingDouble((@NonNull SearchResult sr) -> -sr.score));
             List<VectorIndex.Match> out = new ArrayList<>();
             for (int i = 0; i < Math.min(k, result.size()); i++) {
                 SearchResult sr = result.get(i);
@@ -235,9 +234,9 @@ public class HnswIndex {
     private @NonNull List<SearchResult> searchLayer(
             float @NonNull [] query, @NonNull List<SearchResult> entryPoints, int level) {
         List<SearchResult> candidates = new ArrayList<>(entryPoints);
-        candidates.sort(Comparator.comparingDouble((SearchResult sr) -> -sr.score));
+        candidates.sort(Comparator.comparingDouble((@NonNull SearchResult sr) -> -sr.score));
         List<SearchResult> result = new ArrayList<>(entryPoints);
-        result.sort(Comparator.comparingDouble((SearchResult sr) -> -sr.score));
+        result.sort(Comparator.comparingDouble((@NonNull SearchResult sr) -> -sr.score));
         Set<UUID> visited = new HashSet<>();
         for (SearchResult ep : entryPoints) {
             visited.add(ep.id);
@@ -272,8 +271,8 @@ public class HnswIndex {
                 }
             }
             // Keep the best EF_CONSTRUCTION candidates.
-            candidates.sort(Comparator.comparingDouble((SearchResult sr) -> -sr.score));
-            result.sort(Comparator.comparingDouble((SearchResult sr) -> -sr.score));
+            candidates.sort(Comparator.comparingDouble((@NonNull SearchResult sr) -> -sr.score));
+            result.sort(Comparator.comparingDouble((@NonNull SearchResult sr) -> -sr.score));
             if (result.size() > EF_CONSTRUCTION) {
                 result = new ArrayList<>(result.subList(0, EF_CONSTRUCTION));
             }
@@ -287,7 +286,7 @@ public class HnswIndex {
      */
     private static @NonNull List<SearchResult> selectNeighbors(
             @NonNull List<SearchResult> candidates, int m) {
-        candidates.sort(Comparator.comparingDouble((SearchResult sr) -> -sr.score));
+        candidates.sort(Comparator.comparingDouble((@NonNull SearchResult sr) -> -sr.score));
         return candidates.subList(0, Math.min(m, candidates.size()));
     }
 
@@ -318,7 +317,7 @@ public class HnswIndex {
             }
             scored.add(new SearchResult(n, distance(myVec, nv)));
         }
-        scored.sort(Comparator.comparingDouble((SearchResult sr) -> sr.score));
+        scored.sort(Comparator.comparingDouble((@NonNull SearchResult sr) -> sr.score));
         Set<UUID> kept = new HashSet<>(budget);
         for (int i = 0; i < Math.min(budget, scored.size()); i++) {
             kept.add(scored.get(i).id);
@@ -327,7 +326,7 @@ public class HnswIndex {
     }
 
     /** Squared L2 distance. (Cosine is computed at the higher layer for ranking.) */
-    private static float distance(float @Nullable [] a, float @Nullable [] b) {
+    private static float distance(float[] a, float[] b) {
         if (a == null || b == null) {
             return Float.POSITIVE_INFINITY;
         }

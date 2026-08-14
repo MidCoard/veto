@@ -3,9 +3,7 @@ package top.focess.veto.command;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.command.AbstractCommandSender;
@@ -51,10 +49,11 @@ import top.focess.veto.terminal.IpcServer;
  */
 public final class VetoCommandSender extends AbstractCommandSender {
 
-    private static final Logger log = LoggerFactory.getLogger(VetoCommandSender.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.command.VetoCommandSender");
 
     private final @NonNull IpcServer ipcServer;
-    private volatile @Nullable String username;
+    private volatile String username;
     private final @NonNull String terminalId;
     private final @NonNull Version clientProductVersion;
 
@@ -71,7 +70,7 @@ public final class VetoCommandSender extends AbstractCommandSender {
      * pending per session, so a single slot suffices. Atomic: written on the agent virtual thread
      * (the veto sink), claimed on the session-worker thread (Input/Cancel).
      */
-    private final @NonNull AtomicReference<PendingVeto> pendingVeto = new AtomicReference<>();
+    private PendingVeto pendingVeto;
 
     /**
      * Constructs a new {@code VetoCommandSender} for the given terminal session.
@@ -88,7 +87,7 @@ public final class VetoCommandSender extends AbstractCommandSender {
      */
     public VetoCommandSender(
             @NonNull IpcServer ipcServer,
-            @Nullable String username,
+            String username,
             @NonNull String terminalId,
             @NonNull Version clientProductVersion,
             @NonNull String cwd) {
@@ -107,8 +106,17 @@ public final class VetoCommandSender extends AbstractCommandSender {
      *
      * @return the username, or {@code null} if the terminal is not yet logged in
      */
-    public @Nullable String username() {
+    public String username() {
         return username;
+    }
+
+    /** Returns the authenticated username for code guarded by the logged-in permission. */
+    public @NonNull String requireUsername() {
+        String current = username;
+        if (current == null) {
+            throw new IllegalStateException("Command requires an authenticated user");
+        }
+        return current;
     }
 
     /**
@@ -118,7 +126,7 @@ public final class VetoCommandSender extends AbstractCommandSender {
      *
      * @param username the new username, or {@code null} to mark the session as logged out
      */
-    public void setUsername(@Nullable String username) {
+    public void setUsername(String username) {
         this.username = username;
     }
 
@@ -173,7 +181,7 @@ public final class VetoCommandSender extends AbstractCommandSender {
      * @param message the text chunk to stream; {@code null} or empty strings are silently dropped
      */
     @Override
-    public void output(@Nullable String message) {
+    public void output(String message) {
         if (message == null || message.isEmpty()) return;
         ipcServer.send(terminalId, new IpcFrame.Delta(message));
     }
@@ -188,7 +196,7 @@ public final class VetoCommandSender extends AbstractCommandSender {
      *
      * @param thought the interim reasoning text to stream; {@code null} or empty silently dropped
      */
-    public void outputThought(@Nullable String thought) {
+    public void outputThought(String thought) {
         if (thought == null || thought.isEmpty()) return;
         ipcServer.send(terminalId, IpcFrame.Delta.thought(thought));
     }
@@ -228,8 +236,11 @@ public final class VetoCommandSender extends AbstractCommandSender {
      *
      * @return the user's input string, or {@code null} if the prompt was cancelled
      */
+    // focess-command declares this legacy override non-null, but cancellation is represented by
+    // null in its runtime protocol. The nullable overload below is the actual Veto contract.
+    @SuppressWarnings("override.return")
     @Override
-    public @Nullable String input() {
+    public String input() {
         return input("", false);
     }
 
@@ -245,7 +256,7 @@ public final class VetoCommandSender extends AbstractCommandSender {
      * @param mask {@code true} to mask input characters (e.g. for passwords)
      * @return the user's input string, or {@code null} if the prompt was cancelled
      */
-    public @Nullable String input(@NonNull String text, boolean mask) {
+    public String input(@NonNull String text, boolean mask) {
         try {
             return inputAsync(text, mask, 90000).join();
         } catch (CancellationException e) {
@@ -325,8 +336,8 @@ public final class VetoCommandSender extends AbstractCommandSender {
      * IpcFrame.Input} reply (or a {@link IpcFrame.Cancel}) can resolve it. Called from the agent's
      * veto emission seam (the veto sink), on the agent virtual thread.
      */
-    public void sendVetoPrompt(@NonNull VetoPrompt vp) {
-        pendingVeto.set(new PendingVeto(vp.agentId(), vp.callId()));
+    public synchronized void sendVetoPrompt(@NonNull VetoPrompt vp) {
+        pendingVeto = new PendingVeto(vp.agentId(), vp.callId());
         IpcFrame.VetoPayload payload =
                 new IpcFrame.VetoPayload(
                         vp.agentId(),
@@ -343,8 +354,10 @@ public final class VetoCommandSender extends AbstractCommandSender {
      * Atomically claims the pending veto (returns and clears it), so the inbound handler resolves
      * it exactly once. Returns {@code null} if no veto is pending (a free-text prompt, or none).
      */
-    public @Nullable PendingVeto claimPendingVeto() {
-        return pendingVeto.getAndSet(null);
+    public synchronized PendingVeto claimPendingVeto() {
+        PendingVeto claimed = pendingVeto;
+        pendingVeto = null;
+        return claimed;
     }
 
     /** The (agentId, callId) stashed for a pending veto - the HitlRegistry key + call id. */

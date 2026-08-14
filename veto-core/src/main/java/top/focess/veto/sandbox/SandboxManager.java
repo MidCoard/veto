@@ -19,15 +19,14 @@ import org.springframework.stereotype.Service;
 @Service
 public class SandboxManager {
 
-    private static final Logger log = LoggerFactory.getLogger(SandboxManager.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.sandbox.SandboxManager");
 
     private final @NonNull SandboxSubstrate substrate;
     private final @NonNull ConcurrentHashMap<String, SandboxHandle> handles =
             new ConcurrentHashMap<>();
 
-    public
-    @NonNull
-    SandboxManager(@NonNull ConstrainedSubprocessSubstrate substrate) {
+    public SandboxManager(@NonNull ConstrainedSubprocessSubstrate substrate) {
         this.substrate = substrate;
     }
 

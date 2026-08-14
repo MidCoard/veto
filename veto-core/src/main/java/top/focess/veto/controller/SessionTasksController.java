@@ -1,12 +1,14 @@
 package top.focess.veto.controller;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -34,9 +36,7 @@ public class SessionTasksController {
     private final @NonNull BackgroundTaskManager taskManager;
     private final @NonNull KeysteadVault vault;
 
-    public
-    @NonNull
-    SessionTasksController(
+    public SessionTasksController(
             @NonNull SessionService sessionService,
             @NonNull BackgroundTaskManager taskManager,
             @NonNull KeysteadVault vault) {
@@ -51,7 +51,7 @@ public class SessionTasksController {
     /** GET /api/sessions/{name}/tasks — the session's background tasks, running first. */
     @GetMapping("/{name}/tasks")
     public @NonNull ResponseEntity<Map<String, @NonNull Object>> list(
-            @NonNull @PathVariable("name") String name) {
+            @PathVariable("name") @NonNull String name) {
         String agentId = requireAgentId(name);
         List<BackgroundTaskManager.TaskInfo> tasks = taskManager.list(agentId);
         List<Map<String, Object>> rows = new ArrayList<>(tasks.size());
@@ -76,10 +76,12 @@ public class SessionTasksController {
      * one from the registry (the response's {@code status} tells which happened). The UI's Stop and
      * Remove buttons both land here; the task's alive flag picks the action.
      */
-    @DeleteMapping("/{name}/tasks/{taskId}")
+    @DeleteMapping(value = "/{name}/tasks/{taskId}", produces = MediaType.APPLICATION_JSON_VALUE)
+    // Task metadata is intentionally returned as JSON; it is not inserted into an HTML context.
+    //noinspection tainting
     public @NonNull ResponseEntity<Map<String, @NonNull Object>> stopOrRemove(
-            @NonNull @PathVariable("name") String name,
-            @NonNull @PathVariable("taskId") String taskId) {
+            @PathVariable("name") @NonNull String name,
+            @PathVariable("taskId") @NonNull String taskId) {
         String agentId = requireAgentId(name);
         boolean alive =
                 taskManager
@@ -130,9 +132,10 @@ public class SessionTasksController {
 
     /** Flattens a {@link BackgroundTaskManager.TaskInfo} into its wire shape. */
     private @NonNull Map<String, Object> toJson(BackgroundTaskManager.@NonNull TaskInfo task) {
+        Instant finishedAt = task.finishedAt();
         long uptimeSeconds =
-                task.finishedAt() != null
-                        ? Duration.between(task.startedAt(), task.finishedAt()).toSeconds()
+                finishedAt != null
+                        ? Duration.between(task.startedAt(), finishedAt).toSeconds()
                         : task.uptimeSeconds();
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("taskId", task.taskId());
@@ -140,9 +143,10 @@ public class SessionTasksController {
         row.put("cwd", task.cwd());
         row.put("pid", task.pid());
         row.put("alive", task.alive());
-        row.put("exitCode", task.exitCode());
+        Integer exitCode = task.exitCode();
+        if (exitCode != null) row.put("exitCode", exitCode);
         row.put("startedAt", task.startedAt().toString());
-        row.put("finishedAt", task.finishedAt() == null ? null : task.finishedAt().toString());
+        if (finishedAt != null) row.put("finishedAt", finishedAt.toString());
         row.put("uptimeSeconds", Math.max(0, uptimeSeconds));
         return row;
     }

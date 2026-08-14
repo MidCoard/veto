@@ -35,7 +35,7 @@ public interface AgentPatternRepository extends JpaRepository<AgentPatternEntity
     @Transactional
     @Query("delete from AgentPatternEntity p where p.name = :name and p.owner = :owner")
     void deleteByNameAndOwner(
-            @NonNull @Param("name") String name, @NonNull @Param("owner") String owner);
+            @Param("name") @NonNull String name, @Param("owner") @NonNull String owner);
 
     /** Bulk-delete every pattern owned by {@code owner} (used by user-deletion cascade). */
     @Transactional

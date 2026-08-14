@@ -2,7 +2,7 @@ plugins {
     java
     id("org.springframework.boot") version "3.5.16"
     id("io.spring.dependency-management") version "1.1.6"
-    id("com.google.protobuf") version "0.9.4"
+    id("com.google.protobuf") version "0.10.0"
     id("com.diffplug.spotless") version "6.25.0"
     id("org.graalvm.buildtools.native") version "0.10.3"
 }
@@ -23,8 +23,8 @@ repositories {
 dependencies {
     implementation(project(":veto-protocol"))
 
-    // JSpecify nullability annotations
-    compileOnly("org.jspecify:jspecify:1.0.0")
+    // JSpecify nullability contracts are part of normal compilation and reflection metadata.
+    implementation("org.jspecify:jspecify:1.0.0")
 
     // Spring Boot
     implementation("org.springframework.boot:spring-boot-starter-web")
@@ -32,6 +32,19 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
+
+    // Log4j API class files retain these provided-scope annotations. Keep their metadata on the
+    // compile classpath so javac can validate the dependency bytecode without classfile warnings.
+    compileOnly("biz.aQute.bnd:biz.aQute.bnd.annotation:7.0.0")
+    compileOnly("com.github.spotbugs:spotbugs-annotations:4.8.6")
+    compileOnly("com.google.errorprone:error_prone_annotations:2.32.0")
+    compileOnly("org.osgi:osgi.annotation:8.1.0")
+    compileOnly("org.osgi:org.osgi.annotation.bundle:2.0.0")
+    testCompileOnly("biz.aQute.bnd:biz.aQute.bnd.annotation:7.0.0")
+    testCompileOnly("com.github.spotbugs:spotbugs-annotations:4.8.6")
+    testCompileOnly("com.google.errorprone:error_prone_annotations:2.32.0")
+    testCompileOnly("org.osgi:osgi.annotation:8.1.0")
+    testCompileOnly("org.osgi:org.osgi.annotation.bundle:2.0.0")
 
     // gRPC
     implementation("io.grpc:grpc-netty-shaded:1.75.0")
@@ -82,9 +95,6 @@ dependencies {
 
     // Testing
     testImplementation("org.springframework.boot:spring-boot-starter-test")
-    testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
-    testImplementation("org.mockito:mockito-core:5.11.0")
-    testImplementation("org.mockito:mockito-junit-jupiter:5.11.0")
 }
 
 protobuf {
@@ -122,12 +132,15 @@ val generateVersion by tasks.registering {
         pkgDir.mkdirs()
         val sb = StringBuilder()
         sb.append("package ").append(pkg).append(";\n\n")
+        sb.append("import org.jspecify.annotations.NonNull;\n")
         sb.append("import ").append(pkg).append(".contract.Version;\n\n")
         sb.append("/** Build-time generated version descriptor. Do not edit by hand. */\n")
         sb.append("public final class VetoVersion {\n")
         sb.append("    private VetoVersion() {}\n\n")
-        sb.append("    public static final String COMPONENT = \"").append(component).append("\";\n\n")
-        sb.append("    public static final Version VERSION = Version.parse(\"")
+        sb.append("    public static final @NonNull String COMPONENT = \"")
+                .append(component)
+                .append("\";\n\n")
+        sb.append("    public static final @NonNull Version VERSION = Version.parse(\"")
                 .append(versionStr)
                 .append("\");\n")
         sb.append("}\n")
@@ -169,7 +182,6 @@ tasks.withType<JavaCompile> {
 
 tasks.withType<Test> {
     useJUnitPlatform()
-    // Byte Buddy (Mockito) does not officially support Java 25 yet; allow experimental support.
-    systemProperty("net.bytebuddy.experimental", "true")
-    jvmArgs("--enable-native-access=ALL-UNNAMED")
+    // Mockito instruments bootstrap classes, so class-data sharing cannot apply to test JVMs.
+    jvmArgs("--enable-native-access=ALL-UNNAMED", "-Xshare:off")
 }

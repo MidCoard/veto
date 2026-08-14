@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.List;
-import org.jspecify.annotations.Nullable;
+import org.jspecify.annotations.NonNull;
 
 /**
  * The universal ReAct response record—every model response conforms to this shape. Transcribed from
@@ -31,11 +31,11 @@ import org.jspecify.annotations.Nullable;
  * record is the shared contract both compile against.
  */
 public record VetoResponse(
-        @Nullable String thought,
-        @Nullable List<ToolCall> calls,
-        @Nullable String message,
-        @Nullable Features features,
-        @Nullable JsonNode actions) {
+        String thought,
+        List<@NonNull ToolCall> calls,
+        String message,
+        Features features,
+        JsonNode actions) {
 
     /** Convenience: whether this response carries any tool calls. */
     @JsonIgnore

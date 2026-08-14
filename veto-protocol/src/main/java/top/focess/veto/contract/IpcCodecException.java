@@ -7,6 +7,7 @@ import org.jspecify.annotations.NonNull;
  * serialized. Serialization of an in-process frame is not expected to fail; a failure indicates a
  * programming error rather than bad input, so it surfaces as an unchecked exception.
  */
+@SuppressWarnings("serial")
 public final class IpcCodecException extends RuntimeException {
 
     /**

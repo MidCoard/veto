@@ -6,7 +6,6 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.zeromq.ZContext;
@@ -51,7 +50,8 @@ import org.zeromq.ZContext;
  */
 public final class IpcClient implements AutoCloseable {
 
-    private static final Logger log = LoggerFactory.getLogger(IpcClient.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.contract.IpcClient");
 
     private static final int POLL_TIMEOUT_MS = 50;
     private static final long HEARTBEAT_INTERVAL_MS = 30_000;
@@ -59,18 +59,21 @@ public final class IpcClient implements AutoCloseable {
     private static final int OUTBOX_CAPACITY = 256;
     private static final long HANDSHAKE_TIMEOUT_MS = 10_000;
 
+    /** Present only when this client owns the ZeroMQ context rather than an injected transport. */
     private final ZContext ctx;
-    private final String identity;
-    private final ClientTransport transport;
-    private final SeqCorrelator correlator = new SeqCorrelator();
+
+    private final @NonNull String identity;
+    private final @NonNull ClientTransport transport;
+    private final @NonNull SeqCorrelator correlator = new SeqCorrelator();
     private final boolean ownsContext;
 
     /** Outbound frames waiting for the IO thread. Bounded; drop-on-full with a warning. */
-    private final BlockingQueue<IpcFrame.ClientFrame> outbox =
+    private final @NonNull BlockingQueue<IpcFrame.@NonNull ClientFrame> outbox =
             new ArrayBlockingQueue<>(OUTBOX_CAPACITY);
 
     /** Inbound non-sequenced frames (Delta/Progress/Prompt/Done/Error/Terminate) for the caller. */
-    private final BlockingQueue<IpcFrame.ServerFrame> incomingQueue = new LinkedBlockingQueue<>();
+    private final @NonNull BlockingQueue<IpcFrame.@NonNull ServerFrame> incomingQueue =
+            new LinkedBlockingQueue<>();
 
     private Thread ioThread;
     private Thread heartbeatThread;
@@ -203,13 +206,15 @@ public final class IpcClient implements AutoCloseable {
 
     private void start() {
         handshake();
-        this.ioThread = new Thread(this::ioLoop, "ipc-io");
-        this.ioThread.setDaemon(true);
-        this.ioThread.start();
+        Thread io = new Thread(this::ioLoop, "ipc-io");
+        this.ioThread = io;
+        io.setDaemon(true);
+        io.start();
 
-        this.heartbeatThread = new Thread(this::heartbeatLoop, "ipc-hb");
-        this.heartbeatThread.setDaemon(true);
-        this.heartbeatThread.start();
+        Thread heartbeat = new Thread(this::heartbeatLoop, "ipc-hb");
+        this.heartbeatThread = heartbeat;
+        heartbeat.setDaemon(true);
+        heartbeat.start();
     }
 
     // ── handshake ─────────────────────────────────────────────────────────
@@ -314,6 +319,7 @@ public final class IpcClient implements AutoCloseable {
 
     // ── heartbeat ─────────────────────────────────────────────────────────
 
+    @SuppressWarnings("BusyWait") // Deliberate fixed-rate heartbeat sender, not a spin loop.
     private void heartbeatLoop() {
         while (!closed) {
             try {
@@ -369,7 +375,7 @@ public final class IpcClient implements AutoCloseable {
      * @return the next server frame, or {@code null} if timed out
      * @throws InterruptedException if the calling thread is interrupted
      */
-    public IpcFrame.@Nullable ServerFrame receive() throws InterruptedException {
+    public IpcFrame.ServerFrame receive() throws InterruptedException {
         return incomingQueue.poll(DEFAULT_RECEIVE_TIMEOUT_S, TimeUnit.SECONDS);
     }
 
@@ -381,7 +387,7 @@ public final class IpcClient implements AutoCloseable {
      * @return the next server frame, or {@code null} if timed out
      * @throws InterruptedException if the calling thread is interrupted
      */
-    public IpcFrame.@Nullable ServerFrame receive(long timeout, @NonNull TimeUnit unit)
+    public IpcFrame.ServerFrame receive(long timeout, @NonNull TimeUnit unit)
             throws InterruptedException {
         return incomingQueue.poll(timeout, unit);
     }
@@ -396,7 +402,7 @@ public final class IpcClient implements AutoCloseable {
      * @param unit the time unit
      * @return the completion result, or {@code null} on timeout or error response
      */
-    public IpcFrame.@Nullable CompleteResult complete(
+    public IpcFrame.CompleteResult complete(
             @NonNull String line, long timeout, @NonNull TimeUnit unit) {
         long seq = correlator.next();
         send(new IpcFrame.Complete(line, seq));
@@ -419,8 +425,7 @@ public final class IpcClient implements AutoCloseable {
      * @param unit the time unit
      * @return the hint result, or {@code null} on timeout or error response
      */
-    public IpcFrame.@Nullable HintResult hint(
-            @NonNull String line, long timeout, @NonNull TimeUnit unit) {
+    public IpcFrame.HintResult hint(@NonNull String line, long timeout, @NonNull TimeUnit unit) {
         long seq = correlator.next();
         send(new IpcFrame.Hint(line, seq));
         try {
@@ -453,11 +458,17 @@ public final class IpcClient implements AutoCloseable {
             log.warn("Outbox full during close — Bye frame dropped");
         }
         closed = true;
-        heartbeatThread.interrupt();
-        try {
-            ioThread.join(2_000);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
+        Thread heartbeat = heartbeatThread;
+        if (heartbeat != null) {
+            heartbeat.interrupt();
+        }
+        Thread io = ioThread;
+        if (io != null) {
+            try {
+                io.join(2_000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
         }
         if (ownsContext && ctx != null) {
             ctx.close();

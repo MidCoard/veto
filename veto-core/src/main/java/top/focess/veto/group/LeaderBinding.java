@@ -1,7 +1,6 @@
 package top.focess.veto.group;
 
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.AgentRunner;
@@ -30,7 +29,7 @@ public class LeaderBinding {
     private final @NonNull String systemPromptBase;
 
     public LeaderBinding(
-            @Value("${veto.group.leader.tier:TOP}") @Nullable String tier,
+            @Value("${veto.group.leader.tier:TOP}") String tier,
             @Value(
                             "${veto.group.leader.system-prompt-base:You are a Leader agent. Decompose the task and arrange the execution DAG node by node.}")
                     @NonNull String systemPromptBase,
@@ -57,12 +56,12 @@ public class LeaderBinding {
                 resolved.baseUrl());
     }
 
-    private static @NonNull ModelTier parseTier(@Nullable String s) {
+    private static @NonNull ModelTier parseTier(String s) {
         if (s == null || s.isBlank()) {
             return ModelTier.TOP;
         }
         try {
-            return ModelTier.valueOf(s);
+            return top.focess.veto.util.Nullness.requireNonNull(ModelTier.valueOf(s));
         } catch (IllegalArgumentException e) {
             return ModelTier.TOP;
         }

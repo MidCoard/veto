@@ -2,7 +2,6 @@ package top.focess.veto.agent.web;
 
 import java.util.List;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.mcp.Doc;
 import top.focess.veto.agent.mcp.NativeTool;
@@ -10,6 +9,7 @@ import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.SecurityHint;
 import top.focess.veto.agent.mcp.ToolDoc;
+import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.mcp.ToolSecurity;
 
 /**
@@ -82,10 +82,10 @@ public final class WebSearchTool implements NativeTool<WebSearchTool.Args> {
                     @NonNull String query,
             @SecurityHint(ParamCategory.GENERIC)
                     @Doc("Only include results from these domains (optional).")
-                    @Nullable List<String> allowed_domains,
+                    List<String> allowed_domains,
             @SecurityHint(ParamCategory.GENERIC)
                     @Doc("Never include results from these domains (optional).")
-                    @Nullable List<String> blocked_domains) {}
+                    List<String> blocked_domains) {}
 
     @Override
     public @NonNull String getName() {
@@ -100,12 +100,12 @@ public final class WebSearchTool implements NativeTool<WebSearchTool.Args> {
 
     @Override
     public @NonNull Class<Args> getArgsClass() {
-        return Args.class;
+        return ToolDocs.nonNullClass(Args.class);
     }
 
     @Override
     public @NonNull String execute(@NonNull Args args) {
-        String query = args.query() == null ? "" : args.query();
+        String query = args.query();
         SearchOptions options =
                 new SearchOptions(
                         args.allowed_domains(), args.blocked_domains(), DEFAULT_MAX_RESULTS);
@@ -141,7 +141,8 @@ public final class WebSearchTool implements NativeTool<WebSearchTool.Args> {
         return sb.toString();
     }
 
-    private static @NonNull String error(@NonNull String message) {
-        return "[web_search error] " + message;
+    private static @NonNull String error(String message) {
+        return "[web_search error] "
+                + (message == null || message.isBlank() ? "search failed" : message);
     }
 }

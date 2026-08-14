@@ -13,6 +13,7 @@ import top.focess.veto.contract.IpcMeta;
  *
  * <p>This is a control-flow exception, not an error condition.
  */
+@SuppressWarnings("serial")
 public class LogoutException extends RuntimeException {
 
     /** Constructs a new {@code LogoutException} with the fixed message {@code "Logged out."}. */

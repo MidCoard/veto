@@ -13,6 +13,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -27,6 +28,7 @@ import top.focess.veto.agent.mcp.NativeToolDefinition;
 import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.ToolDefinition;
+import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.mcp.ToolEngine;
 import top.focess.veto.agent.mcp.ToolResult;
 import top.focess.veto.agent.screening.Danger;
@@ -43,27 +45,33 @@ import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.llm.core.VetoResponse;
 import top.focess.veto.llm.exceptions.LlmException;
 
+@SuppressWarnings("initialization.field.uninitialized")
 class NewRequirementsTest {
 
-    @TempDir Path root;
+    @TempDir @NonNull Path root;
 
     @BeforeEach
     void canonicalizeRoot() throws Exception {
         root = root.toRealPath();
     }
 
-    private NativeToolDefinition execDef() {
+    private @NonNull NativeToolDefinition execDef() {
         return new NativeToolDefinition(
-                "run_command", "exec", RiskCategory.SHELL_EXEC, false, ExecArgs.class, Map.of());
+                "run_command",
+                "exec",
+                RiskCategory.SHELL_EXEC,
+                false,
+                ToolDocs.nonNullClass(ExecArgs.class),
+                Map.of());
     }
 
-    private NativeToolDefinition readDef() {
+    private @NonNull NativeToolDefinition readDef() {
         return new NativeToolDefinition(
                 "view_file",
                 "read",
                 RiskCategory.READ_ONLY,
                 false,
-                ReadArgs.class,
+                ToolDocs.nonNullClass(ReadArgs.class),
                 Map.of("path", ParamCategory.FILESYSTEM_PATH));
     }
 
@@ -72,29 +80,30 @@ class NewRequirementsTest {
     public record ReadArgs(String path) {}
 
     private static class TestToolEngine implements ToolEngine {
-        private final Map<String, ToolDefinition> tools = new java.util.HashMap<>();
+        private final @NonNull Map<String, ToolDefinition> tools = new java.util.HashMap<>();
 
-        public void register(ToolDefinition def) {
+        public void register(@NonNull ToolDefinition def) {
             tools.put(def.name(), def);
         }
 
         @Override
-        public List<ToolDefinition> getActiveTools(Set<String> whitelist) {
+        public @NonNull List<ToolDefinition> getActiveTools(Set<String> whitelist) {
             return new ArrayList<>(tools.values());
         }
 
         @Override
-        public ToolDefinition resolveDefinition(String toolName) {
+        public ToolDefinition resolveDefinition(@NonNull String toolName) {
             return tools.get(toolName);
         }
 
         @Override
-        public ToolResult execute(ToolCall call, ToolDefinition def) {
+        public @NonNull ToolResult execute(@NonNull ToolCall call, @NonNull ToolDefinition def) {
             return new ToolResult(call.toolName(), call.callId(), true, "success");
         }
     }
 
-    private static UniformLLMCaller scripted(VetoResponse... responses) {
+    private static @NonNull UniformLLMCaller scripted(
+            @NonNull VetoResponse @NonNull ... responses) {
         ArrayDeque<VetoResponse> queue = new ArrayDeque<>(List.of(responses));
         return request -> {
             VetoResponse r = queue.poll();
@@ -105,7 +114,8 @@ class NewRequirementsTest {
         };
     }
 
-    private static VetoResponse thoughtOnWithCall(String thought, String message, ToolCall call) {
+    private static @NonNull VetoResponse thoughtOnWithCall(
+            String thought, String message, @NonNull ToolCall call) {
         return new VetoResponse(
                 thought, List.of(call), message, new VetoResponse.Features(false), null);
     }
@@ -199,14 +209,15 @@ class NewRequirementsTest {
             Thread.sleep(10);
         }
 
-        assertNotNull(agent, "agent should not be null");
+        if (agent == null) throw new AssertionError("agent should not be null");
         System.out.println("TEST DEBUG: agent final checked state: " + agent.state());
         System.out.println("TEST DEBUG: agent history: " + agent.history());
         System.out.println("TEST DEBUG: streamedMessage current value: " + streamedMessage.get());
 
         assertEquals(AgentState.INTERCEPTED, agent.state());
-        assertNotNull(streamedMessage.get(), "streamed message should not be null");
-        assertTrue(streamedMessage.get().contains("CRITICAL"));
+        String streamed = streamedMessage.get();
+        if (streamed == null) throw new AssertionError("streamed message should not be null");
+        assertTrue(streamed.contains("CRITICAL"));
 
         // Resolve the HITL hold (retrying in case of race with register)
         boolean resolved = false;
@@ -214,11 +225,12 @@ class NewRequirementsTest {
         String resolvedAgentId = null;
         String resolvedCallId = null;
         while (System.nanoTime() < resolveDeadline) {
-            java.util.concurrent.ConcurrentHashMap<String, ?> pending =
-                    (java.util.concurrent.ConcurrentHashMap<String, ?>)
-                            ReflectionTestUtils.getField(hitlRegistry, "pending");
-            if (pending != null && !pending.isEmpty()) {
-                for (String key : pending.keySet()) {
+            Object pendingValue = ReflectionTestUtils.getField(hitlRegistry, "pending");
+            if (pendingValue instanceof java.util.Map<?, ?> pending && !pending.isEmpty()) {
+                for (Object pendingKey : pending.keySet()) {
+                    if (!(pendingKey instanceof String key)) {
+                        continue;
+                    }
                     int idx = key.indexOf('|');
                     if (idx > 0) {
                         resolvedAgentId = key.substring(0, idx);
@@ -324,7 +336,7 @@ class NewRequirementsTest {
 
         assertFalse(result.success());
         VetoAgent agent = service.agent(agentKey);
-        assertNotNull(agent);
+        if (agent == null) throw new AssertionError("expected agent");
         assertEquals(AgentState.IDLE, agent.state());
     }
 }

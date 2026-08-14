@@ -20,7 +20,8 @@ import top.focess.veto.vault.KeysteadVault;
  */
 public class CredentialCommand extends VetoCommand {
 
-    private static final Logger log = LoggerFactory.getLogger(CredentialCommand.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.command.commands.CredentialCommand");
 
     private final @NonNull KeysteadVault vault;
 
@@ -41,6 +42,7 @@ public class CredentialCommand extends VetoCommand {
                     VetoCommandSender s = vetoSender(sender);
                     if (s == null) return CommandResult.REFUSE;
                     String key = args.get("key");
+                    if (key == null || key.isBlank()) return CommandResult.REFUSE;
                     String secret = s.input("Secret for " + key + ":", true);
                     if (secret == null) {
                         s.output("Credential set cancelled.");
@@ -81,6 +83,7 @@ public class CredentialCommand extends VetoCommand {
                     VetoCommandSender s = vetoSender(sender);
                     if (s == null) return CommandResult.REFUSE;
                     String key = args.get("key");
+                    if (key == null || key.isBlank()) return CommandResult.REFUSE;
                     if (vault.deleteNote(key)) {
                         s.output("Credential '" + key + "' deleted.");
                     } else {
@@ -93,7 +96,7 @@ public class CredentialCommand extends VetoCommand {
     }
 
     private @NonNull List<CommandCompletion> completeKey(
-            @NonNull CommandSender sender, @NonNull Command cmd, @NonNull String[] argv) {
+            @NonNull CommandSender sender, @NonNull Command cmd, @NonNull String @NonNull [] argv) {
         if (!LOGGED_IN.test(sender)) return List.of();
         String prefix = argv.length > 0 ? argv[argv.length - 1].toLowerCase() : "";
         return vault.listTitles().stream()

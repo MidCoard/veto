@@ -11,7 +11,8 @@ import org.junit.jupiter.api.io.TempDir;
 class WorkspaceTest {
 
     @Test
-    void rootsAreOrderedAndCurrentRootDefaultsToZero(@TempDir Path tmp) throws Exception {
+    void rootsAreOrderedAndCurrentRootDefaultsToZero(
+            @TempDir @org.jspecify.annotations.NonNull Path tmp) throws Exception {
         Path a = tmp.resolve("a");
         Files.createDirectories(a);
         Path b = tmp.resolve("b");
@@ -35,7 +36,8 @@ class WorkspaceTest {
     }
 
     @Test
-    void currentRootIndexOutOfRangeRejected(@TempDir Path tmp) throws Exception {
+    void currentRootIndexOutOfRangeRejected(@TempDir @org.jspecify.annotations.NonNull Path tmp)
+            throws Exception {
         Path a = tmp.resolve("a");
         Files.createDirectories(a);
         assertThrows(
@@ -48,7 +50,8 @@ class WorkspaceTest {
     }
 
     @Test
-    void singleRootFactoryRoundTrips(@TempDir Path tmp) throws Exception {
+    void singleRootFactoryRoundTrips(@TempDir @org.jspecify.annotations.NonNull Path tmp)
+            throws Exception {
         Path a = tmp.resolve("a");
         Files.createDirectories(a);
         Workspace ws = Workspace.single(a, PathMode.REAL);
@@ -57,7 +60,7 @@ class WorkspaceTest {
     }
 
     @Test
-    void exposesResolvers(@TempDir Path tmp) throws Exception {
+    void exposesResolvers(@TempDir @org.jspecify.annotations.NonNull Path tmp) throws Exception {
         Path a = tmp.resolve("a");
         Files.createDirectories(a);
         Workspace ws = Workspace.single(a, PathMode.VIRTUAL);

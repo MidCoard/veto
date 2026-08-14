@@ -3,7 +3,6 @@ package top.focess.veto.agent.mcp;
 import java.util.List;
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.llm.core.ToolCall;
 
 /**
@@ -21,12 +20,12 @@ import top.focess.veto.llm.core.ToolCall;
 public class DefaultToolEngine implements ToolEngine {
 
     @Override
-    public @NonNull List<ToolDefinition> getActiveTools(@NonNull Set<String> whitelist) {
+    public @NonNull List<ToolDefinition> getActiveTools(Set<String> whitelist) {
         return List.of();
     }
 
     @Override
-    public @Nullable ToolDefinition resolveDefinition(@NonNull String toolName) {
+    public ToolDefinition resolveDefinition(@NonNull String toolName) {
         return null;
     }
 

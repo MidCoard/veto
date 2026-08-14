@@ -4,6 +4,7 @@ import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.mcp.AgentTool;
 import top.focess.veto.agent.mcp.ToolDoc;
+import top.focess.veto.agent.mcp.ToolDocs;
 
 /**
  * {@code think} — no-op placeholder call. Occupies a {@code calls[]} slot so the loop continues
@@ -58,13 +59,15 @@ public record ThinkArgs() implements AgentTool<ThinkArgs> {
 
     @Override
     public @NonNull String getDescription() {
-        ToolDoc doc = ThinkArgs.class.getAnnotation(ToolDoc.class);
+        ToolDoc doc =
+                ToolDocs.nonNullClass(ThinkArgs.class)
+                        .getAnnotation(ToolDocs.nonNullClass(ToolDoc.class));
         return (doc != null && !doc.description().isEmpty()) ? doc.description() : "";
     }
 
     @Override
     public @NonNull Class<ThinkArgs> getArgsClass() {
-        return ThinkArgs.class;
+        return ToolDocs.nonNullClass(ThinkArgs.class);
     }
 
     @Override

@@ -1,7 +1,6 @@
 package top.focess.veto.llm.provider;
 
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.llm.core.ProviderType;
 import top.focess.veto.llm.core.ResolvedRequest;
 import top.focess.veto.llm.core.VetoResponse;
@@ -27,7 +26,7 @@ public interface LLMProviderStrategy {
      *
      * @return the default base URL
      */
-    @Nullable String defaultBaseUrl();
+    String defaultBaseUrl();
 
     /**
      * Executes the LLM request using this strategy.

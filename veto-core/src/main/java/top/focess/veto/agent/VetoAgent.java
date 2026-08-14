@@ -7,7 +7,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.mcp.ToolDefinition;
@@ -65,7 +64,7 @@ public class VetoAgent implements Agent {
     }
 
     @Override
-    public void submit(@NonNull String prompt, @Nullable Consumer<AgentResult> callback) {
+    public void submit(@NonNull String prompt, Consumer<AgentResult> callback) {
         runner.startTask(callback, new AgentAction.UserPromptAction(prompt));
     }
 
@@ -122,7 +121,7 @@ public class VetoAgent implements Agent {
      * Stamps the session's message locale (the request's Accept-Language on the REST path; null
      * resets to English) so agent-thread messages render in the user's language.
      */
-    public void setLocale(java.util.@Nullable Locale locale) {
+    public void setLocale(java.util.Locale locale) {
         runner.setLocale(locale);
     }
 

@@ -27,20 +27,20 @@ public class LlmEgressProperties {
     /**
      * Egress strategy: {@code direct} (in-place HTTP, default) or {@code proxy} (broker process).
      */
-    private String mode = "direct";
+    private @NonNull String mode = "direct";
 
     /** Token the engine presents to the broker so the broker can authenticate the caller. */
     private String internalToken;
 
     /** Per-provider broker base URLs used in proxy mode. */
-    private Map<ProviderType, String> proxyBaseUrls = new HashMap<>();
+    private @NonNull Map<ProviderType, String> proxyBaseUrls = new HashMap<>();
 
     /**
      * Returns the egress mode.
      *
      * @return the egress mode (direct or proxy)
      */
-    public String getMode() {
+    public @NonNull String getMode() {
         return mode;
     }
 
@@ -76,7 +76,7 @@ public class LlmEgressProperties {
      *
      * @return the proxy base URLs map
      */
-    public Map<ProviderType, String> getProxyBaseUrls() {
+    public @NonNull Map<ProviderType, String> getProxyBaseUrls() {
         return proxyBaseUrls;
     }
 
@@ -95,7 +95,7 @@ public class LlmEgressProperties {
      * @param providerType the provider type to look up
      * @return the configured broker base URL, or null if not found
      */
-    public @NonNull String baseUrlFor(@NonNull ProviderType providerType) {
+    public String baseUrlFor(@NonNull ProviderType providerType) {
         return proxyBaseUrls.get(providerType);
     }
 }

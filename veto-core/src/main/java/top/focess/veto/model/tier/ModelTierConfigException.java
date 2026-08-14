@@ -11,6 +11,7 @@ import org.jspecify.annotations.NonNull;
  * requires the user to have an active profile with that tier fully configured. The message tells
  * the user which step is missing so they can finish setup via {@code /modeltier}.
  */
+@SuppressWarnings("serial")
 public class ModelTierConfigException extends RuntimeException {
 
     public ModelTierConfigException(@NonNull String message) {

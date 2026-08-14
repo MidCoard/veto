@@ -7,7 +7,6 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
 /**
  * JPA persistence for a {@link Memory}. Stored in PostgreSQL with JSONB columns (Hibernate's {@code
@@ -23,62 +22,61 @@ import org.jspecify.annotations.Nullable;
 @Table(name = "memories")
 public class MemoryEntity {
 
-    @Id @NonNull private String id;
+    @Id @NonNull private String id = "";
 
     @Column(name = "user_id", nullable = false)
     @NonNull
-    private String userId;
+    private String userId = "";
 
     @Column(name = "session_id")
-    @Nullable
     private String sessionId;
 
     @Column(name = "tier", nullable = false)
     @NonNull
-    private String tier;
+    private String tier = "";
 
     @Column(name = "project_id")
-    @Nullable
     private String projectId;
 
     @Column(name = "content", nullable = false, columnDefinition = "TEXT")
     @NonNull
-    private String content;
+    private String content = "";
 
     @Column(name = "embedding", columnDefinition = "TEXT")
-    @Nullable
     private String embedding; // float[] serialized as comma-separated values for portability
 
     @Column(name = "source_ref", columnDefinition = "TEXT")
-    @Nullable
     private String sourceRef;
 
     @Column(name = "created_at", nullable = false)
     @NonNull
-    private Instant createdAt;
+    private Instant createdAt = Instant.EPOCH;
 
     protected MemoryEntity() {}
 
-    public
-    @NonNull
-    MemoryEntity(@NonNull Memory memory) {
+    public MemoryEntity(@NonNull Memory memory) {
         this.id = memory.id().value().toString();
         this.userId = memory.userId().toString();
-        this.sessionId = memory.sessionId() == null ? null : memory.sessionId().toString();
+        var sessionId = memory.sessionId();
+        this.sessionId = sessionId == null ? null : sessionId.toString();
         this.tier = memory.tier().name();
-        this.projectId = memory.projectId() == null ? null : memory.projectId().toString();
+        var projectId = memory.projectId();
+        this.projectId = projectId == null ? null : projectId.toString();
         this.content = memory.content();
         this.embedding = serializeEmbedding(memory.embedding());
-        this.sourceRef = memory.sourceRef().kind() + " " + memory.sourceRef().attrs();
+        Memory.SourceRef ref = memory.sourceRef();
+        this.sourceRef = ref == null ? null : ref.kind() + " " + ref.attrs();
         this.createdAt = memory.createdAt();
     }
 
     public static @NonNull Memory toMemory(@NonNull MemoryEntity e) {
+        MemoryTier parsedTier =
+                top.focess.veto.util.Nullness.requireNonNull(MemoryTier.valueOf(e.tier));
         return new Memory(
                 new MemoryId(UUID.fromString(e.id)),
                 UUID.fromString(e.userId),
                 e.sessionId == null ? null : UUID.fromString(e.sessionId),
-                MemoryTier.valueOf(e.tier),
+                parsedTier,
                 e.projectId == null ? null : UUID.fromString(e.projectId),
                 e.content,
                 deserializeEmbedding(e.embedding),
@@ -87,7 +85,7 @@ public class MemoryEntity {
                 e.createdAt);
     }
 
-    private static @NonNull String serializeEmbedding(float @Nullable [] e) {
+    private static @NonNull String serializeEmbedding(float[] e) {
         if (e == null || e.length == 0) {
             return "";
         }
@@ -101,7 +99,7 @@ public class MemoryEntity {
         return sb.toString();
     }
 
-    private static float @NonNull [] deserializeEmbedding(@Nullable String s) {
+    private static float @NonNull [] deserializeEmbedding(String s) {
         if (s == null || s.isBlank()) {
             return new float[0];
         }
@@ -121,7 +119,7 @@ public class MemoryEntity {
         return userId;
     }
 
-    public @Nullable String getSessionId() {
+    public String getSessionId() {
         return sessionId;
     }
 
@@ -133,7 +131,7 @@ public class MemoryEntity {
         return content;
     }
 
-    public @Nullable String getEmbedding() {
+    public String getEmbedding() {
         return embedding;
     }
 

@@ -26,19 +26,19 @@ import org.jspecify.annotations.NonNull;
         uniqueConstraints = @UniqueConstraint(columnNames = {"owner", "name"}))
 public class ModelTierProfileEntity {
 
-    @Id private @NonNull String id;
+    @Id private @NonNull String id = "";
 
     @Column(nullable = false)
-    private @NonNull String name;
+    private @NonNull String name = "";
 
     @Column(nullable = false)
-    private @NonNull String owner;
+    private @NonNull String owner = "";
 
     @Column(nullable = false)
     private boolean active;
 
     @Column(name = "created_at", nullable = false)
-    private @NonNull Instant createdAt;
+    private @NonNull Instant createdAt = Instant.EPOCH;
 
     protected ModelTierProfileEntity() {}
 

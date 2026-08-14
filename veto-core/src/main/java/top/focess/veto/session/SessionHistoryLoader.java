@@ -6,7 +6,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -23,7 +22,8 @@ import top.focess.veto.memory.TurnRecordRepository;
 @Component
 public class SessionHistoryLoader {
 
-    private static final Logger log = LoggerFactory.getLogger(SessionHistoryLoader.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.session.SessionHistoryLoader");
     private static final TypeReference<Map<String, Object>> PAYLOAD_TYPE = new TypeReference<>() {};
 
     private final @NonNull TurnRecordRepository repo;
@@ -56,7 +56,9 @@ public class SessionHistoryLoader {
         List<TurnRecord> out = new ArrayList<>(rows.size());
         for (TurnRecordEntity row : rows) {
             try {
-                TurnType type = TurnType.valueOf(row.getType());
+                TurnType type =
+                        top.focess.veto.util.Nullness.requireNonNull(
+                                TurnType.valueOf(row.getType()));
                 Map<String, Object> payload = deserializePayload(row.getPayload());
                 out.add(new TurnRecord(row.getTurnNumber(), type, payload, row.getTimestamp()));
             } catch (Exception e) {
@@ -71,7 +73,7 @@ public class SessionHistoryLoader {
         return out;
     }
 
-    private @NonNull Map<String, Object> deserializePayload(@Nullable String json) {
+    private @NonNull Map<String, Object> deserializePayload(String json) {
         if (json == null || json.isEmpty()) return Map.of();
         try {
             return mapper.readValue(json, PAYLOAD_TYPE);

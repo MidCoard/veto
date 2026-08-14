@@ -12,7 +12,6 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.agent.identity.AgentPersona;
@@ -25,6 +24,7 @@ import top.focess.veto.agent.mcp.AgentToolDefinition;
 import top.focess.veto.agent.mcp.DefaultToolEngine;
 import top.focess.veto.agent.mcp.ToolCallContextHolder;
 import top.focess.veto.agent.mcp.ToolDefinition;
+import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.mcp.ToolEngine;
 import top.focess.veto.agent.mcp.ToolResult;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
@@ -46,7 +46,7 @@ class AgentEndToEndTest {
     private static final Duration EPISODE_TIMEOUT = Duration.ofSeconds(10);
 
     /** Builds an {@link AgentService} wired with the default stubs + a scripted caller. */
-    private static AgentService serviceWith(UniformLLMCaller caller) {
+    private static @NonNull AgentService serviceWith(@NonNull UniformLLMCaller caller) {
         ObjectMapper mapper = new ObjectMapper();
         PromptCompiler compiler =
                 new PromptCompiler(
@@ -76,7 +76,7 @@ class AgentEndToEndTest {
                                 new top.focess.veto.sandbox.ConstrainedSubprocessSubstrate())));
     }
 
-    private static AgentRunner.LlmBinding binding(String systemPrompt) {
+    private static AgentRunner.@NonNull LlmBinding binding(@NonNull String systemPrompt) {
         return new AgentRunner.LlmBinding(
                 ProviderType.DEEPSEEK,
                 "stub-model",
@@ -86,7 +86,8 @@ class AgentEndToEndTest {
     }
 
     /** A caller that replays a fixed script of responses, in order. */
-    private static UniformLLMCaller scripted(VetoResponse... responses) {
+    private static @NonNull UniformLLMCaller scripted(
+            @NonNull VetoResponse @NonNull ... responses) {
         ArrayDeque<VetoResponse> queue = new ArrayDeque<>(List.of(responses));
         return request -> {
             VetoResponse r = queue.poll();
@@ -104,7 +105,8 @@ class AgentEndToEndTest {
      * empty summary also means no {@link TurnType#COMPACTION_SUMMARY} turn is appended, keeping the
      * transform's appended sequence minimal for assertions.
      */
-    private static UniformLLMCaller scriptedWithCompactor(VetoResponse... mainResponses) {
+    private static @NonNull UniformLLMCaller scriptedWithCompactor(
+            @NonNull VetoResponse @NonNull ... mainResponses) {
         ArrayDeque<VetoResponse> queue = new ArrayDeque<>(List.of(mainResponses));
         return request -> {
             if (request.systemPrompt().startsWith("Summarize the following conversation segment")) {
@@ -122,7 +124,8 @@ class AgentEndToEndTest {
     /**
      * Builds an {@link AgentService} with a custom tool engine for both dispatch + role filtering.
      */
-    private static AgentService serviceWith(ToolEngine engine, UniformLLMCaller caller) {
+    private static @NonNull AgentService serviceWith(
+            @NonNull ToolEngine engine, @NonNull UniformLLMCaller caller) {
         ObjectMapper mapper = new ObjectMapper();
         PromptCompiler compiler =
                 new PromptCompiler(
@@ -151,12 +154,13 @@ class AgentEndToEndTest {
                                 new top.focess.veto.sandbox.ConstrainedSubprocessSubstrate())));
     }
 
-    private static VetoResponse thoughtOn(String thought, String message) {
+    private static @NonNull VetoResponse thoughtOn(String thought, String message) {
         return new VetoResponse(
                 thought, List.of(), message, new VetoResponse.Features(false), null);
     }
 
-    private static VetoResponse thoughtOnWithCall(String thought, String message, ToolCall call) {
+    private static @NonNull VetoResponse thoughtOnWithCall(
+            String thought, String message, @NonNull ToolCall call) {
         return new VetoResponse(
                 thought, List.of(call), message, new VetoResponse.Features(false), null);
     }
@@ -178,8 +182,7 @@ class AgentEndToEndTest {
         assertEquals("The answer is 4.", result.message());
         assertEquals("The answer is 4.", streamed.get(), "the user-facing message was streamed");
 
-        VetoAgent agent = service.agent("finish-test");
-        assertNotNull(agent);
+        VetoAgent agent = requireAgent(service.agent("finish-test"));
         assertReturnsToIdle(agent);
 
         List<TurnType> types = agent.history().stream().map(TurnRecord::type).toList();
@@ -213,7 +216,7 @@ class AgentEndToEndTest {
         assertTrue(streamed.contains("Let me check."));
         assertTrue(streamed.contains("The answer is 4."));
 
-        VetoAgent agent = service.agent("tool-test");
+        VetoAgent agent = requireAgent(service.agent("tool-test"));
         List<TurnType> types = agent.history().stream().map(TurnRecord::type).toList();
         assertTrue(types.contains(TurnType.TOOL_CALL), "the tool call was recorded");
         assertTrue(types.contains(TurnType.TOOL_RESPONSE), "the tool observation was recorded");
@@ -248,7 +251,7 @@ class AgentEndToEndTest {
 
         assertTrue(result.success(), "episode should finish successfully after the tool call");
 
-        VetoAgent agent = service.agent("one-response-test");
+        VetoAgent agent = requireAgent(service.agent("one-response-test"));
         long toolCalls =
                 agent.history().stream().filter(t -> t.type() == TurnType.TOOL_CALL).count();
         long toolResponses =
@@ -288,7 +291,7 @@ class AgentEndToEndTest {
                         ignored -> {});
 
         assertTrue(result.success(), "episode should finish successfully");
-        VetoAgent agent = service.agent("turn-numbers-test");
+        VetoAgent agent = requireAgent(service.agent("turn-numbers-test"));
         List<Integer> numbers = agent.history().stream().map(TurnRecord::turnNumber).toList();
         assertFalse(numbers.isEmpty(), "history should contain turns");
         for (int i = 1; i < numbers.size(); i++) {
@@ -327,12 +330,17 @@ class AgentEndToEndTest {
                         EPISODE_TIMEOUT);
 
         assertTrue(result.success(), "episode should finish after the forward transform");
-        VetoAgent agent = service.agent("transform-fwd");
-        AgentRunner runner = (AgentRunner) ReflectionTestUtils.getField(agent, "runner");
-        assertNotNull(runner, "runner is reachable from the VetoAgent");
+        VetoAgent agent = requireAgent(service.agent("transform-fwd"));
+        AgentRunner runner =
+                assertInstanceOf(
+                        ToolDocs.nonNullClass(AgentRunner.class),
+                        requireField(ReflectionTestUtils.getField(agent, "runner")));
 
         // The STANDALONE persona mutated to LEADER, the Leader binding applied, the group stamped.
-        AgentPersona persona = (AgentPersona) ReflectionTestUtils.getField(runner, "persona");
+        AgentPersona persona =
+                assertInstanceOf(
+                        ToolDocs.nonNullClass(AgentPersona.class),
+                        requireField(ReflectionTestUtils.getField(runner, "persona")));
         assertEquals(Role.LEADER, persona.role(), "persona role advanced to LEADER");
         assertEquals("leader-model", runner.binding().model(), "the Leader binding was applied");
         assertEquals(
@@ -394,12 +402,17 @@ class AgentEndToEndTest {
                         EPISODE_TIMEOUT);
 
         assertTrue(result.success(), "episode should finish after the reverse transform");
-        VetoAgent agent = service.agent("transform-rev");
-        AgentRunner runner = (AgentRunner) ReflectionTestUtils.getField(agent, "runner");
-        assertNotNull(runner, "runner is reachable from the VetoAgent");
+        VetoAgent agent = requireAgent(service.agent("transform-rev"));
+        AgentRunner runner =
+                assertInstanceOf(
+                        ToolDocs.nonNullClass(AgentRunner.class),
+                        requireField(ReflectionTestUtils.getField(agent, "runner")));
 
         // The stashed STANDALONE persona + binding are restored and the group stamp cleared.
-        AgentPersona persona = (AgentPersona) ReflectionTestUtils.getField(runner, "persona");
+        AgentPersona persona =
+                assertInstanceOf(
+                        ToolDocs.nonNullClass(AgentPersona.class),
+                        requireField(ReflectionTestUtils.getField(runner, "persona")));
         assertEquals(Role.STANDALONE, persona.role(), "persona role restored to STANDALONE");
         assertEquals(
                 "stub-model",
@@ -435,29 +448,35 @@ class AgentEndToEndTest {
      * letting the call flow straight into the drain pass that applies the transform.
      */
     private static final class TransformToolEngine implements ToolEngine {
-        private final AgentRunner.LlmBinding leaderBinding;
-        private final Set<ToolDefinition> leaderTools;
-        private final UUID groupId = UUID.randomUUID();
+        private final AgentRunner.@NonNull LlmBinding leaderBinding;
+        private final @NonNull Set<ToolDefinition> leaderTools;
+        private final @NonNull UUID groupId = UUID.randomUUID();
         private ToolCallContextHolder.TransformDirective lastDirective;
 
-        TransformToolEngine(AgentRunner.LlmBinding leaderBinding, Set<ToolDefinition> leaderTools) {
+        TransformToolEngine(
+                AgentRunner.@NonNull LlmBinding leaderBinding,
+                @NonNull Set<ToolDefinition> leaderTools) {
             this.leaderBinding = leaderBinding;
             this.leaderTools = leaderTools;
         }
 
-        ToolCallContextHolder.TransformDirective lastDirective() {
-            return lastDirective;
+        ToolCallContextHolder.@NonNull TransformDirective lastDirective() {
+            ToolCallContextHolder.TransformDirective directive = lastDirective;
+            if (directive == null) throw new AssertionError("transform directive was not captured");
+            return directive;
         }
 
         @Override
-        public @NonNull List<ToolDefinition> getActiveTools(@Nullable Set<String> whitelist) {
+        public @NonNull List<ToolDefinition> getActiveTools(Set<String> whitelist) {
             return List.of();
         }
 
         @Override
-        public @Nullable ToolDefinition resolveDefinition(@NonNull String toolName) {
+        @SuppressWarnings("type.arguments.not.inferred")
+        public ToolDefinition resolveDefinition(@NonNull String toolName) {
             if ("create_group".equals(toolName) || "disband_group".equals(toolName)) {
-                return new AgentToolDefinition(toolName, "transform stub", Void.class, Map.of());
+                return new AgentToolDefinition(
+                        toolName, "transform stub", ToolDocs.nonNullClass(Void.class), Map.of());
             }
             return null;
         }
@@ -487,12 +506,22 @@ class AgentEndToEndTest {
     /**
      * Polls until the agent parks back in IDLE after its episode (the loop completes then parks).
      */
-    private static void assertReturnsToIdle(VetoAgent agent) throws InterruptedException {
+    private static void assertReturnsToIdle(@NonNull VetoAgent agent) throws InterruptedException {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
         while (agent.state() != AgentState.IDLE && System.nanoTime() < deadline) {
             Thread.sleep(10);
         }
         assertEquals(
                 AgentState.IDLE, agent.state(), "agent should return to IDLE after the episode");
+    }
+
+    private static @NonNull VetoAgent requireAgent(VetoAgent agent) {
+        if (agent == null) throw new AssertionError("expected agent");
+        return agent;
+    }
+
+    private static @NonNull Object requireField(Object value) {
+        if (value == null) throw new AssertionError("expected reflected field");
+        return value;
     }
 }

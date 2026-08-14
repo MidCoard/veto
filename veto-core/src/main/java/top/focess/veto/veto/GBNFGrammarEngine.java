@@ -17,15 +17,14 @@ import org.springframework.stereotype.Component;
 @Component
 public class GBNFGrammarEngine {
 
-    private static final Logger log = LoggerFactory.getLogger(GBNFGrammarEngine.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.veto.GBNFGrammarEngine");
 
     private final @NonNull VetoGatewayConfiguration config;
     private final @NonNull ConcurrentHashMap<String, String> grammarCache =
             new ConcurrentHashMap<>();
 
-    public
-    @NonNull
-    GBNFGrammarEngine(@NonNull VetoGatewayConfiguration config) {
+    public GBNFGrammarEngine(@NonNull VetoGatewayConfiguration config) {
         this.config = config;
     }
 
@@ -64,16 +63,15 @@ public class GBNFGrammarEngine {
      * Get the default veto output grammar. Enforces structured JSON output with redaction markers.
      */
     public @NonNull String getDefaultVetoGrammar() {
-        return
-"""
-root ::= veto-response
-veto-response ::= "{" ws "veto_decision" ws ":" ws decision ws "," ws "data" ws ":" ws data-block ws "}"
-decision ::= "\"pass\"" | "\"redact\"" | "\"block\""
-data-block ::= "{" ws data-fields ws "}"
-data-fields ::= data-field ("," ws data-field)*
-data-field ::= string ":" ws (string | number | "null")
-string ::= "\\"" [^"]* "\\""
-number ::= [0-9]+ ("." [0-9]+)?
+        return """
+                root ::= veto-response
+                veto-response ::= "{" ws "veto_decision" ws ":" ws decision ws "," ws "data" ws ":" ws data-block ws "}"
+                decision ::= "\"pass\"" | "\"redact\"" | "\"block\""
+                data-block ::= "{" ws data-fields ws "}"
+                data-fields ::= data-field ("," ws data-field)*
+                data-field ::= string ":" ws (string | number | "null")
+                string ::= "\\"" [^"]* "\\""
+                number ::= [0-9]+ ("." [0-9]+)?
                 ws ::= [ \\t\\n]*
                 """;
     }
@@ -83,31 +81,29 @@ number ::= [0-9]+ ("." [0-9]+)?
      * to project rules (e.g., normalized physics values).
      */
     public @NonNull String getCodeConstraintGrammar() {
-        return
-"""
-root ::= code-constraint-response
-code-constraint-response ::= "{" ws "valid" ws ":" ws boolean ws "," ws "violations" ws ":" ws violations-list ws "," ws "redacted" ws ":" ws redacted-block ws "}"
-boolean ::= "true" | "false"
-violations-list ::= "[" ws (violation ("," ws violation)*)? ws "]"
-violation ::= "{" ws "type" ws ":" ws string ws "," ws "field" ws ":" ws string ws "," ws "severity" ws ":" ws severity ws "}"
-severity ::= "\"low\"" | "\"medium\"" | "\"high\"" | "\"critical\""
-redacted-block ::= "{" ws (redacted-field ("," ws redacted-field)*)? ws "}"
-redacted-field ::= string ":" ws string
-string ::= "\\"" [^"]* "\\""
+        return """
+                root ::= code-constraint-response
+                code-constraint-response ::= "{" ws "valid" ws ":" ws boolean ws "," ws "violations" ws ":" ws violations-list ws "," ws "redacted" ws ":" ws redacted-block ws "}"
+                boolean ::= "true" | "false"
+                violations-list ::= "[" ws (violation ("," ws violation)*)? ws "]"
+                violation ::= "{" ws "type" ws ":" ws string ws "," ws "field" ws ":" ws string ws "," ws "severity" ws ":" ws severity ws "}"
+                severity ::= "\"low\"" | "\"medium\"" | "\"high\"" | "\"critical\""
+                redacted-block ::= "{" ws (redacted-field ("," ws redacted-field)*)? ws "}"
+                redacted-field ::= string ":" ws string
+                string ::= "\\"" [^"]* "\\""
                 ws ::= [ \\t\\n]*
                 """;
     }
 
     /** Get the secrets redaction grammar. */
     public @NonNull String getSecretsRedactionGrammar() {
-        return
-"""
-root ::= redaction-response
-redaction-response ::= "{" ws "secrets_found" ws ":" ws boolean ws "," ws "redacted_fields" ws ":" ws redacted-fields ws "," ws "safe_payload" ws ":" ws string ws "}"
-redacted-fields ::= "[" ws (redacted-field ("," ws redacted-field)*)? ws "]"
-redacted-field ::= "{" ws "field" ws ":" ws string ws "," ws "type" ws ":" ws string ws "}"
-boolean ::= "true" | "false"
-string ::= "\\"" [^"]* "\\""
+        return """
+                root ::= redaction-response
+                redaction-response ::= "{" ws "secrets_found" ws ":" ws boolean ws "," ws "redacted_fields" ws ":" ws redacted-fields ws "," ws "safe_payload" ws ":" ws string ws "}"
+                redacted-fields ::= "[" ws (redacted-field ("," ws redacted-field)*)? ws "]"
+                redacted-field ::= "{" ws "field" ws ":" ws string ws "," ws "type" ws ":" ws string ws "}"
+                boolean ::= "true" | "false"
+                string ::= "\\"" [^"]* "\\""
                 ws ::= [ \\t\\n]*
                 """;
     }

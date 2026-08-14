@@ -9,7 +9,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -49,26 +48,23 @@ import top.focess.veto.agent.identity.AgentPersona;
 @Component
 public class LlmLeader {
 
-    private static final Logger log = LoggerFactory.getLogger(LlmLeader.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.group.LlmLeader");
 
-    private final @Nullable Agent leaderAgent;
+    private final Agent leaderAgent;
     private final @NonNull HeuristicLeader fallback;
 
     public LlmLeader() {
         this(null, new HeuristicLeader());
     }
 
-    public
-    @NonNull
-    LlmLeader(@NonNull AgentPersona leaderPersona, @NonNull Agent leaderAgent) {
+    public LlmLeader(@NonNull AgentPersona leaderPersona, @NonNull Agent leaderAgent) {
         this.leaderAgent = leaderAgent;
         this.fallback = new HeuristicLeader();
     }
 
     /** Construct with a pre-built heuristic fallback (for tests). */
-    public
-    @NonNull
-    LlmLeader(@Nullable Agent leaderAgent, @NonNull HeuristicLeader fallback) {
+    public LlmLeader(Agent leaderAgent, @NonNull HeuristicLeader fallback) {
         this.leaderAgent = leaderAgent;
         this.fallback = fallback;
     }
@@ -94,7 +90,7 @@ public class LlmLeader {
         } catch (Exception e) {
             log.warn(
                     "LlmLeader: DAG authoring failed, falling back to heuristic: {}",
-                    e.getMessage());
+                    String.valueOf(e.getMessage()));
         }
         return ExecutionDag.linear(groupId, List.of("n1"));
     }
@@ -115,13 +111,13 @@ public class LlmLeader {
             String prompt = buildPivotPrompt(group, perMateMessageCount, contextSaturationRatio);
             leaderAgent.submit(prompt);
             AgentResult result = leaderAgent.await(java.time.Duration.ofSeconds(15));
-            if (result.success() && result.message() != null) {
+            if (result.success()) {
                 // Parse the {pivot: bool, ...} JSON; do NOT string-match (a prior version
                 // matched "PIVOT" inside the key name even when the value was false).
                 return parsePivotDecision(result.message());
             }
         } catch (Exception e) {
-            log.debug("LlmLeader: pivot reasoning failed: {}", e.getMessage());
+            log.debug("LlmLeader: pivot reasoning failed: {}", String.valueOf(e.getMessage()));
         }
         return false;
     }
@@ -139,7 +135,7 @@ public class LlmLeader {
      * the heuristic's signal — and since the heuristic already said no we are by definition below
      * its threshold).
      */
-    static boolean parsePivotDecision(@Nullable String response) {
+    static boolean parsePivotDecision(String response) {
         if (response == null || response.isBlank()) {
             return false;
         }
@@ -200,8 +196,7 @@ public class LlmLeader {
     }
 
     /** Heuristic prompt: "investigate + author a DAG from this contextBrief." */
-    private static @NonNull String buildAuthorPrompt(
-            @NonNull UUID groupId, @Nullable String contextBrief) {
+    private static @NonNull String buildAuthorPrompt(@NonNull UUID groupId, String contextBrief) {
         return "You are the Group Leader (a Top-Tier reasoning model) for group "
                 + groupId
                 + ". The Leader authors an Execution DAG for the work, then dispatches it to"
@@ -302,7 +297,7 @@ public class LlmLeader {
      *
      * <p>Returns null on parse failure or when no nodes were authored.
      */
-    static @Nullable ExecutionDag parseDagFromJson(@NonNull UUID groupId, @Nullable String json) {
+    static ExecutionDag parseDagFromJson(@NonNull UUID groupId, String json) {
         if (json == null || json.isBlank()) {
             return null;
         }
@@ -367,7 +362,7 @@ public class LlmLeader {
         }
     }
 
-    private static @Nullable String textOrNull(@NonNull JsonNode obj, @NonNull String field) {
+    private static String textOrNull(@NonNull JsonNode obj, @NonNull String field) {
         JsonNode v = obj.get(field);
         if (v == null || v.isNull()) {
             return null;

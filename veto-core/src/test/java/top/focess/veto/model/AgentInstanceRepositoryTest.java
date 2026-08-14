@@ -2,15 +2,17 @@ package top.focess.veto.model;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 
 @DataJpaTest
+@SuppressWarnings("initialization.field.uninitialized")
 class AgentInstanceRepositoryTest {
 
-    @Autowired AgentInstanceRepository repo;
-    @Autowired SessionRepository sessions;
+    @Autowired @NonNull AgentInstanceRepository repo;
+    @Autowired @NonNull SessionRepository sessions;
 
     @Test
     void primaryAgentOfSession() {

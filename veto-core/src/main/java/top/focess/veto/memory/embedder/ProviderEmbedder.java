@@ -10,7 +10,6 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.llm.core.ProviderType;
@@ -33,10 +32,11 @@ import top.focess.veto.llm.credential.CredentialResolver;
  */
 public final class ProviderEmbedder implements Embedder {
 
-    private static final Logger log = LoggerFactory.getLogger(ProviderEmbedder.class);
-    private static final HttpClient HTTP =
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.memory.embedder.ProviderEmbedder");
+    private static final @NonNull HttpClient HTTP =
             HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
-    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(30);
+    private static final @NonNull Duration REQUEST_TIMEOUT = Duration.ofSeconds(30);
 
     private final @NonNull EmbedderProperties props;
     private final @NonNull CredentialResolver resolver;
@@ -53,8 +53,8 @@ public final class ProviderEmbedder implements Embedder {
 
     @Override
     public float @NonNull [] embed(@NonNull String text) {
-        String provider =
-                props.getProvider() == null ? "" : props.getProvider().trim().toLowerCase();
+        String configuredProvider = props.getProvider();
+        String provider = configuredProvider == null ? "" : configuredProvider.trim().toLowerCase();
         return switch (provider) {
             case "openai" -> embedOpenAi(text);
             case "gemini" -> embedGemini(text);
@@ -160,7 +160,7 @@ public final class ProviderEmbedder implements Embedder {
         }
     }
 
-    private static float @NonNull [] toFloatArray(@Nullable JsonNode arr) {
+    private static float @NonNull [] toFloatArray(JsonNode arr) {
         if (arr == null || !arr.isArray() || arr.isEmpty()) {
             throw new IllegalStateException("Provider returned an empty embedding");
         }
@@ -171,8 +171,7 @@ public final class ProviderEmbedder implements Embedder {
         return v;
     }
 
-    private static @NonNull String defaultIfBlank(
-            @Nullable String value, @NonNull String fallback) {
+    private static @NonNull String defaultIfBlank(String value, @NonNull String fallback) {
         return value == null || value.isBlank() ? fallback : value;
     }
 }

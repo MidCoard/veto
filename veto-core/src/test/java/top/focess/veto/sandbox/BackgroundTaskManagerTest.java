@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Optional;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
@@ -17,11 +18,11 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class BackgroundTaskManagerTest {
 
-    private static BackgroundTaskManager newManager() {
+    private static @NonNull BackgroundTaskManager newManager() {
         return new BackgroundTaskManager(new SandboxManager(new ConstrainedSubprocessSubstrate()));
     }
 
-    private static Command javaVersion() {
+    private static @NonNull Command javaVersion() {
         boolean win = System.getProperty("os.name").toLowerCase().contains("win");
         String exe =
                 Path.of(System.getProperty("java.home"), "bin", win ? "java.exe" : "java")
@@ -29,7 +30,7 @@ class BackgroundTaskManagerTest {
         return new Command(exe, java.util.List.of("-version"));
     }
 
-    private static Command longRunning() {
+    private static @NonNull Command longRunning() {
         boolean win = System.getProperty("os.name").toLowerCase().contains("win");
         return win
                 ? new Command("ping", java.util.List.of("-n", "60", "127.0.0.1"))
@@ -37,7 +38,8 @@ class BackgroundTaskManagerTest {
     }
 
     @Test
-    void startReturnsImmediatelyAndCapturesExit(@TempDir Path tempDir) {
+    void startReturnsImmediatelyAndCapturesExit(
+            @TempDir @org.jspecify.annotations.NonNull Path tempDir) {
         BackgroundTaskManager mgr = newManager();
         BackgroundTaskManager.TaskInfo info = mgr.start("agent-a", javaVersion(), tempDir, 0, null);
         assertEquals("agent-a", info.agentId());
@@ -48,7 +50,7 @@ class BackgroundTaskManagerTest {
         Optional<BackgroundTaskManager.TaskInfo> status = mgr.status("agent-a", info.taskId());
         assertTrue(status.isPresent());
         assertFalse(status.get().alive(), "task should be done");
-        assertEquals(0, status.get().exitCode(), "java -version exits 0");
+        assertEquals(0, requireExitCode(status.get().exitCode()), "java -version exits 0");
 
         Optional<String> out = mgr.output("agent-a", info.taskId(), 50);
         assertTrue(out.isPresent());
@@ -57,17 +59,17 @@ class BackgroundTaskManagerTest {
 
     @Test
     @EnabledOnOs(OS.WINDOWS)
-    void stopKillsRunningTaskWindows(@TempDir Path tempDir) {
+    void stopKillsRunningTaskWindows(@TempDir @org.jspecify.annotations.NonNull Path tempDir) {
         stopKillsRunningTask(tempDir);
     }
 
     @Test
     @EnabledOnOs({OS.LINUX, OS.MAC})
-    void stopKillsRunningTaskPosix(@TempDir Path tempDir) {
+    void stopKillsRunningTaskPosix(@TempDir @org.jspecify.annotations.NonNull Path tempDir) {
         stopKillsRunningTask(tempDir);
     }
 
-    private void stopKillsRunningTask(Path tempDir) {
+    private void stopKillsRunningTask(@NonNull Path tempDir) {
         BackgroundTaskManager mgr = newManager();
         BackgroundTaskManager.TaskInfo info = mgr.start("agent-b", longRunning(), tempDir, 0, null);
         assertTrue(info.alive(), "long-running task is alive right after start");
@@ -78,7 +80,7 @@ class BackgroundTaskManagerTest {
     }
 
     @Test
-    void exitNoticesCarryTheCause(@TempDir Path tempDir) {
+    void exitNoticesCarryTheCause(@TempDir @org.jspecify.annotations.NonNull Path tempDir) {
         BackgroundTaskManager mgr = newManager();
         // Natural exit → NATURAL.
         BackgroundTaskManager.TaskInfo natural =
@@ -100,7 +102,7 @@ class BackgroundTaskManagerTest {
     }
 
     @Test
-    void perAgentIsolation(@TempDir Path tempDir) {
+    void perAgentIsolation(@TempDir @org.jspecify.annotations.NonNull Path tempDir) {
         BackgroundTaskManager mgr = newManager();
         BackgroundTaskManager.TaskInfo a = mgr.start("agent-a", longRunning(), tempDir, 0, null);
         // agent-b cannot see or stop agent-a's task.
@@ -114,7 +116,7 @@ class BackgroundTaskManagerTest {
     }
 
     @Test
-    void stopAllKillsEveryOwnedTask(@TempDir Path tempDir) {
+    void stopAllKillsEveryOwnedTask(@TempDir @org.jspecify.annotations.NonNull Path tempDir) {
         BackgroundTaskManager mgr = newManager();
         BackgroundTaskManager.TaskInfo t1 = mgr.start("agent-c", longRunning(), tempDir, 0, null);
         BackgroundTaskManager.TaskInfo t2 = mgr.start("agent-c", longRunning(), tempDir, 0, null);
@@ -125,8 +127,10 @@ class BackgroundTaskManagerTest {
     }
 
     /** Polls until one exit notice is queued for the agent; fails the test on timeout. */
-    private static BackgroundTaskManager.TaskExitNotice waitForNotice(
-            BackgroundTaskManager mgr, String agentId, Duration timeout) {
+    private static BackgroundTaskManager.@NonNull TaskExitNotice waitForNotice(
+            @NonNull BackgroundTaskManager mgr,
+            @NonNull String agentId,
+            @NonNull Duration timeout) {
         long deadline = System.currentTimeMillis() + timeout.toMillis();
         while (System.currentTimeMillis() < deadline) {
             java.util.List<BackgroundTaskManager.TaskExitNotice> notices =
@@ -147,7 +151,10 @@ class BackgroundTaskManagerTest {
 
     /** Polls until the task is no longer alive; {@code false} on timeout. */
     private static boolean waitForExit(
-            BackgroundTaskManager mgr, String agentId, String taskId, Duration timeout) {
+            @NonNull BackgroundTaskManager mgr,
+            @NonNull String agentId,
+            @NonNull String taskId,
+            @NonNull Duration timeout) {
         long deadline = System.currentTimeMillis() + timeout.toMillis();
         while (System.currentTimeMillis() < deadline) {
             Optional<BackgroundTaskManager.TaskInfo> s = mgr.status(agentId, taskId);
@@ -160,5 +167,12 @@ class BackgroundTaskManagerTest {
             }
         }
         return false;
+    }
+
+    private static int requireExitCode(Integer exitCode) {
+        if (exitCode != null) {
+            return exitCode;
+        }
+        throw new AssertionError("completed task must have an exit code");
     }
 }

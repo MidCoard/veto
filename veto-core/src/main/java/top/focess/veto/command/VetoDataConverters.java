@@ -3,6 +3,7 @@ package top.focess.veto.command;
 import org.jspecify.annotations.NonNull;
 import top.focess.command.DataCollection;
 import top.focess.command.DataConverter;
+import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.command.data.ObjectBuffer;
 import top.focess.veto.model.tier.ModelTier;
 
@@ -27,7 +28,7 @@ public final class VetoDataConverters {
      * constants. Used by {@code /pattern create <name> <tier>}.
      */
     public static final @NonNull DataConverter<ModelTier> MODEL_TIER =
-            DataConverter.ofEnum(ModelTier.class);
+            DataConverter.ofEnum(ToolDocs.nonNullClass(ModelTier.class));
 
     static {
         DataCollection.register(MODEL_TIER, ObjectBuffer::allocate);

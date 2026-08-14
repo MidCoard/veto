@@ -1,7 +1,6 @@
 package top.focess.veto.training;
 
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
 /**
  * Request parameters for a model training run. Passed via {@link TrainingController#startTraining}
@@ -9,22 +8,24 @@ import org.jspecify.annotations.Nullable;
  * TrainingConfiguration}.
  *
  * <p>Mirrors the Python train.py CLI arguments for QLoRA fine-tuning.
+ *
+ * @param baseModel HuggingFace model ID or local path (for example, {@code
+ *     Qwen/Qwen2.5-1.5B-Instruct})
+ * @param epochs number of training epochs
+ * @param learningRate learning rate for the AdamW optimizer
+ * @param batchSize per-device training batch size
+ * @param loraRank LoRA rank
+ * @param dataPath path to training data JSONL, overriding the generated default
+ * @param skipQualityFilter whether to skip the quality filter step
  */
 public record TrainingRequest(
-        /** HuggingFace model ID or local path (e.g. "Qwen/Qwen2.5-1.5B-Instruct"). */
-        @Nullable String baseModel,
-        /** Number of training epochs. */
-        @Nullable Integer epochs,
-        /** Learning rate for the AdamW optimizer. */
-        @Nullable Double learningRate,
-        /** Per-device training batch size. */
-        @Nullable Integer batchSize,
-        /** LoRA rank (r). */
-        @Nullable Integer loraRank,
-        /** Path to training data JSONL (overrides default generated data). */
-        @Nullable String dataPath,
-        /** Skip the quality filter step (Feature 6.3). */
-        @Nullable Boolean skipQualityFilter) {
+        String baseModel,
+        Integer epochs,
+        Double learningRate,
+        Integer batchSize,
+        Integer loraRank,
+        String dataPath,
+        Boolean skipQualityFilter) {
 
     /** Create a request with all defaults. */
     public static @NonNull TrainingRequest defaults() {

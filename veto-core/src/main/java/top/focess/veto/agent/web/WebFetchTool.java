@@ -18,6 +18,7 @@ import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.SecurityHint;
 import top.focess.veto.agent.mcp.ToolDoc;
+import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.mcp.ToolSecurity;
 
 /**
@@ -33,11 +34,11 @@ import top.focess.veto.agent.mcp.ToolSecurity;
 @ToolSecurity(risk = RiskCategory.NETWORK)
 public final class WebFetchTool implements NativeTool<WebFetchTool.Args> {
 
-    private static final String USER_AGENT =
+    private static final @NonNull String USER_AGENT =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)"
                     + " Chrome/124.0 Safari/537.36";
 
-    private final HttpClient httpClient;
+    private final @NonNull HttpClient httpClient;
     private final int timeoutSeconds;
     private final int maxChars;
 
@@ -119,12 +120,12 @@ public final class WebFetchTool implements NativeTool<WebFetchTool.Args> {
 
     @Override
     public @NonNull Class<Args> getArgsClass() {
-        return Args.class;
+        return ToolDocs.nonNullClass(Args.class);
     }
 
     @Override
     public @NonNull String execute(@NonNull Args args) {
-        String rawUrl = args.url() == null ? "" : args.url().trim();
+        String rawUrl = args.url().trim();
         URI uri;
         try {
             uri = URI.create(rawUrl);
@@ -174,9 +175,7 @@ public final class WebFetchTool implements NativeTool<WebFetchTool.Args> {
         }
         Element main = doc.selectFirst("main, article, [role=main], #content, .content");
         Element root = main != null ? main : doc.body();
-        if (root != null) {
-            sb.append(root.wholeText().replaceAll("[ \\t]+", " ").trim());
-        }
+        sb.append(root.wholeText().replaceAll("[ \\t]+", " ").trim());
         return sb.toString();
     }
 

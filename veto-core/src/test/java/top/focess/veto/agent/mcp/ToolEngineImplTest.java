@@ -10,6 +10,8 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.StreamSupport;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.context.ApplicationContext;
@@ -29,7 +31,7 @@ import top.focess.veto.sandbox.SandboxManager;
  */
 class ToolEngineImplTest {
 
-    private ToolEngineImpl newEngine() {
+    private @NonNull ToolEngineImpl newEngine() {
         ObjectMapper mapper =
                 new ObjectMapper()
                         .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
@@ -42,7 +44,7 @@ class ToolEngineImplTest {
                         new GrepSearchTool(),
                         new RunCommandTool());
         // Minimal ApplicationContext mock that returns no AgentTool beans
-        ApplicationContext appCtx = mock(ApplicationContext.class);
+        ApplicationContext appCtx = mock(ToolDocs.nonNullClass(ApplicationContext.class));
         when(appCtx.getBeansOfType(AgentTool.class)).thenReturn(Map.of());
         ToolEngineImpl engine =
                 new ToolEngineImpl(
@@ -52,6 +54,13 @@ class ToolEngineImplTest {
                         appCtx);
         engine.init();
         return engine;
+    }
+
+    private static @NonNull ToolDefinition definition(
+            @NonNull ToolEngineImpl engine, @NonNull String toolName) {
+        ToolDefinition definition = engine.resolveDefinition(toolName);
+        if (definition == null) throw new AssertionError("missing tool definition: " + toolName);
+        return definition;
     }
 
     @Test
@@ -73,11 +82,12 @@ class ToolEngineImplTest {
     @Test
     void resolveDefinitionDistinguishesFlavours() {
         ToolEngineImpl engine = newEngine();
-        assertInstanceOf(NativeToolDefinition.class, engine.resolveDefinition("view_file"));
+        assertInstanceOf(
+                ToolDocs.nonNullClass(NativeToolDefinition.class), definition(engine, "view_file"));
     }
 
     @Test
-    void executeNativeReadsFile(@TempDir Path tempDir) throws Exception {
+    void executeNativeReadsFile(@TempDir @NonNull Path tempDir) throws Exception {
         ToolEngineImpl engine = newEngine();
         Path file = tempDir.resolve("hello.txt");
         Files.writeString(file, "line one\nline two\n");
@@ -85,14 +95,137 @@ class ToolEngineImplTest {
         ToolResult result =
                 engine.execute(
                         new ToolCall("view_file", Map.of("absolutePath", file.toString()), "cid-1"),
-                        engine.resolveDefinition("view_file"));
+                        definition(engine, "view_file"));
         assertTrue(result.success());
         assertTrue(result.content().contains("line one"));
     }
 
     @Test
+    void filesystemToolsExposeOneCanonicalAbsolutePathParameter() {
+        ToolEngineImpl engine = newEngine();
+
+        Map<String, Class<?>> filesystemTools =
+                Map.of(
+                        "view_file", ToolDocs.nonNullClass(ViewFileTool.Args.class),
+                        "list_dir", ToolDocs.nonNullClass(ListDirTool.Args.class),
+                        "grep_search", ToolDocs.nonNullClass(GrepSearchTool.Args.class),
+                        "write_to_file", ToolDocs.nonNullClass(WriteToFileTool.Args.class),
+                        "replace_file_content",
+                                ToolDocs.nonNullClass(ReplaceFileContentTool.Args.class));
+
+        filesystemTools.forEach(
+                (toolName, argsClass) -> {
+                    var schema = ToolSchemaCompiler.compileFromRecord(argsClass);
+                    assertTrue(
+                            schema.path("properties").has("absolutePath"),
+                            toolName
+                                    + " must expose the canonical absolutePath parameter: "
+                                    + schema);
+                    assertTrue(
+                            StreamSupport.stream(schema.path("required").spliterator(), false)
+                                    .anyMatch(node -> "absolutePath".equals(node.asText())),
+                            toolName + " must require absolutePath: " + schema);
+                    assertFalse(
+                            schema.path("properties").has("directoryPath"),
+                            toolName + " must not expose directoryPath: " + schema);
+                    assertFalse(
+                            schema.path("properties").has("searchPath"),
+                            toolName + " must not expose searchPath: " + schema);
+                    assertFalse(
+                            schema.path("properties").has("targetFile"),
+                            toolName + " must not expose targetFile: " + schema);
+                });
+    }
+
+    @Test
+    void invalidNativeArgumentsNameUnknownAndMissingParametersWithoutRunningTool(
+            @TempDir @NonNull Path tempDir) {
+        ToolEngineImpl engine = newEngine();
+
+        ToolResult result =
+                engine.execute(
+                        new ToolCall(
+                                "list_dir", Map.of("wrongPath", tempDir.toString()), "cid-invalid"),
+                        definition(engine, "list_dir"));
+
+        assertFalse(result.success());
+        assertTrue(result.content().contains("Invalid arguments for list_dir"), result.content());
+        assertTrue(result.content().contains("unknown parameter 'wrongPath'"), result.content());
+        assertTrue(
+                result.content().contains("missing required parameter 'absolutePath'"),
+                result.content());
+        assertTrue(
+                result.content().contains("Expected parameters: [absolutePath]"), result.content());
+        assertFalse(result.content().contains("Tool execution failed: null"), result.content());
+    }
+
+    @Test
+    void nullRequiredNativeArgumentIsRejectedBeforeDeserialization(@TempDir @NonNull Path tempDir)
+            throws Exception {
+        ToolEngineImpl engine = newEngine();
+        ToolCall call =
+                new ObjectMapper()
+                        .readValue(
+                                "{\"tool_name\":\"list_dir\",\"args\":{\"absolutePath\":null},"
+                                        + "\"call_id\":\"cid-null\"}",
+                                ToolDocs.nonNullClass(ToolCall.class));
+
+        ToolResult result = engine.execute(call, definition(engine, "list_dir"));
+
+        assertFalse(result.success());
+        assertTrue(
+                result.content().contains("missing required parameter 'absolutePath'"),
+                result.content());
+        assertFalse(result.content().contains("Tool execution failed: null"), result.content());
+    }
+
+    @Test
+    void invalidNativeArgumentsReportNestedCommandFieldsBeforeProcessLaunch(
+            @TempDir @NonNull Path tempDir) {
+        ToolEngineImpl engine = newEngine();
+
+        ToolResult result =
+                engine.execute(
+                        new ToolCall(
+                                "run_command",
+                                Map.of(
+                                        "commands",
+                                        List.of(Map.of("program", "java", "args", List.of())),
+                                        "cwd",
+                                        tempDir.toString(),
+                                        "timeout",
+                                        1),
+                                "cid-invalid-command"),
+                        definition(engine, "run_command"));
+
+        assertFalse(result.success());
+        assertTrue(
+                result.content().contains("unknown parameter 'commands[0].program'"),
+                result.content());
+        assertTrue(
+                result.content().contains("missing required parameter 'commands[0].executable'"),
+                result.content());
+    }
+
+    @Test
+    void executeNativeListDirUsesCanonicalAbsolutePath(@TempDir @NonNull Path tempDir)
+            throws Exception {
+        ToolEngineImpl engine = newEngine();
+        Files.writeString(tempDir.resolve("visible.txt"), "content");
+
+        ToolResult result =
+                engine.execute(
+                        new ToolCall(
+                                "list_dir", Map.of("absolutePath", tempDir.toString()), "cid-list"),
+                        definition(engine, "list_dir"));
+
+        assertTrue(result.success(), result.content());
+        assertTrue(result.content().contains("visible.txt"), result.content());
+    }
+
+    @Test
     void executeNativeListDirOnMissingPathReturnsErrorEnvelopeAndSuccessFalse(
-            @TempDir Path tempDir) {
+            @TempDir @NonNull Path tempDir) {
         ToolEngineImpl engine = newEngine();
         // A path under tempDir that does not exist - simulating the agent's "dropped parent
         // segment" bug (e.g. asking for E:\minecraft\versions when versions only exists under
@@ -102,8 +235,8 @@ class ToolEngineImplTest {
         ToolResult result =
                 engine.execute(
                         new ToolCall(
-                                "list_dir", Map.of("directoryPath", missing.toString()), "cid-x"),
-                        engine.resolveDefinition("list_dir"));
+                                "list_dir", Map.of("absolutePath", missing.toString()), "cid-x"),
+                        definition(engine, "list_dir"));
         assertFalse(
                 result.success(),
                 "a native tool that returns {\"status\":\"error\",...} must surface success=false"
@@ -116,7 +249,7 @@ class ToolEngineImplTest {
 
     @Test
     void executeNativeViewFileOnMissingPathReturnsErrorEnvelopeAndSuccessFalse(
-            @TempDir Path tempDir) {
+            @TempDir @NonNull Path tempDir) {
         ToolEngineImpl engine = newEngine();
         Path missing = tempDir.resolve("does-not-exist.txt");
 
@@ -124,7 +257,7 @@ class ToolEngineImplTest {
                 engine.execute(
                         new ToolCall(
                                 "view_file", Map.of("absolutePath", missing.toString()), "cid-y"),
-                        engine.resolveDefinition("view_file"));
+                        definition(engine, "view_file"));
         assertFalse(
                 result.success(),
                 "view_file on a missing path must also surface success=false via the same"
@@ -133,7 +266,7 @@ class ToolEngineImplTest {
     }
 
     @Test
-    void executeRunCommandRoutesThroughSubstrateNoShell(@TempDir Path tempDir) {
+    void executeRunCommandRoutesThroughSubstrateNoShell(@TempDir @NonNull Path tempDir) {
         ToolEngineImpl engine = newEngine();
         // Use the JDK's own java binary (guaranteed present) — argv[] direct exec, no shell.
         String exe =
@@ -158,13 +291,13 @@ class ToolEngineImplTest {
                                         "timeout",
                                         30),
                                 "cid-2"),
-                        engine.resolveDefinition("run_command"));
+                        definition(engine, "run_command"));
         assertTrue(result.success(), "java -version should exit 0");
         assertNotNull(result.content());
     }
 
     @Test
-    void runCommandWithoutTimeoutIsRejected(@TempDir Path tempDir) {
+    void runCommandWithoutTimeoutIsRejected(@TempDir @NonNull Path tempDir) {
         ToolEngineImpl engine = newEngine();
         ToolResult result =
                 engine.execute(
@@ -181,7 +314,7 @@ class ToolEngineImplTest {
                                         "cwd",
                                         tempDir.toString()),
                                 "cid-no-timeout"),
-                        engine.resolveDefinition("run_command"));
+                        definition(engine, "run_command"));
         assertFalse(result.success(), "run_command without an explicit timeout must fail");
         assertTrue(result.content().contains("timeout"), "error must name the missing timeout");
     }

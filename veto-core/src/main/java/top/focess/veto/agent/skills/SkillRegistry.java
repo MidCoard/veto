@@ -7,7 +7,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -25,14 +24,14 @@ import org.springframework.stereotype.Service;
 @Service
 public class SkillRegistry {
 
-    private static final Logger log = LoggerFactory.getLogger(SkillRegistry.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.agent.skills.SkillRegistry");
 
     private final @NonNull MarkdownSkillLoader loader = new MarkdownSkillLoader();
     private final @NonNull ConcurrentHashMap<String, Skill> skills = new ConcurrentHashMap<>();
 
-    public
-    @NonNull
-    SkillRegistry(@Value("${veto.skills.project-dir:}") @Nullable String projectSkillsDir) {
+    @SuppressWarnings("method.invocation")
+    public SkillRegistry(@Value("${veto.skills.project-dir:}") String projectSkillsDir) {
         register(loadSkillsFrom(homeSkillsDir(), SkillSourceType.PERSONAL));
         if (projectSkillsDir != null && !projectSkillsDir.isBlank()) {
             register(loadSkillsFrom(Path.of(projectSkillsDir), SkillSourceType.PROJECT));

@@ -4,11 +4,13 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+@SuppressWarnings("initialization.field.uninitialized")
 class PathResolverTest {
 
     /**
@@ -19,14 +21,14 @@ class PathResolverTest {
      * (built from {@code tmp}) must be real too for the {@code startsWith(root)} and {@code
      * assertEquals(...)} checks to hold. Canonicalize once up front.
      */
-    @TempDir Path tmp;
+    @TempDir @org.jspecify.annotations.NonNull Path tmp;
 
     @BeforeEach
     void canonicalizeTempDir() throws Exception {
         tmp = tmp.toRealPath();
     }
 
-    private Workspace twoRoots(Path a, Path b) {
+    private @NonNull Workspace twoRoots(@NonNull Path a, @NonNull Path b) {
         return new Workspace(
                 java.util.List.of(
                         WorkspaceRoot.probe(a, TrustMarker.OWNED),

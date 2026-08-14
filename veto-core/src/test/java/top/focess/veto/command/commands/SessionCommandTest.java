@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import java.util.Optional;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.command.CommandManager;
 import top.focess.command.CommandPermission;
@@ -21,22 +22,35 @@ import top.focess.veto.session.SessionService;
  */
 class SessionCommandTest {
 
-    private static final String CWD = System.getProperty("user.dir");
+    private static final @NonNull String CWD = currentDir();
+
+    private static @NonNull String currentDir() {
+        String value = System.getProperty("user.dir");
+        return value == null ? "." : value;
+    }
 
     @Test
     void createAutoActivatesWhenIdle() {
-        SessionService service = mock(SessionService.class);
-        PromptHandler handler = mock(PromptHandler.class);
+        SessionService service =
+                mock(top.focess.veto.agent.mcp.ToolDocs.nonNullClass(SessionService.class));
+        PromptHandler handler =
+                mock(top.focess.veto.agent.mcp.ToolDocs.nonNullClass(PromptHandler.class));
         SessionEntity session = new SessionEntity("alice", "coder");
         when(service.createSession("alice", "coder", null, CWD)).thenReturn(session);
         when(service.activeSession("term-1")).thenReturn(Optional.empty());
         when(service.activate("term-1", "coder", "alice", CWD))
                 .thenReturn(Optional.of(new LlmConfig(ProviderType.DEEPSEEK, "deepseek-v4", "k")));
 
-        VetoCommandSender sender = mock(VetoCommandSender.class);
-        when(sender.hasPermission(any(CommandPermission.class))).thenReturn(true);
+        VetoCommandSender sender =
+                mock(top.focess.veto.agent.mcp.ToolDocs.nonNullClass(VetoCommandSender.class));
+        when(sender.hasPermission(
+                        any(
+                                top.focess.veto.agent.mcp.ToolDocs.nonNullClass(
+                                        CommandPermission.class))))
+                .thenReturn(true);
         when(sender.isLoggedIn()).thenReturn(true);
         when(sender.username()).thenReturn("alice");
+        when(sender.requireUsername()).thenReturn("alice");
         when(sender.terminalId()).thenReturn("term-1");
         when(sender.cwd()).thenReturn(CWD);
 
@@ -52,17 +66,25 @@ class SessionCommandTest {
 
     @Test
     void createDoesNotAutoActivateWhenBusy() {
-        SessionService service = mock(SessionService.class);
-        PromptHandler handler = mock(PromptHandler.class);
+        SessionService service =
+                mock(top.focess.veto.agent.mcp.ToolDocs.nonNullClass(SessionService.class));
+        PromptHandler handler =
+                mock(top.focess.veto.agent.mcp.ToolDocs.nonNullClass(PromptHandler.class));
         SessionEntity session = new SessionEntity("alice", "coder");
         when(service.createSession("alice", "coder", null, CWD)).thenReturn(session);
         // A session is already active on this terminal -> do not auto-activate.
         when(service.activeSession("term-1")).thenReturn(Optional.of("existing-session-id"));
 
-        VetoCommandSender sender = mock(VetoCommandSender.class);
-        when(sender.hasPermission(any(CommandPermission.class))).thenReturn(true);
+        VetoCommandSender sender =
+                mock(top.focess.veto.agent.mcp.ToolDocs.nonNullClass(VetoCommandSender.class));
+        when(sender.hasPermission(
+                        any(
+                                top.focess.veto.agent.mcp.ToolDocs.nonNullClass(
+                                        CommandPermission.class))))
+                .thenReturn(true);
         when(sender.isLoggedIn()).thenReturn(true);
         when(sender.username()).thenReturn("alice");
+        when(sender.requireUsername()).thenReturn("alice");
         when(sender.terminalId()).thenReturn("term-1");
         when(sender.cwd()).thenReturn(CWD);
 
@@ -78,15 +100,23 @@ class SessionCommandTest {
 
     @Test
     void createRefusesUnknownPattern() {
-        SessionService service = mock(SessionService.class);
-        PromptHandler handler = mock(PromptHandler.class);
+        SessionService service =
+                mock(top.focess.veto.agent.mcp.ToolDocs.nonNullClass(SessionService.class));
+        PromptHandler handler =
+                mock(top.focess.veto.agent.mcp.ToolDocs.nonNullClass(PromptHandler.class));
         when(service.createSession("alice", "nope", null, CWD))
                 .thenThrow(new IllegalArgumentException("Pattern not found: nope"));
 
-        VetoCommandSender sender = mock(VetoCommandSender.class);
-        when(sender.hasPermission(any(CommandPermission.class))).thenReturn(true);
+        VetoCommandSender sender =
+                mock(top.focess.veto.agent.mcp.ToolDocs.nonNullClass(VetoCommandSender.class));
+        when(sender.hasPermission(
+                        any(
+                                top.focess.veto.agent.mcp.ToolDocs.nonNullClass(
+                                        CommandPermission.class))))
+                .thenReturn(true);
         when(sender.isLoggedIn()).thenReturn(true);
         when(sender.username()).thenReturn("alice");
+        when(sender.requireUsername()).thenReturn("alice");
         when(sender.terminalId()).thenReturn("term-1");
         when(sender.cwd()).thenReturn(CWD);
 
@@ -100,18 +130,26 @@ class SessionCommandTest {
 
     @Test
     void createWithCustomNamePersistsAndActivates() {
-        SessionService service = mock(SessionService.class);
-        PromptHandler handler = mock(PromptHandler.class);
+        SessionService service =
+                mock(top.focess.veto.agent.mcp.ToolDocs.nonNullClass(SessionService.class));
+        PromptHandler handler =
+                mock(top.focess.veto.agent.mcp.ToolDocs.nonNullClass(PromptHandler.class));
         SessionEntity session = new SessionEntity("alice", "mysession");
         when(service.createSession("alice", "coder", "mysession", CWD)).thenReturn(session);
         when(service.activeSession("term-1")).thenReturn(Optional.empty());
         when(service.activate("term-1", "mysession", "alice", CWD))
                 .thenReturn(Optional.of(new LlmConfig(ProviderType.DEEPSEEK, "deepseek-v4", "k")));
 
-        VetoCommandSender sender = mock(VetoCommandSender.class);
-        when(sender.hasPermission(any(CommandPermission.class))).thenReturn(true);
+        VetoCommandSender sender =
+                mock(top.focess.veto.agent.mcp.ToolDocs.nonNullClass(VetoCommandSender.class));
+        when(sender.hasPermission(
+                        any(
+                                top.focess.veto.agent.mcp.ToolDocs.nonNullClass(
+                                        CommandPermission.class))))
+                .thenReturn(true);
         when(sender.isLoggedIn()).thenReturn(true);
         when(sender.username()).thenReturn("alice");
+        when(sender.requireUsername()).thenReturn("alice");
         when(sender.terminalId()).thenReturn("term-1");
         when(sender.cwd()).thenReturn(CWD);
 

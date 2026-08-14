@@ -5,7 +5,6 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -38,7 +37,8 @@ import top.focess.veto.model.tier.ModelTier;
 @Service
 public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
 
-    private static final Logger log = LoggerFactory.getLogger(GroupSpawner.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.group.GroupSpawner");
 
     private static final String DEFAULT_MATE_SYSTEM_PROMPT_BASE =
             "You are a Mate agent. Execute the assigned task.";
@@ -51,7 +51,7 @@ public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
     private final long defaultMaxCallsPerEpisode;
     private final @NonNull ModelTier mateTier;
     private final @NonNull String mateSystemPromptBase;
-    private final @Nullable AgentFactory agentFactory;
+    private final AgentFactory agentFactory;
 
     /**
      * Live MateAgents per group. Used by {@link #disband(UUID)} to stop polling and shut down each
@@ -75,10 +75,10 @@ public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
             @NonNull MateBreakerRegistry breakers,
             @NonNull SkillsetProperties skillsetProperties,
             @Value("${veto.group.mate.max_calls_per_episode:50}") long defaultMaxCallsPerEpisode,
-            @Value("${veto.group.mate.tier:MID}") @Nullable String mateTier,
+            @Value("${veto.group.mate.tier:MID}") String mateTier,
             @Value("${veto.group.mate.system-prompt-base:" + DEFAULT_MATE_SYSTEM_PROMPT_BASE + "}")
                     @NonNull String mateSystemPromptBase,
-            @Nullable AgentFactory agentFactory) {
+            AgentFactory agentFactory) {
         this.blackboard = blackboard;
         this.registry = registry;
         this.orchestrator = orchestrator;
@@ -117,14 +117,12 @@ public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
      * SkillsetProperties} overrides either field individually; unset fields fall back to the global
      * {@code veto.group.mate.tier} / {@code veto.group.mate.system-prompt-base}.
      */
-    private @NonNull MateBinding resolveMateBinding(
-            @NonNull String skillset, @Nullable Group group) {
+    private @NonNull MateBinding resolveMateBinding(@NonNull String skillset, Group group) {
         SkillsetProperties.SkillsetConfig cfg = skillsetProperties.forSkillset(skillset);
-        ModelTier tier = (cfg != null && cfg.getTier() != null) ? cfg.getTier() : mateTier;
-        String base =
-                (cfg != null && cfg.getSystemPromptBase() != null)
-                        ? cfg.getSystemPromptBase()
-                        : mateSystemPromptBase;
+        ModelTier configuredTier = cfg == null ? null : cfg.getTier();
+        ModelTier tier = configuredTier == null ? mateTier : configuredTier;
+        String configuredBase = cfg == null ? null : cfg.getSystemPromptBase();
+        String base = configuredBase == null ? mateSystemPromptBase : configuredBase;
         return new MateBinding(tier, base, group != null ? group.owner() : null);
     }
 
@@ -137,7 +135,7 @@ public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
     public @NonNull Group spawn(
             @NonNull String leaderId,
             @NonNull String userId,
-            @Nullable String contextBrief,
+            String contextBrief,
             @NonNull ExecutionDag dag,
             @NonNull List<MateSpec> mateSpecs,
             @NonNull AgentFactory agentFactory) {
@@ -169,7 +167,7 @@ public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
     public @NonNull Group spawn(
             @NonNull String leaderId,
             @NonNull String userId,
-            @Nullable String contextBrief,
+            String contextBrief,
             @NonNull String singleMateId,
             @NonNull String skillset,
             @NonNull AgentFactory agentFactory) {
@@ -212,7 +210,7 @@ public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
     public @NonNull Group registerEmptyGroup(
             @NonNull String leaderId,
             @NonNull String userId,
-            @Nullable String owner,
+            String owner,
             @NonNull String contextBrief) {
         Group g =
                 Group.create(
@@ -343,18 +341,14 @@ public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
         if (g == null) {
             // Even if the group record is gone, still try to clean up any straggler Mates.
             stopMates(groupId);
-            if (orchestrator != null) {
-                orchestrator.onGroupDisbanded(groupId);
-            }
+            orchestrator.onGroupDisbanded(groupId);
             return;
         }
         // Stop Mates first so they stop writing to the Blackboard; then flip state.
         stopMates(groupId);
         breakers.clear(groupId);
         registry.disband(groupId, java.time.Instant.now());
-        if (orchestrator != null) {
-            orchestrator.onGroupDisbanded(groupId);
-        }
+        orchestrator.onGroupDisbanded(groupId);
     }
 
     private void stopMates(@NonNull UUID groupId) {
@@ -372,12 +366,12 @@ public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
         }
     }
 
-    private static @NonNull ModelTier parseTier(@Nullable String s) {
+    private static @NonNull ModelTier parseTier(String s) {
         if (s == null || s.isBlank()) {
             return ModelTier.MID;
         }
         try {
-            return ModelTier.valueOf(s);
+            return top.focess.veto.util.Nullness.requireNonNull(ModelTier.valueOf(s));
         } catch (IllegalArgumentException e) {
             return ModelTier.MID;
         }

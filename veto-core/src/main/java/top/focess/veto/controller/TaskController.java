@@ -1,6 +1,7 @@
 package top.focess.veto.controller;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -22,15 +23,14 @@ import top.focess.veto.model.DAGPayload;
 @RequestMapping("/api/tasks")
 public class TaskController {
 
-    private static final Logger log = LoggerFactory.getLogger(TaskController.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.controller.TaskController");
 
     private final @NonNull RoutingBusService routingBusService;
     private final @NonNull ConcurrentHashMap<String, DAGPayload> taskStore =
             new ConcurrentHashMap<>();
 
-    public
-    @NonNull
-    TaskController(@NonNull RoutingBusService routingBusService) {
+    public TaskController(@NonNull RoutingBusService routingBusService) {
         this.routingBusService = routingBusService;
     }
 
@@ -39,24 +39,24 @@ public class TaskController {
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
     public @NonNull ResponseEntity<Map<String, Object>> createTask(
-            @NonNull @RequestBody Map<String, Object> request) {
+            @RequestBody @NonNull Map<String, Object> request) {
         String taskType = (String) request.get("taskType");
         if (taskType == null || taskType.isEmpty()) {
             return ResponseEntity.badRequest()
                     .body(Map.of("status", "error", "message", Msg.get("error.task.typeRequired")));
         }
 
-        Map<String, Object> parameters =
-                (Map<String, Object>) request.getOrDefault("parameters", Map.of());
-        String sourceComponent = (String) request.getOrDefault("sourceComponent", "REST-API");
-        String targetComponent = (String) request.getOrDefault("targetComponent", "bus");
+        Map<String, Object> parameters = parametersOf(request.get("parameters"));
+        String sourceComponent = (String) request.get("sourceComponent");
+        if (sourceComponent == null) sourceComponent = "REST-API";
+        String targetComponent = (String) request.get("targetComponent");
+        if (targetComponent == null) targetComponent = "bus";
+        String requestedId = (String) request.get("id");
+        String taskId = requestedId == null ? UUID.randomUUID().toString() : requestedId;
 
         DAGPayload payload =
                 DAGPayload.builder()
-                        .id(
-                                request.containsKey("id")
-                                        ? (String) request.get("id")
-                                        : UUID.randomUUID().toString())
+                        .id(taskId)
                         .taskType(taskType)
                         .parameters(parameters)
                         .sourceComponent(sourceComponent)
@@ -81,10 +81,32 @@ public class TaskController {
                         "timestamp", Instant.now().toString()));
     }
 
+    private static @NonNull Map<String, Object> parametersOf(Object value) {
+        if (value == null) {
+            return Map.of();
+        }
+        if (!(value instanceof Map<?, ?> rawParameters)) {
+            throw new IllegalArgumentException("parameters must be a JSON object");
+        }
+        Map<String, Object> parameters = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : rawParameters.entrySet()) {
+            if (!(entry.getKey() instanceof String key)) {
+                throw new IllegalArgumentException("parameter names must be strings");
+            }
+            Object parameterValue = entry.getValue();
+            if (parameterValue != null) {
+                parameters.put(key, parameterValue);
+            }
+        }
+        return parameters;
+    }
+
     /** GET /api/tasks/{id} - Get DAG task status and details. */
     @GetMapping(value = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
+    // DAG parameters are intentionally preserved as JSON; Jackson supplies JSON encoding.
+    //noinspection tainting
     public @NonNull ResponseEntity<Map<String, @NonNull Object>> getTask(
-            @NonNull @PathVariable("id") String id) {
+            @PathVariable("id") @NonNull String id) {
         DAGPayload payload = taskStore.get(id);
         if (payload == null) {
             return ResponseEntity.status(404)
@@ -98,8 +120,10 @@ public class TaskController {
         result.put("dagStatus", payload.getStatus().name());
         result.put("parameters", payload.getParameters());
         result.put("dependencies", payload.getDependencies());
-        result.put("sourceComponent", payload.getSourceComponent());
-        result.put("targetComponent", payload.getTargetComponent());
+        String sourceComponent = payload.getSourceComponent();
+        if (sourceComponent != null) result.put("sourceComponent", sourceComponent);
+        String targetComponent = payload.getTargetComponent();
+        if (targetComponent != null) result.put("targetComponent", targetComponent);
         result.put("createdAt", payload.getCreatedAt().toString());
         result.put("updatedAt", payload.getUpdatedAt().toString());
         result.put("timestamp", Instant.now().toString());
@@ -137,8 +161,10 @@ public class TaskController {
 
     /** DELETE /api/tasks/{id} - Cancel a task. */
     @DeleteMapping(value = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
+    // The validated task identifier is serialized as JSON, never rendered as HTML.
+    //noinspection tainting
     public @NonNull ResponseEntity<Map<String, @NonNull Object>> cancelTask(
-            @NonNull @PathVariable("id") String id) {
+            @PathVariable("id") @NonNull String id) {
         DAGPayload existing = taskStore.get(id);
         if (existing == null) {
             return ResponseEntity.status(404)

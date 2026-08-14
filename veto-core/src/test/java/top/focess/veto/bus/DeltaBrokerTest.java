@@ -19,6 +19,8 @@ class DeltaBrokerTest {
         List<DeltaFrame> received2 = new CopyOnWriteArrayList<>();
         try (AutoCloseable s1 = broker.subscribe(sessionId, received1::add);
                 AutoCloseable s2 = broker.subscribe(sessionId, received2::add)) {
+            assertNotNull(s1);
+            assertNotNull(s2);
             broker.publish(
                     DeltaFrame.builder()
                             .sessionId(sessionId)
@@ -70,6 +72,7 @@ class DeltaBrokerTest {
         UUID sessionId = UUID.randomUUID();
         List<DeltaFrame> received = new CopyOnWriteArrayList<>();
         try (AutoCloseable s = broker.subscribe(sessionId, received::add)) {
+            assertNotNull(s);
             for (int i = 0; i < 10; i++) {
                 broker.publish(
                         DeltaFrame.builder()

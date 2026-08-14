@@ -39,7 +39,7 @@ public class SignupCommand extends VetoCommand {
                     if (s.isLoggedIn()) {
                         s.output(
                                 "You are already logged in as "
-                                        + s.username()
+                                        + s.requireUsername()
                                         + "; log out before signing up as a different user.");
                         return CommandResult.REFUSE;
                     }

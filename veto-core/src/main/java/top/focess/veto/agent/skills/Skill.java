@@ -27,8 +27,8 @@ import org.jspecify.annotations.NonNull;
 public record Skill(
         @NonNull String name,
         @NonNull String description,
-        @NonNull String promptInstructions,
-        @NonNull SkillSourceType sourceType,
-        @NonNull Path skillDirectory,
+        String promptInstructions,
+        SkillSourceType sourceType,
+        Path skillDirectory,
         @NonNull List<String> requiredTools,
         @NonNull String contentHash) {}

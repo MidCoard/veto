@@ -3,7 +3,6 @@ package top.focess.veto.agent.intercept;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.agent.screening.Danger;
 
 /**
@@ -32,7 +31,7 @@ public record VetoPrompt(
         @NonNull VetoScenario scenario,
         @NonNull List<VetoOption> options,
         @NonNull Map<String, Object> args,
-        @Nullable Danger danger) {
+        Danger danger) {
     /** Compact constructor: defensive copies + null-safe args. */
     public VetoPrompt {
         options = List.copyOf(options);

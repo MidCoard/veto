@@ -1,7 +1,6 @@
 package top.focess.veto.contract;
 
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
 /**
  * Parsed command-line options for a Veto client (terminal / TUI). Pure data - no logging or other
@@ -27,10 +26,10 @@ import org.jspecify.annotations.Nullable;
  * @param address the backend connect address
  * @param workspace the absolute workspace root path, or {@code null} to use the JVM cwd
  */
-public record ClientOptions(boolean debug, @NonNull String address, @Nullable String workspace) {
+public record ClientOptions(boolean debug, @NonNull String address, String workspace) {
 
     /** Default backend connect address. */
-    public static final String DEFAULT_ADDRESS = "tcp://127.0.0.1:5555";
+    public static final @NonNull String DEFAULT_ADDRESS = "tcp://127.0.0.1:5555";
 
     /**
      * Parses the command-line arguments into a {@link ClientOptions}.
@@ -40,7 +39,7 @@ public record ClientOptions(boolean debug, @NonNull String address, @Nullable St
      * @throws IllegalArgumentException if an unknown flag is encountered or {@code --address} /
      *     {@code --workspace} has no value
      */
-    public static @NonNull ClientOptions parse(@NonNull String[] args) {
+    public static @NonNull ClientOptions parse(@NonNull String @NonNull [] args) {
         boolean debug = false;
         String address = DEFAULT_ADDRESS;
         String workspace = null;

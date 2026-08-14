@@ -16,13 +16,13 @@ import org.jspecify.annotations.NonNull;
  * @param apiKey the API key or internal token to use
  */
 public record ResolvedRequest(
-        @NonNull VetoRequest request, @NonNull String baseUrl, @NonNull String apiKey) {
+        @NonNull VetoRequest request, String baseUrl, @NonNull String apiKey) {
     /**
      * Returns the provider type from the underlying request.
      *
      * @return the provider type
      */
-    public ProviderType providerType() {
+    public @NonNull ProviderType providerType() {
         return request.providerType();
     }
 
@@ -31,7 +31,7 @@ public record ResolvedRequest(
      *
      * @return the model name
      */
-    public String modelName() {
+    public @NonNull String modelName() {
         return request.modelName();
     }
 
@@ -40,7 +40,7 @@ public record ResolvedRequest(
      *
      * @return the LLM options
      */
-    public LlmOptions options() {
+    public @NonNull LlmOptions options() {
         return request.options();
     }
 }

@@ -9,7 +9,6 @@ import java.util.concurrent.TimeUnit;
 import org.jline.reader.*;
 import org.jline.terminal.TerminalBuilder;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.client.core.ClientSession;
@@ -56,10 +55,11 @@ import top.focess.veto.contract.Version;
  */
 public class VetoTerminal {
 
-    private static final Logger log = LoggerFactory.getLogger(VetoTerminal.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.terminal.VetoTerminal");
 
     /** ASCII Banner displayed on startup. */
-    private static final String HEADER =
+    private static final @NonNull String HEADER =
             """
                     ██╗   ██╗███████╗████████╗ ██████╗
                     ██║   ██║██╔════╝╚══██╔══╝██╔═══██╗
@@ -70,28 +70,28 @@ public class VetoTerminal {
                     """;
 
     /** The Mordant terminal used for styled (ANSI) console output. */
-    private final Terminal t;
+    private final @NonNull Terminal t;
 
     /** IPC connection to the backend (transport-agnostic; ZMQ locally). */
-    private final IpcClient client;
+    private final @NonNull IpcClient client;
 
     /** JLine reader driving the interactive REPL; set in {@link #start(LineReader)}. */
-    private LineReader reader;
+    private @NonNull LineReader reader;
 
     /** Output seam — prints above the active prompt via {@link LineReader#printAbove}. */
-    private MordantRenderer renderer;
+    private @NonNull MordantRenderer renderer;
 
     /** Maps {@link StyleToken}s to Mordant ANSI strings. */
-    private MordantTheme theme;
+    private @NonNull MordantTheme theme;
 
     /** Bottom status bar view over the session. */
-    private TerminalStatus status;
+    private @NonNull TerminalStatus status;
 
     /** The shared interaction protocol (session state, request pipeline, frame dispatch). */
-    private ClientSession session;
+    private @NonNull ClientSession session;
 
     /** Reference to the main REPL thread so the consumer can interrupt its blocking readLine. */
-    private Thread mainThread;
+    private @NonNull Thread mainThread;
 
     /** Set to {@code false} to signal all background threads to stop. */
     private volatile boolean running;
@@ -126,6 +126,9 @@ public class VetoTerminal {
      * @param t the Mordant Terminal instance used for styled outputs
      * @param client the IpcClient used for IPC communications with the backend
      */
+    // start(LineReader) is the lifecycle initializer: all remaining fields are assigned before any
+    // private REPL or ClientView path is reachable. Checker cannot model this two-phase API.
+    @SuppressWarnings("initialization.fields.uninitialized")
     public VetoTerminal(@NonNull Terminal t, @NonNull IpcClient client) {
         this.t = t;
         this.client = client;
@@ -205,6 +208,7 @@ public class VetoTerminal {
      * The main interactive REPL read-eval-print loop. Renders the prompt from the current session
      * state, reads a line, and submits it (a command, a prompt reply, or a cancel).
      */
+    @SuppressWarnings("argument") // JLine uses null mask to request unmasked input.
     private void repl() {
         while (running) {
             ClientSession.PromptView view = session.promptView();
@@ -275,7 +279,8 @@ public class VetoTerminal {
                 // cancel, it is expected behavior
                 if (promptSwapPending) {
                     promptSwapPending = false;
-                    Thread.interrupted();
+                    boolean interruptWasSet = Thread.interrupted();
+                    log.trace("Cleared prompt-swap interrupt: {}", interruptWasSet);
                     continue;
                 }
                 // Flag false ⇒ not a swap ⇒ genuine Ctrl+C → cancel the in-flight request/prompt,
@@ -384,8 +389,7 @@ public class VetoTerminal {
      * @param reply the user's reply (index or name)
      * @return the resolved option name, or {@code null} if invalid
      */
-    private @Nullable String resolveVetoChoice(
-            IpcFrame.@NonNull VetoPayload veto, @NonNull String reply) {
+    private String resolveVetoChoice(IpcFrame.@NonNull VetoPayload veto, @NonNull String reply) {
         List<String> options = veto.options();
         if (options.isEmpty()) {
             return null;
@@ -449,21 +453,30 @@ public class VetoTerminal {
      */
     private static @NonNull String summarizeToolCall(IpcFrame.@NonNull ToolCall call) {
         String tool = call.toolName();
-        if (call.isEmpty()) {
+        var args = call.args();
+        if (args == null || args.isEmpty()) {
             return tool;
         }
         String[] preferred = {
-            "path", "directoryPath", "file", "filePath", "command", "url", "query", "input"
+            "absolutePath",
+            "path",
+            "directoryPath",
+            "file",
+            "filePath",
+            "command",
+            "url",
+            "query",
+            "input"
         };
         for (String key : preferred) {
-            Object v = call.args().get(key);
+            Object v = args.get(key);
             if (v != null) {
                 return tool + "(" + key + "=" + abbreviate(v.toString(), 80) + ")";
             }
         }
         StringBuilder sb = new StringBuilder(tool).append("(");
         boolean first = true;
-        for (var e : call.args().entrySet()) {
+        for (var e : args.entrySet()) {
             if (!first) {
                 sb.append(", ");
             }
@@ -543,7 +556,7 @@ public class VetoTerminal {
             // Framed observation the model saw. Default: truncate to the first 20 lines + show
             // success/failure marker so a long tool output does not flood the REPL. The user
             // can set VETO_DEBUG=1 to render the full body for debugging.
-            String body = result.body() == null ? "" : result.body();
+            String body = result.body();
             String marker = result.success() ? "✓" : "✗";
             String header = "  ◇ result " + marker;
             if (!verboseToolTrace) {
@@ -635,6 +648,8 @@ public class VetoTerminal {
     private class VetoCompleter implements Completer {
 
         @Override
+        @SuppressWarnings(
+                "argument") // JLine Candidate defines optional metadata with null sentinels.
         public void complete(
                 @NonNull LineReader r, @NonNull ParsedLine line, @NonNull List<Candidate> out) {
             String fullLine = line.line();
@@ -644,12 +659,13 @@ public class VetoTerminal {
             if (compResult != null) {
                 for (IpcFrame.Completion comp : compResult.candidates()) {
                     String name = comp.value();
+                    String rawDescription = comp.description();
                     String desc =
-                            comp.description() != null && !comp.description().isEmpty()
-                                    ? comp.description()
+                            rawDescription != null && !rawDescription.isEmpty()
+                                    ? rawDescription
                                     : null;
-                    String group =
-                            comp.group() != null && !comp.group().isEmpty() ? comp.group() : null;
+                    String rawGroup = comp.group();
+                    String group = rawGroup != null && !rawGroup.isEmpty() ? rawGroup : null;
                     out.add(new Candidate(name, name, group, desc, null, null, true));
                 }
             }
@@ -663,7 +679,7 @@ public class VetoTerminal {
      *
      * @param args command line arguments, supports --debug or -d to enable log file output
      */
-    public static void main(@NonNull String[] args) {
+    public static void main(@NonNull String @NonNull [] args) {
         System.setProperty("file.encoding", "UTF-8");
 
         ClientOptions options = ClientOptions.parse(args);
@@ -672,10 +688,15 @@ public class VetoTerminal {
         // The workspace root is sent to the backend in the IPC Hello handshake and becomes the
         // agent's operational root. --workspace makes it explicit; otherwise it falls back to the
         // JVM cwd (user.dir) - i.e. wherever the terminal is launched from.
+        String configuredWorkspace = options.workspace();
         String workspaceCwd =
-                options.workspace() != null ? options.workspace() : System.getProperty("user.dir");
-        if (options.workspace() != null && !Files.isDirectory(Path.of(options.workspace()))) {
-            System.err.println("Workspace not a directory: " + options.workspace());
+                configuredWorkspace != null ? configuredWorkspace : System.getProperty("user.dir");
+        if (configuredWorkspace != null && !Files.isDirectory(Path.of(configuredWorkspace))) {
+            System.err.println("Workspace not a directory: " + configuredWorkspace);
+            return;
+        }
+        if (workspaceCwd == null) {
+            System.err.println("Cannot determine workspace: user.dir is not set");
             return;
         }
 

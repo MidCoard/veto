@@ -4,7 +4,6 @@ import jakarta.persistence.*;
 import java.time.Instant;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTier;
 
@@ -28,37 +27,37 @@ public class AgentEntity {
         SUB
     }
 
-    @Id private @NonNull String id;
+    @Id private @NonNull String id = "";
 
     @Column(name = "session_id", nullable = false)
-    private @NonNull String sessionId;
+    private @NonNull String sessionId = "";
 
     @Column(name = "pattern_id")
-    private @Nullable String patternId;
+    private String patternId;
 
     @Column(nullable = false)
     @Enumerated(EnumType.STRING)
-    private @NonNull Role role;
+    private @NonNull Role role = Role.PRIMARY;
 
     @Column(nullable = false)
-    private @NonNull String name;
+    private @NonNull String name = "";
 
     @Enumerated(EnumType.STRING)
     @Column(name = "tier", nullable = false)
-    private @NonNull ModelTier tier;
+    private @NonNull ModelTier tier = ModelTier.TOP;
 
     // ── vestigial NOT NULL cache (frozen from the tier binding at create; not live-read) ──
     @Column(nullable = false)
-    private @NonNull String provider;
+    private @NonNull String provider = "";
 
     @Column(nullable = false)
-    private @NonNull String model;
+    private @NonNull String model = "";
 
     @Column(name = "credential_key", nullable = false)
-    private @NonNull String credentialKey;
+    private @NonNull String credentialKey = "";
 
     @Column(name = "created_at", nullable = false)
-    private @NonNull Instant createdAt;
+    private @NonNull Instant createdAt = Instant.EPOCH;
 
     protected AgentEntity() {}
 
@@ -75,7 +74,7 @@ public class AgentEntity {
      */
     public AgentEntity(
             @NonNull String sessionId,
-            @Nullable String patternId,
+            String patternId,
             @NonNull Role role,
             @NonNull String name,
             @NonNull ModelTier tier,
@@ -98,7 +97,7 @@ public class AgentEntity {
      */
     public AgentEntity(
             @NonNull String sessionId,
-            @Nullable String patternId,
+            String patternId,
             @NonNull Role role,
             @NonNull String name,
             @NonNull String provider,
@@ -109,7 +108,6 @@ public class AgentEntity {
         this.patternId = patternId;
         this.role = role;
         this.name = name;
-        this.tier = ModelTier.TOP;
         this.provider = provider;
         this.model = model;
         this.credentialKey = credentialKey;
@@ -124,7 +122,7 @@ public class AgentEntity {
         return sessionId;
     }
 
-    public @Nullable String getPatternId() {
+    public String getPatternId() {
         return patternId;
     }
 

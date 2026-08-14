@@ -1,7 +1,6 @@
 package top.focess.veto.group;
 
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.model.tier.ModelTier;
 
 /**
@@ -22,5 +21,4 @@ import top.focess.veto.model.tier.ModelTier;
  * @param owner the session owner whose active model-tier profile resolves this Mate's tier
  *     (nullable when the group was created without an owner, e.g. in tests)
  */
-public record MateBinding(
-        @NonNull ModelTier tier, @Nullable String systemPromptBase, @Nullable String owner) {}
+public record MateBinding(@NonNull ModelTier tier, String systemPromptBase, String owner) {}

@@ -5,7 +5,6 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.loop.LoopBreaker;
 
@@ -64,7 +63,7 @@ public class MateBreakerRegistry {
         return map == null ? Map.of() : Map.copyOf(map);
     }
 
-    private @Nullable LoopBreaker breaker(@NonNull UUID groupId, @NonNull String mateId) {
+    private LoopBreaker breaker(@NonNull UUID groupId, @NonNull String mateId) {
         ConcurrentMap<String, LoopBreaker> map = breakers.get(groupId);
         return map == null ? null : map.get(mateId);
     }

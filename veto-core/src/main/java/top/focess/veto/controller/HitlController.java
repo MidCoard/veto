@@ -2,7 +2,6 @@ package top.focess.veto.controller;
 
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -53,7 +52,7 @@ public class HitlController {
      * primary agent yet); 404 when the session does not exist.
      */
     @GetMapping("/{name}/vetoes")
-    public @NonNull ResponseEntity<?> pending(@NonNull @PathVariable String name) {
+    public @NonNull ResponseEntity<?> pending(@PathVariable @NonNull String name) {
         String agentId = requireAgentId(name);
         return ResponseEntity.ok(hitlRegistry.pendingFor(agentId));
     }
@@ -65,9 +64,9 @@ public class HitlController {
      */
     @PostMapping("/{name}/vetoes/{callId}")
     public @NonNull ResponseEntity<?> resolve(
-            @NonNull @PathVariable String name,
-            @NonNull @PathVariable String callId,
-            @NonNull @RequestBody ResolveVetoRequest body) {
+            @PathVariable @NonNull String name,
+            @PathVariable @NonNull String callId,
+            @RequestBody @NonNull ResolveVetoRequest body) {
         String agentId = requireAgentId(name);
         if (body.option() == null || body.option().isBlank()) {
             throw new ResponseStatusException(
@@ -89,7 +88,7 @@ public class HitlController {
      * number of vetoes declined.
      */
     @PostMapping("/{name}/cancel")
-    public @NonNull ResponseEntity<?> cancel(@NonNull @PathVariable String name) {
+    public @NonNull ResponseEntity<?> cancel(@PathVariable @NonNull String name) {
         String agentId = requireAgentId(name);
         int declined = agentService.declineAllVetoes(agentId);
         return ResponseEntity.ok(Map.of("status", "ok", "declined", declined));
@@ -113,5 +112,5 @@ public class HitlController {
     }
 
     /** Request body for {@link #resolve}. */
-    public record ResolveVetoRequest(@Nullable String option) {}
+    public record ResolveVetoRequest(String option) {}
 }

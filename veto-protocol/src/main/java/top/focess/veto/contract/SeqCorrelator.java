@@ -6,7 +6,6 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -42,11 +41,13 @@ import org.slf4j.LoggerFactory;
  */
 public final class SeqCorrelator {
 
-    private static final Logger log = LoggerFactory.getLogger(SeqCorrelator.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.contract.SeqCorrelator");
 
-    private final AtomicLong nextSeq = new AtomicLong(1);
-    private final ConcurrentHashMap<Long, BlockingQueue<IpcFrame.SeqResponse>> handlers =
-            new ConcurrentHashMap<>();
+    private final @NonNull AtomicLong nextSeq = new AtomicLong(1);
+    private final @NonNull
+            ConcurrentHashMap<@NonNull Long, @NonNull BlockingQueue<IpcFrame.@NonNull SeqResponse>>
+            handlers = new ConcurrentHashMap<>();
 
     /** Allocates the next monotonic sequence number, starting at {@code 1}. */
     public long next() {
@@ -91,7 +92,7 @@ public final class SeqCorrelator {
      * @return the response, or {@code null} on timeout or if no handler was registered
      * @throws InterruptedException if the calling thread is interrupted while waiting
      */
-    public IpcFrame.@Nullable SeqResponse await(long seq, long timeout, @NonNull TimeUnit unit)
+    public IpcFrame.SeqResponse await(long seq, long timeout, @NonNull TimeUnit unit)
             throws InterruptedException {
         BlockingQueue<IpcFrame.SeqResponse> queue = handlers.get(seq);
         if (queue == null) return null;

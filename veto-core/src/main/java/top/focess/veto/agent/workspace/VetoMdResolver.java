@@ -14,9 +14,10 @@ import org.slf4j.LoggerFactory;
  * in root order. Read at compile time by the PromptCompiler (config, bypasses tool-call screening).
  * A root with neither contributes nothing.
  */
-public record VetoMdResolver(@NonNull List<WorkspaceRoot> roots) {
+public record VetoMdResolver(@NonNull List<@NonNull WorkspaceRoot> roots) {
 
-    private static final Logger log = LoggerFactory.getLogger(VetoMdResolver.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.agent.workspace.VetoMdResolver");
 
     /** Resolves the concatenated Law across all roots (empty string if none). */
     public @NonNull String resolve() {

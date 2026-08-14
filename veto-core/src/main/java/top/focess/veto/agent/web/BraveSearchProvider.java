@@ -25,14 +25,15 @@ import org.springframework.stereotype.Component;
 @ConditionalOnProperty(name = "veto.websearch.provider", havingValue = "brave")
 public class BraveSearchProvider implements SearchProvider {
 
-    private static final String ENDPOINT = "https://api.search.brave.com/res/v1/web/search?q=";
+    private static final @NonNull String ENDPOINT =
+            "https://api.search.brave.com/res/v1/web/search?q=";
 
-    private final HttpClient httpClient =
+    private final @NonNull HttpClient httpClient =
             HttpClient.newBuilder()
                     .connectTimeout(Duration.ofSeconds(15))
                     .followRedirects(HttpClient.Redirect.NORMAL)
                     .build();
-    private final ObjectMapper mapper = new ObjectMapper();
+    private final @NonNull ObjectMapper mapper = new ObjectMapper();
     private final String apiKey;
 
     public BraveSearchProvider(
@@ -41,6 +42,7 @@ public class BraveSearchProvider implements SearchProvider {
     }
 
     @Override
+    @SuppressWarnings("UastIncorrectHttpHeaderInspection")
     public @NonNull List<SearchResult> search(@NonNull String query, @NonNull SearchOptions options)
             throws Exception {
         if (apiKey == null || apiKey.isBlank()) {

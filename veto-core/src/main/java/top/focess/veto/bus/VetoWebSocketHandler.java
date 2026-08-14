@@ -1,5 +1,6 @@
 package top.focess.veto.bus;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.net.URI;
@@ -25,19 +26,21 @@ import top.focess.veto.veto.VetoGateway;
 @Component
 public class VetoWebSocketHandler extends TextWebSocketHandler {
 
-    private static final Logger log = LoggerFactory.getLogger(VetoWebSocketHandler.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.bus.VetoWebSocketHandler");
 
     private final @NonNull ObjectMapper objectMapper;
     private final @NonNull VetoGateway vetoGateway;
 
-    private final CopyOnWriteArrayList<WebSocketSession> sessions = new CopyOnWriteArrayList<>();
-    private final ConcurrentHashMap<String, String> sessionRoutes = new ConcurrentHashMap<>();
+    private final @NonNull CopyOnWriteArrayList<@NonNull WebSocketSession> sessions =
+            new CopyOnWriteArrayList<>();
+    private final @NonNull ConcurrentHashMap<@NonNull String, @NonNull String> sessionRoutes =
+            new ConcurrentHashMap<>();
 
-    private final AtomicLong messageCounter = new AtomicLong(0);
+    private final @NonNull AtomicLong messageCounter = new AtomicLong(0);
 
-    public
-    @NonNull
-    VetoWebSocketHandler(@NonNull ObjectMapper objectMapper, @NonNull VetoGateway vetoGateway) {
+    public VetoWebSocketHandler(
+            @NonNull ObjectMapper objectMapper, @NonNull VetoGateway vetoGateway) {
         this.objectMapper = objectMapper;
         this.vetoGateway = vetoGateway;
     }
@@ -83,14 +86,14 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
         String payload = message.getPayload();
         long seq = messageCounter.incrementAndGet();
 
-        Map<String, Object> msg;
+        Map<@NonNull String, Object> msg;
         try {
-            msg = objectMapper.readValue(payload, Map.class);
+            msg = objectMapper.readValue(payload, new TypeReference<Map<String, Object>>() {});
         } catch (Exception e) {
             log.warn(
                     "WS Bus: Failed to parse message from '{}': {}",
                     session.getId(),
-                    e.getMessage());
+                    String.valueOf(e.getMessage()));
             sendJson(
                     session,
                     Map.of(
@@ -102,8 +105,12 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
                             seq));
             return;
         }
+        if (msg == null) {
+            sendJson(session, Map.of("type", "error", "message", "Message must be an object"));
+            return;
+        }
 
-        String type = (String) msg.getOrDefault("type", "");
+        String type = stringValue(msg, "type", "");
         // Log the message TYPE — that is the actionable fact. Heartbeats arrive once per second
         // per client and would drown every meaningful line, so they drop to TRACE; everything
         // else keeps a single concise DEBUG line.
@@ -123,17 +130,28 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
         }
     }
 
-    private void handleHeartbeat(WebSocketSession session, Map<String, Object> msg, long seq) {
+    private void handleHeartbeat(
+            @NonNull WebSocketSession session,
+            @NonNull Map<@NonNull String, Object> msg,
+            long seq) {
+        Object suppliedSequence = msg.get("seq");
+        Object responseSequence = suppliedSequence == null ? seq : suppliedSequence;
         sendJson(
                 session,
                 Map.of(
-                        "type", "heartbeat_ack",
-                        "seq", msg.getOrDefault("seq", seq),
-                        "timestamp", Instant.now().toString()));
+                        "type",
+                        "heartbeat_ack",
+                        "seq",
+                        responseSequence,
+                        "timestamp",
+                        Instant.now().toString()));
     }
 
-    private void handleDAGPayload(WebSocketSession session, Map<String, Object> msg, long seq) {
-        String taskType = (String) msg.getOrDefault("taskType", "unknown");
+    private void handleDAGPayload(
+            @NonNull WebSocketSession session,
+            @NonNull Map<@NonNull String, Object> msg,
+            long seq) {
+        String taskType = stringValue(msg, "taskType", "unknown");
         log.info("WS Bus: DAG payload from '{}' - type={}, seq={}", session.getId(), taskType, seq);
 
         sendJson(
@@ -163,8 +181,11 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
                 session.getId());
     }
 
-    private void handleVetoProcess(WebSocketSession session, Map<String, Object> msg, long seq) {
-        String rawPayload = (String) msg.getOrDefault("payload", "");
+    private void handleVetoProcess(
+            @NonNull WebSocketSession session,
+            @NonNull Map<@NonNull String, Object> msg,
+            long seq) {
+        String rawPayload = stringValue(msg, "payload", "");
         if (rawPayload.isEmpty()) {
             sendJson(
                     session,
@@ -175,9 +196,9 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
             return;
         }
 
-        String dagPayloadId = (String) msg.getOrDefault("dagPayloadId", "ws-" + seq);
-        String requestId = (String) msg.getOrDefault("requestId", "ws-req-" + seq);
-        String componentSource = (String) msg.getOrDefault("componentSource", "WS-Client");
+        String dagPayloadId = stringValue(msg, "dagPayloadId", "ws-" + seq);
+        String requestId = stringValue(msg, "requestId", "ws-req-" + seq);
+        String componentSource = stringValue(msg, "componentSource", "WS-Client");
 
         log.info(
                 "WS Bus: Veto processing from '{}' - payload={} bytes",
@@ -200,8 +221,9 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
                         "timestamp", Instant.now().toString()));
     }
 
-    private void handleSubscribe(WebSocketSession session, Map<String, Object> msg) {
-        String topic = (String) msg.getOrDefault("topic", "all");
+    private void handleSubscribe(
+            @NonNull WebSocketSession session, @NonNull Map<@NonNull String, Object> msg) {
+        String topic = stringValue(msg, "topic", "all");
         sessionRoutes.put(session.getId(), "sub:" + topic);
         log.info("WS Bus: Client '{}' subscribed to topic '{}'", session.getId(), topic);
         sendJson(
@@ -215,12 +237,14 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
                         Instant.now().toString()));
     }
 
-    private void handleUnsubscribe(WebSocketSession session, Map<String, Object> msg) {
+    private void handleUnsubscribe(
+            @NonNull WebSocketSession session, @NonNull Map<@NonNull String, Object> msg) {
         sessionRoutes.remove(session.getId());
         sendJson(session, Map.of("type", "unsubscribed", "timestamp", Instant.now().toString()));
     }
 
-    private void handleUnknownType(WebSocketSession session, String payload, long seq) {
+    private void handleUnknownType(
+            @NonNull WebSocketSession session, @NonNull String payload, long seq) {
         log.debug(
                 "WS Bus: Unknown message type from '{}', echoing payload head: {}",
                 session.getId(),
@@ -247,13 +271,16 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
                 "WS Bus: Client '{}' disconnected (code={}, reason='{}')",
                 session.getId(),
                 status.getCode(),
-                status.getReason());
+                String.valueOf(status.getReason()));
     }
 
     @Override
     public void handleTransportError(
             @NonNull WebSocketSession session, @NonNull Throwable exception) {
-        log.error("WS Bus: Transport error for '{}': {}", session.getId(), exception.getMessage());
+        log.error(
+                "WS Bus: Transport error for '{}': {}",
+                session.getId(),
+                String.valueOf(exception.getMessage()));
         sessions.remove(session);
         sessionRoutes.remove(session.getId());
     }
@@ -269,7 +296,15 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
         }
 
         for (WebSocketSession s : sessions) {
-            if (s.isOpen() && !s.getId().equals(excludeSessionId)) {
+            String route = sessionRoutes.get(s.getId());
+            Object messageType = message.get("type");
+            boolean acceptsRoute =
+                    route == null
+                            || "all".equals(route)
+                            || "sub:all".equals(route)
+                            || route.equals(messageType)
+                            || route.equals("sub:" + messageType);
+            if (s.isOpen() && !s.getId().equals(excludeSessionId) && acceptsRoute) {
                 try {
                     s.sendMessage(new TextMessage(json));
                 } catch (IOException e) {
@@ -332,7 +367,8 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
         }
     }
 
-    private void sendJson(WebSocketSession session, Map<String, Object> data) {
+    private void sendJson(
+            @NonNull WebSocketSession session, @NonNull Map<@NonNull String, Object> data) {
         try {
             String json = objectMapper.writeValueAsString(data);
             if (session.isOpen()) {
@@ -349,5 +385,13 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
 
     public long getTotalMessages() {
         return messageCounter.get();
+    }
+
+    private static @NonNull String stringValue(
+            @NonNull Map<@NonNull String, Object> message,
+            @NonNull String key,
+            @NonNull String fallback) {
+        Object value = message.get(key);
+        return value instanceof String stringValue ? stringValue : fallback;
     }
 }

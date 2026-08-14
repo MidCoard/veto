@@ -87,7 +87,8 @@ import top.focess.veto.vault.UserContext;
 @ConditionalOnProperty(name = "veto.terminal.enabled", havingValue = "true", matchIfMissing = true)
 public class IpcServer {
 
-    private static final Logger log = LoggerFactory.getLogger(IpcServer.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.terminal.IpcServer");
 
     private static final long SESSION_TIMEOUT_MS = 90_000;
 
@@ -96,51 +97,55 @@ public class IpcServer {
 
     private static final int MAX_OUTBOX_SIZE = 10_000;
 
-    private final CommandRegistry registry;
-    private final AgentService agentService;
+    private final @NonNull CommandRegistry registry;
+    private final @NonNull AgentService agentService;
 
     /**
      * Outbox queue: any thread may enqueue; only the IO thread dequeues and sends. Using {@link
      * ConcurrentLinkedQueue} here avoids blocking the IO thread on backpressure.
      */
-    private final ConcurrentLinkedQueue<OutboxEntry> outbox = new ConcurrentLinkedQueue<>();
+    private final @NonNull ConcurrentLinkedQueue<@NonNull OutboxEntry> outbox =
+            new ConcurrentLinkedQueue<>();
 
     /**
      * Live count of {@link #outbox} entries, maintained alongside the queue so the backpressure
      * check in {@link #send} is O(1) — {@link ConcurrentLinkedQueue#size()} is O(n) and {@code
      * send} sits on the hot streaming-output path.
      */
-    private final AtomicInteger outboxSize = new AtomicInteger();
+    private final @NonNull AtomicInteger outboxSize = new AtomicInteger();
 
     /** Active sessions keyed by ZMQ identity string. */
-    private final ConcurrentHashMap<String, Session> sessions = new ConcurrentHashMap<>();
+    private final @NonNull ConcurrentHashMap<@NonNull String, @NonNull Session> sessions =
+            new ConcurrentHashMap<>();
 
     /**
      * Pool 1 — fixed platform threads for the IO loop and heartbeat loop. Platform threads are
      * preferred here because these are long-lived, CPU-aware tight loops that should not be subject
      * to virtual-thread pinning or carrier-thread scheduling delays.
      */
-    private final ExecutorService infraPool =
+    private final @NonNull ExecutorService infraPool =
             Executors.newFixedThreadPool(2, Thread.ofPlatform().name("veto-infra-", 0).factory());
 
     /**
      * Pool 2 — one virtual thread per session. Each session worker blocks on its mailbox queue;
      * virtual threads are ideal here since they park cheaply while waiting for frames.
      */
-    private final ExecutorService sessionPool = Executors.newVirtualThreadPerTaskExecutor();
+    private final @NonNull ExecutorService sessionPool =
+            Executors.newVirtualThreadPerTaskExecutor();
 
     /**
      * Pool 3 — one virtual thread per Request task. Commands may block on I/O (AI streaming, DB
      * calls, etc.) for seconds to minutes; virtual threads scale well for this workload.
      */
-    private final ExecutorService requestPool = Executors.newVirtualThreadPerTaskExecutor();
+    private final @NonNull ExecutorService requestPool =
+            Executors.newVirtualThreadPerTaskExecutor();
 
-    private ZContext ctx;
-    private ServerTransport transport;
+    private @NonNull ZContext ctx;
+    private @NonNull ServerTransport transport;
     private volatile boolean running;
 
     @Value("${veto.terminal.bind-address:tcp://127.0.0.1:5555}")
-    private String bindAddress;
+    private @NonNull String bindAddress = "tcp://127.0.0.1:5555";
 
     /**
      * Constructs a new {@code IpcServer}. Spring calls this constructor with the {@link
@@ -149,6 +154,7 @@ public class IpcServer {
      * @param registry the command registry used to dispatch requests and produce completions
      * @param agentService the agent service used to resolve/decline pending HITL vetoes
      */
+    @SuppressWarnings("initialization.fields.uninitialized")
     public IpcServer(@NonNull CommandRegistry registry, @NonNull AgentService agentService) {
         this.registry = registry;
         this.agentService = agentService;
@@ -393,6 +399,8 @@ public class IpcServer {
      * IpcFrame.Request} is the only frame type that may block for a significant duration and is
      * therefore off-loaded to {@link #requestPool}.
      */
+    @SuppressWarnings(
+            "LoggingSimilarMessage") // Request/result trace pairs intentionally share a prefix.
     private void handleSessionFrame(@NonNull Session session, @NonNull IpcFrame frame) {
         String identity = session.identity;
         String user = session.sender.username();
@@ -519,7 +527,9 @@ public class IpcServer {
                                 send(
                                         identity,
                                         new IpcFrame.Done(Map.of(IpcMeta.CANCELLED, true), null));
-                                task.cancel(true);
+                                if (task != null) {
+                                    task.cancel(true);
+                                }
                                 log.trace(
                                         "CANC {}: cancelled in-flight request",
                                         identity.substring(0, 8));
@@ -717,6 +727,7 @@ public class IpcServer {
      * <p>Checking at {@link #HEARTBEAT_CHECK_MS} intervals (⅓ of the timeout) bounds the worst-case
      * eviction lag to {@code SESSION_TIMEOUT_MS + HEARTBEAT_CHECK_MS}.
      */
+    @SuppressWarnings("BusyWait") // Deliberate fixed-rate heartbeat timeout scan, not a spin loop.
     private void heartbeatLoop() {
         while (running) {
             try {
@@ -826,8 +837,8 @@ public class IpcServer {
      * request pool.
      */
     static class Session {
-        @NonNull final String identity;
-        @NonNull final VetoCommandSender sender;
+        final @NonNull String identity;
+        final @NonNull VetoCommandSender sender;
 
         /** Timestamp of the last received frame; read by the heartbeat thread. */
         volatile long lastActivityMillis = System.currentTimeMillis();
@@ -836,7 +847,7 @@ public class IpcServer {
          * Incoming frame mailbox. Written by the IO thread via {@link #routeFrame}; consumed in
          * FIFO order by the session worker.
          */
-        final BlockingQueue<IpcFrame> mailbox = new LinkedBlockingQueue<>();
+        final @NonNull BlockingQueue<@NonNull IpcFrame> mailbox = new LinkedBlockingQueue<>();
 
         /**
          * Per-session lock protecting the request lifecycle fields: {@link #activeRequest}, {@link
@@ -845,7 +856,7 @@ public class IpcServer {
          * group (e.g. checking in-flight + enqueue, or clearing in-flight + polling next request).
          * Different sessions do not contend — each has its own lock.
          */
-        final ReentrantLock requestLock = new ReentrantLock();
+        final @NonNull ReentrantLock requestLock = new ReentrantLock();
 
         /**
          * Pending request queue. When a {@link IpcFrame.Request} arrives while another is already
@@ -856,7 +867,7 @@ public class IpcServer {
          *
          * <p>Protected by {@link #requestLock}.
          */
-        final Deque<IpcFrame.Request> pendingRequests = new ArrayDeque<>();
+        final @NonNull Deque<IpcFrame.@NonNull Request> pendingRequests = new ArrayDeque<>();
 
         /**
          * The in-flight request task, or {@code null} if no command is running. A {@link
@@ -885,7 +896,7 @@ public class IpcServer {
          * Closed flag. Set via {@link AtomicBoolean#compareAndSet} to guarantee exactly-once
          * session teardown even when multiple threads race to close the same session.
          */
-        final AtomicBoolean closed = new AtomicBoolean(false);
+        final @NonNull AtomicBoolean closed = new AtomicBoolean(false);
 
         Session(@NonNull String identity, @NonNull VetoCommandSender sender) {
             this.identity = identity;

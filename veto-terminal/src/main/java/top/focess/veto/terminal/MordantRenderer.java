@@ -13,7 +13,7 @@ import top.focess.veto.client.core.Theme;
  */
 public final class MordantRenderer {
 
-    private final LineReader reader;
+    private final @NonNull LineReader reader;
 
     public MordantRenderer(@NonNull LineReader reader) {
         this.reader = reader;

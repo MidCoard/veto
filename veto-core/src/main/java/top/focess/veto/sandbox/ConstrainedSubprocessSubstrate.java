@@ -10,7 +10,6 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,7 +32,8 @@ import org.springframework.stereotype.Component;
 @Component
 public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
 
-    private static final Logger log = LoggerFactory.getLogger(ConstrainedSubprocessSubstrate.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.sandbox.ConstrainedSubprocessSubstrate");
 
     /**
      * Environment variables passed through to sandboxed processes (the rest are dropped). Kept to
@@ -43,7 +43,7 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
      * project - without them {@code npm run dev} dies immediately (observed: exit 1 in ~9ms). No
      * credential-bearing vars are on the list.
      */
-    private static final List<String> ENV_ALLOWLIST =
+    private static final @NonNull List<String> ENV_ALLOWLIST =
             List.of(
                     "PATH",
                     "HOME",
@@ -77,7 +77,7 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
      * the {@link KernelSandboxSubstrate} bean in production so the wall applies to spawned
      * commands.
      */
-    private final @Nullable KernelSandboxSubstrate kernelWall;
+    private final KernelSandboxSubstrate kernelWall;
 
     /** No-arg constructor (tests): no kernel wall — attach is skipped. */
     public ConstrainedSubprocessSubstrate() {
@@ -88,9 +88,7 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
      * Spring constructor: injects the kernel wall so spawned processes are attached in production.
      */
     @Autowired
-    public
-    @NonNull
-    ConstrainedSubprocessSubstrate(@NonNull KernelSandboxSubstrate kernelWall) {
+    public ConstrainedSubprocessSubstrate(@NonNull KernelSandboxSubstrate kernelWall) {
         this.kernelWall = kernelWall;
     }
 
@@ -360,7 +358,7 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
             // The wall is best-effort hardening — a failure to attach must not break the run.
             log.debug(
                     "ConstrainedSubprocessSubstrate: kernel-wall attach failed: {}",
-                    t.getMessage());
+                    String.valueOf(t.getMessage()));
         }
     }
 
@@ -377,7 +375,10 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
     public void writeFile(@NonNull SandboxHandle h, @NonNull Path rel, byte @NonNull [] content) {
         try {
             Path resolved = resolveUnderWorkspace(h, rel);
-            Files.createDirectories(resolved.getParent());
+            Path parent = resolved.getParent();
+            if (parent != null) {
+                Files.createDirectories(parent);
+            }
             Files.write(resolved, content);
         } catch (IOException e) {
             throw new IllegalStateException("writeFile failed: " + rel, e);
@@ -401,11 +402,11 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
         Path resolved = resolveUnderWorkspace(h, rel);
         try (Stream<Path> stream = Files.list(resolved)) {
             return stream.map(
-                            p ->
-                                    new Entry(
-                                            p.getFileName().toString(),
-                                            Files.isDirectory(p),
-                                            sizeOf(p)))
+                            p -> {
+                                Path fileName = p.getFileName();
+                                String name = fileName == null ? p.toString() : fileName.toString();
+                                return new Entry(name, Files.isDirectory(p), sizeOf(p));
+                            })
                     .sorted()
                     .toList();
         } catch (IOException e) {

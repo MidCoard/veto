@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -44,16 +45,17 @@ import top.focess.veto.llm.core.ToolDefinition;
  * MATE sees everything except all group tools.
  */
 @SpringBootTest
+@SuppressWarnings("initialization.field.uninitialized")
 class SystemPromptDumpTest {
 
-    private static final Path DUMP_DIR = Path.of("build", "prompt-dump");
+    private static final @NonNull Path DUMP_DIR = Path.of("build", "prompt-dump");
 
-    @Autowired private ToolEngine mcpEngine;
-    @Autowired private CapabilityTranslator translator;
-    @Autowired private Workspace workspace;
-    @Autowired private RoleToolFilter roleToolFilter;
+    @Autowired private @NonNull ToolEngine mcpEngine;
+    @Autowired private @NonNull CapabilityTranslator translator;
+    @Autowired private @NonNull Workspace workspace;
+    @Autowired private @NonNull RoleToolFilter roleToolFilter;
 
-    private final SystemPromptResolver resolver = new SystemPromptResolver();
+    private final @NonNull SystemPromptResolver resolver = new SystemPromptResolver();
 
     @Test
     void dumpFullSystemPrompts() throws IOException {
@@ -73,7 +75,8 @@ class SystemPromptDumpTest {
         // Full compiled prompt per role x policy, using the role-scoped tool set from
         // RoleToolFilter (the same path production takes via AgentService.buildPersona).
         DeployerPolicy[] policies = {DeployerPolicy.FULL_ACCESS, DeployerPolicy.SANDBOXED};
-        for (Role role : Role.values()) {
+        Role[] roles = roles();
+        for (Role role : roles) {
             List<ToolDefinition> roleTools =
                     translator.translateTools(new ArrayList<>(roleToolFilter.resolve(role)));
             for (DeployerPolicy policy : policies) {
@@ -85,7 +88,7 @@ class SystemPromptDumpTest {
             write("03-tools-" + role + ".md", inventory(roleTools));
         }
 
-        int count = 3 + Role.values().length * (policies.length + 1);
+        int count = 3 + roles.length * (policies.length + 1);
         System.out.println(
                 "=== System-prompt dump written to "
                         + DUMP_DIR.toAbsolutePath()
@@ -96,13 +99,13 @@ class SystemPromptDumpTest {
         assertTrue(!flatTools.isEmpty(), "tool catalog is non-empty");
     }
 
-    private String render(
-            Role role,
-            DeployerPolicy policy,
-            String identity,
-            List<ToolDefinition> tools,
+    private @NonNull String render(
+            @NonNull Role role,
+            @NonNull DeployerPolicy policy,
+            @NonNull String identity,
+            @NonNull List<@NonNull ToolDefinition> tools,
             String law,
-            String template) {
+            @NonNull String template) {
         Map<String, String> blocks = new LinkedHashMap<>();
         blocks.put("LAW", PromptBlocks.law(law != null ? law : ""));
         blocks.put("IDENTITY", identity);
@@ -114,7 +117,7 @@ class SystemPromptDumpTest {
         return PromptTemplate.render(template, blocks);
     }
 
-    private String identityFor(Role role) {
+    private @NonNull String identityFor(@NonNull Role role) {
         return switch (role) {
             case STANDALONE ->
                     PromptBlocks.identity(
@@ -131,7 +134,7 @@ class SystemPromptDumpTest {
         };
     }
 
-    private String inventory(List<ToolDefinition> tools) {
+    private @NonNull String inventory(@NonNull List<@NonNull ToolDefinition> tools) {
         StringBuilder sb =
                 new StringBuilder("# Tool Inventory (").append(tools.size()).append(")\n\n");
         for (ToolDefinition t : tools) {
@@ -144,7 +147,13 @@ class SystemPromptDumpTest {
         return sb.toString();
     }
 
-    private void write(String name, String content) throws IOException {
+    private void write(@NonNull String name, @NonNull String content) throws IOException {
         Files.writeString(DUMP_DIR.resolve(name), content);
+    }
+
+    private static @NonNull Role @NonNull [] roles() {
+        Role[] roles = Role.values();
+        if (roles == null) throw new AssertionError("Role.values returned null");
+        return roles;
     }
 }

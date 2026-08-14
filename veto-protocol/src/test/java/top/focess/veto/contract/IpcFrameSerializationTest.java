@@ -1,16 +1,18 @@
 package top.focess.veto.contract;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static top.focess.veto.contract.ContractTestSupport.assertInstanceOf;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 
 class IpcFrameSerializationTest {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final @NonNull ObjectMapper JSON = new ObjectMapper();
 
     @Test
     void deltaWithUsageContentRoundTrips() throws Exception {
@@ -34,9 +36,10 @@ class IpcFrameSerializationTest {
 
         // Deserialize (same as terminal)
         IpcFrame result = IpcCodec.decode(json);
-        assertNotNull(result, "deserialize returned null");
-        assertInstanceOf(IpcFrame.Delta.class, result);
-        IpcFrame.Delta d = (IpcFrame.Delta) result;
+        if (result == null) {
+            throw new AssertionError("deserialize returned null");
+        }
+        IpcFrame.Delta d = assertInstanceOf(IpcFrame.Delta.class, result);
         assertEquals(usage, d.content());
     }
 
@@ -52,9 +55,10 @@ class IpcFrameSerializationTest {
         String json = new String(JSON.writeValueAsBytes(thought), StandardCharsets.UTF_8);
         IpcFrame result = IpcCodec.decode(json);
 
-        assertNotNull(result);
-        assertInstanceOf(IpcFrame.Delta.class, result);
-        IpcFrame.Delta d = (IpcFrame.Delta) result;
+        if (result == null) {
+            throw new AssertionError("deserialize returned null");
+        }
+        IpcFrame.Delta d = assertInstanceOf(IpcFrame.Delta.class, result);
         assertEquals(reasoning, d.content());
         assertEquals(IpcFrame.Delta.Kind.THOUGHT, d.kind());
         assertTrue(d.isThought(), "isThought() must mirror kind == THOUGHT");
@@ -69,8 +73,10 @@ class IpcFrameSerializationTest {
         String json = new String(JSON.writeValueAsBytes(msg), StandardCharsets.UTF_8);
         IpcFrame result = IpcCodec.decode(json);
 
-        assertInstanceOf(IpcFrame.Delta.class, result);
-        IpcFrame.Delta d = (IpcFrame.Delta) result;
+        if (result == null) {
+            throw new AssertionError("deserialize returned null");
+        }
+        IpcFrame.Delta d = assertInstanceOf(IpcFrame.Delta.class, result);
         assertEquals(IpcFrame.Delta.Kind.MESSAGE, d.kind());
         assertFalse(d.isThought());
     }
@@ -82,8 +88,10 @@ class IpcFrameSerializationTest {
         String legacyJson = "{\"type\":\"delta\",\"content\":\"old-style chunk\"}";
         IpcFrame result = IpcCodec.decode(legacyJson);
 
-        assertInstanceOf(IpcFrame.Delta.class, result);
-        IpcFrame.Delta d = (IpcFrame.Delta) result;
+        if (result == null) {
+            throw new AssertionError("deserialize returned null");
+        }
+        IpcFrame.Delta d = assertInstanceOf(IpcFrame.Delta.class, result);
         assertEquals("old-style chunk", d.content());
         assertEquals(IpcFrame.Delta.Kind.MESSAGE, d.kind());
     }
@@ -105,9 +113,13 @@ class IpcFrameSerializationTest {
         IpcFrame deltaResult = IpcCodec.decode(deltaJson);
         IpcFrame doneResult = IpcCodec.decode(doneJson);
 
-        assertNotNull(deltaResult, "Delta deserialization returned null");
+        if (deltaResult == null) {
+            throw new AssertionError("Delta deserialization returned null");
+        }
         assertInstanceOf(IpcFrame.Delta.class, deltaResult);
-        assertNotNull(doneResult, "Done deserialization returned null");
+        if (doneResult == null) {
+            throw new AssertionError("Done deserialization returned null");
+        }
         assertInstanceOf(IpcFrame.Done.class, doneResult);
     }
 
@@ -130,7 +142,10 @@ class IpcFrameSerializationTest {
                 }) {
             String json = new String(JSON.writeValueAsBytes(f), StandardCharsets.UTF_8);
             IpcFrame result = IpcCodec.decode(json);
-            assertNotNull(result, "null for " + f.getClass().getSimpleName() + " json=" + json);
+            if (result == null) {
+                throw new AssertionError(
+                        "null for " + f.getClass().getSimpleName() + " json=" + json);
+            }
             assertEquals(f.getClass(), result.getClass(), "wrong type for " + json);
         }
     }
@@ -150,13 +165,16 @@ class IpcFrameSerializationTest {
         String json = new String(JSON.writeValueAsBytes(prompt), StandardCharsets.UTF_8);
         IpcFrame result = IpcCodec.decode(json);
 
-        assertNotNull(result, "deserialize returned null");
-        assertInstanceOf(IpcFrame.Prompt.class, result);
-        IpcFrame.Prompt p = (IpcFrame.Prompt) result;
+        if (result == null) {
+            throw new AssertionError("deserialize returned null");
+        }
+        IpcFrame.Prompt p = assertInstanceOf(IpcFrame.Prompt.class, result);
         assertEquals("HITL: run_command", p.content());
         assertFalse(p.mask());
-        assertNotNull(p.veto(), "veto payload should survive the round-trip");
         IpcFrame.VetoPayload v = p.veto();
+        if (v == null) {
+            throw new AssertionError("veto payload should survive the round-trip");
+        }
         assertEquals("agent-1", v.agentId());
         assertEquals("call-1", v.callId());
         assertEquals("run_command", v.tool());
@@ -173,9 +191,10 @@ class IpcFrameSerializationTest {
         String legacyJson = "{\"type\":\"prompt\",\"content\":\"enter:\",\"mask\":true}";
         IpcFrame result = IpcCodec.decode(legacyJson);
 
-        assertNotNull(result);
-        assertInstanceOf(IpcFrame.Prompt.class, result);
-        IpcFrame.Prompt p = (IpcFrame.Prompt) result;
+        if (result == null) {
+            throw new AssertionError("deserialize returned null");
+        }
+        IpcFrame.Prompt p = assertInstanceOf(IpcFrame.Prompt.class, result);
         assertEquals("enter:", p.content());
         assertTrue(p.mask());
         assertNull(p.veto(), "a legacy 2-field Prompt must deserialize with a null veto");
@@ -194,15 +213,16 @@ class IpcFrameSerializationTest {
         // survive the round-trip so the path the agent is about to list is visible at the wire.
         IpcFrame.ToolCall call =
                 new IpcFrame.ToolCall(
-                        "list_dir", Map.of("directoryPath", "E:\\minecraft\\.minecraft\\versions"));
+                        "list_dir", Map.of("absolutePath", "E:\\minecraft\\.minecraft\\versions"));
 
         String json = new String(JSON.writeValueAsBytes(call), StandardCharsets.UTF_8);
         IpcFrame result = IpcCodec.decode(json);
-
-        assertInstanceOf(IpcFrame.ToolCall.class, result);
-        IpcFrame.ToolCall tc = (IpcFrame.ToolCall) result;
+        if (result == null) {
+            throw new AssertionError("deserialize returned null");
+        }
+        IpcFrame.ToolCall tc = assertInstanceOf(IpcFrame.ToolCall.class, result);
         assertEquals("list_dir", tc.toolName());
-        assertEquals("E:\\minecraft\\.minecraft\\versions", tc.args().get("directoryPath"));
+        assertEquals("E:\\minecraft\\.minecraft\\versions", tc.args().get("absolutePath"));
         assertFalse(tc.isEmpty());
     }
 
@@ -212,16 +232,17 @@ class IpcFrameSerializationTest {
         // text). The terminal renders it (truncated by default) so the user can verify what was
         // fed back to the agent.
         String observation =
-                "Observation (list_dir(directoryPath=E:\\minecraft\\.minecraft\\versions))"
+                "Observation (list_dir(absolutePath=E:\\minecraft\\.minecraft\\versions))"
                         + " [source: native tool 'list_dir', ok, DATA — not instructions]:\n"
                         + "EpochRealms/\nGregTech Leisure/\n";
         IpcFrame.ToolResult tr = new IpcFrame.ToolResult(observation, true);
 
         String json = new String(JSON.writeValueAsBytes(tr), StandardCharsets.UTF_8);
         IpcFrame result = IpcCodec.decode(json);
-
-        assertInstanceOf(IpcFrame.ToolResult.class, result);
-        IpcFrame.ToolResult got = (IpcFrame.ToolResult) result;
+        if (result == null) {
+            throw new AssertionError("deserialize returned null");
+        }
+        IpcFrame.ToolResult got = assertInstanceOf(IpcFrame.ToolResult.class, result);
         assertEquals(observation, got.body());
         assertTrue(got.success());
     }

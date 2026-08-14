@@ -5,7 +5,6 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.agent.mcp.ToolDefinition;
 import top.focess.veto.agent.skills.Skill;
 
@@ -23,13 +22,13 @@ import top.focess.veto.agent.skills.Skill;
 @Table(name = "personas")
 public class PersonaEntity {
 
-    @Id private String id;
+    @Id private @NonNull String id = "";
 
     @Column(nullable = false)
-    private String name;
+    private @NonNull String name = "";
 
     @Column(nullable = false)
-    private String description;
+    private @NonNull String description = "";
 
     @Column(name = "whitelisted_tools", columnDefinition = "TEXT")
     private String whitelistedTools;
@@ -39,9 +38,7 @@ public class PersonaEntity {
 
     protected PersonaEntity() {}
 
-    public
-    @NonNull
-    PersonaEntity(@NonNull AgentPersona persona) {
+    public PersonaEntity(@NonNull AgentPersona persona) {
         this.id = persona.id();
         this.name = persona.name();
         this.description = persona.description();
@@ -57,13 +54,13 @@ public class PersonaEntity {
         return new AgentPersona(
                 e.id,
                 e.name,
-                e.description == null ? "" : e.description,
+                e.description,
                 java.util.Set.of(), // tool resolution is a wiring concern
                 parseSkillList(e.skills),
                 Role.STANDALONE);
     }
 
-    private static java.util.@NonNull List<Skill> parseSkillList(@Nullable String s) {
+    private static java.util.@NonNull List<Skill> parseSkillList(String s) {
         if (s == null || s.isBlank()) {
             return java.util.List.of();
         }
@@ -74,15 +71,15 @@ public class PersonaEntity {
         return out;
     }
 
-    public String getId() {
+    public @NonNull String getId() {
         return id;
     }
 
-    public String getName() {
+    public @NonNull String getName() {
         return name;
     }
 
-    public String getDescription() {
+    public @NonNull String getDescription() {
         return description;
     }
 

@@ -16,14 +16,14 @@ import top.focess.veto.sandbox.BackgroundTaskManager;
 @Component
 public class TaskEventBridge {
 
-    private static final Logger log = LoggerFactory.getLogger(TaskEventBridge.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.bus.TaskEventBridge");
 
     private final @NonNull BackgroundTaskManager taskManager;
     private final @NonNull DeltaBroker broker;
 
-    public
-    @NonNull
-    TaskEventBridge(@NonNull BackgroundTaskManager taskManager, @NonNull DeltaBroker broker) {
+    public TaskEventBridge(
+            @NonNull BackgroundTaskManager taskManager, @NonNull DeltaBroker broker) {
         this.taskManager = taskManager;
         this.broker = broker;
     }
@@ -46,7 +46,8 @@ public class TaskEventBridge {
 
     private void publish(
             DeltaFrame.@NonNull Kind kind, BackgroundTaskManager.@NonNull TaskInfo info) {
-        if (info.sessionId() == null) {
+        java.util.UUID sessionId = info.sessionId();
+        if (sessionId == null) {
             // A task without a session (standalone / test) has no session-scoped subscriber to
             // route to; the tool_result of run_task already told the model the taskId.
             return;
@@ -54,7 +55,7 @@ public class TaskEventBridge {
         try {
             DeltaFrame.Builder b =
                     DeltaFrame.builder()
-                            .sessionId(info.sessionId())
+                            .sessionId(sessionId)
                             .kind(kind)
                             .attr("taskId", info.taskId())
                             .attr("agentId", info.agentId())

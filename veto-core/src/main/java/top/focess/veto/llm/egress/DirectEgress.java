@@ -21,15 +21,15 @@ public class DirectEgress implements LlmEgress {
      *
      * @param credentialResolver the resolver to use for fetching API keys
      */
-    public
-    @NonNull
-    DirectEgress(@NonNull CredentialResolver credentialResolver) {
+    public DirectEgress(@NonNull CredentialResolver credentialResolver) {
         this.credentialResolver = credentialResolver;
     }
 
     @Override
-    public EgressEndpoint resolve(
-            ProviderType providerType, String defaultBaseUrl, String credentialKey) {
+    public @NonNull EgressEndpoint resolve(
+            @NonNull ProviderType providerType,
+            String defaultBaseUrl,
+            @NonNull String credentialKey) {
         String apiKey = credentialResolver.resolve(providerType, credentialKey);
         return new EgressEndpoint(defaultBaseUrl, apiKey);
     }

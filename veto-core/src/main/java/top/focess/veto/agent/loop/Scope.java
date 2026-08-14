@@ -6,7 +6,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.agent.mcp.ToolResult;
 import top.focess.veto.llm.core.VetoResponse;
 
@@ -22,27 +21,23 @@ import top.focess.veto.llm.core.VetoResponse;
 public class Scope {
 
     /** Sentinel for unset slots — a value, not an error (checks branch on it). */
-    public static final Object UNDEFINED = new Object();
+    public static final @NonNull Object UNDEFINED = new Object();
 
-    private final Map<String, Object> bindings = new HashMap<>();
-    private final @NonNull Scope parent;
+    private final @NonNull Map<String, Object> bindings = new HashMap<>();
+    private final Scope parent;
     private final @NonNull ObjectMapper objectMapper;
 
-    public
-    @NonNull
-    Scope(@NonNull ObjectMapper objectMapper) {
+    public Scope(@NonNull ObjectMapper objectMapper) {
         this(objectMapper, null);
     }
 
-    public
-    @NonNull
-    Scope(@NonNull ObjectMapper objectMapper, @NonNull Scope parent) {
+    public Scope(@NonNull ObjectMapper objectMapper, Scope parent) {
         this.objectMapper = objectMapper;
         this.parent = parent;
     }
 
     /** Read-through to parent. Missing key returns {@link #UNDEFINED}, not an error. */
-    public @NonNull Object get(@NonNull String var) {
+    public @NonNull Object get(String var) {
         if (var == null) {
             return UNDEFINED;
         }
@@ -56,7 +51,7 @@ public class Scope {
         return UNDEFINED;
     }
 
-    public boolean contains(@NonNull String var) {
+    public boolean contains(String var) {
         String key = var == null ? "" : (var.startsWith("$") ? var.substring(1) : var);
         return bindings.containsKey(key) || (parent != null && parent.contains(var));
     }
@@ -69,19 +64,18 @@ public class Scope {
     /**
      * Resolves a {@code $var|literal} spec to a concrete value (literal if no {@code $} prefix).
      */
-    public @NonNull Object resolveValue(@NonNull String spec) {
+    public @NonNull Object resolveValue(String spec) {
         if (spec == null) {
             return UNDEFINED;
         }
         if (spec.startsWith("$")) {
-            Object v = get(spec);
-            return v == UNDEFINED ? UNDEFINED : v;
+            return get(spec);
         }
         return spec; // literal
     }
 
     /** Resolves {@code $var} references inside a text against the scope (stringified). */
-    public @NonNull String resolveVars(@NonNull String text) {
+    public @NonNull String resolveVars(String text) {
         if (text == null) {
             return "";
         }
@@ -92,12 +86,12 @@ public class Scope {
         return out;
     }
 
-    private @NonNull String stringify(@Nullable Object value) {
+    private @NonNull String stringify(Object value) {
         return value == null ? "" : value.toString();
     }
 
     /** Binds a tool result's fields to {@code $var}s per the output bindings map. */
-    public void bindTool(@NonNull Map<String, String> outputs, @NonNull ToolResult result) {
+    public void bindTool(Map<String, String> outputs, ToolResult result) {
         if (outputs == null || result == null) {
             return;
         }
@@ -106,29 +100,30 @@ public class Scope {
             String var = entry.getKey();
             String field = entry.getValue();
             Object value = extractField(node, field, result.content());
-            put(var, value);
+            put(var, value == null ? "" : value);
         }
     }
 
     /** Binds a generate result's fields to {@code $var}s per the output bindings map. */
-    public void bindGenerate(@NonNull Map<String, String> outputs, @NonNull VetoResponse response) {
+    public void bindGenerate(Map<String, String> outputs, VetoResponse response) {
         if (outputs == null || response == null) {
             return;
         }
         for (var entry : outputs.entrySet()) {
             String var = entry.getKey();
             String field = entry.getValue();
+            String message = response.message();
             Object value =
                     switch (field) {
                         case "thought" -> response.thought();
-                        case "message" -> response.message();
-                        default -> response.message() != null ? response.message() : "";
+                        case "message" -> message;
+                        default -> message != null ? message : "";
                     };
-            put(var, value);
+            put(var, value == null ? "" : value);
         }
     }
 
-    private @Nullable JsonNode parseContent(@Nullable String content) {
+    private JsonNode parseContent(String content) {
         if (content == null || content.isBlank()) {
             return null;
         }
@@ -139,8 +134,7 @@ public class Scope {
         }
     }
 
-    private @Nullable Object extractField(
-            @Nullable JsonNode node, @Nullable String field, @Nullable String rawContent) {
+    private Object extractField(JsonNode node, String field, String rawContent) {
         if (node == null || field == null || field.isBlank() || "content".equals(field)) {
             return rawContent;
         }
@@ -165,7 +159,7 @@ public class Scope {
     /**
      * Synthesizes a result string from accumulated bindings (for STOP without a result binding).
      */
-    public String synthesize() {
+    public @NonNull String synthesize() {
         if (bindings.isEmpty()) {
             return "";
         }
@@ -179,7 +173,7 @@ public class Scope {
         return sb.toString();
     }
 
-    public @Nullable Optional<Object> opt(@NonNull String var) {
+    public @NonNull Optional<Object> opt(@NonNull String var) {
         Object v = get(var);
         return v == UNDEFINED ? Optional.empty() : Optional.of(v);
     }

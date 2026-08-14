@@ -5,11 +5,13 @@ import static org.mockito.Mockito.*;
 
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.mcp.NativeToolDefinition;
 import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RiskCategory;
+import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.mcp.ToolResult;
 import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.veto.LlamaCppBridge;
@@ -22,28 +24,29 @@ import top.focess.veto.veto.LlamaCppBridge;
  */
 class IngressDefenseMaskingTest {
 
-    private static NativeToolDefinition readToolDef() {
+    @SuppressWarnings("type.arguments.not.inferred")
+    private static @NonNull NativeToolDefinition readToolDef() {
         return new NativeToolDefinition(
                 "read_file",
                 "Read a file",
                 RiskCategory.READ_ONLY,
                 false,
-                Void.class,
+                ToolDocs.nonNullClass(Void.class),
                 Map.of("path", ParamCategory.FILESYSTEM_PATH));
     }
 
-    private static ToolResult result(String content) {
+    private static @NonNull ToolResult result(@NonNull String content) {
         return new ToolResult("read_file", "c1", true, content);
     }
 
-    private static ToolCall call() {
+    private static @NonNull ToolCall call() {
         return new ToolCall("read_file", Map.of("path", "/tmp/x"), "c1");
     }
 
     @Test
     void riskyObservationConsultsSlmSemanticMasker() {
         // A SemanticMasker backed by an available SLM that rates the observation "high" risk.
-        LlamaCppBridge bridge = mock(LlamaCppBridge.class);
+        LlamaCppBridge bridge = mock(ToolDocs.nonNullClass(LlamaCppBridge.class));
         when(bridge.isAvailable()).thenReturn(true);
         when(bridge.infer(anyString(), anyString()))
                 .thenReturn(CompletableFuture.completedFuture("{\"risk\":\"high\"}"));

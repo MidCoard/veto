@@ -7,6 +7,7 @@ import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.llm.client.LlmClient;
 import top.focess.veto.llm.core.ResolvedRequest;
 import top.focess.veto.llm.core.ToolDefinition;
@@ -27,10 +28,11 @@ import top.focess.veto.observability.AuditLogger;
  * logic is confined to {@link LlmClient} adapters — providers never import SDK types.
  */
 public abstract class AbstractLlmProvider implements LLMProviderStrategy {
-    protected final ObjectMapper objectMapper;
-    protected final AuditLogger auditLogger;
+    protected final @NonNull ObjectMapper objectMapper;
+    protected final @NonNull AuditLogger auditLogger;
 
-    private static final Logger log = LoggerFactory.getLogger(AbstractLlmProvider.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.llm.provider.AbstractLlmProvider");
 
     /**
      * Constructs a new AbstractLlmProvider with the specified dependencies.
@@ -38,9 +40,8 @@ public abstract class AbstractLlmProvider implements LLMProviderStrategy {
      * @param objectMapper the mapper for JSON serialization
      * @param auditLogger the logger for auditing requests
      */
-    protected
-    @NonNull
-    AbstractLlmProvider(@NonNull ObjectMapper objectMapper, @NonNull AuditLogger auditLogger) {
+    protected AbstractLlmProvider(
+            @NonNull ObjectMapper objectMapper, @NonNull AuditLogger auditLogger) {
         this.objectMapper = objectMapper;
         this.auditLogger = auditLogger;
     }
@@ -101,6 +102,10 @@ public abstract class AbstractLlmProvider implements LLMProviderStrategy {
             auditLogger.logLLMExchange(
                     requestId, request.modelName(), raw.requestSummary(), raw.rawResponse());
             VetoResponse response = parse(raw.rawResponse());
+            var calls = response.calls();
+            String message = response.message();
+            String thought = response.thought();
+            var features = response.features();
             // Parsed-field summary only (no raw payloads / no secrets). The calls count is the
             // loop signature: calls=0 means the turn stops (the runAutonomous no-calls
             // termination). is_finished was removed - termination routes on call presence.
@@ -109,28 +114,28 @@ public abstract class AbstractLlmProvider implements LLMProviderStrategy {
                             + " guided={}",
                     requestId,
                     request.modelName(),
-                    response.hasCalls() ? response.calls().size() : 0,
-                    response.message() != null ? response.message().length() : 0,
-                    response.thought() != null ? response.thought().length() : 0,
-                    response.features() != null ? response.features().guided() : null);
+                    calls == null ? 0 : calls.size(),
+                    message != null ? message.length() : 0,
+                    thought != null ? thought.length() : 0,
+                    String.valueOf(features != null ? features.guided() : null));
             return response;
         } catch (LlmException e) {
             // WARN, not DEBUG: a failed provider call is the actionable line when an episode
             // fails - it must survive any log-level sweep without digging through request dumps.
             log.warn(
-                    "LLM call failed requestId={} model={} {}: {}",
+                    "LLM provider failure requestId={} model={} {}: {}",
                     requestId,
                     request.modelName(),
                     e.getClass().getSimpleName(),
-                    e.getMessage());
+                    String.valueOf(e.getMessage()));
             throw e;
         } catch (Exception e) {
             log.warn(
-                    "LLM call failed requestId={} model={} {}: {}",
+                    "Unexpected LLM call failure requestId={} model={} {}: {}",
                     requestId,
                     request.modelName(),
                     e.getClass().getSimpleName(),
-                    e.getMessage());
+                    String.valueOf(e.getMessage()));
             throw classify(e, request.modelName());
         }
     }
@@ -150,13 +155,13 @@ public abstract class AbstractLlmProvider implements LLMProviderStrategy {
 
     private @NonNull VetoResponse parse(@NonNull String rawResponse) {
         try {
-            return objectMapper.readValue(rawResponse, VetoResponse.class);
+            return objectMapper.readValue(rawResponse, ToolDocs.nonNullClass(VetoResponse.class));
         } catch (Exception e) {
             // Not JSON: signal a retryable failure so DefaultUniformLLMCaller's retry loop
             // re-prompts (the schema enforcement is probabilistic - a retry usually recovers).
             // The orchestrator converts this back to a plain-text message once its attempts are
             // exhausted, preserving the graceful-degradation behavior this fallback used to give.
-            if (rawResponse != null && !rawResponse.isBlank()) {
+            if (!rawResponse.isBlank()) {
                 log.warn(
                         "{} response was not valid JSON, requesting retry ({} chars)",
                         providerName(),

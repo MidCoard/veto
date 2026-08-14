@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -33,7 +32,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class HeuristicLeader {
 
-    private static final Logger log = LoggerFactory.getLogger(HeuristicLeader.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.group.HeuristicLeader");
 
     /** Per-node max retries before a Strategic Pivot (re-assign to a different Mate). */
     public static final int DEFAULT_MAX_RETRIES = 2;
@@ -48,9 +48,7 @@ public class HeuristicLeader {
         this(DEFAULT_MAX_RETRIES, DEFAULT_PIVOT_THRESHOLD);
     }
 
-    public
-    @NonNull
-    HeuristicLeader(int maxRetries, int pivotThreshold) {
+    public HeuristicLeader(int maxRetries, int pivotThreshold) {
         this.maxRetries = maxRetries;
         this.pivotThreshold = pivotThreshold;
     }
@@ -93,7 +91,7 @@ public class HeuristicLeader {
      * fewest currently-RUNNING assignments (load balance); if none match, pick any available Mate.
      * Returns null if no Mates are available.
      */
-    private @Nullable String pickMate(@NonNull DagNode n, @NonNull Map<String, String> mates) {
+    private String pickMate(@NonNull DagNode n, @NonNull Map<String, String> mates) {
         if (mates.isEmpty()) {
             return null;
         }

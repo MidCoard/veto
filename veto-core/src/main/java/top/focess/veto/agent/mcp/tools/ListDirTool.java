@@ -12,6 +12,7 @@ import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.SecurityHint;
 import top.focess.veto.agent.mcp.ToolDoc;
+import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.mcp.ToolSecurity;
 
 /** {@code list_dir} — list contents of a directory (files and child subdirectories). */
@@ -40,7 +41,7 @@ public final class ListDirTool implements NativeTool<ListDirTool.Args> {
                     tells you directly.
 
                     #### Behavior
-                    Lists the direct children of `directoryPath` (files and subdirectories, one level deep). \
+                    Lists the direct children of `absolutePath` (files and subdirectories, one level deep). \
                     Entries are sorted lexicographically. Subdirectory names are suffixed with `/` so you can \
                     distinguish folders from files at a glance. Hidden files (dotfiles) are included. The \
                     listing is not recursive.
@@ -50,7 +51,7 @@ public final class ListDirTool implements NativeTool<ListDirTool.Args> {
                     There is no JSON envelope. An empty directory yields no output lines.
 
                     #### Errors & edge cases
-                    - `directoryPath` does not exist or is not a directory -> \
+                    - `absolutePath` does not exist or is not a directory -> \
                     `{"status":"error","error":"Not a directory: <path>"}`. **This is the canonical
                     signal that the path you constructed does not exist.** The right response is NOT
                     to retry with a similar guess - return to your last successful `list_dir`
@@ -65,25 +66,25 @@ public final class ListDirTool implements NativeTool<ListDirTool.Args> {
                     filesystem exposes.
 
                     #### Security
-                    `directoryPath` is a FILESYSTEM_PATH parameter: the Gateway screens it against the deployer \
+                    `absolutePath` is a FILESYSTEM_PATH parameter: the Gateway screens it against the deployer \
                     policy and allowed roots before the listing. The operation is read-only \
                     (`RiskCategory.READ_ONLY`); nothing is modified. Returned names are subject to ingress \
                     masking. Do not attempt to list deployer-fenced roots - the call is blocked upstream; \
                     change scope instead.
                     """,
             examples = {
-                "{\"directoryPath\": \"/abs/src\"}",
-                "{\"directoryPath\": \"/abs\"}",
-                "{\"directoryPath\": \"/abs/src/main/java\"}",
-                "{\"directoryPath\": \"/abs/src/test\"}",
-                "{\"directoryPath\": \"/abs/config\"}",
-                "{\"directoryPath\": \"/abs/src/util\"}",
-                "{\"directoryPath\": \"/abs/notes\"}"
+                "{\"absolutePath\": \"/abs/src\"}",
+                "{\"absolutePath\": \"/abs\"}",
+                "{\"absolutePath\": \"/abs/src/main/java\"}",
+                "{\"absolutePath\": \"/abs/src/test\"}",
+                "{\"absolutePath\": \"/abs/config\"}",
+                "{\"absolutePath\": \"/abs/src/util\"}",
+                "{\"absolutePath\": \"/abs/notes\"}"
             },
             returnExamples = {"src/\nbuild.gradle.kts\nREADME.md"})
     public record Args(
             @SecurityHint(ParamCategory.FILESYSTEM_PATH) @Doc("Absolute path to list contents of.")
-                    @NonNull String directoryPath) {}
+                    @NonNull String absolutePath) {}
 
     @Override
     public @NonNull String getName() {
@@ -97,15 +98,15 @@ public final class ListDirTool implements NativeTool<ListDirTool.Args> {
 
     @Override
     public @NonNull Class<Args> getArgsClass() {
-        return Args.class;
+        return ToolDocs.nonNullClass(Args.class);
     }
 
     @Override
     public @NonNull String execute(@NonNull Args args) throws IOException {
-        Path path = Path.of(args.directoryPath());
+        Path path = Path.of(args.absolutePath());
         if (!Files.isDirectory(path)) {
             return "{\"status\":\"error\",\"error\":\"Not a directory: "
-                    + args.directoryPath()
+                    + args.absolutePath()
                     + "\"}";
         }
         StringBuilder sb = new StringBuilder();

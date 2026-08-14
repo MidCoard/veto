@@ -8,11 +8,13 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.UUID;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import top.focess.veto.agent.mcp.ToolCallContextHolder;
+import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.sandbox.BackgroundTaskManager;
 import top.focess.veto.sandbox.ConstrainedSubprocessSubstrate;
 import top.focess.veto.sandbox.SandboxManager;
@@ -22,13 +24,15 @@ import top.focess.veto.sandbox.SandboxManager;
  * their beans (no Spring): launch a quick-exit task, observe it finish via {@code view_task}, and
  * confirm {@code stop_task} is idempotent on an already-exited task.
  */
+@SuppressWarnings("initialization.field.uninitialized")
 class RunTaskToolTest {
 
-    private final ObjectMapper mapper = new ObjectMapper().registerModule(new JavaTimeModule());
-    private BackgroundTaskManager manager;
-    private RunTaskTool runTask;
-    private ViewTaskTool status;
-    private StopTaskTool stop;
+    private final @NonNull ObjectMapper mapper =
+            new ObjectMapper().registerModule(new JavaTimeModule());
+    private @NonNull BackgroundTaskManager manager;
+    private @NonNull RunTaskTool runTask;
+    private @NonNull ViewTaskTool status;
+    private @NonNull StopTaskTool stop;
 
     @BeforeEach
     void setUp() {
@@ -48,7 +52,7 @@ class RunTaskToolTest {
     }
 
     @Test
-    void runTaskLaunchesAndStatusReportsExit(@TempDir Path tempDir) throws Exception {
+    void runTaskLaunchesAndStatusReportsExit(@TempDir @NonNull Path tempDir) throws Exception {
         boolean win = System.getProperty("os.name").toLowerCase().contains("win");
         String exe =
                 Path.of(System.getProperty("java.home"), "bin", win ? "java.exe" : "java")
@@ -73,7 +77,7 @@ class RunTaskToolTest {
             if (!statusNode.get("alive").asBoolean()) break;
             Thread.sleep(50);
         }
-        assertNotNull(statusNode);
+        if (statusNode == null) throw new AssertionError("missing task status");
         assertFalse(statusNode.get("alive").asBoolean(), "task should have exited");
         assertEquals(0, statusNode.get("exitCode").asInt(), "java -version exits 0");
         assertFalse(statusNode.get("recentOutput").asText().isBlank(), "output captured");
@@ -84,7 +88,7 @@ class RunTaskToolTest {
     }
 
     @Test
-    void runTaskRejectsMultipleCommands(@TempDir Path tempDir) {
+    void runTaskRejectsMultipleCommands(@TempDir @NonNull Path tempDir) {
         RunTaskTool.Args args =
                 new RunTaskTool.Args(
                         List.of(
@@ -100,13 +104,13 @@ class RunTaskToolTest {
     }
 
     @Test
-    void runTaskRequiresExplicitTimeout(@TempDir Path tempDir) {
+    void runTaskRequiresExplicitTimeout(@TempDir @NonNull Path tempDir) throws Exception {
         RunTaskTool.Args args =
-                new RunTaskTool.Args(
-                        List.of(new RunCommandTool.CommandInput("a", List.of())),
-                        tempDir.toString(),
-                        null,
-                        null);
+                mapper.readValue(
+                        "{\"commands\":[{\"executable\":\"a\",\"args\":[]}],\"cwd\":\""
+                                + tempDir.toString().replace("\\", "\\\\")
+                                + "\"}",
+                        ToolDocs.nonNullClass(RunTaskTool.Args.class));
         String json = runTask.execute(args);
         assertTrue(json.contains("\"status\":\"error\""), "null timeout must be rejected");
         assertTrue(json.contains("timeout"));

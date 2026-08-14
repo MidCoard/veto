@@ -22,7 +22,13 @@ class DeepSeekLlmClientExtractJsonTest {
 
     private final DeepSeekLlmClient client =
             new DeepSeekLlmClient(
-                    "", "test-key", "DeepSeek", mapper, mock(CapabilityTranslator.class));
+                    "",
+                    "test-key",
+                    "DeepSeek",
+                    mapper,
+                    mock(
+                            top.focess.veto.agent.mcp.ToolDocs.nonNullClass(
+                                    CapabilityTranslator.class)));
 
     @Test
     void cleanSingleObjectPassesThrough() throws Exception {

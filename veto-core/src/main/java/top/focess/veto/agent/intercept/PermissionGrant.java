@@ -39,19 +39,19 @@ public sealed interface PermissionGrant
                 PermissionGrant.LegacySessionRule {
 
     /** Tool family this grant covers. */
-    String toolFamily();
+    @NonNull String toolFamily();
 
     /**
      * Returns true if the given call matches this grant's match key. The call's danger is checked
      * elsewhere (deterministic floor); this only confirms structural / canonical-path-prefix match.
      */
-    boolean matches(ToolCallSpec call);
+    boolean matches(@NonNull ToolCallSpec call);
 
     /** A minimal spec of a call for matching — pulled from the {@code ToolCall} at match time. */
     record ToolCallSpec(
-            String toolName,
-            Map<String, Object> args,
-            List<String> flagShape,
+            @NonNull String toolName,
+            @NonNull Map<@NonNull String, Object> args,
+            @NonNull List<@NonNull String> flagShape,
             Path canonicalPathArg) {}
 
     /**
@@ -65,7 +65,7 @@ public sealed interface PermissionGrant
     record ReadGrant(
             @NonNull String toolFamily,
             java.nio.file.@NonNull Path directoryPrefix,
-            @NonNull List<String> flagShape)
+            @NonNull List<@NonNull String> flagShape)
             implements PermissionGrant {
 
         public ReadGrant {
@@ -95,7 +95,7 @@ public sealed interface PermissionGrant
     record WriteGrant(
             @NonNull String toolName,
             java.nio.file.@NonNull Path directoryPrefix,
-            @NonNull List<String> flagShape)
+            @NonNull List<@NonNull String> flagShape)
             implements PermissionGrant {
 
         public WriteGrant {
@@ -104,7 +104,7 @@ public sealed interface PermissionGrant
         }
 
         @Override
-        public String toolFamily() {
+        public @NonNull String toolFamily() {
             return toolName;
         }
 
@@ -130,8 +130,8 @@ public sealed interface PermissionGrant
      */
     record CommandGrant(
             @NonNull String executable,
-            @NonNull List<String> subcommands,
-            @NonNull List<String> flagShape)
+            @NonNull List<@NonNull String> subcommands,
+            @NonNull List<@NonNull String> flagShape)
             implements PermissionGrant {
 
         public CommandGrant {
@@ -140,7 +140,7 @@ public sealed interface PermissionGrant
         }
 
         @Override
-        public String toolFamily() {
+        public @NonNull String toolFamily() {
             return "run_command";
         }
 
@@ -150,7 +150,7 @@ public sealed interface PermissionGrant
                 return false;
             }
             // Extract executable + subcommands from the call's commands[].
-            List<String> callCmd = extractCommand(call);
+            List<@NonNull String> callCmd = extractCommand(call);
             if (callCmd == null || callCmd.isEmpty()) {
                 return false;
             }
@@ -171,8 +171,8 @@ public sealed interface PermissionGrant
         }
 
         @SuppressWarnings("unchecked")
-        private static List<String> extractCommand(ToolCallSpec call) {
-            Object commandsObj = call.args() == null ? null : call.args().get("commands");
+        private static List<@NonNull String> extractCommand(@NonNull ToolCallSpec call) {
+            Object commandsObj = call.args().get("commands");
             if (!(commandsObj instanceof List<?> commands) || commands.isEmpty()) {
                 return null;
             }
@@ -185,7 +185,7 @@ public sealed interface PermissionGrant
             if (execObj == null) {
                 return null;
             }
-            java.util.List<String> out = new java.util.ArrayList<>();
+            java.util.List<@NonNull String> out = new java.util.ArrayList<>();
             out.add(execObj.toString());
             if (argsObj instanceof List<?> argList) {
                 for (Object a : argList) {
@@ -203,7 +203,7 @@ public sealed interface PermissionGrant
      *     directory subtree); the family set is unused and only kept for source compatibility.
      */
     @Deprecated
-    java.util.Set<String> READ_TOOL_FAMILY =
+    java.util.@NonNull Set<@NonNull String> READ_TOOL_FAMILY =
             java.util.Set.of("view_file", "list_dir", "grep_search");
 
     /**
@@ -212,11 +212,12 @@ public sealed interface PermissionGrant
      * tool. Distinct from {@link ReadGrant}/{@link WriteGrant}/{@link CommandGrant} (no per-tool
      * shape) — kept so the old code path still works until callers migrate.
      */
-    record LegacySessionRule(@NonNull String toolName, java.util.@NonNull Map<String, Object> args)
+    record LegacySessionRule(
+            @NonNull String toolName, java.util.@NonNull Map<@NonNull String, Object> args)
             implements PermissionGrant {
 
         @Override
-        public String toolFamily() {
+        public @NonNull String toolFamily() {
             return toolName;
         }
 

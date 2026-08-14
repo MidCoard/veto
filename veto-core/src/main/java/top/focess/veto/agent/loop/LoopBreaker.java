@@ -24,9 +24,7 @@ public final class LoopBreaker {
      * @param maxCallsPerEpisode the model-call ceiling between two user prompts; {@code < 0} =
      *     infinite (never trips).
      */
-    public
-    @NonNull
-    LoopBreaker(long maxCallsPerEpisode) {
+    public LoopBreaker(long maxCallsPerEpisode) {
         this.maxCallsPerEpisode = maxCallsPerEpisode;
     }
 

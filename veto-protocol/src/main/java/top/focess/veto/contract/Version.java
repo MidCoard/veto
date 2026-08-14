@@ -3,7 +3,6 @@ package top.focess.veto.contract;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
 /**
  * A semantic version with structured, comparable meaning.
@@ -21,8 +20,7 @@ import org.jspecify.annotations.Nullable;
  * <p>Null is never a valid {@code Version}; peers that genuinely cannot report a version use the
  * {@link #UNKNOWN} sentinel.
  */
-public record Version(
-        int major, int minor, int patch, @Nullable String preRelease, @Nullable String build)
+public record Version(int major, int minor, int patch, String preRelease, String build)
         implements Comparable<@NonNull Version> {
 
     /** Non-null sentinel for "no version reported"; distinguishable via {@link #isUnknown()}. */
@@ -154,7 +152,7 @@ public record Version(
         return a.compareTo(b); // lexical
     }
 
-    private static @Nullable Integer tryNumeric(@NonNull String s) {
+    private static Integer tryNumeric(@NonNull String s) {
         try {
             return Integer.parseInt(s);
         } catch (NumberFormatException e) {

@@ -13,7 +13,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -30,7 +29,8 @@ import org.slf4j.LoggerFactory;
  */
 public final class McpJsonRpcClient {
 
-    private static final Logger log = LoggerFactory.getLogger(McpJsonRpcClient.class);
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.agent.mcp.McpJsonRpcClient");
 
     private final @NonNull ObjectMapper mapper;
 
@@ -38,9 +38,7 @@ public final class McpJsonRpcClient {
         this(new ObjectMapper());
     }
 
-    public
-    @NonNull
-    McpJsonRpcClient(@NonNull ObjectMapper mapper) {
+    public McpJsonRpcClient(@NonNull ObjectMapper mapper) {
         this.mapper = mapper;
     }
 
@@ -79,10 +77,7 @@ public final class McpJsonRpcClient {
     }
 
     private @NonNull JsonNode invoke(
-            @NonNull McpTransport transport,
-            @NonNull String method,
-            @Nullable Object params,
-            long timeoutMs)
+            @NonNull McpTransport transport, @NonNull String method, Object params, long timeoutMs)
             throws IOException {
         return switch (transport) {
             case McpTransport.StdioMcpTransport stdio ->
@@ -103,94 +98,71 @@ public final class McpJsonRpcClient {
      * the {@code java.net.UnixDomainSocketAddress} path; Windows hosts don't have unix sockets and
      * the transport returns an {@code IOException}.
      *
-     * <p>The implementation uses reflection to keep the JDK classpath portable (Unix sockets are a
-     * Linux/macOS runtime concern; the {@code java.net.UnixDomainSocketAddress} class exists in
-     * Java 16+ but is only usable on POSIX systems).
+     * <p>Unix-domain socket types are part of the supported Java baseline. Platforms without Unix
+     * sockets fail with a descriptive {@link IOException}.
      */
     private @NonNull JsonNode invokeSocket(
             McpTransport.@NonNull SocketMcpTransport transport,
             @NonNull String method,
-            @Nullable Object params,
+            Object params,
             long timeoutMs)
             throws IOException {
         if (!java.nio.file.Files.exists(transport.socketPath())) {
             throw new IOException("Socket MCP server not found at " + transport.socketPath());
         }
-        try {
-            Class<?> addrClass = Class.forName("java.net.UnixDomainSocketAddress");
-            Class<?> channelClass = Class.forName("java.nio.channels.SocketChannel");
-            Class<?> familiesClass = Class.forName("java.net.StandardProtocolFamily");
-            Object unixFamily = familiesClass.getField("UNIX").get(null);
-            java.lang.reflect.Method ofMethod = addrClass.getMethod("of", java.nio.file.Path.class);
-            Object address = ofMethod.invoke(null, transport.socketPath());
-            java.lang.reflect.Method openMethod = channelClass.getMethod("open", familiesClass);
-            java.nio.channels.SocketChannel channel =
-                    (java.nio.channels.SocketChannel) openMethod.invoke(null, unixFamily);
-            try (java.nio.channels.SocketChannel ch = channel) {
-                java.lang.reflect.Method connectMethod =
-                        channelClass.getMethod("connect", java.net.SocketAddress.class);
-                connectMethod.invoke(ch, address);
-                Map<String, Object> request =
-                        Map.of(
-                                "jsonrpc",
-                                "2.0",
-                                "id",
-                                1,
-                                "method",
-                                method,
-                                "params",
-                                params == null ? Map.of() : params);
-                byte[] body = (mapper.writeValueAsString(request) + "\n").getBytes();
-                java.nio.ByteBuffer out = java.nio.ByteBuffer.wrap(body);
-                while (out.hasRemaining()) {
-                    ch.write(out);
+        try (java.nio.channels.SocketChannel ch =
+                java.nio.channels.SocketChannel.open(java.net.StandardProtocolFamily.UNIX)) {
+            java.net.UnixDomainSocketAddress address =
+                    java.net.UnixDomainSocketAddress.of(transport.socketPath());
+            ch.connect(address);
+            Map<String, Object> request =
+                    Map.of(
+                            "jsonrpc",
+                            "2.0",
+                            "id",
+                            1,
+                            "method",
+                            method,
+                            "params",
+                            params == null ? Map.of() : params);
+            byte[] body = (mapper.writeValueAsString(request) + "\n").getBytes();
+            java.nio.ByteBuffer out = java.nio.ByteBuffer.wrap(body);
+            while (out.hasRemaining()) {
+                ch.write(out);
+            }
+            StringBuilder in = new StringBuilder();
+            java.nio.ByteBuffer buf = java.nio.ByteBuffer.allocate(8192);
+            long deadline =
+                    System.nanoTime()
+                            + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(timeoutMs);
+            while (System.nanoTime() < deadline) {
+                buf.clear();
+                int n = ch.read(buf);
+                if (n < 0) {
+                    break;
                 }
-                StringBuilder in = new StringBuilder();
-                java.nio.ByteBuffer buf = java.nio.ByteBuffer.allocate(8192);
-                long deadline =
-                        System.nanoTime()
-                                + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(timeoutMs);
-                while (System.nanoTime() < deadline) {
-                    buf.clear();
-                    int n = ch.read(buf);
-                    if (n < 0) {
-                        break;
-                    }
-                    if (n > 0) {
-                        buf.flip();
-                        byte[] bytes = new byte[buf.remaining()];
-                        buf.get(bytes);
-                        String chunk = new String(bytes);
-                        in.append(chunk);
-                        int newline = in.indexOf("\n");
-                        if (newline >= 0) {
-                            return parseResponse(in.substring(0, newline));
-                        }
+                if (n > 0) {
+                    buf.flip();
+                    byte[] bytes = new byte[buf.remaining()];
+                    buf.get(bytes);
+                    String chunk = new String(bytes);
+                    in.append(chunk);
+                    int newline = in.indexOf("\n");
+                    if (newline >= 0) {
+                        return parseResponse(in.substring(0, newline));
                     }
                 }
-                throw new IOException("Socket MCP server timed out");
             }
-        } catch (ClassNotFoundException e) {
-            throw new IOException(
-                    "Unix domain sockets are not supported on this JVM (need Java 16+).");
-        } catch (java.lang.reflect.InvocationTargetException e) {
-            Throwable cause = e.getCause();
-            if (cause instanceof IOException) {
-                throw (IOException) cause;
-            }
-            if (cause instanceof RuntimeException) {
-                throw (RuntimeException) cause;
-            }
-            throw new IOException("Socket MCP request failed: " + e.getMessage(), e);
-        } catch (IllegalAccessException | NoSuchMethodException | NoSuchFieldException e) {
-            throw new IOException("Unix domain socket reflection failed: " + e.getMessage(), e);
+            throw new IOException("Socket MCP server timed out");
+        } catch (UnsupportedOperationException e) {
+            throw new IOException("Unix domain sockets are not supported on this platform", e);
         }
     }
 
     private @NonNull JsonNode invokeStdio(
             McpTransport.@NonNull StdioMcpTransport transport,
             @NonNull String method,
-            @Nullable Object params,
+            Object params,
             long timeoutMs)
             throws IOException {
         Process p;
@@ -240,12 +212,11 @@ public final class McpJsonRpcClient {
     private @NonNull JsonNode invokeSse(
             McpTransport.@NonNull SseMcpTransport transport,
             @NonNull String method,
-            @Nullable Object params,
+            Object params,
             long timeoutMs)
             throws IOException {
-        try {
-            HttpClient client =
-                    HttpClient.newBuilder().connectTimeout(Duration.ofMillis(timeoutMs)).build();
+        try (HttpClient client =
+                HttpClient.newBuilder().connectTimeout(Duration.ofMillis(timeoutMs)).build()) {
             Map<String, Object> request =
                     Map.of(
                             "jsonrpc",
@@ -257,19 +228,18 @@ public final class McpJsonRpcClient {
                             "params",
                             params == null ? Map.of() : params);
             String body = mapper.writeValueAsString(request);
-            HttpRequest httpRequest =
+            HttpRequest.Builder requestBuilder =
                     HttpRequest.newBuilder()
                             .uri(URI.create(transport.baseUrl()))
                             .timeout(Duration.ofMillis(timeoutMs))
                             .header("Content-Type", "application/json")
-                            .header("Accept", "text/event-stream")
-                            .header(
-                                    "Authorization",
-                                    transport.authToken() == null
-                                            ? ""
-                                            : "Bearer " + transport.authToken())
-                            .POST(HttpRequest.BodyPublishers.ofString(body))
-                            .build();
+                            .header("Accept", "text/event-stream");
+            String authToken = transport.authToken();
+            if (!authToken.isBlank()) {
+                requestBuilder.header("Authorization", "Bearer " + authToken);
+            }
+            HttpRequest httpRequest =
+                    requestBuilder.POST(HttpRequest.BodyPublishers.ofString(body)).build();
             HttpResponse<String> response =
                     client.send(httpRequest, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {

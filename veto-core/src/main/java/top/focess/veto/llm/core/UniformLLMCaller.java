@@ -1,5 +1,6 @@
 package top.focess.veto.llm.core;
 
+import org.jspecify.annotations.NonNull;
 import top.focess.veto.llm.exceptions.LlmException;
 
 /**
@@ -14,5 +15,5 @@ public interface UniformLLMCaller {
      * @return the normalized response from the LLM
      * @throws LlmException if the call fails permanently (auth, capability) or exhausts retries.
      */
-    VetoResponse call(VetoRequest request);
+    @NonNull VetoResponse call(@NonNull VetoRequest request);
 }

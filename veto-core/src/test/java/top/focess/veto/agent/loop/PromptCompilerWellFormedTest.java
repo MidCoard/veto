@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.llm.core.ChatMessage;
 
@@ -19,20 +20,21 @@ import top.focess.veto.llm.core.ChatMessage;
  */
 class PromptCompilerWellFormedTest {
 
-    private static ChatMessage call(String callId, String tool) {
+    private static @NonNull ChatMessage call(@NonNull String callId, @NonNull String tool) {
         return ChatMessage.assistantToolCall(callId, tool, "{}", "", null);
     }
 
-    private static ChatMessage result(String callId, String content) {
+    private static @NonNull ChatMessage result(@NonNull String callId, @NonNull String content) {
         return ChatMessage.toolResult(callId, content);
     }
 
     /** role/callId signature of a message, for compact structural assertions. */
-    private static String sig(ChatMessage m) {
+    private static @NonNull String sig(@NonNull ChatMessage m) {
         return m.role() + (m.callId() == null ? "" : ":" + m.callId());
     }
 
-    private static List<String> sigs(List<ChatMessage> messages) {
+    private static @NonNull List<@NonNull String> sigs(
+            @NonNull List<@NonNull ChatMessage> messages) {
         return messages.stream().map(PromptCompilerWellFormedTest::sig).toList();
     }
 

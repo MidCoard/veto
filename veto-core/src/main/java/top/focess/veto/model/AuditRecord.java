@@ -26,6 +26,7 @@ public class AuditRecord {
     private final @NonNull AuditAction action;
     private final boolean vetoApplied;
 
+    @SuppressWarnings("method.invocation")
     public AuditRecord(
             @NonNull String dagPayloadId,
             @NonNull String requestId,

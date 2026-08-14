@@ -6,7 +6,6 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 
 /**
@@ -26,7 +25,7 @@ public class GroupRegistry {
         groups.put(group.groupId(), group);
     }
 
-    public @Nullable Group get(@NonNull UUID groupId) {
+    public Group get(@NonNull UUID groupId) {
         return groups.get(groupId);
     }
 

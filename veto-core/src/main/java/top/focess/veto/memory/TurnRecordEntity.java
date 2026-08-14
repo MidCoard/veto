@@ -11,7 +11,6 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.agent.TurnRecord;
 
 /**
@@ -36,10 +35,10 @@ import top.focess.veto.agent.TurnRecord;
                         columnNames = {"session_id", "agent_id", "turn_number"}))
 public class TurnRecordEntity {
 
-    @Id private String id;
+    @Id private @NonNull String id = "";
 
     @Column(name = "user_id", nullable = false)
-    private String userId;
+    private @NonNull String userId = "";
 
     @Column(name = "session_id")
     private String sessionId;
@@ -48,30 +47,29 @@ public class TurnRecordEntity {
     // Nullable so a NOT-NULL column add does not break an existing dev/prod table on
     // ddl-auto=update; every newly written row carries it. Phase B tightens this once backfilled.
     @Column(name = "agent_id")
-    @Nullable
     private String agentId;
 
     @Column(name = "turn_number", nullable = false)
     private int turnNumber;
 
     @Column(name = "type", nullable = false)
-    private String type;
+    private @NonNull String type = "";
 
     @Column(name = "payload", columnDefinition = "TEXT")
-    private String payload;
+    private @NonNull String payload = "";
 
     @Column(name = "timestamp", nullable = false)
-    private Instant timestamp;
+    private @NonNull Instant timestamp = Instant.EPOCH;
 
     protected TurnRecordEntity() {}
 
     /** Build a row from a captured {@link TurnRecord} + its tenant/session/agent keys. */
-    public static TurnRecordEntity of(
-            TurnRecord turn,
+    public static @NonNull TurnRecordEntity of(
+            @NonNull TurnRecord turn,
             UUID sessionId,
-            UUID userId,
-            @Nullable String agentId,
-            ObjectMapper mapper) {
+            @NonNull UUID userId,
+            String agentId,
+            @NonNull ObjectMapper mapper) {
         TurnRecordEntity e = new TurnRecordEntity();
         e.id = UUID.randomUUID().toString();
         e.userId = userId.toString();
@@ -84,7 +82,8 @@ public class TurnRecordEntity {
         return e;
     }
 
-    private static String serializePayload(Map<String, Object> payload, ObjectMapper mapper) {
+    private static @NonNull String serializePayload(
+            Map<String, Object> payload, @NonNull ObjectMapper mapper) {
         if (payload == null || payload.isEmpty()) {
             return "";
         }
@@ -104,11 +103,11 @@ public class TurnRecordEntity {
         return userId;
     }
 
-    public @NonNull String getSessionId() {
+    public String getSessionId() {
         return sessionId;
     }
 
-    public @Nullable String getAgentId() {
+    public String getAgentId() {
         return agentId;
     }
 

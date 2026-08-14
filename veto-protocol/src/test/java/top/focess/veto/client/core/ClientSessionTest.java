@@ -6,6 +6,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.contract.IpcFrame;
 import top.focess.veto.contract.IpcMeta;
@@ -21,35 +22,36 @@ class ClientSessionTest {
 
     /** A ClientView that records every callback as a string for assertion. */
     private static final class RecordingView implements ClientView {
-        final List<String> events = Collections.synchronizedList(new java.util.ArrayList<>());
+        final @NonNull List<@NonNull String> events =
+                Collections.synchronizedList(new java.util.ArrayList<>());
 
         @Override
-        public void onDelta(String content) {
+        public void onDelta(@NonNull String content) {
             events.add("delta:" + content);
         }
 
         @Override
-        public void onThought(String content) {
+        public void onThought(@NonNull String content) {
             events.add("thought:" + content);
         }
 
         @Override
-        public void onProgress(StyledText content) {
+        public void onProgress(@NonNull StyledText content) {
             events.add("progress:" + content.text());
         }
 
         @Override
-        public void onPrompt(IpcFrame.Prompt prompt) {
+        public void onPrompt(IpcFrame.@NonNull Prompt prompt) {
             events.add("prompt:" + prompt.content());
         }
 
         @Override
-        public void onError(StyledText content) {
+        public void onError(@NonNull StyledText content) {
             events.add("error:" + content.text());
         }
 
         @Override
-        public void onTerminate(StyledText content) {
+        public void onTerminate(@NonNull StyledText content) {
             events.add("terminate:" + content.text());
         }
 
@@ -64,7 +66,7 @@ class ClientSessionTest {
         }
 
         @Override
-        public void onCommandDispatched(String line) {
+        public void onCommandDispatched(@NonNull String line) {
             events.add("dispatched:" + line);
         }
 
@@ -74,7 +76,7 @@ class ClientSessionTest {
         }
 
         @Override
-        public void onMetaChanged(ClientSession.SessionMeta meta) {
+        public void onMetaChanged(ClientSession.@NonNull SessionMeta meta) {
             events.add("meta:" + meta.username() + "/" + meta.turnCount() + "/" + meta.sessionId());
         }
     }
@@ -86,10 +88,10 @@ class ClientSessionTest {
         RecordingView v = new RecordingView();
         ClientSession s = new ClientSession(v);
 
-        IpcFrame.ClientFrame f = s.submit("hello");
+        IpcFrame.ClientFrame f = requireFrame(s.submit("hello"));
 
-        assertInstanceOf(IpcFrame.Request.class, f);
-        assertEquals("hello", ((IpcFrame.Request) f).raw());
+        IpcFrame.Request request = assertInstanceOf(nonNullClass(IpcFrame.Request.class), f);
+        assertEquals("hello", request.raw());
         assertEquals(ClientSession.State.RUNNING, s.state());
         assertTrue(v.events.contains("running"));
     }
@@ -116,13 +118,13 @@ class ClientSessionTest {
         s.onFrame(new IpcFrame.Prompt("password", true));
 
         assertEquals(ClientSession.State.PROMPTED, s.state());
-        assertNotNull(s.promptView().activePrompt());
+        requirePrompt(s.promptView().activePrompt());
         v.events.clear();
 
-        IpcFrame.ClientFrame f = s.submit("secret");
+        IpcFrame.ClientFrame f = requireFrame(s.submit("secret"));
 
-        assertInstanceOf(IpcFrame.Input.class, f);
-        assertEquals("secret", ((IpcFrame.Input) f).raw());
+        IpcFrame.Input input = assertInstanceOf(nonNullClass(IpcFrame.Input.class), f);
+        assertEquals("secret", input.raw());
         assertEquals(ClientSession.State.RUNNING, s.state());
         assertNull(s.promptView().activePrompt());
     }
@@ -144,10 +146,10 @@ class ClientSessionTest {
         assertNull(s.promptView().activePrompt());
 
         // The user's "reply" arrives after the prompt is gone — it is a new command, not an Input.
-        IpcFrame.ClientFrame f = s.submit("not-a-password");
+        IpcFrame.ClientFrame f = requireFrame(s.submit("not-a-password"));
 
-        assertInstanceOf(IpcFrame.Request.class, f);
-        assertEquals("not-a-password", ((IpcFrame.Request) f).raw());
+        IpcFrame.Request request = assertInstanceOf(nonNullClass(IpcFrame.Request.class), f);
+        assertEquals("not-a-password", request.raw());
         assertEquals(ClientSession.State.RUNNING, s.state());
     }
 
@@ -173,18 +175,17 @@ class ClientSessionTest {
         s.onFrame(new IpcFrame.Prompt("HITL: run_command", false, payload));
 
         assertEquals(ClientSession.State.PROMPTED, s.state());
-        IpcFrame.Prompt active = s.promptView().activePrompt();
-        assertNotNull(active);
-        assertNotNull(active.veto(), "the veto payload should be exposed in the prompt view");
-        assertEquals("call-1", active.veto().callId());
-        assertEquals("run_command", active.veto().tool());
-        assertEquals(List.of("ACCEPT_COMMAND", "EXEC_DECLINE"), active.veto().options());
+        IpcFrame.Prompt active = requirePrompt(s.promptView().activePrompt());
+        IpcFrame.VetoPayload activePayload = requireVetoPayload(active.veto());
+        assertEquals("call-1", activePayload.callId());
+        assertEquals("run_command", activePayload.tool());
+        assertEquals(List.of("ACCEPT_COMMAND", "EXEC_DECLINE"), activePayload.options());
         assertTrue(v.events.contains("prompted"));
         assertTrue(v.events.contains("prompt:HITL: run_command"));
 
-        IpcFrame.ClientFrame f = s.submit("ACCEPT_COMMAND");
-        assertInstanceOf(IpcFrame.Input.class, f);
-        assertEquals("ACCEPT_COMMAND", ((IpcFrame.Input) f).raw());
+        IpcFrame.ClientFrame f = requireFrame(s.submit("ACCEPT_COMMAND"));
+        IpcFrame.Input input = assertInstanceOf(nonNullClass(IpcFrame.Input.class), f);
+        assertEquals("ACCEPT_COMMAND", input.raw());
         assertEquals(ClientSession.State.RUNNING, s.state());
         assertNull(s.promptView().activePrompt());
     }
@@ -208,9 +209,8 @@ class ClientSessionTest {
         s.submit("second");
         s.submit("third"); // queued
 
-        IpcFrame.Cancel c = s.cancel();
+        requireCancel(s.cancel());
 
-        assertNotNull(c);
         assertEquals(ClientSession.State.RUNNING, s.state()); // await the command's terminal frame
         assertEquals(List.of("second", "third"), s.pendingQueue()); // queue preserved
         assertNull(s.promptView().activePrompt());
@@ -223,9 +223,8 @@ class ClientSessionTest {
         s.submit("first");
         s.onFrame(new IpcFrame.Prompt("pw", false));
 
-        IpcFrame.Cancel c = s.cancel();
+        requireCancel(s.cancel());
 
-        assertNotNull(c);
         assertNull(s.promptView().activePrompt());
         assertEquals(ClientSession.State.RUNNING, s.state());
     }
@@ -347,7 +346,8 @@ class ClientSessionTest {
         s.onFrame(new IpcFrame.Prompt("password", true));
 
         assertEquals(ClientSession.State.PROMPTED, s.state());
-        assertEquals("password", s.promptView().activePrompt().content());
+        IpcFrame.Prompt prompt = requirePrompt(s.promptView().activePrompt());
+        assertEquals("password", prompt.content());
         assertTrue(v.events.contains("prompted"));
         assertTrue(v.events.contains("prompt:password"));
     }
@@ -361,10 +361,10 @@ class ClientSessionTest {
 
         v.events.clear();
         IpcFrame.ClientFrame f =
-                s.onFrame(new IpcFrame.Done(Map.of(IpcMeta.USERNAME, "alice"), null));
+                requireFrame(s.onFrame(new IpcFrame.Done(Map.of(IpcMeta.USERNAME, "alice"), null)));
 
-        assertInstanceOf(IpcFrame.Request.class, f);
-        assertEquals("second", ((IpcFrame.Request) f).raw());
+        IpcFrame.Request request = assertInstanceOf(nonNullClass(IpcFrame.Request.class), f);
+        assertEquals("second", request.raw());
         assertEquals(ClientSession.State.RUNNING, s.state());
         assertTrue(v.events.contains("meta:alice/0/null"));
         assertTrue(v.events.contains("running"));
@@ -431,10 +431,10 @@ class ClientSessionTest {
         s.submit("second"); // queued
 
         v.events.clear();
-        IpcFrame.ClientFrame f = s.onFrame(IpcFrame.Error.ofError("boom"));
+        IpcFrame.ClientFrame f = requireFrame(s.onFrame(IpcFrame.Error.ofError("boom")));
 
-        assertInstanceOf(IpcFrame.Request.class, f);
-        assertEquals("second", ((IpcFrame.Request) f).raw());
+        IpcFrame.Request request = assertInstanceOf(nonNullClass(IpcFrame.Request.class), f);
+        assertEquals("second", request.raw());
         assertTrue(v.events.contains("error:Error: boom"));
     }
 
@@ -463,7 +463,8 @@ class ClientSessionTest {
         s.onFrame(new IpcFrame.Prompt("pw2", false)); // replace
 
         assertEquals(ClientSession.State.PROMPTED, s.state());
-        assertEquals("pw2", s.promptView().activePrompt().content());
+        IpcFrame.Prompt prompt = requirePrompt(s.promptView().activePrompt());
+        assertEquals("pw2", prompt.content());
         // A replace does not re-fire the onPrompted transition signal (already prompted).
         long promptedCount = v.events.stream().filter("prompted"::equals).count();
         assertEquals(1, promptedCount);
@@ -476,14 +477,14 @@ class ClientSessionTest {
         s.submit("first");
         s.submit("second"); // queued
         s.onFrame(new IpcFrame.Prompt("pw", false)); // PROMPTED
-        assertNotNull(s.promptView().activePrompt());
+        requirePrompt(s.promptView().activePrompt());
 
         v.events.clear();
         IpcFrame.ClientFrame f =
-                s.onFrame(new IpcFrame.Done(Map.of(IpcMeta.USERNAME, "alice"), null));
+                requireFrame(s.onFrame(new IpcFrame.Done(Map.of(IpcMeta.USERNAME, "alice"), null)));
 
-        assertInstanceOf(IpcFrame.Request.class, f);
-        assertEquals("second", ((IpcFrame.Request) f).raw());
+        IpcFrame.Request request = assertInstanceOf(nonNullClass(IpcFrame.Request.class), f);
+        assertEquals("second", request.raw());
         assertEquals(ClientSession.State.RUNNING, s.state());
         // The prompt the terminal frame resolved must be cleared ( PROMPTED × Done).
         assertNull(s.promptView().activePrompt());
@@ -496,7 +497,7 @@ class ClientSessionTest {
         ClientSession s = new ClientSession(v);
         s.submit("first");
         s.onFrame(new IpcFrame.Prompt("pw", false)); // PROMPTED
-        assertNotNull(s.promptView().activePrompt());
+        requirePrompt(s.promptView().activePrompt());
 
         IpcFrame.ClientFrame f = s.onFrame(new IpcFrame.Done(Map.of(), null));
 
@@ -512,12 +513,12 @@ class ClientSessionTest {
         s.submit("first");
         s.submit("second"); // queued
         s.onFrame(new IpcFrame.Prompt("pw", false)); // PROMPTED
-        assertNotNull(s.promptView().activePrompt());
+        requirePrompt(s.promptView().activePrompt());
 
-        IpcFrame.ClientFrame f = s.onFrame(IpcFrame.Error.ofError("boom"));
+        IpcFrame.ClientFrame f = requireFrame(s.onFrame(IpcFrame.Error.ofError("boom")));
 
-        assertInstanceOf(IpcFrame.Request.class, f);
-        assertEquals("second", ((IpcFrame.Request) f).raw());
+        IpcFrame.Request request = assertInstanceOf(nonNullClass(IpcFrame.Request.class), f);
+        assertEquals("second", request.raw());
         assertEquals(ClientSession.State.RUNNING, s.state());
         assertNull(s.promptView().activePrompt()); // cleared (PROMPTED × Error)
         assertTrue(v.events.contains("error:Error: boom"));
@@ -531,7 +532,7 @@ class ClientSessionTest {
         ClientSession s = new ClientSession(v);
         s.submit("first");
         s.onFrame(new IpcFrame.Prompt("pw", false)); // PROMPTED
-        assertNotNull(s.promptView().activePrompt());
+        requirePrompt(s.promptView().activePrompt());
 
         IpcFrame.ClientFrame f = s.onFrame(new IpcFrame.Terminate("bye now"));
 
@@ -614,8 +615,8 @@ class ClientSessionTest {
         s.onFrame(new IpcFrame.Prompt("password", true));
         ClientSession.PromptView prompted = s.promptView();
         assertEquals(ClientSession.State.PROMPTED, prompted.state());
-        assertNotNull(prompted.activePrompt());
-        assertEquals("password", prompted.activePrompt().content());
+        IpcFrame.Prompt activePrompt = requirePrompt(prompted.activePrompt());
+        assertEquals("password", activePrompt.content());
         assertEquals(ClientSession.State.PROMPTED, prompted.state()); // unchanged by the read
 
         s.submit("secret"); // PROMPTED → RUNNING (Input sent)
@@ -635,7 +636,7 @@ class ClientSessionTest {
         List<String> q = s.pendingQueue();
 
         assertEquals(List.of("b", "c"), q);
-        assertThrows(UnsupportedOperationException.class, () -> q.add("d"));
+        assertThrows(nonNullClass(UnsupportedOperationException.class), () -> q.add("d"));
     }
 
     @Test
@@ -652,7 +653,8 @@ class ClientSessionTest {
         ClientSession.StatusView view = s.statusView();
         assertEquals("alice", view.username()); // username just set by the Done
         assertEquals(List.of("third"), view.pending()); // "second" dispatched, "third" remains
-        assertThrows(UnsupportedOperationException.class, () -> view.pending().add("x"));
+        assertThrows(
+                nonNullClass(UnsupportedOperationException.class), () -> view.pending().add("x"));
     }
 
     @Test
@@ -686,5 +688,40 @@ class ClientSessionTest {
             // Never IDLE (either still RUNNING, or PROMPTED), and no exception propagated.
             assertNotEquals(ClientSession.State.IDLE, s.state());
         }
+    }
+
+    private static IpcFrame.@NonNull ClientFrame requireFrame(IpcFrame.ClientFrame frame) {
+        if (frame == null) {
+            throw new AssertionError("Expected a client frame");
+        }
+        return frame;
+    }
+
+    private static IpcFrame.@NonNull Prompt requirePrompt(IpcFrame.Prompt prompt) {
+        if (prompt == null) {
+            throw new AssertionError("Expected an active prompt");
+        }
+        return prompt;
+    }
+
+    private static IpcFrame.@NonNull Cancel requireCancel(IpcFrame.Cancel cancel) {
+        if (cancel == null) {
+            throw new AssertionError("Expected a cancel frame");
+        }
+        return cancel;
+    }
+
+    private static IpcFrame.@NonNull VetoPayload requireVetoPayload(IpcFrame.VetoPayload payload) {
+        if (payload == null) {
+            throw new AssertionError("The veto payload should be exposed in the prompt view");
+        }
+        return payload;
+    }
+
+    private static <T extends @NonNull Object> @NonNull Class<T> nonNullClass(Class<T> type) {
+        if (type == null) {
+            throw new AssertionError("Expected a class token");
+        }
+        return type;
     }
 }

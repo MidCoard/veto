@@ -6,11 +6,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import top.focess.veto.agent.mcp.NativeToolDefinition;
 import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RiskCategory;
+import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.TrustMarker;
 import top.focess.veto.agent.workspace.Workspace;
@@ -21,7 +23,7 @@ import top.focess.veto.llm.core.ToolCall;
 class DeployerPolicyTest {
 
     @Test
-    void sandboxedOutOfRootIsCritical(@TempDir Path tmp) throws Exception {
+    void sandboxedOutOfRootIsCritical(@TempDir @NonNull Path tmp) throws Exception {
         Path canonical = tmp.toRealPath();
         Path root = canonical.resolve("deploy-zone");
         Files.createDirectories(root);
@@ -38,7 +40,7 @@ class DeployerPolicyTest {
     }
 
     @Test
-    void sandboxedInRootIsNotCritical(@TempDir Path tmp) throws Exception {
+    void sandboxedInRootIsNotCritical(@TempDir @NonNull Path tmp) throws Exception {
         Path canonical = tmp.toRealPath();
         Path root = canonical.resolve("deploy-zone");
         Files.createDirectories(root);
@@ -58,7 +60,7 @@ class DeployerPolicyTest {
     }
 
     @Test
-    void tenantNonSharedCrossUserIsCritical(@TempDir Path tmp) throws Exception {
+    void tenantNonSharedCrossUserIsCritical(@TempDir @NonNull Path tmp) throws Exception {
         // Two roots: alice's own + bob's (not shared)
         Path canonical = tmp.toRealPath();
         Path aliceRoot = canonical.resolve("alice");
@@ -84,7 +86,7 @@ class DeployerPolicyTest {
     }
 
     @Test
-    void tenantSharedGrantAllowsRead(@TempDir Path tmp) throws Exception {
+    void tenantSharedGrantAllowsRead(@TempDir @NonNull Path tmp) throws Exception {
         // Alice's own + Bob's (SHARED_GRANT to alice)
         Path canonical = tmp.toRealPath();
         Path aliceRoot = canonical.resolve("alice");
@@ -111,7 +113,7 @@ class DeployerPolicyTest {
     }
 
     @Test
-    void protectedSetStillAppliesUnderSandboxed(@TempDir Path tmp) throws Exception {
+    void protectedSetStillAppliesUnderSandboxed(@TempDir @NonNull Path tmp) throws Exception {
         Path canonical = tmp.toRealPath();
         Path root = canonical.resolve("deploy-zone");
         Files.createDirectories(root.resolve(".ssh"));
@@ -127,7 +129,7 @@ class DeployerPolicyTest {
     }
 
     @Test
-    void sharedGrantsWithDeployerDefaults(@TempDir Path tmp) throws Exception {
+    void sharedGrantsWithDeployerDefaults(@TempDir @NonNull Path tmp) throws Exception {
         Path root = tmp.toRealPath();
         ProtectedSet ps =
                 ProtectedSet.withSharedGrants(
@@ -140,13 +142,13 @@ class DeployerPolicyTest {
         assertTrue(ps.paths().contains(root));
     }
 
-    private NativeToolDefinition readDef() {
+    private @NonNull NativeToolDefinition readDef() {
         return new NativeToolDefinition(
                 "view_file",
                 "read",
                 RiskCategory.READ_ONLY,
                 false,
-                Object.class,
+                ToolDocs.nonNullClass(Object.class),
                 Map.of("path", ParamCategory.FILESYSTEM_PATH));
     }
 }

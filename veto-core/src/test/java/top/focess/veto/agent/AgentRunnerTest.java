@@ -5,8 +5,10 @@ import static org.junit.jupiter.api.Assertions.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.agent.identity.SystemPromptResolver;
@@ -34,7 +36,12 @@ class AgentRunnerTest {
     private static final Duration EPISODE_TIMEOUT = Duration.ofSeconds(10);
 
     /** Builds an {@link AgentService} wired with the default stubs + a capturing caller. */
-    private static AgentService serviceWith(UniformLLMCaller caller) {
+    private static @NonNull AgentService serviceWith(@NonNull UniformLLMCaller caller) {
+        return serviceWith(caller, 50L);
+    }
+
+    private static @NonNull AgentService serviceWith(
+            @NonNull UniformLLMCaller caller, long maxCallsPerEpisode) {
         ObjectMapper mapper = new ObjectMapper();
         PromptCompiler compiler =
                 new PromptCompiler(
@@ -54,7 +61,7 @@ class AgentRunnerTest {
                 List.of(),
                 new top.focess.veto.agent.identity.RoleToolFilter(new DefaultToolEngine()),
                 "REAL",
-                50L,
+                maxCallsPerEpisode,
                 "FULL_ACCESS",
                 "STRICT",
                 null,
@@ -64,7 +71,73 @@ class AgentRunnerTest {
                                 new top.focess.veto.sandbox.ConstrainedSubprocessSubstrate())));
     }
 
-    private static AgentRunner.LlmBinding binding(String systemPrompt) {
+    @Test
+    void continueAfterBreakerCarriesOriginalTaskWithoutChangingAuditedUserText() throws Exception {
+        String originalTask = "Inspect the agent package and explain the remaining defect.";
+        List<VetoRequest> seenRequests = new CopyOnWriteArrayList<>();
+        AtomicInteger calls = new AtomicInteger();
+        UniformLLMCaller caller =
+                request -> {
+                    seenRequests.add(request);
+                    if (calls.getAndIncrement() == 0) {
+                        return new VetoResponse(
+                                "I need to inspect one more thing.",
+                                List.of(
+                                        new top.focess.veto.llm.core.ToolCall(
+                                                "missing_tool", Map.of(), "breaker-call")),
+                                null,
+                                new VetoResponse.Features(false),
+                                null);
+                    }
+                    return new VetoResponse(
+                            "The prior task context is available.",
+                            List.of(),
+                            "Finished after resuming.",
+                            new VetoResponse.Features(false),
+                            null);
+                };
+
+        AgentService service = serviceWith(caller, 1L);
+        AgentResult tripped =
+                service.submit(
+                        "breaker-continue",
+                        originalTask,
+                        binding("You are a helpful assistant."),
+                        EPISODE_TIMEOUT);
+        assertFalse(tripped.success(), "the first episode must trip at the one-call ceiling");
+        assertEquals(Boolean.TRUE, tripped.metadata().get("breakerTrip"));
+
+        AgentResult resumed =
+                service.submit(
+                        "breaker-continue",
+                        "continue",
+                        binding("You are a helpful assistant."),
+                        EPISODE_TIMEOUT);
+
+        assertTrue(resumed.success(), resumed.message());
+        assertEquals(2, seenRequests.size(), "continue starts one fresh model call");
+        VetoRequest resumeRequest = seenRequests.get(1);
+        ChatMessage renderedResume =
+                resumeRequest.messages().stream()
+                        .filter(message -> "user".equals(message.role()))
+                        .reduce((first, second) -> second)
+                        .orElseThrow();
+        assertTrue(
+                renderedResume.content().contains("Continue the unfinished task"),
+                renderedResume.content());
+        assertTrue(renderedResume.content().contains(originalTask), renderedResume.content());
+
+        VetoAgent agent = requireAgent(service.agent("breaker-continue"));
+        TurnRecord auditedContinue =
+                agent.history().stream()
+                        .filter(turn -> turn.type() == TurnType.USER_PROMPT)
+                        .reduce((first, second) -> second)
+                        .orElseThrow();
+        assertEquals("continue", auditedContinue.payload().get("content"));
+        assertEquals(originalTask, auditedContinue.payload().get("resume_context"));
+    }
+
+    private static AgentRunner.@NonNull LlmBinding binding(@NonNull String systemPrompt) {
         return new AgentRunner.LlmBinding(
                 ProviderType.DEEPSEEK,
                 "stub-model",
@@ -120,7 +193,7 @@ class AgentRunnerTest {
         assertTrue(rejection.contains("regenerate"), "asks the model to regenerate");
 
         // The rejection is ephemeral: it must not be recorded in turn history.
-        VetoAgent agent = service.agent("schema-retry");
+        VetoAgent agent = requireAgent(service.agent("schema-retry"));
         long userPromptTurns =
                 agent.history().stream().filter(t -> t.type() == TurnType.USER_PROMPT).count();
         assertEquals(1, userPromptTurns, "only the original user prompt is recorded");
@@ -230,5 +303,10 @@ class AgentRunnerTest {
                 "the thought must stream BEFORE the message so the terminal renders reasoning"
                         + " ahead of the answer");
         assertEquals("message:2", sequence.get(1));
+    }
+
+    private static @NonNull VetoAgent requireAgent(VetoAgent agent) {
+        if (agent == null) throw new AssertionError("expected agent");
+        return agent;
     }
 }

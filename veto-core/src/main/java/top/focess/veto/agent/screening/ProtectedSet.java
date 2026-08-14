@@ -8,7 +8,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
 /**
  * The PROTECTED protected set — paths default-blocked (CRITICAL on access). Seeded with deployer
@@ -67,7 +66,7 @@ public record ProtectedSet(@NonNull Set<Path> paths) {
     public static @NonNull ProtectedSet withSharedGrants(
             @NonNull String vetoUserId,
             @NonNull List<Path> workspaceRoots,
-            @Nullable List<SharedGrant> sharedGrants) {
+            List<SharedGrant> sharedGrants) {
         ProtectedSet base = withDeployerDefaults(vetoUserId, workspaceRoots);
         if (sharedGrants == null || sharedGrants.isEmpty()) {
             return base;

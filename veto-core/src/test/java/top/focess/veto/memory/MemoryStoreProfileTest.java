@@ -2,6 +2,7 @@ package top.focess.veto.memory;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -14,14 +15,15 @@ import org.springframework.boot.test.context.SpringBootTest;
  * NoUniqueBeanDefinitionException}).
  */
 @SpringBootTest(properties = "veto.memory.store=vector")
+@SuppressWarnings("initialization.field.uninitialized")
 class MemoryStoreProfileTest {
 
-    @Autowired MemoryStore memoryStore;
+    @Autowired private @NonNull MemoryStore memoryStore;
 
     @Test
     void vectorProfileResolvesSingleVectorBackedStore() {
         assertInstanceOf(
-                VectorIndexMemoryStore.class,
+                top.focess.veto.agent.mcp.ToolDocs.nonNullClass(VectorIndexMemoryStore.class),
                 memoryStore,
                 "veto.memory.store=vector must resolve the vector-backed store with no bean conflict");
     }

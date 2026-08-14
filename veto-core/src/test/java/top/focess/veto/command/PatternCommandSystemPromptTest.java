@@ -27,13 +27,21 @@ class PatternCommandSystemPromptTest {
 
     @Test
     void createBindsToTierAndDoesNotStoreSystemPrompt() {
-        AgentPatternRepository repo = mock(AgentPatternRepository.class);
-        VetoCommandSender sender = mock(VetoCommandSender.class);
-        when(sender.hasPermission(any(CommandPermission.class))).thenReturn(true);
+        AgentPatternRepository repo =
+                mock(top.focess.veto.agent.mcp.ToolDocs.nonNullClass(AgentPatternRepository.class));
+        VetoCommandSender sender =
+                mock(top.focess.veto.agent.mcp.ToolDocs.nonNullClass(VetoCommandSender.class));
+        when(sender.hasPermission(
+                        any(
+                                top.focess.veto.agent.mcp.ToolDocs.nonNullClass(
+                                        CommandPermission.class))))
+                .thenReturn(true);
         when(sender.isLoggedIn()).thenReturn(true);
         when(sender.username()).thenReturn("alice");
+        when(sender.requireUsername()).thenReturn("alice");
 
-        ModelTierRegistry tierRegistry = mock(ModelTierRegistry.class);
+        ModelTierRegistry tierRegistry =
+                mock(top.focess.veto.agent.mcp.ToolDocs.nonNullClass(ModelTierRegistry.class));
         when(tierRegistry.resolve("alice", ModelTier.TOP))
                 .thenReturn(
                         new ModelBinding(
@@ -48,7 +56,8 @@ class PatternCommandSystemPromptTest {
         manager.register(new PatternCommand(repo, tierRegistry));
 
         ArgumentCaptor<AgentPatternEntity> captor =
-                ArgumentCaptor.forClass(AgentPatternEntity.class);
+                ArgumentCaptor.forClass(
+                        top.focess.veto.agent.mcp.ToolDocs.nonNullClass(AgentPatternEntity.class));
 
         ExecutionResult result = manager.dispatch(sender, "pattern create p1 TOP");
 
@@ -67,7 +76,9 @@ class PatternCommandSystemPromptTest {
         // With the field removed from the entity, this is the structural guarantee it is gone.
         assertThrows(
                 NoSuchFieldException.class,
-                () -> AgentPatternEntity.class.getDeclaredField("systemPrompt"),
+                () ->
+                        top.focess.veto.agent.mcp.ToolDocs.nonNullClass(AgentPatternEntity.class)
+                                .getDeclaredField("systemPrompt"),
                 "AgentPatternEntity must not carry a systemPrompt field");
     }
 }

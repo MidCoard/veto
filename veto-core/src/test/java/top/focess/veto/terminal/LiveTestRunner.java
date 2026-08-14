@@ -2,6 +2,7 @@ package top.focess.veto.terminal;
 
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.zeromq.SocketType;
@@ -30,46 +31,67 @@ import top.focess.veto.contract.Version;
         })
 class LiveTestRunner {
 
-    private static final String ADDR = "tcp://127.0.0.1:15570";
+    private static final @NonNull String ADDR = "tcp://127.0.0.1:15570";
 
     private ZContext ctx;
     private ZMQ.Socket dealer;
 
     private void connect() throws Exception {
-        ctx = new ZContext();
-        dealer = ctx.createSocket(SocketType.DEALER);
-        dealer.setIdentity(UUID.randomUUID().toString().getBytes(StandardCharsets.UTF_8));
-        dealer.connect(ADDR);
+        ZContext newContext = new ZContext();
+        ZMQ.@NonNull Socket newDealer =
+                requireValue(
+                        newContext.createSocket(SocketType.DEALER),
+                        "DEALER socket creation must succeed");
+        ctx = newContext;
+        dealer = newDealer;
+        newDealer.setIdentity(UUID.randomUUID().toString().getBytes(StandardCharsets.UTF_8));
+        newDealer.connect(ADDR);
         Thread.sleep(500);
         send(
                 new IpcFrame.Hello(
                         IpcFrame.PROTOCOL_VERSION,
                         1,
                         Version.UNKNOWN,
-                        System.getProperty("user.dir")));
+                        requireValue(System.getProperty("user.dir"), "user.dir is required")));
         IpcFrame welcome = recv();
         assert welcome instanceof IpcFrame.Welcome && ((IpcFrame.Welcome) welcome).seq() == 1;
     }
 
     private void disconnect() {
-        if (dealer != null) dealer.close();
-        if (ctx != null) ctx.close();
+        ZMQ.Socket currentDealer = dealer;
+        ZContext currentContext = ctx;
+        if (currentDealer != null) currentDealer.close();
+        if (currentContext != null) currentContext.close();
+        dealer = null;
+        ctx = null;
     }
 
-    private void send(IpcFrame f) throws Exception {
-        dealer.send(IpcCodec.encode(f));
+    private void send(@NonNull IpcFrame f) throws Exception {
+        requireDealer().send(IpcCodec.encode(f));
     }
 
     private IpcFrame recv() {
-        ZMsg msg = ZMsg.recvMsg(dealer);
+        ZMsg msg = ZMsg.recvMsg(requireDealer());
         if (msg == null || msg.isEmpty()) return null;
-        byte[] data = msg.getFirst().getData();
+        byte @NonNull [] data =
+                requireValue(
+                        requireValue(msg.getFirst(), "non-empty message must have a first frame")
+                                .getData(),
+                        "message frame data is required");
         String json = new String(data, StandardCharsets.UTF_8);
         msg.destroy();
         return IpcCodec.decode(json);
     }
 
-    private IpcFrame exchange(String cmd) throws Exception {
+    private ZMQ.@NonNull Socket requireDealer() {
+        ZMQ.Socket current = dealer;
+        if (current == null) {
+            throw new IllegalStateException("Live test is not connected");
+        }
+        return current;
+    }
+
+    private IpcFrame exchange(@NonNull String cmd) throws Exception {
         send(new IpcFrame.Request(cmd));
         int prompts = 0;
         while (true) {
@@ -84,6 +106,13 @@ class LiveTestRunner {
                 prompts++;
             }
         }
+    }
+
+    private static <T extends @NonNull Object> @NonNull T requireValue(T value, String message) {
+        if (value != null) {
+            return value;
+        }
+        throw new AssertionError(message);
     }
 
     // ── live tests ───────────────────────────────────────────────────────

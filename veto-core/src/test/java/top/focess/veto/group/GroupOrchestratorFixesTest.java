@@ -9,6 +9,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -146,8 +147,10 @@ class GroupOrchestratorFixesTest {
         // - The node must be VERIFIED exactly once (no double-ingest).
         // - The group must be DISBANDED (maybeComplete saw all nodes VERIFIED).
         // - Subsequent ticks return the DISBANDED group without re-dispatching.
-        Group finalG = registry.get(groupId);
-        assertNotNull(finalG, "F4: group must still exist in registry after concurrent ticks");
+        Group finalG =
+                requireGroup(
+                        registry.get(groupId),
+                        "F4: group must still exist in registry after concurrent ticks");
         assertEquals(1, finalG.dag().nodes().size());
         assertEquals(
                 Group.GroupState.DISBANDED,
@@ -158,7 +161,7 @@ class GroupOrchestratorFixesTest {
                 finalG.dag().nodes().get(0).state(),
                 "F4: n1 must be VERIFIED — not RUNNING (a re-dispatch would race the lock)");
         // A follow-up tick on the DISBANDED group must be a no-op (early return).
-        Group after = orch.tick(groupId);
+        Group after = requireGroup(orch.tick(groupId), "F4: post-DISBAND tick must return group");
         assertEquals(
                 Group.GroupState.DISBANDED, after.state(), "F4: post-DISBAND tick must be a no-op");
     }
@@ -181,8 +184,7 @@ class GroupOrchestratorFixesTest {
         registry.put(g);
 
         orch.tick(groupId);
-        Group ticked = registry.get(groupId);
-        assertNotNull(ticked);
+        Group ticked = requireGroup(registry.get(groupId), "F11: group must remain registered");
         assertEquals(
                 Group.GroupState.ACTIVE,
                 ticked.state(),
@@ -191,7 +193,8 @@ class GroupOrchestratorFixesTest {
 
     // ─── helpers ──────────────────────────────────────────────────────────
 
-    private static Group newGroup(String userId, Object... matePairs) {
+    private static @NonNull Group newGroup(
+            @NonNull String userId, @NonNull Object @NonNull ... matePairs) {
         Blackboard blackboard = new Blackboard();
         UUID groupId = UUID.randomUUID();
         Group g =
@@ -208,12 +211,13 @@ class GroupOrchestratorFixesTest {
     }
 
     /** Per-Mate pivot check (F1). Simulates GroupOrchestrator.maybePivot's per-Mate max. */
-    private static boolean perMateShouldPivot(HeuristicLeader leader, Group g, int perMateCount) {
+    private static boolean perMateShouldPivot(
+            @NonNull HeuristicLeader leader, @NonNull Group g, int perMateCount) {
         // The orchestrator now checks `any Mate > threshold`. Reproduce that here.
         return perMateCount > leader.perMateThresholdForTest();
     }
 
-    private static int retryCountOf(Group g, String nodeId) {
+    private static int retryCountOf(@NonNull Group g, @NonNull String nodeId) {
         return g.dag().nodes().stream()
                 .filter(n -> n.nodeId().equals(nodeId))
                 .findFirst()
@@ -221,11 +225,18 @@ class GroupOrchestratorFixesTest {
                 .orElseThrow();
     }
 
-    private static DagNode.NodeState stateOf(Group g, String nodeId) {
+    private static DagNode.@NonNull NodeState stateOf(@NonNull Group g, @NonNull String nodeId) {
         return g.dag().nodes().stream()
                 .filter(n -> n.nodeId().equals(nodeId))
                 .findFirst()
                 .map(DagNode::state)
                 .orElseThrow();
+    }
+
+    private static @NonNull Group requireGroup(Group group, @NonNull String message) {
+        if (group != null) {
+            return group;
+        }
+        throw new AssertionError(message);
     }
 }

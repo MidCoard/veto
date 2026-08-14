@@ -2,12 +2,14 @@ package top.focess.veto.veto;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+@SuppressWarnings("initialization.field.uninitialized")
 class SemanticRedactorTest {
 
-    private SemanticRedactor redactor;
+    private @NonNull SemanticRedactor redactor;
 
     @BeforeEach
     void setUp() {

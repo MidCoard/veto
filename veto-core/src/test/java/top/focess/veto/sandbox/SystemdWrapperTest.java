@@ -3,6 +3,7 @@ package top.focess.veto.sandbox;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.List;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -76,13 +77,12 @@ class SystemdWrapperTest {
         List<String> wrapped =
                 KernelSandboxSubstrate.wrapWithSystemdRun(List.of("ls"), fakeSystemdRun, baseline);
 
-        String syscallFilter =
+        @NonNull String syscallFilter =
                 wrapped.stream()
                         .filter(s -> s.contains("SystemCallFilter="))
                         .findFirst()
-                        .orElse(null);
-
-        assertNotNull(syscallFilter, "Should have SystemCallFilter property");
+                        .orElseThrow(
+                                () -> new AssertionError("Should have SystemCallFilter property"));
         // systemd-run uses syscall names, not numbers
         assertTrue(syscallFilter.contains("read"), "Should include 'read' syscall name");
         assertTrue(syscallFilter.contains("write"), "Should include 'write' syscall name");

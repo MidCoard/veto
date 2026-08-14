@@ -32,7 +32,7 @@ class ToolCallContextTest {
 
         // Read from same thread
         ToolCallContext ctx = ToolCallContextHolder.get();
-        assertNotNull(ctx, "Context should be available in ThreadLocal");
+        if (ctx == null) throw new AssertionError("Context should be available in ThreadLocal");
         assertEquals(agentId, ctx.agentId(), "agentId should match");
         assertEquals(userId, ctx.userId(), "userId should match");
 

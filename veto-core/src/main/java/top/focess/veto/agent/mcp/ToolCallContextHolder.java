@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import top.focess.veto.agent.AgentRunner;
 import top.focess.veto.agent.TurnRecord;
 
@@ -32,9 +31,12 @@ import top.focess.veto.agent.TurnRecord;
  * String callerId = ctx != null ? ctx.agentId() : "unknown";
  * }</pre>
  */
+@SuppressWarnings({"rawtypes", "unchecked"})
 public final class ToolCallContextHolder {
 
-    private static final ThreadLocal<ToolCallContext> CONTEXT = new ThreadLocal<>();
+    // ThreadLocal.get() is intrinsically nullable. Keep its element type nullable-by-default and
+    // refine with instanceof at the access boundary instead of pretending the slot is non-null.
+    private static final @NonNull ThreadLocal CONTEXT = new ThreadLocal();
 
     /**
      * Pending turn directives a tool requested during its execution (e.g. {@code create_group}
@@ -43,7 +45,7 @@ public final class ToolCallContextHolder {
      * is rewritten when the runner drains and appends them (type + payload are preserved). The
      * runner drains on the same thread that executed the tool, so the ThreadLocal is visible.
      */
-    private static final ThreadLocal<List<TurnRecord>> PENDING_TURNS =
+    private static final @NonNull ThreadLocal PENDING_TURNS =
             ThreadLocal.withInitial(ArrayList::new);
 
     /**
@@ -73,7 +75,7 @@ public final class ToolCallContextHolder {
         record ToStandalone(@NonNull String brief) implements TransformRequest {}
     }
 
-    private static final ThreadLocal<TransformRequest> PENDING_TRANSFORM = new ThreadLocal<>();
+    private static final @NonNull ThreadLocal PENDING_TRANSFORM = new ThreadLocal();
 
     private ToolCallContextHolder() {}
 
@@ -83,7 +85,7 @@ public final class ToolCallContextHolder {
     }
 
     /** Sets the tool call context for the current thread, including the caller's group. */
-    public static void set(@NonNull String agentId, @NonNull UUID userId, @Nullable UUID groupId) {
+    public static void set(@NonNull String agentId, @NonNull UUID userId, UUID groupId) {
         CONTEXT.set(new ToolCallContext(agentId, userId, groupId));
     }
 
@@ -92,10 +94,7 @@ public final class ToolCallContextHolder {
      * session owner (username) whose model-tier profile resolves the caller's tier.
      */
     public static void set(
-            @NonNull String agentId,
-            @NonNull UUID userId,
-            @Nullable UUID groupId,
-            @Nullable String owner) {
+            @NonNull String agentId, @NonNull UUID userId, UUID groupId, String owner) {
         CONTEXT.set(new ToolCallContext(agentId, userId, groupId, owner));
     }
 
@@ -106,9 +105,9 @@ public final class ToolCallContextHolder {
     public static void set(
             @NonNull String agentId,
             @NonNull UUID userId,
-            @Nullable UUID groupId,
-            @Nullable String owner,
-            @Nullable UUID sessionId) {
+            UUID groupId,
+            String owner,
+            UUID sessionId) {
         CONTEXT.set(new ToolCallContext(agentId, userId, groupId, owner, sessionId));
     }
 
@@ -123,8 +122,9 @@ public final class ToolCallContextHolder {
      * @return the context, or {@code null} if not set (e.g. when called outside AgentRunner's
      *     execute scope)
      */
-    public static @Nullable ToolCallContext get() {
-        return CONTEXT.get();
+    public static ToolCallContext get() {
+        Object value = CONTEXT.get();
+        return value instanceof ToolCallContext context ? context : null;
     }
 
     /**
@@ -135,7 +135,7 @@ public final class ToolCallContextHolder {
      * one recall).
      */
     public static void requestRecall(int fromIndex, @NonNull String content) {
-        PENDING_TURNS.get().add(TurnRecord.recall(0, fromIndex, content));
+        pendingTurns().add(TurnRecord.recall(0, fromIndex, content));
     }
 
     /**
@@ -166,8 +166,9 @@ public final class ToolCallContextHolder {
      *
      * @return the request, or {@code null} if the tool requested no transform
      */
-    public static @Nullable TransformRequest drainTransform() {
-        TransformRequest r = PENDING_TRANSFORM.get();
+    public static TransformRequest drainTransform() {
+        Object value = PENDING_TRANSFORM.get();
+        TransformRequest r = value instanceof TransformRequest request ? request : null;
         if (r != null) {
             PENDING_TRANSFORM.remove();
         }
@@ -181,14 +182,25 @@ public final class ToolCallContextHolder {
      *
      * @return the pending directives (empty if none); never null
      */
-    public static @NonNull List<TurnRecord> drainPendingTurns() {
-        List<TurnRecord> turns = PENDING_TURNS.get();
+    public static @NonNull List<@NonNull TurnRecord> drainPendingTurns() {
+        List<@NonNull TurnRecord> turns = pendingTurns();
         if (turns.isEmpty()) {
             return List.of();
         }
         List<TurnRecord> copy = new ArrayList<>(turns);
         turns.clear();
         return copy;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static @NonNull List<@NonNull TurnRecord> pendingTurns() {
+        Object value = PENDING_TURNS.get();
+        if (value instanceof List<?>) {
+            return (List<@NonNull TurnRecord>) value;
+        }
+        List<@NonNull TurnRecord> turns = new ArrayList<>();
+        PENDING_TURNS.set(turns);
+        return turns;
     }
 
     /** Clears the tool call context (and any pending turn directives) for the current thread. */
