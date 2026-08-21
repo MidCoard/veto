@@ -167,6 +167,7 @@ public class AgentRunner {
     // Captured in callModel via ReasoningContentHolder, stored in the ASSISTANT_THOUGHT turn by
     // appendThought, and echoed back on the next request's assistant message by PromptCompiler.
     private String lastReasoningContent = null;
+    private @NonNull String activeUserTask = "";
 
     // User-facing message listeners (the emission seam). emitMessage notifies these so a
     // transport (the terminal PromptHandler) can forward each assistantResponse to its client as a
@@ -351,6 +352,7 @@ public class AgentRunner {
                 awaitingBreakerContinuation && "continue".equalsIgnoreCase(prompt.strip())
                         ? latestUserTaskContext()
                         : null;
+        this.activeUserTask = resumeContext != null ? resumeContext : prompt;
         awaitingBreakerContinuation = false;
         appendTurn(
                 resumeContext != null
@@ -622,7 +624,7 @@ public class AgentRunner {
             }
             List<ToolCall> responseCalls = response.calls();
             if (responseCalls != null && !responseCalls.isEmpty()) {
-                executeToolCalls(assignCallIds(responseCalls));
+                executeToolCalls(assignCallIds(responseCalls), response.thought());
             } else {
                 // No tool calls: the agent has emitted its answer with nothing further to act
                 // on. Termination routes on call presence - calls absent means stop. The agent
@@ -870,7 +872,7 @@ public class AgentRunner {
 
     // ── executeToolCalls — the canonical chain ─────────────────────
 
-    private void executeToolCalls(@NonNull List<ToolCall> calls) {
+    private void executeToolCalls(@NonNull List<ToolCall> calls, String thought) {
         transitionTo(AgentState.WAITING);
         try {
 
@@ -883,7 +885,7 @@ public class AgentRunner {
                 if (def == null || def instanceof AgentToolDefinition) {
                     decisions.add(ApprovalDecision.AUTO_APPROVE);
                 } else {
-                    var result = gateway.screen(call, def);
+                    var result = gateway.screen(call, def, activeUserTask, thought);
                     ApprovalDecision decision = hitlRegistry.decide(agentId, call, def, result);
                     decisions.add(decision);
                     if (decision instanceof ApprovalDecision.Prompt) {
@@ -949,7 +951,7 @@ public class AgentRunner {
                                 continue;
                             }
                             ToolCall edited = new ToolCall(call.toolName(), editedArgs, callId);
-                            var r2 = gateway.screen(edited, def);
+                            var r2 = gateway.screen(edited, def, activeUserTask, thought);
                             if (r2 instanceof GatewayResult.Screened sc
                                     && sc.screening().danger() == Danger.CRITICAL) {
                                 appendObservation(
@@ -1099,7 +1101,7 @@ public class AgentRunner {
         // (a) early-route agent tools past the Gateway + HITL.
         ApprovalDecision decision = ApprovalDecision.AUTO_APPROVE;
         if (!(def instanceof AgentToolDefinition)) {
-            var result = gateway.screen(call, def);
+            var result = gateway.screen(call, def, activeUserTask, null);
             decision = hitlRegistry.decide(agentId, call, def, result);
             if (decision instanceof ApprovalDecision.AutoBlock ab) {
                 appendTurn(TurnRecord.toolCall(++turnNumber, call));
@@ -1205,7 +1207,7 @@ public class AgentRunner {
         if (resolution.option() == VetoOption.EDIT && editedArgs != null) {
             ToolCall edited = new ToolCall(call.toolName(), editedArgs, callId);
             // re-screen the edited call.
-            var r2 = gateway.screen(edited, def);
+            var r2 = gateway.screen(edited, def, activeUserTask, null);
             if (r2 instanceof GatewayResult.Screened sc
                     && sc.screening().danger() == Danger.CRITICAL) {
                 appendTurn(TurnRecord.toolCall(++turnNumber, call));

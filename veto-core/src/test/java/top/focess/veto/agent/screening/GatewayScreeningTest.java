@@ -90,6 +90,49 @@ class GatewayScreeningTest {
     }
 
     @Test
+    void advisoryModelCanRaiseButNeverLowerDeterministicDanger() throws Exception {
+        Workspace ws = Workspace.single(root, PathMode.REAL);
+        SlmRelevanceProvider raisesDanger =
+                (call, def, activeTask, thought) ->
+                        new SlmScreening(
+                                Relevance.LOW, Danger.DANGEROUS, "intent is unrelated and risky");
+        Gateway raises =
+                new Gateway(
+                        ws,
+                        new DangerComputation(),
+                        raisesDanger,
+                        DeployerPolicy.FULL_ACCESS,
+                        ProtectedSet.empty(),
+                        new ReadHistory());
+        ToolCall safeRead =
+                new ToolCall("view_file", Map.of("path", root.resolve("README.md").toString()));
+        Screening raised =
+                ((GatewayResult.Screened) raises.screen(safeRead, readDef(), "scan secrets"))
+                        .screening();
+        assertEquals(Relevance.LOW, raised.relevance());
+        assertEquals(Danger.DANGEROUS, raised.danger());
+
+        SlmRelevanceProvider claimsSafe =
+                (call, def, activeTask, thought) ->
+                        new SlmScreening(Relevance.HIGH, Danger.SAFE, "model claims safe");
+        Gateway deterministicFloor =
+                new Gateway(
+                        ws,
+                        new DangerComputation(),
+                        claimsSafe,
+                        DeployerPolicy.SANDBOXED,
+                        ProtectedSet.empty(),
+                        new ReadHistory());
+        ToolCall escapedRead =
+                new ToolCall(
+                        "view_file", Map.of("path", root.resolve("../../etc/passwd").toString()));
+        Screening floored =
+                ((GatewayResult.Screened) deterministicFloor.screen(escapedRead, readDef()))
+                        .screening();
+        assertEquals(Danger.CRITICAL, floored.danger());
+    }
+
+    @Test
     void outOfScopeReadScreensCritical() {
         Workspace ws = Workspace.single(root, PathMode.REAL);
         Gateway g =

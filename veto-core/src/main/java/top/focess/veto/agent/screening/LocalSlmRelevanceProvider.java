@@ -1,8 +1,13 @@
 package top.focess.veto.agent.screening;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.Locale;
+import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
 import top.focess.veto.agent.mcp.ToolDefinition;
 import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.veto.LlamaCppBridge;
@@ -19,10 +24,12 @@ import top.focess.veto.veto.LlamaCppBridge;
  * This implementation parses the response leniently (any string containing {@code HIGH}, {@code
  * MEDIUM}, or {@code LOW} wins; otherwise the fallback).
  */
+@Component
 public class LocalSlmRelevanceProvider implements SlmRelevanceProvider {
 
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.agent.screening.LocalSlmRelevanceProvider");
+    private static final @NonNull ObjectMapper MAPPER = new ObjectMapper();
 
     private final @NonNull LlamaCppBridge bridge;
 
@@ -31,48 +38,78 @@ public class LocalSlmRelevanceProvider implements SlmRelevanceProvider {
     }
 
     @Override
-    public @NonNull Relevance relevance(
-            @NonNull ToolCall call, @NonNull ToolDefinition def, String thought) {
+    public @NonNull SlmScreening screen(
+            @NonNull ToolCall call,
+            @NonNull ToolDefinition def,
+            String activeTask,
+            String thought) {
         if (!bridge.isAvailable()) {
-            return Relevance.HIGH;
+            return SlmScreening.degraded();
         }
-        String prompt = buildPrompt(call, def, thought);
+        String prompt = buildPrompt(call, def, activeTask, thought);
         try {
-            String response = bridge.infer(prompt, "veto-relevance").get();
+            String response = bridge.infer(prompt, "veto-screening").get(10, TimeUnit.SECONDS);
             if (response == null) {
-                return Relevance.HIGH;
+                return SlmScreening.degraded();
             }
-            String upper = response.toUpperCase();
-            if (upper.contains("LOW")) {
-                return Relevance.LOW;
-            }
-            if (upper.contains("MEDIUM")) {
-                return Relevance.MEDIUM;
-            }
-            if (upper.contains("HIGH")) {
-                return Relevance.HIGH;
+            JsonNode root = MAPPER.readTree(response);
+            if (root != null && root.isObject()) {
+                Relevance relevance = parseRelevance(root.path("relevance").asText());
+                Danger danger = parseDanger(root.path("danger").asText());
+                if (relevance != null && danger != null) {
+                    String reason = root.path("reason").asText("local SLM judgment");
+                    return new SlmScreening(relevance, danger, reason);
+                }
             }
             log.debug(
                     "LocalSlmRelevanceProvider: unparseable response '{}', defaulting HIGH",
                     response);
-            return Relevance.HIGH;
+            return SlmScreening.degraded();
         } catch (Exception e) {
             log.warn(
                     "LocalSlmRelevanceProvider: inference failed, defaulting HIGH: {}",
                     safe(e.getMessage()));
-            return Relevance.HIGH;
+            return SlmScreening.degraded();
         }
     }
 
     private static @NonNull String buildPrompt(
-            @NonNull ToolCall call, @NonNull ToolDefinition def, String thought) {
-        return "Given the agent's thought: \""
+            @NonNull ToolCall call,
+            @NonNull ToolDefinition def,
+            String activeTask,
+            String thought) {
+        return "Active user task: \""
+                + safe(activeTask)
+                + "\"\nGiven the agent's thought: \""
                 + safe(thought)
-                + "\"\nAnd the tool call: "
+                + "\"\nTool description: "
+                + def.description()
+                + "\nTool risk category: "
+                + def.risk()
+                + "\nTool call: "
                 + call.toolName()
                 + "("
                 + call.args()
-                + ")\nIs this call plausibly in service of the agent's stated task? Reply with one of: HIGH MEDIUM LOW\n";
+                + ")\nJudge whether the call is relevant to the active task and whether its intent"
+                + " adds semantic danger. Reply only as JSON with fields in this order: relevance"
+                + " HIGH/MEDIUM/LOW, danger SAFE/ELEVATED/DANGEROUS/CRITICAL, and a short"
+                + " reason.\n";
+    }
+
+    private static Relevance parseRelevance(@NonNull String value) {
+        try {
+            return Relevance.valueOf(value.strip().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    private static Danger parseDanger(@NonNull String value) {
+        try {
+            return Danger.valueOf(value.strip().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 
     private static @NonNull String safe(String s) {

@@ -15,3 +15,36 @@ bootstrap: >-
 failureConditions:
   severityThresholds:
     any: 1000
+
+# Qodana scans every license text embedded in a JAR. For dependencies offering a choice of
+# licenses, record the license Veto consumes instead of treating every alternative as cumulative.
+# These are version-pinned so a dependency upgrade must be reviewed again.
+dependencyOverrides:
+  - name: "logback-classic"
+    version: "1.5.34"
+    licenses:
+      - key: "LGPL-2.1-only"
+  - name: "logback-core"
+    version: "1.5.34"
+    licenses:
+      - key: "LGPL-2.1-only"
+  - name: "jakarta.annotation-api"
+    version: "2.1.1"
+    licenses:
+      - key: "GPL-2.0-with-classpath-exception"
+  - name: "jakarta.persistence-api"
+    version: "3.1.0"
+    licenses:
+      - key: "BSD-3-Clause"
+  - name: "jakarta.transaction-api"
+    version: "2.0.1"
+    licenses:
+      - key: "GPL-2.0-with-classpath-exception"
+  - name: "javax.annotation-api"
+    version: "1.3.2"
+    licenses:
+      - key: "GPL-2.0-with-classpath-exception"
+  - name: "tomcat-embed-core"
+    version: "10.1.55"
+    licenses:
+      - key: "Apache-2.0"

@@ -2,6 +2,10 @@ package top.focess.veto.integration;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
@@ -239,6 +243,34 @@ class VetoApplicationTests {
                 HttpStatus.BAD_REQUEST,
                 response.getStatusCode(),
                 "Empty payload should return 400");
+    }
+
+    @Test
+    void corsAllowsLocalUiToCallTheConfiguredBackendPort()
+            throws java.io.IOException, InterruptedException {
+        String origin = "http://localhost:5173";
+        String url = "http://localhost:" + port + "/api/auth/status";
+        @NonNull HttpRequest request =
+                HttpRequest.newBuilder(URI.create(url))
+                        .method("OPTIONS", HttpRequest.BodyPublishers.noBody())
+                        .header("Origin", origin)
+                        .header("Access-Control-Request-Method", "GET")
+                        .header(
+                                "Access-Control-Request-Headers",
+                                "X-Veto-Session-Token, Content-Type, Accept-Language")
+                        .build();
+
+        @NonNull HttpResponse<String> response =
+                HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
+
+        assertEquals(HttpStatus.OK.value(), response.statusCode());
+        assertEquals(
+                origin, response.headers().firstValue("Access-Control-Allow-Origin").orElseThrow());
+        assertTrue(
+                response.headers()
+                        .firstValue("Access-Control-Allow-Headers")
+                        .orElseThrow()
+                        .contains("X-Veto-Session-Token"));
     }
 
     @Test

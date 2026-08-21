@@ -24,7 +24,7 @@ from pathlib import Path
 # ── Constants ──
 
 REQUIRED_FIELDS = {"id", "task", "instruction", "output"}
-VALID_TASKS = {"veto_decision", "redaction", "structural_constraint"}
+VALID_TASKS = {"veto_decision", "redaction", "structural_constraint", "screening"}
 VALID_VETO_DECISIONS = {"pass", "redact", "block"}
 MIN_INSTRUCTION_LENGTH = 10
 MAX_INSTRUCTION_LENGTH = 4096
@@ -119,6 +119,17 @@ def validate_record(record: dict, idx: int, args) -> list[str]:
             errors.append("Missing 'violations' in output")
         elif not isinstance(output_json["violations"], list):
             errors.append("'violations' must be an array")
+
+    # 4d. relevance + advisory danger screening task
+    elif task == "screening":
+        if output_json.get("relevance") not in {"HIGH", "MEDIUM", "LOW"}:
+            errors.append("Invalid or missing screening relevance")
+        if output_json.get("danger") not in {
+            "SAFE", "ELEVATED", "DANGEROUS", "CRITICAL"
+        }:
+            errors.append("Invalid or missing screening danger")
+        if not isinstance(output_json.get("reason"), str) or not output_json["reason"].strip():
+            errors.append("Missing screening reason")
 
     return errors
 

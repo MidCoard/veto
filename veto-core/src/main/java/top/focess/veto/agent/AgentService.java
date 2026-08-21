@@ -15,6 +15,7 @@ import java.util.function.Consumer;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.i18n.LocaleContextHolder;
@@ -80,6 +81,7 @@ public class AgentService {
     // each AgentRunner so appendTurn persists to the raw-turn audit/replay log.
     private final top.focess.veto.memory.TurnLogService turnLogService;
     private final top.focess.veto.sandbox.@NonNull BackgroundTaskManager backgroundTaskManager;
+    private @NonNull SlmRelevanceProvider slmRelevanceProvider = SlmRelevanceProvider.degraded();
 
     /**
      * The fallback memory-tenant userId for legacy/test paths that bypass session activation (the
@@ -136,6 +138,11 @@ public class AgentService {
         this.deltaBroker = deltaBroker;
         this.turnLogService = turnLogService;
         this.backgroundTaskManager = backgroundTaskManager;
+    }
+
+    @Autowired(required = false)
+    void setSlmRelevanceProvider(@NonNull SlmRelevanceProvider provider) {
+        this.slmRelevanceProvider = provider;
     }
 
     /**
@@ -498,7 +505,7 @@ public class AgentService {
                 new Gateway(
                         workspace,
                         new DangerComputation(),
-                        SlmRelevanceProvider.degraded(),
+                        slmRelevanceProvider,
                         deployerPolicy,
                         userProtectedSet,
                         readHistory);
@@ -608,7 +615,7 @@ public class AgentService {
                 new Gateway(
                         workspace,
                         new DangerComputation(),
-                        SlmRelevanceProvider.degraded(),
+                        slmRelevanceProvider,
                         deployerPolicy,
                         mateProtectedSet,
                         readHistory);

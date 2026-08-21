@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "top.focess"
-version = "1.0.98"
+version = "1.0.99"
 
 // Centralized dependency versions shared across all subprojects
 extra["jacksonVersion"] = "2.18.8"
@@ -45,6 +45,13 @@ subprojects {
             val checkerStubs = project.layout.projectDirectory.dir("config/checker").asFile
             if (checkerStubs.isDirectory) {
                 options.compilerArgs.add("-Astubs=${checkerStubs.absolutePath}")
+            }
+        }
+
+        // Every published JVM artifact must carry the same license as the source repository.
+        tasks.withType<Jar>().configureEach {
+            from(rootProject.file("LICENSE")) {
+                into("META-INF")
             }
         }
     }
@@ -84,6 +91,7 @@ val localRelease by tasks.registering {
                         .get()
                         .asFile
         distZip.copyTo(File(terminalDir, distZip.name))
+        layout.projectDirectory.file("LICENSE").asFile.copyTo(File(out, "LICENSE"))
         val dollar = "$"
         File(out, "start-core.bat")
                 .writeText(

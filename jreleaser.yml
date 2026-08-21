@@ -7,7 +7,7 @@ project:
     It operates on a Cloud-Edge Collaborative Topology, providing critical security and orchestration layers.
   authors:
     - Focess
-  license: Proprietary
+  license: AGPL-3.0-only
   links:
     homepage: https://github.com/MidCoard/veto
   java:

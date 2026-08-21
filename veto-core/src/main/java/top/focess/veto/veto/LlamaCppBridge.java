@@ -148,6 +148,7 @@ public class LlamaCppBridge {
                     "{\"veto_decision\":\"pass\",\"data\":{\"note\":\"SLM unavailable, passed without analysis\"}}");
         }
 
+        String grammar = grammarEngine.resolveGrammar(grammarName);
         return CompletableFuture.supplyAsync(
                 () -> {
                     try {
@@ -158,7 +159,7 @@ public class LlamaCppBridge {
                                                 + "\"stop\":[\"###\"],\"grammar\":\"%s\"}",
                                         escapeJson(prompt),
                                         config.getLlamaCpp().getTemperature(),
-                                        escapeJson(grammarName));
+                                        escapeJson(grammar));
 
                         HttpRequest request =
                                 HttpRequest.newBuilder()

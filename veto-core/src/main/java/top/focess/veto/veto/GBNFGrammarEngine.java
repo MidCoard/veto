@@ -108,6 +108,31 @@ public class GBNFGrammarEngine {
                 """;
     }
 
+    /** Grammar for the advisory relevance + danger screening contract. */
+    public @NonNull String getScreeningGrammar() {
+        return """
+                root ::= "{" ws "\\\"relevance\\\"" ws ":" ws relevance "," ws "\\\"danger\\\"" ws ":" ws danger "," ws "\\\"reason\\\"" ws ":" ws string ws "}"
+                relevance ::= "\\\"HIGH\\\"" | "\\\"MEDIUM\\\"" | "\\\"LOW\\\""
+                danger ::= "\\\"SAFE\\\"" | "\\\"ELEVATED\\\"" | "\\\"DANGEROUS\\\"" | "\\\"CRITICAL\\\""
+                string ::= "\\\"" ([^"\\\\] | "\\\\" (["\\\\/bfnrt] | "u" [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F]))* "\\\""
+                ws ::= [ \\t\\n]*
+                """;
+    }
+
+    /** Resolve a public grammar name to the actual GBNF text expected by llama.cpp. */
+    public @NonNull String resolveGrammar(@NonNull String name) {
+        String registered = grammarCache.get(name);
+        if (registered != null) {
+            return registered;
+        }
+        return switch (name) {
+            case "veto-screening", "veto-relevance" -> getScreeningGrammar();
+            case "veto-semantic-mask" -> getSecretsRedactionGrammar();
+            case "veto-output" -> loadVetoOutputGrammar();
+            default -> loadGrammar(name);
+        };
+    }
+
     /** Register a custom grammar. */
     public void registerGrammar(@NonNull String name, @NonNull String grammar) {
         grammarCache.put(name, grammar);

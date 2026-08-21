@@ -50,7 +50,7 @@ def parse_args():
     parser.add_argument("--log-file", type=str, default="training_log.jsonl")
     parser.add_argument("--quality-filter", action="store_true", default=False,
                         help="Run quality filter on input data before training")
-    parser.add_argument("--structured-output", action="store_true", default=True,
+    parser.add_argument("--structured-output", action=argparse.BooleanOptionalAction, default=True,
                         help="Emit structured JSON progress lines to stdout (for Java parser)")
     return parser.parse_args()
 
@@ -96,8 +96,12 @@ def setup_environment(args):
     try:
         import torch
         if torch.cuda.is_available():
+            properties = torch.cuda.get_device_properties(0)
+            total_memory = getattr(properties, "total_memory", None)
+            if total_memory is None:
+                total_memory = getattr(properties, "total_mem")
             print(f"[OK] GPU: {torch.cuda.get_device_name(0)} "
-                  f"(VRAM: {torch.cuda.get_device_properties(0).total_mem / 1e9:.1f} GB)")
+                  f"(VRAM: {total_memory / 1e9:.1f} GB)")
         else:
             print("[WARN] No GPU detected. Training will be very slow on CPU. "
                   "Consider a smaller model like Qwen2.5-0.5B.")
@@ -166,8 +170,11 @@ def format_instruction(record: dict) -> str:
 
 def tokenize_function(examples, tokenizer, max_length: int):
     """Tokenize instruction-output pairs."""
-    texts = [format_instruction({"instruction": inst, "output": out})
-             for inst, out in zip(examples["instruction"], examples["output"])]
+    prompts = [
+        f"### Instruction:\n{instruction}\n\n### Response:\n"
+        for instruction in examples["instruction"]
+    ]
+    texts = [prompt + output for prompt, output in zip(prompts, examples["output"])]
     tokenized = tokenizer(
         texts,
         truncation=True,
@@ -175,7 +182,22 @@ def tokenize_function(examples, tokenizer, max_length: int):
         max_length=max_length,
         return_tensors=None,
     )
-    tokenized["labels"] = tokenized["input_ids"].copy()
+    prompt_token_ids = tokenizer(
+        prompts,
+        truncation=True,
+        padding=False,
+        max_length=max_length,
+        return_tensors=None,
+    )["input_ids"]
+    tokenized["labels"] = [
+        [
+            token if mask and index >= len(prompt_ids) else -100
+            for index, (token, mask) in enumerate(zip(ids, attention))
+        ]
+        for ids, attention, prompt_ids in zip(
+            tokenized["input_ids"], tokenized["attention_mask"], prompt_token_ids
+        )
+    ]
     return tokenized
 
 
@@ -201,10 +223,12 @@ def train(args):
     # ── Structured progress callback ──
     from transformers import TrainerCallback
 
+    emit_structured_output = args.structured_output
+
     class StructuredProgressCallback(TrainerCallback):
         """Emits structured JSON progress lines during training (for Java TrainingManager parser)."""
-        def on_log(self, args, state, control, logs=None, **kwargs):
-            if logs and args.structured_output:
+        def on_log(self, training_args, state, control, logs=None, **kwargs):
+            if logs and emit_structured_output:
                 emit_progress("progress",
                               epoch=state.epoch or 0,
                               step=state.global_step,
@@ -212,13 +236,13 @@ def train(args):
                               loss=logs.get("loss", logs.get("eval_loss", None)),
                               learning_rate=logs.get("learning_rate", None))
 
-        def on_epoch_begin(self, args, state, control, **kwargs):
-            if args.structured_output:
+        def on_epoch_begin(self, training_args, state, control, **kwargs):
+            if emit_structured_output:
                 emit_progress("epoch_start", epoch=int(state.epoch or 0) + 1)
 
-        def on_epoch_end(self, args, state, control, **kwargs):
-            if args.structured_output:
-                emit_progress("epoch_end", epoch=int(state.epoch or 0) + 1)
+        def on_epoch_end(self, training_args, state, control, **kwargs):
+            if emit_structured_output:
+                emit_progress("epoch_end", epoch=int(state.epoch or 0))
 
     # ── Quantization config (4-bit QLoRA) ──
     bnb_config = BitsAndBytesConfig(
@@ -287,7 +311,7 @@ def train(args):
         lr_scheduler_type="cosine",
         logging_steps=5,
         save_strategy="epoch",
-        evaluation_strategy="epoch",
+        eval_strategy="epoch",
         save_total_limit=2,
         load_best_model_at_end=True,
         bf16=torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8,
@@ -303,7 +327,7 @@ def train(args):
         args=training_args,
         train_dataset=tokenized_datasets["train"],
         eval_dataset=tokenized_datasets.get("eval"),
-        tokenizer=tokenizer,
+        processing_class=tokenizer,
         callbacks=[StructuredProgressCallback()] if args.structured_output else [],
     )
 
@@ -324,10 +348,28 @@ def train(args):
     tokenizer.save_pretrained(str(out_dir / "lora-adapter"))
     print(f"[OK] LoRA adapter saved to {out_dir / 'lora-adapter'}")
 
-    # Merge LoRA weights into base model (optional, for GGUF conversion)
-    print("Merging LoRA adapter into base model ...")
-    merged = model.merge_and_unload()
-    merged.save_pretrained(str(out_dir / "merged"))
+    # Merge from a fresh unquantized base. Merging directly into the 4-bit training instance can
+    # round away the learned adapter and produce a deployable-looking model that behaves exactly
+    # like the untouched base model.
+    print("Merging LoRA adapter into a fresh unquantized base model ...")
+    import gc
+    from peft import PeftModel
+
+    del trainer
+    del model
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    clean_base = AutoModelForCausalLM.from_pretrained(
+        args.base_model,
+        device_map="cpu",
+        trust_remote_code=True,
+        token=args.hf_token,
+        torch_dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float32,
+    )
+    adapter_model = PeftModel.from_pretrained(clean_base, str(out_dir / "lora-adapter"))
+    merged = adapter_model.merge_and_unload(safe_merge=True)
+    merged.save_pretrained(str(out_dir / "merged"), safe_serialization=True)
     tokenizer.save_pretrained(str(out_dir / "merged"))
     print(f"[OK] Merged model saved to {out_dir / 'merged'}")
 

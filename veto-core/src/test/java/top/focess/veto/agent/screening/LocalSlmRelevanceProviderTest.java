@@ -67,7 +67,10 @@ class LocalSlmRelevanceProviderTest {
     @Test
     void slmParsesHigh() {
         LocalSlmRelevanceProvider provider =
-                new LocalSlmRelevanceProvider(new FakeBridge(true, "HIGH"));
+                new LocalSlmRelevanceProvider(
+                        new FakeBridge(
+                                true,
+                                "{\"relevance\":\"HIGH\",\"danger\":\"SAFE\",\"reason\":\"on task\"}"));
         NativeToolDefinition def =
                 new NativeToolDefinition(
                         "view_file",
@@ -83,7 +86,10 @@ class LocalSlmRelevanceProviderTest {
     @Test
     void slmParsesMedium() {
         LocalSlmRelevanceProvider provider =
-                new LocalSlmRelevanceProvider(new FakeBridge(true, "MEDIUM"));
+                new LocalSlmRelevanceProvider(
+                        new FakeBridge(
+                                true,
+                                "{\"relevance\":\"MEDIUM\",\"danger\":\"ELEVATED\",\"reason\":\"weak justification\"}"));
         NativeToolDefinition def =
                 new NativeToolDefinition(
                         "write_to_file",
@@ -94,12 +100,16 @@ class LocalSlmRelevanceProviderTest {
                         Map.of("path", ParamCategory.FILESYSTEM_PATH));
         ToolCall call = new ToolCall("write_to_file", Map.of("path", "/x", "content", "y"));
         assertEquals(Relevance.MEDIUM, provider.relevance(call, def, "writing a side file"));
+        assertEquals(Danger.ELEVATED, provider.screen(call, def, "writing a side file").danger());
     }
 
     @Test
     void slmParsesLow() {
         LocalSlmRelevanceProvider provider =
-                new LocalSlmRelevanceProvider(new FakeBridge(true, "LOW"));
+                new LocalSlmRelevanceProvider(
+                        new FakeBridge(
+                                true,
+                                "{\"relevance\":\"LOW\",\"danger\":\"DANGEROUS\",\"reason\":\"unrelated scan\"}"));
         NativeToolDefinition def =
                 new NativeToolDefinition(
                         "run_command",
@@ -112,6 +122,7 @@ class LocalSlmRelevanceProviderTest {
         // Note: Real run_command would route via sandbox. This is just exercising the relevance
         // test.
         assertEquals(Relevance.LOW, provider.relevance(call, def, "scanning network"));
+        assertEquals(Danger.DANGEROUS, provider.screen(call, def, "scanning network").danger());
     }
 
     @Test
@@ -128,5 +139,6 @@ class LocalSlmRelevanceProviderTest {
                         Map.of("path", ParamCategory.FILESYSTEM_PATH));
         ToolCall call = new ToolCall("view_file", Map.of("path", "/a/b"));
         assertEquals(Relevance.HIGH, provider.relevance(call, def, "looking at b"));
+        assertEquals(Danger.SAFE, provider.screen(call, def, "looking at b").danger());
     }
 }

@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "top.focess"
-version = "1.0.98"
+version = "1.0.99"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_25
@@ -31,7 +31,12 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-websocket")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("org.springframework.boot:spring-boot-starter-validation")
-    implementation("org.springframework.boot:spring-boot-starter-data-jpa")
+    implementation("org.springframework.boot:spring-boot-starter-data-jpa") {
+        // Veto uses Spring's proxy-based transaction support, not AspectJ weaving. Excluding the
+        // unused EPL-only aspect module keeps the runtime smaller and the AGPL dependency graph
+        // license-compatible.
+        exclude(group = "org.springframework", module = "spring-aspects")
+    }
 
     // Log4j API class files retain these provided-scope annotations. Keep their metadata on the
     // compile classpath so javac can validate the dependency bytecode without classfile warnings.
@@ -50,7 +55,9 @@ dependencies {
     implementation("io.grpc:grpc-netty-shaded:1.75.0")
     implementation("io.grpc:grpc-protobuf:1.75.0")
     implementation("io.grpc:grpc-stub:1.75.0")
-    implementation("javax.annotation:javax.annotation-api:1.3.2")
+    // Generated gRPC sources use @Generated only while compiling; the annotation is not needed at
+    // runtime and should not be bundled into the application.
+    compileOnly("javax.annotation:javax.annotation-api:1.3.2")
 
     // Protobuf
     implementation("com.google.protobuf:protobuf-java:4.28.2")

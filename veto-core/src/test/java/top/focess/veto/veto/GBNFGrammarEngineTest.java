@@ -46,6 +46,14 @@ class GBNFGrammarEngineTest {
     }
 
     @Test
+    void screeningGrammarConstrainsBothClassifiers() {
+        String grammar = grammarEngine.resolveGrammar("veto-screening");
+        assertTrue(grammar.contains("relevance"));
+        assertTrue(grammar.contains("danger"));
+        assertTrue(grammar.contains("CRITICAL"));
+    }
+
+    @Test
     void testRegisterCustomGrammar() {
         grammarEngine.registerGrammar("custom", "root ::= \"hello\"");
         String loaded = grammarEngine.loadGrammar("custom");

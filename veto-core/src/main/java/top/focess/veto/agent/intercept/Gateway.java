@@ -24,6 +24,7 @@ import top.focess.veto.agent.screening.ProtectedSet;
 import top.focess.veto.agent.screening.Relevance;
 import top.focess.veto.agent.screening.Screening;
 import top.focess.veto.agent.screening.SlmRelevanceProvider;
+import top.focess.veto.agent.screening.SlmScreening;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.ToolCall;
 
@@ -92,6 +93,19 @@ public class Gateway {
      * HitlRegistry} decides {@link ApprovalDecision} from the result.
      */
     public @NonNull GatewayResult screen(@NonNull ToolCall call, @NonNull ToolDefinition def) {
+        return screen(call, def, null);
+    }
+
+    public @NonNull GatewayResult screen(
+            @NonNull ToolCall call, @NonNull ToolDefinition def, String thought) {
+        return screen(call, def, null, thought);
+    }
+
+    public @NonNull GatewayResult screen(
+            @NonNull ToolCall call,
+            @NonNull ToolDefinition def,
+            String activeTask,
+            String thought) {
         if (def instanceof AgentToolDefinition) {
             return new GatewayResult.NotScreened();
         }
@@ -103,11 +117,18 @@ public class Gateway {
                 return drift;
             }
         }
-        Danger danger = dangerComputation.compute(def, call, workspace, policy, protectedSet);
-        Relevance relevance = slmRelevance.relevance(call, def, /* thought */ null);
+        Danger deterministicDanger =
+                dangerComputation.compute(def, call, workspace, policy, protectedSet);
+        SlmScreening advisory = slmRelevance.screen(call, def, activeTask, thought);
+        Danger danger = maxDanger(deterministicDanger, advisory.danger());
+        Relevance relevance = advisory.relevance();
         VetoScenario scenario = scenarioFor(danger, def);
-        String reason = reasonFor(danger, def);
+        String reason = reasonFor(deterministicDanger, advisory, danger, def);
         return new GatewayResult.Screened(new Screening(relevance, danger, scenario, reason));
+    }
+
+    private static @NonNull Danger maxDanger(@NonNull Danger left, @NonNull Danger right) {
+        return left.ordinal() >= right.ordinal() ? left : right;
     }
 
     private @NonNull VetoScenario scenarioFor(@NonNull Danger danger, @NonNull ToolDefinition def) {
@@ -124,8 +145,21 @@ public class Gateway {
         };
     }
 
-    private @NonNull String reasonFor(@NonNull Danger danger, @NonNull ToolDefinition def) {
-        return def.risk() + " -> " + danger;
+    private @NonNull String reasonFor(
+            @NonNull Danger deterministicDanger,
+            @NonNull SlmScreening advisory,
+            @NonNull Danger finalDanger,
+            @NonNull ToolDefinition def) {
+        return def.risk()
+                + " -> deterministic="
+                + deterministicDanger
+                + ", slm="
+                + advisory.danger()
+                + ", final="
+                + finalDanger
+                + " ("
+                + advisory.reason()
+                + ")";
     }
 
     // ── Path extraction ───────────────────────────────────────────────────

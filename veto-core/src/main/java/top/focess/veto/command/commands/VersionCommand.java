@@ -32,12 +32,14 @@ public class VersionCommand extends VetoCommand {
                     Version client = s.clientProductVersion();
                     s.output("veto-core: " + VetoVersion.VERSION);
                     s.output("veto-terminal: " + client);
+                    s.output("license: AGPL-3.0-only");
+                    s.output("source: https://github.com/MidCoard/veto");
                     return CommandResult.ALLOW;
                 });
     }
 
     @Override
     public @NonNull List<String> usage(@NonNull CommandSender s) {
-        return List.of("/version - Show veto-core and veto-terminal versions");
+        return List.of("/version - Show component versions, license, and source code");
     }
 }

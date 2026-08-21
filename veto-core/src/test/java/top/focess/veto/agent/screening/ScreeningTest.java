@@ -16,6 +16,7 @@ class ScreeningTest {
         SlmRelevanceProvider provider = new DegradedSlmRelevanceProvider();
         ToolCall call = new ToolCall("any", java.util.Map.of());
         assertEquals(Relevance.HIGH, provider.relevance(call, anAgentToolDef(), "any thought"));
+        assertEquals(Danger.SAFE, provider.screen(call, anAgentToolDef(), "any thought").danger());
     }
 
     @Test
