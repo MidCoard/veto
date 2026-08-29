@@ -113,7 +113,7 @@ public class ToolEngineImpl implements ToolEngine {
                     new McpJsonRpcClient(mapper).discoverTools(transport);
             for (RemoteToolDefinition t : tools) {
                 remoteDefs.put(t.name(), t);
-                transports.put(t.name(), transport);
+                transports.put(t.serverName(), transport);
             }
             log.info("ToolEngine: discovered {} tool(s) from {}.", tools.size(), transport);
             return tools;
@@ -367,13 +367,9 @@ public class ToolEngineImpl implements ToolEngine {
         }
     }
 
-    /**
-     * External tool execution over the registered {@link McpTransport}. The defines the transport
-     * types but the JSON-RPC {@code tools/call} I/O over stdio/SSE/socket is beyond the schema
-     * representation — not implemented.
-     */
+    /** External tool execution over the transport recorded during MCP discovery. */
     private @NonNull ToolResult executeRemote(
-            @NonNull ToolCall call, @NonNull RemoteToolDefinition def) {
+            @NonNull ToolCall call, @NonNull RemoteToolDefinition def) throws IOException {
         McpTransport transport = transports.get(def.serverName());
         if (transport == null) {
             return new ToolResult(
@@ -382,14 +378,28 @@ public class ToolEngineImpl implements ToolEngine {
                     false,
                     errorEnvelope("No transport registered for server: " + def.serverName()));
         }
-        return new ToolResult(
-                call.toolName(),
-                call.callId(),
-                false,
-                errorEnvelope(
-                        "Remote tool execution over "
-                                + transport.getClass().getSimpleName()
-                                + " is not implemented."));
+        JsonNode result = new McpJsonRpcClient(mapper).callTool(transport, def.name(), call.args());
+        boolean success = !result.path("isError").asBoolean(false);
+        String content = remoteContent(result);
+        return new ToolResult(call.toolName(), call.callId(), success, content);
+    }
+
+    private static @NonNull String remoteContent(@NonNull JsonNode result) {
+        JsonNode blocks = result.get("content");
+        if (blocks == null || !blocks.isArray()) {
+            return result.toString();
+        }
+        StringBuilder text = new StringBuilder();
+        for (JsonNode block : blocks) {
+            if (!"text".equals(block.path("type").asText()) || !block.has("text")) {
+                continue;
+            }
+            if (!text.isEmpty()) {
+                text.append('\n');
+            }
+            text.append(block.path("text").asText());
+        }
+        return text.isEmpty() ? result.toString() : text.toString();
     }
 
     private static @NonNull ChainMode parseChainMode(String connect) {

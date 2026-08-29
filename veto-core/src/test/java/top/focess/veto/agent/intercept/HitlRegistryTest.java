@@ -77,6 +77,19 @@ class HitlRegistryTest {
     }
 
     @Test
+    void declineAndContinueIsAvailableForEveryPendingCall() throws Exception {
+        HitlRegistry registry = new HitlRegistry();
+        CompletableFuture<InterceptResolution> future =
+                registry.register("agent-1", "call-continue", call(), null, E2_OPTIONS, null);
+
+        assertTrue(
+                registry.resolveOption(
+                        "agent-1", "call-continue", VetoOption.DECLINE_AND_CONTINUE.name()));
+
+        assertEquals(VetoOption.DECLINE_AND_CONTINUE, future.get(1, TimeUnit.SECONDS).option());
+    }
+
+    @Test
     void resolveOptionReturnsFalseWhenNoVetoPending() {
         HitlRegistry registry = new HitlRegistry();
         assertFalse(

@@ -134,6 +134,7 @@ target/
 /work/
 /audit/
 /models/
+/release/
 /veto-core/audit/
 veto-core/training/data/*.json
 veto-core/training/data/*.jsonl
@@ -142,10 +143,16 @@ veto-core/training/.pip-cache/
 veto-core/training/.tmp/
 veto-core/training/.venv/
 veto-core/training/models/
+veto-core/training/*.jsonl
+veto-core/models/
+veto-core/benchmarks/agentdojo/.venv/
+veto-core/benchmarks/agentdojo/workspace/
+veto-core/benchmarks/agentdojo/runs/
+/conversion_log.jsonl
+/training_log.jsonl
 plans/
 scripts/
 docs/
 ARCHITECTURE.md
 .playwright-mcp/
 prompt-dump/
-release/

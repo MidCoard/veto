@@ -5,6 +5,9 @@ import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sun.net.httpserver.HttpServer;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -317,5 +320,47 @@ class ToolEngineImplTest {
                         definition(engine, "run_command"));
         assertFalse(result.success(), "run_command without an explicit timeout must fail");
         assertTrue(result.content().contains("timeout"), "error must name the missing timeout");
+    }
+
+    @Test
+    void discoveredRemoteToolExecutesOverSseTransport() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext(
+                "/mcp",
+                exchange -> {
+                    String request =
+                            new String(
+                                    exchange.getRequestBody().readAllBytes(),
+                                    StandardCharsets.UTF_8);
+                    String result =
+                            request.contains("tools/list")
+                                    ? "{\"tools\":[{\"name\":\"lookup_event\",\"description\":\"Look up an event\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"event_id\":{\"type\":\"string\"}},\"required\":[\"event_id\"]}}]}"
+                                    : "{\"content\":[{\"type\":\"text\",\"text\":\"event found\"}],\"isError\":false}";
+                    byte[] response =
+                            ("data: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":" + result + "}\n\n")
+                                    .getBytes(StandardCharsets.UTF_8);
+                    exchange.getResponseHeaders().set("Content-Type", "text/event-stream");
+                    exchange.sendResponseHeaders(200, response.length);
+                    exchange.getResponseBody().write(response);
+                    exchange.close();
+                });
+        server.start();
+        try {
+            ToolEngineImpl engine = newEngine();
+            String endpoint = "http://127.0.0.1:" + server.getAddress().getPort() + "/mcp";
+            var definitions =
+                    engine.discoverAndRegister(new McpTransport.SseMcpTransport(endpoint, ""));
+
+            assertEquals(1, definitions.size());
+            ToolResult result =
+                    engine.execute(
+                            new ToolCall("lookup_event", Map.of("event_id", "event-1"), "remote-1"),
+                            definition(engine, "lookup_event"));
+
+            assertTrue(result.success(), result.content());
+            assertEquals("event found", result.content());
+        } finally {
+            server.stop(0);
+        }
     }
 }

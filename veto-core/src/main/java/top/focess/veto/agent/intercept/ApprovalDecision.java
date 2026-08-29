@@ -3,6 +3,7 @@ package top.focess.veto.agent.intercept;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.screening.Danger;
+import top.focess.veto.agent.screening.Relevance;
 
 /**
  * The {@link HitlRegistry}'s decision for one tool call, computed from the {@link GatewayResult}
@@ -41,7 +42,8 @@ public sealed interface ApprovalDecision
     record Prompt(
             @NonNull VetoScenario scenario,
             @NonNull List<@NonNull VetoOption> options,
-            Danger danger)
+            Danger danger,
+            Relevance relevance)
             implements ApprovalDecision {
         public Prompt {
             options = List.copyOf(options);

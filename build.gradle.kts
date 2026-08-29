@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "top.focess"
-version = "1.0.99"
+version = "1.0.100"
 
 // Centralized dependency versions shared across all subprojects
 extra["jacksonVersion"] = "2.18.8"

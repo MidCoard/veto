@@ -41,6 +41,26 @@ def parse_args():
     return parser.parse_args()
 
 
+def paths_refer_to_same_file(first: str | Path, second: str | Path) -> bool:
+    """Compare paths lexically after resolution, even when the destination does not exist yet."""
+    return os.path.normcase(str(Path(first).resolve(strict=False))) == os.path.normcase(
+        str(Path(second).resolve(strict=False))
+    )
+
+
+def relative_log_path(target: str | Path, log_file: str | Path) -> str:
+    """Serialize a conversion artifact relative to its local log, without leaking host drives."""
+    target_path = Path(target)
+    log_path = Path(log_file)
+    try:
+        relative = os.path.relpath(
+            target_path.resolve(strict=False), log_path.parent.resolve(strict=False)
+        )
+    except ValueError:
+        relative = target_path.name
+    return Path(relative).as_posix()
+
+
 def find_llama_cpp_scripts() -> str | None:
     """Locate llama.cpp convert script in common locations."""
     candidates = [
@@ -179,22 +199,25 @@ def main():
 
     # ── Default copy to project models/ ──
     default_project_model = Path(__file__).parent.parent.parent / "models" / "veto-slm.gguf"
-    if not args.copy_to or args.copy_to != str(default_project_model):
+    if not args.copy_to or not paths_refer_to_same_file(args.copy_to, default_project_model):
         default_project_model.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(final_path, str(default_project_model))
         print(f"[OK] Also copied to {default_project_model} (default LlamaCppBridge path)")
 
     # ── Log ──
+    log_path = Path(args.log_file)
     log_entry = {
-        "model_dir": str(model_dir),
-        "output_dir": str(out_dir),
+        "model_dir": relative_log_path(model_dir, log_path),
+        "output_dir": relative_log_path(out_dir, log_path),
         "quantize_type": args.quantize_type,
-        "gguf_path": str(final_path),
-        "project_model_path": str(default_project_model),
+        "gguf_path": relative_log_path(final_path, log_path),
+        "project_model_path": relative_log_path(default_project_model, log_path),
         "status": "completed",
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
-    log_path = Path(args.log_file)
+    if args.copy_to:
+        log_entry["copy_to"] = relative_log_path(args.copy_to, log_path)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
     with open(log_path, "a", encoding="utf-8") as f:
         f.write(json.dumps(log_entry) + "\n")
 

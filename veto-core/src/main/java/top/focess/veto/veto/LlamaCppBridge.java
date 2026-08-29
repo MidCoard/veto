@@ -1,6 +1,8 @@
 package top.focess.veto.veto;
 
 import java.io.*;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -29,10 +31,6 @@ public class LlamaCppBridge {
 
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.veto.LlamaCppBridge");
-
-    /** Pattern to extract the port from llama-server startup output. */
-    private static final @NonNull Pattern PORT_PATTERN =
-            Pattern.compile("llama server listening at .*:(\\d+)");
 
     private final @NonNull VetoGatewayConfiguration config;
     private final @NonNull GBNFGrammarEngine grammarEngine;
@@ -91,10 +89,11 @@ public class LlamaCppBridge {
             ProcessBuilder pb = llamaServerProcess(modelPath, grammarFile, port);
 
             pb.redirectErrorStream(true);
-            llamaProcess = pb.start();
-
-            // Parse the port from startup output
-            this.serverPort = parsePortFromStartup(llamaProcess, port);
+            @NonNull Process process = pb.start();
+            llamaProcess = process;
+            drainProcessOutput(process);
+            waitUntilListening(process, port);
+            this.serverPort = port;
 
             available = true;
             log.info(
@@ -132,8 +131,6 @@ public class LlamaCppBridge {
                 grammarFile.toAbsolutePath().toString(),
                 "--port",
                 String.valueOf(port),
-                "--embedding",
-                "false",
                 "--cont-batching");
     }
 
@@ -257,64 +254,47 @@ public class LlamaCppBridge {
         }
     }
 
-    /**
-     * Parse the server port from llama-server startup output. Falls back to the requested port if
-     * the pattern is not found.
-     */
-    private int parsePortFromStartup(@NonNull Process process, int fallbackPort) {
-        try (BufferedReader reader =
-                new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-            // Read startup output for up to 30 seconds looking for the port line
-            long deadline = System.currentTimeMillis() + 30_000;
-            StringBuilder startupOutput = new StringBuilder();
-
-            while (System.currentTimeMillis() < deadline) {
-                String line = reader.readLine();
-                if (line == null) break;
-
-                startupOutput.append(line).append("\n");
-                Matcher m = PORT_PATTERN.matcher(line);
-                if (m.find()) {
-                    String portGroup = m.group(1);
-                    if (portGroup == null) {
-                        continue;
-                    }
-                    int parsedPort = Integer.parseInt(portGroup);
-                    log.debug("gateway LlamaCpp: Parsed port {} from startup output", parsedPort);
-                    return parsedPort;
-                }
-
-                // Also check for "HTTP server listening" format
-                if (line.contains("listening") && line.contains(":")) {
-                    // Try to extract port from various formats
-                    Pattern altPort = Pattern.compile(":(\\d+)\\s");
-                    Matcher altM = altPort.matcher(line);
-                    if (altM.find()) {
-                        String portGroup = altM.group(1);
-                        if (portGroup == null) {
-                            continue;
-                        }
-                        int p = Integer.parseInt(portGroup);
-                        if (p > 1024 && p < 65536) {
-                            log.debug("gateway LlamaCpp: Parsed port {} from alt format", p);
-                            return p;
-                        }
-                    }
+    private void waitUntilListening(@NonNull Process process, int port) throws IOException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+        while (System.nanoTime() < deadline) {
+            if (!process.isAlive()) {
+                throw new IOException("llama-server exited before opening its HTTP port");
+            }
+            try (Socket socket = new Socket()) {
+                socket.connect(new InetSocketAddress("127.0.0.1", port), 250);
+                return;
+            } catch (IOException notReady) {
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new IOException("Interrupted while waiting for llama-server", e);
                 }
             }
-
-            // Log what we saw for debugging
-            String output = startupOutput.toString();
-            if (output.length() > 500) {
-                output = output.substring(0, 500) + "...";
-            }
-            log.debug("gateway LlamaCpp: Startup output (no port pattern found): {}", output);
-
-        } catch (IOException e) {
-            log.warn("gateway LlamaCpp: Failed to parse startup output", e);
         }
-        log.info("gateway LlamaCpp: Using fallback port {}", fallbackPort);
-        return fallbackPort;
+        throw new IOException("llama-server did not open its HTTP port within 30 seconds");
+    }
+
+    private void drainProcessOutput(@NonNull Process process) {
+        Thread thread =
+                new Thread(
+                        () -> {
+                            try (BufferedReader reader =
+                                    new BufferedReader(
+                                            new InputStreamReader(process.getInputStream()))) {
+                                String line;
+                                while ((line = reader.readLine()) != null) {
+                                    log.debug("gateway llama-server: {}", line);
+                                }
+                            } catch (IOException e) {
+                                if (process.isAlive()) {
+                                    log.debug("gateway llama-server output stream closed", e);
+                                }
+                            }
+                        },
+                        "veto-llamacpp-output");
+        thread.setDaemon(true);
+        thread.start();
     }
 
     /** Extract the generated content from the OpenAI completions response JSON. */

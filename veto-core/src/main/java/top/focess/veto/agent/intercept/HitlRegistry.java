@@ -18,6 +18,7 @@ import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.ToolDefinition;
 import top.focess.veto.agent.screening.Danger;
+import top.focess.veto.agent.screening.Relevance;
 import top.focess.veto.agent.screening.Screening;
 import top.focess.veto.agent.screening.ScreeningMode;
 import top.focess.veto.agent.screening.ScreeningOutcome;
@@ -86,7 +87,8 @@ public class HitlRegistry {
             ToolCall call,
             ToolDefinition def,
             List<@NonNull VetoOption> options,
-            Danger danger) {}
+            Danger danger,
+            Relevance relevance) {}
 
     /** Pending veto futures keyed by {@code agentId + "|" + callId}. */
     private final @NonNull ConcurrentHashMap<@NonNull String, @NonNull Pending> pending =
@@ -130,7 +132,7 @@ public class HitlRegistry {
             return ApprovalDecision.AUTO_APPROVE;
         }
         if (result instanceof GatewayResult.DriftResult d) {
-            return new ApprovalDecision.Prompt(VetoScenario.WRITE_DRIFT, W_OPTIONS, null);
+            return new ApprovalDecision.Prompt(VetoScenario.WRITE_DRIFT, W_OPTIONS, null, null);
         }
         GatewayResult.Screened s = (GatewayResult.Screened) result;
         Screening screening = s.screening();
@@ -150,7 +152,7 @@ public class HitlRegistry {
                     yield ApprovalDecision.AUTO_APPROVE;
                 }
                 yield new ApprovalDecision.Prompt(
-                        scenario, optionsFor(scenario), screening.danger());
+                        scenario, optionsFor(scenario), screening.danger(), screening.relevance());
             }
         };
     }
@@ -335,7 +337,7 @@ public class HitlRegistry {
      */
     public @NonNull CompletableFuture<@NonNull InterceptResolution> register(
             @NonNull String agentId, @NonNull String callId) {
-        return register(agentId, callId, null, null, null, null);
+        return register(agentId, callId, null, null, null, null, null);
     }
 
     /**
@@ -352,8 +354,20 @@ public class HitlRegistry {
             ToolDefinition def,
             List<@NonNull VetoOption> options,
             Danger danger) {
+        return register(agentId, callId, call, def, options, danger, null);
+    }
+
+    public @NonNull CompletableFuture<@NonNull InterceptResolution> register(
+            @NonNull String agentId,
+            @NonNull String callId,
+            ToolCall call,
+            ToolDefinition def,
+            List<@NonNull VetoOption> options,
+            Danger danger,
+            Relevance relevance) {
         CompletableFuture<@NonNull InterceptResolution> future = new CompletableFuture<>();
-        pending.put(key(agentId, callId), new Pending(future, call, def, options, danger));
+        pending.put(
+                key(agentId, callId), new Pending(future, call, def, options, danger, relevance));
         return future;
     }
 
@@ -412,7 +426,10 @@ public class HitlRegistry {
         if (p == null) {
             return false;
         }
-        VetoOption chosen = parseOption(optionName, p.options());
+        VetoOption chosen =
+                VetoOption.DECLINE_AND_CONTINUE.name().equalsIgnoreCase(optionName)
+                        ? VetoOption.DECLINE_AND_CONTINUE
+                        : parseOption(optionName, p.options());
         InterceptResolution resolution =
                 chosen != null
                         ? new InterceptResolution(chosen, null, chosen.impliesMasking())
@@ -620,18 +637,29 @@ public class HitlRegistry {
                     view.put("callId", call.requireCallId());
                     view.put("toolName", call.toolName());
                     view.put("args", call.args());
-                    view.put(
-                            "options",
-                            p.options() != null
-                                    ? p.options().stream().map(VetoOption::name).toList()
-                                    : List.<String>of());
+                    view.put("options", transportOptions(p.options()));
                     // Danger level so the UI can warn prominently on DANGEROUS/CRITICAL calls.
                     if (p.danger() != null) {
                         view.put("danger", p.danger().name());
                     }
+                    if (p.relevance() != null) {
+                        view.put("relevance", p.relevance().name());
+                    }
                     out.add(view);
                 });
         return out;
+    }
+
+    private static @NonNull List<@NonNull String> transportOptions(
+            List<@NonNull VetoOption> offered) {
+        List<@NonNull String> options = new ArrayList<>();
+        if (offered != null) {
+            options.addAll(offered.stream().map(VetoOption::name).toList());
+        }
+        if (!options.contains(VetoOption.DECLINE_AND_CONTINUE.name())) {
+            options.add(VetoOption.DECLINE_AND_CONTINUE.name());
+        }
+        return List.copyOf(options);
     }
 
     /**

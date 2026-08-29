@@ -24,6 +24,7 @@ class LocalSlmRelevanceProviderTest {
     static class FakeBridge extends LlamaCppBridge {
         private final boolean available;
         private final @NonNull String cannedResponse;
+        private @NonNull String lastPrompt = "";
 
         FakeBridge(boolean available, @NonNull String cannedResponse) {
             super(
@@ -41,7 +42,12 @@ class LocalSlmRelevanceProviderTest {
         @Override
         public @NonNull CompletableFuture<String> infer(
                 @NonNull String prompt, @NonNull String grammarName) {
+            lastPrompt = prompt;
             return CompletableFuture.completedFuture(cannedResponse);
+        }
+
+        @NonNull String lastPrompt() {
+            return lastPrompt;
         }
     }
 
@@ -66,11 +72,11 @@ class LocalSlmRelevanceProviderTest {
 
     @Test
     void slmParsesHigh() {
-        LocalSlmRelevanceProvider provider =
-                new LocalSlmRelevanceProvider(
-                        new FakeBridge(
-                                true,
-                                "{\"relevance\":\"HIGH\",\"danger\":\"SAFE\",\"reason\":\"on task\"}"));
+        FakeBridge bridge =
+                new FakeBridge(
+                        true,
+                        "{\"relevance\":\"HIGH\",\"danger\":\"SAFE\",\"reason\":\"on task\"}");
+        LocalSlmRelevanceProvider provider = new LocalSlmRelevanceProvider(bridge);
         NativeToolDefinition def =
                 new NativeToolDefinition(
                         "view_file",
@@ -81,6 +87,8 @@ class LocalSlmRelevanceProviderTest {
                         Map.of("path", ParamCategory.FILESYSTEM_PATH));
         ToolCall call = new ToolCall("view_file", Map.of("path", "/a/b"));
         assertEquals(Relevance.HIGH, provider.relevance(call, def, "reading b"));
+        assertTrue(bridge.lastPrompt().contains("SAFE = read-only"));
+        assertTrue(bridge.lastPrompt().contains("CRITICAL = irreversible"));
     }
 
     @Test

@@ -934,7 +934,8 @@ public class AgentRunner {
                                     "Prompt decision without a tool definition for "
                                             + call.toolName());
                         }
-                        hitlRegistry.register(agentId, callId, call, def, offered, p.danger());
+                        hitlRegistry.register(
+                                agentId, callId, call, def, offered, p.danger(), p.relevance());
                         emitVetoRequired(call, p, offered);
                         InterceptResolution resolution = awaitResolution(callId);
 
@@ -1188,7 +1189,7 @@ public class AgentRunner {
         // race rationale). EDIT is filtered from the offered set in v1.
         List<VetoOption> offered = VetoOption.withoutEdit(p.options());
         String callId = call.requireCallId();
-        hitlRegistry.register(agentId, callId, call, def, offered, p.danger());
+        hitlRegistry.register(agentId, callId, call, def, offered, p.danger(), p.relevance());
         emitVetoRequired(call, p, offered);
         top.focess.veto.agent.intercept.InterceptResolution resolution = awaitResolution(callId);
         transitionTo(AgentState.WAITING);

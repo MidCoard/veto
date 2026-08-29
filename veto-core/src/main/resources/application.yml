@@ -37,7 +37,7 @@ veto:
       model-path: ${VETO_LLAMA_MODEL_PATH:./models/veto-slm.gguf}
       n-ctx: 2048
       n-gpu-layers: 0
-      temperature: 0.1
+      temperature: 0.0
       gbnf-grammar-path: ./grammars/veto-output.gbnf
     intercept-all-outbound: true
     redact-secrets: true

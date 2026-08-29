@@ -27,6 +27,19 @@ os.environ["TRANSFORMERS_VERBOSITY"] = "error"
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 
+def relative_log_path(target: str | Path, log_file: str | Path) -> str:
+    """Serialize a training artifact relative to its local log, without leaking host drives."""
+    target_path = Path(target)
+    log_path = Path(log_file)
+    try:
+        relative = os.path.relpath(
+            target_path.resolve(strict=False), log_path.parent.resolve(strict=False)
+        )
+    except ValueError:
+        relative = target_path.name
+    return Path(relative).as_posix()
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Veto SLM QLoRA Fine-Tuning")
     parser.add_argument("--base-model", type=str, default="Qwen/Qwen2.5-1.5B-Instruct",
@@ -40,6 +53,8 @@ def parse_args():
     parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--lr", type=float, default=2e-4)
     parser.add_argument("--batch-size", type=int, default=4)
+    parser.add_argument("--eval-batch-size", type=int, default=1,
+                        help="Per-device evaluation batch size; kept separate to bound logits memory")
     parser.add_argument("--gradient-accumulation-steps", type=int, default=2)
     parser.add_argument("--lora-r", type=int, default=16)
     parser.add_argument("--lora-alpha", type=int, default=32)
@@ -216,7 +231,7 @@ def train(args):
     import torch
     from transformers import (
         AutoModelForCausalLM, AutoTokenizer, TrainingArguments, Trainer,
-        BitsAndBytesConfig
+        BitsAndBytesConfig, EarlyStoppingCallback
     )
     from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 
@@ -281,7 +296,10 @@ def train(args):
         lora_dropout=args.lora_dropout,
         bias="none",
         task_type="CAUSAL_LM",
-        target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
+        # QLoRA's all-linear setup adapts both attention and MLP projections. Restricting the
+        # adapter to attention made the shared JSON tokens easy to learn while the two actual
+        # class labels remained poorly separated on scenario-disjoint evaluation data.
+        target_modules="all-linear",
     )
     model = get_peft_model(model, lora_config)
     model.print_trainable_parameters()
@@ -303,6 +321,7 @@ def train(args):
         run_name=run_name,
         num_train_epochs=args.epochs,
         per_device_train_batch_size=args.batch_size,
+        per_device_eval_batch_size=args.eval_batch_size,
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         gradient_checkpointing=True,
         learning_rate=args.lr,
@@ -314,11 +333,15 @@ def train(args):
         eval_strategy="epoch",
         save_total_limit=2,
         load_best_model_at_end=True,
+        metric_for_best_model="eval_loss",
+        greater_is_better=False,
         bf16=torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8,
         fp16=not (torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8),
         report_to="none",
         dataloader_num_workers=2,
         remove_unused_columns=False,
+        prediction_loss_only=True,
+        eval_accumulation_steps=1,
     )
 
     # ── Trainer ──
@@ -328,7 +351,12 @@ def train(args):
         train_dataset=tokenized_datasets["train"],
         eval_dataset=tokenized_datasets.get("eval"),
         processing_class=tokenizer,
-        callbacks=[StructuredProgressCallback()] if args.structured_output else [],
+        callbacks=(
+            [EarlyStoppingCallback(early_stopping_patience=1)]
+            + ([StructuredProgressCallback()] if args.structured_output else [])
+            if tokenized_datasets.get("eval") is not None
+            else ([StructuredProgressCallback()] if args.structured_output else [])
+        ),
     )
 
     # ── Train ──
@@ -374,9 +402,10 @@ def train(args):
     print(f"[OK] Merged model saved to {out_dir / 'merged'}")
 
     # ── Log summary ──
+    log_path = Path(args.log_file)
     log_entry = {
         "base_model": args.base_model,
-        "output_dir": str(out_dir),
+        "output_dir": relative_log_path(out_dir, log_path),
         "epochs": args.epochs,
         "learning_rate": args.lr,
         "lora_r": args.lora_r,
@@ -388,7 +417,7 @@ def train(args):
         "status": "completed",
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
-    log_path = Path(args.log_file)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
     with open(log_path, "a", encoding="utf-8") as f:
         f.write(json.dumps(log_entry) + "\n")
 
