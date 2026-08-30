@@ -11,14 +11,17 @@ import top.focess.veto.agent.mcp.NativeTool;
 import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.SecurityHint;
+import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDoc;
 import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.mcp.ToolSecurity;
 
 /** {@code write_to_file} — create a new file or completely overwrite an existing file. */
 @Component
-@ToolSecurity(risk = RiskCategory.FILE_WRITE)
+@ToolSecurity(risk = RiskCategory.FILE_WRITE, capability = ToolCapability.WORKSPACE_WRITE)
 public final class WriteToFileTool implements NativeTool<WriteToFileTool.Args> {
+
+    private static final int MAX_CONTENT_BYTES = 16 * 1024 * 1024;
 
     @ToolDoc(
             description = "Create a new file or completely overwrite an existing file.",
@@ -98,19 +101,20 @@ public final class WriteToFileTool implements NativeTool<WriteToFileTool.Args> {
     @Override
     public @NonNull String execute(@NonNull Args args) throws IOException {
         Path path = Path.of(args.absolutePath());
+        byte[] content = args.codeContent().getBytes(StandardCharsets.UTF_8);
+        if (content.length > MAX_CONTENT_BYTES) {
+            return "{\"status\":\"error\",\"error\":\"Content exceeds 16777216 bytes\"}";
+        }
         if (!args.overwrite() && Files.exists(path)) {
             return "{\"status\":\"error\",\"error\":\"File exists and overwrite=false: "
                     + args.absolutePath()
                     + "\"}";
         }
-        if (path.getParent() != null) {
-            Files.createDirectories(path.getParent());
-        }
-        Files.writeString(path, args.codeContent(), StandardCharsets.UTF_8);
+        AtomicFileWrites.write(path, content, args.overwrite());
         return "{\"status\":\"ok\",\"file\":\""
                 + args.absolutePath()
                 + "\",\"bytes\":"
-                + args.codeContent().getBytes(StandardCharsets.UTF_8).length
+                + content.length
                 + "}";
     }
 }

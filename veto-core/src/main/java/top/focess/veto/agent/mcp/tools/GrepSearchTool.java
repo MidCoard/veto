@@ -2,9 +2,13 @@ package top.focess.veto.agent.mcp.tools;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.PathMatcher;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.stream.Stream;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
@@ -13,14 +17,20 @@ import top.focess.veto.agent.mcp.NativeTool;
 import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.SecurityHint;
+import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDoc;
 import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.mcp.ToolSecurity;
+import top.focess.veto.util.Nullness;
 
 /** {@code grep_search} — search for exact pattern matches inside files. */
 @Component
-@ToolSecurity(risk = RiskCategory.READ_ONLY)
+@ToolSecurity(risk = RiskCategory.READ_ONLY, capability = ToolCapability.WORKSPACE_READ)
 public final class GrepSearchTool implements NativeTool<GrepSearchTool.Args> {
+
+    private static final int MAX_FILES = 10_000;
+    private static final int MAX_MATCHES = 2_000;
+    private static final int MAX_OUTPUT_CHARS = 1_000_000;
 
     @ToolDoc(
             description = "Search for exact pattern matches inside files.",
@@ -50,13 +60,14 @@ public final class GrepSearchTool implements NativeTool<GrepSearchTool.Args> {
                     test, so casing in either is ignored. `includes`, when given, restricts the walk to files \
                     whose path matches one of the glob filters (matched against the full path).
 
-                    Binary or non-UTF-8 files are skipped silently (their read errors are swallowed). `Files.walk` \
-                    follows symlinks, so a cyclical link can produce repeated entries.
+                    Binary or non-UTF-8 files are skipped when they cannot be decoded. Directory symbolic links \
+                    are not followed. At most 10000 files, 2000 matches, and 1000000 output characters are \
+                    processed; a truncation marker means the result is incomplete.
 
                     #### Return format
                     A plain-text report, one match per line, in the form `<file>:<lineNumber>: <line text>` \
-                    (1-indexed line numbers). There is no JSON envelope, no count, and no truncation marker - an \
-                    empty string means "no hits".
+                    (1-indexed line numbers). There is no JSON envelope. No hits returns `(no matches)`; bounded \
+                    results end with a `[truncated: ...]` marker.
 
                     #### Errors & edge cases
                     - `absolutePath` does not exist -> `{"status":"error","error":"Path not found: <path>"}`.
@@ -64,8 +75,7 @@ public final class GrepSearchTool implements NativeTool<GrepSearchTool.Args> {
                     searched.
                     - An empty `query` matches every line of every file (the empty substring is in every string) - \
                     avoid passing an empty query.
-                    - Very large trees can produce a large report; narrow with `includes` or scope `absolutePath` \
-                    tighter first.
+                    - Very large trees are truncated; narrow with `includes` or scope `absolutePath` tighter.
                     - `caseInsensitive` and `includes` are optional; omit them for a plain case-sensitive search \
                     of all files.
 
@@ -121,31 +131,87 @@ public final class GrepSearchTool implements NativeTool<GrepSearchTool.Args> {
                     + "\"}";
         }
         boolean ci = Boolean.TRUE.equals(args.caseInsensitive());
-        String query = ci ? args.query().toLowerCase() : args.query();
+        String query = ci ? args.query().toLowerCase(Locale.ROOT) : args.query();
+        List<PathMatcher> includes;
+        try {
+            includes = compileIncludes(args.includes());
+        } catch (IllegalArgumentException e) {
+            return "{\"status\":\"error\",\"error\":\"Invalid includes glob\"}";
+        }
         StringBuilder sb = new StringBuilder();
+        int visitedFiles = 0;
+        int matches = 0;
+        String truncationReason = null;
         try (Stream<Path> files = Files.walk(root)) {
-            files.filter(Files::isRegularFile)
-                    .forEach(
-                            file -> {
-                                try (Stream<String> lines =
-                                        Files.lines(file, StandardCharsets.UTF_8)) {
-                                    List<String> all = lines.toList();
-                                    for (int i = 0; i < all.size(); i++) {
-                                        String line = all.get(i);
-                                        String candidate = ci ? line.toLowerCase() : line;
-                                        if (candidate.contains(query)) {
-                                            sb.append(file)
-                                                    .append(':')
-                                                    .append(i + 1)
-                                                    .append(": ")
-                                                    .append(line)
-                                                    .append('\n');
-                                        }
-                                    }
-                                } catch (IOException ignored) {
-                                }
-                            });
+            var iterator = files.filter(Files::isRegularFile).iterator();
+            search:
+            while (iterator.hasNext()) {
+                Path file = iterator.next();
+                if (!matchesIncludes(root, file, includes)) {
+                    continue;
+                }
+                if (visitedFiles >= MAX_FILES) {
+                    truncationReason = "file limit " + MAX_FILES;
+                    break;
+                }
+                visitedFiles++;
+                try (Stream<String> lines = Files.lines(file, StandardCharsets.UTF_8)) {
+                    var lineIterator = lines.iterator();
+                    int lineNumber = 0;
+                    while (lineIterator.hasNext()) {
+                        String line = lineIterator.next();
+                        lineNumber++;
+                        String candidate = ci ? line.toLowerCase(Locale.ROOT) : line;
+                        if (!candidate.contains(query)) {
+                            continue;
+                        }
+                        String rendered = file + ":" + lineNumber + ": " + line + "\n";
+                        if (matches >= MAX_MATCHES
+                                || sb.length() + rendered.length() > MAX_OUTPUT_CHARS) {
+                            truncationReason =
+                                    matches >= MAX_MATCHES
+                                            ? "match limit " + MAX_MATCHES
+                                            : "output limit " + MAX_OUTPUT_CHARS + " chars";
+                            break search;
+                        }
+                        sb.append(rendered);
+                        matches++;
+                    }
+                } catch (IOException ignored) {
+                    // Unreadable or non-text files do not abort the whole search.
+                }
+            }
+        }
+        if (truncationReason != null) {
+            sb.append("[truncated: ").append(truncationReason).append("]\n");
         }
         return sb.isEmpty() ? "(no matches)" : sb.toString();
+    }
+
+    private static @NonNull List<PathMatcher> compileIncludes(List<String> patterns) {
+        if (patterns == null || patterns.isEmpty()) {
+            return List.of();
+        }
+        List<PathMatcher> matchers = new ArrayList<>();
+        for (String pattern : patterns) {
+            if (pattern != null && !pattern.isBlank()) {
+                matchers.add(FileSystems.getDefault().getPathMatcher("glob:" + pattern));
+            }
+        }
+        return List.copyOf(matchers);
+    }
+
+    private static boolean matchesIncludes(
+            @NonNull Path root, @NonNull Path file, @NonNull List<PathMatcher> includes) {
+        if (includes.isEmpty()) {
+            return true;
+        }
+        Path relative =
+                Nullness.requireNonNull(
+                        Files.isDirectory(root) ? root.relativize(file) : file.getFileName(),
+                        "Search file has no relative name");
+        Path fileName = Nullness.requireNonNull(file.getFileName(), "Search file has no file name");
+        return includes.stream()
+                .anyMatch(matcher -> matcher.matches(relative) || matcher.matches(fileName));
     }
 }

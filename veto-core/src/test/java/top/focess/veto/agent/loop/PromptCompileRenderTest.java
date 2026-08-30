@@ -122,9 +122,41 @@ class PromptCompileRenderTest {
         assertTrue(
                 block.contains("The name of the skill to load."),
                 "arg description rendered:\n" + block);
-        assertTrue(block.contains("**Examples:**"), "examples label rendered:\n" + block);
+        assertTrue(
+                block.contains("**Schematic examples"), "examples label rendered:\n" + block);
         assertTrue(block.contains("git-rebase"), "example content rendered:\n" + block);
         assertTrue(block.contains("#### When to use"), "long description rendered:\n" + block);
+    }
+
+    @Test
+    void compiledPromptUsesOneToolEnvelopeAndExplainsTrustedSkillBoundary() {
+        String prompt = render(Role.STANDALONE, DeployerPolicy.FULL_ACCESS, null, sampleTools());
+
+        assertTrue(
+                prompt.contains("{\"tool_name\": \"<catalog name>\", \"args\":"),
+                "the documented call envelope must use the schema's tool_name field:\n" + prompt);
+        assertFalse(
+                prompt.contains("whose `name` is the tool"),
+                "the obsolete name field must not be advertised:\n" + prompt);
+        assertTrue(
+                prompt.contains("`load_skill` is the exception"),
+                "verified skill instructions must be distinguished from untrusted results:\n"
+                        + prompt);
+        assertTrue(
+                prompt.contains("Guided mode uses two iterations"),
+                "guided mode must document the actual schema handshake:\n" + prompt);
+        assertTrue(
+                prompt.contains("Do not emit `actions` yet"),
+                "the autonomous schema forbids same-turn actions:\n" + prompt);
+    }
+
+    @Test
+    void workspaceLawIsClearlyFramedAsInstructions() {
+        String law = PromptBlocks.law("# Project rules\nNever overwrite generated files.");
+
+        assertTrue(law.startsWith("## Workspace Law\n"), law);
+        assertTrue(law.contains("VETO.md instructions apply"), law);
+        assertTrue(law.endsWith("Never overwrite generated files."), law);
     }
 
     @Test

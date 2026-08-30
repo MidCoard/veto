@@ -10,6 +10,10 @@ import org.jspecify.annotations.NonNull;
  * @param sessionId the agent/session this sandbox belongs to
  * @param runtimeRef an opaque reference to the runtime resource (process/container/vm), substrate
  * @param workspaceRoot the canonical workspace root all relative paths resolve under
+ * @param profile the resource floor provisioned for this handle
  */
 public record SandboxHandle(
-        @NonNull String sessionId, @NonNull Object runtimeRef, @NonNull Path workspaceRoot) {}
+        @NonNull String sessionId,
+        @NonNull Object runtimeRef,
+        @NonNull Path workspaceRoot,
+        @NonNull SandboxProfile profile) {}

@@ -37,6 +37,9 @@
     "scripts/",
     "docs/",
     "ARCHITECTURE.md",
+    "/.gradle-veto/",
+    "/.test-tmp/",
+    "/.tmp/",
     ".playwright-mcp/",
     "prompt-dump/"
   ],

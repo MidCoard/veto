@@ -3,6 +3,7 @@ package top.focess.veto.agent.mcp.tools;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.mcp.AgentTool;
+import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDoc;
 import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.skills.SkillRegistry;
@@ -42,6 +43,11 @@ public final class LoadSkillTool implements AgentTool<LoadSkillArgs> {
     @Override
     public @NonNull Class<LoadSkillArgs> getArgsClass() {
         return ToolDocs.nonNullClass(LoadSkillArgs.class);
+    }
+
+    @Override
+    public @NonNull ToolCapability getCapability() {
+        return ToolCapability.SKILL_READ;
     }
 
     @Override

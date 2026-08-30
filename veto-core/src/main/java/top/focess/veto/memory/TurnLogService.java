@@ -76,7 +76,7 @@ public class TurnLogService {
 
     /**
      * Every turn type is loggable, including the compiler directives (REWIND, AGENT_INIT,
-     * COMPACTION_SUMMARY, RECALL): they are part of the durable raw history the loader replays, and
+     * COMPACTION_SUMMARY): they are part of the durable raw history the loader replays, and
      * dropping them on persist would corrupt the compiled view on resume (a rewound session would
      * replay its pre-rewind turns; a transformed Leader would lose its AGENT_INIT anchor).
      */

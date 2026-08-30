@@ -7,6 +7,7 @@ import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.AgentRunner;
 import top.focess.veto.agent.TurnRecord;
+import top.focess.veto.agent.intercept.ToolExecutionPermit;
 
 /**
  * Thread-local holder for {@link ToolCallContext}. {@link AgentRunner} sets the context before
@@ -39,11 +40,10 @@ public final class ToolCallContextHolder {
     private static final @NonNull ThreadLocal CONTEXT = new ThreadLocal();
 
     /**
-     * Pending turn directives a tool requested during its execution (e.g. {@code create_group}
-     * requests a RECALL to seed the delegating agent with the authored brief). {@link AgentRunner}
-     * owns the monotonic turn counter, so the placeholder {@code turnNumber} on each pending record
-     * is rewritten when the runner drains and appends them (type + payload are preserved). The
-     * runner drains on the same thread that executed the tool, so the ThreadLocal is visible.
+     * Pending rewind directives a tool requested during its execution. {@link AgentRunner} owns the
+     * monotonic turn counter, so the placeholder {@code turnNumber} on each pending record is
+     * rewritten when the runner drains and appends them (type + payload are preserved). The runner
+     * drains on the same thread that executed the tool, so the ThreadLocal is visible.
      */
     private static final @NonNull ThreadLocal PENDING_TURNS =
             ThreadLocal.withInitial(ArrayList::new);
@@ -53,7 +53,7 @@ public final class ToolCallContextHolder {
      * runner owns the turn counter + history, so it computes the compaction summary and appends the
      * REWIND/AGENT_INIT/COMPACTION_SUMMARY/USER_PROMPT sequence itself; this directive carries only
      * what the tool resolves (the brief, the registered group id, the Leader binding + Leader tool
-     * set). At most one per tool call - a transform supersedes any recall.
+     * set). At most one per tool call - a transform supersedes any pending rewind.
      */
     public record TransformDirective(
             @NonNull String brief,
@@ -111,6 +111,18 @@ public final class ToolCallContextHolder {
         CONTEXT.set(new ToolCallContext(agentId, userId, groupId, owner, sessionId));
     }
 
+    /** Sets the full context including the Gateway-bound execution permit. */
+    public static void set(
+            @NonNull String agentId,
+            @NonNull UUID userId,
+            UUID groupId,
+            String owner,
+            UUID sessionId,
+            @NonNull ToolExecutionPermit executionPermit) {
+        CONTEXT.set(
+                new ToolCallContext(agentId, userId, groupId, owner, sessionId, executionPermit));
+    }
+
     /** Sets the tool call context for the current thread. */
     public static void set(@NonNull ToolCallContext ctx) {
         CONTEXT.set(ctx);
@@ -128,21 +140,20 @@ public final class ToolCallContextHolder {
     }
 
     /**
-     * Requests a RECALL directive be appended to history after the current tool call returns. The
+     * Requests a REWIND directive be appended to history after the current tool call returns. The
      * {@code fromIndex} suffix-drops the compiled view (keeping the seed turns, e.g. {@code 1} to
      * keep AGENT_INIT), and {@code content} is re-injected as a user message - seeding the
-     * delegating agent with the recalled brief. Idempotent per tool call (a tool requests at most
-     * one recall).
+     * delegating agent with the supplied brief.
      */
-    public static void requestRecall(int fromIndex, @NonNull String content) {
-        pendingTurns().add(TurnRecord.recall(0, fromIndex, content));
+    public static void requestRewind(int fromIndex, @NonNull String content) {
+        pendingTurns().add(TurnRecord.rewind(0, fromIndex, content));
     }
 
     /**
      * Requests a forward transform (STANDALONE -> Leader) be applied after the current tool call
      * returns. The runner drains and applies it in the same tool-call drain pass: it appends the
      * transform turn sequence (REWIND + AGENT_INIT + COMPACTION_SUMMARY + USER_PROMPT) and mutates
-     * the persona / binding / group. Supersedes any pending recall - a transform is the stronger
+     * the persona / binding / group. Supersedes any pending rewind - a transform is the stronger
      * rewrite.
      */
     public static void requestTransform(@NonNull TransformDirective directive) {

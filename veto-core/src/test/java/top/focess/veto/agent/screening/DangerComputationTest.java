@@ -289,6 +289,33 @@ class DangerComputationTest {
     }
 
     @Test
+    void explicitNetworkRequestIsDangerousEvenForAllowlistedExecutable() throws Exception {
+        NativeToolDefinition execDef =
+                new NativeToolDefinition(
+                        "run_command",
+                        "exec",
+                        RiskCategory.SHELL_EXEC,
+                        false,
+                        ToolDocs.nonNullClass(ExecArgs.class),
+                        Map.of());
+        ToolCall call =
+                new ToolCall(
+                        "run_command",
+                        Map.of(
+                                "commands",
+                                List.of(Map.of("executable", "java", "args", List.of("-version"))),
+                                "cwd",
+                                root.toString(),
+                                "network",
+                                true));
+
+        assertEquals(
+                Danger.DANGEROUS,
+                dc.compute(
+                        execDef, call, ws(root), DeployerPolicy.FULL_ACCESS, ProtectedSet.empty()));
+    }
+
+    @Test
     void processKillerIsDangerous() throws Exception {
         // Process termination (taskkill) is always a user decision: DANGEROUS (grantable), never
         // auto-approved and never CRITICAL.

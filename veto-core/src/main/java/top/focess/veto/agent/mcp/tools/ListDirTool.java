@@ -3,7 +3,9 @@ package top.focess.veto.agent.mcp.tools;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.stream.Stream;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.mcp.Doc;
@@ -11,14 +13,18 @@ import top.focess.veto.agent.mcp.NativeTool;
 import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.SecurityHint;
+import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDoc;
 import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.mcp.ToolSecurity;
+import top.focess.veto.util.Nullness;
 
 /** {@code list_dir} — list contents of a directory (files and child subdirectories). */
 @Component
-@ToolSecurity(risk = RiskCategory.READ_ONLY)
+@ToolSecurity(risk = RiskCategory.READ_ONLY, capability = ToolCapability.WORKSPACE_READ)
 public final class ListDirTool implements NativeTool<ListDirTool.Args> {
+
+    private static final int MAX_ENTRIES = 5000;
 
     @ToolDoc(
             description = "List contents of a directory (files and child subdirectories).",
@@ -60,8 +66,8 @@ public final class ListDirTool implements NativeTool<ListDirTool.Args> {
                     `project/sub/config/` under `/abs/project`, then trying `/abs/project/config`
                     instead of `/abs/project/sub/config`).
                     - Passing a file path -> same "Not a directory" error; use `view_file` instead.
-                    - A directory with many entries returns them all; there is no pagination - narrow by
-                    descending into specific subdirectories if the listing is large.
+                    - At most 5000 entries are returned. A truncation marker means the directory must be
+                    narrowed before relying on the listing as complete.
                     - Permissions gaps may hide entries the process cannot read; the tool lists what the
                     filesystem exposes.
 
@@ -110,12 +116,31 @@ public final class ListDirTool implements NativeTool<ListDirTool.Args> {
                     + "\"}";
         }
         StringBuilder sb = new StringBuilder();
-        try (Stream<Path> stream = Files.list(path)) {
-            stream.sorted()
-                    .forEach(
-                            p ->
-                                    sb.append(p.getFileName())
-                                            .append(Files.isDirectory(p) ? "/\n" : "\n"));
+        List<Path> entries = new ArrayList<>(MAX_ENTRIES + 1);
+        try (var stream = Files.list(path)) {
+            var iterator = stream.iterator();
+            while (iterator.hasNext() && entries.size() <= MAX_ENTRIES) {
+                entries.add(iterator.next());
+            }
+        }
+        boolean truncated = entries.size() > MAX_ENTRIES;
+        if (truncated) {
+            entries.remove(entries.size() - 1);
+        }
+        entries.sort(
+                Comparator.comparing(
+                        p ->
+                                Nullness.requireNonNull(
+                                                p.getFileName(), "Directory entry has no file name")
+                                        .toString()));
+        for (Path entry : entries) {
+            sb.append(
+                            Nullness.requireNonNull(
+                                    entry.getFileName(), "Directory entry has no file name"))
+                    .append(Files.isDirectory(entry) ? "/\n" : "\n");
+        }
+        if (truncated) {
+            sb.append("[truncated at ").append(MAX_ENTRIES).append(" entries]\n");
         }
         return sb.toString();
     }

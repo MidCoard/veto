@@ -57,8 +57,8 @@ public final class McpJsonRpcClient {
             // The schema is the raw JSON Schema; RemoteToolDefinition stores it as JsonNode.
             JsonNode inputSchema = t.path("inputSchema");
             String serverName = serverNameFor(transport);
-            // External tools default to NETWORK risk — maximum scrutiny at the Gateway. A
-            // production deployer can register a tool with a finer risk via registerRemoteTool.
+            // Unclassified external tools stay REMOTE_UNKNOWN with NETWORK screening risk. A
+            // server description cannot downgrade this contract.
             out.add(
                     new RemoteToolDefinition(
                             name, description, RiskCategory.NETWORK, serverName, inputSchema));

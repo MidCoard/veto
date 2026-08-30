@@ -15,9 +15,8 @@ import org.junit.jupiter.api.Test;
  * (0xFFFFFFFFFFFFFFFF, i.e. (HANDLE)-1) slip through and silently fail AssignProcessToJobObject
  * with ERROR_INVALID_HANDLE — defeating KILL_ON_JOB_CLOSE.
  *
- * <p>The fix in {@link KernelSandboxSubstrate#attachWindowsJobObject} compares against both {@link
- * Pointer#NULL} and {@link Pointer#createConstant(long)} with -1. These tests pin that contract so
- * the next refactor can't drop either check.
+ * <p>The production attachment path compares the pointer address against both zero and -1. These
+ * tests pin that contract so the next refactor can't drop either check.
  */
 class KernelSandboxInvalidHandleTest {
 

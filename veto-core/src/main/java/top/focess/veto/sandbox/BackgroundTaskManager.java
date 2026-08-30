@@ -45,6 +45,8 @@ import org.springframework.stereotype.Service;
 @Service
 public class BackgroundTaskManager {
 
+    private static final int MAX_UNTERMINATED_LINE_BYTES = 64 * 1024;
+
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.sandbox.BackgroundTaskManager");
 
@@ -79,8 +81,8 @@ public class BackgroundTaskManager {
      * @param agentId the calling agent (scopes the task; cleanup key)
      * @param cmd the single command to run detached
      * @param cwd the working directory (becomes the sandbox workspace root)
-     * @param timeoutSeconds max lifetime; 0 = no cap (run until {@link #stop} or session end),
-     *     {@code >0} = auto-kill after this many seconds
+     * @param timeoutSeconds requested max lifetime; 0 selects the profile maximum, and a positive
+     *     value is capped by the profile maximum
      */
     public @NonNull TaskInfo start(
             @NonNull String agentId,
@@ -88,9 +90,26 @@ public class BackgroundTaskManager {
             @NonNull Path cwd,
             int timeoutSeconds,
             UUID sessionId) {
+        return start(agentId, cmd, cwd, timeoutSeconds, sessionId, SandboxProfile.defaults(cwd));
+    }
+
+    /** Starts a task under the exact policy projection bound by the Gateway permit. */
+    public @NonNull TaskInfo start(
+            @NonNull String agentId,
+            @NonNull Command cmd,
+            @NonNull Path cwd,
+            int timeoutSeconds,
+            UUID sessionId,
+            @NonNull SandboxProfile profile) {
         String taskId = "bg-" + idSeq.incrementAndGet();
-        SandboxHandle handle = sandboxManager.substrate().provision(SandboxProfile.defaults(cwd));
-        Process process = sandboxManager.substrate().startBackground(handle, cmd, Path.of("."));
+        SandboxHandle handle = sandboxManager.provision(taskId, profile);
+        Process process;
+        try {
+            process = sandboxManager.substrate().startBackground(handle, cmd, cwd);
+        } catch (RuntimeException e) {
+            sandboxManager.deprovision(taskId);
+            throw e;
+        }
         ManagedTask task =
                 new ManagedTask(
                         taskId,
@@ -108,7 +127,12 @@ public class BackgroundTaskManager {
         Thread.startVirtualThread(() -> drain(task));
 
         // Schedule auto-kill when a positive cap is set; cancelled on natural exit / explicit stop.
-        if (timeoutSeconds > 0) {
+        long profileTimeoutSeconds = Math.max(1L, handle.profile().maxWallClock().toSeconds());
+        long effectiveTimeoutSeconds =
+                timeoutSeconds <= 0
+                        ? profileTimeoutSeconds
+                        : Math.min(timeoutSeconds, profileTimeoutSeconds);
+        if (effectiveTimeoutSeconds > 0) {
             task.killer =
                     killer.schedule(
                             () -> {
@@ -116,12 +140,12 @@ public class BackgroundTaskManager {
                                     log.debug(
                                             "Background task {} auto-killed after {}s",
                                             taskId,
-                                            timeoutSeconds);
+                                            effectiveTimeoutSeconds);
                                     task.cause = ExitCause.AUTO_KILL;
                                     process.destroyForcibly();
                                 }
                             },
-                            timeoutSeconds,
+                            effectiveTimeoutSeconds,
                             TimeUnit.SECONDS);
         }
         log.info(
@@ -180,6 +204,7 @@ public class BackgroundTaskManager {
             java.io.ByteArrayOutputStream line = new java.io.ByteArrayOutputStream();
             int b;
             boolean skipLf = false;
+            boolean lineTruncated = false;
             while ((b = in.read()) != -1) {
                 if (skipLf) {
                     skipLf = false;
@@ -188,16 +213,21 @@ public class BackgroundTaskManager {
                     }
                 }
                 if (b == '\n' || b == '\r') {
-                    emitLine(task, line);
+                    emitLine(task, line, lineTruncated);
+                    lineTruncated = false;
                     if (b == '\r') {
                         skipLf = true;
                     }
                 } else {
-                    line.write(b);
+                    if (line.size() < MAX_UNTERMINATED_LINE_BYTES) {
+                        line.write(b);
+                    } else {
+                        lineTruncated = true;
+                    }
                 }
             }
             if (line.size() > 0) {
-                emitLine(task, line); // final line without a trailing break
+                emitLine(task, line, lineTruncated); // final line without a trailing break
             }
         } catch (IOException e) {
             log.debug("Background task {} drain ended: {}", task.taskId, safe(e.getMessage()));
@@ -211,10 +241,17 @@ public class BackgroundTaskManager {
     }
 
     /** Decodes one raw line (sniffing the encoding) and buffers it ANSI-stripped. */
-    private void emitLine(@NonNull ManagedTask task, java.io.@NonNull ByteArrayOutputStream line) {
+    private void emitLine(
+            @NonNull ManagedTask task,
+            java.io.@NonNull ByteArrayOutputStream line,
+            boolean truncated) {
         // Same decode-seam scrub as the synchronous path: the buffered lines feed both the agent
         // (view_task) and the UI panel, so both get the identical plain text.
-        task.buffer.add(AnsiEscapes.strip(SubprocessOutput.decode(line.toByteArray())));
+        String decoded = AnsiEscapes.strip(SubprocessOutput.decode(line.toByteArray()));
+        if (truncated) {
+            decoded += " [line truncated at " + MAX_UNTERMINATED_LINE_BYTES + " bytes]";
+        }
+        task.buffer.add(decoded);
         line.reset();
     }
 
@@ -227,6 +264,7 @@ public class BackgroundTaskManager {
         if (scheduledKiller != null) {
             scheduledKiller.cancel(false);
         }
+        sandboxManager.deprovision(task.taskId);
         log.debug(
                 "Background task {} exited (code={}, cause={})",
                 task.taskId,

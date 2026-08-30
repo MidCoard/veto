@@ -169,14 +169,10 @@ public class PromptCompiler {
             if (turn.type() == TurnType.REWIND) {
                 int fromIndex = number(turn.payload(), "from_index").intValue();
                 truncate(compiled, fromIndex);
-                pendingThought = null;
-                pendingReasoning = null;
-                continue;
-            }
-            if (turn.type() == TurnType.RECALL) {
-                int fromIndex = number(turn.payload(), "from_index").intValue();
-                truncate(compiled, fromIndex);
-                compiled.add(ChatMessage.user(str(turn.payload(), "content")));
+                String recalledContent = str(turn.payload(), "content");
+                if (!recalledContent.isBlank()) {
+                    compiled.add(ChatMessage.user(recalledContent));
+                }
                 pendingThought = null;
                 pendingReasoning = null;
                 continue;
@@ -256,7 +252,6 @@ public class PromptCompiler {
             case AGENT_INIT -> null;
             case COMPACTION_SUMMARY -> ChatMessage.user(str(turn.payload(), "content"));
             case REWIND -> null;
-            case RECALL -> null;
         };
     }
 

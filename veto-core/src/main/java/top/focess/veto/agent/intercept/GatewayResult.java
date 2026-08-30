@@ -16,12 +16,33 @@ import top.focess.veto.agent.screening.Screening;
 public sealed interface GatewayResult
         permits GatewayResult.Screened, GatewayResult.DriftResult, GatewayResult.NotScreened {
 
+    /** Filesystem targets captured by screening and bound to later execution. */
+    @NonNull ToolExecutionPermit executionPermit();
+
     /** The normal screening result. */
-    record Screened(@NonNull Screening screening) implements GatewayResult {}
+    record Screened(@NonNull Screening screening, @NonNull ToolExecutionPermit executionPermit)
+            implements GatewayResult {
+        public Screened(@NonNull Screening screening) {
+            this(screening, ToolExecutionPermit.empty());
+        }
+    }
 
     /** Write-tool drift — target changed since the agent last read it (Scenario W). */
-    record DriftResult(@NonNull String path, @NonNull String diff) implements GatewayResult {}
+    record DriftResult(
+            @NonNull String path,
+            @NonNull String diff,
+            @NonNull ToolExecutionPermit executionPermit)
+            implements GatewayResult {
+        public DriftResult(@NonNull String path, @NonNull String diff) {
+            this(path, diff, ToolExecutionPermit.empty());
+        }
+    }
 
     /** Agent tools early-route — no host-path params, not screened. */
-    record NotScreened() implements GatewayResult {}
+    record NotScreened() implements GatewayResult {
+        @Override
+        public @NonNull ToolExecutionPermit executionPermit() {
+            return ToolExecutionPermit.empty();
+        }
+    }
 }

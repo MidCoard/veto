@@ -226,6 +226,20 @@ class PermissionGrantTest {
     }
 
     @Test
+    void maskingPreservesLongSourceIdentifiers() {
+        String method = "test_rejects_parent_traversal_without_writing";
+        assertEquals(method, SecretMasker.mask(method));
+    }
+
+    @Test
+    void maskingStillScrubsUnprefixedMixedApiKeyShape() {
+        String token = "AbCdEf0123456789AbCdEf0123456789AbCdEf01";
+        String result = SecretMasker.mask("credential=" + token);
+        assertTrue(result.contains("[REDACTED_API_KEY]"));
+        assertFalse(result.contains(token));
+    }
+
+    @Test
     void vetoOptionCreatesGrantForLikeThisVariants() {
         assertTrue(VetoOption.ACCEPT_READ_LIKE_THIS.createsGrant());
         assertTrue(VetoOption.ACCEPT_AND_MASK_READ_LIKE_THIS.createsGrant());

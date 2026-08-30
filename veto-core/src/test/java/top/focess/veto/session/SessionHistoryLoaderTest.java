@@ -85,6 +85,41 @@ class SessionHistoryLoaderTest {
     }
 
     @Test
+    void normalizesLegacyDuplicateTurnTypesAtTheReadBoundary() {
+        UUID session = UUID.randomUUID();
+        TurnRecordEntity systemPrompt =
+                mock(top.focess.veto.agent.mcp.ToolDocs.nonNullClass(TurnRecordEntity.class));
+        when(systemPrompt.getTurnNumber()).thenReturn(1);
+        when(systemPrompt.getType()).thenReturn("SYSTEM_PROMPT");
+        when(systemPrompt.getPayload())
+                .thenReturn(
+                        "{\"content\":\"legacy prompt\",\"provider\":\"DEEPSEEK\",\"model\":\"legacy-model\"}");
+        when(systemPrompt.getTimestamp()).thenReturn(java.time.Instant.EPOCH);
+
+        TurnRecordEntity recall =
+                mock(top.focess.veto.agent.mcp.ToolDocs.nonNullClass(TurnRecordEntity.class));
+        when(recall.getTurnNumber()).thenReturn(2);
+        when(recall.getType()).thenReturn("RECALL");
+        when(recall.getPayload()).thenReturn("{\"from_index\":0,\"content\":\"resume here\"}");
+        when(recall.getTimestamp()).thenReturn(java.time.Instant.EPOCH);
+
+        TurnRecordRepository repo =
+                mock(top.focess.veto.agent.mcp.ToolDocs.nonNullClass(TurnRecordRepository.class));
+        when(repo.findBySessionIdOrderByTurnNumberAsc(session.toString()))
+                .thenReturn(List.of(systemPrompt, recall));
+
+        List<TurnRecord> history =
+                new SessionHistoryLoader(repo, new ObjectMapper()).load(session.toString());
+
+        assertEquals(TurnType.AGENT_INIT, history.get(0).type());
+        assertFalse(history.get(0).payload().containsKey("role"));
+        assertEquals("legacy prompt", history.get(0).payload().get("system_prompt"));
+        assertFalse(history.get(0).payload().containsKey("content"));
+        assertEquals(TurnType.REWIND, history.get(1).type());
+        assertEquals("resume here", history.get(1).payload().get("content"));
+    }
+
+    @Test
     void emptyWhenNoHistory() {
         TurnRecordRepository repo =
                 mock(top.focess.veto.agent.mcp.ToolDocs.nonNullClass(TurnRecordRepository.class));

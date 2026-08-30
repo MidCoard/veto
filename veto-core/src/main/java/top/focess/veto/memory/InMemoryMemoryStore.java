@@ -106,10 +106,10 @@ public class InMemoryMemoryStore implements MemoryStore {
     }
 
     @Override
-    public void promote(@NonNull MemoryId id) {
+    public boolean promote(@NonNull MemoryId id, @NonNull UUID userId) {
         Memory m = store.get(id);
-        if (m == null || m.tier() != MemoryTier.SESSION) {
-            return;
+        if (m == null || !m.userId().equals(userId) || m.tier() != MemoryTier.SESSION) {
+            return false;
         }
         Memory promoted =
                 new Memory(
@@ -124,11 +124,13 @@ public class InMemoryMemoryStore implements MemoryStore {
                         Instant.now());
         store.remove(id);
         store.put(promoted.id(), promoted);
+        return true;
     }
 
     @Override
-    public void forget(@NonNull MemoryId id) {
-        store.remove(id);
+    public boolean forget(@NonNull MemoryId id, @NonNull UUID userId) {
+        Memory memory = store.get(id);
+        return memory != null && memory.userId().equals(userId) && store.remove(id, memory);
     }
 
     private static float cosineSimilarity(float @NonNull [] a, float @NonNull [] b) {

@@ -154,5 +154,7 @@ plans/
 scripts/
 docs/
 ARCHITECTURE.md
+/.gradle-veto/
+/.tmp/
 .playwright-mcp/
 prompt-dump/

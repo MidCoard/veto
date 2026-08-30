@@ -4,11 +4,13 @@ import static top.focess.veto.util.LogValues.safe;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import jakarta.annotation.PostConstruct;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -20,6 +22,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Service;
+import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.mcp.tools.RunCommandTool;
 import top.focess.veto.llm.config.LlmJacksonConfig;
 import top.focess.veto.llm.core.ToolCall;
@@ -27,6 +30,7 @@ import top.focess.veto.sandbox.ChainMode;
 import top.focess.veto.sandbox.Command;
 import top.focess.veto.sandbox.CommandResult;
 import top.focess.veto.sandbox.SandboxManager;
+import top.focess.veto.sandbox.SandboxProfile;
 import top.focess.veto.sandbox.SandboxSubstrate;
 
 /**
@@ -36,23 +40,26 @@ import top.focess.veto.sandbox.SandboxSubstrate;
  * <p>Dispatch by definition flavour:
  *
  * <ul>
- *   <li><b>Native</b> — in-process {@link NativeTool#execute}, EXCEPT {@code run_command} which
- *       routes through the session's {@link SandboxSubstrate}.
+ *   <li><b>Native</b> — typed dispatch after capability validation. Workspace paths are replaced by
+ *       Gateway-authorized canonical targets; process tools route through {@link SandboxSubstrate}
+ *       or the background-task service.
  *   <li><b>Agent</b> — bean dispatch via {@link AgentTool#executeFromJson}. Each agent tool is a
  *       self-contained {@link AgentTool} bean — just like native tools are self-contained {@link
  *       NativeTool} beans.
  *   <li><b>External</b> — forwarded over the registered {@link McpTransport}.
  * </ul>
  *
- * <p>{@code registerServer} + {@code McpTransport} + {@code executeTool} are implementation
- * details, intentionally absent from the shared {@link ToolEngine} interface. Remote tool
- * <i>discovery</i> (JSON-RPC {@code tools/list} over a transport) is beyond the schema
- * representation and is not implemented; remote tools are registered explicitly via {@link
+ * <p>{@code registerServer} + {@code McpTransport} are implementation details, intentionally absent
+ * from the shared {@link ToolEngine} interface. Remote tool <i>discovery</i> (JSON-RPC {@code
+ * tools/list} over a transport) is beyond the schema representation and is implemented by {@link
+ * #discoverAndRegister(McpTransport)}; callers may also register a definition explicitly via {@link
  * #registerRemoteTool}.
  */
 @Service
 @SuppressWarnings("DuplicatedCode") // Native and remote dispatch keep the same result envelope.
 public class ToolEngineImpl implements ToolEngine {
+
+    private static final int MAX_TOOL_RESULT_CHARS = 1_000_000;
 
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.agent.mcp.ToolEngineImpl");
@@ -85,6 +92,8 @@ public class ToolEngineImpl implements ToolEngine {
         // Register native tools
         for (NativeTool<?> bean : nativeToolBeans) {
             NativeToolDefinition def = ToolSchemaCompiler.compileNative(bean);
+            ToolContractValidator.validate(def);
+            ensureUniqueName(def.name());
             nativeDefs.put(def.name(), def);
             nativeByName.put(def.name(), bean);
             log.info("ToolEngine: registered native tool '{}'.", def.name());
@@ -94,7 +103,10 @@ public class ToolEngineImpl implements ToolEngine {
         for (AgentTool<?> bean : applicationContext.getBeansOfType(AgentTool.class).values()) {
             String toolName = bean.getName();
             agentBeans.put(toolName, bean);
-            AgentToolDefinition def = AgentToolDefinition.from(toolName, bean.getArgsClass());
+            AgentToolDefinition def =
+                    AgentToolDefinition.from(toolName, bean.getArgsClass(), bean.getCapability());
+            ToolContractValidator.validate(def);
+            ensureUniqueName(def.name());
             agentDefs.put(def.name(), def);
             log.info("ToolEngine: registered agent tool '{}'.", def.name());
         }
@@ -111,6 +123,15 @@ public class ToolEngineImpl implements ToolEngine {
         try {
             java.util.List<RemoteToolDefinition> tools =
                     new McpJsonRpcClient(mapper).discoverTools(transport);
+            Set<String> discoveredNames = new HashSet<>();
+            for (RemoteToolDefinition t : tools) {
+                ToolContractValidator.validate(t);
+                if (!discoveredNames.add(t.name())) {
+                    throw new IllegalArgumentException(
+                            "Remote discovery returned duplicate tool name: " + t.name());
+                }
+                ensureUniqueName(t.name());
+            }
             for (RemoteToolDefinition t : tools) {
                 remoteDefs.put(t.name(), t);
                 transports.put(t.serverName(), transport);
@@ -157,11 +178,13 @@ public class ToolEngineImpl implements ToolEngine {
     public @NonNull ToolResult execute(@NonNull ToolCall call, @NonNull ToolDefinition def) {
         String callId = call.callId();
         try {
-            return switch (def) {
-                case NativeToolDefinition nativeDef -> executeNative(call, nativeDef);
-                case AgentToolDefinition agentDef -> executeAgent(call, agentDef);
-                case RemoteToolDefinition remoteDef -> executeRemote(call, remoteDef);
-            };
+            ToolResult result =
+                    switch (def) {
+                        case NativeToolDefinition nativeDef -> executeNative(call, nativeDef);
+                        case AgentToolDefinition agentDef -> executeAgent(call, agentDef);
+                        case RemoteToolDefinition remoteDef -> executeRemote(call, remoteDef);
+                    };
+            return boundResult(result);
         } catch (Exception e) {
             log.warn("Tool '{}' execution failed.", call.toolName(), e);
             String detail = e.getMessage();
@@ -174,6 +197,18 @@ public class ToolEngineImpl implements ToolEngine {
                     false,
                     errorEnvelope("Tool execution failed: " + detail));
         }
+    }
+
+    private static @NonNull ToolResult boundResult(@NonNull ToolResult result) {
+        if (result.content().length() <= MAX_TOOL_RESULT_CHARS) {
+            return result;
+        }
+        String bounded =
+                result.content().substring(0, MAX_TOOL_RESULT_CHARS)
+                        + "\n[tool output truncated at "
+                        + MAX_TOOL_RESULT_CHARS
+                        + " chars]";
+        return new ToolResult(result.toolName(), result.callId(), result.success(), bounded);
     }
 
     // ── Implementation-detail API (not on the shared interface) ──────────────
@@ -192,25 +227,24 @@ public class ToolEngineImpl implements ToolEngine {
             @NonNull String serverName,
             @NonNull String originalName,
             @NonNull String description,
-            @NonNull RiskCategory risk,
             @NonNull JsonNode inputSchema) {
         String prefixed = serverName + "__" + originalName;
         RemoteToolDefinition def =
-                new RemoteToolDefinition(prefixed, description, risk, serverName, inputSchema);
+                new RemoteToolDefinition(
+                        prefixed, description, RiskCategory.NETWORK, serverName, inputSchema);
+        ToolContractValidator.validate(def);
+        ensureUniqueName(def.name());
         remoteDefs.put(prefixed, def);
         log.info("ToolEngine: registered remote tool '{}'.", prefixed);
         return def;
     }
 
-    /** Low-level dispatch by tool name + raw arguments. */
-    public @NonNull ToolResult executeTool(
-            @NonNull String toolName, @NonNull Map<String, Object> arguments) {
-        ToolDefinition def = resolveDefinition(toolName);
-        if (def == null) {
-            return new ToolResult(
-                    toolName, null, false, errorEnvelope("Unknown tool: " + toolName));
+    private void ensureUniqueName(@NonNull String name) {
+        if (nativeDefs.containsKey(name)
+                || agentDefs.containsKey(name)
+                || remoteDefs.containsKey(name)) {
+            throw new IllegalArgumentException("Duplicate tool name: " + name);
         }
-        return execute(new ToolCall(toolName, arguments, null), def);
     }
 
     // ── Flavour dispatch ───────────────────────────────────────────────────────
@@ -224,8 +258,9 @@ public class ToolEngineImpl implements ToolEngine {
             return new ToolResult(
                     call.toolName(), call.callId(), false, errorEnvelope(e.getMessage()));
         }
+        jsonArgs = authorizedArguments(call, jsonArgs, def);
         if ("run_command".equals(def.name())) {
-            return executeRunCommand(call);
+            return executeRunCommand(call, jsonArgs);
         }
         NativeTool<?> bean = nativeByName.get(def.name());
         if (bean == null) {
@@ -245,6 +280,60 @@ public class ToolEngineImpl implements ToolEngine {
         // masking/alerting sees the failure.
         boolean success = !isErrorJson(result);
         return new ToolResult(call.toolName(), call.callId(), success, result);
+    }
+
+    /**
+     * Replaces screened filesystem strings with the canonical targets bound to the execution
+     * permit. Filesystem/process tools fail closed when invoked outside AgentRunner's authorized
+     * execution scope.
+     */
+    private @NonNull JsonNode authorizedArguments(
+            @NonNull ToolCall call,
+            @NonNull JsonNode jsonArgs,
+            @NonNull NativeToolDefinition definition) {
+        ToolCallContext context = ToolCallContextHolder.get();
+        if (context == null) {
+            throw new SecurityException(
+                    "Tool requires an authorized execution context: " + definition.name());
+        }
+        ToolExecutionPermit permit = context.executionPermit();
+        if (!permit.matchesCall(call)) {
+            throw new SecurityException(
+                    "Tool arguments do not match the screened execution permit: "
+                            + definition.name());
+        }
+        boolean needsFilesystemPermit =
+                definition.capability() == ToolCapability.WORKSPACE_READ
+                        || definition.capability() == ToolCapability.WORKSPACE_WRITE
+                        || definition.capability() == ToolCapability.PROCESS_EXECUTION;
+        if (!needsFilesystemPermit) {
+            return jsonArgs;
+        }
+        if (!(jsonArgs instanceof ObjectNode objectArgs)) {
+            throw new SecurityException("Tool arguments must be an object: " + definition.name());
+        }
+        ObjectNode authorized = objectArgs.deepCopy();
+        for (var entry : definition.paramHints().entrySet()) {
+            if (entry.getValue() != ParamCategory.FILESYSTEM_PATH) {
+                continue;
+            }
+            ToolExecutionPermit.AuthorizedPath path = permit.path(entry.getKey());
+            Path hostPath = path == null ? null : path.hostPath();
+            if (path == null || hostPath == null) {
+                throw new SecurityException(
+                        "Missing authorized filesystem target for parameter '"
+                                + entry.getKey()
+                                + "'");
+            }
+            String supplied = objectArgs.path(entry.getKey()).asText("");
+            if (!path.requestedPath().equals(supplied)) {
+                throw new SecurityException(
+                        "Filesystem argument does not match its execution permit: "
+                                + entry.getKey());
+            }
+            authorized.put(entry.getKey(), hostPath.toString());
+        }
+        return authorized;
     }
 
     /**
@@ -303,9 +392,11 @@ public class ToolEngineImpl implements ToolEngine {
     /**
      * {@code run_command} — routes through the Sandbox substrate (no shell, argv[] direct exec).
      */
-    private @NonNull ToolResult executeRunCommand(@NonNull ToolCall call) {
+    private @NonNull ToolResult executeRunCommand(
+            @NonNull ToolCall call, @NonNull JsonNode authorizedArguments) {
         RunCommandTool.Args args =
-                mapper.convertValue(call.args(), ToolDocs.nonNullClass(RunCommandTool.Args.class));
+                mapper.convertValue(
+                        authorizedArguments, ToolDocs.nonNullClass(RunCommandTool.Args.class));
         if (args == null) {
             return new ToolResult(
                     call.toolName(),
@@ -319,15 +410,34 @@ public class ToolEngineImpl implements ToolEngine {
                 args.commands().stream().map(c -> new Command(c.executable(), c.args())).toList();
         ChainMode connect = parseChainMode(args.connect());
         Path cwd = Path.of(args.cwd());
-        // Provision a sandbox rooted at the requested cwd. The per-session handle
-        // (keyed by agentId) is a SandboxManager provision concern.
-        var handle = sandboxManager.provision("runcmd-" + call.callId(), cwd);
-        CommandResult result =
-                sandboxManager
-                        .substrate()
-                        .runCommands(handle, commands, Path.of("."), connect, timeoutDur);
-        String content = commandOutput(result);
-        return new ToolResult(call.toolName(), call.callId(), result.success(), content);
+        ToolCallContext context = ToolCallContextHolder.get();
+        if (context == null || !context.executionPermit().matchesCall(call)) {
+            throw new SecurityException("run_command requires its screened execution permit");
+        }
+        ToolExecutionPermit permit = context.executionPermit();
+        Path workspaceRoot = permit.sandboxRoot("cwd");
+        SandboxProfile profile =
+                SandboxProfile.forExecution(
+                        workspaceRoot,
+                        permit.protectedPaths(),
+                        Boolean.TRUE.equals(args.network()));
+        String sandboxId = "runcmd-" + call.callId();
+        var handle = sandboxManager.provision(sandboxId, profile);
+        try {
+            CommandResult result =
+                    sandboxManager
+                            .substrate()
+                            .runCommands(handle, commands, cwd, connect, timeoutDur);
+            String content = commandOutput(result);
+            if (!Boolean.TRUE.equals(args.network()) && !result.success()) {
+                content +=
+                        "\n[sandbox network is disabled; if this command requires network access, "
+                                + "submit a fresh call with `network: true` for Gateway approval]";
+            }
+            return new ToolResult(call.toolName(), call.callId(), result.success(), content);
+        } finally {
+            sandboxManager.deprovision(sandboxId);
+        }
     }
 
     private static @NonNull String commandOutput(@NonNull CommandResult result) {
@@ -370,6 +480,11 @@ public class ToolEngineImpl implements ToolEngine {
     /** External tool execution over the transport recorded during MCP discovery. */
     private @NonNull ToolResult executeRemote(
             @NonNull ToolCall call, @NonNull RemoteToolDefinition def) throws IOException {
+        ToolCallContext context = ToolCallContextHolder.get();
+        if (context == null || !context.executionPermit().matchesCall(call)) {
+            throw new SecurityException(
+                    "Remote tool requires its screened execution permit: " + def.name());
+        }
         McpTransport transport = transports.get(def.serverName());
         if (transport == null) {
             return new ToolResult(
@@ -384,7 +499,7 @@ public class ToolEngineImpl implements ToolEngine {
         return new ToolResult(call.toolName(), call.callId(), success, content);
     }
 
-    private static @NonNull String remoteContent(@NonNull JsonNode result) {
+    static @NonNull String remoteContent(@NonNull JsonNode result) {
         JsonNode blocks = result.get("content");
         if (blocks == null || !blocks.isArray()) {
             return result.toString();
@@ -399,7 +514,15 @@ public class ToolEngineImpl implements ToolEngine {
             }
             text.append(block.path("text").asText());
         }
-        return text.isEmpty() ? result.toString() : text.toString();
+        if (!text.isEmpty()) {
+            return text.toString();
+        }
+        if (result.path("isError").asBoolean(false)) {
+            return errorEnvelope(
+                    "Remote MCP tool reported isError=true with empty text content; raw result: "
+                            + result);
+        }
+        return result.toString();
     }
 
     private static @NonNull ChainMode parseChainMode(String connect) {

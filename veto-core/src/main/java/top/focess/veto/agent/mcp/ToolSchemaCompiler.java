@@ -54,6 +54,7 @@ public final class ToolSchemaCompiler {
                 toolBean.getName(),
                 toolBean.getDescription(),
                 security.risk(),
+                security.capability(),
                 security.requiresSemanticScreening(),
                 argsClass,
                 hints);

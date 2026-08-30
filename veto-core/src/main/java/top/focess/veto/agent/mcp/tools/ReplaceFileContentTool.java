@@ -11,14 +11,17 @@ import top.focess.veto.agent.mcp.NativeTool;
 import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.SecurityHint;
+import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDoc;
 import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.mcp.ToolSecurity;
 
 /** {@code replace_file_content} — replace a single contiguous block of text in an existing file. */
 @Component
-@ToolSecurity(risk = RiskCategory.FILE_WRITE)
+@ToolSecurity(risk = RiskCategory.FILE_WRITE, capability = ToolCapability.WORKSPACE_WRITE)
 public final class ReplaceFileContentTool implements NativeTool<ReplaceFileContentTool.Args> {
+
+    private static final long MAX_FILE_BYTES = 16L * 1024L * 1024L;
 
     @ToolDoc(
             description = "Replace a single contiguous block of code in an existing file.",
@@ -27,8 +30,8 @@ public final class ReplaceFileContentTool implements NativeTool<ReplaceFileConte
                     #### When to use
                     Use `replace_file_content` to make a localized, surgical edit to an existing file - renaming \
                     a symbol in one spot, fixing a few lines, or swapping a block for new text. It targets a \
-                    contiguous range and replaces the first exact occurrence of `targetContent` with \
-                    `replacementContent`. Prefer it over `write_to_file` when most of the file is unchanged.
+                    contiguous range and replaces the unique exact occurrence of `targetContent` within that \
+                    selected range. Prefer it over `write_to_file` when most of the file is unchanged.
 
                     Always `view_file` the target range first so your `targetContent` matches the file exactly \
                     (whitespace included).
@@ -38,17 +41,15 @@ public final class ReplaceFileContentTool implements NativeTool<ReplaceFileConte
                     `write_to_file`.
                     - Do not use it blind - if `targetContent` does not match the file byte-for-byte, the call \
                     fails. Read first.
-                    - Do not use it to replace ALL occurrences; only the first match is replaced. For multiple \
+                    - Do not use it to replace ALL occurrences. For multiple \
                     sites, call it repeatedly or use `write_to_file`.
                     - Do not pass a `targetContent` so short it could match unintended locations (e.g. a bare \
                     `}`); include enough surrounding context to be unique.
 
                     #### Behavior
-                    Reads `absolutePath` as UTF-8, locates the first occurrence of `targetContent` as an exact \
-                    substring, and replaces that span with `replacementContent`, preserving everything before \
-                    and after. `startLine`/`endLine` are informational scoping hints (1-indexed, inclusive) \
-                    carried for audit/context; the match is performed on the full file content, not \
-                    line-range-truncated. The file is then rewritten.
+                    Reads `absolutePath` as UTF-8 and searches only the inclusive `startLine`/`endLine` range. \
+                    Exactly one occurrence of `targetContent` must exist inside that range. The updated content \
+                    is written through a same-directory temporary file and replacement move.
 
                     #### Return format
                     On success: `{"status":"ok","file":"<path>"}`. On failure to find the target: \
@@ -58,11 +59,10 @@ public final class ReplaceFileContentTool implements NativeTool<ReplaceFileConte
                     #### Errors & edge cases
                     - `targetContent` not present -> error status; the file is left untouched.
                     - `absolutePath` is not a regular file -> error status.
-                    - Only the FIRST occurrence is replaced; subsequent matches are left as-is.
+                    - Zero or multiple matches in the selected range are refused.
                     - `targetContent` and `replacementContent` are exact (whitespace, indentation, newlines all \
                     matter). A mismatched indent means "not found".
-                    - `startLine`/`endLine` do not restrict the search; they are context for the screen/audit, \
-                    not a truncation window.
+                    - `startLine`/`endLine` must form a valid inclusive range and restrict the search.
 
                     #### Security
                     `absolutePath` is a FILESYSTEM_PATH; `targetContent` and `replacementContent` are CODE_CONTENT. \
@@ -114,16 +114,58 @@ public final class ReplaceFileContentTool implements NativeTool<ReplaceFileConte
                     + args.absolutePath()
                     + "\"}";
         }
+        if (Files.size(path) > MAX_FILE_BYTES) {
+            return "{\"status\":\"error\",\"error\":\"File exceeds 16777216 bytes\"}";
+        }
+        if (args.startLine() < 1 || args.endLine() < args.startLine()) {
+            return "{\"status\":\"error\",\"error\":\"Invalid line range\"}";
+        }
+        if (args.targetContent().isEmpty()) {
+            return "{\"status\":\"error\",\"error\":\"targetContent must not be empty\"}";
+        }
         String content = Files.readString(path, StandardCharsets.UTF_8);
-        int idx = content.indexOf(args.targetContent());
-        if (idx < 0) {
-            return "{\"status\":\"error\",\"error\":\"targetContent not found in file.\"}";
+        int rangeStart = lineStart(content, args.startLine());
+        int rangeEnd = lineEnd(content, args.endLine());
+        if (rangeStart < 0 || rangeEnd < rangeStart) {
+            return "{\"status\":\"error\",\"error\":\"Line range outside file\"}";
+        }
+        int idx = content.indexOf(args.targetContent(), rangeStart);
+        if (idx < 0 || idx + args.targetContent().length() > rangeEnd) {
+            return "{\"status\":\"error\",\"error\":\"targetContent not found in selected range.\"}";
+        }
+        int next =
+                content.indexOf(
+                        args.targetContent(), idx + Math.max(1, args.targetContent().length()));
+        if (next >= 0 && next + args.targetContent().length() <= rangeEnd) {
+            return "{\"status\":\"error\",\"error\":\"targetContent is not unique in selected range.\"}";
         }
         String updated =
                 content.substring(0, idx)
                         + args.replacementContent()
                         + content.substring(idx + args.targetContent().length());
-        Files.writeString(path, updated, StandardCharsets.UTF_8);
+        AtomicFileWrites.write(path, updated.getBytes(StandardCharsets.UTF_8), true);
         return "{\"status\":\"ok\",\"file\":\"" + args.absolutePath() + "\"}";
+    }
+
+    private static int lineStart(@NonNull String content, int lineNumber) {
+        if (lineNumber == 1) {
+            return 0;
+        }
+        int currentLine = 1;
+        for (int i = 0; i < content.length(); i++) {
+            if (content.charAt(i) == '\n' && ++currentLine == lineNumber) {
+                return i + 1;
+            }
+        }
+        return -1;
+    }
+
+    private static int lineEnd(@NonNull String content, int lineNumber) {
+        int start = lineStart(content, lineNumber);
+        if (start < 0) {
+            return -1;
+        }
+        int newline = content.indexOf('\n', start);
+        return newline < 0 ? content.length() : newline + 1;
     }
 }

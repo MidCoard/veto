@@ -126,10 +126,10 @@ public class VectorIndexMemoryStore implements MemoryStore {
     }
 
     @Override
-    public void promote(@NonNull MemoryId id) {
+    public boolean promote(@NonNull MemoryId id, @NonNull UUID userId) {
         Memory m = store.get(idOf(id));
-        if (m == null || m.tier() != MemoryTier.SESSION) {
-            return;
+        if (m == null || !m.userId().equals(userId) || m.tier() != MemoryTier.SESSION) {
+            return false;
         }
         Memory promoted =
                 new Memory(
@@ -146,16 +146,21 @@ public class VectorIndexMemoryStore implements MemoryStore {
         index.remove(idOf(id));
         store.put(idOf(promoted.id()), promoted);
         index.insert(idOf(promoted.id()), promoted.embedding());
+        return true;
     }
 
     @Override
-    public void forget(@NonNull MemoryId id) {
+    public boolean forget(@NonNull MemoryId id, @NonNull UUID userId) {
         // store is keyed by UUID (see add() above) — apply idOf() consistently so the
         // entry is actually evicted. Previously the raw MemoryId was passed, making
         // store.remove a no-op and leaving the memory visible to future searches.
         UUID key = idOf(id);
-        store.remove(key);
+        Memory memory = store.get(key);
+        if (memory == null || !memory.userId().equals(userId) || !store.remove(key, memory)) {
+            return false;
+        }
         index.remove(key);
+        return true;
     }
 
     /** Test-only inspection of the store contents. */

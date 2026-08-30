@@ -2,16 +2,19 @@ package top.focess.veto.sandbox;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Tests for Windows Job Object handle lifecycle management. The Job handle created by {@link
- * KernelSandboxSubstrate#attach(Process)} must be closed after the child process exits to prevent
- * handle leaks.
+ * KernelSandboxSubstrate#attachRequired(Process, SandboxProfile)} must be closed after the child
+ * process exits to prevent handle leaks.
  *
  * <p>These tests only run on Windows (the platform where Job Objects apply).
  */
@@ -21,29 +24,29 @@ class JobHandleLifecycleTest {
             System.getProperty("os.name", "").toLowerCase().contains("win");
 
     /**
-     * Verify that attach returns a Closeable that can be used to clean up the Job handle. The test
-     * spawns a short-lived process, attaches the kernel wall, and verifies the handle can be
-     * closed.
+     * Verify the two-hop launcher does not start the target before attachment and returns a
+     * Closeable Job handle.
      */
     @Test
-    void attachReturnsCloseableHandle() throws Exception {
+    void attachReturnsCloseableHandle(@TempDir @NonNull Path workspace) throws Exception {
         Assumptions.assumeTrue(IS_WINDOWS, "Job Objects are Windows-only");
 
         KernelSandboxSubstrate substrate = new KernelSandboxSubstrate();
         Assumptions.assumeTrue(substrate.isAvailable(), "KernelSandboxSubstrate not available");
+        SandboxProfile profile = profile(workspace);
+        substrate.provisionWorkspace(profile);
 
-        // Spawn a short-lived process
-        ProcessBuilder pb = new ProcessBuilder("cmd", "/c", "echo hello");
-        Process process = pb.start();
-
-        // Attach should return a Closeable handle
-        @NonNull AutoCloseable handle = requireHandle(substrate.attachWithHandle(process));
-
-        // Wait for process to complete
-        process.waitFor();
-
-        // Close the handle (should not throw)
-        assertDoesNotThrow(() -> handle.close(), "Closing the handle should not throw");
+        try (KernelSandboxSubstrate.PreparedCommand prepared =
+                substrate.prepareCommand(
+                        List.of(cmdExecutable(), "/c", "echo", "hello"), profile)) {
+            Process process =
+                    new ProcessBuilder(prepared.command()).directory(workspace.toFile()).start();
+            prepared.awaitReady(process);
+            @NonNull AutoCloseable handle = substrate.attachRequired(process, profile);
+            prepared.release();
+            assertEquals(0, process.waitFor());
+            assertDoesNotThrow(handle::close, "Closing the handle should not throw");
+        }
     }
 
     /**
@@ -51,38 +54,48 @@ class JobHandleLifecycleTest {
      * kernel handle; this test verifies handles are properly tracked.
      */
     @Test
-    void multipleAttachesDoNotLeakHandles() throws Exception {
+    void multipleAttachesDoNotLeakHandles(@TempDir @NonNull Path workspace) throws Exception {
         Assumptions.assumeTrue(IS_WINDOWS, "Job Objects are Windows-only");
 
         KernelSandboxSubstrate substrate = new KernelSandboxSubstrate();
         Assumptions.assumeTrue(substrate.isAvailable(), "KernelSandboxSubstrate not available");
+        SandboxProfile profile = profile(workspace);
+        substrate.provisionWorkspace(profile);
 
         List<AutoCloseable> handles = new ArrayList<>();
 
-        // Spawn and attach 3 processes
         for (int i = 0; i < 3; i++) {
-            ProcessBuilder pb = new ProcessBuilder("cmd", "/c", "echo " + i);
-            Process process = pb.start();
-            AutoCloseable handle = substrate.attachWithHandle(process);
-            if (handle != null) {
+            try (KernelSandboxSubstrate.PreparedCommand prepared =
+                    substrate.prepareCommand(
+                            List.of(cmdExecutable(), "/c", "echo", Integer.toString(i)), profile)) {
+                Process process =
+                        new ProcessBuilder(prepared.command())
+                                .directory(workspace.toFile())
+                                .start();
+                prepared.awaitReady(process);
+                AutoCloseable handle = substrate.attachRequired(process, profile);
                 handles.add(handle);
+                prepared.release();
+                assertEquals(0, process.waitFor());
             }
-            process.waitFor();
         }
 
         // Close all handles
         for (AutoCloseable handle : handles) {
             assertDoesNotThrow(() -> handle.close(), "Closing handles should not throw");
         }
-
-        // If we got here without exceptions, handles were properly managed
-        assertTrue(true, "All handles closed successfully");
     }
 
-    private static @NonNull AutoCloseable requireHandle(AutoCloseable handle) {
-        if (handle != null) {
-            return handle;
+    private static @NonNull SandboxProfile profile(@NonNull Path workspace) {
+        return new SandboxProfile(
+                workspace.toAbsolutePath().normalize(), 512, 100, 8, Duration.ofSeconds(30));
+    }
+
+    private static @NonNull String cmdExecutable() {
+        String systemRoot = System.getenv("SystemRoot");
+        if (systemRoot == null) {
+            throw new IllegalStateException("SystemRoot is unavailable on Windows");
         }
-        throw new AssertionError("attachWithHandle should return a non-null handle on Windows");
+        return Path.of(systemRoot, "System32", "cmd.exe").toString();
     }
 }

@@ -13,6 +13,7 @@ import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.session.SessionHistoryLoader;
+import top.focess.veto.session.SessionRecordService;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.session.SessionService.SessionConfig;
 import top.focess.veto.vault.KeysteadVault;
@@ -34,14 +35,17 @@ public class SessionController {
     private final @NonNull SessionService service;
     private final @NonNull KeysteadVault vault;
     private final @NonNull SessionHistoryLoader historyLoader;
+    private final @NonNull SessionRecordService recordService;
 
     public SessionController(
             @NonNull SessionService service,
             @NonNull KeysteadVault vault,
-            @NonNull SessionHistoryLoader historyLoader) {
+            @NonNull SessionHistoryLoader historyLoader,
+            @NonNull SessionRecordService recordService) {
         this.service = service;
         this.vault = vault;
         this.historyLoader = historyLoader;
+        this.recordService = recordService;
     }
 
     @GetMapping
@@ -127,6 +131,25 @@ public class SessionController {
                             turn.timestamp().toString()));
         }
         return ResponseEntity.ok(turns);
+    }
+
+    /**
+     * The complete records view for veto-ui. It retains the append-only trace while annotating each
+     * agent stream with the effective state produced by its REWIND directives.
+     */
+    @GetMapping(value = "/{name}/records", produces = MediaType.APPLICATION_JSON_VALUE)
+    public @NonNull ResponseEntity<?> records(@PathVariable @NonNull String name) {
+        String user = vault.currentUser();
+        if (user == null) {
+            return ResponseEntity.status(401)
+                    .body(Map.of("error", Msg.get("error.auth.notAuthenticated")));
+        }
+        SessionConfig cfg = service.resolveByName(name, user).orElse(null);
+        if (cfg == null) {
+            return ResponseEntity.status(404)
+                    .body(Map.of("error", Msg.get("error.session.notFoundForUser", name, user)));
+        }
+        return ResponseEntity.ok(recordService.load(cfg.sessionId(), name));
     }
 
     /** Request body for {@link #create}. */

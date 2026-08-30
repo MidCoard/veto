@@ -45,6 +45,13 @@ class ToolSchemaCompilerTest {
                 contains(items.path("required"), "executable"),
                 "executable required in item schema");
         assertTrue(contains(items.path("required"), "args"), "args required in item schema");
+
+        JsonNode network = schema.path("properties").path("network");
+        assertEquals(
+                "boolean",
+                network.path("type").asText(),
+                "network is a boolean capability request");
+        assertFalse(contains(schema.path("required"), "network"), "network defaults to denied");
     }
 
     private static boolean contains(@NonNull JsonNode array, @NonNull String value) {

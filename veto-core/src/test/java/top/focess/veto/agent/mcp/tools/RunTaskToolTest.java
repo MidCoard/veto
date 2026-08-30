@@ -7,17 +7,21 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.mcp.ToolCallContextHolder;
 import top.focess.veto.agent.mcp.ToolDocs;
+import top.focess.veto.agent.screening.DeployerPolicy;
 import top.focess.veto.sandbox.BackgroundTaskManager;
-import top.focess.veto.sandbox.ConstrainedSubprocessSubstrate;
 import top.focess.veto.sandbox.SandboxManager;
+import top.focess.veto.sandbox.TestSandboxFactory;
 
 /**
  * Exercises the {@code run_task} / {@code view_task} / {@code stop_task} tools end-to-end through
@@ -37,7 +41,8 @@ class RunTaskToolTest {
     @BeforeEach
     void setUp() {
         manager =
-                new BackgroundTaskManager(new SandboxManager(new ConstrainedSubprocessSubstrate()));
+                new BackgroundTaskManager(
+                        new SandboxManager(TestSandboxFactory.uncontainedSubprocesses()));
         runTask = new RunTaskTool(manager, mapper);
         status = new ViewTaskTool(manager, mapper);
         stop = new StopTaskTool(manager, mapper);
@@ -53,6 +58,18 @@ class RunTaskToolTest {
 
     @Test
     void runTaskLaunchesAndStatusReportsExit(@TempDir @NonNull Path tempDir) throws Exception {
+        ToolExecutionPermit permit =
+                new ToolExecutionPermit(
+                        "run_task",
+                        Map.of(),
+                        Map.of(
+                                "cwd",
+                                new ToolExecutionPermit.AuthorizedPath(
+                                        "cwd", tempDir.toString(), tempDir, 0, true)),
+                        List.of(tempDir),
+                        DeployerPolicy.FULL_ACCESS,
+                        Set.of());
+        ToolCallContextHolder.set("agent-x", UUID.randomUUID(), null, null, null, permit);
         boolean win = System.getProperty("os.name").toLowerCase().contains("win");
         String exe =
                 Path.of(System.getProperty("java.home"), "bin", win ? "java.exe" : "java")

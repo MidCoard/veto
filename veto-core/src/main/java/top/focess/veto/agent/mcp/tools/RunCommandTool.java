@@ -8,6 +8,7 @@ import top.focess.veto.agent.mcp.NativeTool;
 import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.SecurityHint;
+import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDoc;
 import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.mcp.ToolSecurity;
@@ -24,7 +25,7 @@ import top.focess.veto.sandbox.SandboxSubstrate;
  * throws to make the special-casing explicit.
  */
 @Component
-@ToolSecurity(risk = RiskCategory.SHELL_EXEC)
+@ToolSecurity(risk = RiskCategory.SHELL_EXEC, capability = ToolCapability.PROCESS_EXECUTION)
 public final class RunCommandTool implements NativeTool<RunCommandTool.Args> {
 
     /** A single discrete command in the chain. */
@@ -57,14 +58,14 @@ public final class RunCommandTool implements NativeTool<RunCommandTool.Args> {
 
                     #### Behavior
                     Each `commands` entry is `{executable, args}` where `executable` is a bare binary name \
-                    resolved against the exec allowlist (e.g. "gradle", "git") and `args` is an argv array of \
+                    classified against the executable list (e.g. "gradle", "git") and `args` is an argv array of \
                     literal strings - no shell, no shell-driven glob/env expansion (Veto performs any expansion \
                     itself). Execution does NOT run in the host JVM: ToolEngine special-cases `run_command` and \
                     routes it through the session's SandboxSubstrate - direct argv[] exec, cwd locked to `cwd`, \
                     no shell, Veto-controlled chaining. The `connect` mode decides how entries relate: \
                     `STOP_ON_FAILURE` (default) runs them in order and halts at the first non-zero exit; `RUN_ALL` \
                     runs every entry regardless of failures; `PIPE` feeds one entry's stdout into the next \
-                    entry's stdin. `timeout` (seconds, REQUIRED; 0 = no cap) bounds the blocking wait - a \
+                    entry's stdin. `timeout` (seconds, REQUIRED; 0 = sandbox-profile maximum) bounds the blocking wait - a \
                     timed-out chain is forcibly killed and the result carries `[timeout]`. For a long-running \
                     server that never exits (e.g. `npm run dev`), use `run_task` instead so the call does not \
                     block the turn.
@@ -76,7 +77,8 @@ public final class RunCommandTool implements NativeTool<RunCommandTool.Args> {
                     to make the special-casing explicit).
 
                     #### Errors & edge cases
-                    - `executable` not on the allowlist -> the call is rejected before execution.
+                    - A blacklisted executable/pattern is refused. A non-listed executable is classified \
+                    dangerous and requires the applicable approval; the list is not an executor allowlist.
                     - `cwd` outside an allowed root -> the Gateway blocks the call.
                     - A command exits non-zero under `STOP_ON_FAILURE` -> the chain halts; later entries do not \
                     run.
@@ -88,10 +90,12 @@ public final class RunCommandTool implements NativeTool<RunCommandTool.Args> {
                     `commands` carries SHELL_COMMAND and `cwd` carries FILESYSTEM_PATH: both are screened by the \
                     Gateway (path check + semantic screening) before execution. The operation is \
                     `RiskCategory.SHELL_EXEC` - the highest-risk category, always audited and may require human \
-                    approval. There is no shell, so shell-injection is structurally impossible; the risk is the \
-                    command itself. Prefer the narrowest `cwd` and the fewest entries that accomplish the goal. \
-                    Do not attempt to chain around the sandbox - the substrate enforces the exec allowlist and \
-                    cwd lock.
+                    approval. Ordinary executables are direct argv launches. Windows `.cmd`/`.bat` shims use \
+                    the OS `ComSpec` interpreter because CreateProcess cannot execute that file format directly; \
+                    Veto rejects interpreter metacharacters in shim arguments. Prefer the narrowest `cwd` and \
+                    the fewest entries that accomplish the goal. \
+                    Do not attempt to chain around the sandbox - argv separation and the authorized cwd remain \
+                    enforced after approval.
                     """,
             examples = {
                 "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"build\"]}], \"cwd\": \"/abs\", \"connect\": \"STOP_ON_FAILURE\", \"timeout\": 300}",
@@ -117,12 +121,25 @@ public final class RunCommandTool implements NativeTool<RunCommandTool.Args> {
                     @NonNull String cwd,
             @Doc("How Veto connects the commands: STOP_ON_FAILURE (default), RUN_ALL, or PIPE.")
                     String connect,
+            @Doc(
+                            "Request network access for this execution. Defaults to false; true is separately Gateway-screened.")
+                    Boolean network,
             @NonNull
                     @Doc(
-                            "Timeout in seconds. REQUIRED - the agent must set it explicitly. 0 = no cap (run to"
-                                    + " completion). For run_command this bounds the blocking wait; for run_task it bounds"
-                                    + " the background task's lifetime (auto-killed after).")
-                    Integer timeout) {}
+                            "Timeout in seconds. REQUIRED - 0 selects the sandbox-profile maximum; larger"
+                                    + " values are capped by that maximum. For run_command this bounds the blocking"
+                                    + " wait; for run_task it bounds the background task's lifetime.")
+                    Integer timeout) {
+
+        /** Compatibility constructor for callers that accept the default deny-network posture. */
+        public Args(
+                @NonNull List<CommandInput> commands,
+                @NonNull String cwd,
+                String connect,
+                @NonNull Integer timeout) {
+            this(commands, cwd, connect, false, timeout);
+        }
+    }
 
     @Override
     public @NonNull String getName() {

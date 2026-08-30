@@ -12,6 +12,7 @@ import top.focess.veto.agent.mcp.Doc;
 import top.focess.veto.agent.mcp.NativeTool;
 import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.ToolCallContextHolder;
+import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDoc;
 import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.mcp.ToolSecurity;
@@ -24,7 +25,7 @@ import top.focess.veto.sandbox.BackgroundTaskManager;
  * output; without a {@code taskId} it lists every task the calling agent owns. Read-only.
  */
 @Component
-@ToolSecurity(risk = RiskCategory.AGENT)
+@ToolSecurity(risk = RiskCategory.AGENT, capability = ToolCapability.TASK_CONTROL)
 public final class ViewTaskTool implements NativeTool<ViewTaskTool.Args> {
 
     private final @NonNull BackgroundTaskManager taskManager;

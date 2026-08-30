@@ -14,12 +14,14 @@ import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.SecurityHint;
 import top.focess.veto.agent.mcp.ToolCallContextHolder;
+import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDoc;
 import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.mcp.ToolSecurity;
 import top.focess.veto.llm.config.LlmJacksonConfig;
 import top.focess.veto.sandbox.BackgroundTaskManager;
 import top.focess.veto.sandbox.Command;
+import top.focess.veto.sandbox.SandboxProfile;
 
 /**
  * {@code run_task} - launch a long-running command as a detached background task. Takes the same
@@ -29,12 +31,13 @@ import top.focess.veto.sandbox.Command;
  * {@code npm run dev}); use {@code run_command} for commands whose result you need inline.
  *
  * <p>Background = a single command (no chaining); multiple commands are rejected. {@code timeout}
- * (seconds, required; {@code 0} = no cap) is the task's max lifetime - the task is auto-killed
- * after it elapses. Follow up with {@code view_task} (status + recent output) and {@code
- * stop_task}. When a task ends, the agent is told about it on its next turn.
+ * (seconds, required; {@code 0} selects the sandbox-profile maximum) is the requested lifetime; the
+ * effective lifetime never exceeds the profile maximum. Follow up with {@code view_task} (status +
+ * recent output) and {@code stop_task}. When a task ends, the agent is told about it on its next
+ * turn.
  */
 @Component
-@ToolSecurity(risk = RiskCategory.SHELL_EXEC)
+@ToolSecurity(risk = RiskCategory.SHELL_EXEC, capability = ToolCapability.PROCESS_EXECUTION)
 public final class RunTaskTool implements NativeTool<RunTaskTool.Args> {
 
     private final @NonNull BackgroundTaskManager taskManager;
@@ -72,7 +75,7 @@ public final class RunTaskTool implements NativeTool<RunTaskTool.Args> {
                     Starts the single `commands[0]` entry detached via the sandbox substrate (no \
                     shell, argv[] direct exec, cwd locked to `cwd`) and returns immediately. Output \
                     (stdout+stderr merged) is drained into a ring buffer you can read via \
-                    `view_task`. `timeout` (seconds, REQUIRED; 0 = no cap) bounds the task's total \
+                    `view_task`. `timeout` (seconds, REQUIRED; 0 = sandbox-profile maximum) bounds the task's total \
                     lifetime - it is auto-killed after it elapses. When the task ends you are told \
                     about it on your next turn; you can also inspect it any time with `view_task` \
                     or end it with `stop_task`.
@@ -83,14 +86,15 @@ public final class RunTaskTool implements NativeTool<RunTaskTool.Args> {
 
                     #### Errors & edge cases
                     - More than one command -> rejected (background mode does not chain).
-                    - Missing `timeout` -> rejected (it is required; use 0 for no cap).
+                    - Missing `timeout` -> rejected (it is required; use 0 for the profile maximum).
                     - `cwd` outside an allowed root -> the Gateway blocks the call.
 
                     #### Security
                     Same screening as `run_command`: `commands` carries SHELL_COMMAND and `cwd` \
                     carries FILESYSTEM_PATH; `RiskCategory.SHELL_EXEC`, always audited and may \
-                    require human approval. There is no shell, so injection is structurally \
-                    impossible; the risk is the command itself. Prefer the narrowest `cwd`.
+                    require human approval. Ordinary executables are direct argv launches; Windows \
+                    `.cmd`/`.bat` shims use the restricted `ComSpec` bridge and reject interpreter \
+                    metacharacters. Prefer the narrowest `cwd`.
                     """,
             examples = {
                 "{\"commands\": [{\"executable\": \"npm\", \"args\": [\"run\", \"dev\"]}], \"cwd\": \"/abs/app\", \"timeout\": 0}",
@@ -114,11 +118,24 @@ public final class RunTaskTool implements NativeTool<RunTaskTool.Args> {
                             "How Veto connects the commands: STOP_ON_FAILURE (default), RUN_ALL, or PIPE."
                                     + " Background mode runs a single command, so this is effectively unused.")
                     String connect,
+            @Doc(
+                            "Request network access for this task. Defaults to false; true is separately Gateway-screened.")
+                    Boolean network,
             @NonNull
                     @Doc(
-                            "Max lifetime in seconds. REQUIRED - 0 = no cap (run until stop_task or session"
-                                    + " end); >0 = auto-kill after this many seconds.")
-                    Integer timeout) {}
+                            "Requested max lifetime in seconds. REQUIRED - 0 selects the sandbox-profile"
+                                    + " maximum; larger values are capped by that maximum.")
+                    Integer timeout) {
+
+        /** Compatibility constructor for callers that accept the default deny-network posture. */
+        public Args(
+                @NonNull List<RunCommandTool.CommandInput> commands,
+                @NonNull String cwd,
+                String connect,
+                @NonNull Integer timeout) {
+            this(commands, cwd, connect, false, timeout);
+        }
+    }
 
     @Override
     public @NonNull String getName() {
@@ -142,7 +159,8 @@ public final class RunTaskTool implements NativeTool<RunTaskTool.Args> {
     public @NonNull String execute(@NonNull Args args) {
         Integer timeout = args.timeout();
         if (timeout == null) {
-            return error("run_task requires an explicit 'timeout' (seconds; 0 = no cap).");
+            return error(
+                    "run_task requires an explicit 'timeout' (seconds; 0 = sandbox-profile maximum).");
         }
         if (args.commands().size() != 1) {
             return error(
@@ -151,15 +169,25 @@ public final class RunTaskTool implements NativeTool<RunTaskTool.Args> {
         }
         RunCommandTool.CommandInput input = args.commands().get(0);
         var ctx = ToolCallContextHolder.get();
-        String agentId = ctx != null ? ctx.agentId() : "standalone";
-        java.util.UUID sessionId = ctx != null ? ctx.sessionId() : null;
+        if (ctx == null) {
+            throw new SecurityException("run_task requires its screened execution permit");
+        }
+        String agentId = ctx.agentId();
+        java.util.UUID sessionId = ctx.sessionId();
+        Path cwd = Path.of(args.cwd());
+        SandboxProfile profile =
+                SandboxProfile.forExecution(
+                        ctx.executionPermit().sandboxRoot("cwd"),
+                        ctx.executionPermit().protectedPaths(),
+                        Boolean.TRUE.equals(args.network()));
         BackgroundTaskManager.TaskInfo info =
                 taskManager.start(
                         agentId,
                         new Command(input.executable(), input.args()),
-                        Path.of(args.cwd()),
+                        cwd,
                         timeout,
-                        sessionId);
+                        sessionId,
+                        profile);
         try {
             Map<String, Object> envelope = new LinkedHashMap<>();
             envelope.put("status", "started");

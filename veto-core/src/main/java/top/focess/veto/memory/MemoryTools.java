@@ -12,6 +12,7 @@ import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.SecurityHint;
 import top.focess.veto.agent.mcp.ToolCallContext;
 import top.focess.veto.agent.mcp.ToolCallContextHolder;
+import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDoc;
 import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.memory.embedder.Embedder;
@@ -23,6 +24,10 @@ import top.focess.veto.memory.embedder.Embedder;
  */
 @SuppressWarnings("DuplicatedCode") // Each native memory tool applies the same context guard.
 public final class MemoryTools {
+
+    private static final int MAX_QUERY_CHARS = 4000;
+    private static final int MAX_TOP_K = 20;
+    private static final int MAX_INSIGHT_CHARS = 64_000;
 
     private MemoryTools() {}
 
@@ -104,13 +109,18 @@ public final class MemoryTools {
         }
 
         @Override
+        public @NonNull ToolCapability getCapability() {
+            return ToolCapability.MEMORY_READ;
+        }
+
+        @Override
         public @NonNull String execute(@NonNull Args args) {
             ToolCallContext ctx = ToolCallContextHolder.get();
             if (ctx == null) {
                 return "no matching memories"; // no session context available
             }
-            String query = args.query() == null ? "" : args.query();
-            int topK = args.topK() != null && args.topK() > 0 ? args.topK() : 5;
+            String query = boundedQuery(args.query());
+            int topK = boundedTopK(args.topK());
             float scoreFloor = args.scoreFloor() != null ? clamp01(args.scoreFloor()) : 0.5f;
             UUID sessionId = UUID.fromString(ctx.agentId());
             MemoryQuery q =
@@ -201,13 +211,18 @@ public final class MemoryTools {
         }
 
         @Override
+        public @NonNull ToolCapability getCapability() {
+            return ToolCapability.MEMORY_READ;
+        }
+
+        @Override
         public @NonNull String execute(@NonNull Args args) {
             ToolCallContext ctx = ToolCallContextHolder.get();
             if (ctx == null) {
                 return "no matching memories"; // no user context available
             }
-            String query = args.query() == null ? "" : args.query();
-            int topK = args.topK() != null && args.topK() > 0 ? args.topK() : 5;
+            String query = boundedQuery(args.query());
+            int topK = boundedTopK(args.topK());
             float scoreFloor = args.scoreFloor() != null ? clamp01(args.scoreFloor()) : 0.5f;
             MemoryQuery q =
                     new MemoryQuery(
@@ -308,6 +323,11 @@ public final class MemoryTools {
         }
 
         @Override
+        public @NonNull ToolCapability getCapability() {
+            return ToolCapability.MEMORY_WRITE;
+        }
+
+        @Override
         public @NonNull String execute(@NonNull Args args) {
             ToolCallContext ctx = ToolCallContextHolder.get();
             if (ctx == null) {
@@ -317,8 +337,10 @@ public final class MemoryTools {
             String promoteId = args.promoteMemoryId();
             if (promoteId != null && !promoteId.isBlank()) {
                 try {
-                    store.promote(new MemoryId(UUID.fromString(promoteId.strip())));
-                    return "promoted";
+                    boolean promoted =
+                            store.promote(
+                                    new MemoryId(UUID.fromString(promoteId.strip())), ctx.userId());
+                    return promoted ? "promoted" : "memory not found or not owned; not promoted";
                 } catch (IllegalArgumentException e) {
                     return "invalid promoteMemoryId; not promoted";
                 }
@@ -326,6 +348,9 @@ public final class MemoryTools {
             String content = args.content() == null ? "" : args.content();
             if (content.isBlank()) {
                 return "no content; insight not written";
+            }
+            if (content.length() > MAX_INSIGHT_CHARS) {
+                return "insight exceeds 64000 characters; not written";
             }
             UUID projectId = parseUuidOrNull(args.projectId());
             Memory m =
@@ -404,14 +429,24 @@ public final class MemoryTools {
         }
 
         @Override
+        public @NonNull ToolCapability getCapability() {
+            return ToolCapability.MEMORY_WRITE;
+        }
+
+        @Override
         public @NonNull String execute(@NonNull Args args) {
+            ToolCallContext ctx = ToolCallContextHolder.get();
+            if (ctx == null) {
+                return "no user context; nothing forgotten";
+            }
             String id = args.memoryId();
             if (id == null || id.isBlank()) {
                 return "no memoryId; nothing forgotten";
             }
             try {
-                store.forget(new MemoryId(UUID.fromString(id.strip())));
-                return "forgotten";
+                boolean forgotten =
+                        store.forget(new MemoryId(UUID.fromString(id.strip())), ctx.userId());
+                return forgotten ? "forgotten" : "memory not found or not owned; nothing forgotten";
             } catch (IllegalArgumentException e) {
                 return "invalid memoryId; nothing forgotten";
             }
@@ -460,6 +495,18 @@ public final class MemoryTools {
     /** Clamps a score-floor value into [0, 1] (the {@link MemoryQuery} validity range). */
     static float clamp01(float v) {
         return Math.clamp(v, 0f, 1f);
+    }
+
+    private static int boundedTopK(Integer requested) {
+        int value = requested != null && requested > 0 ? requested : 5;
+        return Math.min(value, MAX_TOP_K);
+    }
+
+    private static @NonNull String boundedQuery(String query) {
+        if (query == null) {
+            return "";
+        }
+        return query.length() <= MAX_QUERY_CHARS ? query : query.substring(0, MAX_QUERY_CHARS);
     }
 
     /** Parses a UUID string, returning null on blank/invalid input (for optional id args). */

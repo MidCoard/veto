@@ -8,13 +8,12 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 /**
- * The sole authority for sandbox provisioning/deprovisioning. {@code AgentRunner} never calls
- * Docker/Firecracker/OS-primitive APIs directly..
+ * The sole authority for sandbox provisioning/deprovisioning. {@code AgentRunner} never calls OS
+ * security APIs directly.
  *
  * <p>Holds {@link SandboxHandle}s in-memory keyed by {@code sessionId} — never persisted on {@code
- * AgentEntity} (runtime resources are volatile). The substrate is the configured {@link
- * ConstrainedSubprocessSubstrate}; a container/microVM substrate may be swapped in per the
- * deployer's fixed-menu selection.
+ * AgentEntity} (runtime resources are volatile). The substrate is the configured Veto-owned {@link
+ * ConstrainedSubprocessSubstrate} for the host operating system.
  */
 @Service
 public class SandboxManager {
@@ -33,8 +32,13 @@ public class SandboxManager {
     /** Provisions a sandbox for a session and caches the handle keyed by {@code sessionId}. */
     public @NonNull SandboxHandle provision(
             @NonNull String sessionId, @NonNull Path workspaceRoot) {
-        return handles.computeIfAbsent(
-                sessionId, k -> substrate.provision(SandboxProfile.defaults(workspaceRoot)));
+        return provision(sessionId, SandboxProfile.defaults(workspaceRoot));
+    }
+
+    /** Provisions a sandbox using the exact policy projection bound to this execution. */
+    public @NonNull SandboxHandle provision(
+            @NonNull String sessionId, @NonNull SandboxProfile profile) {
+        return handles.computeIfAbsent(sessionId, k -> substrate.provision(profile));
     }
 
     /** Returns the cached handle for a session, provisioning a default if absent. */

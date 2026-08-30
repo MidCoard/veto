@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -33,6 +34,7 @@ import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.intercept.InterceptResolution;
 import top.focess.veto.agent.intercept.LoopInterceptor;
 import top.focess.veto.agent.intercept.RefusalObservation;
+import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.intercept.VetoOption;
 import top.focess.veto.agent.intercept.VetoPrompt;
 import top.focess.veto.agent.loop.ActionsProgram;
@@ -167,7 +169,17 @@ public class AgentRunner {
     // Captured in callModel via ReasoningContentHolder, stored in the ASSISTANT_THOUGHT turn by
     // appendThought, and echoed back on the next request's assistant message by PromptCompiler.
     private String lastReasoningContent = null;
+    // The linked prompt is durable UI/audit data, but it is large and normally stable. Record it
+    // only when either the content or concrete model binding changes.
+    private String lastAgentInitKey = null;
+    // The episode's first request is compiled against a prospective history containing the new
+    // user turn. That exact immutable payload is dispatched after AGENT_INIT → USER_PROMPT are
+    // persisted in logical order. Null after the first dispatch.
+    private CompiledPrompt preparedFirstPrompt = null;
     private @NonNull String activeUserTask = "";
+    // Exact tool+args calls declined with DECLINE_AND_CONTINUE in this user-prompt episode. A model
+    // retry is answered locally instead of bothering the user with the same approval again.
+    private final @NonNull Set<String> declinedCallSignatures = new HashSet<>();
 
     // User-facing message listeners (the emission seam). emitMessage notifies these so a
     // transport (the terminal PromptHandler) can forward each assistantResponse to its client as a
@@ -339,6 +351,7 @@ public class AgentRunner {
     // ── Episode setup + autonomous loop ─────────────────────────────────────
 
     private void processUserPrompt(@NonNull String prompt) {
+        declinedCallSignatures.clear();
         // Actively tell the agent about background tasks that ended since it last ran — drained
         // into the context BEFORE the new user prompt so the model reads them together. This is
         // the push half of the task lifecycle (the UI gets TASK_EXITED live; the agent gets it
@@ -354,6 +367,19 @@ public class AgentRunner {
                         : null;
         this.activeUserTask = resumeContext != null ? resumeContext : prompt;
         awaitingBreakerContinuation = false;
+        TurnRecord prospectiveUserTurn =
+                resumeContext != null
+                        ? TurnRecord.breakerContinuation(turnNumber + 1, prompt, resumeContext)
+                        : TurnRecord.userPrompt(turnNumber + 1, prompt);
+        List<TurnRecord> prospectiveHistory;
+        synchronized (this) {
+            prospectiveHistory = new ArrayList<>(history);
+        }
+        prospectiveHistory.add(prospectiveUserTurn);
+        preparedFirstPrompt = compilePrompt(prospectiveHistory, false);
+        // Persist the root and user event in logical order, then dispatch this exact compiled
+        // payload. There is no second linking pass that could observe different laws or tools.
+        recordAgentInit(preparedFirstPrompt.systemMessage());
         appendTurn(
                 resumeContext != null
                         ? TurnRecord.breakerContinuation(++turnNumber, prompt, resumeContext)
@@ -461,7 +487,10 @@ public class AgentRunner {
 
         String finalSummary = computeCompactionSummary(workTurns);
 
-        appendTurn(TurnRecord.rewind(++turnNumber, 1));
+        // AGENT_INIT defines the agent but is not a ChatMessage. Clear every compiled work
+        // message, then re-inject only the summary; the system message is assembled separately
+        // from the current persona on every provider request.
+        appendTurn(TurnRecord.rewind(++turnNumber, 0));
         appendTurn(TurnRecord.compactionSummary(++turnNumber, finalSummary));
         emitMessage(Msg.get(locale, "error.agent.compactDone", workTurns.size()));
         // Domain event: the session compacted. Subscribers can mark the ledger boundary without
@@ -489,6 +518,9 @@ public class AgentRunner {
         }
         StringBuilder sb = new StringBuilder();
         for (TurnRecord turn : workTurns) {
+            if (turn.type() == TurnType.AGENT_INIT) {
+                continue;
+            }
             sb.append("Turn ")
                     .append(turn.turnNumber())
                     .append(" (")
@@ -501,6 +533,9 @@ public class AgentRunner {
             }
         }
         String contentToCompact = sb.toString();
+        if (contentToCompact.isBlank()) {
+            return "{}";
+        }
 
         List<String> chunks = new ArrayList<>();
         int chunkSize = 60000;
@@ -583,12 +618,19 @@ public class AgentRunner {
             // Mid-episode task lifecycle: a background task that ended (or that the user
             // stopped) during THIS episode is reported at the next iteration, not only at the
             // start of the next episode. Cheap no-op when the queue is empty.
-            injectPendingTaskExitNotices();
+            // processUserPrompt already drained notices before preparing the first immutable
+            // request. Do not mutate history between that compilation and its dispatch.
+            if (preparedFirstPrompt == null) {
+                injectPendingTaskExitNotices();
+            }
             if (breaker.shouldTrip()) {
                 tripBreaker();
                 throw new BreakerTripException();
             }
-            boolean guidedSwitch = false;
+            // A prior autonomous response requests guided mode by setting features.guided=true
+            // while issuing its final call (often `think`). The following iteration uses the
+            // action-authoring schema: actions required, calls forbidden.
+            boolean guidedSwitch = this.guided;
             VetoResponse response = callModel(guidedSwitch);
             breaker.recordModelCall();
 
@@ -746,14 +788,12 @@ public class AgentRunner {
     // ── The model call (compile + dispatch + enforce, with schema retry) ────
 
     private @NonNull VetoResponse callModel(boolean guidedSwitch) {
-        CompiledPrompt compiled =
-                promptCompiler.compile(
-                        persona,
-                        gateway.workspace(),
-                        binding.systemPromptBase(),
-                        List.copyOf(history),
-                        guidedSwitch,
-                        this.correctionFactor);
+        CompiledPrompt compiled = preparedFirstPrompt;
+        preparedFirstPrompt = null;
+        if (compiled == null) {
+            compiled = compilePrompt(List.copyOf(history), guidedSwitch);
+        }
+        recordAgentInit(compiled.systemMessage());
         long estimatedTokens = compiled.estimatedTokens();
         VetoRequest request = buildRequest(compiled);
         for (int attempt = 0; ; attempt++) {
@@ -796,6 +836,41 @@ public class AgentRunner {
                 request = injectSchemaRejection(request, e);
             }
         }
+    }
+
+    private @NonNull CompiledPrompt compilePrompt(
+            @NonNull List<TurnRecord> sourceHistory, boolean guidedSwitch) {
+        return promptCompiler.compile(
+                persona,
+                gateway.workspace(),
+                binding.systemPromptBase(),
+                sourceHistory,
+                guidedSwitch,
+                this.correctionFactor);
+    }
+
+    private void recordAgentInit(@NonNull String systemPrompt) {
+        LlmBinding current = binding;
+        String role = persona.role().name().toLowerCase(Locale.ROOT);
+        String key =
+                role
+                        + '\u0000'
+                        + current.provider().name()
+                        + '\u0000'
+                        + current.model()
+                        + '\u0000'
+                        + systemPrompt;
+        if (key.equals(lastAgentInitKey)) {
+            return;
+        }
+        appendTurn(
+                TurnRecord.agentInit(
+                        ++turnNumber,
+                        role,
+                        systemPrompt,
+                        current.provider().name(),
+                        current.model()));
+        lastAgentInitKey = key;
     }
 
     private @NonNull VetoRequest buildRequest(@NonNull CompiledPrompt compiled) {
@@ -876,16 +951,42 @@ public class AgentRunner {
         transitionTo(AgentState.WAITING);
         try {
 
+            List<ToolCall> callsNeedingDecision = new ArrayList<>(calls.size());
+            for (ToolCall call : calls) {
+                if (declinedCallSignatures.contains(toolCallSignature(call))) {
+                    appendTurn(TurnRecord.toolCall(++turnNumber, call));
+                    appendTurn(
+                            TurnRecord.toolResponse(
+                                    ++turnNumber,
+                                    call.callId(),
+                                    refusedObservation(
+                                            "this identical tool call was already declined by the"
+                                                    + " user in the current task; it was not"
+                                                    + " offered again and was not executed. Do not"
+                                                    + " retry it unchanged"),
+                                    false));
+                } else {
+                    callsNeedingDecision.add(call);
+                }
+            }
+            if (callsNeedingDecision.isEmpty()) {
+                return;
+            }
+            calls = callsNeedingDecision;
+
             // 1. Check phase (screen all calls first)
             List<ApprovalDecision> decisions = new ArrayList<>();
+            List<ToolExecutionPermit> executionPermits = new ArrayList<>();
             boolean hasVeto = false;
             boolean hasRefused = false;
             for (ToolCall call : calls) {
                 ToolDefinition def = mcpEngine.resolveDefinition(call.toolName());
                 if (def == null || def instanceof AgentToolDefinition) {
                     decisions.add(ApprovalDecision.AUTO_APPROVE);
+                    executionPermits.add(ToolExecutionPermit.empty());
                 } else {
                     var result = gateway.screen(call, def, activeUserTask, thought);
+                    executionPermits.add(result.executionPermit());
                     ApprovalDecision decision = hitlRegistry.decide(agentId, call, def, result);
                     decisions.add(decision);
                     if (decision instanceof ApprovalDecision.Prompt) {
@@ -912,7 +1013,9 @@ public class AgentRunner {
                     ApprovalDecision decision = decisions.get(i);
                     ToolDefinition def = mcpEngine.resolveDefinition(call.toolName());
 
-                    if (decision instanceof ApprovalDecision.Refused r) {
+                    if (declinedCallSignatures.contains(toolCallSignature(call))) {
+                        skippedCalls.add(call);
+                    } else if (decision instanceof ApprovalDecision.Refused r) {
                         emitMessage(r.reason());
                         transitionTo(AgentState.INTERCEPTED);
                         hitlRegistry.register(agentId, callId);
@@ -941,6 +1044,7 @@ public class AgentRunner {
 
                         if (resolution.option() == VetoOption.DECLINE_AND_CONTINUE) {
                             skippedCalls.add(call);
+                            declinedCallSignatures.add(toolCallSignature(call));
                         } else if (resolution.isRefusal()) {
                             refusalDetail =
                                     "declined by the user (" + resolution.option().name() + ")";
@@ -969,6 +1073,7 @@ public class AgentRunner {
                                 break;
                             }
                             resolvedCalls.set(i, edited);
+                            executionPermits.set(i, r2.executionPermit());
                         }
                     }
                 }
@@ -993,7 +1098,8 @@ public class AgentRunner {
             }
 
             // 3. Execute phase (all confirmed / skipped)
-            for (ToolCall call : calls) {
+            for (int i = 0; i < calls.size(); i++) {
+                ToolCall call = calls.get(i);
                 if (skippedCalls.contains(call)) {
                     appendTurn(TurnRecord.toolCall(++turnNumber, call));
                     appendTurn(
@@ -1007,7 +1113,7 @@ public class AgentRunner {
                                             + " the blockage and stop.",
                                     false));
                 } else {
-                    executeOneConfirmedCall(call);
+                    executeOneConfirmedCall(call, executionPermits.get(i));
                 }
             }
 
@@ -1018,19 +1124,31 @@ public class AgentRunner {
         }
     }
 
-    private @NonNull ToolResult executeOneConfirmedCall(@NonNull ToolCall call) {
+    private @NonNull ToolResult executeOneConfirmedCall(
+            @NonNull ToolCall call, @NonNull ToolExecutionPermit executionPermit) {
         ToolDefinition def = mcpEngine.resolveDefinition(call.toolName());
         if (def == null) {
             return toolNotFound(call);
         }
-        return executeResolvedCall(call, def, ApprovalDecision.AUTO_APPROVE);
+        return executeResolvedCall(call, def, ApprovalDecision.AUTO_APPROVE, executionPermit);
     }
 
     private @NonNull ToolResult executeResolvedCall(
             @NonNull ToolCall call,
             @NonNull ToolDefinition def,
-            @NonNull ApprovalDecision decision) {
+            @NonNull ApprovalDecision decision,
+            @NonNull ToolExecutionPermit screenedPermit) {
         appendTurn(TurnRecord.toolCall(++turnNumber, call));
+
+        ToolExecutionPermit executionPermit;
+        try {
+            executionPermit = gateway.revalidateExecution(call, def, screenedPermit);
+        } catch (SecurityException e) {
+            String observation =
+                    "{\"status\":\"error\",\"error\":\"Filesystem target changed after screening; submit a fresh tool call\"}";
+            appendTurn(TurnRecord.toolResponse(++turnNumber, call.callId(), observation, false));
+            return new ToolResult(call.toolName(), call.callId(), false, observation);
+        }
 
         // (c) plugin preAction chain
         for (LoopInterceptor plugin : interceptors) {
@@ -1041,7 +1159,7 @@ public class AgentRunner {
         }
 
         // (d) execute with tool call context (agentId + userId + groupId) threaded through.
-        ToolCallContextHolder.set(agentId, userId, groupId, owner, sessionId);
+        ToolCallContextHolder.set(agentId, userId, groupId, owner, sessionId, executionPermit);
         try {
             // (e) plugin postAction chain
             ToolResult transformed = mcpEngine.execute(call, def);
@@ -1062,7 +1180,7 @@ public class AgentRunner {
                     TurnRecord.toolResponse(
                             ++turnNumber, call.callId(), observation, transformed.success()));
 
-            // Drain any turn directives the tool requested during execution (e.g. a RECALL seeded
+            // Drain any turn directives the tool requested during execution (e.g. a REWIND seeded
             // by create_group to re-inject the authored brief). Each is appended with a
             // runner-assigned turn number; the pending record's placeholder turnNumber is rewritten
             // (type + payload preserved). Drained here, before clear() in the finally, so a tool
@@ -1101,8 +1219,10 @@ public class AgentRunner {
 
         // (a) early-route agent tools past the Gateway + HITL.
         ApprovalDecision decision = ApprovalDecision.AUTO_APPROVE;
+        ToolExecutionPermit executionPermit = ToolExecutionPermit.empty();
         if (!(def instanceof AgentToolDefinition)) {
             var result = gateway.screen(call, def, activeUserTask, null);
+            executionPermit = result.executionPermit();
             decision = hitlRegistry.decide(agentId, call, def, result);
             if (decision instanceof ApprovalDecision.AutoBlock ab) {
                 appendTurn(TurnRecord.toolCall(++turnNumber, call));
@@ -1134,16 +1254,17 @@ public class AgentRunner {
                                 "refused by the security policy (CRITICAL - no approval path)"));
             }
             if (decision instanceof ApprovalDecision.Prompt p) {
-                ToolCall resolvedCall = awaitVeto(call, def, p);
+                ResolvedCall resolvedCall = awaitVeto(call, def, p, executionPermit);
                 if (resolvedCall == null) {
                     this.state = AgentState.IDLE;
                     return new ToolResult("", "", false, "declined");
                 }
-                call = resolvedCall;
+                call = resolvedCall.call();
+                executionPermit = resolvedCall.executionPermit();
             }
         }
 
-        return executeResolvedCall(call, def, decision);
+        return executeResolvedCall(call, def, decision, executionPermit);
     }
 
     private @NonNull ToolResult toolNotFound(@NonNull ToolCall call) {
@@ -1159,6 +1280,14 @@ public class AgentRunner {
      */
     private static @NonNull String refusedObservation(@NonNull String detail) {
         return RefusalObservation.of(detail);
+    }
+
+    private @NonNull String toolCallSignature(@NonNull ToolCall call) {
+        try {
+            return call.toolName() + '\u0000' + objectMapper.writeValueAsString(call.args());
+        } catch (Exception e) {
+            return call.toolName() + '\u0000' + call.args();
+        }
     }
 
     /**
@@ -1180,10 +1309,14 @@ public class AgentRunner {
         return resolution;
     }
 
-    private ToolCall awaitVeto(
+    private record ResolvedCall(
+            @NonNull ToolCall call, @NonNull ToolExecutionPermit executionPermit) {}
+
+    private ResolvedCall awaitVeto(
             @NonNull ToolCall call,
             @NonNull ToolDefinition def,
-            ApprovalDecision.@NonNull Prompt p) {
+            ApprovalDecision.@NonNull Prompt p,
+            @NonNull ToolExecutionPermit executionPermit) {
         transitionTo(AgentState.INTERCEPTED);
         // Register the await target BEFORE advertising the prompt (see executeToolCalls for the
         // race rationale). EDIT is filtered from the offered set in v1.
@@ -1230,9 +1363,9 @@ public class AgentRunner {
                                 false));
                 return null;
             }
-            return edited;
+            return new ResolvedCall(edited, r2.executionPermit());
         }
-        return call;
+        return new ResolvedCall(call, executionPermit);
     }
 
     private void emitVetoRequired(
@@ -1566,6 +1699,25 @@ public class AgentRunner {
             if (t.turnNumber() > max) {
                 max = t.turnNumber();
             }
+            if (t.type() == TurnType.AGENT_INIT) {
+                Object role = t.payload().get("role");
+                Object content = t.payload().get("system_prompt");
+                Object provider = t.payload().get("provider");
+                Object model = t.payload().get("model");
+                if (role instanceof String roleName
+                        && content instanceof String prompt
+                        && provider instanceof String providerName
+                        && model instanceof String modelName) {
+                    lastAgentInitKey =
+                            roleName
+                                    + '\u0000'
+                                    + providerName
+                                    + '\u0000'
+                                    + modelName
+                                    + '\u0000'
+                                    + prompt;
+                }
+            }
         }
         turnNumber = max;
     }
@@ -1881,9 +2033,9 @@ public class AgentRunner {
      *
      * <p>Append sequence (each its own turn, monotonic counter): REWIND to 0 (drop the compiled
      * view), AGENT_INIT (Leader role-segment marker - maps to no message), COMPACTION_SUMMARY (the
-     * essence of the prior standalone session, carried forward), USER_PROMPT (the brief). Then
-     * mutate the persona to LEADER + the Leader tool set, bind the Leader (top-tier) model, stamp
-     * the group, and reset the episode so the Leader reasons fresh from the brief.
+     * essence of the prior standalone session, carried forward), USER_PROMPT (the brief). The
+     * persona, Leader tool set, top-tier model binding, and group are applied before AGENT_INIT is
+     * recorded, so that record describes the agent that will actually receive the next request.
      */
     private void transformToLeader(ToolCallContextHolder.@NonNull TransformDirective directive) {
         // Compaction summary of the prior standalone turns (defensive: a compactor failure yields
@@ -1904,13 +2056,6 @@ public class AgentRunner {
             summary = "{}";
         }
 
-        appendTurn(TurnRecord.rewind(++turnNumber, 0));
-        appendTurn(TurnRecord.agentInit(++turnNumber, "leader"));
-        if (!summary.isBlank() && !"{}".equals(summary)) {
-            appendTurn(TurnRecord.compactionSummary(++turnNumber, summary));
-        }
-        appendTurn(TurnRecord.userPrompt(++turnNumber, directive.brief()));
-
         // Stash the pre-transform STANDALONE persona + binding so disband_group can restore them,
         // then adopt the Leader persona + tool set + top-tier binding + group stamp.
         this.preTransformPersona = this.persona;
@@ -1918,6 +2063,13 @@ public class AgentRunner {
         applyPersona(persona.withRoleAndTools(Role.LEADER, directive.leaderTools()));
         bind(directive.leaderBinding());
         setGroupId(directive.groupId());
+
+        appendTurn(TurnRecord.rewind(++turnNumber, 0));
+        recordAgentInit(compilePrompt(List.copyOf(history), false).systemMessage());
+        if (!summary.isBlank() && !"{}".equals(summary)) {
+            appendTurn(TurnRecord.compactionSummary(++turnNumber, summary));
+        }
+        appendTurn(TurnRecord.userPrompt(++turnNumber, directive.brief()));
 
         // Fresh reasoning episode from the brief: clear guided state + program, reset the breaker
         // and scope so prior standalone state does not leak into the Leader's planning.
@@ -1938,8 +2090,9 @@ public class AgentRunner {
      * disbanded). Run on the loop thread inside the tool-call drain pass (after the {@code
      * disband_group} tool response is appended). Append sequence: REWIND to 0, AGENT_INIT
      * (STANDALONE role-segment marker), COMPACTION_SUMMARY (the essence of the Leader session),
-     * USER_PROMPT (the outcome brief). Then restore the stashed STANDALONE persona + binding, clear
-     * the group stamp, and reset the episode.
+     * USER_PROMPT (the outcome brief). The stashed STANDALONE persona + binding are restored and
+     * the group stamp is cleared before AGENT_INIT is recorded, so the durable definition and the
+     * next provider request cannot disagree.
      */
     private void transformToStandalone(@NonNull String brief) {
         List<TurnRecord> priorTurns;
@@ -1957,13 +2110,6 @@ public class AgentRunner {
             summary = "{}";
         }
 
-        appendTurn(TurnRecord.rewind(++turnNumber, 0));
-        appendTurn(TurnRecord.agentInit(++turnNumber, "standalone"));
-        if (!summary.isBlank() && !"{}".equals(summary)) {
-            appendTurn(TurnRecord.compactionSummary(++turnNumber, summary));
-        }
-        appendTurn(TurnRecord.userPrompt(++turnNumber, brief));
-
         // Restore the stashed STANDALONE persona + binding. Null-safe: if no transform was stashed
         // (the agent never led a group), flip the role back to STANDALONE on the current persona.
         AgentPersona stashedPersona = preTransformPersona;
@@ -1976,6 +2122,13 @@ public class AgentRunner {
         setGroupId(null);
         this.preTransformPersona = null;
         this.preTransformBinding = null;
+
+        appendTurn(TurnRecord.rewind(++turnNumber, 0));
+        recordAgentInit(compilePrompt(List.copyOf(history), false).systemMessage());
+        if (!summary.isBlank() && !"{}".equals(summary)) {
+            appendTurn(TurnRecord.compactionSummary(++turnNumber, summary));
+        }
+        appendTurn(TurnRecord.userPrompt(++turnNumber, brief));
 
         this.guided = false;
         this.activeProgram = null;

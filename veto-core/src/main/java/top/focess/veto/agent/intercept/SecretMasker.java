@@ -31,8 +31,6 @@ public final class SecretMasker {
         LinkedHashMap<Pattern, String> m = new LinkedHashMap<>();
         // AWS access key
         m.put(Pattern.compile("AKIA[0-9A-Z]{16}"), "[REDACTED_AWS_KEY]");
-        // Generic API key shape (long alphanumeric)
-        m.put(Pattern.compile("\\b[A-Za-z0-9_\\-]{32,}\\b"), "[REDACTED_API_KEY]");
         // Private key block
         m.put(
                 Pattern.compile(
@@ -57,6 +55,15 @@ public final class SecretMasker {
         m.put(Pattern.compile("\\bghp_[A-Za-z0-9]{30,}\\b"), "[REDACTED_GH_TOKEN]");
         // Slack tokens
         m.put(Pattern.compile("\\bxox[abpr]-[A-Za-z0-9-]{10,}\\b"), "[REDACTED_SLACK_TOKEN]");
+        // Unprefixed API-key-like token. Require both a letter and a digit: long source-code
+        // identifiers such as Python test method names are not secrets merely because they exceed
+        // 32 characters. Known prefixes and contextual api_key=/token= assignments are handled by
+        // the more precise rules above.
+        m.put(
+                Pattern.compile(
+                        "\\b(?=[A-Za-z0-9_-]{32,}\\b)(?=[A-Za-z0-9_-]*[A-Za-z])"
+                                + "(?=[A-Za-z0-9_-]*[0-9])[A-Za-z0-9_-]{32,}\\b"),
+                "[REDACTED_API_KEY]");
         return m;
     }
 

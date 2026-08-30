@@ -6,10 +6,16 @@ import com.sun.jna.Library;
 import com.sun.jna.Native;
 import com.sun.jna.Pointer;
 import com.sun.jna.Structure;
+import com.sun.jna.WString;
+import com.sun.jna.platform.win32.BaseTSD;
 import com.sun.jna.platform.win32.Kernel32;
 import com.sun.jna.platform.win32.WinNT;
+import java.io.File;
+import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,29 +23,37 @@ import org.springframework.stereotype.Component;
 import top.focess.veto.agent.mcp.ToolDocs;
 
 /**
- * The Part 5 §4.1 kernel-level sandbox hard wall — a wall-attacher that wraps a {@link
- * ConstrainedSubprocessSubstrate} and attaches the spawned process to a kernel-level isolation
- * container after the constrained-subprocess flow has started the process. The wall itself is a
- * no-op when the platform doesn't support the relevant JNA bindings (or when JNA is unavailable);
- * the substrate falls back to constrained-subprocess.
+ * The Part 5 §4.1 kernel-level process-containment wall used by {@link
+ * ConstrainedSubprocessSubstrate}.
  *
  * <p>Platform support:
  *
  * <ul>
- *   <li><b>Windows</b>: Job Object (with {@code JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE}) via kernel32.
- *       The child process is pinned to the Job — if the Veto process crashes, the child is killed
- *       automatically.
- *   <li><b>Linux</b>: namespaces (mount/pid/net) + seccomp syscall allowlist + cgroup memory/CPU
- *       limits. The MVP path is a stub: libseccomp / libcgroup are not on the classpath; production
- *       would add the native libs and the unshare(2) + seccomp(2) + cgroup writes.
+ *   <li><b>Windows</b>: Job Object plus a zero-capability AppContainer launcher. The Job enforces
+ *       process-tree lifetime, aggregate memory, CPU rate, active-process count, and UI
+ *       restrictions; the launcher removes privileges and disables administrator SIDs before the
+ *       target starts. Failure is surfaced to the caller.
+ *   <li><b>macOS</b>: an Apple {@code sandbox-exec}/Seatbelt compatibility backend applies a
+ *       default-deny profile before the target is executed. This is distinct from signed App
+ *       Sandbox entitlements and is available only while the OS ships the compatibility tool.
+ *   <li><b>Linux</b>: Bubblewrap establishes user/PID/IPC/network namespaces and a read-only host
+ *       mount view with explicit workspace writes. An inner trusted bootstrap applies {@code
+ *       no_new_privs} and seccomp before the target starts. Bubblewrap absence fails closed.
  * </ul>
  *
- * <p>Usage: {@code new KernelSandboxSubstrate().attach(Process)}. The Process is the
- * already-spawned child (the constrained-substrate has done argv[] exec). The attach call returns
- * quickly; the kernel wall lives for the life of the child process.
+ * <p>On Windows, untrusted target code is started through {@link #prepareCommand(List,
+ * SandboxProfile)}. The trusted bootstrap waits at a kernel event until the parent has attached it
+ * to the Job Object, so the target cannot race the attachment. The bootstrap then creates a
+ * AppContainer target before starting it. The stable AppContainer SID, an inheritable workspace
+ * ACL, and a zero-capability network posture provide the filesystem and network boundary.
  */
 @Component
 public class KernelSandboxSubstrate {
+
+    private static final int WAIT_OBJECT_0 = 0;
+    private static final int WAIT_TIMEOUT = 258;
+    private static final int READY_TIMEOUT_MILLIS = 10_000;
+    private static final int READY_POLL_MILLIS = 100;
 
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.sandbox.KernelSandboxSubstrate");
@@ -48,24 +62,32 @@ public class KernelSandboxSubstrate {
     private static final String OS = System.getProperty("os.name", "").toLowerCase();
 
     private static final boolean IS_WINDOWS = OS.contains("win");
-    private static final boolean IS_LINUX =
-            OS.contains("nix") || OS.contains("nux") || OS.contains("linux");
-
+    private static final boolean IS_MACOS = OS.contains("mac");
+    private static final boolean IS_LINUX = OS.contains("linux");
     private final WindowsKernel32 windowsKernel;
     private final Kernel32 windowsStdKernel;
+    private final boolean windowsAppContainerLaunchAvailable;
+    private final WindowsWorkspaceSecurity windowsWorkspaceSecurity;
+    private final @NonNull MacOsSeatbeltSandbox macOsSeatbelt = new MacOsSeatbeltSandbox();
+    private final @NonNull LinuxBubblewrapSandbox linuxBubblewrap = new LinuxBubblewrapSandbox();
 
     public KernelSandboxSubstrate() {
         WindowsKernel32 w = null;
         Kernel32 wk = null;
+        boolean appContainerLaunch = false;
+        WindowsWorkspaceSecurity workspaceSecurity = null;
         try {
             if (IS_WINDOWS) {
                 w = Native.load("kernel32", ToolDocs.nonNullClass(WindowsKernel32.class));
                 wk = Native.load("kernel32", ToolDocs.nonNullClass(Kernel32.class));
-                log.info("KernelSandboxSubstrate: Windows kernel32 loaded");
-            } else if (IS_LINUX) {
-                Native.load("c", ToolDocs.nonNullClass(LinuxLibc.class));
-                log.info("KernelSandboxSubstrate: Linux libc loaded");
-            } else {
+                appContainerLaunch = SandboxBootstrap.isAppContainerLaunchAvailable();
+                workspaceSecurity = new WindowsWorkspaceSecurity();
+                if (appContainerLaunch) {
+                    log.info("KernelSandboxSubstrate: Windows Job/AppContainer APIs loaded");
+                } else {
+                    log.warn("KernelSandboxSubstrate: Windows AppContainer APIs unavailable");
+                }
+            } else if (!IS_MACOS && !IS_LINUX) {
                 log.warn(
                         "KernelSandboxSubstrate: unsupported platform {} — kernel wall disabled",
                         OS);
@@ -75,245 +97,57 @@ public class KernelSandboxSubstrate {
         }
         this.windowsKernel = w;
         this.windowsStdKernel = wk;
+        this.windowsAppContainerLaunchAvailable = appContainerLaunch;
+        this.windowsWorkspaceSecurity = workspaceSecurity;
     }
 
-    /** Whether this substrate can actually attach a kernel wall on the current platform. */
+    /** Whether this substrate can actually attach an implemented kernel wall on this platform. */
     public boolean isAvailable() {
+        if (IS_MACOS) {
+            return macOsSeatbelt.isAvailable();
+        }
+        if (IS_LINUX) {
+            return linuxBubblewrap.isAvailable();
+        }
         if (!IS_WINDOWS) {
-            // The MVP path is a stub — production would need libseccomp + libcgroup.
             return false;
         }
-        return windowsKernel != null;
+        return windowsKernel != null
+                && windowsStdKernel != null
+                && windowsAppContainerLaunchAvailable
+                && windowsWorkspaceSecurity != null
+                && windowsWorkspaceSecurity.isAvailable();
     }
 
-    /**
-     * Attach the kernel-level wall to a spawned process. The base substrate has already started the
-     * process. On unsupported platforms this is a no-op.
-     */
-    public void attach(Process process) {
-        if (process == null) {
+    /** Provisions the platform filesystem identity needed before a process may be prepared. */
+    public void provisionWorkspace(@NonNull SandboxProfile profile) {
+        if (!IS_WINDOWS) {
             return;
         }
-        if (IS_WINDOWS && windowsKernel != null) {
-            attachWindowsJobObject(process);
-        } else if (IS_LINUX) {
-            // Linux path: write cgroup memory + CPU limits for the child pid. Namespaces
-            // (unshare(2)) and seccomp(2) require pre-fork hooks that the Process API does
-            // not expose post-exec. Production would route the spawn through a wrapper that
-            // does `unshare --mount --pid --net -- <command>` then execs the command —
-            // we ship a wrapper-detecting helper (see spawnLinuxWrapper below).
-            attachLinuxCgroup(process);
-        } else {
-            log.debug("Kernel wall attach skipped because platform {} is unsupported", OS);
+        WindowsWorkspaceSecurity security = windowsWorkspaceSecurity;
+        if (security == null) {
+            throw new IllegalStateException("Windows workspace ACL substrate is unavailable");
         }
+        security.provision(profile);
     }
 
-    /**
-     * Attach the kernel-level wall and return a handle that should be closed after the process
-     * exits. On Windows, this returns a closeable that closes the Job Object handle. On unsupported
-     * platforms, returns {@code null}.
-     *
-     * <p><b>Usage:</b>
-     *
-     * <pre>{@code
-     * Process p = pb.start();
-     * try (AutoCloseable handle = substrate.attachWithHandle(p)) {
-     *     p.waitFor();
-     * } // handle closed here
-     * }</pre>
-     *
-     * @param process the spawned process to attach to; must not be null
-     * @return a closeable handle, or null on unsupported platforms
-     */
-    public AutoCloseable attachWithHandle(@NonNull Process process) {
-        if (IS_WINDOWS && windowsKernel != null) {
-            return attachWindowsJobObjectWithHandle(process);
-        } else if (IS_LINUX) {
-            attachLinuxCgroup(process);
-            // Linux cgroup doesn't need explicit cleanup (cgroup is per-pid)
-            return null;
-        } else {
-            log.debug("Legacy kernel handle unavailable on platform {}", OS);
-            return null;
+    /** Releases platform filesystem state owned by one provisioned profile. */
+    public void deprovisionWorkspace(@NonNull SandboxProfile profile) {
+        if (!IS_WINDOWS) {
+            return;
+        }
+        WindowsWorkspaceSecurity security = windowsWorkspaceSecurity;
+        if (security != null) {
+            security.deprovision(profile);
         }
     }
 
     /**
-     * Helper for the Linux path: returns a {@code ProcessBuilder} that wraps the actual command in
-     * {@code unshare(1)} to give the child a fresh mount/pid/net namespace. If {@code unshare} is
-     * not on PATH, returns the original ProcessBuilder unchanged.
+     * Attach a spawned trusted bootstrap to the kernel process wall and retain the wall until the
+     * process exits. Unsupported platforms and attachment failures fail closed.
      */
-    public static @NonNull ProcessBuilder spawnLinuxWrapper(
-            @NonNull List<@NonNull String> command) {
-        if (command.isEmpty()) {
-            throw new IllegalArgumentException("command must not be empty");
-        }
-        if (!IS_LINUX) {
-            return new ProcessBuilder(command);
-        }
-        // Probe: try `which unshare` via the PATH. If absent, fall back to a direct exec.
-        String unsharePath = locateOnPath("unshare");
-        if (unsharePath == null) {
-            log.debug("KernelSandboxSubstrate: unshare(1) not on PATH; skipping namespace wall");
-            return new ProcessBuilder(command);
-        }
-        java.util.List<String> wrapped = new java.util.ArrayList<>();
-        wrapped.add(unsharePath);
-        wrapped.add("--mount");
-        wrapped.add("--pid");
-        wrapped.add("--fork");
-        wrapped.add("--net");
-        wrapped.addAll(command);
-        log.info("KernelSandboxSubstrate: wrapping command in unshare: {}", wrapped);
-        return new ProcessBuilder(wrapped);
-    }
-
-    /**
-     * Wraps a command with systemd-run for Linux seccomp enforcement. When systemd-run is available
-     * on PATH, this constructs a command that runs the original command with:
-     *
-     * <ul>
-     *   <li>{@code SystemCallFilter=} with the baseline syscall allowlist
-     *   <li>{@code MemoryMax=} to limit memory
-     *   <li>{@code PrivateMountNamespace=yes} for mount isolation
-     * </ul>
-     *
-     * <p>If systemd-run is not available (null), returns the original command unchanged.
-     *
-     * @param command the original command to wrap
-     * @param systemdRunPath the path to systemd-run (from PATH probe), or null if not available
-     * @param baselineSyscalls the syscall numbers to allow (x86_64)
-     * @return the wrapped command, or the original if systemd-run is unavailable
-     */
-    public static java.util.@NonNull List<String> wrapWithSystemdRun(
-            java.util.@NonNull List<String> command,
-            String systemdRunPath,
-            java.util.@NonNull List<Integer> baselineSyscalls) {
-        if (systemdRunPath == null || command.isEmpty()) {
-            return command;
-        }
-
-        java.util.List<String> wrapped = new java.util.ArrayList<>();
-        wrapped.add(systemdRunPath);
-        wrapped.add("--same-dir");
-        wrapped.add("--collect");
-
-        // Build the SystemCallFilter property with syscall names
-        String syscallFilter = "SystemCallFilter=" + syscallsToNames(baselineSyscalls);
-        wrapped.add("--property=" + syscallFilter);
-
-        // Memory limit (512 MiB)
-        wrapped.add("--property=MemoryMax=512M");
-
-        // Mount namespace isolation
-        wrapped.add("--property=PrivateMountNamespace=yes");
-
-        // Separator before the actual command
-        wrapped.add("--");
-        wrapped.addAll(command);
-
-        return wrapped;
-    }
-
-    /**
-     * Converts x86_64 syscall numbers to their names for systemd-run's SystemCallFilter. Production
-     * would use a complete mapping; this covers the baseline allowlist.
-     */
-    private static @NonNull String syscallsToNames(java.util.@NonNull List<Integer> syscalls) {
-        java.util.List<String> names = new java.util.ArrayList<>();
-        for (int num : syscalls) {
-            String name = SYSCALL_NAMES.getOrDefault(num, "syscall_" + num);
-            names.add(name);
-        }
-        return String.join(" ", names);
-    }
-
-    /** x86_64 syscall number to name mapping (baseline subset). */
-    private static final java.util.@NonNull Map<Integer, String> SYSCALL_NAMES =
-            java.util.Map.ofEntries(
-                    java.util.Map.entry(0, "read"),
-                    java.util.Map.entry(1, "write"),
-                    java.util.Map.entry(2, "open"),
-                    java.util.Map.entry(3, "close"),
-                    java.util.Map.entry(9, "mmap"),
-                    java.util.Map.entry(12, "brk"),
-                    java.util.Map.entry(35, "nanosleep"),
-                    java.util.Map.entry(39, "getpid"),
-                    java.util.Map.entry(60, "exit"),
-                    java.util.Map.entry(158, "arch_prctl"),
-                    java.util.Map.entry(202, "futex"),
-                    java.util.Map.entry(228, "clock_gettime"),
-                    java.util.Map.entry(231, "exit_group"),
-                    java.util.Map.entry(318, "getrandom"));
-
-    private static String locateOnPath(@NonNull String name) {
-        String path = System.getenv("PATH");
-        if (path == null) {
-            return null;
-        }
-        for (String dir : path.split(java.io.File.pathSeparator)) {
-            java.io.File f = new java.io.File(dir, name);
-            if (f.canExecute()) {
-                return f.getAbsolutePath();
-            }
-        }
-        return null;
-    }
-
-    private void attachLinuxCgroup(@NonNull Process process) {
-        int pid = getProcessId(process);
-        if (pid <= 0) {
-            log.warn("KernelSandboxSubstrate: could not determine child pid for cgroup attach");
-            return;
-        }
-        // cgroup v2 unified hierarchy. Production: configurable path + memory.max + cpu.max
-        // (and the slice name). For the MVP we just write the defaults to a path the
-        // Veto process can write to.
-        String cgroupBase = "/sys/fs/cgroup";
-        if (!new java.io.File(cgroupBase).isDirectory()) {
-            log.debug(
-                    "KernelSandboxSubstrate: cgroup v2 hierarchy not available at {}", cgroupBase);
-            return;
-        }
-        // 1. Make sure the cgroup exists for this child (mkdir if not present).
-        java.io.File childCgroup = new java.io.File(cgroupBase, "veto.slice/veto-" + pid);
-        if (!childCgroup.exists() && !childCgroup.mkdirs()) {
-            log.debug(
-                    "KernelSandboxSubstrate: could not create cgroup {} — wall limited",
-                    childCgroup);
-            return;
-        }
-        // 2. Add the child to its cgroup.
-        try {
-            java.nio.file.Files.writeString(
-                    childCgroup.toPath().resolve("cgroup.procs"), Integer.toString(pid));
-        } catch (java.io.IOException e) {
-            log.debug(
-                    "KernelSandboxSubstrate: cgroup.procs write failed: {}", safe(e.getMessage()));
-            return;
-        }
-        // 3. Apply default limits (memory.max = 512 MiB, cpu.max = 50% of one CPU).
-        try {
-            java.nio.file.Files.writeString(childCgroup.toPath().resolve("memory.max"), "512M");
-            java.nio.file.Files.writeString(
-                    childCgroup.toPath().resolve("cpu.max"), "50000 100000");
-        } catch (java.io.IOException e) {
-            log.debug(
-                    "KernelSandboxSubstrate: cgroup limit write failed: {}", safe(e.getMessage()));
-        }
-        log.info(
-                "KernelSandboxSubstrate: attached Linux cgroup wall to pid {} at {}",
-                pid,
-                childCgroup);
-    }
-
-    private void attachWindowsJobObject(@NonNull Process process) {
-        // The handle must stay open while the child runs; process.onExit owns its eventual close.
-        //noinspection resource
-        AutoCloseable handle = attachWindowsJobObjectWithHandle(process);
-        if (handle == null) {
-            return;
-        }
+    public void attach(@NonNull Process process, @NonNull SandboxProfile profile) {
+        AutoCloseable handle = attachRequired(process, profile);
         process.onExit()
                 .whenComplete(
                         (ignoredProcess, ignoredFailure) -> {
@@ -321,74 +155,347 @@ public class KernelSandboxSubstrate {
                                 handle.close();
                             } catch (Exception e) {
                                 log.warn(
-                                        "KernelSandboxSubstrate: failed to close Windows Job Object",
-                                        e);
+                                        "KernelSandboxSubstrate: failed to close kernel handle", e);
                             }
                         });
+    }
+
+    /**
+     * Attach the kernel-level process wall and return a handle that must be closed after the
+     * process exits. On Windows, closing the handle closes the Job Object and terminates any
+     * remaining process tree. Unsupported platforms and attachment failures throw.
+     *
+     * <p><b>Usage:</b>
+     *
+     * <pre>{@code
+     * Process p = pb.start();
+     * try (AutoCloseable handle = substrate.attachRequired(p, profile)) {
+     *     p.waitFor();
+     * } // handle closed here
+     * }</pre>
+     *
+     * @param process the spawned process to attach to; must not be null
+     * @param profile resource limits applied to the process tree
+     * @return the non-null Job Object lifecycle handle
+     */
+    public @NonNull AutoCloseable attachRequired(
+            @NonNull Process process, @NonNull SandboxProfile profile) {
+        if ((IS_MACOS && macOsSeatbelt.isAvailable())
+                || (IS_LINUX && linuxBubblewrap.isAvailable())) {
+            return () -> {};
+        }
+        if (!isAvailable()) {
+            throw new IllegalStateException(
+                    "No implemented kernel sandbox wall is available on platform " + OS);
+        }
+        AutoCloseable handle = attachWindowsJobObjectWithHandle(process, profile);
+        if (handle == null) {
+            throw new IllegalStateException("Windows Job Object attachment failed");
+        }
+        return handle;
+    }
+
+    /**
+     * Wrap an approved target in Veto's trusted two-hop bootstrap. The returned command starts only
+     * the bootstrap; the caller must wait for readiness, attach the bootstrap to its Job Object,
+     * and then release the gate. This closes the post-spawn race for untrusted target code.
+     */
+    public @NonNull PreparedCommand prepareCommand(
+            @NonNull List<@NonNull String> targetCommand, @NonNull SandboxProfile profile) {
+        return prepareCommand(targetCommand, profile, profile.workspaceRoot());
+    }
+
+    public @NonNull PreparedCommand prepareCommand(
+            @NonNull List<@NonNull String> targetCommand,
+            @NonNull SandboxProfile profile,
+            @NonNull Path cwd) {
+        if (!isAvailable()) {
+            throw new IllegalStateException("OS sandbox is unavailable on platform " + OS);
+        }
+        if (targetCommand.isEmpty()) {
+            throw new IllegalArgumentException("targetCommand must not be empty");
+        }
+        if (IS_MACOS) {
+            return new PreparedCommand(
+                    macOsSeatbelt.wrap(targetCommand, profile), null, null, null, false);
+        }
+        if (IS_LINUX) {
+            return new PreparedCommand(
+                    linuxBubblewrap.wrap(targetCommand, profile, cwd), null, null, null, false);
+        }
+        WindowsKernel32 kernel = requiredWindowsKernel();
+        Kernel32 standardKernel = requiredWindowsStdKernel();
+        WindowsWorkspaceSecurity security = windowsWorkspaceSecurity;
+        if (security == null) {
+            throw new IllegalStateException("Windows workspace ACL substrate is unavailable");
+        }
+        Path targetExecutable = Path.of(targetCommand.get(0));
+        if (targetExecutable.isAbsolute()) {
+            security.provisionExecutable(targetExecutable, profile);
+        }
+        String suffix = UUID.randomUUID().toString();
+        String gateName = "Local\\VetoSandboxGate-" + suffix;
+        String readyName = "Local\\VetoSandboxReady-" + suffix;
+        String appContainerName =
+                WindowsWorkspaceSecurity.appContainerName(profile.workspaceRoot());
+        WindowsAppContainerLauncher.PrivateDesktop privateDesktop =
+                WindowsAppContainerLauncher.createPrivateDesktop(appContainerName);
+        WinNT.HANDLE gate = kernel.CreateEventW(null, false, false, new WString(gateName));
+        if (!isValidHandle(gate)) {
+            privateDesktop.close();
+            throw new IllegalStateException("CreateEventW(gate) failed");
+        }
+        gate = requireHandle(gate, "CreateEventW(gate)");
+        WinNT.HANDLE ready = kernel.CreateEventW(null, false, false, new WString(readyName));
+        if (!isValidHandle(ready)) {
+            standardKernel.CloseHandle(gate);
+            privateDesktop.close();
+            throw new IllegalStateException("CreateEventW(ready) failed");
+        }
+        List<String> wrapped = bootstrapInvocation();
+        wrapped.add(SandboxBootstrap.MARKER);
+        wrapped.add(gateName);
+        wrapped.add(readyName);
+        wrapped.add(appContainerName);
+        wrapped.add(privateDesktop.name());
+        wrapped.add(profile.networkAllowed() ? "allow-network" : "deny-network");
+        wrapped.add("--");
+        wrapped.addAll(targetCommand);
+        return new PreparedCommand(wrapped, gate, ready, privateDesktop, true);
+    }
+
+    private @NonNull WindowsKernel32 requiredWindowsKernel() {
+        WindowsKernel32 kernel = windowsKernel;
+        if (kernel == null) {
+            throw new IllegalStateException("Windows kernel32 sandbox binding is unavailable");
+        }
+        return kernel;
+    }
+
+    private @NonNull Kernel32 requiredWindowsStdKernel() {
+        Kernel32 kernel = windowsStdKernel;
+        if (kernel == null) {
+            throw new IllegalStateException("Windows kernel32 standard binding is unavailable");
+        }
+        return kernel;
+    }
+
+    private static boolean isValidHandle(WinNT.HANDLE handle) {
+        if (handle == null || handle.getPointer() == null) {
+            return false;
+        }
+        long address = Pointer.nativeValue(handle.getPointer());
+        return address != 0 && address != -1L;
+    }
+
+    private static WinNT.@NonNull HANDLE requireHandle(
+            WinNT.HANDLE handle, @NonNull String operation) {
+        if (handle == null || !isValidHandle(handle)) {
+            throw new IllegalStateException(operation + " returned an invalid handle");
+        }
+        return handle;
+    }
+
+    private static @NonNull List<String> bootstrapInvocation() {
+        List<String> command = new ArrayList<>();
+        if (System.getProperty("org.graalvm.nativeimage.imagecode") != null) {
+            String executable =
+                    ProcessHandle.current()
+                            .info()
+                            .command()
+                            .orElseThrow(
+                                    () ->
+                                            new IllegalStateException(
+                                                    "Native Veto executable path is unavailable"));
+            command.add(executable);
+            return command;
+        }
+        Path javaExecutable =
+                Path.of(System.getProperty("java.home"), "bin", IS_WINDOWS ? "java.exe" : "java");
+        String classPath = System.getProperty("java.class.path", "");
+        if (classPath.isBlank()) {
+            throw new IllegalStateException("Java classpath is unavailable for sandbox bootstrap");
+        }
+        classPath = SandboxBootstrap.absoluteClassPath(classPath);
+        command.add(javaExecutable.toString());
+        // The bootstrap itself is inside the aggregate Job memory cap. Keep its JVM deliberately
+        // small so a development/classpath launch does not consume the target's entire allowance.
+        // Native-image releases reuse the Veto executable and do not pay this second-JVM cost.
+        command.add("--enable-native-access=ALL-UNNAMED");
+        command.add("-Xms8m");
+        command.add("-Xmx64m");
+        command.add("-XX:MaxMetaspaceSize=64m");
+        command.add("-XX:ReservedCodeCacheSize=32m");
+        command.add("-XX:+UseSerialGC");
+        if (!classPath.contains(File.pathSeparator) && classPath.endsWith(".jar")) {
+            command.add("-Dloader.main=" + SandboxBootstrap.class.getName());
+            command.add("-cp");
+            command.add(classPath);
+            command.add("org.springframework.boot.loader.launch.PropertiesLauncher");
+        } else {
+            command.add("-cp");
+            command.add(classPath);
+            command.add(SandboxBootstrap.class.getName());
+        }
+        return command;
+    }
+
+    /** Parent-owned handles for one two-hop launch. */
+    public final class PreparedCommand implements AutoCloseable {
+        private final @NonNull List<@NonNull String> command;
+        private final boolean gated;
+        private WinNT.HANDLE gate;
+        private WinNT.HANDLE ready;
+        private WindowsAppContainerLauncher.PrivateDesktop privateDesktop;
+
+        private PreparedCommand(
+                @NonNull List<@NonNull String> command,
+                WinNT.HANDLE gate,
+                WinNT.HANDLE ready,
+                WindowsAppContainerLauncher.PrivateDesktop privateDesktop,
+                boolean gated) {
+            this.command = List.copyOf(command);
+            this.gate = gate;
+            this.ready = ready;
+            this.privateDesktop = privateDesktop;
+            this.gated = gated;
+        }
+
+        public @NonNull List<@NonNull String> command() {
+            return command;
+        }
+
+        public void awaitReady(@NonNull Process bootstrap) {
+            if (!gated) {
+                return;
+            }
+            WinNT.HANDLE handle = ready;
+            if (handle == null) {
+                throw new IllegalStateException("Sandbox readiness handle is closed");
+            }
+            long deadline = System.nanoTime() + READY_TIMEOUT_MILLIS * 1_000_000L;
+            while (System.nanoTime() < deadline) {
+                int wait = requiredWindowsKernel().WaitForSingleObject(handle, READY_POLL_MILLIS);
+                if (wait == WAIT_OBJECT_0) {
+                    return;
+                }
+                if (wait != WAIT_TIMEOUT) {
+                    throw new IllegalStateException("Sandbox bootstrap readiness failed: " + wait);
+                }
+                if (!bootstrap.isAlive()) {
+                    throw new IllegalStateException(
+                            "Sandbox bootstrap exited before readiness with code "
+                                    + bootstrap.exitValue());
+                }
+            }
+            throw new IllegalStateException("Sandbox bootstrap readiness timed out");
+        }
+
+        public void release() {
+            if (!gated) {
+                close();
+                return;
+            }
+            WinNT.HANDLE handle = gate;
+            if (handle == null) {
+                throw new IllegalStateException("Sandbox launch gate is closed");
+            }
+            if (!requiredWindowsKernel().SetEvent(handle)) {
+                throw new IllegalStateException(
+                        "SetEvent failed with Win32 error "
+                                + requiredWindowsStdKernel().GetLastError());
+            }
+            close();
+        }
+
+        @Override
+        public void close() {
+            WinNT.HANDLE gateHandle = gate;
+            WinNT.HANDLE readyHandle = ready;
+            WindowsAppContainerLauncher.PrivateDesktop desktop = privateDesktop;
+            gate = null;
+            ready = null;
+            privateDesktop = null;
+            if (gateHandle != null) {
+                requiredWindowsStdKernel().CloseHandle(gateHandle);
+            }
+            if (readyHandle != null) {
+                requiredWindowsStdKernel().CloseHandle(readyHandle);
+            }
+            if (desktop != null) {
+                desktop.close();
+            }
+        }
     }
 
     /**
      * Attach Windows Job Object and return a closeable handle. The handle should be closed after
      * the process exits to release the kernel Job Object resource.
      */
-    private AutoCloseable attachWindowsJobObjectWithHandle(@NonNull Process process) {
+    private AutoCloseable attachWindowsJobObjectWithHandle(
+            @NonNull Process process, @NonNull SandboxProfile profile) {
         WindowsKernel32 kernel = windowsKernel;
         Kernel32 kernel32 = windowsStdKernel;
         if (kernel == null || kernel32 == null) {
             log.warn("KernelSandboxSubstrate: Windows kernel32 is unavailable");
             return null;
         }
+        WinNT.HANDLE job = null;
+        WinNT.HANDLE processHandle = null;
         try {
-            // 1. Create a Job Object with KILL_ON_JOB_CLOSE so the process is terminated
-            //    if the parent (the Veto process) crashes.
-            WinNT.HANDLE job = kernel.CreateJobObjectW(null, null);
+            job = kernel.CreateJobObjectW(null, null);
             if (job == null) {
-                log.warn("KernelSandboxSubstrate: CreateJobObjectW failed (returned null)");
+                log.warn(
+                        "KernelSandboxSubstrate: CreateJobObjectW failed (Win32 error={})",
+                        kernel32.GetLastError());
                 return null;
             }
             Pointer jobPtr = job.getPointer();
             if (jobPtr == null) {
                 log.warn(
-                        "KernelSandboxSubstrate: CreateJobObjectW returned handle with null pointer");
+                        "KernelSandboxSubstrate: CreateJobObjectW returned handle with null"
+                                + " pointer");
                 return null;
             }
-            // 2. Build a JOBOBJECT_EXTENDED_LIMIT_INFORMATION via JNA Structure (NOT a raw byte
-            //    buffer). The previous implementation wrote BasicLimitFlags at byte offset 24 of
-            //    a 144-byte buffer while passing
-            // JobObjectInfoClass=JobObjectExtendedLimitInformation
-            //    (infoClass 9). BasicLimitFlags actually lives at offset 8 of the inner
-            //    JOBOBJECT_BASIC_LIMIT_INFORMATION struct; the wrong offset + wrong class meant
-            //    the kernel silently ignored KILL_ON_JOB_CLOSE, defeating the "kill the child if
-            //    Veto crashes" guarantee. JNA Structure with @FieldOrder avoids the manual
-            //    offset arithmetic and matches the WinNT layout.
-            JobObjectExtendedLimitInformation info = new JobObjectExtendedLimitInformation();
-            info.BasicLimitInformation.LimitFlags =
-                    JobObjectLimit.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-            info.write();
+            JobObjectExtendedLimitInformation info = extendedLimits(profile);
             if (!kernel.SetInformationJobObject(
                     job, JobObjectInfoClass.JobObjectExtendedLimitInformation, info, info.size())) {
-                log.warn("KernelSandboxSubstrate: SetInformationJobObject failed");
+                log.warn(
+                        "KernelSandboxSubstrate: extended Job limits failed (Win32 error={})",
+                        kernel32.GetLastError());
                 return null;
             }
-            // 3. AssignProcessToJobObject — pin the child to the Job.
+            JobObjectCpuRateControlInformation cpuInfo = cpuLimits(profile);
+            if (!kernel.SetInformationJobObject(
+                    job,
+                    JobObjectInfoClass.JobObjectCpuRateControlInformation,
+                    cpuInfo,
+                    cpuInfo.size())) {
+                log.warn(
+                        "KernelSandboxSubstrate: CPU Job limit failed (Win32 error={})",
+                        kernel32.GetLastError());
+                return null;
+            }
+            JobObjectBasicUiRestrictions uiInfo = uiLimits();
+            if (!kernel.SetInformationJobObject(
+                    job, JobObjectInfoClass.JobObjectBasicUiRestrictions, uiInfo, uiInfo.size())) {
+                log.warn(
+                        "KernelSandboxSubstrate: UI Job restrictions failed (Win32 error={})",
+                        kernel32.GetLastError());
+                return null;
+            }
             int pid = getProcessId(process);
             if (pid <= 0) {
                 log.warn("KernelSandboxSubstrate: could not determine child pid");
                 return null;
             }
-            WinNT.HANDLE handle =
+            processHandle =
                     kernel32.OpenProcess(
-                            0x1F0FFF, // PROCESS_ALL_ACCESS
-                            false, pid);
-            // Windows OpenProcess returns either a valid HANDLE, NULL (0) on some failures,
-            // or INVALID_HANDLE_VALUE (0xFFFFFFFFFFFFFFFF, i.e. (HANDLE)-1) on others (e.g.
-            // access denied, invalid parameter). Checking only null would let
-            // INVALID_HANDLE_VALUE slip through; AssignProcessToJobObject then fails with
-            // ERROR_INVALID_HANDLE and the child is silently NOT pinned to the Job, defeating
-            // KILL_ON_JOB_CLOSE. Catch all failure sentinels.
-            Pointer handlePtr = handle == null ? null : handle.getPointer();
-            Pointer invalidHandleValue = Pointer.createConstant(-1L);
-            if (handle == null || handlePtr == null) {
+                            ProcessAccess.PROCESS_SET_QUOTA | ProcessAccess.PROCESS_TERMINATE,
+                            false,
+                            pid);
+            Pointer handlePtr = processHandle == null ? null : processHandle.getPointer();
+            if (processHandle == null || handlePtr == null) {
                 log.warn(
                         "KernelSandboxSubstrate: OpenProcess failed for pid {} (Win32 error={})",
                         pid,
@@ -399,24 +506,70 @@ public class KernelSandboxSubstrate {
             long handleAddr = Pointer.nativeValue(handlePtr);
             if (handleAddr == 0 || handleAddr == -1L) {
                 log.warn(
-                        "KernelSandboxSubstrate: OpenProcess returned invalid handle for pid {} (addr={})",
+                        "KernelSandboxSubstrate: OpenProcess returned invalid handle for pid {}"
+                                + " (addr={})",
                         pid,
                         handleAddr);
                 return null;
             }
-            if (!kernel.AssignProcessToJobObject(job, handle)) {
+            if (!kernel.AssignProcessToJobObject(job, processHandle)) {
                 log.warn(
                         "KernelSandboxSubstrate: AssignProcessToJobObject failed (Win32 error={})",
                         kernel32.GetLastError());
                 return null;
             }
-            log.info("KernelSandboxSubstrate: attached Windows Job Object to pid {}", pid);
-            // Return a closeable that closes the Job handle
-            return new JobHandle(job, pid);
+            kernel32.CloseHandle(processHandle);
+            processHandle = null;
+            log.info(
+                    "KernelSandboxSubstrate: attached Windows Job Object to pid {} "
+                            + "(memory={} MiB, cpu={}%, processes={})",
+                    pid, profile.maxMemoryMb(), profile.maxCpuPercent(), profile.maxProcesses());
+            JobHandle result = new JobHandle(job, pid);
+            job = null;
+            return result;
         } catch (Throwable t) {
             log.warn("KernelSandboxSubstrate: Windows attach failed: {}", safe(t.getMessage()));
             return null;
+        } finally {
+            if (processHandle != null) {
+                kernel32.CloseHandle(processHandle);
+            }
+            if (job != null) {
+                kernel32.CloseHandle(job);
+            }
         }
+    }
+
+    static @NonNull JobObjectExtendedLimitInformation extendedLimits(
+            @NonNull SandboxProfile profile) {
+        JobObjectExtendedLimitInformation info = new JobObjectExtendedLimitInformation();
+        info.BasicLimitInformation.LimitFlags =
+                JobObjectLimit.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+                        | JobObjectLimit.JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION
+                        | JobObjectLimit.JOB_OBJECT_LIMIT_ACTIVE_PROCESS
+                        | JobObjectLimit.JOB_OBJECT_LIMIT_JOB_MEMORY;
+        info.BasicLimitInformation.ActiveProcessLimit = profile.maxProcesses();
+        info.JobMemoryLimit =
+                new BaseTSD.SIZE_T(Math.multiplyExact(profile.maxMemoryMb(), 1_048_576L));
+        info.write();
+        return info;
+    }
+
+    static @NonNull JobObjectCpuRateControlInformation cpuLimits(@NonNull SandboxProfile profile) {
+        JobObjectCpuRateControlInformation info = new JobObjectCpuRateControlInformation();
+        info.ControlFlags =
+                JobObjectCpuRateControl.JOB_OBJECT_CPU_RATE_CONTROL_ENABLE
+                        | JobObjectCpuRateControl.JOB_OBJECT_CPU_RATE_CONTROL_HARD_CAP;
+        info.CpuRate = profile.maxCpuPercent() * 100;
+        info.write();
+        return info;
+    }
+
+    static @NonNull JobObjectBasicUiRestrictions uiLimits() {
+        JobObjectBasicUiRestrictions info = new JobObjectBasicUiRestrictions();
+        info.UIRestrictionsClass = JobObjectUiLimit.JOB_OBJECT_UILIMIT_ALL;
+        info.write();
+        return info;
     }
 
     /** A closeable wrapper for a Windows Job Object handle. */
@@ -473,13 +626,13 @@ public class KernelSandboxSubstrate {
                 int cbJobObjectInfoLength);
 
         boolean AssignProcessToJobObject(WinNT.HANDLE hJob, WinNT.HANDLE hProcess);
-    }
 
-    /** Minimal JNA interface for the Linux libc calls we need (extensible to libseccomp). */
-    public interface LinuxLibc extends Library {
-        int unshare(int flags);
+        WinNT.HANDLE CreateEventW(
+                Pointer eventAttributes, boolean manualReset, boolean initialState, WString name);
 
-        int prctl(int option, long arg2, long arg3, long arg4, long arg5);
+        boolean SetEvent(WinNT.HANDLE event);
+
+        int WaitForSingleObject(WinNT.HANDLE handle, int milliseconds);
     }
 
     // --- Windows job-object structs (JOBOBJECT_EXTENDED_LIMIT_INFORMATION, WinNT.h) ---
@@ -489,10 +642,10 @@ public class KernelSandboxSubstrate {
         public long PerProcessUserTimeLimit;
         public long PerJobUserTimeLimit;
         public int LimitFlags;
-        public long MinimumWorkingSetSize;
-        public long MaximumWorkingSetSize;
+        public BaseTSD.@NonNull SIZE_T MinimumWorkingSetSize = new BaseTSD.SIZE_T();
+        public BaseTSD.@NonNull SIZE_T MaximumWorkingSetSize = new BaseTSD.SIZE_T();
         public int ActiveProcessLimit;
-        public long Affinity;
+        public BaseTSD.@NonNull ULONG_PTR Affinity = new BaseTSD.ULONG_PTR();
         public int PriorityClass;
         public int SchedulingClass;
 
@@ -536,14 +689,18 @@ public class KernelSandboxSubstrate {
     public static class JobObjectExtendedLimitInformation extends Structure {
         public @NonNull JobObjectBasicLimitInformation BasicLimitInformation;
         public @NonNull IoCounters IoInfo;
-        public long ProcessMemoryLimit;
-        public long JobMemoryLimit;
-        public long PeakProcessMemoryUsed;
-        public long PeakJobMemoryUsed;
+        public BaseTSD.@NonNull SIZE_T ProcessMemoryLimit;
+        public BaseTSD.@NonNull SIZE_T JobMemoryLimit;
+        public BaseTSD.@NonNull SIZE_T PeakProcessMemoryUsed;
+        public BaseTSD.@NonNull SIZE_T PeakJobMemoryUsed;
 
         public JobObjectExtendedLimitInformation() {
             BasicLimitInformation = new JobObjectBasicLimitInformation();
             IoInfo = new IoCounters();
+            ProcessMemoryLimit = new BaseTSD.SIZE_T();
+            JobMemoryLimit = new BaseTSD.SIZE_T();
+            PeakProcessMemoryUsed = new BaseTSD.SIZE_T();
+            PeakJobMemoryUsed = new BaseTSD.SIZE_T();
         }
 
         @Override
@@ -560,15 +717,59 @@ public class KernelSandboxSubstrate {
 
     /** {@code JOBOBJECTINFOCLASS} values (subset; JobObjectExtendedLimitInformation = 9). */
     public static final class JobObjectInfoClass {
+        public static final int JobObjectBasicUiRestrictions = 4;
         public static final int JobObjectExtendedLimitInformation = 9;
+        public static final int JobObjectCpuRateControlInformation = 15;
 
         private JobObjectInfoClass() {}
     }
 
     /** {@code JOBOBJECT_LIMIT} flags (subset). */
     public static final class JobObjectLimit {
+        public static final int JOB_OBJECT_LIMIT_ACTIVE_PROCESS = 0x00000008;
+        public static final int JOB_OBJECT_LIMIT_JOB_MEMORY = 0x00000200;
         public static final int JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000;
+        public static final int JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION = 0x00000400;
 
         private JobObjectLimit() {}
+    }
+
+    public static class JobObjectCpuRateControlInformation extends Structure {
+        public int ControlFlags;
+        public int CpuRate;
+
+        @Override
+        protected @NonNull List<String> getFieldOrder() {
+            return Arrays.asList("ControlFlags", "CpuRate");
+        }
+    }
+
+    public static class JobObjectBasicUiRestrictions extends Structure {
+        public int UIRestrictionsClass;
+
+        @Override
+        protected @NonNull List<String> getFieldOrder() {
+            return List.of("UIRestrictionsClass");
+        }
+    }
+
+    public static final class JobObjectCpuRateControl {
+        public static final int JOB_OBJECT_CPU_RATE_CONTROL_ENABLE = 0x1;
+        public static final int JOB_OBJECT_CPU_RATE_CONTROL_HARD_CAP = 0x4;
+
+        private JobObjectCpuRateControl() {}
+    }
+
+    public static final class JobObjectUiLimit {
+        public static final int JOB_OBJECT_UILIMIT_ALL = 0x000000FF;
+
+        private JobObjectUiLimit() {}
+    }
+
+    public static final class ProcessAccess {
+        public static final int PROCESS_TERMINATE = 0x0001;
+        public static final int PROCESS_SET_QUOTA = 0x0100;
+
+        private ProcessAccess() {}
     }
 }

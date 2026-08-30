@@ -1,6 +1,11 @@
 package top.focess.veto.agent.web;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.Inet6Address;
+import java.net.InetAddress;
 import java.net.URI;
+import java.net.UnknownHostException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -10,6 +15,7 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jspecify.annotations.NonNull;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.mcp.Doc;
@@ -17,6 +23,7 @@ import top.focess.veto.agent.mcp.NativeTool;
 import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.SecurityHint;
+import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDoc;
 import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.mcp.ToolSecurity;
@@ -31,8 +38,10 @@ import top.focess.veto.agent.mcp.ToolSecurity;
  * page cannot inject script.
  */
 @Component
-@ToolSecurity(risk = RiskCategory.NETWORK)
+@ToolSecurity(risk = RiskCategory.NETWORK, capability = ToolCapability.NETWORK_EGRESS)
 public final class WebFetchTool implements NativeTool<WebFetchTool.Args> {
+
+    private static final int MAX_REDIRECTS = 5;
 
     private static final @NonNull String USER_AGENT =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)"
@@ -41,17 +50,26 @@ public final class WebFetchTool implements NativeTool<WebFetchTool.Args> {
     private final @NonNull HttpClient httpClient;
     private final int timeoutSeconds;
     private final int maxChars;
+    private final boolean allowPrivateAddresses;
 
+    @Autowired
     public WebFetchTool(
             @Value("${veto.webfetch.timeout-seconds:30}") int timeoutSeconds,
-            @Value("${veto.webfetch.max-chars:40000}") int maxChars) {
+            @Value("${veto.webfetch.max-chars:40000}") int maxChars,
+            @Value("${veto.webfetch.allow-private-addresses:false}")
+                    boolean allowPrivateAddresses) {
         this.timeoutSeconds = timeoutSeconds;
         this.maxChars = maxChars;
+        this.allowPrivateAddresses = allowPrivateAddresses;
         this.httpClient =
                 HttpClient.newBuilder()
                         .connectTimeout(Duration.ofSeconds(Math.min(timeoutSeconds, 15)))
-                        .followRedirects(HttpClient.Redirect.NORMAL)
+                        .followRedirects(HttpClient.Redirect.NEVER)
                         .build();
+    }
+
+    WebFetchTool(int timeoutSeconds, int maxChars) {
+        this(timeoutSeconds, maxChars, true);
     }
 
     @ToolDoc(
@@ -88,6 +106,8 @@ public final class WebFetchTool implements NativeTool<WebFetchTool.Args> {
                     - Non-2xx status -> error message with the status code.
                     - Timeouts / unreachable host -> error message.
                     - Very large pages are truncated to the configured cap.
+                    - Loopback, link-local, and private destinations are rejected unless the deployer
+                    explicitly enables private-address fetching.
 
                     #### Security
                     `url` carries a URL hint and is screened by the Gateway (`RiskCategory.NETWORK`). \
@@ -132,36 +152,147 @@ public final class WebFetchTool implements NativeTool<WebFetchTool.Args> {
         } catch (IllegalArgumentException e) {
             return error("invalid URL: " + rawUrl);
         }
-        String scheme = uri.getScheme();
-        if (scheme == null || !(scheme.equals("http") || scheme.equals("https"))) {
-            return error("only http/https URLs are allowed (got scheme: " + scheme + ")");
+        String validationError = validateUri(uri);
+        if (validationError != null) {
+            return error(validationError);
         }
         try {
-            HttpRequest request =
-                    HttpRequest.newBuilder()
-                            .uri(uri)
-                            .timeout(Duration.ofSeconds(timeoutSeconds))
-                            .header("User-Agent", USER_AGENT)
-                            .header("Accept", "text/html, application/json, text/plain, */*")
-                            .GET()
-                            .build();
-            HttpResponse<byte[]> response =
-                    httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
-            int status = response.statusCode();
-            if (status < 200 || status >= 300) {
-                return error("HTTP " + status + " for " + uri);
+            URI current = uri;
+            for (int redirectCount = 0; redirectCount <= MAX_REDIRECTS; redirectCount++) {
+                HttpRequest request =
+                        HttpRequest.newBuilder()
+                                .uri(current)
+                                .timeout(Duration.ofSeconds(timeoutSeconds))
+                                .header("User-Agent", USER_AGENT)
+                                .header("Accept", "text/html, application/json, text/plain, */*")
+                                .GET()
+                                .build();
+                HttpResponse<InputStream> response =
+                        httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
+                int status = response.statusCode();
+                if (isRedirect(status)) {
+                    closeBody(response);
+                    String location = response.headers().firstValue("Location").orElse("");
+                    if (location.isBlank()) {
+                        return error("HTTP " + status + " without Location for " + current);
+                    }
+                    if (redirectCount == MAX_REDIRECTS) {
+                        return error("too many redirects for " + uri);
+                    }
+                    URI next;
+                    try {
+                        next = current.resolve(location);
+                    } catch (IllegalArgumentException e) {
+                        return error("invalid redirect target from " + current);
+                    }
+                    String redirectError = validateUri(next);
+                    if (redirectError != null) {
+                        return error("redirect rejected: " + redirectError);
+                    }
+                    if (!sameOrigin(uri, next)) {
+                        return error(
+                                "cross-origin redirect requires a separate web_fetch approval: "
+                                        + next);
+                    }
+                    current = next;
+                    continue;
+                }
+                if (status < 200 || status >= 300) {
+                    closeBody(response);
+                    return error("HTTP " + status + " for " + current);
+                }
+                String contentType =
+                        response.headers().firstValue("Content-Type").orElse("").toLowerCase();
+                byte[] bytes;
+                try (InputStream body = response.body()) {
+                    bytes = readBounded(body);
+                }
+                String content = new String(bytes, StandardCharsets.UTF_8);
+                String readable =
+                        contentType.contains("html") ? htmlToText(content, current) : content;
+                readable = truncate(readable);
+                return "[" + status + "] " + current + "\n\n" + readable;
             }
-            String contentType =
-                    response.headers().firstValue("Content-Type").orElse("").toLowerCase();
-            String body = new String(response.body(), StandardCharsets.UTF_8);
-            String readable = contentType.contains("html") ? htmlToText(body, uri) : body;
-            readable = truncate(readable);
-            return "[" + status + "] " + uri + "\n\n" + readable;
+            return error("too many redirects for " + uri);
         } catch (java.net.http.HttpTimeoutException e) {
             return error("timed out after " + timeoutSeconds + "s fetching " + uri);
         } catch (Exception e) {
             return error("could not fetch " + uri + " (" + e.getClass().getSimpleName() + ")");
         }
+    }
+
+    /** Closes an unconsumed response body so redirects and error pages never enter memory. */
+    private static void closeBody(@NonNull HttpResponse<InputStream> response) throws IOException {
+        response.body().close();
+    }
+
+    private byte @NonNull [] readBounded(@NonNull InputStream body) throws IOException {
+        long requested = Math.max(1L, (long) maxChars * 4L + 1L);
+        int byteLimit = (int) Math.min(Integer.MAX_VALUE, requested);
+        byte[] bytes = body.readNBytes(byteLimit);
+        if (bytes.length == byteLimit) {
+            int kept = Math.max(0, byteLimit - 1);
+            return java.util.Arrays.copyOf(bytes, kept);
+        }
+        return bytes;
+    }
+
+    private static boolean isRedirect(int status) {
+        return status == 301 || status == 302 || status == 303 || status == 307 || status == 308;
+    }
+
+    private String validateUri(@NonNull URI uri) {
+        String scheme = uri.getScheme();
+        if (scheme == null
+                || !(scheme.equalsIgnoreCase("http") || scheme.equalsIgnoreCase("https"))) {
+            return "only http/https URLs are allowed (got scheme: " + scheme + ")";
+        }
+        if (uri.getHost() == null || uri.getHost().isBlank()) {
+            return "URL must contain a host";
+        }
+        if (uri.getUserInfo() != null) {
+            return "URLs containing credentials are not allowed";
+        }
+        if (!allowPrivateAddresses) {
+            try {
+                for (InetAddress address : InetAddress.getAllByName(uri.getHost())) {
+                    if (isPrivateAddress(address)) {
+                        return "private, loopback, link-local, or multicast destinations are not allowed";
+                    }
+                }
+            } catch (UnknownHostException e) {
+                return "host could not be resolved";
+            }
+        }
+        return null;
+    }
+
+    private static boolean isPrivateAddress(@NonNull InetAddress address) {
+        if (address.isAnyLocalAddress()
+                || address.isLoopbackAddress()
+                || address.isLinkLocalAddress()
+                || address.isSiteLocalAddress()
+                || address.isMulticastAddress()) {
+            return true;
+        }
+        if (address instanceof Inet6Address) {
+            byte[] raw = address.getAddress();
+            return raw.length > 0 && (raw[0] & 0xfe) == 0xfc;
+        }
+        return false;
+    }
+
+    private static boolean sameOrigin(@NonNull URI first, @NonNull URI second) {
+        return first.getScheme().equalsIgnoreCase(second.getScheme())
+                && first.getHost().equalsIgnoreCase(second.getHost())
+                && effectivePort(first) == effectivePort(second);
+    }
+
+    private static int effectivePort(@NonNull URI uri) {
+        if (uri.getPort() >= 0) {
+            return uri.getPort();
+        }
+        return "https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80;
     }
 
     /** Converts HTML to clean readable text (title + main body; scripts/styles/nav removed). */

@@ -11,6 +11,7 @@ import top.focess.veto.agent.mcp.Doc;
 import top.focess.veto.agent.mcp.NativeTool;
 import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.ToolCallContextHolder;
+import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDoc;
 import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.mcp.ToolSecurity;
@@ -22,7 +23,7 @@ import top.focess.veto.sandbox.BackgroundTaskManager;
  * stopping an already-exited task reports its final status without error.
  */
 @Component
-@ToolSecurity(risk = RiskCategory.AGENT)
+@ToolSecurity(risk = RiskCategory.AGENT, capability = ToolCapability.TASK_CONTROL)
 public final class StopTaskTool implements NativeTool<StopTaskTool.Args> {
 
     private final @NonNull BackgroundTaskManager taskManager;

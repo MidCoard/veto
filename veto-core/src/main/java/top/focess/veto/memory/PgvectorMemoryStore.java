@@ -191,14 +191,16 @@ public class PgvectorMemoryStore implements MemoryStore {
     }
 
     @Override
-    public void promote(@NonNull MemoryId id) {
+    public boolean promote(@NonNull MemoryId id, @NonNull UUID userId) {
         // Session → Cross-Session: strip sessionId, bump tier. (Re-inserts with a fresh id to
         // preserve the curating boundary, like the other backends.)
         Memory m = findById(id);
-        if (m == null || m.tier() != MemoryTier.SESSION) {
-            return;
+        if (m == null || !m.userId().equals(userId) || m.tier() != MemoryTier.SESSION) {
+            return false;
         }
-        forget(id);
+        if (!forget(id, userId)) {
+            return false;
+        }
         Memory promoted =
                 new Memory(
                         MemoryId.random(),
@@ -211,13 +213,18 @@ public class PgvectorMemoryStore implements MemoryStore {
                         m.sourceRef(),
                         Instant.now());
         add(promoted);
+        return true;
     }
 
     @Override
-    public void forget(@NonNull MemoryId id) {
-        em.createNativeQuery("DELETE FROM " + TABLE + " WHERE id = :id")
-                .setParameter("id", id.value().toString())
-                .executeUpdate();
+    public boolean forget(@NonNull MemoryId id, @NonNull UUID userId) {
+        int deleted =
+                em.createNativeQuery(
+                                "DELETE FROM " + TABLE + " WHERE id = :id AND user_id = :userId")
+                        .setParameter("id", id.value().toString())
+                        .setParameter("userId", userId.toString())
+                        .executeUpdate();
+        return deleted > 0;
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────

@@ -5,6 +5,7 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import top.focess.veto.agent.mcp.ToolDocs;
+import top.focess.veto.sandbox.SandboxBootstrap;
 
 /**
  * Project Veto — Zero-Trust Cloud-Edge Agent Client.
@@ -18,7 +19,11 @@ import top.focess.veto.agent.mcp.ToolDocs;
 @EnableScheduling
 public class VetoApplication {
 
-    static void main(@NonNull String @NonNull [] args) {
+    public static void main(@NonNull String @NonNull [] args) {
+        if (SandboxBootstrap.isInvocation(args)) {
+            System.exit(SandboxBootstrap.run(args));
+            return;
+        }
         SpringApplication.run(ToolDocs.nonNullClass(VetoApplication.class), args);
     }
 }

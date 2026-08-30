@@ -19,14 +19,8 @@ public enum TurnType {
     TOOL_RESPONSE,
     /** A rewind directive — 0-based suffix-drop of the compiled view (not emitted as a message). */
     REWIND,
-    /** A role-start marker — delimits a role-segment (session start, delegation transform). */
+    /** A role-start marker carrying the linked system prompt and concrete model binding. */
     AGENT_INIT,
     /** A compaction summary seed, re-injected after a {@link #REWIND}. */
-    COMPACTION_SUMMARY,
-    /**
-     * A recall directive - suffix-drops the compiled view to {@code from_index} (keeping the seed
-     * turns, e.g. AGENT_INIT), then re-injects a recalled brief as a user message. Like {@link
-     * #REWIND}/{@link #COMPACTION_SUMMARY} it is a compiler directive, not captured to LTM.
-     */
-    RECALL
+    COMPACTION_SUMMARY
 }

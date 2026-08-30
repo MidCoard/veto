@@ -9,15 +9,10 @@ import top.focess.veto.llm.core.ToolCall;
  * The tool engine — manages server registrations, schema discovery, and tool dispatching. The loop
  * calls the methods below.
  *
- * <p><b>Note:</b> the interface also lists {@code registerServer(String, McpTransport)} and {@code
- * executeTool(String, Map)} — these are implementation details (server setup; low-level transport
- * dispatch) that the loop never calls, so they are intentionally absent from this shared interface.
- * A richer {@code ToolEngine} implementation adds {@code registerServer} + the {@code McpTransport}
- * types. {@code executeTool(String, Map)} is realized internally by {@link #execute(ToolCall,
- * ToolDefinition)} which dispatches by the resolved definition's flavour (native in-process / agent
- * handler / external transport). {@code resolveDefinition} is required by the loop though omitted
- * from the listing — it is included here. Do not modify this shared interface without coordinator
- * approval; if insufficient, stop and report.
+ * <p>Server registration and MCP transport setup are implementation details absent from this shared
+ * interface. There is intentionally no dispatch-by-name/raw-map shortcut: every execution carries
+ * the exact resolved definition screened by the caller. {@code resolveDefinition} is required by
+ * the loop for that screen/execute pairing.
  */
 public interface ToolEngine {
 

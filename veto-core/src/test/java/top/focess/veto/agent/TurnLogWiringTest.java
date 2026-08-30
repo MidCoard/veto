@@ -8,6 +8,7 @@ import java.time.Duration;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.HitlRegistry;
@@ -80,7 +81,25 @@ class TurnLogWiringTest {
                         EPISODE_TIMEOUT);
 
         assertTrue(result.success(), "the episode finishes");
-        verify(repo, atLeastOnce()).save(any(ToolDocs.nonNullClass(TurnRecordEntity.class)));
+        ArgumentCaptor<TurnRecordEntity> records =
+                ArgumentCaptor.forClass(ToolDocs.nonNullClass(TurnRecordEntity.class));
+        verify(repo, atLeastOnce()).save(records.capture());
+        List<TurnRecordEntity> persisted = records.getAllValues();
+        assertEquals("AGENT_INIT", persisted.get(0).getType());
+        assertEquals(1, persisted.get(0).getTurnNumber());
+        assertEquals("USER_PROMPT", persisted.get(1).getType());
+        assertEquals(2, persisted.get(1).getTurnNumber());
+        assertTrue(
+                persisted.stream().anyMatch(row -> "AGENT_INIT".equals(row.getType())),
+                "the agent init definition is part of the durable session record");
+        TurnRecordEntity agentInit =
+                persisted.stream()
+                        .filter(row -> "AGENT_INIT".equals(row.getType()))
+                        .findFirst()
+                        .orElseThrow();
+        assertTrue(agentInit.getPayload().contains("stub-model"));
+        assertTrue(agentInit.getPayload().contains("DEEPSEEK"));
+        assertTrue(agentInit.getPayload().contains("system_prompt"));
     }
 
     private static @NonNull UniformLLMCaller callerFinishingImmediately() {

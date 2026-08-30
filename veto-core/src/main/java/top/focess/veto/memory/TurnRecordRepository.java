@@ -14,6 +14,9 @@ public interface TurnRecordRepository extends JpaRepository<TurnRecordEntity, St
     /** A session's turns in order (for replay). */
     @NonNull List<TurnRecordEntity> findBySessionIdOrderByTurnNumberAsc(String sessionId);
 
+    /** Every agent stream in a session, merged by durable event time for the records UI. */
+    @NonNull List<TurnRecordEntity> findBySessionIdOrderByTimestampAsc(String sessionId);
+
     /**
      * One agent's turn stream within a session, in order. This is the per-agent replay path: a
      * group's Leader and each Mate each own a distinct stream (filtered by {@code agent_id}); the

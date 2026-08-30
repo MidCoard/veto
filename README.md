@@ -22,9 +22,9 @@ Veto is under active development. The following paths are implemented in this re
 - an official AgentDojo bridge for security and utility evaluation.
 
 Some larger architectural goals are only partial or experimental. In particular, the local
-subprocess substrate is not yet a complete hostile-code sandbox, Linux namespace/seccomp support is
-not wired into the production spawn path, distributed swarm coordination is not implemented, and
-the local SLM can still misclassify legitimate tool calls. See
+subprocess substrate is not yet a complete hostile-code sandbox, Linux still lacks bundled
+Bubblewrap and aggregate cgroup limits, distributed swarm coordination is not implemented, and the
+local SLM can still misclassify legitimate tool calls. See
 [Security boundaries](#security-boundaries) before using Veto with untrusted code or on a
 multi-user host.
 
@@ -125,6 +125,17 @@ Windows:
 ```powershell
 .\gradlew.bat check
 ```
+
+The Windows sandbox does not install or copy Java, Node.js, Python, or other toolchains. Commands
+remain direct `executable + argv[]` launches and inherit the host terminal environment. Veto resolves
+executables with the host `PATH`/`PATHEXT`, then projects only the selected executable's containing
+execution root into the per-workspace AppContainer. `PATH` is lookup input, not a blanket ACL grant.
+Cache-valued roots, the workspace, and the sandbox temporary directory are writable. This
+reachability is not a trust classification: every executable is still screened by the Gateway, and
+ProtectedSet entries are masked from the AppContainer. Workspace and ProtectedSet ACLs are required
+and fail closed. Compatibility grants are best-effort because a non-administrator cannot rewrite
+every system DACL; an actually unreachable tool fails inside AppContainer and is never retried under
+the unrestricted host identity.
 
 Unix-like shell:
 
@@ -249,7 +260,8 @@ path confinement.
 The backend currently exposes these primary REST groups:
 
 - `/api/auth` — setup, login, logout, status, and user administration;
-- `/api/sessions` — sessions, prompts, history, pending vetoes, and background tasks;
+- `/api/sessions` — sessions, prompts, raw history, complete rewind-annotated records, pending vetoes, and
+  background tasks;
 - `/api/tasks` — asynchronous task lifecycle;
 - `/api/patterns` — agent patterns;
 - `/api/modeltiers` — model-tier profiles and bindings;
@@ -275,15 +287,27 @@ Veto currently provides several independent controls, but they have different as
 - **Audit:** local records are hash-chained and tamper-evident. A local writable log cannot be
   described as tamper-proof against the same host user.
 - **Subprocess execution:** commands are passed as executable plus `argv[]`; Veto does not construct
-  a shell command string. The child environment is reduced and wall-clock timeouts are supported.
-- **Kernel wall:** Windows Job Objects currently provide process-tree lifetime cleanup after
-  attachment. Linux cgroup/namespace/seccomp support is incomplete and may degrade to the plain
-  subprocess path.
+  a shell command string. The child receives the host terminal environment, except sandbox-owned
+  temp paths and deterministic no-color flags, and wall-clock timeouts are supported.
+- **Windows kernel wall:** a named-event launch gate attaches the trusted bootstrap to a Job Object
+  before target code can run. The Job enforces tree lifetime, aggregate memory, CPU, process-count,
+  UI, and kill-on-close limits. The target then starts on a private Desktop in a per-workspace,
+  zero-capability AppContainer. An inheritable workspace ACL allows workspace access; Windows still
+  denies sibling reads/writes and loopback network access when Gateway policy is bypassed.
+- **Other platforms:** macOS has a default-deny Seatbelt compatibility backend with protected
+  workspace metadata, curated runtime rules, and no network grants, but still needs release-runner
+  evidence. Linux uses Bubblewrap for read-only-root/workspace-write mounts plus user/PID/IPC/network
+  namespaces, followed by an inner `no_new_privs`/seccomp stage. Linux refuses to run when a trusted
+  `bwrap` executable is unavailable; bundled-helper packaging and cgroup resource limits remain.
 
-The local subprocess implementation does **not** yet provide a complete filesystem, identity,
-network, or hostile-code isolation boundary. Kernel attachment occurs after process creation and
-can fail open. Do not run arbitrary untrusted binaries on the assumption that the current class
-name `ConstrainedSubprocessSubstrate` implies container-grade isolation.
+The Windows AppContainer is an identity/capability boundary, not a container filesystem or Docker
+image. Its reachable storage is the workspace plus the AppContainer's private profile storage;
+zero capabilities deny direct network access. Host runtimes outside those locations are not made
+reachable merely because an unrelated command was approved. Veto resolves and projects the selected
+executable per invocation without a trusted-runtime list or setup step; an unreachable dependency
+fails closed. Destination-scoped network prompts and an authenticated network broker are not
+implemented. Windows currently supports a permit-scoped `network: true` capability grant after
+Gateway/HITL approval; the default remains deny-network.
 
 ## Background tasks
 

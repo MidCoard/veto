@@ -17,6 +17,11 @@ public record RemoteToolDefinition(
         implements ToolDefinition {
 
     @Override
+    public @NonNull ToolCapability capability() {
+        return ToolCapability.REMOTE_UNKNOWN;
+    }
+
+    @Override
     public @NonNull ParameterSchema parameters() {
         return new ParameterSchema.Raw(inputSchema);
     }

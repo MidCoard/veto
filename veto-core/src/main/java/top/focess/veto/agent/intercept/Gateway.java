@@ -3,18 +3,13 @@ package top.focess.veto.agent.intercept;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
-import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
-import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.mcp.AgentToolDefinition;
-import top.focess.veto.agent.mcp.NativeToolDefinition;
-import top.focess.veto.agent.mcp.ParamCategory;
-import top.focess.veto.agent.mcp.RemoteToolDefinition;
 import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.ToolDefinition;
 import top.focess.veto.agent.screening.Danger;
@@ -109,10 +104,12 @@ public class Gateway {
         if (def instanceof AgentToolDefinition) {
             return new GatewayResult.NotScreened();
         }
-        List<@NonNull String> paths = extractPathArgs(call, def);
+        ToolExecutionPermit executionPermit =
+                ToolExecutionPermit.capture(call, def, workspace, policy, protectedSet);
+        List<@NonNull String> paths = executionPermit.requestedPaths();
         // drift is a correctness check on writes — checked before danger.
         if (def.risk() == RiskCategory.FILE_WRITE) {
-            GatewayResult.DriftResult drift = checkWriteDrift(paths);
+            GatewayResult.DriftResult drift = checkWriteDrift(paths, executionPermit);
             if (drift != null) {
                 return drift;
             }
@@ -124,7 +121,28 @@ public class Gateway {
         Relevance relevance = advisory.relevance();
         VetoScenario scenario = scenarioFor(danger, def);
         String reason = reasonFor(deterministicDanger, advisory, danger, def);
-        return new GatewayResult.Screened(new Screening(relevance, danger, scenario, reason));
+        return new GatewayResult.Screened(
+                new Screening(relevance, danger, scenario, reason), executionPermit);
+    }
+
+    /**
+     * Re-resolves security-relevant arguments after approval. A target change invalidates the old
+     * decision; the caller returns a denied tool observation and the model must issue a fresh call.
+     */
+    public @NonNull ToolExecutionPermit revalidateExecution(
+            @NonNull ToolCall call,
+            @NonNull ToolDefinition definition,
+            @NonNull ToolExecutionPermit screenedPermit) {
+        if (definition instanceof AgentToolDefinition) {
+            return ToolExecutionPermit.empty();
+        }
+        ToolExecutionPermit current =
+                ToolExecutionPermit.capture(call, definition, workspace, policy, protectedSet);
+        if (!screenedPermit.sameTargets(current)) {
+            throw new SecurityException(
+                    "Filesystem target changed after screening; submit a fresh tool call");
+        }
+        return current;
     }
 
     private static @NonNull Danger maxDanger(@NonNull Danger left, @NonNull Danger right) {
@@ -162,41 +180,11 @@ public class Gateway {
                 + ")";
     }
 
-    // ── Path extraction ───────────────────────────────────────────────────
-
-    /** Extracts filesystem-path arguments using the definition's {@link ParamCategory} hints. */
-    private @NonNull List<@NonNull String> extractPathArgs(
-            @NonNull ToolCall call, @NonNull ToolDefinition def) {
-        List<@NonNull String> paths = new ArrayList<>();
-        Map<@NonNull String, @NonNull ParamCategory> hints = parameterHints(def);
-        if (hints.isEmpty()) {
-            return paths; // remote tools carry no hints → no path extraction
-        }
-        Map<@NonNull String, Object> args = call.args();
-        for (var entry : hints.entrySet()) {
-            if (entry.getValue() == ParamCategory.FILESYSTEM_PATH) {
-                Object v = args.get(entry.getKey());
-                if (v instanceof String s && !s.isBlank()) {
-                    paths.add(s);
-                }
-            }
-        }
-        return paths;
-    }
-
-    private @NonNull Map<@NonNull String, @NonNull ParamCategory> parameterHints(
-            @NonNull ToolDefinition def) {
-        return switch (def) {
-            case NativeToolDefinition n -> n.paramHints();
-            case AgentToolDefinition a -> a.paramHints();
-            case RemoteToolDefinition r -> Map.of();
-        };
-    }
-
     // ── Write drift ─────────────
 
     /** Returns a drift result if a write target changed since the agent last read it, else null. */
-    private GatewayResult.DriftResult checkWriteDrift(@NonNull List<@NonNull String> paths) {
+    private GatewayResult.DriftResult checkWriteDrift(
+            @NonNull List<@NonNull String> paths, @NonNull ToolExecutionPermit executionPermit) {
         for (String path : paths) {
             ReadHistory.Snapshot prior = readHistory.lookup(path).orElse(null);
             if (prior == null) {
@@ -205,7 +193,8 @@ public class Gateway {
             Path hostPath = workspace.pathResolver().resolveToHost(path).hostPath();
             String currentHash = hostPath == null ? "<unresolved>" : computeHash(hostPath);
             if (!prior.sha256Hash().equals(currentHash)) {
-                return new GatewayResult.DriftResult(path, buildDiff(path, prior, currentHash));
+                return new GatewayResult.DriftResult(
+                        path, buildDiff(path, prior, currentHash), executionPermit);
             }
         }
         return null;

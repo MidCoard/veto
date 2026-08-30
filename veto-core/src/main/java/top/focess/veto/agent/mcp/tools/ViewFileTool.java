@@ -12,14 +12,19 @@ import top.focess.veto.agent.mcp.NativeTool;
 import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.SecurityHint;
+import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDoc;
 import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.mcp.ToolSecurity;
 
 /** {@code view_file} — read lines of a text file from the local filesystem. */
 @Component
-@ToolSecurity(risk = RiskCategory.READ_ONLY)
+@ToolSecurity(risk = RiskCategory.READ_ONLY, capability = ToolCapability.WORKSPACE_READ)
 public final class ViewFileTool implements NativeTool<ViewFileTool.Args> {
+
+    private static final long MAX_FILE_BYTES = 16L * 1024L * 1024L;
+    private static final int MAX_OUTPUT_LINES = 5000;
+    private static final int MAX_OUTPUT_CHARS = 1_000_000;
 
     /** Parameter container for {@code view_file}. */
     @ToolDoc(
@@ -114,12 +119,26 @@ public final class ViewFileTool implements NativeTool<ViewFileTool.Args> {
                     + args.absolutePath()
                     + "\"}";
         }
+        if (Files.size(path) > MAX_FILE_BYTES) {
+            return "{\"status\":\"error\",\"error\":\"File exceeds 16777216 bytes; request a smaller artifact\"}";
+        }
         List<String> lines = Files.readAllLines(path, StandardCharsets.UTF_8);
         int from = args.startLine() == null ? 1 : Math.max(1, args.startLine());
         int to = args.endLine() == null ? lines.size() : Math.min(lines.size(), args.endLine());
         StringBuilder sb = new StringBuilder();
+        boolean truncated = false;
+        int emitted = 0;
         for (int i = from; i <= to; i++) {
-            sb.append(i).append(": ").append(lines.get(i - 1)).append('\n');
+            String rendered = i + ": " + lines.get(i - 1) + "\n";
+            if (emitted >= MAX_OUTPUT_LINES || sb.length() + rendered.length() > MAX_OUTPUT_CHARS) {
+                truncated = true;
+                break;
+            }
+            sb.append(rendered);
+            emitted++;
+        }
+        if (truncated) {
+            sb.append("[truncated; request a narrower line range]\n");
         }
         return sb.toString();
     }

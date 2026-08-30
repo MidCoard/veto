@@ -32,6 +32,11 @@ public interface AgentTool<T> {
      */
     @NonNull Class<T> getArgsClass();
 
+    /** The effect boundary owned by this agent-runtime tool. */
+    default @NonNull ToolCapability getCapability() {
+        return ToolCapability.AGENT_CONTROL;
+    }
+
     /** Executes the tool logic with strongly-typed arguments. */
     @NonNull String execute(@NonNull T args) throws Exception;
 

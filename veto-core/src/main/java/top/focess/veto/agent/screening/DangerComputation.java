@@ -227,6 +227,9 @@ public class DangerComputation {
             }
             worst = max(worst, d);
         }
+        if (Boolean.TRUE.equals(args.get("network"))) {
+            worst = max(worst, Danger.DANGEROUS);
+        }
         return worst;
     }
 

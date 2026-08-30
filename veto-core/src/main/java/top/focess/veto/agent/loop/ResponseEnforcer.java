@@ -30,7 +30,8 @@ public final class ResponseEnforcer {
      *     calls} forbidden) vs an autonomous turn.
      */
     public static @NonNull VetoResponse enforce(@NonNull VetoResponse r, boolean guidedSwitch) {
-        if (r.features() == null) {
+        var features = r.features();
+        if (features == null) {
             throw new ModelSchemaException("features is required (next-status)");
         }
 
@@ -44,6 +45,10 @@ public final class ResponseEnforcer {
         }
         if (guidedSwitch && !hasActions) {
             throw new ModelSchemaException("guided-switch turn requires actions");
+        }
+        if (guidedSwitch && !features.guided()) {
+            throw new ModelSchemaException(
+                    "guided-switch turn requires features.guided=true");
         }
 
         // (2) message required when stopping (no calls and no actions). A thought-only turn is a

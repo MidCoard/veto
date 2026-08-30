@@ -35,6 +35,9 @@ public sealed interface ToolDefinition
 
     @NonNull RiskCategory risk();
 
+    /** The effect boundary this tool executes through. Independent from flavour and risk. */
+    @NonNull ToolCapability capability();
+
     @NonNull ParameterSchema parameters();
 
     /**

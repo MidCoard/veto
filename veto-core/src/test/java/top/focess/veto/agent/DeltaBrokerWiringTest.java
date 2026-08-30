@@ -59,7 +59,8 @@ class DeltaBrokerWiringTest {
                 null,
                 new top.focess.veto.sandbox.BackgroundTaskManager(
                         new top.focess.veto.sandbox.SandboxManager(
-                                new top.focess.veto.sandbox.ConstrainedSubprocessSubstrate())));
+                                top.focess.veto.sandbox.TestSandboxFactory
+                                        .uncontainedSubprocesses())));
     }
 
     private static AgentRunner.@NonNull LlmBinding binding(@NonNull String systemPrompt) {

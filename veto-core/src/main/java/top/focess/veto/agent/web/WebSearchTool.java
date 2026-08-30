@@ -8,6 +8,7 @@ import top.focess.veto.agent.mcp.NativeTool;
 import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.SecurityHint;
+import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDoc;
 import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.mcp.ToolSecurity;
@@ -18,10 +19,11 @@ import top.focess.veto.agent.mcp.ToolSecurity;
  * API when configured. Follow up with {@code web_fetch} to read a specific result.
  */
 @Component
-@ToolSecurity(risk = RiskCategory.NETWORK)
+@ToolSecurity(risk = RiskCategory.NETWORK, capability = ToolCapability.NETWORK_EGRESS)
 public final class WebSearchTool implements NativeTool<WebSearchTool.Args> {
 
     private static final int DEFAULT_MAX_RESULTS = 10;
+    private static final int MAX_OUTPUT_CHARS = 64_000;
 
     private final @NonNull SearchProvider provider;
 
@@ -114,7 +116,11 @@ public final class WebSearchTool implements NativeTool<WebSearchTool.Args> {
             if (results.isEmpty()) {
                 return "(no results)";
             }
-            return format(results);
+            List<SearchResult> bounded =
+                    results.size() <= DEFAULT_MAX_RESULTS
+                            ? results
+                            : results.subList(0, DEFAULT_MAX_RESULTS);
+            return format(bounded);
         } catch (IllegalArgumentException e) {
             return error(e.getMessage());
         } catch (Exception e) {
@@ -137,6 +143,12 @@ public final class WebSearchTool implements NativeTool<WebSearchTool.Args> {
         sb.append("Sources:\n");
         for (SearchResult r : results) {
             sb.append("- ").append(r.url()).append('\n');
+        }
+        if (sb.length() > MAX_OUTPUT_CHARS) {
+            return sb.substring(0, MAX_OUTPUT_CHARS)
+                    + "\n[web_search output truncated at "
+                    + MAX_OUTPUT_CHARS
+                    + " chars]";
         }
         return sb.toString();
     }

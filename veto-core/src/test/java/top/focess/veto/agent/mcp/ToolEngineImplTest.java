@@ -4,7 +4,9 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
@@ -13,20 +15,30 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.StreamSupport;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.context.ApplicationContext;
+import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.mcp.tools.GrepSearchTool;
 import top.focess.veto.agent.mcp.tools.ListDirTool;
 import top.focess.veto.agent.mcp.tools.ReplaceFileContentTool;
 import top.focess.veto.agent.mcp.tools.RunCommandTool;
+import top.focess.veto.agent.mcp.tools.RunTaskTool;
+import top.focess.veto.agent.mcp.tools.StopTaskTool;
 import top.focess.veto.agent.mcp.tools.ViewFileTool;
+import top.focess.veto.agent.mcp.tools.ViewTaskTool;
 import top.focess.veto.agent.mcp.tools.WriteToFileTool;
+import top.focess.veto.agent.workspace.PathMode;
+import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.ToolCall;
-import top.focess.veto.sandbox.ConstrainedSubprocessSubstrate;
+import top.focess.veto.sandbox.BackgroundTaskManager;
 import top.focess.veto.sandbox.SandboxManager;
+import top.focess.veto.sandbox.TestSandboxFactory;
 
 /**
  * Validates {@link ToolEngineImpl}: manifest assembly, native dispatch via {@code executeFromJson},
@@ -53,17 +65,59 @@ class ToolEngineImplTest {
                 new ToolEngineImpl(
                         mapper,
                         tools,
-                        new SandboxManager(new ConstrainedSubprocessSubstrate()),
+                        new SandboxManager(TestSandboxFactory.uncontainedSubprocesses()),
                         appCtx);
         engine.init();
         return engine;
     }
+
+    private @NonNull WindowsSandboxFixture newWindowsSandboxFixture() {
+        ObjectMapper mapper =
+                new ObjectMapper()
+                        .registerModule(new JavaTimeModule())
+                        .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+        SandboxManager sandboxes = new SandboxManager(TestSandboxFactory.platformSandbox());
+        BackgroundTaskManager backgroundTasks = new BackgroundTaskManager(sandboxes);
+        List<NativeTool<?>> tools =
+                List.of(
+                        new RunCommandTool(),
+                        new RunTaskTool(backgroundTasks, mapper),
+                        new ViewTaskTool(backgroundTasks, mapper),
+                        new StopTaskTool(backgroundTasks, mapper));
+        ApplicationContext appCtx = mock(ToolDocs.nonNullClass(ApplicationContext.class));
+        when(appCtx.getBeansOfType(AgentTool.class)).thenReturn(Map.of());
+        ToolEngineImpl engine = new ToolEngineImpl(mapper, tools, sandboxes, appCtx);
+        engine.init();
+        return new WindowsSandboxFixture(engine, backgroundTasks, mapper);
+    }
+
+    private record WindowsSandboxFixture(
+            @NonNull ToolEngineImpl engine,
+            @NonNull BackgroundTaskManager backgroundTasks,
+            @NonNull ObjectMapper mapper) {}
 
     private static @NonNull ToolDefinition definition(
             @NonNull ToolEngineImpl engine, @NonNull String toolName) {
         ToolDefinition definition = engine.resolveDefinition(toolName);
         if (definition == null) throw new AssertionError("missing tool definition: " + toolName);
         return definition;
+    }
+
+    private static @NonNull ToolResult executeAuthorized(
+            @NonNull ToolEngineImpl engine,
+            @NonNull ToolCall call,
+            @NonNull ToolDefinition definition,
+            @NonNull Path workspaceRoot) {
+        ToolExecutionPermit permit =
+                ToolExecutionPermit.capture(
+                        call, definition, Workspace.single(workspaceRoot, PathMode.REAL));
+        ToolCallContextHolder.set(
+                new ToolCallContext("test-agent", UUID.randomUUID(), null, null, null, permit));
+        try {
+            return engine.execute(call, definition);
+        } finally {
+            ToolCallContextHolder.clear();
+        }
     }
 
     @Test
@@ -95,12 +149,66 @@ class ToolEngineImplTest {
         Path file = tempDir.resolve("hello.txt");
         Files.writeString(file, "line one\nline two\n");
 
+        ToolDefinition definition = definition(engine, "view_file");
         ToolResult result =
-                engine.execute(
+                executeAuthorized(
+                        engine,
                         new ToolCall("view_file", Map.of("absolutePath", file.toString()), "cid-1"),
-                        definition(engine, "view_file"));
+                        definition,
+                        tempDir);
         assertTrue(result.success());
         assertTrue(result.content().contains("line one"));
+    }
+
+    @Test
+    void filesystemExecutionWithoutGatewayPermitFailsClosed(@TempDir @NonNull Path tempDir)
+            throws Exception {
+        ToolEngineImpl engine = newEngine();
+        Path file = tempDir.resolve("unapproved.txt");
+        Files.writeString(file, "must not be read");
+
+        ToolResult result =
+                engine.execute(
+                        new ToolCall(
+                                "view_file", Map.of("absolutePath", file.toString()), "cid-none"),
+                        definition(engine, "view_file"));
+
+        assertFalse(result.success(), result.content());
+        assertTrue(result.content().contains("authorized execution context"), result.content());
+        assertFalse(result.content().contains("must not be read"), result.content());
+    }
+
+    @Test
+    void filesystemExecutionRejectsArgumentsChangedAfterScreening(@TempDir @NonNull Path tempDir)
+            throws Exception {
+        ToolEngineImpl engine = newEngine();
+        Path approved = tempDir.resolve("approved.txt");
+        Path changed = tempDir.resolve("changed.txt");
+        Files.writeString(approved, "approved content");
+        Files.writeString(changed, "changed content");
+        ToolDefinition definition = definition(engine, "view_file");
+        ToolCall screened =
+                new ToolCall(
+                        "view_file", Map.of("absolutePath", approved.toString()), "cid-screened");
+        ToolExecutionPermit permit =
+                ToolExecutionPermit.capture(
+                        screened, definition, Workspace.single(tempDir, PathMode.REAL));
+        ToolCallContextHolder.set(
+                new ToolCallContext("test-agent", UUID.randomUUID(), null, null, null, permit));
+        try {
+            ToolResult result =
+                    engine.execute(
+                            new ToolCall(
+                                    "view_file",
+                                    Map.of("absolutePath", changed.toString()),
+                                    "cid-changed"),
+                            definition);
+            assertFalse(result.success(), result.content());
+            assertTrue(result.content().contains("do not match the screened"), result.content());
+            assertFalse(result.content().contains("changed content"), result.content());
+        } finally {
+            ToolCallContextHolder.clear();
+        }
     }
 
     @Test
@@ -216,14 +324,109 @@ class ToolEngineImplTest {
         ToolEngineImpl engine = newEngine();
         Files.writeString(tempDir.resolve("visible.txt"), "content");
 
+        ToolDefinition definition = definition(engine, "list_dir");
         ToolResult result =
-                engine.execute(
+                executeAuthorized(
+                        engine,
                         new ToolCall(
                                 "list_dir", Map.of("absolutePath", tempDir.toString()), "cid-list"),
-                        definition(engine, "list_dir"));
+                        definition,
+                        tempDir);
 
         assertTrue(result.success(), result.content());
         assertTrue(result.content().contains("visible.txt"), result.content());
+    }
+
+    @Test
+    void grepSearchAppliesIncludeGlobs(@TempDir @NonNull Path tempDir) throws Exception {
+        ToolEngineImpl engine = newEngine();
+        Files.writeString(tempDir.resolve("Included.java"), "needle\n");
+        Files.writeString(tempDir.resolve("excluded.txt"), "needle\n");
+        ToolDefinition definition = definition(engine, "grep_search");
+
+        ToolResult result =
+                executeAuthorized(
+                        engine,
+                        new ToolCall(
+                                "grep_search",
+                                Map.of(
+                                        "absolutePath",
+                                        tempDir.toString(),
+                                        "query",
+                                        "needle",
+                                        "includes",
+                                        List.of("*.java")),
+                                "cid-grep"),
+                        definition,
+                        tempDir);
+
+        assertTrue(result.success(), result.content());
+        assertTrue(result.content().contains("Included.java"), result.content());
+        assertFalse(result.content().contains("excluded.txt"), result.content());
+    }
+
+    @Test
+    void replaceFileContentIsBoundToTheApprovedLineRange(@TempDir @NonNull Path tempDir)
+            throws Exception {
+        ToolEngineImpl engine = newEngine();
+        Path file = tempDir.resolve("range.txt");
+        Files.writeString(file, "same\nkeep\nsame\n");
+        ToolDefinition definition = definition(engine, "replace_file_content");
+
+        ToolResult result =
+                executeAuthorized(
+                        engine,
+                        new ToolCall(
+                                "replace_file_content",
+                                Map.of(
+                                        "absolutePath",
+                                        file.toString(),
+                                        "startLine",
+                                        3,
+                                        "endLine",
+                                        3,
+                                        "targetContent",
+                                        "same",
+                                        "replacementContent",
+                                        "changed"),
+                                "cid-range"),
+                        definition,
+                        tempDir);
+
+        assertTrue(result.success(), result.content());
+        assertEquals("same\nkeep\nchanged\n", Files.readString(file));
+    }
+
+    @Test
+    void replaceFileContentRefusesTargetOutsideSelectedRange(@TempDir @NonNull Path tempDir)
+            throws Exception {
+        ToolEngineImpl engine = newEngine();
+        Path file = tempDir.resolve("outside.txt");
+        Files.writeString(file, "target\nkeep\n");
+        ToolDefinition definition = definition(engine, "replace_file_content");
+
+        ToolResult result =
+                executeAuthorized(
+                        engine,
+                        new ToolCall(
+                                "replace_file_content",
+                                Map.of(
+                                        "absolutePath",
+                                        file.toString(),
+                                        "startLine",
+                                        2,
+                                        "endLine",
+                                        2,
+                                        "targetContent",
+                                        "target",
+                                        "replacementContent",
+                                        "changed"),
+                                "cid-outside"),
+                        definition,
+                        tempDir);
+
+        assertFalse(result.success(), result.content());
+        assertEquals("target\nkeep\n", Files.readString(file));
     }
 
     @Test
@@ -235,11 +438,14 @@ class ToolEngineImplTest {
         // E:\minecraft\.minecraft\versions).
         Path missing = tempDir.resolve("nonexistent/child");
 
+        ToolDefinition definition = definition(engine, "list_dir");
         ToolResult result =
-                engine.execute(
+                executeAuthorized(
+                        engine,
                         new ToolCall(
                                 "list_dir", Map.of("absolutePath", missing.toString()), "cid-x"),
-                        definition(engine, "list_dir"));
+                        definition,
+                        tempDir);
         assertFalse(
                 result.success(),
                 "a native tool that returns {\"status\":\"error\",...} must surface success=false"
@@ -256,11 +462,14 @@ class ToolEngineImplTest {
         ToolEngineImpl engine = newEngine();
         Path missing = tempDir.resolve("does-not-exist.txt");
 
+        ToolDefinition definition = definition(engine, "view_file");
         ToolResult result =
-                engine.execute(
+                executeAuthorized(
+                        engine,
                         new ToolCall(
                                 "view_file", Map.of("absolutePath", missing.toString()), "cid-y"),
-                        definition(engine, "view_file"));
+                        definition,
+                        tempDir);
         assertFalse(
                 result.success(),
                 "view_file on a missing path must also surface success=false via the same"
@@ -275,28 +484,184 @@ class ToolEngineImplTest {
         String exe =
                 System.getProperty("os.name").toLowerCase().contains("win") ? "java.exe" : "java";
         String javaBin = Path.of(System.getProperty("java.home"), "bin", exe).toString();
-        ToolResult result =
-                engine.execute(
-                        new ToolCall(
-                                "run_command",
-                                Map.of(
-                                        "commands",
-                                        List.of(
-                                                Map.of(
-                                                        "executable",
-                                                        javaBin,
-                                                        "args",
-                                                        List.of("-version"))),
-                                        "cwd",
-                                        tempDir.toString(),
-                                        "connect",
-                                        "STOP_ON_FAILURE",
-                                        "timeout",
-                                        30),
-                                "cid-2"),
-                        definition(engine, "run_command"));
+        ToolCall call =
+                new ToolCall(
+                        "run_command",
+                        Map.of(
+                                "commands",
+                                List.of(Map.of("executable", javaBin, "args", List.of("-version"))),
+                                "cwd",
+                                tempDir.toString(),
+                                "connect",
+                                "STOP_ON_FAILURE",
+                                "timeout",
+                                30),
+                        "cid-2");
+        ToolDefinition definition = definition(engine, "run_command");
+        ToolResult result = executeAuthorized(engine, call, definition, tempDir);
         assertTrue(result.success(), "java -version should exit 0");
         assertNotNull(result.content());
+    }
+
+    @Test
+    @EnabledOnOs(OS.WINDOWS)
+    void agentRunCommandAndRunTaskUseTheProductionWindowsSandbox(@TempDir @NonNull Path tempDir)
+            throws Exception {
+        WindowsSandboxFixture fixture = newWindowsSandboxFixture();
+        try {
+            List<String> probeArgs = List.of("/d", "/c", "echo", "agent-appcontainer-ok");
+            Map<String, Object> command = Map.of("executable", "cmd", "args", probeArgs);
+
+            ToolCall runCommand =
+                    new ToolCall(
+                            "run_command",
+                            Map.of(
+                                    "commands",
+                                    List.of(command),
+                                    "cwd",
+                                    tempDir.toString(),
+                                    "connect",
+                                    "STOP_ON_FAILURE",
+                                    "timeout",
+                                    30),
+                            "agent-runcmd");
+            ToolResult commandResult =
+                    executeAuthorized(
+                            fixture.engine(),
+                            runCommand,
+                            definition(fixture.engine(), "run_command"),
+                            tempDir);
+            assertTrue(commandResult.success(), commandResult.content());
+            assertTrue(
+                    commandResult.content().contains("agent-appcontainer-ok"),
+                    commandResult.content());
+
+            ToolCall runTask =
+                    new ToolCall(
+                            "run_task",
+                            Map.of(
+                                    "commands",
+                                    List.of(command),
+                                    "cwd",
+                                    tempDir.toString(),
+                                    "timeout",
+                                    30),
+                            "agent-runtask");
+            ToolResult started =
+                    executeAuthorized(
+                            fixture.engine(),
+                            runTask,
+                            definition(fixture.engine(), "run_task"),
+                            tempDir);
+            assertTrue(started.success(), started.content());
+            JsonNode startedJson = fixture.mapper().readTree(started.content());
+            assertEquals("started", startedJson.path("status").asText());
+            String taskId = startedJson.path("taskId").asText();
+            assertFalse(taskId.isBlank());
+
+            JsonNode status = null;
+            for (int i = 0; i < 200; i++) {
+                ToolCall viewTask =
+                        new ToolCall(
+                                "view_task",
+                                Map.of("taskId", taskId, "lines", 50),
+                                "agent-viewtask-" + i);
+                ToolResult viewed =
+                        executeAuthorized(
+                                fixture.engine(),
+                                viewTask,
+                                definition(fixture.engine(), "view_task"),
+                                tempDir);
+                assertTrue(viewed.success(), viewed.content());
+                status = fixture.mapper().readTree(viewed.content());
+                if (!status.path("alive").asBoolean(true)) {
+                    break;
+                }
+                Thread.sleep(50);
+            }
+            if (status == null) {
+                throw new AssertionError("view_task returned no status");
+            }
+            assertFalse(status.path("alive").asBoolean(true), status.toString());
+            assertEquals(0, status.path("exitCode").asInt(-1), status.toString());
+            assertTrue(
+                    status.path("recentOutput").asText().contains("agent-appcontainer-ok"),
+                    status.toString());
+
+            ToolCall stopTask =
+                    new ToolCall("stop_task", Map.of("taskId", taskId), "agent-stoptask");
+            ToolResult stopped =
+                    executeAuthorized(
+                            fixture.engine(),
+                            stopTask,
+                            definition(fixture.engine(), "stop_task"),
+                            tempDir);
+            assertTrue(stopped.success(), stopped.content());
+            assertEquals(
+                    "stopped",
+                    fixture.mapper().readTree(stopped.content()).path("status").asText());
+        } finally {
+            fixture.backgroundTasks().stopAll("test-agent");
+            fixture.backgroundTasks().shutdown();
+        }
+    }
+
+    @Test
+    void processExecutionRejectsCommandChangedAfterScreening(@TempDir @NonNull Path tempDir) {
+        ToolEngineImpl engine = newEngine();
+        String executable =
+                Path.of(
+                                System.getProperty("java.home"),
+                                "bin",
+                                System.getProperty("os.name").toLowerCase().contains("win")
+                                        ? "java.exe"
+                                        : "java")
+                        .toString();
+        ToolDefinition definition = definition(engine, "run_command");
+        ToolCall screened =
+                new ToolCall(
+                        "run_command",
+                        Map.of(
+                                "commands",
+                                List.of(
+                                        Map.of(
+                                                "executable",
+                                                executable,
+                                                "args",
+                                                List.of("-version"))),
+                                "cwd",
+                                tempDir.toString(),
+                                "timeout",
+                                30),
+                        "cid-screened-command");
+        ToolExecutionPermit permit =
+                ToolExecutionPermit.capture(
+                        screened, definition, Workspace.single(tempDir, PathMode.REAL));
+        ToolCallContextHolder.set(
+                new ToolCallContext("test-agent", UUID.randomUUID(), null, null, null, permit));
+        try {
+            ToolCall changed =
+                    new ToolCall(
+                            "run_command",
+                            Map.of(
+                                    "commands",
+                                    List.of(
+                                            Map.of(
+                                                    "executable",
+                                                    executable,
+                                                    "args",
+                                                    List.of("-help"))),
+                                    "cwd",
+                                    tempDir.toString(),
+                                    "timeout",
+                                    30),
+                            "cid-changed-command");
+            ToolResult result = engine.execute(changed, definition);
+            assertFalse(result.success(), result.content());
+            assertTrue(result.content().contains("do not match the screened"), result.content());
+        } finally {
+            ToolCallContextHolder.clear();
+        }
     }
 
     @Test
@@ -334,8 +699,10 @@ class ToolEngineImplTest {
                                     StandardCharsets.UTF_8);
                     String result =
                             request.contains("tools/list")
-                                    ? "{\"tools\":[{\"name\":\"lookup_event\",\"description\":\"Look up an event\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"event_id\":{\"type\":\"string\"}},\"required\":[\"event_id\"]}}]}"
-                                    : "{\"content\":[{\"type\":\"text\",\"text\":\"event found\"}],\"isError\":false}";
+                                    ? "{\"tools\":[{\"name\":\"lookup_event\",\"description\":\"Look up an"
+                                            + " event\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"event_id\":{\"type\":\"string\"}},\"required\":[\"event_id\"]}}]}"
+                                    : "{\"content\":[{\"type\":\"text\",\"text\":\"event"
+                                            + " found\"}],\"isError\":false}";
                     byte[] response =
                             ("data: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":" + result + "}\n\n")
                                     .getBytes(StandardCharsets.UTF_8);
@@ -352,10 +719,10 @@ class ToolEngineImplTest {
                     engine.discoverAndRegister(new McpTransport.SseMcpTransport(endpoint, ""));
 
             assertEquals(1, definitions.size());
+            ToolCall call = new ToolCall("lookup_event", Map.of("event_id", "event-1"), "remote-1");
+            ToolDefinition definition = definition(engine, "lookup_event");
             ToolResult result =
-                    engine.execute(
-                            new ToolCall("lookup_event", Map.of("event_id", "event-1"), "remote-1"),
-                            definition(engine, "lookup_event"));
+                    executeAuthorized(engine, call, definition, Path.of(".").toAbsolutePath());
 
             assertTrue(result.success(), result.content());
             assertEquals("event found", result.content());

@@ -94,10 +94,12 @@ public class JpaMemoryStore implements MemoryStore {
     }
 
     @Override
-    public void promote(@NonNull MemoryId id) {
+    public boolean promote(@NonNull MemoryId id, @NonNull UUID userId) {
         MemoryEntity e = repository.findById(id.value().toString()).orElse(null);
-        if (e == null || !MemoryTier.SESSION.name().equals(e.getTier())) {
-            return;
+        if (e == null
+                || !userId.toString().equals(e.getUserId())
+                || !MemoryTier.SESSION.name().equals(e.getTier())) {
+            return false;
         }
         Memory m = MemoryEntity.toMemory(e);
         repository.delete(e);
@@ -113,11 +115,17 @@ public class JpaMemoryStore implements MemoryStore {
                         m.sourceRef(),
                         Instant.now());
         repository.save(new MemoryEntity(promoted));
+        return true;
     }
 
     @Override
-    public void forget(@NonNull MemoryId id) {
-        repository.deleteById(id.value().toString());
+    public boolean forget(@NonNull MemoryId id, @NonNull UUID userId) {
+        MemoryEntity entity = repository.findById(id.value().toString()).orElse(null);
+        if (entity == null || !userId.toString().equals(entity.getUserId())) {
+            return false;
+        }
+        repository.delete(entity);
+        return true;
     }
 
     private static float cosineSimilarity(float @NonNull [] a, float @NonNull [] b) {

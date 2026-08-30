@@ -73,7 +73,8 @@ class AgentEndToEndTest {
                 null,
                 new top.focess.veto.sandbox.BackgroundTaskManager(
                         new top.focess.veto.sandbox.SandboxManager(
-                                new top.focess.veto.sandbox.ConstrainedSubprocessSubstrate())));
+                                top.focess.veto.sandbox.TestSandboxFactory
+                                        .uncontainedSubprocesses())));
     }
 
     private static AgentRunner.@NonNull LlmBinding binding(@NonNull String systemPrompt) {
@@ -151,7 +152,8 @@ class AgentEndToEndTest {
                 null,
                 new top.focess.veto.sandbox.BackgroundTaskManager(
                         new top.focess.veto.sandbox.SandboxManager(
-                                new top.focess.veto.sandbox.ConstrainedSubprocessSubstrate())));
+                                top.focess.veto.sandbox.TestSandboxFactory
+                                        .uncontainedSubprocesses())));
     }
 
     private static @NonNull VetoResponse thoughtOn(String thought, String message) {
@@ -357,7 +359,8 @@ class AgentEndToEndTest {
                         .anyMatch(
                                 t ->
                                         t.type() == TurnType.AGENT_INIT
-                                                && "leader".equals(t.payload().get("content"))),
+                                                && "leader".equals(t.payload().get("role"))
+                                                && t.payload().containsKey("system_prompt")),
                 "AGENT_INIT(leader) was recorded");
         assertTrue(
                 history.stream()
@@ -427,7 +430,8 @@ class AgentEndToEndTest {
                         .anyMatch(
                                 t ->
                                         t.type() == TurnType.AGENT_INIT
-                                                && "standalone".equals(t.payload().get("content"))),
+                                                && "standalone".equals(t.payload().get("role"))
+                                                && t.payload().containsKey("system_prompt")),
                 "AGENT_INIT(standalone) was recorded");
         assertTrue(
                 history.stream()

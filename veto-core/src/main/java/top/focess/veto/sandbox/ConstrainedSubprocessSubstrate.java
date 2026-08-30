@@ -3,14 +3,13 @@ package top.focess.veto.sandbox;
 import static top.focess.veto.util.LogValues.safe;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Stream;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,70 +17,33 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
- * The Veto-implemented local-default substrate — pure OS primitives, no third-party runtime.
+ * The Veto-orchestrated local-default substrate.
  *
- * <p>The substrate specifies the full hard wall — Windows restricted token ({@code
- * CreateRestrictedToken}) + ACL + Job Object; Linux namespaces + {@code pivot_root} + dedicated UID
- * + {@code seccomp} + cgroups. Those require platform-native (JNA/JNI) plumbing and are a
- * deployer-hardening follow-up. This implementation provides the load-bearing security property
- * that is constructively enforceable from pure Java: <b>no shell, ever</b> — each command is exec'd
- * directly as {@code executable + argv[]} via {@link ProcessBuilder}, so there is no string the
- * model can inject {@code ;}/{@code &&}/{@code |}/{@code $}/backticks into (injection impossible by
- * construction, not by filtering), the cwd is locked under the workspace root, the environment is
- * sanitized to an allowlist, and a wall-clock timeout bounds runaway processes. The kernel-level
- * token/namespace/cgroup enforcement is a deployer follow-up.
+ * <p>The implementation constructively provides argv-only execution, a canonical cwd, the host
+ * terminal environment, output capture, and wall-clock timeouts. Windows uses a gated bootstrap
+ * before Job attachment and launches the target in a zero-capability AppContainer; macOS uses a
+ * pre-exec Seatbelt profile; Linux uses Bubblewrap namespaces/mounts followed by an inner {@code
+ * no_new_privs}/seccomp stage. Windows keeps the environment for lookup and lazily projects the
+ * selected executable's containing root into the AppContainer without classifying that program as
+ * trusted; Linux cgroup resource enforcement remains incomplete and must not be inferred from this
+ * class's name.
  */
 @Component
 public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
+
+    private static final int MAX_CAPTURE_BYTES_PER_STREAM = 4 * 1024 * 1024;
+    private static final @NonNull String SANDBOX_TEMP_DIRECTORY = ".veto/sandbox-tmp";
 
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.sandbox.ConstrainedSubprocessSubstrate");
 
     /**
-     * Environment variables passed through to sandboxed processes (the rest are dropped). Kept to
-     * standard, non-secret system + toolchain vars so real CLIs work: node/npm on Windows need
-     * {@code ComSpec}/{@code PATHEXT} to run {@code npm.cmd} and {@code APPDATA}/{@code
-     * LOCALAPPDATA}/{@code ProgramFiles}/{@code USERPROFILE} to resolve the node install and the
-     * project - without them {@code npm run dev} dies immediately (observed: exit 1 in ~9ms). No
-     * credential-bearing vars are on the list.
-     */
-    private static final @NonNull List<String> ENV_ALLOWLIST =
-            List.of(
-                    "PATH",
-                    "HOME",
-                    "USER",
-                    "USERNAME",
-                    "LANG",
-                    "LC_ALL",
-                    "JAVA_HOME",
-                    "SystemRoot",
-                    "SYSTEMROOT",
-                    "TEMP",
-                    "TMP",
-                    // Windows shell + node/npm toolchain resolution.
-                    "ComSpec",
-                    "PATHEXT",
-                    "APPDATA",
-                    "LOCALAPPDATA",
-                    "ProgramFiles",
-                    "ProgramFiles(x86)",
-                    "ProgramData",
-                    "USERPROFILE",
-                    "HOMEDRIVE",
-                    "HOMEPATH",
-                    "SYSTEMDRIVE",
-                    "PUBLIC",
-                    "windir");
-
-    /**
-     * The kernel-level wall (Windows Job Object / Linux cgroup) attached to each spawned process.
-     * Nullable: the no-arg constructor (tests) leaves it null so attach is skipped; Spring injects
-     * the {@link KernelSandboxSubstrate} bean in production so the wall applies to spawned
-     * commands.
+     * The host-OS wall. The no-arg test constructor leaves it null; Spring always injects the
+     * production implementation.
      */
     private final KernelSandboxSubstrate kernelWall;
 
-    /** No-arg constructor (tests): no kernel wall — attach is skipped. */
+    /** Test/local constructor without an OS wall; production construction supplies the wall. */
     public ConstrainedSubprocessSubstrate() {
         this.kernelWall = null;
     }
@@ -96,14 +58,22 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
 
     @Override
     public @NonNull SandboxHandle provision(@NonNull SandboxProfile profile) {
+        if (kernelWall != null && !kernelWall.isAvailable()) {
+            throw new IllegalStateException(
+                    "The configured OS sandbox is unavailable; refusing an unsandboxed session");
+        }
         Path root = profile.workspaceRoot();
         try {
             Files.createDirectories(root);
+            Files.createDirectories(root.resolve(SANDBOX_TEMP_DIRECTORY));
+            if (kernelWall != null) {
+                kernelWall.provisionWorkspace(profile);
+            }
         } catch (IOException e) {
             throw new IllegalStateException("Sandbox workspace root unreachable: " + root, e);
         }
         log.info("Sandbox provisioned (subprocess substrate): workspaceRoot={}", root);
-        return new SandboxHandle("local-" + root.hashCode(), this, root);
+        return new SandboxHandle("local-" + root.hashCode(), this, root, profile);
     }
 
     @Override
@@ -116,17 +86,23 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
         if (cmds.isEmpty()) {
             return new CommandResult(0, "", "", List.of());
         }
+        Duration effectiveTimeout = boundedTimeout(timeout, h.profile().maxWallClock());
         Path workdir = resolveUnderWorkspace(h, cwd);
-        List<ProcessBuilder> builders = new ArrayList<>();
+        List<PreparedProcess> builders = new ArrayList<>();
         for (Command c : cmds) {
-            builders.add(processBuilderFor(c, workdir));
+            builders.add(processBuilderFor(c, workdir, h.profile()));
         }
 
         try {
-            return switch (connect) {
-                case PIPE -> runPipeline(builders, timeout);
-                case RUN_ALL, STOP_ON_FAILURE -> runSequential(builders, connect, timeout);
-            };
+            try {
+                return switch (connect) {
+                    case PIPE -> runPipeline(builders, effectiveTimeout, h.profile());
+                    case RUN_ALL, STOP_ON_FAILURE ->
+                            runSequential(builders, connect, effectiveTimeout, h.profile());
+                };
+            } finally {
+                builders.forEach(PreparedProcess::close);
+            }
         } catch (InterruptedException e) {
             // A genuine interrupt (cancel/shutdown): restore the flag so the loop sees it.
             Thread.currentThread().interrupt();
@@ -142,79 +118,194 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
         }
     }
 
+    private static @NonNull Duration boundedTimeout(
+            @NonNull Duration requested, @NonNull Duration profileMaximum) {
+        if (requested.isZero()
+                || requested.isNegative()
+                || requested.compareTo(profileMaximum) > 0) {
+            return profileMaximum;
+        }
+        return requested;
+    }
+
     @Override
     public @NonNull Process startBackground(
             @NonNull SandboxHandle h, @NonNull Command cmd, @NonNull Path cwd) {
         Path workdir = resolveUnderWorkspace(h, cwd);
-        ProcessBuilder pb = processBuilderFor(cmd, workdir);
+        PreparedProcess prepared = processBuilderFor(cmd, workdir, h.profile());
+        ProcessBuilder pb = prepared.builder();
         // Merge stderr into stdout so a single drain thread captures everything the server logs.
         pb.redirectErrorStream(true);
         try {
             Process p = pb.start();
-            attachKernelWall(p);
+            establishKernelWall(p, prepared, h.profile());
             return p;
         } catch (IOException e) {
+            prepared.close();
             throw new IllegalStateException("Background start failed: " + cmd.executable(), e);
         }
     }
 
-    private @NonNull ProcessBuilder processBuilderFor(@NonNull Command c, @NonNull Path workdir) {
+    private @NonNull PreparedProcess processBuilderFor(
+            @NonNull Command c, @NonNull Path workdir, @NonNull SandboxProfile profile) {
         List<String> command = new ArrayList<>();
-        command.add(resolveExecutable(c.executable()));
-        command.addAll(c.args());
-        ProcessBuilder pb = new ProcessBuilder(command).directory(workdir.toFile());
-        pb.environment().keySet().retainAll(ENV_ALLOWLIST);
+        String executable = resolveExecutable(c.executable(), workdir);
+        if (isWindowsCommandShim(executable)) {
+            validateWindowsCommandShimToken(executable);
+            c.args().forEach(ConstrainedSubprocessSubstrate::validateWindowsCommandShimToken);
+            String commandInterpreter = System.getenv("ComSpec");
+            if (commandInterpreter == null || commandInterpreter.isBlank()) {
+                commandInterpreter = "cmd.exe";
+            }
+            command.add(resolveExecutable(commandInterpreter, workdir));
+            command.add("/d");
+            command.add("/c");
+            command.add("call");
+            command.add(executable);
+            command.addAll(c.args());
+        } else {
+            command.add(executable);
+            command.addAll(c.args());
+        }
+        KernelSandboxSubstrate.PreparedCommand prepared = null;
+        List<String> launchCommand = command;
+        if (kernelWall != null && kernelWall.isAvailable()) {
+            prepared = kernelWall.prepareCommand(command, profile, workdir);
+            launchCommand = prepared.command();
+        }
+        ProcessBuilder pb = new ProcessBuilder(launchCommand).directory(workdir.toFile());
+        configureEnvironment(pb.environment(), profile);
+        return new PreparedProcess(pb, prepared);
+    }
+
+    /**
+     * Preserve the complete host environment so direct executable discovery and toolchain behavior
+     * match the user's normal terminal. Only presentation flags and the sandbox-owned temporary
+     * directory are overridden.
+     */
+    static void configureEnvironment(
+            @NonNull Map<String, String> environment, @NonNull SandboxProfile profile) {
         // Subprocess output is piped, so color-capable CLIs should emit plain text at the
         // source: NO_COLOR is the no-color.org convention (picocolors/chalk/vite/npm honor it),
         // FORCE_COLOR=0 covers tools that only read FORCE_COLOR. AnsiEscapes.strip at the decode
         // seam catches the tools that ignore both.
-        pb.environment().put("NO_COLOR", "1");
-        pb.environment().put("FORCE_COLOR", "0");
-        return pb;
+        String sandboxTemp =
+                profile.workspaceRoot()
+                        .resolve(SANDBOX_TEMP_DIRECTORY)
+                        .toAbsolutePath()
+                        .normalize()
+                        .toString();
+        environment.put("NO_COLOR", "1");
+        environment.put("FORCE_COLOR", "0");
+        environment.put("TMPDIR", sandboxTemp);
+        environment.put("TEMP", sandboxTemp);
+        environment.put("TMP", sandboxTemp);
+    }
+
+    private record PreparedProcess(
+            @NonNull ProcessBuilder builder,
+            KernelSandboxSubstrate.PreparedCommand kernelPreparation)
+            implements AutoCloseable {
+
+        @Override
+        public void close() {
+            if (kernelPreparation != null) {
+                kernelPreparation.close();
+            }
+        }
     }
 
     /**
-     * Resolves a bare executable name against PATH × PATHEXT the way a shell would. Windows process
-     * creation only appends {@code .exe} to a bare name, so extensionless shims like {@code npm}
-     * (really {@code npm.cmd}) fail to launch unless resolved here — that drove the agent to hunt
-     * full paths via {@code cmd.exe}. Names that already carry a path separator or a file extension
-     * pass through untouched (the OS runs them as given). Unresolved bare names also pass through
-     * so the spawn fails with the standard "not found" error for the model to read. Screening is
-     * unaffected: it normalizes the ORIGINAL name (baseName + extension strip) before allowlist
-     * matching.
+     * Resolves a direct executable with the same host environment a normal terminal receives.
+     * Windows searches the working directory and PATH using PATHEXT; Unix searches PATH for an
+     * executable file. No PowerShell, Bash, or other command interpreter is started. Unresolved
+     * names pass through so process creation returns the native not-found error. Screening still
+     * classifies the original name rather than this host-resolved path.
      */
-    private static @NonNull String resolveExecutable(@NonNull String executable) {
+    static @NonNull String resolveExecutable(@NonNull String executable, @NonNull Path workdir) {
         if (executable.indexOf('/') >= 0 || executable.indexOf('\\') >= 0) {
-            return executable; // explicit path — run as given
-        }
-        if (executable.lastIndexOf('.') > 0) {
-            return executable; // already has an extension — let the OS resolve it
+            Path supplied = Path.of(executable);
+            return (supplied.isAbsolute() ? supplied : workdir.resolve(supplied))
+                    .toAbsolutePath()
+                    .normalize()
+                    .toString();
         }
         String path = System.getenv("PATH");
         if (path == null || path.isBlank()) {
             return executable;
         }
-        String pathext = System.getenv("PATHEXT");
-        List<String> extensions =
-                (pathext == null || pathext.isBlank())
-                        ? List.of(".com", ".exe", ".bat", ".cmd")
-                        : java.util.Arrays.stream(pathext.split(";"))
-                                .map(String::trim)
-                                .filter(e -> !e.isEmpty())
-                                .map(String::toLowerCase)
-                                .toList();
-        for (String dir : path.split(java.io.File.pathSeparator)) {
+        boolean windows = System.getProperty("os.name", "").toLowerCase().contains("win");
+        List<String> extensions;
+        if (windows) {
+            String pathext = System.getenv("PATHEXT");
+            extensions =
+                    (pathext == null || pathext.isBlank())
+                            ? List.of(".com", ".exe", ".bat", ".cmd")
+                            : java.util.Arrays.stream(pathext.split(";"))
+                                    .map(String::trim)
+                                    .filter(e -> !e.isEmpty())
+                                    .map(e -> e.toLowerCase(java.util.Locale.ROOT))
+                                    .toList();
+        } else {
+            extensions = List.of("");
+        }
+        List<Path> searchDirectories = new ArrayList<>();
+        if (windows) {
+            searchDirectories.add(workdir);
+        }
+        for (String dir : path.split(java.util.regex.Pattern.quote(java.io.File.pathSeparator))) {
             if (dir.isBlank()) {
                 continue;
             }
-            for (String ext : extensions) {
-                Path candidate = Path.of(dir, executable + ext);
+            searchDirectories.add(Path.of(dir));
+        }
+        String lower = executable.toLowerCase(java.util.Locale.ROOT);
+        boolean hasExecutableExtension = windows && extensions.stream().anyMatch(lower::endsWith);
+        for (Path dir : searchDirectories) {
+            if (hasExecutableExtension) {
+                Path candidate = dir.resolve(executable);
                 if (Files.isRegularFile(candidate)) {
-                    return candidate.toString();
+                    return candidate.toAbsolutePath().normalize().toString();
+                }
+                continue;
+            }
+            for (String ext : extensions) {
+                Path candidate = dir.resolve(executable + ext);
+                if (Files.isRegularFile(candidate) && (windows || Files.isExecutable(candidate))) {
+                    return candidate.toAbsolutePath().normalize().toString();
                 }
             }
         }
         return executable;
+    }
+
+    /** Windows command shims require ComSpec; ordinary executables never use an interpreter. */
+    private static boolean isWindowsCommandShim(@NonNull String executable) {
+        if (!System.getProperty("os.name", "").toLowerCase().contains("win")) {
+            return false;
+        }
+        String lower = executable.toLowerCase(java.util.Locale.ROOT);
+        return lower.endsWith(".cmd") || lower.endsWith(".bat");
+    }
+
+    /** Reject tokens that would escape their argv position when ComSpec interprets a shim call. */
+    static void validateWindowsCommandShimToken(@NonNull String token) {
+        if (token.chars()
+                .anyMatch(
+                        value ->
+                                value == '&'
+                                        || value == '|'
+                                        || value == '<'
+                                        || value == '>'
+                                        || value == '^'
+                                        || value == '%'
+                                        || value == '!'
+                                        || value == '"'
+                                        || value == '\r'
+                                        || value == '\n')) {
+            throw new SecurityException(
+                    "Windows .cmd/.bat arguments cannot contain command-interpreter metacharacters");
+        }
     }
 
     /**
@@ -232,10 +323,21 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
     }
 
     private @NonNull CommandResult runPipeline(
-            @NonNull List<ProcessBuilder> builders, @NonNull Duration timeout)
+            @NonNull List<PreparedProcess> builders,
+            @NonNull Duration timeout,
+            @NonNull SandboxProfile profile)
             throws IOException, InterruptedException {
-        List<Process> pipeline = ProcessBuilder.startPipeline(builders);
-        pipeline.forEach(this::attachKernelWall);
+        List<ProcessBuilder> processBuilders =
+                builders.stream().map(PreparedProcess::builder).toList();
+        List<Process> pipeline = ProcessBuilder.startPipeline(processBuilders);
+        for (int i = 0; i < pipeline.size(); i++) {
+            try {
+                establishKernelWall(pipeline.get(i), builders.get(i), profile);
+            } catch (IOException e) {
+                pipeline.forEach(Process::destroyForcibly);
+                throw e;
+            }
+        }
         Process last = pipeline.get(pipeline.size() - 1);
         CappedWait wait = waitCapped(last, timeout);
         String stdout = wait.stdout();
@@ -250,9 +352,10 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
     }
 
     private @NonNull CommandResult runSequential(
-            @NonNull List<ProcessBuilder> builders,
+            @NonNull List<PreparedProcess> builders,
             @NonNull ChainMode connect,
-            @NonNull Duration timeout)
+            @NonNull Duration timeout,
+            @NonNull SandboxProfile profile)
             throws IOException, InterruptedException {
         StringBuilder stdout = new StringBuilder();
         StringBuilder stderr = new StringBuilder();
@@ -264,15 +367,15 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
                         ? Long.MAX_VALUE
                         : System.nanoTime() + timeout.toNanos();
         boolean capped = !timeout.isZero() && !timeout.isNegative();
-        for (ProcessBuilder pb : builders) {
+        for (PreparedProcess prepared : builders) {
             Duration remaining =
                     capped ? Duration.ofNanos(deadlineNanos - System.nanoTime()) : timeout;
             if (capped && remaining.isNegative()) {
                 codes.add(-1);
                 return timeoutResult(stdout, stderr, codes);
             }
-            Process p = pb.start();
-            attachKernelWall(p);
+            Process p = prepared.builder().start();
+            establishKernelWall(p, prepared, profile);
             CappedWait wait = waitCapped(p, remaining);
             stdout.append(wait.stdout());
             stderr.append(wait.stderr());
@@ -313,8 +416,8 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
         // Raw bytes first, decoded once at the end: a multi-byte character can straddle two read
         // chunks, and the writer population is mixed — console CLIs emit the platform codepage,
         // node/python emit UTF-8 — so {@link SubprocessOutput} sniffs per buffer.
-        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
-        java.io.ByteArrayOutputStream err = new java.io.ByteArrayOutputStream();
+        BoundedByteBuffer out = new BoundedByteBuffer(MAX_CAPTURE_BYTES_PER_STREAM);
+        BoundedByteBuffer err = new BoundedByteBuffer(MAX_CAPTURE_BYTES_PER_STREAM);
         Thread outDrain =
                 Thread.ofVirtual()
                         .name("sandbox-drain-out")
@@ -332,15 +435,19 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
         errDrain.join();
         // Strip ANSI/VT escapes at the decode seam: the agent's context, the persisted history,
         // and the UI ledger all consume this same string, and escape bytes are noise to all three.
-        return new CappedWait(
-                finished,
-                AnsiEscapes.strip(SubprocessOutput.decode(out.toByteArray())),
-                AnsiEscapes.strip(SubprocessOutput.decode(err.toByteArray())));
+        String stdout = AnsiEscapes.strip(SubprocessOutput.decode(out.toByteArray()));
+        String stderr = AnsiEscapes.strip(SubprocessOutput.decode(err.toByteArray()));
+        if (out.truncated()) {
+            stdout += "\n[stdout truncated at " + MAX_CAPTURE_BYTES_PER_STREAM + " bytes]";
+        }
+        if (err.truncated()) {
+            stderr += "\n[stderr truncated at " + MAX_CAPTURE_BYTES_PER_STREAM + " bytes]";
+        }
+        return new CappedWait(finished, stdout, stderr);
     }
 
     /** One writer (the drain thread) per buffer; the main thread reads only after join(). */
-    private static void drain(
-            java.io.@NonNull InputStream in, java.io.@NonNull ByteArrayOutputStream sink) {
+    private static void drain(java.io.@NonNull InputStream in, @NonNull BoundedByteBuffer sink) {
         try {
             byte[] buf = new byte[8192];
             int n;
@@ -353,121 +460,33 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
         }
     }
 
-    /**
-     * Best-effort attach the kernel wall to a spawned process; skipped when no wall is configured.
-     */
-    private void attachKernelWall(@NonNull Process process) {
-        if (kernelWall == null || !kernelWall.isAvailable()) {
+    /** Attach the trusted bootstrap, then release it to start the untrusted target. */
+    private void establishKernelWall(
+            @NonNull Process process,
+            @NonNull PreparedProcess prepared,
+            @NonNull SandboxProfile profile)
+            throws IOException {
+        KernelSandboxSubstrate.PreparedCommand preparation = prepared.kernelPreparation();
+        if (kernelWall == null || preparation == null) {
             return;
         }
         try {
-            kernelWall.attach(process);
-        } catch (Throwable t) {
-            // The wall is best-effort hardening — a failure to attach must not break the run.
-            log.debug(
-                    "ConstrainedSubprocessSubstrate: kernel-wall attach failed: {}",
-                    safe(t.getMessage()));
-        }
-    }
-
-    @Override
-    public byte @NonNull [] readFile(@NonNull SandboxHandle h, @NonNull Path rel) {
-        try {
-            return Files.readAllBytes(resolveUnderWorkspace(h, rel));
-        } catch (IOException e) {
-            throw new IllegalStateException("readFile failed: " + rel, e);
-        }
-    }
-
-    @Override
-    public void writeFile(@NonNull SandboxHandle h, @NonNull Path rel, byte @NonNull [] content) {
-        try {
-            Path resolved = resolveUnderWorkspace(h, rel);
-            Path parent = resolved.getParent();
-            if (parent != null) {
-                Files.createDirectories(parent);
-            }
-            Files.write(resolved, content);
-        } catch (IOException e) {
-            throw new IllegalStateException("writeFile failed: " + rel, e);
-        }
-    }
-
-    @Override
-    public void patchFile(@NonNull SandboxHandle h, @NonNull Path rel, @NonNull PatchSpec patch) {
-        Path resolved = resolveUnderWorkspace(h, rel);
-        try {
-            String content = Files.readString(resolved, StandardCharsets.UTF_8);
-            String updated = content.replace(patch.targetContent(), patch.replacementContent());
-            Files.writeString(resolved, updated, StandardCharsets.UTF_8);
-        } catch (IOException e) {
-            throw new IllegalStateException("patchFile failed: " + rel, e);
-        }
-    }
-
-    @Override
-    public @NonNull List<Entry> listDir(@NonNull SandboxHandle h, @NonNull Path rel) {
-        Path resolved = resolveUnderWorkspace(h, rel);
-        try (Stream<Path> stream = Files.list(resolved)) {
-            return stream.map(
-                            p -> {
-                                Path fileName = p.getFileName();
-                                String name = fileName == null ? p.toString() : fileName.toString();
-                                return new Entry(name, Files.isDirectory(p), sizeOf(p));
-                            })
-                    .sorted()
-                    .toList();
-        } catch (IOException e) {
-            throw new IllegalStateException("listDir failed: " + rel, e);
-        }
-    }
-
-    @Override
-    public @NonNull List<Match> grep(
-            @NonNull SandboxHandle h, @NonNull Path rel, @NonNull GrepSpec spec) {
-        Path resolved = resolveUnderWorkspace(h, rel);
-        List<Match> matches = new ArrayList<>();
-        String query = spec.caseInsensitive() ? spec.query().toLowerCase() : spec.query();
-        try (Stream<Path> files = Files.walk(resolved)) {
-            files.filter(Files::isRegularFile)
-                    .forEach(
-                            file -> {
-                                try (Stream<String> lines =
-                                        Files.lines(file, StandardCharsets.UTF_8)) {
-                                    var lineList = lines.toList();
-                                    for (int i = 0; i < lineList.size(); i++) {
-                                        String line = lineList.get(i);
-                                        String candidate =
-                                                spec.caseInsensitive() ? line.toLowerCase() : line;
-                                        if (candidate.contains(query)) {
-                                            matches.add(new Match(file.toString(), i + 1, line));
-                                        }
-                                    }
-                                } catch (IOException ignored) {
-                                }
-                            });
-        } catch (IOException e) {
-            throw new IllegalStateException("grep failed: " + rel, e);
-        }
-        return matches;
-    }
-
-    @Override
-    public @NonNull Stat stat(@NonNull SandboxHandle h, @NonNull Path rel) {
-        Path resolved = resolveUnderWorkspace(h, rel);
-        boolean exists = Files.exists(resolved);
-        try {
-            return new Stat(
-                    exists,
-                    exists ? Files.size(resolved) : 0L,
-                    exists && Files.isDirectory(resolved));
-        } catch (IOException e) {
-            return new Stat(false, 0L, false);
+            preparation.awaitReady(process);
+            kernelWall.attach(process, profile);
+            preparation.release();
+        } catch (RuntimeException e) {
+            preparation.close();
+            process.destroyForcibly();
+            throw new IOException(
+                    "Kernel sandbox wall could not be established: " + safe(e.getMessage()), e);
         }
     }
 
     @Override
     public void deprovision(@NonNull SandboxHandle h) {
+        if (kernelWall != null) {
+            kernelWall.deprovisionWorkspace(h.profile());
+        }
         log.debug("Sandbox deprovisioned: {}", h.sessionId());
     }
 
@@ -479,13 +498,5 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
             throw new SecurityException("Path escapes sandbox workspace: " + rel);
         }
         return resolved;
-    }
-
-    private static long sizeOf(@NonNull Path p) {
-        try {
-            return Files.size(p);
-        } catch (IOException e) {
-            return -1L;
-        }
     }
 }

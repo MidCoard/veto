@@ -17,6 +17,9 @@ public @interface ToolSecurity {
     /** What kind of danger this tool represents. */
     @NonNull RiskCategory risk();
 
+    /** Which execution boundary owns the tool's effect. */
+    @NonNull ToolCapability capability();
+
     /** Whether this tool always requires semantic screening regardless of risk category. */
     boolean requiresSemanticScreening() default false;
 }

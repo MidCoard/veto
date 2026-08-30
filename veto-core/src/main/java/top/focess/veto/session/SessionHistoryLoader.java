@@ -3,6 +3,7 @@ package top.focess.veto.session;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
@@ -56,10 +57,11 @@ public class SessionHistoryLoader {
         List<TurnRecord> out = new ArrayList<>(rows.size());
         for (TurnRecordEntity row : rows) {
             try {
-                TurnType type =
-                        top.focess.veto.util.Nullness.requireNonNull(
-                                TurnType.valueOf(row.getType()));
                 Map<String, Object> payload = deserializePayload(row.getPayload());
+                TurnType type = canonicalType(row.getType());
+                if ("SYSTEM_PROMPT".equals(row.getType())) {
+                    payload = canonicalAgentInitPayload(payload);
+                }
                 out.add(new TurnRecord(row.getTurnNumber(), type, payload, row.getTimestamp()));
             } catch (Exception e) {
                 // A single bad row must not abort replay of the rest.
@@ -80,5 +82,23 @@ public class SessionHistoryLoader {
         } catch (Exception e) {
             return Map.of();
         }
+    }
+
+    private static @NonNull TurnType canonicalType(@NonNull String storedType) {
+        return switch (storedType) {
+            case "SYSTEM_PROMPT" -> TurnType.AGENT_INIT;
+            case "RECALL" -> TurnType.REWIND;
+            default -> top.focess.veto.util.Nullness.requireNonNull(TurnType.valueOf(storedType));
+        };
+    }
+
+    private static @NonNull Map<String, Object> canonicalAgentInitPayload(
+            @NonNull Map<String, Object> legacy) {
+        Map<String, Object> canonical = new LinkedHashMap<>(legacy);
+        Object content = canonical.remove("content");
+        if (content != null) {
+            canonical.putIfAbsent("system_prompt", content);
+        }
+        return canonical;
     }
 }

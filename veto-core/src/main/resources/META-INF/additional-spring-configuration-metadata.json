@@ -17,6 +17,24 @@
       "type": "java.lang.String",
       "description": "ZeroMQ bind address for the local terminal IPC server.",
       "defaultValue": "tcp://127.0.0.1:5555"
+    },
+    {
+      "name": "veto.webfetch.timeout-seconds",
+      "type": "java.lang.Integer",
+      "description": "HTTP request timeout for web_fetch in seconds.",
+      "defaultValue": 30
+    },
+    {
+      "name": "veto.webfetch.max-chars",
+      "type": "java.lang.Integer",
+      "description": "Maximum rendered characters returned by web_fetch.",
+      "defaultValue": 40000
+    },
+    {
+      "name": "veto.webfetch.allow-private-addresses",
+      "type": "java.lang.Boolean",
+      "description": "Allow web_fetch to contact loopback, link-local, private, or multicast destinations. Keep disabled unless agents must access a trusted intranet.",
+      "defaultValue": false
     }
   ],
   "hints": [

@@ -68,7 +68,8 @@ class AgentRunnerTest {
                 null,
                 new top.focess.veto.sandbox.BackgroundTaskManager(
                         new top.focess.veto.sandbox.SandboxManager(
-                                new top.focess.veto.sandbox.ConstrainedSubprocessSubstrate())));
+                                top.focess.veto.sandbox.TestSandboxFactory
+                                        .uncontainedSubprocesses())));
     }
 
     @Test
@@ -144,6 +145,77 @@ class AgentRunnerTest {
                 "stub-key",
                 LlmOptions.defaults(),
                 systemPrompt);
+    }
+
+    @Test
+    void guidedRequestSwitchesTheFollowingCallToTheActionsSchema() throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        List<VetoRequest> seenRequests = new CopyOnWriteArrayList<>();
+        var guidedActions =
+                mapper.readTree(
+                        """
+                        [
+                          {
+                            "id": "capture",
+                            "label": "Capture the observation",
+                            "type": "tool",
+                            "tool": "missing_tool",
+                            "inputs": {},
+                            "outputs": {"result": "content"}
+                          },
+                          {
+                            "id": "finish",
+                            "label": "Return the result",
+                            "type": "STOP",
+                            "result_binding": "result"
+                          }
+                        ]
+                        """);
+        UniformLLMCaller caller =
+                request -> {
+                    seenRequests.add(request);
+                    if (seenRequests.size() == 1) {
+                        return new VetoResponse(
+                                "I will switch to a deterministic program after this call.",
+                                List.of(
+                                        new top.focess.veto.llm.core.ToolCall(
+                                                "missing_tool", Map.of(), "switch-call")),
+                                null,
+                                new VetoResponse.Features(true),
+                                null);
+                    }
+                    return new VetoResponse(
+                            null,
+                            List.of(),
+                            null,
+                            new VetoResponse.Features(true),
+                            guidedActions);
+                };
+
+        AgentResult result =
+                serviceWith(caller)
+                        .submit(
+                                "guided-schema-switch",
+                                "Use a guided program.",
+                                binding("You are a helpful assistant."),
+                                EPISODE_TIMEOUT);
+
+        assertTrue(result.success(), result.message());
+        assertEquals(2, seenRequests.size(), "guided authoring needs a second model iteration");
+        var autonomousSchema = seenRequests.get(0).responseSchema();
+        if (autonomousSchema == null) {
+            throw new AssertionError("autonomous response schema missing");
+        }
+        var autonomousProperties = autonomousSchema.get("properties");
+        assertTrue(autonomousProperties.has("calls"));
+        assertFalse(autonomousProperties.has("actions"));
+        var guidedSchema = seenRequests.get(1).responseSchema();
+        if (guidedSchema == null) {
+            throw new AssertionError("guided response schema missing");
+        }
+        var guidedProperties = guidedSchema.get("properties");
+        assertFalse(guidedProperties.has("calls"));
+        assertTrue(guidedProperties.has("actions"));
     }
 
     @Test

@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.identity.SystemPromptResolver;
@@ -18,6 +19,8 @@ import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.llm.core.ProviderType;
 import top.focess.veto.llm.core.UniformLLMCaller;
+import top.focess.veto.llm.core.VetoRequest;
+import top.focess.veto.llm.core.VetoResponse;
 
 /**
  * Verifies {@link AgentService#getOrCreateAgent} seeds replayed history on first creation (so a
@@ -102,6 +105,57 @@ class AgentServiceHistorySeedTest {
         assertEquals(5, turnNumber, "seedHistory advances turnNumber to the max replayed turn");
     }
 
+    @Test
+    void restartedAgentReplaysSystemSnapshotWithoutDuplicatingIt() throws Exception {
+        UUID sessionId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        AgentRunner.LlmBinding binding = binding();
+        UniformLLMCaller finishingCaller =
+                request ->
+                        new VetoResponse(
+                                "done", List.of(), "done", new VetoResponse.Features(false), null);
+
+        AgentService beforeRestart = serviceWith(finishingCaller);
+        Agent first =
+                beforeRestart.getOrCreateAgent(sessionId.toString(), binding, List.of(), userId);
+        first.submit("first request");
+        assertTrue(first.await(TIMEOUT).success());
+        List<TurnRecord> replayed = first.history();
+        assertEquals(TurnType.AGENT_INIT, replayed.get(0).type());
+        assertEquals(1, count(replayed, TurnType.AGENT_INIT));
+        first.terminate();
+
+        AtomicReference<VetoRequest> resumedRequest = new AtomicReference<>();
+        AgentService afterRestart =
+                serviceWith(
+                        request -> {
+                            resumedRequest.set(request);
+                            return new VetoResponse(
+                                    "done",
+                                    List.of(),
+                                    "done",
+                                    new VetoResponse.Features(false),
+                                    null);
+                        });
+        Agent resumed =
+                afterRestart.getOrCreateAgent(sessionId.toString(), binding, replayed, userId);
+        resumed.submit("second request");
+        assertTrue(resumed.await(TIMEOUT).success());
+
+        assertEquals(1, count(resumed.history(), TurnType.AGENT_INIT));
+        assertEquals(2, count(resumed.history(), TurnType.USER_PROMPT));
+        VetoRequest request =
+                assertInstanceOf(ToolDocs.nonNullClass(VetoRequest.class), resumedRequest.get());
+        assertEquals("system", request.messages().get(0).role());
+        assertTrue(
+                request.messages().stream()
+                        .anyMatch(message -> "first request".equals(message.content())));
+        assertTrue(
+                request.messages().stream()
+                        .anyMatch(message -> "second request".equals(message.content())));
+        resumed.terminate();
+    }
+
     private static @NonNull AgentService serviceWith(@NonNull UniformLLMCaller caller) {
         ObjectMapper mapper = new ObjectMapper();
         PromptCompiler compiler =
@@ -130,7 +184,8 @@ class AgentServiceHistorySeedTest {
                 new top.focess.veto.memory.TurnLogService(null, mapper),
                 new top.focess.veto.sandbox.BackgroundTaskManager(
                         new top.focess.veto.sandbox.SandboxManager(
-                                new top.focess.veto.sandbox.ConstrainedSubprocessSubstrate())));
+                                top.focess.veto.sandbox.TestSandboxFactory
+                                        .uncontainedSubprocesses())));
     }
 
     private static AgentRunner.@NonNull LlmBinding binding() {
@@ -141,5 +196,9 @@ class AgentServiceHistorySeedTest {
     private static @NonNull Object requireField(Object value) {
         if (value == null) throw new AssertionError("expected reflected field");
         return value;
+    }
+
+    private static long count(@NonNull List<TurnRecord> history, @NonNull TurnType type) {
+        return history.stream().filter(turn -> turn.type() == type).count();
     }
 }

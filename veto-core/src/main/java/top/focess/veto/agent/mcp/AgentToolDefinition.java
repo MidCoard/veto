@@ -21,9 +21,19 @@ import org.jspecify.annotations.NonNull;
 public record AgentToolDefinition(
         @NonNull String name,
         @NonNull String description,
+        @NonNull ToolCapability capability,
         @NonNull Class<?> argsClass,
         @NonNull Map<@NonNull String, @NonNull ParamCategory> paramHints)
         implements ToolDefinition {
+
+    /** Compatibility constructor; new registration supplies the handler's explicit capability. */
+    public AgentToolDefinition(
+            @NonNull String name,
+            @NonNull String description,
+            @NonNull Class<?> argsClass,
+            @NonNull Map<@NonNull String, @NonNull ParamCategory> paramHints) {
+        this(name, description, ToolCapability.AGENT_CONTROL, argsClass, paramHints);
+    }
 
     @Override
     public @NonNull RiskCategory risk() {
@@ -61,7 +71,7 @@ public record AgentToolDefinition(
      * args records whose simple name is just {@code "Args"}.
      */
     public static @NonNull AgentToolDefinition from(@NonNull Class<?> argsClass) {
-        return from(ToolDocs.toolNameOf(argsClass), argsClass);
+        return from(ToolDocs.toolNameOf(argsClass), argsClass, ToolCapability.AGENT_CONTROL);
     }
 
     /**
@@ -71,12 +81,18 @@ public record AgentToolDefinition(
      */
     public static @NonNull AgentToolDefinition from(
             @NonNull String name, @NonNull Class<?> argsClass) {
+        return from(name, argsClass, ToolCapability.AGENT_CONTROL);
+    }
+
+    /** Factory with an explicit name and effect capability supplied by the handler bean. */
+    public static @NonNull AgentToolDefinition from(
+            @NonNull String name, @NonNull Class<?> argsClass, @NonNull ToolCapability capability) {
         ToolDoc doc = ToolDocs.toolDocOf(argsClass);
         String description =
                 (doc != null && !doc.description().isEmpty())
                         ? doc.description()
                         : ToolDocs.firstSentenceOf(doc != null ? doc.usage() : "");
         Map<@NonNull String, @NonNull ParamCategory> hints = ToolSchemaCompiler.hintsOf(argsClass);
-        return new AgentToolDefinition(name, description, argsClass, hints);
+        return new AgentToolDefinition(name, description, capability, argsClass, hints);
     }
 }

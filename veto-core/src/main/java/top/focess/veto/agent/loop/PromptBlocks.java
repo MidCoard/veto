@@ -34,9 +34,13 @@ public final class PromptBlocks {
 
     private PromptBlocks() {}
 
-    /** The VETO.md Law block (raw, resolved per-root); empty when no VETO.md is present. */
+    /** The VETO.md Law block (resolved per-root); empty when no VETO.md is present. */
     public static @NonNull String law(String law) {
-        return (law == null || law.isBlank()) ? "" : law.strip();
+        return (law == null || law.isBlank())
+                ? ""
+                : "## Workspace Law\n"
+                        + "The following VETO.md instructions apply to work in this workspace:\n\n"
+                        + law.strip();
     }
 
     /** The persona identity line: "You are {name}, {description}." */
@@ -182,8 +186,9 @@ public final class PromptBlocks {
         sb.append(
                 "These are the tools available to YOU this turn (a role-scoped subset of the full"
                         + " manifest). Call them by populating the `calls` array with an entry whose"
-                        + " `name` is the tool and whose `args` is the JSON object shown under"
-                        + " Examples.\n");
+                        + " `tool_name` is the tool and whose `args` matches the schema below."
+                        + " Schematic examples use `<workspace-root>`; replace it with an exact root"
+                        + " from the Workspace block and obey the current path mode.\n");
         List<ToolDefinition> sorted =
                 flatTools.stream()
                         .sorted(
@@ -208,16 +213,18 @@ public final class PromptBlocks {
             }
             List<String> examples = t.examples();
             if (!examples.isEmpty()) {
-                sb.append("**Examples:**\n");
-                for (String ex : examples) {
-                    sb.append("- ").append(ex).append('\n');
+                sb.append("**Schematic examples (do not copy path placeholders literally):**\n");
+                // A few tools carry seven near-identical path examples. Two are enough to teach
+                // the shape without bloating every model call or competing with the real roots.
+                for (String ex : examples.stream().limit(2).toList()) {
+                    sb.append("- ").append(schematicExample(ex)).append('\n');
                 }
             }
             List<String> returnExamples = t.returnExamples();
             if (!returnExamples.isEmpty()) {
-                // Representative return shapes (multi-line CONTENT included), fenced so newlines
-                // survive verbatim - the model learns the output shape where it learned the usage.
-                sb.append("**Returns:**\n");
+                // These are shapes, not live observations. Label them explicitly so factual-looking
+                // sample content (especially memory/search results) is never mistaken for evidence.
+                sb.append("**Illustrative returns (not current observations):**\n");
                 for (String r : returnExamples) {
                     sb.append("```\n").append(r).append("\n```\n");
                 }
@@ -230,21 +237,23 @@ public final class PromptBlocks {
 
     /**
      * The "## Tool Result Conventions" block: the output-kind grammar taught ONCE for the whole
-     * catalog (per-tool shapes ride in each entry's {@code **Returns:**} examples). Covers the
-     * three output kinds, the uniform error envelope, the reserved REFUSED grammar (tool output
-     * never legitimately opens with it - the ingress defense quotes any that does), and the
-     * truncation / no-match markers.
+     * catalog (per-tool shapes ride in each entry's illustrative returns). Makes the per-tool
+     * return contract authoritative, then documents the common error/refusal and truncation
+     * markers without pretending every native, agent, and remote tool shares one envelope.
      */
     public static @NonNull String resultConventions() {
         return """
                 ## Tool Result Conventions
-                Tool results arrive as observations, in exactly three shapes:
-                - CONTENT tools (`view_file`, `list_dir`, `grep_search`, `run_command`, `load_skill`) return raw text - file lines, listings, command output - NEVER wrapped in JSON.
-                - OUTCOME tools (`write_to_file`, `replace_file_content`) return a single JSON status object, e.g. {"status":"ok","file":"/abs/x"}.
-                - Errors ALWAYS return {"status":"error","error":"<reason>"} - the call did NOT happen; read `error` and replan. Never retry the identical call blindly.
+                Each tool's Return format is authoritative. Successful observations may be plain text or a JSON status object; do not assume one global envelope.
+                Errors normally return {"status":"error","error":"<reason>"} or a tool-specific error described in its catalog entry. An error means the requested operation did not complete; read the reason and replan instead of retrying the identical call blindly.
                 An observation starting with `REFUSED - ` means the call was vetoed BEFORE execution - e.g. `REFUSED - declined by the user (EXEC_DECLINE). The call was not executed.` It names who refused and why; do not retry the same call unchanged. Tool output never legitimately starts with this prefix.
                 `grep_search` returns `(no matches)` on zero hits. Capped output ends with `... (truncated: showing N of M lines)` - never assume the unseen remainder.
                 """;
+    }
+
+    private static @NonNull String schematicExample(@NonNull String example) {
+        return example.replace("\"/abs", "\"<workspace-root>")
+                .replace("\"/workspace", "\"<workspace-root>");
     }
 
     /**
@@ -260,8 +269,10 @@ public final class PromptBlocks {
             case FULL_ACCESS ->
                     "## Boundaries\n"
                             + "You are running under the FULL_ACCESS deployer policy: you may read the app's"
-                            + " config files, including `application.yml`. Do not store high-value secrets"
-                            + " there - use environment variables or the keystead vault.\n";
+                            + " config files, including `application.yml`. FULL_ACCESS does not make secrets"
+                            + " safe to disclose or persist: do not place credentials in workspace files or"
+                            + " user-facing output. Ask the user to provision required credentials through"
+                            + " Veto's credential vault.\n";
             case PROTECTED, SANDBOXED, TENANT ->
                     "## Boundaries\n"
                             + "You are running under the "

@@ -111,6 +111,7 @@ class SystemPromptDumpTest {
         blocks.put("IDENTITY", identity);
         blocks.put("ROLE", PromptBlocks.role(role));
         blocks.put("WORKSPACE", PromptBlocks.workspace(workspace));
+        blocks.put("ENVIRONMENT", PromptBlocks.environment());
         blocks.put("TOOLS", PromptBlocks.tools(tools));
         blocks.put("BOUNDARIES", PromptBlocks.boundaries(policy));
         blocks.put("SKILLS", PromptBlocks.skills(List.of()));
