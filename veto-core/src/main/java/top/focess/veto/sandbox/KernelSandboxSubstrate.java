@@ -145,7 +145,7 @@ public class KernelSandboxSubstrate {
      * Attach a spawned trusted bootstrap to the kernel process wall and retain the wall until the
      * process exits. Unsupported platforms and attachment failures fail closed.
      */
-    @SuppressWarnings("AutoCloseableResource") // The process-exit callback owns this async handle.
+    @SuppressWarnings("resource") // The process-exit callback owns this async handle.
     public void attach(@NonNull Process process, @NonNull SandboxProfile profile) {
         AutoCloseable handle = attachRequired(process, profile);
         process.onExit()
