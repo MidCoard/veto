@@ -35,7 +35,8 @@ public final class RunCommandTool implements NativeTool<RunCommandTool.Args> {
             @Doc(
                             "Binary name resolved by the sandbox using the operating system's executable lookup rules, e.g. 'gradle'. Not a shell string.")
                     @NonNull String executable,
-            @Doc("argv array. Glob/env expansion is done by Veto, not a shell.")
+            @Doc(
+                            "Literal argv array. Veto and the process launcher do not expand globs or environment variables.")
                     @NonNull List<String> args) {}
 
     @ToolDoc(
@@ -49,7 +50,7 @@ public final class RunCommandTool implements NativeTool<RunCommandTool.Args> {
                     Use `run_command` to execute one or more discrete external programs inside the sandbox - \
                     building the project (`gradle build`), running tests, invoking a code generator, or querying \
                     a tool whose CLI you need. You list each command as a separate `{executable, args}` entry; \
-                    Veto connects them per `connect`. This is the only tool that touches the host process layer.
+                    Veto connects them per `connect`.
 
                     #### When NOT to use
                     - Do not use `run_command` to read or edit files - use `view_file` / `write_to_file` / \
@@ -62,31 +63,32 @@ public final class RunCommandTool implements NativeTool<RunCommandTool.Args> {
                     #### Behavior
                     Each `commands` entry is `{executable, args}` where `executable` is a binary name or path \
                     classified by the Gateway and resolved by the sandbox, and `args` is an argv array of \
-                    literal strings - no shell, no shell-driven glob/env expansion (Veto performs any expansion \
-                    itself). Execution does NOT run in the host JVM: ToolEngine special-cases `run_command` and \
-                    routes it through the session's SandboxSubstrate - direct argv[] exec, cwd locked to `cwd`, \
-                    no shell, Veto-controlled chaining. The `connect` mode decides how entries relate: \
+                    literal strings; neither Veto nor a shell expands globs or environment variables. ToolEngine \
+                    routes execution through the session's SandboxSubstrate with a fixed `cwd` and \
+                    Veto-controlled chaining. Ordinary executables use direct argv execution. On Windows, \
+                    `.cmd`/`.bat` launchers use a restricted `ComSpec` bridge because CreateProcess cannot execute \
+                    those formats directly; interpreter metacharacters are rejected. The `connect` mode decides \
+                    how entries relate: \
                     `STOP_ON_FAILURE` (default) runs them in order and halts at the first non-zero exit; `RUN_ALL` \
                     runs every entry regardless of failures; `PIPE` feeds one entry's stdout into the next \
-                    entry's stdin. `timeout` (seconds, REQUIRED; 0 = sandbox-profile maximum) bounds the blocking wait - a \
+                    entry's stdin. `timeout` in seconds (0 = sandbox-profile maximum) bounds the blocking wait - a \
                     timed-out chain is forcibly killed and the result carries `[timeout]`. For a long-running \
                     server that never exits (e.g. `npm run dev`), use `run_task` instead so the call does not \
                     block the turn.
 
                     #### Return format
                     Plain text containing stdout, followed by a `[stderr]` section when stderr is present. \
-                    A non-zero overall status appends `(exit code: N)` and marks the tool result as failed. \
-                    Timeout output contains `[timeout]`.
+                    A non-zero final command/stage status appends `(exit code: N)` and marks the tool result as \
+                    failed. `RUN_ALL` and `PIPE` use the last command/stage as the overall status. Timeout output \
+                    contains `[timeout]` and exit code -1. A successful command with no output returns empty text.
 
                     #### Errors & edge cases
-                    - A blacklisted executable/pattern is refused. A non-listed executable is classified \
-                    dangerous and requires the applicable approval; the list is not an executor allowlist.
-                    - `cwd` outside an allowed root -> the Gateway blocks the call.
-                    - A command exits non-zero under `STOP_ON_FAILURE` -> the chain halts; later entries do not \
-                    run.
-                    - `connect` omitted -> defaults to `STOP_ON_FAILURE`.
-                    - argv entries are literal; a `*` or `$HOME` in an arg is passed through verbatim unless Veto \
-                    expands it - do not rely on shell semantics.
+                    - A policy refusal means no process started. Revise the request or obtain the applicable \
+                    approval; do not retry the unchanged call.
+                    - `cwd` must resolve under an allowed workspace root.
+                    - A negative `timeout` or an empty supplied `commands` array is rejected before a process starts.
+                    - If an executable cannot be resolved or is not installed, select the project's wrapper or \
+                    an observed executable path rather than guessing repeatedly.
 
                     #### Security
                     `commands` carries SHELL_COMMAND and `cwd` carries FILESYSTEM_PATH: both are screened by the \
@@ -125,9 +127,8 @@ public final class RunCommandTool implements NativeTool<RunCommandTool.Args> {
                     Boolean network,
             @NonNull
                     @Doc(
-                            "Timeout in seconds. REQUIRED - 0 selects the sandbox-profile maximum; larger"
-                                    + " values are capped by that maximum. For run_command this bounds the blocking"
-                                    + " wait; for run_task it bounds the background task's lifetime.")
+                            "Timeout in seconds. 0 selects the sandbox-profile maximum; larger values are capped"
+                                    + " by that maximum.")
                     Integer timeout) {
 
         /** Compatibility constructor for callers that accept the default deny-network posture. */

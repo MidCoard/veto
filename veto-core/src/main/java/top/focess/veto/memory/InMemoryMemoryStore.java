@@ -106,10 +106,10 @@ public class InMemoryMemoryStore implements MemoryStore {
     }
 
     @Override
-    public boolean promote(@NonNull MemoryId id, @NonNull UUID userId) {
+    public MemoryId promote(@NonNull MemoryId id, @NonNull UUID userId) {
         Memory m = store.get(id);
         if (m == null || !m.userId().equals(userId) || m.tier() != MemoryTier.SESSION) {
-            return false;
+            return null;
         }
         Memory promoted =
                 new Memory(
@@ -124,7 +124,7 @@ public class InMemoryMemoryStore implements MemoryStore {
                         Instant.now());
         store.remove(id);
         store.put(promoted.id(), promoted);
-        return true;
+        return promoted.id();
     }
 
     @Override

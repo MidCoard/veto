@@ -41,7 +41,7 @@ public final class GrepSearchTool implements NativeTool<GrepSearchTool.Args> {
             usage =
                     """
                     #### When to use
-                    Use `grep_search` to locate every occurrence of an exact text pattern across a tree of files \
+                    Use `grep_search` to locate occurrences of an exact text pattern across a tree of files \
                     - finding where a symbol is referenced, tracking down a `TODO`/`FIXME` marker, finding the \
                     definition site of a function, or enumerating every call site before a refactor. It is the \
                     primary tool for "where is X mentioned in the codebase?".
@@ -64,26 +64,28 @@ public final class GrepSearchTool implements NativeTool<GrepSearchTool.Args> {
                     test, so casing in either is ignored. `includes`, when given, restricts the walk to files \
                     whose root-relative path or basename matches one of the glob filters.
 
-                    Binary or non-UTF-8 files are skipped when they cannot be decoded. Directory symbolic links \
-                    are not followed. At most 10000 files, 2000 matches, and 1000000 output characters are \
-                    processed; a truncation marker means the result is incomplete.
+                    Files that cannot be read completely as UTF-8 are skipped without aborting the whole search. \
+                    Directory symbolic links are not followed. Regular-file symbolic links are read like their \
+                    targets, subject to the authorized filesystem boundary. At most 10000 files, 2000 matches, \
+                    and 1000000 output characters are processed; a truncation marker means the result is incomplete.
 
                     #### Return format
                     - Success: one match per line as \
                     `<file>:<lineNumber>: <line text>` (1-indexed). No hits returns `(no matches)`; \
                     bounded results end with `[truncated: ...]`.
-                    - Missing path (failure): \
+                    - Supplied target does not exist (failure): \
                     `Path not found: <path>`.
                     - Invalid `includes` glob (failure): \
                     `Invalid includes glob`.
 
                     #### Errors & edge cases
-                    - `absolutePath` does not exist -> `Path not found: <path>` as a failed result.
                     - `absolutePath` is a file rather than a directory -> it is still walked; that single file is \
                     searched.
                     - An empty `query` matches every line of every file (the empty substring is in every string) - \
                     avoid passing an empty query.
                     - Very large trees are truncated; narrow with `includes` or scope `absolutePath` tighter.
+                    - A traversal/read failure can make the result incomplete even when no truncation marker is \
+                    available; retry with a narrower path when completeness matters.
                     - `caseInsensitive` and `includes` are optional; omit them for a plain case-sensitive search \
                     of all files.
 

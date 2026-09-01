@@ -65,7 +65,8 @@ public class DuckDuckGoSearchProvider implements SearchProvider {
                 httpClient.send(request, HttpResponse.BodyHandlers.ofString());
         if (response.statusCode() != 200) {
             log.warn("DuckDuckGo search returned HTTP {}", response.statusCode());
-            return List.of();
+            throw new IllegalStateException(
+                    "DuckDuckGo search failed: HTTP " + response.statusCode());
         }
         List<SearchResult> results = parse(response.body());
         results = applyDomainFilters(results, options);

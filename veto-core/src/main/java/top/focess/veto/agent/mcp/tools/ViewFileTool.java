@@ -1,8 +1,10 @@
 package top.focess.veto.agent.mcp.tools;
 
 import java.io.IOException;
+import java.nio.charset.MalformedInputException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
@@ -46,8 +48,7 @@ public final class ViewFileTool implements NativeTool<ViewFileTool.Args> {
                     #### When NOT to use
                     - Do not use `view_file` to search for a pattern across many files - use `grep_search`.
                     - Do not use it to discover what files exist - use `list_dir`.
-                    - Do not use it on binary or non-text files; it decodes as UTF-8 and large binaries will \
-                    flood your context.
+                    - Do not use it on binary or non-text files; it accepts UTF-8 text only.
                     - Do not use it to create or modify a file - it is strictly read-only.
 
                     #### Behavior
@@ -55,28 +56,28 @@ public final class ViewFileTool implements NativeTool<ViewFileTool.Args> {
                     and `endLine` are 1-indexed and inclusive. When `startLine` is omitted, reading starts at \
                     line 1; when `endLine` is omitted, it runs to the last line. Ranges are clamped: `startLine` \
                     is floored at 1, `endLine` is capped at the file's line count. Passing neither returns the \
-                    whole file.
+                    whole file. The implementation reads the complete file before applying the requested range. \
+                    Output is capped at 5000 lines or 1000000 characters and then ends with \
+                    `[truncated; request a narrower line range]`.
 
                     #### Return format
                     - Success: one output line per source line as \
                     `<lineNumber>: <line text>` (1-indexed). An empty range yields no lines.
-                    - Missing or non-regular path (failure): \
+                    - Supplied path does not exist or is not a regular file (failure): \
                     `Not a regular file: <path>`.
                     - Oversized file (failure): \
                     `File exceeds 16777216 bytes; request a smaller artifact`.
+                    - Invalid path syntax (failure): `Invalid path: <path>`.
+                    - Invalid UTF-8 (failure): `File is not valid UTF-8: <path>`.
+                    - Read failure (failure): `Cannot read file: <path>`.
 
                     #### Errors & edge cases
-                    - `absolutePath` does not exist or is not a regular file -> \
-                    `Not a regular file: <path>` as a failed result. **This is the canonical
-                    signal that the path you constructed does not exist as a file.** The right response
-                    is NOT to retry with a similar guess - return to your last successful `list_dir`
-                    observation of the parent directory and reconstruct the absolute path from the
-                    actual file names you saw there. The most common cause is dropping or duplicating
-                    a parent segment.
+                    - After a path rejection, do not retry a similar guess. Return to the last successful \
+                    parent listing and reconstruct the absolute path from observed file names.
                     - `startLine` greater than the file length -> no output (range clamped to empty).
                     - `endLine` less than `startLine` -> no output.
                     - Directories, device files, and sockets are rejected as "not a regular file".
-                    - Very large files: scope with `startLine`/`endLine` rather than reading the whole file.
+                    - A line range narrows returned content but does not bypass the 16 MiB input limit.
 
                     #### Security
                     `absolutePath` is a FILESYSTEM_PATH parameter: the Gateway screens it against the deployer \
@@ -120,17 +121,29 @@ public final class ViewFileTool implements NativeTool<ViewFileTool.Args> {
 
     @Override
     public @NonNull String execute(@NonNull Args args) throws IOException {
-        Path path = Path.of(args.absolutePath());
+        Path path;
+        try {
+            path = Path.of(args.absolutePath());
+        } catch (InvalidPathException e) {
+            return ToolErrors.failure("Invalid path: " + args.absolutePath());
+        }
         if (!Files.isRegularFile(path)) {
             return ToolErrors.failure("Not a regular file: " + args.absolutePath());
         }
-        if (Files.size(path) > MAX_FILE_BYTES) {
-            return ToolErrors.failure("File exceeds 16777216 bytes; request a smaller artifact");
+        try {
+            if (Files.size(path) > MAX_FILE_BYTES) {
+                return ToolErrors.failure(
+                        "File exceeds 16777216 bytes; request a smaller artifact");
+            }
+            List<String> lines = Files.readAllLines(path, StandardCharsets.UTF_8);
+            int from = args.startLine() == null ? 1 : Math.max(1, args.startLine());
+            int to = args.endLine() == null ? lines.size() : Math.min(lines.size(), args.endLine());
+            return renderLines(lines, from, to);
+        } catch (MalformedInputException e) {
+            return ToolErrors.failure("File is not valid UTF-8: " + args.absolutePath());
+        } catch (IOException e) {
+            return ToolErrors.failure("Cannot read file: " + args.absolutePath());
         }
-        List<String> lines = Files.readAllLines(path, StandardCharsets.UTF_8);
-        int from = args.startLine() == null ? 1 : Math.max(1, args.startLine());
-        int to = args.endLine() == null ? lines.size() : Math.min(lines.size(), args.endLine());
-        return renderLines(lines, from, to);
     }
 
     private static @NonNull String renderLines(

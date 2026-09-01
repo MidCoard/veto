@@ -126,10 +126,10 @@ public class VectorIndexMemoryStore implements MemoryStore {
     }
 
     @Override
-    public boolean promote(@NonNull MemoryId id, @NonNull UUID userId) {
+    public MemoryId promote(@NonNull MemoryId id, @NonNull UUID userId) {
         Memory m = store.get(idOf(id));
         if (m == null || !m.userId().equals(userId) || m.tier() != MemoryTier.SESSION) {
-            return false;
+            return null;
         }
         Memory promoted =
                 new Memory(
@@ -146,7 +146,7 @@ public class VectorIndexMemoryStore implements MemoryStore {
         index.remove(idOf(id));
         store.put(idOf(promoted.id()), promoted);
         index.insert(idOf(promoted.id()), promoted.embedding());
-        return true;
+        return promoted.id();
     }
 
     @Override

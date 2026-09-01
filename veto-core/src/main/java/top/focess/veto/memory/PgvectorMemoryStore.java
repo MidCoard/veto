@@ -16,6 +16,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.memory.embedder.Embedder;
 
@@ -191,15 +192,16 @@ public class PgvectorMemoryStore implements MemoryStore {
     }
 
     @Override
-    public boolean promote(@NonNull MemoryId id, @NonNull UUID userId) {
+    @Transactional
+    public MemoryId promote(@NonNull MemoryId id, @NonNull UUID userId) {
         // Session → Cross-Session: strip sessionId, bump tier. (Re-inserts with a fresh id to
         // preserve the curating boundary, like the other backends.)
         Memory m = findById(id);
         if (m == null || !m.userId().equals(userId) || m.tier() != MemoryTier.SESSION) {
-            return false;
+            return null;
         }
         if (!forget(id, userId)) {
-            return false;
+            return null;
         }
         Memory promoted =
                 new Memory(
@@ -213,7 +215,7 @@ public class PgvectorMemoryStore implements MemoryStore {
                         m.sourceRef(),
                         Instant.now());
         add(promoted);
-        return true;
+        return promoted.id();
     }
 
     @Override

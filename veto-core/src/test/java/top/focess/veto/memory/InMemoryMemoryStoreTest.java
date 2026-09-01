@@ -88,7 +88,8 @@ class InMemoryMemoryStoreTest {
     void promoteStripsSessionId() {
         @NonNull MemoryId id =
                 store.add(buildMemory("a session-private insight", MemoryTier.SESSION));
-        assertTrue(store.promote(id, alice));
+        MemoryId promotedId = store.promote(id, alice);
+        assertTrue(promotedId != null);
         assertEquals(1, store.size(), "After promote, exactly one memory remains");
         // Verify the surviving memory is CROSS_SESSION tier with sessionId stripped.
         for (Memory candidate : requireSnapshot(store.snapshot()).values()) {
@@ -110,7 +111,7 @@ class InMemoryMemoryStoreTest {
     void anotherUserCannotPromoteMemory() {
         @NonNull MemoryId id = store.add(buildMemory("alice session insight", MemoryTier.SESSION));
 
-        assertFalse(store.promote(id, bob));
+        assertNull(store.promote(id, bob));
         Memory memory = requireSnapshot(store.snapshot()).get(id);
         if (memory == null) {
             throw new AssertionError("memory must remain");

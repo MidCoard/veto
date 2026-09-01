@@ -228,9 +228,9 @@ public final class PromptBlocks {
                                             .append(format.description())
                                             .append(".\n"));
             Map<String, String> usage = usageSections(t.longDescription());
+            appendUsageSection(sb, usage, "Behavior", "Behavior");
             appendUsageSection(sb, usage, "When to use", "When to use");
             appendUsageSection(sb, usage, "When NOT to use", "When not to use");
-            appendUsageSection(sb, usage, "Behavior", "Behavior");
             List<String> examples = t.examples();
             if (!examples.isEmpty()) {
                 sb.append("#### Call examples\n");
@@ -241,10 +241,7 @@ public final class PromptBlocks {
             appendUsageSection(sb, usage, "Return format", "Result contract");
             List<String> returnExamples = t.returnExamples();
             if (!returnExamples.isEmpty()) {
-                // These are shapes, not live observations. Label them explicitly so factual-looking
-                // sample content (especially memory/search results) is never mistaken for evidence.
                 sb.append("#### Result examples\n");
-                sb.append("Illustrative result, not a current observation.\n");
                 String result = returnExamples.getFirst();
                 sb.append("```")
                         .append(resultFenceLanguage(result))

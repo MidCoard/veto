@@ -672,7 +672,7 @@ class ToolEngineImplTest {
                             tempDir);
             assertTrue(stopped.success(), stopped.content());
             assertEquals(
-                    "stopped",
+                    "already_exited",
                     fixture.mapper().readTree(stopped.content()).path("status").asText());
         } finally {
             fixture.backgroundTasks().stopAll("test-agent");

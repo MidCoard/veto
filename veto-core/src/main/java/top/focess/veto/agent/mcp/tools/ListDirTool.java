@@ -58,23 +58,19 @@ public final class ListDirTool implements NativeTool<ListDirTool.Args> {
                     #### Return format
                     - Success: one sorted entry per line. Directory \
                     entries end with `/`; file entries do not. An empty directory yields no lines.
-                    - Missing or non-directory path (failure): \
+                    - Supplied path does not exist or is not a directory (failure): \
                     `Not a directory: <path>`.
+                    - Directory cannot be opened or enumerated (failure): \
+                    `Cannot list directory: <path>`.
 
                     #### Errors & edge cases
-                    - `absolutePath` does not exist or is not a directory -> \
-                    `Not a directory: <path>` as a failed result. **This is the canonical
-                    signal that the path you constructed does not exist.** The right response is NOT
-                    to retry with a similar guess - return to your last successful `list_dir`
-                    observation and reconstruct the absolute path from the actual subdirectory names
-                    you saw there. The most common cause is dropping a parent segment (e.g. listing
-                    `project/sub/config/` under `/abs/project`, then trying `/abs/project/config`
-                    instead of `/abs/project/sub/config`).
-                    - Passing a file path -> same "Not a directory" error; use `view_file` instead.
+                    - After a path rejection, do not retry a similar guess. Return to the last \
+                    successful parent listing and reconstruct the path from observed child names. A common \
+                    mistake is dropping a parent segment. If the intended target is a file, use `view_file`.
                     - At most 5000 entries are returned. A truncation marker means the directory must be
                     narrowed before relying on the listing as complete.
-                    - Permissions gaps may hide entries the process cannot read; the tool lists what the
-                    filesystem exposes.
+                    - A directory access or iteration failure rejects the listing; it is not returned as a \
+                    partial success.
 
                     #### Security
                     `absolutePath` is a FILESYSTEM_PATH parameter: the Gateway screens it against the deployer \
@@ -92,7 +88,7 @@ public final class ListDirTool implements NativeTool<ListDirTool.Args> {
                 "{\"absolutePath\": \"/abs/src/util\"}",
                 "{\"absolutePath\": \"/abs/notes\"}"
             },
-            returnExamples = {"src/\nbuild.gradle.kts\nREADME.md"})
+            returnExamples = {"README.md\nbuild.gradle.kts\nsrc/"})
     public record Args(
             @SecurityHint(ParamCategory.FILESYSTEM_PATH) @Doc("Absolute path to list contents of.")
                     @NonNull String absolutePath) {}

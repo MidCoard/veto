@@ -214,10 +214,15 @@ class PromptCompileRenderTest {
                 "#### Result formats",
                 "args are declared before result formats");
         assertBefore(
-                block, "#### Result formats", "#### When to use", "results precede usage details");
+                block, "#### Result formats", "#### Behavior", "result formats precede behavior");
+        assertBefore(
+                block, "#### Behavior", "#### When to use", "behavior precedes usage guidance");
         assertBefore(block, "#### When to use", "#### When not to use", "usage order");
-        assertBefore(block, "#### When not to use", "#### Behavior", "behavior follows intent");
-        assertBefore(block, "#### Behavior", "#### Call examples", "examples follow behavior");
+        assertBefore(
+                block,
+                "#### When not to use",
+                "#### Call examples",
+                "examples follow usage guidance");
         assertBefore(
                 block,
                 "#### Call examples",
@@ -234,7 +239,7 @@ class PromptCompileRenderTest {
                 "#### Errors and edge cases",
                 "edge-case guidance follows success examples");
         assertFalse(block.contains("#### Security"), block);
-        assertTrue(block.contains("Illustrative result, not a current observation."));
+        assertFalse(block.contains("Example output only; no tool call was made."));
         assertTrue(block.contains("```json\n{\"absolutePath\":"));
         assertTrue(block.contains("```text\n1: class Main {}"));
         assertTrue(block.contains("<workspace-root>"));
@@ -281,8 +286,9 @@ class PromptCompileRenderTest {
         int examplesStart = block.indexOf("#### Result examples");
         String contract = block.substring(contractStart, examplesStart);
 
-        assertTrue(contract.contains("Success -> `forgotten`"));
+        assertTrue(contract.contains("Success -> `forgotten: <memoryId>`"));
         assertTrue(contract.contains("memory not found or not owned; nothing forgotten"));
+        assertFalse(contract.contains("Missing `memoryId`"));
         assertFalse(contract.contains("invalid memoryId"));
         assertFalse(contract.contains("error-special-plaintext"));
     }

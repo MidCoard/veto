@@ -59,28 +59,29 @@ public final class StopTaskTool implements NativeTool<StopTaskTool.Args> {
                     to inspect).
 
                     #### Behavior
-                    Stops the task's process and waits up to five seconds for its final status. It records the exit with \
-                    the cause AGENT_STOP - the exit notice you receive later says you stopped it, \
-                    so a stop never looks like a crash. Idempotent: stopping a task that already \
-                    exited just reports its final status without error. The task stays in the \
+                    Requests a force-stop of the task's direct process and waits up to five seconds \
+                    for its final status. A completed stop is recorded with cause AGENT_STOP. \
+                    Idempotent: stopping a task that already exited reports `already_exited` and its \
+                    final status without error. The task stays in the \
                     registry (queryable via `view_task`) so you can still read its final output.
 
                     #### Return format
-                    - Success: `status`, `taskId`, `alive`, and `exitCode` once the process exits.
+                    - Success: `status`, `taskId`, `alive`, and optional `exitCode`. `status` is \
+                    `stopped`, `stop_requested` when still alive after the wait, or `already_exited`.
                     - Unknown task (failure): \
                     `task not found: <taskId>`.
 
                     #### Errors & edge cases
-                    - Unknown `taskId` -> `task not found: ...`.
-                    - Already-exited task -> still returns `stopped` with its final exit code.
+                    - If the process does not exit within the five-second wait, the returned status may still \
+                    be alive; inspect it with `view_task` before assuming termination completed.
 
                     #### Security
-                    Agent tool (`RiskCategory.AGENT`). Scoped to the calling agent - you can only \
-                    stop your own tasks. Prefer this over any OS-level kill.
+                    Native task-control tool (`RiskCategory.AGENT`). Scoped to the calling agent - \
+                    you can only stop your own tasks. Prefer this over any OS-level kill.
                     """,
             examples = {"{\"taskId\": \"bg-3\"}"},
             returnExamples = {
-                "{\"status\": \"stopped\", \"taskId\": \"bg-3\", \"alive\": false, \"exitCode\": -1}"
+                "{\"status\": \"stopped\", \"taskId\": \"bg-3\", \"alive\": false, \"exitCode\": 1}"
             })
     public record Args(@NonNull @Doc("The task id (from run_task).") String taskId) {}
 
@@ -104,6 +105,12 @@ public final class StopTaskTool implements NativeTool<StopTaskTool.Args> {
     @Override
     public @NonNull String execute(@NonNull Args args) {
         String agentId = currentAgentId();
+        Optional<BackgroundTaskManager.TaskInfo> before =
+                taskManager.status(agentId, args.taskId());
+        if (before.isEmpty()) {
+            return error("task not found: " + args.taskId());
+        }
+        boolean wasAlive = before.get().alive();
         Optional<BackgroundTaskManager.TaskInfo> info =
                 taskManager.stop(
                         agentId, args.taskId(), BackgroundTaskManager.ExitCause.AGENT_STOP);
@@ -112,7 +119,11 @@ public final class StopTaskTool implements NativeTool<StopTaskTool.Args> {
         }
         try {
             Map<String, Object> envelope = new LinkedHashMap<>();
-            envelope.put("status", "stopped");
+            String status =
+                    info.get().alive()
+                            ? "stop_requested"
+                            : (wasAlive ? "stopped" : "already_exited");
+            envelope.put("status", status);
             envelope.put("taskId", info.get().taskId());
             envelope.put("alive", info.get().alive());
             Integer exitCode = info.get().exitCode();

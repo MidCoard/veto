@@ -8,6 +8,7 @@ import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.memory.embedder.Embedder;
 
@@ -94,12 +95,13 @@ public class JpaMemoryStore implements MemoryStore {
     }
 
     @Override
-    public boolean promote(@NonNull MemoryId id, @NonNull UUID userId) {
+    @Transactional
+    public MemoryId promote(@NonNull MemoryId id, @NonNull UUID userId) {
         MemoryEntity e = repository.findById(id.value().toString()).orElse(null);
         if (e == null
                 || !userId.toString().equals(e.getUserId())
                 || !MemoryTier.SESSION.name().equals(e.getTier())) {
-            return false;
+            return null;
         }
         Memory m = MemoryEntity.toMemory(e);
         repository.delete(e);
@@ -115,7 +117,7 @@ public class JpaMemoryStore implements MemoryStore {
                         m.sourceRef(),
                         Instant.now());
         repository.save(new MemoryEntity(promoted));
-        return true;
+        return promoted.id();
     }
 
     @Override

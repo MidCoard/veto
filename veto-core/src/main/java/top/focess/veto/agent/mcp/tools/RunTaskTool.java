@@ -60,8 +60,8 @@ public final class RunTaskTool implements NativeTool<RunTaskTool.Args> {
             usage =
                     """
                     #### When to use
-                    Use `run_task` for a process that never exits on its own and that you want \
-                    running while you keep working - a dev server (`npm run dev`), a file watcher, \
+                    Use `run_task` for a long-running process that you want running while you keep \
+                    working - a dev server (`npm run dev`), a file watcher, \
                     a long build you will check later. The call returns at once with a `taskId`; \
                     the process survives across turns and its output is captured for you.
 
@@ -75,21 +75,24 @@ public final class RunTaskTool implements NativeTool<RunTaskTool.Args> {
                     it keeps the task registry consistent.
 
                     #### Behavior
-                    Starts the single `commands[0]` entry detached via the sandbox substrate (no \
-                    shell, argv[] direct exec, cwd locked to `cwd`) and returns immediately. Output \
-                    (stdout+stderr merged) is drained into a ring buffer you can read via \
-                    `view_task`. `timeout` (seconds, REQUIRED; 0 = sandbox-profile maximum) bounds the task's total \
+                    Starts the single `commands[0]` entry through the sandbox substrate and returns \
+                    immediately. Ordinary executables use direct argv execution; Windows `.cmd`/`.bat` \
+                    launchers use the restricted `ComSpec` bridge. Output (stdout+stderr merged) is \
+                    drained into a 5000-line ring buffer you can read via \
+                    `view_task`. `timeout` (seconds; 0 = sandbox-profile maximum) bounds the task's total \
                     lifetime - it is auto-killed after it elapses. When the task ends you are told \
                     about it on your next turn; you can also inspect it any time with `view_task` \
                     or end it with `stop_task`.
 
                     #### Return format
                     A JSON outcome: `{"status":"started","taskId":"bg-3","pid":1234, \
-                    "command":"npm run dev","cwd":"...","timeoutSeconds":0}`.
+                    "command":"npm run dev","cwd":"...","requestedTimeoutSeconds":0, \
+                    "effectiveTimeoutSeconds":600}`.
 
                     #### Errors & edge cases
-                    - More than one command -> rejected (background mode does not chain).
-                    - Missing `timeout` -> rejected (it is required; use 0 for the profile maximum).
+                    - Any supplied command count other than one -> rejected (background mode does not chain).
+                    - A negative supplied `timeout` -> rejected.
+                    - Only the latest 5000 output lines are retained; an unterminated line is capped at 65536 bytes.
                     - `cwd` outside an allowed root -> the Gateway blocks the call.
 
                     #### Security
@@ -106,7 +109,7 @@ public final class RunTaskTool implements NativeTool<RunTaskTool.Args> {
             },
             returnExamples = {
                 "{\"status\": \"started\", \"taskId\": \"bg-3\", \"pid\": 12345, \"command\": \"npm run dev\","
-                        + " \"cwd\": \"/abs/app\", \"timeoutSeconds\": 0}"
+                        + " \"cwd\": \"/abs/app\", \"requestedTimeoutSeconds\": 0, \"effectiveTimeoutSeconds\": 600}"
             })
     public record Args(
             @SecurityHint(ParamCategory.SHELL_COMMAND)
@@ -120,7 +123,7 @@ public final class RunTaskTool implements NativeTool<RunTaskTool.Args> {
                     Boolean network,
             @NonNull
                     @Doc(
-                            "Requested max lifetime in seconds. REQUIRED - 0 selects the sandbox-profile"
+                            "Requested max lifetime in seconds. 0 selects the sandbox-profile"
                                     + " maximum; larger values are capped by that maximum.")
                     Integer timeout) {}
 
@@ -131,8 +134,8 @@ public final class RunTaskTool implements NativeTool<RunTaskTool.Args> {
 
     @Override
     public @NonNull String getDescription() {
-        return "Launch a long-running command as a detached background task (non-blocking). Same"
-                + " command shape as run_command; returns a taskId. Use for servers/watchers"
+        return "Launch a long-running command as a detached background task (non-blocking). Uses"
+                + " the same {executable,args} entry shape as run_command; returns a taskId. Use for servers/watchers"
                 + " (npm run dev). Manage with view_task / stop_task.";
     }
 
@@ -142,13 +145,8 @@ public final class RunTaskTool implements NativeTool<RunTaskTool.Args> {
     }
 
     @Override
-    @SuppressWarnings("ConstantValue") // Jackson can violate @NonNull when validation is bypassed.
     public @NonNull String execute(@NonNull Args args) {
-        Integer timeout = args.timeout();
-        if (timeout == null) {
-            return error(
-                    "run_task requires an explicit 'timeout' (seconds; 0 = sandbox-profile maximum).");
-        }
+        int timeout = args.timeout();
         if (timeout < 0) {
             return error("run_task timeout must be zero or positive.");
         }
@@ -185,7 +183,11 @@ public final class RunTaskTool implements NativeTool<RunTaskTool.Args> {
             envelope.put("pid", info.pid());
             envelope.put("command", info.command());
             envelope.put("cwd", info.cwd());
-            envelope.put("timeoutSeconds", timeout);
+            long profileTimeoutSeconds = profile.maxWallClock().toSeconds();
+            long effectiveTimeoutSeconds =
+                    timeout <= 0 ? profileTimeoutSeconds : Math.min(timeout, profileTimeoutSeconds);
+            envelope.put("requestedTimeoutSeconds", timeout);
+            envelope.put("effectiveTimeoutSeconds", effectiveTimeoutSeconds);
             return mapper.writeValueAsString(envelope);
         } catch (Exception e) {
             taskManager.stop(agentId, info.taskId(), BackgroundTaskManager.ExitCause.AGENT_STOP);

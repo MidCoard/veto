@@ -1,5 +1,6 @@
 package top.focess.veto.agent.loop;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -165,9 +166,20 @@ class SystemPromptDumpTest {
             int start = catalog.indexOf(heading);
             int end = catalog.indexOf("\n---\n", start);
             String entry = end < 0 ? catalog.substring(start) : catalog.substring(start, end);
-            assertTrue(
-                    entry.indexOf("#### Args") < entry.indexOf("#### Result formats"),
-                    tool.name() + " must render Args before Result formats");
+            assertEquals(
+                    List.of(
+                            "Args",
+                            "Result formats",
+                            "Behavior",
+                            "When to use",
+                            "When not to use",
+                            "Call examples",
+                            "Result contract",
+                            "Result examples",
+                            "Errors and edge cases"),
+                    sectionHeadings(entry),
+                    tool.name() + " must render the complete canonical contract order");
+            assertKnownResultCasesAreUnique(tool.name(), entry);
         }
     }
 
@@ -237,6 +249,34 @@ class SystemPromptDumpTest {
             from += token.length();
         }
         return count;
+    }
+
+    private static @NonNull List<@NonNull String> sectionHeadings(@NonNull String entry) {
+        return entry.lines()
+                .filter(line -> line.startsWith("#### "))
+                .map(line -> line.substring("#### ".length()).strip())
+                .toList();
+    }
+
+    private static void assertKnownResultCasesAreUnique(
+            @NonNull String toolName, @NonNull String entry) {
+        String diagnostic =
+                switch (toolName) {
+                    case "forget" -> "memory not found or not owned; nothing forgotten";
+                    case "grep_search" -> "Path not found: <path>";
+                    case "list_dir" -> "Not a directory: <path>";
+                    case "replace_file_content", "view_file" -> "Not a regular file: <path>";
+                    case "stop_task", "view_task" -> "task not found: <taskId>";
+                    case "web_search" -> "(no results)";
+                    case "write_to_file" -> "File exists and overwrite=false: <path>";
+                    default -> null;
+                };
+        if (diagnostic != null) {
+            assertEquals(
+                    1,
+                    count(entry, diagnostic),
+                    toolName + " must define the result case once, in Result contract");
+        }
     }
 
     private static @NonNull Set<String> toolNames(@NonNull List<@NonNull ToolDefinition> tools) {

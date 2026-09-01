@@ -2,6 +2,7 @@ package top.focess.veto.agent.mcp.tools;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
@@ -50,7 +51,7 @@ public final class WriteToFileTool implements NativeTool<WriteToFileTool.Args> {
                     Writes `codeContent` to `absolutePath` as UTF-8. When `overwrite` is false and the file \
                     already exists, the write is refused (no partial write). When the file does not exist, \
                     parent directories are created as needed and the file is created. When `overwrite` is true, \
-                    an existing file is truncated and replaced with the new content.
+                    the tool writes a same-directory temporary file and replaces the target directory entry.
 
                     #### Return format
                     - Success: \
@@ -62,11 +63,11 @@ public final class WriteToFileTool implements NativeTool<WriteToFileTool.Args> {
                     `File exists and overwrite=false: <path>`.
 
                     #### Errors & edge cases
-                    - File exists and `overwrite` is false -> error status (see above); nothing is written.
-                    - Parent directory cannot be created (permissions, an existing non-directory entry) -> the \
-                    underlying IO error propagates.
+                    - Parent creation, temporary-file, disk, or move failures produce a failed tool result and \
+                    do not count as success.
                     - `codeContent` is written byte-for-byte; an empty string creates an empty file.
-                    - `overwrite` is a primitive boolean (required, not optional) - always state it explicitly.
+                    - Replacing a target may replace its filesystem metadata and replaces a symbolic-link entry \
+                    rather than writing through to the link target.
 
                     #### Security
                     `absolutePath` is a FILESYSTEM_PATH and `codeContent` is CODE_CONTENT: the Gateway screens the \
@@ -117,7 +118,11 @@ public final class WriteToFileTool implements NativeTool<WriteToFileTool.Args> {
         if (!args.overwrite() && Files.exists(path)) {
             return ToolErrors.failure("File exists and overwrite=false: " + args.absolutePath());
         }
-        AtomicFileWrites.write(path, content, args.overwrite());
+        try {
+            AtomicFileWrites.write(path, content, args.overwrite());
+        } catch (FileAlreadyExistsException e) {
+            return ToolErrors.failure("File exists and overwrite=false: " + args.absolutePath());
+        }
         return ToolJson.object(
                 Map.of("status", "ok", "file", args.absolutePath(), "bytes", content.length));
     }

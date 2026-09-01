@@ -51,19 +51,17 @@ public final class GroupTools {
 
                     #### When NOT to use
                     - Do not use it for work you can finish yourself - a group adds coordination cost.
-                    - Do not use it from inside a group; Leaders and Mates cannot spawn another group.
+                    - Do not use it from inside a group; the tool is not offered to Leaders or Mates.
                     - Do not try to supply a plan up front - you build it node by node as Leader, \
                     via `create_node`.
 
                     #### Behavior
-                    Transforms you into the Leader of a new, empty group. Your context is rewound to \
-                    0; then an AGENT_INIT turn (Leader system prompt + Leader tool set: read-only \
-                    investigation tools, the node-authoring tools, `post_message`, `disband_group`) \
-                    is appended; then a compact turn (the compaction of your previous session); then \
-                    `task` as your planning brief. You are promoted to the top-tier model. Mates are \
-                    provisioned lazily by the engine as your nodes dispatch. The result string of \
-                    this call is discarded with the rewind - only a failure keeps you in the \
-                    single-agent loop with the reason.
+                    Transforms you into the Leader of a new, empty group. Your context is rewound, a \
+                    Leader AGENT_INIT turn and the available Leader tools are installed, a non-empty \
+                    compaction summary is appended when one is produced, and `task` becomes your \
+                    planning brief. The Leader model comes from the deployer's Leader-tier binding. \
+                    Mates are provisioned lazily as nodes become dispatchable. The success result is \
+                    discarded by the transform; a refusal leaves you in the single-agent loop.
 
                     #### Return format
                     On success - empty (the call's result is discarded with the rewind; you \
@@ -80,7 +78,7 @@ public final class GroupTools {
                     only in the single-agent loop - not offered to Leaders or Mates.
                     """,
             examples = {
-                "{\"task\": \"Fix the authentication bug in UserService\"}",
+                "{\"task\": \"Redesign the persistence layer, migrate its callers, and verify the affected modules\"}",
                 "{\"task\": \"Rewrite the persistence layer\"}"
             },
             returnExamples = {""})
@@ -180,11 +178,11 @@ public final class GroupTools {
                     - Do not disband without user request unless all DAG nodes are VERIFIED.
 
                     #### Behavior
-                    Resolves your group from your context (no id argument). Rewinds context to 0 + \
-                    AGENT_INIT with your STANDALONE persona, appends a compaction of the Leader \
-                    session + an outcome brief, and restores your STANDALONE tool set + binding. The \
-                    Blackboard is retained for audit; all Mates are deprovisioned; the DAG is marked \
-                    closed.
+                    Resolves your group from your context (no id argument), deprovisions its Mates, \
+                    and marks the group DISBANDED. It then rewinds to an AGENT_INIT with your \
+                    STANDALONE persona, restores the STANDALONE tools and model binding, appends a \
+                    non-empty compaction summary when one is produced, and adds an outcome brief. \
+                    The Blackboard and recorded DAG remain available for audit.
 
                     #### Return format
                     On success - empty (the call's result is discarded with the rewind; you continue \
@@ -200,9 +198,7 @@ public final class GroupTools {
                     Agent tool (`RiskCategory.AGENT`). The Gateway does not screen it. Leader-only.
                     """,
             examples = {"{}"},
-            returnExamples = {
-                "(empty on success - you continue as STANDALONE from the outcome brief)"
-            })
+            returnExamples = {""})
     public static final class DisbandGroup implements AgentTool<DisbandGroup.Args> {
 
         private final @NonNull GroupSpawner spawner;
@@ -270,6 +266,16 @@ public final class GroupTools {
                     sb.append(", mate: ").append(n.assignedMateId());
                 }
                 sb.append("): ").append(n.description()).append('\n');
+                if (n.result() instanceof DagNode.ResultArtifact artifact) {
+                    sb.append("    Artifact: ").append(artifact.artifactPath()).append('\n');
+                } else if (n.result() instanceof DagNode.ResultFailure failure) {
+                    sb.append("    Failure: ").append(failure.feedback()).append('\n');
+                    if (!failure.logRefs().isEmpty()) {
+                        sb.append("    Logs: ")
+                                .append(String.join(", ", failure.logRefs()))
+                                .append('\n');
+                    }
+                }
             }
             sb.append("You are back in single-agent autonomous mode. Continue from here.");
             return sb.toString();
@@ -296,11 +302,11 @@ public final class GroupTools {
                     as dependencies verify.
 
                     #### Behavior
-                    Posts a message to the Blackboard addressed to `receiver` (an active Mate id, or `LEADER` \
-                    for a self-note). Unknown receivers are rejected. Message types: TASK_DISPATCH, ARTIFACT_REF, LOG_REF, FEEDBACK, \
-                    STATUS, ACCEPT. Resolves the group + sender from your context (no id arguments). \
-                    Payloads must be non-blank and at most 4096 characters. Use paths rather than \
-                    full file contents for artifacts/logs.
+                    Posts a message as `LEADER` to `receiver`. Omit `receiver` to default to `LEADER` \
+                    for a self-note; otherwise use an active Mate id. Unknown receivers are rejected. \
+                    Message types are TASK_DISPATCH, ARTIFACT_REF, LOG_REF, FEEDBACK, STATUS, and \
+                    ACCEPT. The group is resolved from your context. Payloads must be non-blank and \
+                    at most 4096 characters. Use paths rather than full file contents for artifacts/logs.
 
                     #### Return format
                     On success - `posted`.
@@ -308,8 +314,9 @@ public final class GroupTools {
                       Not posted: <reason and what to do next>
 
                     #### Errors & edge cases
-                    No active group in your context -> refusal. Unknown `type`, blank payload, or \
-                    payload over 4096 characters -> failed result.
+                    Type names are case-sensitive enum values, and a Mate receiver must already belong to the \
+                    active group. No active group indicates a role/context mismatch; do not retry until the \
+                    Leader context is restored.
 
                     #### Security
                     Agent tool (`RiskCategory.AGENT`). The Gateway does not screen it. Leader-only. \
@@ -374,7 +381,7 @@ public final class GroupTools {
             BlackboardMessage.MessageType type;
             String typeName = args.type();
             if (typeName.isBlank()) {
-                return ToolErrors.failure("Not posted: missing required message type.");
+                return ToolErrors.failure("Not posted: message type must not be blank.");
             }
             try {
                 type =
@@ -391,7 +398,7 @@ public final class GroupTools {
             }
             String payload = args.payload();
             if (payload.isBlank()) {
-                return ToolErrors.failure("Not posted: missing required payload.");
+                return ToolErrors.failure("Not posted: payload must not be blank.");
             }
             if (payload.length() > MAX_PAYLOAD_CHARS) {
                 return ToolErrors.failure("Not posted: payload exceeds 4096 characters.");

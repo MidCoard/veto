@@ -32,7 +32,8 @@ import top.focess.veto.agent.mcp.ToolResultFormat;
                 #### When NOT to use
                 - Do not call `think` when a real tool would make progress - read, search, or edit \
                 instead.
-                - Do not call it when you are done - just omit `calls` and the episode stops.
+                - Do not call it when you are done - omit `calls` and provide the non-blank final \
+                message so the episode stops.
                 - Do not call it expecting it to do anything - it is purely a placeholder.
 
                 #### Behavior
@@ -43,15 +44,16 @@ import top.focess.veto.agent.mcp.ToolResultFormat;
                 Empty.
 
                 #### Errors & edge cases
-                Cannot fail. The only cost is a wasted round-trip - use it only when you genuinely \
-                need another turn.
+                A valid `{}` call has no tool-level failure. Unknown fields are rejected by the \
+                shared argument validator before execution. The only normal cost is a wasted \
+                round-trip - use it only when you genuinely need another turn.
 
                 #### Security
                 Agent tool (`RiskCategory.AGENT`). The Gateway does not screen it. It touches \
                 nothing. Safe to call any time.
                 """,
         examples = {"{}"},
-        returnExamples = {"(empty - the call only keeps the loop alive)"})
+        returnExamples = {""})
 public record ThinkArgs() implements AgentTool<ThinkArgs> {
 
     @Override

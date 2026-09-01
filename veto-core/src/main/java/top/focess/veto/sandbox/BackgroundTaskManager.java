@@ -501,8 +501,9 @@ public class BackgroundTaskManager {
 
         /** Convenience: elapsed seconds since start (0 if somehow negative). */
         public long uptimeSeconds() {
-            long ms = Duration.between(startedAt, Instant.now()).toSeconds();
-            return Math.max(0, ms);
+            Instant end = finishedAt != null ? finishedAt : Instant.now();
+            long seconds = Duration.between(startedAt, end).toSeconds();
+            return Math.max(0, seconds);
         }
     }
 

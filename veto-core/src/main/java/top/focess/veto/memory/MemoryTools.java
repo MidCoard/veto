@@ -2,6 +2,7 @@ package top.focess.veto.memory;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
@@ -46,7 +47,7 @@ public final class MemoryTools {
                     Use `recall_session` when you need to recover context from earlier in this session \
                     - a previous tool result, a decision made, or an observation that is no longer in \
                     the active context window. The vector search returns the most similar memories \
-                    ranked by embedding distance.
+                    ranked by cosine similarity.
 
                     #### When NOT to use
                     - Do not use `recall_session` for cross-session knowledge - use `recall_insights`.
@@ -57,16 +58,20 @@ public final class MemoryTools {
                     #### Behavior
                     Embeds `query` using the local embedding model, performs cosine similarity search \
                     in Session LTM, filters results by `scoreFloor`, and returns the top-K matches \
-                    ranked by similarity. Source attribution is included.
+                    ranked by similarity. `query` is capped at 4000 characters; `topK` defaults to \
+                    5 for non-positive values and is capped at 20; `scoreFloor` defaults to 0.5 and \
+                    is clamped into [0,1]. Source attribution and a content snippet of at most 240 \
+                    characters are included.
 
                     #### Return format
                     Plain text beginning `<count> memories:`, followed by bullet entries containing \
                     tier, id, score, source, and a content snippet. No match returns \
-                    `no matching memories`.
+                    `no matching memories`. Missing session context fails with \
+                    `no session context; memories not recalled`.
 
                     #### Errors & edge cases
-                    If `scoreFloor` is too high, the query is empty, or the session has no matching \
-                    memories, returns exactly `no matching memories` rather than inventing matches.
+                    Empty or unknown queries and a restrictive `scoreFloor` can legitimately yield zero \
+                    matches. Refine the query or lower the floor; never invent absent memories.
 
                     #### Security
                     Agent tool (`RiskCategory.AGENT`). The Gateway does not screen it. Tenant \
@@ -78,7 +83,7 @@ public final class MemoryTools {
                 "{\"query\": \"build configuration\", \"topK\": 3, \"scoreFloor\": 0.6}"
             },
             returnExamples = {
-                "1 memories:\n- [SESSION] id=123e4567-e89b-12d3-a456-426614174000 score=0.820 src=TOOL_RESULT {}\n"
+                "1 memories:\n- [SESSION] id=123e4567-e89b-12d3-a456-426614174000 score=0.820 src=turn_range {from=12, to=12}\n"
                         + "  UserService.authenticate validates the JWT expiry and...",
                 "no matching memories"
             })
@@ -126,7 +131,14 @@ public final class MemoryTools {
             String query = boundedQuery(args.query());
             int topK = boundedTopK(args.topK());
             float scoreFloor = args.scoreFloor() != null ? clamp01(args.scoreFloor()) : 0.5f;
-            UUID sessionId = UUID.fromString(ctx.agentId());
+            UUID sessionId = ctx.sessionId();
+            if (sessionId == null) {
+                try {
+                    sessionId = UUID.fromString(ctx.agentId());
+                } catch (IllegalArgumentException e) {
+                    return ToolErrors.failure("no session context; memories not recalled");
+                }
+            }
             MemoryQuery q =
                     new MemoryQuery(
                             query,
@@ -162,15 +174,19 @@ public final class MemoryTools {
                     #### Behavior
                     Embeds `query` and performs cosine similarity search in Cross-Session LTM \
                     (curated insights promoted from Session LTM). Returns top-K matches ranked by \
-                    similarity, filtered by `scoreFloor`. Cross-session visibility is user-specific.
+                    similarity, filtered by `scoreFloor`. `query` is capped at 4000 characters; \
+                    `topK` defaults to 5 for non-positive values and is capped at 20; `scoreFloor` \
+                    defaults to 0.5 and is clamped into [0,1]. Each content snippet is capped at 240 \
+                    characters. Cross-session visibility is user-specific.
 
                     #### Return format
                     Plain text beginning `<count> memories:`, followed by bullet entries containing \
-                    tier, id, score, source, and content. No match returns `no matching memories`.
+                    tier, id, score, source, and content. No match returns `no matching memories`. \
+                    Missing user context fails with `no user context; insights not recalled`.
 
                     #### Errors & edge cases
-                    An unknown query, an empty insight store, or a `scoreFloor` that is too high \
-                    returns exactly `no matching memories`.
+                    An unknown query, an empty insight store, or a restrictive `scoreFloor` can legitimately \
+                    yield zero matches. Refine the query or lower the floor before retrying.
 
                     #### Security
                     Agent tool (`RiskCategory.AGENT`). The Gateway does not screen it. Tenant \
@@ -271,38 +287,43 @@ public final class MemoryTools {
                     #### Behavior
                     Set `mode` to `WRITE` to store `content` as a new Cross-Session insight, tagged \
                     with a UUID `projectId` when provided. Set `mode` to `PROMOTE` and provide only \
-                    `promoteMemoryId` to promote an existing Session-LTM memory. The two modes are \
-                    mutually exclusive; fields from the other mode are rejected.
+                    `promoteMemoryId` to replace an existing Session-LTM memory with a new \
+                    Cross-Session memory. Non-blank fields from the other mode are rejected. A \
+                    successful promotion invalidates the old id and returns the replacement id.
 
                     #### Return format
                     - Direct-write success: \
                     `insight written: <memory UUID>`.
-                    - Promotion success: `promoted`.
+                    - Promotion success: `promoted: <new memory UUID>`.
                     - Promotion failure: \
                     `memory not found or not owned; not promoted`.
                     - Write failure: \
                     `no content; insight not written` or \
                     `insight exceeds 64000 characters; not written` or \
-                    `invalid projectId; insight not written`.
+                    `invalid projectId; insight not written` (the value is not a UUID).
                     - Mode-field mismatch: `PROMOTE accepts only promoteMemoryId; insight not \
                     promoted` or `WRITE does not accept promoteMemoryId; insight not written`.
 
                     #### Errors & edge cases
-                    Empty `content` is rejected in `WRITE` mode. An invalid or inaccessible \
-                    `promoteMemoryId` has the same failure. An invalid `projectId` is rejected. \
-                    Do not put secrets or verbatim file contents in an insight.
+                    `WRITE` accepts content plus an optional project id; `PROMOTE` accepts only a memory id. \
+                    Correct a mode/field mismatch before retrying. Ownership and absence deliberately share a \
+                    promotion failure so tenant isolation leaks nothing. Never store secrets or verbatim file \
+                    contents in an insight.
 
                     #### Security
                     Agent tool (`RiskCategory.AGENT`). The Gateway does not screen it. Self-edit \
-                    operation (audited). The supplied content is stored as given; this tool does not \
-                    perform Gateway redaction. Never supply secrets. Safe to call any time.
+                    operation. The supplied content is stored as given; this tool does not perform \
+                    Gateway redaction. Never supply secrets.
                     """,
             examples = {
                 "{\"mode\": \"WRITE\", \"content\": \"This project uses Gradle 8.5 with Kotlin DSL\"}",
                 "{\"mode\": \"PROMOTE\", \"promoteMemoryId\": \"123e4567-e89b-12d3-a456-426614174000\"}",
                 "{\"mode\": \"WRITE\", \"content\": \"Prefer constructor injection\", \"projectId\": \"123e4567-e89b-12d3-a456-426614174000\"}"
             },
-            returnExamples = {"insight written: 123e4567-e89b-12d3-a456-426614174000", "promoted"})
+            returnExamples = {
+                "insight written: 123e4567-e89b-12d3-a456-426614174000",
+                "promoted: 123e4567-e89b-12d3-a456-426614174000"
+            })
     public static final class WriteInsight implements AgentTool<WriteInsight.Args> {
 
         private final @NonNull MemoryStore store;
@@ -366,11 +387,11 @@ public final class MemoryTools {
                     return ToolErrors.failure("memory not found or not owned; not promoted");
                 }
                 try {
-                    boolean promoted =
+                    MemoryId promoted =
                             store.promote(
                                     new MemoryId(UUID.fromString(promoteId.strip())), ctx.userId());
-                    return promoted
-                            ? "promoted"
+                    return promoted != null
+                            ? "promoted: " + promoted.value()
                             : ToolErrors.failure("memory not found or not owned; not promoted");
                 } catch (IllegalArgumentException e) {
                     return ToolErrors.failure("memory not found or not owned; not promoted");
@@ -424,27 +445,24 @@ public final class MemoryTools {
                     - Do not forget memories you have not verified are incorrect.
 
                     #### Behavior
-                    Permanently deletes the memory identified by `memoryId` from the store. Cannot be \
-                    recovered. Audited for compliance.
+                    Permanently deletes the memory identified by `memoryId` from the store. It cannot \
+                    be recovered through this tool.
 
                     #### Return format
-                    - Success -> `forgotten`.
-                    - Invalid, missing, or cross-user id -> failed result: \
+                    - Success -> `forgotten: <memoryId>`.
+                    - Invalid, unknown, or cross-user id -> failed result: \
                     `memory not found or not owned; nothing forgotten`.
-                    - Missing `memoryId` is rejected before execution; the diagnostic identifies \
-                    the missing required parameter.
 
                     #### Errors & edge cases
-                    Use a memory id returned by a recall tool. Missing and cross-user ids intentionally \
-                    share one diagnostic so tenant isolation does not reveal whether another user's \
-                    memory exists. No failure deletes anything.
+                    Use an id returned by a recall or write tool. Ownership and absence deliberately \
+                    share the contract's failure body so tenant isolation reveals nothing.
 
                     #### Security
                     Agent tool (`RiskCategory.AGENT`). The Gateway does not screen it. Permanent \
-                    deletion, audited. Safe to call any time.
+                    deletion. Call it only for a memory you have verified should be removed.
                     """,
             examples = {"{\"memoryId\": \"123e4567-e89b-12d3-a456-426614174000\"}"},
-            returnExamples = {"forgotten"})
+            returnExamples = {"forgotten: 123e4567-e89b-12d3-a456-426614174000"})
     public static final class Forget implements AgentTool<Forget.Args> {
 
         private final @NonNull MemoryStore store;
@@ -488,10 +506,10 @@ public final class MemoryTools {
                 return ToolErrors.failure("memory not found or not owned; nothing forgotten");
             }
             try {
-                boolean forgotten =
-                        store.forget(new MemoryId(UUID.fromString(id.strip())), ctx.userId());
+                MemoryId memoryId = new MemoryId(UUID.fromString(id.strip()));
+                boolean forgotten = store.forget(memoryId, ctx.userId());
                 return forgotten
-                        ? "forgotten"
+                        ? "forgotten: " + memoryId.value()
                         : ToolErrors.failure("memory not found or not owned; nothing forgotten");
             } catch (IllegalArgumentException e) {
                 return ToolErrors.failure("memory not found or not owned; nothing forgotten");
@@ -517,7 +535,7 @@ public final class MemoryTools {
                     .append("] id=")
                     .append(m.id().value())
                     .append(" score=")
-                    .append(String.format("%.3f", sm.score()))
+                    .append(String.format(Locale.ROOT, "%.3f", sm.score()))
                     .append(" src=")
                     .append(sourceRef == null ? "unknown" : sourceRef.kind())
                     .append(" ")

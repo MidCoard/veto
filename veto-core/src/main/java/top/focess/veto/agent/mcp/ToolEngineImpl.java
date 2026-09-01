@@ -394,11 +394,6 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
                             .substrate()
                             .runCommands(handle, commands, cwd, connect, timeoutDur);
             String content = commandOutput(result);
-            if (!Boolean.TRUE.equals(args.network()) && !result.success()) {
-                content +=
-                        "\n[sandbox network is disabled; if this command requires network access, "
-                                + "submit a fresh call with `network: true` for Gateway approval]";
-            }
             return new ToolResult(
                     call.toolName(),
                     call.callId(),

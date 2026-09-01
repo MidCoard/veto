@@ -34,10 +34,11 @@ public interface MemoryStore {
     void capture(@NonNull TurnRecord turn, @NonNull UUID sessionId, @NonNull UUID userId);
 
     /**
-     * Promote an owned Session-LTM memory to Cross-Session LTM. Returns false when the id is
+     * Promote an owned Session-LTM memory to Cross-Session LTM. The curating boundary replaces the
+     * original memory with a new id. Returns the replacement id, or null when the source id is
      * absent, belongs to another user, or is not promotable.
      */
-    boolean promote(@NonNull MemoryId id, @NonNull UUID userId);
+    MemoryId promote(@NonNull MemoryId id, @NonNull UUID userId);
 
     /** Drop an owned memory. Returns false rather than revealing another user's memory. */
     boolean forget(@NonNull MemoryId id, @NonNull UUID userId);

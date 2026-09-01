@@ -63,15 +63,14 @@ public final class DagTools {
 
                     #### Behavior
                     Adds one node to the execution plan. `dependsOn` may reference only existing, \
-                    live nodes - the plan stays acyclic by construction. The node starts PENDING; \
-                    the engine provisions a mate of the required skillset if none exists and \
-                    dispatches the node as soon as its dependencies verify. Each call is \
-                    validated atomically: a duplicate id or an unknown dependency rejects just \
-                    that call.
+                    live nodes - the plan stays acyclic by construction. The node starts PENDING. \
+                    On an orchestration tick after its dependencies are verified, the engine may \
+                    reuse a suitable Mate or provision one and then dispatch the node. Each plan \
+                    mutation is validated atomically before it takes effect.
 
                     #### Return format
                     On success - one prose line per created node:
-                      Node created: node-1 (skillset: coding). It dispatches as soon as a coding mate is provisioned.
+                      Node created: node-1 (skillset: coding). It is eligible for dispatch.
                     On rejection:
                       Node not created: <reason and what to do next>
 
@@ -79,9 +78,7 @@ public final class DagTools {
                     - Duplicate `nodeId` -> rejected; choose a unique id.
                     - `dependsOn` references an unknown or retired (stale) node -> rejected naming \
                     the id; create dependencies first.
-                    - Blank `description` or `skillset` -> rejected.
-                    - The plan needs more distinct skillsets than the mate cap allows -> the node \
-                    is accepted but waits in PENDING until a mate frees up.
+                    - Blank `nodeId`, `description`, or `skillset` -> rejected.
 
                     #### Security
                     Agent tool (`RiskCategory.AGENT`). The Gateway returns `NotScreened`; each \
@@ -94,8 +91,8 @@ public final class DagTools {
                 "{\"nodeId\": \"node-2\", \"description\": \"Verify\", \"skillset\": \"testing\", \"dependsOn\": [\"node-9\"]}"
             },
             returnExamples = {
-                "Node created: node-1 (skillset: coding). It dispatches as soon as a coding mate is provisioned.",
-                "Node created: node-2 (skillset: testing, depends on: node-1). It dispatches when its dependencies verify."
+                "Node created: node-1 (skillset: coding). It is eligible for dispatch.",
+                "Node created: node-2 (skillset: testing, depends on: node-1). It becomes eligible after its dependencies verify."
             })
     public static final class CreateNode implements AgentTool<CreateNode.Args> {
 
@@ -162,9 +159,7 @@ public final class DagTools {
                         + nodeId
                         + " (skillset: "
                         + skillset
-                        + "). It dispatches as soon as a "
-                        + skillset
-                        + " mate is provisioned.";
+                        + "). It is eligible for dispatch.";
             }
             return "Node created: "
                     + nodeId
@@ -172,7 +167,7 @@ public final class DagTools {
                     + skillset
                     + ", depends on: "
                     + String.join(", ", deps)
-                    + "). It dispatches when its dependencies verify.";
+                    + "). It becomes eligible after its dependencies verify.";
         }
     }
 
@@ -198,22 +193,20 @@ public final class DagTools {
                     routes retries; removal is for plan-level changes.
 
                     #### Behavior
-                    Marks the node STALE. A stale node is never dispatched again and stays in the \
-                    plan record for audit; other nodes can no longer depend on it. If the node is \
-                    running, its mate is told to stop and the assignment closes. Refused while \
-                    live nodes still depend on it.
+                    Marks the node STALE and keeps it in the plan record for audit. New nodes cannot \
+                    depend on it, and live dependents must be removed or re-planned first. This call \
+                    does not stop a running Mate or clear the recorded assignment.
 
                     #### Return format
                     On success:
                       Node removed: node-2 (marked stale).
                     On refusal:
-                      Node not removed: node-3 depends on node-1. Remove or re-plan node-3 first.
+                      Node not removed: node-3 depends on node-1. Remove or re-plan it first.
 
                     #### Errors & edge cases
                     - Unknown `nodeId` -> `Node not removed: node not found: <id>`.
                     - Live dependents exist -> refused, naming the dependents.
-                    - Already stale or VERIFIED -> not removed; stale is final, verified is \
-                    checkpointed.
+                    - Already stale or VERIFIED -> not removed; verified work remains checkpointed.
 
                     #### Security
                     Agent tool (`RiskCategory.AGENT`). The Gateway returns `NotScreened`; the \

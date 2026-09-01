@@ -16,6 +16,7 @@ import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDoc;
 import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.mcp.ToolErrors;
+import top.focess.veto.agent.mcp.ToolExecutionException;
 import top.focess.veto.agent.mcp.ToolResultFormat;
 import top.focess.veto.agent.mcp.ToolSecurity;
 import top.focess.veto.llm.config.LlmJacksonConfig;
@@ -73,9 +74,10 @@ public final class ViewTaskTool implements NativeTool<ViewTaskTool.Args> {
                     `task not found: <taskId>`.
 
                     #### Errors & edge cases
-                    - Unknown `taskId` -> `task not found: ...`.
                     - `lines` <= 0 or omitted -> defaults to 50 lines.
                     - A task that already exited stays queryable (its final status + output).
+                    - At most the latest 5000 lines are retained, and an unterminated line is capped \
+                    at 65536 bytes; older or excess output cannot be recovered through this tool.
 
                     #### Security
                     Agent tool (`RiskCategory.AGENT`). Read-only. Scoped to the calling agent - you \
@@ -83,7 +85,7 @@ public final class ViewTaskTool implements NativeTool<ViewTaskTool.Args> {
                     """,
             examples = {"{\"taskId\": \"bg-3\"}", "{\"taskId\": \"bg-3\", \"lines\": 20}", "{}"},
             returnExamples = {
-                "{\"taskId\": \"bg-3\", \"alive\": true, \"pid\": 12345, \"uptimeSeconds\": 42,"
+                "{\"taskId\": \"bg-3\", \"alive\": true, \"pid\": 12345, \"startedAt\": \"2026-01-01T00:00:00Z\", \"uptimeSeconds\": 42,"
                         + " \"command\": \"npm run dev\", \"cwd\": \"/abs/app\", \"recentOutput\": \"VITE ready in 300 ms\"}",
                 "{\"count\": 1, \"tasks\": [{\"taskId\": \"bg-3\", \"command\": \"npm run dev\", \"alive\": true}]}"
             })
@@ -99,7 +101,7 @@ public final class ViewTaskTool implements NativeTool<ViewTaskTool.Args> {
 
     @Override
     public @NonNull String getDescription() {
-        return "Inspect a background task (status + recent output), or list all tasks when taskId"
+        return "Inspect a background task (status + recent output), or list your tasks when taskId"
                 + " is omitted.";
     }
 
@@ -155,6 +157,8 @@ public final class ViewTaskTool implements NativeTool<ViewTaskTool.Args> {
             envelope.put("cwd", info.get().cwd());
             envelope.put("recentOutput", out.orElse(""));
             return mapper.writeValueAsString(envelope);
+        } catch (ToolExecutionException e) {
+            throw e;
         } catch (Exception e) {
             return error("view_task failed: " + e.getMessage());
         }

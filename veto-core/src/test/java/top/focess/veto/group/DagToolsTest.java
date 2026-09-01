@@ -193,9 +193,7 @@ class DagToolsTest {
         String out =
                 createNode.execute(
                         new DagTools.CreateNode.Args("node-1", "Implement login", "coding", null));
-        assertEquals(
-                "Node created: node-1 (skillset: coding). It dispatches as soon as a coding mate is provisioned.",
-                out);
+        assertEquals("Node created: node-1 (skillset: coding). It is eligible for dispatch.", out);
     }
 
     @Test
@@ -208,7 +206,7 @@ class DagToolsTest {
                         new DagTools.CreateNode.Args(
                                 "node-2", "Test login", "testing", List.of("node-1")));
         assertEquals(
-                "Node created: node-2 (skillset: testing, depends on: node-1). It dispatches when its dependencies verify.",
+                "Node created: node-2 (skillset: testing, depends on: node-1). It becomes eligible after its dependencies verify.",
                 out);
     }
 

@@ -23,8 +23,13 @@ import org.jspecify.annotations.NonNull;
  * {@link #usage()} is the deep, whole-tool brief the model reads before deciding to call a tool:
  * when to reach for it, when not to, how it behaves, what it returns and the edges that bite. Keep
  * it concrete and example-driven. The standard {@code ####} sections are parsed and rendered in a
- * canonical order; annotation order does not control prompt order. Unknown headings are preserved
- * as additional guidance. Leave it empty to render only the tool's short description.
+ * canonical order; annotation order does not control prompt order. Non-contract headings such as
+ * implementation security notes are intentionally not emitted into the agent catalog. Leave it
+ * empty to render only the tool's short description.
+ *
+ * <p>{@code Return format} owns every wire-visible success and failure shape. {@code Errors & edge
+ * cases} may explain distinct triggers, recovery, limits, or policy implications, but must not
+ * repeat a result body or restate a case already defined by an earlier section.
  *
  * <p>Each example string is a concrete {@code args} object (the JSON the model would place in a
  * {@code calls[]} entry), e.g. one showing a required argument and another showing an optional one.

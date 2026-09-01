@@ -121,7 +121,7 @@ class RunTaskToolTest {
 
         // stop_task is idempotent on an already-exited task.
         JsonNode stopped = mapper.readTree(stop.execute(new StopTaskTool.Args(taskId)));
-        assertEquals("stopped", stopped.get("status").asText());
+        assertEquals("already_exited", stopped.get("status").asText());
     }
 
     @Test
@@ -141,22 +141,5 @@ class RunTaskToolTest {
         assertTrue(
                 ToolErrors.normalize(error.getMessage()).contains("exactly one command"),
                 "multi-command background must be rejected");
-    }
-
-    @Test
-    void runTaskRequiresExplicitTimeout(@TempDir @NonNull Path tempDir) throws Exception {
-        RunTaskTool.Args args =
-                mapper.readValue(
-                        "{\"commands\":[{\"executable\":\"a\",\"args\":[]}],\"cwd\":\""
-                                + tempDir.toString().replace("\\", "\\\\")
-                                + "\"}",
-                        ToolDocs.nonNullClass(RunTaskTool.Args.class));
-        ToolExecutionException error =
-                assertThrows(
-                        ToolDocs.nonNullClass(ToolExecutionException.class),
-                        () -> runTask.execute(args));
-        assertTrue(
-                ToolErrors.normalize(error.getMessage()).contains("timeout"),
-                "null timeout must be rejected");
     }
 }

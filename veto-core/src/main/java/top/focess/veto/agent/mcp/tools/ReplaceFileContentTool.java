@@ -54,27 +54,29 @@ public final class ReplaceFileContentTool implements NativeTool<ReplaceFileConte
                     #### Behavior
                     Reads `absolutePath` as UTF-8 and searches only the inclusive `startLine`/`endLine` range. \
                     Exactly one occurrence of `targetContent` must exist inside that range. The updated content \
-                    is written through a same-directory temporary file and replacement move.
+                    is written through a same-directory temporary file and replacement move. An empty \
+                    `replacementContent` deletes the matched block.
 
                     #### Return format
                     - Success: `{"status":"ok","file":"<path>"}`.
                     - Invalid target (failure): one of \
                     `Not a regular file: <path>`, `File exceeds 16777216 bytes`, \
                     `Invalid line range`, `Line range outside file`, or \
-                    `targetContent must not be empty`.
+                    `targetContent must not be empty` or `Replacement exceeds 16777216 bytes`.
                     - Match failure (failure): \
                     `targetContent not found in selected range.` or \
                     `targetContent is not unique in selected range.` The file remains unchanged.
 
                     #### Errors & edge cases
-                    - `targetContent` not present -> `targetContent not found in selected range.` as \
-                    failed result; the file is left untouched.
-                    - `absolutePath` is not a regular file -> `Not a regular file: <path>` as \
-                    failed result.
-                    - Zero or multiple matches in the selected range are refused.
+                    - After a match failure, reread the selected range and quote enough surrounding context \
+                    to make the target unique before retrying.
+                    - Only regular files are editable; discover the target with `list_dir` and inspect it \
+                    with `view_file` first.
                     - `targetContent` and `replacementContent` are exact (whitespace, indentation, newlines all \
                     matter). A mismatched indent means "not found".
                     - `startLine`/`endLine` must form a valid inclusive range and restrict the search.
+                    - Replacing the directory entry can replace filesystem metadata or a symbolic-link entry; \
+                    it does not write through a symbolic link to its target.
 
                     #### Security
                     `absolutePath` is a FILESYSTEM_PATH; `targetContent` and `replacementContent` are CODE_CONTENT. \
@@ -143,7 +145,7 @@ public final class ReplaceFileContentTool implements NativeTool<ReplaceFileConte
         if (idx < 0 || idx + args.targetContent().length() > rangeEnd) {
             return ToolErrors.failure("targetContent not found in selected range.");
         }
-        int next = content.indexOf(args.targetContent(), idx + args.targetContent().length());
+        int next = content.indexOf(args.targetContent(), idx + 1);
         if (next >= 0 && next + args.targetContent().length() <= rangeEnd) {
             return ToolErrors.failure("targetContent is not unique in selected range.");
         }
@@ -151,7 +153,11 @@ public final class ReplaceFileContentTool implements NativeTool<ReplaceFileConte
                 content.substring(0, idx)
                         + args.replacementContent()
                         + content.substring(idx + args.targetContent().length());
-        AtomicFileWrites.write(path, updated.getBytes(StandardCharsets.UTF_8), true);
+        byte[] updatedBytes = updated.getBytes(StandardCharsets.UTF_8);
+        if (updatedBytes.length > MAX_FILE_BYTES) {
+            return ToolErrors.failure("Replacement exceeds 16777216 bytes");
+        }
+        AtomicFileWrites.write(path, updatedBytes, true);
         return ToolJson.object(Map.of("status", "ok", "file", args.absolutePath()));
     }
 
