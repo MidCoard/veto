@@ -57,7 +57,7 @@ public record Group(
                 blackboard,
                 dag,
                 null,
-                ToolResultPresentationMode.CONTENT_ONLY);
+                ToolResultPresentationMode.BASIC);
     }
 
     /**
@@ -81,7 +81,7 @@ public record Group(
                 blackboard,
                 dag,
                 owner,
-                ToolResultPresentationMode.CONTENT_ONLY);
+                ToolResultPresentationMode.BASIC);
     }
 
     public static @NonNull Group create(

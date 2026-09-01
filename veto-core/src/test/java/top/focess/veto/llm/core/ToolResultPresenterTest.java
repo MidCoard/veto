@@ -16,30 +16,28 @@ class ToolResultPresenterTest {
     private final ObjectMapper mapper = new ObjectMapper();
 
     @Test
-    void contentOnlyIsTheDefaultPresentation() {
+    void basicIsTheDefaultPresentation() {
         assertThat(new ToolResultPresenter(mapper).present(success())).isEqualTo("{\"answer\":42}");
     }
 
     @Test
-    void contentOnlyPreservesSuccessAndFailureContentExactly() {
+    void basicPreservesSuccessAndFailureContentExactly() {
         @NonNull ToolResultPresenter presenter = new ToolResultPresenter(mapper);
 
-        assertThat(presenter.present(success(), ToolResultPresentationMode.CONTENT_ONLY))
+        assertThat(presenter.present(success(), ToolResultPresentationMode.BASIC))
                 .isEqualTo("{\"answer\":42}");
-        assertThat(presenter.present(failure(), ToolResultPresentationMode.CONTENT_ONLY))
+        assertThat(presenter.present(failure(), ToolResultPresentationMode.BASIC))
                 .isEqualTo("memory not found; nothing forgotten");
     }
 
     @Test
-    void metadataModeAddsMachineReadableFieldsWithoutChangingNestedContent() throws Exception {
+    void detailedAddsMachineReadableFieldsWithoutChangingNestedContent() throws Exception {
         @NonNull ToolResultPresenter presenter = new ToolResultPresenter(mapper);
 
         @NonNull JsonNode success =
                 Objects.requireNonNull(
                         mapper.readTree(
-                                presenter.present(
-                                        success(),
-                                        ToolResultPresentationMode.CONTENT_WITH_METADATA)));
+                                presenter.present(success(), ToolResultPresentationMode.DETAILED)));
         assertThat(success.path("status").asText()).isEqualTo("success");
         assertThat(success.path("format").asText()).isEqualTo("json");
         assertThat(success.path("content").asText()).isEqualTo("{\"answer\":42}");
@@ -48,14 +46,26 @@ class ToolResultPresenterTest {
         @NonNull JsonNode failure =
                 Objects.requireNonNull(
                         mapper.readTree(
-                                presenter.present(
-                                        failure(),
-                                        ToolResultPresentationMode.CONTENT_WITH_METADATA)));
+                                presenter.present(failure(), ToolResultPresentationMode.DETAILED)));
         assertThat(failure.path("status").asText()).isEqualTo("failure");
         assertThat(failure.path("format").asText()).isEqualTo("plaintext");
         assertThat(failure.path("content").asText())
                 .isEqualTo("memory not found; nothing forgotten");
         assertThat(failure.path("errorCode").asText()).isEqualTo("MEMORY_NOT_FOUND");
+    }
+
+    @Test
+    void databaseConverterMapsLegacyNamesToCanonicalModes() {
+        ToolResultPresentationModeConverter converter = new ToolResultPresentationModeConverter();
+
+        assertThat(converter.convertToEntityAttribute("CONTENT_ONLY"))
+                .isEqualTo(ToolResultPresentationMode.BASIC);
+        assertThat(converter.convertToEntityAttribute("CONTENT_WITH_METADATA"))
+                .isEqualTo(ToolResultPresentationMode.DETAILED);
+        assertThat(converter.convertToDatabaseColumn(ToolResultPresentationMode.BASIC))
+                .isEqualTo("CONTENT_ONLY");
+        assertThat(converter.convertToDatabaseColumn(ToolResultPresentationMode.DETAILED))
+                .isEqualTo("CONTENT_WITH_METADATA");
     }
 
     private static @NonNull ToolResult success() {

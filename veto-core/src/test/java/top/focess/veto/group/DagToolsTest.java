@@ -9,11 +9,14 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import top.focess.veto.agent.intercept.ToolExecutionPermit;
+import top.focess.veto.agent.mcp.ToolCallContext;
 import top.focess.veto.agent.mcp.ToolCallContextHolder;
 import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.mcp.ToolErrors;
 import top.focess.veto.agent.mcp.ToolExecutionException;
 import top.focess.veto.group.GroupOrchestrator.NodeEdit;
+import top.focess.veto.llm.core.ToolResultPresentationMode;
 
 /** Tests for the Leader's node-authoring tools (group_management_lld.md §2-§3). */
 @SuppressWarnings("initialization.field.uninitialized")
@@ -37,6 +40,18 @@ class DagToolsTest {
     @AfterEach
     void tearDown() {
         ToolCallContextHolder.clear();
+    }
+
+    private static void setContext(@NonNull String agentId, UUID groupId) {
+        ToolCallContextHolder.set(
+                new ToolCallContext(
+                        agentId,
+                        UUID.randomUUID(),
+                        groupId,
+                        null,
+                        null,
+                        ToolResultPresentationMode.BASIC,
+                        ToolExecutionPermit.empty()));
     }
 
     /** Registers an active group with an empty plan and returns its id. */
@@ -174,7 +189,7 @@ class DagToolsTest {
     @Test
     void createNodeReturnsProseOnSuccess() {
         UUID groupId = activeGroup();
-        ToolCallContextHolder.set("leader-1", UUID.randomUUID(), groupId);
+        setContext("leader-1", groupId);
         String out =
                 createNode.execute(
                         new DagTools.CreateNode.Args("node-1", "Implement login", "coding", null));
@@ -186,7 +201,7 @@ class DagToolsTest {
     @Test
     void createNodeMentionsDependenciesOnSuccess() {
         UUID groupId = activeGroup();
-        ToolCallContextHolder.set("leader-1", UUID.randomUUID(), groupId);
+        setContext("leader-1", groupId);
         createNode.execute(new DagTools.CreateNode.Args("node-1", "a", "coding", null));
         String out =
                 createNode.execute(
@@ -200,7 +215,7 @@ class DagToolsTest {
     @Test
     void createNodeMapsRejectionToInstructiveString() {
         UUID groupId = activeGroup();
-        ToolCallContextHolder.set("leader-1", UUID.randomUUID(), groupId);
+        setContext("leader-1", groupId);
         ToolExecutionException error =
                 assertThrows(
                         ToolDocs.nonNullClass(ToolExecutionException.class),
@@ -215,7 +230,7 @@ class DagToolsTest {
 
     @Test
     void createNodeRequiresGroupContext() {
-        ToolCallContextHolder.set("agent-1", UUID.randomUUID()); // STANDALONE: no groupId
+        setContext("agent-1", null);
         ToolExecutionException error =
                 assertThrows(
                         ToolDocs.nonNullClass(ToolExecutionException.class),
@@ -230,7 +245,7 @@ class DagToolsTest {
     @Test
     void removeNodeReturnsProseOnSuccess() {
         UUID groupId = activeGroup();
-        ToolCallContextHolder.set("leader-1", UUID.randomUUID(), groupId);
+        setContext("leader-1", groupId);
         createNode.execute(new DagTools.CreateNode.Args("node-2", "a", "coding", null));
         String out = removeNode.execute(new DagTools.RemoveNode.Args("node-2"));
         assertEquals("Node removed: node-2 (marked stale).", out);
@@ -239,7 +254,7 @@ class DagToolsTest {
     @Test
     void removeNodeMapsDependentRefusalToInstructiveString() {
         UUID groupId = activeGroup();
-        ToolCallContextHolder.set("leader-1", UUID.randomUUID(), groupId);
+        setContext("leader-1", groupId);
         createNode.execute(new DagTools.CreateNode.Args("node-1", "a", "coding", null));
         createNode.execute(
                 new DagTools.CreateNode.Args("node-3", "b", "testing", List.of("node-1")));

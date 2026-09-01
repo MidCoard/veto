@@ -149,8 +149,7 @@ public final class GroupTools {
                             task,
                             ctx != null
                                     ? ctx.toolResultPresentation()
-                                    : top.focess.veto.llm.core.ToolResultPresentationMode
-                                            .CONTENT_ONLY);
+                                    : top.focess.veto.llm.core.ToolResultPresentationMode.BASIC);
 
             // Request the delegation transform: the runner rewinds, re-seeds the Leader persona +
             // tool set + top-tier binding, stamps the group, and re-injects the brief. This call's

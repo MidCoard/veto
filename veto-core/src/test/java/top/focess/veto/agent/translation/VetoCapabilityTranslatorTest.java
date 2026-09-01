@@ -12,6 +12,7 @@ import top.focess.veto.agent.mcp.NativeToolDefinition;
 import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.ToolDocs;
+import top.focess.veto.agent.mcp.ToolResultFormat;
 import top.focess.veto.agent.mcp.tools.LoadSkillArgs;
 
 /**
@@ -89,9 +90,21 @@ class VetoCapabilityTranslatorTest {
         List<top.focess.veto.llm.core.ToolDefinition> tools =
                 List.of(
                         new top.focess.veto.llm.core.ToolDefinition(
-                                "view_file", "Read a file.", viewArgs),
+                                "view_file",
+                                "Read a file.",
+                                viewArgs,
+                                List.of(),
+                                "",
+                                List.of(),
+                                List.of(ToolResultFormat.PLAINTEXT)),
                         new top.focess.veto.llm.core.ToolDefinition(
-                                "think", "Continue deliberately.", thinkArgs));
+                                "think",
+                                "Continue deliberately.",
+                                thinkArgs,
+                                List.of(),
+                                "",
+                                List.of(),
+                                List.of(ToolResultFormat.PLAINTEXT)));
 
         JsonNode schema = translator.vetoResponseSchema(false, tools);
         JsonNode variants = schema.path("properties").path("calls").path("items").path("anyOf");
@@ -178,7 +191,15 @@ class VetoCapabilityTranslatorTest {
                         Map.of("absolutePath", Map.of("type", "string")),
                         "required",
                         List.of("absolutePath"));
-        var tool = new top.focess.veto.llm.core.ToolDefinition("view_file", "Read a file.", args);
+        var tool =
+                new top.focess.veto.llm.core.ToolDefinition(
+                        "view_file",
+                        "Read a file.",
+                        args,
+                        List.of(),
+                        "",
+                        List.of(),
+                        List.of(ToolResultFormat.PLAINTEXT));
 
         JsonNode variants =
                 translator

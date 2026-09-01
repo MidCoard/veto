@@ -78,9 +78,8 @@ public class SessionController {
                 pattern,
                 body.name(),
                 roots,
-                body.toolResultPresentation() != null
-                        ? body.toolResultPresentation()
-                        : top.focess.veto.llm.core.ToolResultPresentationMode.CONTENT_ONLY);
+                top.focess.veto.llm.core.ToolResultPresentationMode.canonicalize(
+                        body.toolResultPresentation()));
     }
 
     @DeleteMapping("/{name}")

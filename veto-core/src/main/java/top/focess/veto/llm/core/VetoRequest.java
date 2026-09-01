@@ -32,54 +32,10 @@ public record VetoRequest(
         JsonNode responseSchema,
         String baseUrl) {
 
-    /**
-     * 9-arg convenience: no per-turn schema and no base-URL override (null -> provider default).
-     */
-    public VetoRequest(
-            @NonNull String systemPrompt,
-            @NonNull String userPrompt,
-            @NonNull List<@NonNull ToolDefinition> tools,
-            @NonNull ProviderType providerType,
-            @NonNull String modelName,
-            @NonNull String credentialKey,
-            @NonNull LlmOptions options,
-            @NonNull List<@NonNull ChatMessage> messages,
-            JsonNode responseSchema) {
-        this(
-                systemPrompt,
-                userPrompt,
-                tools,
-                providerType,
-                modelName,
-                credentialKey,
-                options,
-                messages,
-                responseSchema,
-                null);
-    }
-
-    /**
-     * Backwards-compatible constructor (single-turn system+user; no per-turn schema, no base URL).
-     */
-    public VetoRequest(
-            @NonNull String systemPrompt,
-            @NonNull String userPrompt,
-            @NonNull List<@NonNull ToolDefinition> tools,
-            @NonNull ProviderType providerType,
-            @NonNull String modelName,
-            @NonNull String credentialKey,
-            @NonNull LlmOptions options) {
-        this(
-                systemPrompt,
-                userPrompt,
-                tools,
-                providerType,
-                modelName,
-                credentialKey,
-                options,
-                List.of(),
-                null,
-                null);
+    public VetoRequest {
+        tools = List.copyOf(tools);
+        messages = List.copyOf(messages);
+        responseSchema = responseSchema == null ? null : responseSchema.deepCopy();
     }
 
     /** Whether this request carries a compiled multi-turn message list. */

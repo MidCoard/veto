@@ -405,7 +405,7 @@ public class AgentService {
                 userId,
                 owner,
                 workspaceRoots,
-                ToolResultPresentationMode.CONTENT_ONLY);
+                ToolResultPresentationMode.BASIC);
     }
 
     public @NonNull Agent getOrCreateAgent(
@@ -529,7 +529,7 @@ public class AgentService {
                 userId,
                 owner,
                 workspace,
-                ToolResultPresentationMode.CONTENT_ONLY);
+                ToolResultPresentationMode.BASIC);
     }
 
     private @NonNull VetoAgent createAgent(
@@ -645,12 +645,7 @@ public class AgentService {
             String owner,
             @NonNull Workspace workspace) {
         return createMate(
-                persona,
-                binding,
-                userId,
-                owner,
-                workspace,
-                ToolResultPresentationMode.CONTENT_ONLY);
+                persona, binding, userId, owner, workspace, ToolResultPresentationMode.BASIC);
     }
 
     public @NonNull Agent createMate(

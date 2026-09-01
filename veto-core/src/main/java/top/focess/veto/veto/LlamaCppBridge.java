@@ -89,7 +89,7 @@ public class LlamaCppBridge {
             ProcessBuilder pb = llamaServerProcess(modelPath, grammarFile, port);
 
             pb.redirectErrorStream(true);
-            @NonNull Process process = pb.start();
+            Process process = pb.start();
             llamaProcess = process;
             drainProcessOutput(process);
             waitUntilListening(process, port);
@@ -255,24 +255,51 @@ public class LlamaCppBridge {
     }
 
     private void waitUntilListening(@NonNull Process process, int port) throws IOException {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
-        while (System.nanoTime() < deadline) {
-            if (!process.isAlive()) {
-                throw new IOException("llama-server exited before opening its HTTP port");
-            }
-            try (Socket socket = new Socket()) {
-                socket.connect(new InetSocketAddress("127.0.0.1", port), 250);
-                return;
-            } catch (IOException notReady) {
-                try {
-                    Thread.sleep(100);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    throw new IOException("Interrupted while waiting for llama-server", e);
-                }
-            }
+        ScheduledExecutorService readinessExecutor =
+                Executors.newSingleThreadScheduledExecutor(
+                        runnable -> {
+                            Thread thread = new Thread(runnable, "veto-llamacpp-readiness");
+                            thread.setDaemon(true);
+                            return thread;
+                        });
+        CompletableFuture<Void> readiness = new CompletableFuture<>();
+        ScheduledFuture<?> probe =
+                readinessExecutor.scheduleWithFixedDelay(
+                        () -> probeReadiness(process, port, readiness),
+                        0,
+                        100,
+                        TimeUnit.MILLISECONDS);
+        try {
+            readiness.get(30, TimeUnit.SECONDS);
+        } catch (TimeoutException e) {
+            throw new IOException("llama-server did not open its HTTP port within 30 seconds", e);
+        } catch (ExecutionException e) {
+            throw new IOException("llama-server exited before opening its HTTP port", e.getCause());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Interrupted while waiting for llama-server", e);
+        } finally {
+            probe.cancel(false);
+            readinessExecutor.shutdown();
         }
-        throw new IOException("llama-server did not open its HTTP port within 30 seconds");
+    }
+
+    private void probeReadiness(
+            @NonNull Process process, int port, @NonNull CompletableFuture<Void> readiness) {
+        if (readiness.isDone()) {
+            return;
+        }
+        if (!process.isAlive()) {
+            readiness.completeExceptionally(
+                    new IOException("llama-server exited before opening its HTTP port"));
+            return;
+        }
+        try (Socket socket = new Socket()) {
+            socket.connect(new InetSocketAddress("127.0.0.1", port), 250);
+            readiness.complete(null);
+        } catch (IOException notReady) {
+            // The scheduled probe retries until the server listens, exits, or times out.
+        }
     }
 
     private void drainProcessOutput(@NonNull Process process) {

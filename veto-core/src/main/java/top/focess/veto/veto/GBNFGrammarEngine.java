@@ -111,9 +111,9 @@ public class GBNFGrammarEngine {
     /** Grammar for the advisory relevance + danger screening contract. */
     public @NonNull String getScreeningGrammar() {
         return """
-                root ::= "{" ws "\\\"relevance\\\"" ws ":" ws relevance "," ws "\\\"danger\\\"" ws ":" ws danger "," ws "\\\"reason\\\"" ws ":" ws string ws "}"
-                relevance ::= "\\\"HIGH\\\"" | "\\\"MEDIUM\\\"" | "\\\"LOW\\\""
-                danger ::= "\\\"SAFE\\\"" | "\\\"ELEVATED\\\"" | "\\\"DANGEROUS\\\"" | "\\\"CRITICAL\\\""
+                root ::= "{" ws "\\"relevance\\"" ws ":" ws relevance "," ws "\\"danger\\"" ws ":" ws danger "," ws "\\"reason\\"" ws ":" ws string ws "}"
+                relevance ::= "\\"HIGH\\"" | "\\"MEDIUM\\"" | "\\"LOW\\""
+                danger ::= "\\"SAFE\\"" | "\\"ELEVATED\\"" | "\\"DANGEROUS\\"" | "\\"CRITICAL\\""
                 string ::= "\\\"" ([^"\\\\] | "\\\\" (["\\\\/bfnrt] | "u" [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F]))* "\\\""
                 ws ::= [ \\t\\n]*
                 """;

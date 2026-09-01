@@ -112,11 +112,7 @@ public class SessionService {
             String sessionName,
             @NonNull String workspaceRoots) {
         return createSession(
-                owner,
-                patternName,
-                sessionName,
-                workspaceRoots,
-                ToolResultPresentationMode.CONTENT_ONLY);
+                owner, patternName, sessionName, workspaceRoots, ToolResultPresentationMode.BASIC);
     }
 
     @Transactional

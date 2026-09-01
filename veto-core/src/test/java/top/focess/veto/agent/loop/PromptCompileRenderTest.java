@@ -16,6 +16,7 @@ import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.mcp.AgentToolDefinition;
 import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDocs;
+import top.focess.veto.agent.mcp.ToolResultFormat;
 import top.focess.veto.agent.mcp.ToolSchemaCompiler;
 import top.focess.veto.agent.mcp.tools.GrepSearchTool;
 import top.focess.veto.agent.screening.DeployerPolicy;
@@ -117,11 +118,13 @@ class PromptCompileRenderTest {
                         "Loads a skill.",
                         schema,
                         List.of("{\"skillName\": \"git-rebase\"}", "{\"skillName\": \"deploy\"}"),
-                        "#### When to use\nCall this to load a skill.");
+                        "#### When to use\nCall this to load a skill.",
+                        List.of(),
+                        List.of(ToolResultFormat.PLAINTEXT));
         String block = PromptBlocks.tools(List.of(tool));
         assertTrue(block.contains("### `load_skill`"), "tool heading rendered:\n" + block);
         assertTrue(block.contains("#### Result formats"), "result formats rendered:\n" + block);
-        assertTrue(block.contains("`json`"), "json format rendered:\n" + block);
+        assertFalse(block.contains("`json`"), "undeclared json format rendered:\n" + block);
         assertTrue(block.contains("`plaintext`"), "plaintext format rendered:\n" + block);
         assertFalse(block.contains("error-special-plaintext"), block);
         assertTrue(block.contains("#### Args"), "args label rendered:\n" + block);
@@ -200,7 +203,8 @@ class PromptCompileRenderTest {
                         #### Errors & edge cases
                         Missing files return an error.
                         """,
-                        List.of("1: class Main {}"));
+                        List.of("1: class Main {}"),
+                        List.of(ToolResultFormat.PLAINTEXT));
 
         String block = PromptBlocks.tools(List.of(tool));
 
@@ -246,7 +250,8 @@ class PromptCompileRenderTest {
                         Map.of("type", "object", "properties", Map.of()),
                         List.of(),
                         "",
-                        List.of("[200] https://example.com\nbody"));
+                        List.of("[200] https://example.com\nbody"),
+                        List.of(ToolResultFormat.PLAINTEXT));
 
         String block = PromptBlocks.tools(List.of(tool));
 
@@ -307,7 +312,9 @@ class PromptCompileRenderTest {
                         "Search for exact pattern matches inside files.",
                         schema,
                         ToolDocs.examplesOf(ToolDocs.nonNullClass(GrepSearchTool.Args.class)),
-                        ToolDocs.descriptionOf(ToolDocs.nonNullClass(GrepSearchTool.Args.class)));
+                        ToolDocs.descriptionOf(ToolDocs.nonNullClass(GrepSearchTool.Args.class)),
+                        ToolDocs.returnExamplesOf(ToolDocs.nonNullClass(GrepSearchTool.Args.class)),
+                        ToolDocs.resultFormatsOf(ToolDocs.nonNullClass(GrepSearchTool.Args.class)));
         String block = PromptBlocks.tools(List.of(tool));
         System.out.println("===== REAL grep_search catalog entry =====\n" + block);
         assertTrue(block.contains("### `grep_search`"), "tool heading rendered:\n" + block);
@@ -341,11 +348,19 @@ class PromptCompileRenderTest {
                                 "type",
                                 "object",
                                 "properties",
-                                Map.of("commands", Map.of(), "cwd", Map.of()))),
+                                Map.of("commands", Map.of(), "cwd", Map.of())),
+                        List.of(),
+                        "",
+                        List.of(),
+                        List.of(ToolResultFormat.PLAINTEXT)),
                 new ToolDefinition(
                         "view_file",
                         "reads lines of a text file",
-                        Map.of("type", "object", "properties", Map.of("absolutePath", Map.of()))));
+                        Map.of("type", "object", "properties", Map.of("absolutePath", Map.of())),
+                        List.of(),
+                        "",
+                        List.of(),
+                        List.of(ToolResultFormat.PLAINTEXT)));
     }
 
     private static void assertCompiled(

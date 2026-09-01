@@ -128,9 +128,7 @@ public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
                 tier,
                 base,
                 group != null ? group.owner() : null,
-                group != null
-                        ? group.toolResultPresentation()
-                        : ToolResultPresentationMode.CONTENT_ONLY);
+                group != null ? group.toolResultPresentation() : ToolResultPresentationMode.BASIC);
     }
 
     /**
@@ -220,7 +218,7 @@ public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
             String owner,
             @NonNull String contextBrief) {
         return registerEmptyGroup(
-                leaderId, userId, owner, contextBrief, ToolResultPresentationMode.CONTENT_ONLY);
+                leaderId, userId, owner, contextBrief, ToolResultPresentationMode.BASIC);
     }
 
     public @NonNull Group registerEmptyGroup(

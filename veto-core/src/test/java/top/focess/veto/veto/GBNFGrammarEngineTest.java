@@ -51,6 +51,8 @@ class GBNFGrammarEngineTest {
         assertTrue(grammar.contains("relevance"));
         assertTrue(grammar.contains("danger"));
         assertTrue(grammar.contains("CRITICAL"));
+        assertTrue(grammar.contains("\"\\\"relevance\\\"\""));
+        assertTrue(grammar.contains("\"\\\"CRITICAL\\\"\""));
     }
 
     @Test

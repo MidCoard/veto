@@ -8,6 +8,8 @@ import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.identity.RoleToolFilter;
+import top.focess.veto.agent.intercept.ToolExecutionPermit;
+import top.focess.veto.agent.mcp.ToolCallContext;
 import top.focess.veto.agent.mcp.ToolCallContextHolder;
 import top.focess.veto.agent.mcp.ToolDefinition;
 import top.focess.veto.agent.mcp.ToolDocs;
@@ -20,6 +22,7 @@ import top.focess.veto.group.GroupTools.DisbandGroup;
 import top.focess.veto.group.GroupTools.PostMessage;
 import top.focess.veto.llm.core.ProviderType;
 import top.focess.veto.llm.core.ToolCall;
+import top.focess.veto.llm.core.ToolResultPresentationMode;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierRegistry;
@@ -84,7 +87,15 @@ class GroupToolsWiringTest {
     void createGroupRegistersEmptyGroupAndRequestsTransform() {
         CreateGroup create = new CreateGroup(spawner, leaderBinding, roleToolFilter);
 
-        ToolCallContextHolder.set("agent-1", UUID.randomUUID(), null, "owner");
+        ToolCallContextHolder.set(
+                new ToolCallContext(
+                        "agent-1",
+                        UUID.randomUUID(),
+                        null,
+                        "owner",
+                        null,
+                        ToolResultPresentationMode.BASIC,
+                        ToolExecutionPermit.empty()));
         try {
             String result = create.execute(new CreateGroup.Args("do the thing"));
             assertEquals("", result, "create_group returns an empty result on success");
@@ -116,7 +127,15 @@ class GroupToolsWiringTest {
     @Test
     void createGroupRefusesBlankBrief() {
         CreateGroup create = new CreateGroup(spawner, leaderBinding, roleToolFilter);
-        ToolCallContextHolder.set("agent-blank", UUID.randomUUID());
+        ToolCallContextHolder.set(
+                new ToolCallContext(
+                        "agent-blank",
+                        UUID.randomUUID(),
+                        null,
+                        null,
+                        null,
+                        ToolResultPresentationMode.BASIC,
+                        ToolExecutionPermit.empty()));
         try {
             ToolExecutionException error =
                     assertThrows(
@@ -137,7 +156,15 @@ class GroupToolsWiringTest {
         Group g = spawner.registerEmptyGroup("leader", "default", null, "brief");
 
         DisbandGroup disband = new DisbandGroup(spawner, registry);
-        ToolCallContextHolder.set("leader", UUID.randomUUID(), g.groupId());
+        ToolCallContextHolder.set(
+                new ToolCallContext(
+                        "leader",
+                        UUID.randomUUID(),
+                        g.groupId(),
+                        null,
+                        null,
+                        ToolResultPresentationMode.BASIC,
+                        ToolExecutionPermit.empty()));
         try {
             String result = disband.execute(new DisbandGroup.Args());
             assertEquals("", result, "disband_group returns an empty result on success");
@@ -167,7 +194,15 @@ class GroupToolsWiringTest {
     @Test
     void disbandGroupRefusesWithoutActiveGroup() {
         DisbandGroup disband = new DisbandGroup(spawner, registry);
-        ToolCallContextHolder.set("leader", UUID.randomUUID()); // no groupId in context
+        ToolCallContextHolder.set(
+                new ToolCallContext(
+                        "leader",
+                        UUID.randomUUID(),
+                        null,
+                        null,
+                        null,
+                        ToolResultPresentationMode.BASIC,
+                        ToolExecutionPermit.empty()));
         try {
             ToolExecutionException error =
                     assertThrows(
@@ -190,7 +225,15 @@ class GroupToolsWiringTest {
         registry.put(g.withMate("mate-1", "coding"));
 
         PostMessage post = new PostMessage(blackboard, registry);
-        ToolCallContextHolder.set("leader", UUID.randomUUID(), g.groupId());
+        ToolCallContextHolder.set(
+                new ToolCallContext(
+                        "leader",
+                        UUID.randomUUID(),
+                        g.groupId(),
+                        null,
+                        null,
+                        ToolResultPresentationMode.BASIC,
+                        ToolExecutionPermit.empty()));
         try {
             String result = post.execute(new PostMessage.Args("FEEDBACK", "mate-1", "oops"));
             assertEquals("posted", result);
@@ -212,7 +255,15 @@ class GroupToolsWiringTest {
     @Test
     void postMessageRefusesWithoutActiveGroup() {
         PostMessage post = new PostMessage(blackboard, registry);
-        ToolCallContextHolder.set("leader", UUID.randomUUID()); // no groupId in context
+        ToolCallContextHolder.set(
+                new ToolCallContext(
+                        "leader",
+                        UUID.randomUUID(),
+                        null,
+                        null,
+                        null,
+                        ToolResultPresentationMode.BASIC,
+                        ToolExecutionPermit.empty()));
         try {
             ToolExecutionException error =
                     assertThrows(

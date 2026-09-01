@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import top.focess.veto.agent.intercept.ToolExecutionPermit;
+import top.focess.veto.llm.core.ToolResultPresentationMode;
 
 /**
  * Tests that ToolCallContext (agentId + userId) is threaded through tool execution, enabling
@@ -16,7 +18,15 @@ class ToolCallContextTest {
         String agentId = "agent-123";
         UUID userId = UUID.fromString("12345678-1234-1234-1234-123456789abc");
 
-        ToolCallContext ctx = new ToolCallContext(agentId, userId);
+        ToolCallContext ctx =
+                new ToolCallContext(
+                        agentId,
+                        userId,
+                        null,
+                        null,
+                        null,
+                        ToolResultPresentationMode.BASIC,
+                        ToolExecutionPermit.empty());
 
         assertEquals(agentId, ctx.agentId(), "agentId should be captured");
         assertEquals(userId, ctx.userId(), "userId should be captured");
@@ -28,7 +38,15 @@ class ToolCallContextTest {
         UUID userId = UUID.randomUUID();
 
         // Set in thread-local
-        ToolCallContextHolder.set(agentId, userId);
+        ToolCallContextHolder.set(
+                new ToolCallContext(
+                        agentId,
+                        userId,
+                        null,
+                        null,
+                        null,
+                        ToolResultPresentationMode.BASIC,
+                        ToolExecutionPermit.empty()));
 
         // Read from same thread
         ToolCallContext ctx = ToolCallContextHolder.get();

@@ -308,12 +308,12 @@ public final class PromptBlocks {
      * without pretending every native, agent, and remote tool shares one envelope.
      */
     public static @NonNull String resultConventions() {
-        return resultConventions(ToolResultPresentationMode.CONTENT_ONLY);
+        return resultConventions(ToolResultPresentationMode.BASIC);
     }
 
     public static @NonNull String resultConventions(
             @NonNull ToolResultPresentationMode presentationMode) {
-        if (presentationMode == ToolResultPresentationMode.CONTENT_ONLY) {
+        if (!presentationMode.detailed()) {
             return """
                     ## Tool Result Conventions
                     Tool results contain the tool-specific content directly. Read each tool's Result contract to interpret whether that content is JSON or plain text. Failure diagnostics are self-contained in the content; if a call failed, correct the cause and do not report the operation as completed.

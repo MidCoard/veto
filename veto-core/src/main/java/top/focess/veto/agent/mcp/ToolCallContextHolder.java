@@ -7,8 +7,6 @@ import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.AgentRunner;
 import top.focess.veto.agent.TurnRecord;
-import top.focess.veto.agent.intercept.ToolExecutionPermit;
-import top.focess.veto.llm.core.ToolResultPresentationMode;
 
 /**
  * Thread-local holder for {@link ToolCallContext}. {@link AgentRunner} sets the context before
@@ -18,7 +16,7 @@ import top.focess.veto.llm.core.ToolResultPresentationMode;
  * <p><b>Usage in AgentRunner:</b>
  *
  * <pre>{@code
- * ToolCallContextHolder.set(agentId, userId);
+ * ToolCallContextHolder.set(context);
  * try {
  *     ToolResult result = toolEngine.execute(call, def);
  * } finally {
@@ -81,75 +79,6 @@ public final class ToolCallContextHolder {
     private ToolCallContextHolder() {}
 
     /** Sets the tool call context for the current thread. */
-    public static void set(@NonNull String agentId, @NonNull UUID userId) {
-        CONTEXT.set(new ToolCallContext(agentId, userId));
-    }
-
-    /** Sets the tool call context for the current thread, including the caller's group. */
-    public static void set(@NonNull String agentId, @NonNull UUID userId, UUID groupId) {
-        CONTEXT.set(new ToolCallContext(agentId, userId, groupId));
-    }
-
-    /**
-     * Sets the tool call context for the current thread, including the caller's group and the
-     * session owner (username) whose model-tier profile resolves the caller's tier.
-     */
-    public static void set(
-            @NonNull String agentId, @NonNull UUID userId, UUID groupId, String owner) {
-        CONTEXT.set(new ToolCallContext(agentId, userId, groupId, owner));
-    }
-
-    /**
-     * Sets the tool call context including the caller's session id, so session-scoped events
-     * (background-task lifecycle) can be routed on the delta broker.
-     */
-    public static void set(
-            @NonNull String agentId,
-            @NonNull UUID userId,
-            UUID groupId,
-            String owner,
-            UUID sessionId) {
-        CONTEXT.set(new ToolCallContext(agentId, userId, groupId, owner, sessionId));
-    }
-
-    /** Sets the full context including the Gateway-bound execution permit. */
-    public static void set(
-            @NonNull String agentId,
-            @NonNull UUID userId,
-            UUID groupId,
-            String owner,
-            UUID sessionId,
-            @NonNull ToolExecutionPermit executionPermit) {
-        set(
-                agentId,
-                userId,
-                groupId,
-                owner,
-                sessionId,
-                ToolResultPresentationMode.CONTENT_ONLY,
-                executionPermit);
-    }
-
-    public static void set(
-            @NonNull String agentId,
-            @NonNull UUID userId,
-            UUID groupId,
-            String owner,
-            UUID sessionId,
-            @NonNull ToolResultPresentationMode toolResultPresentation,
-            @NonNull ToolExecutionPermit executionPermit) {
-        CONTEXT.set(
-                new ToolCallContext(
-                        agentId,
-                        userId,
-                        groupId,
-                        owner,
-                        sessionId,
-                        toolResultPresentation,
-                        executionPermit));
-    }
-
-    /** Sets the tool call context for the current thread. */
     public static void set(@NonNull ToolCallContext ctx) {
         CONTEXT.set(ctx);
     }
@@ -205,11 +134,11 @@ public final class ToolCallContextHolder {
      */
     public static TransformRequest drainTransform() {
         Object value = PENDING_TRANSFORM.get();
-        TransformRequest r = value instanceof TransformRequest request ? request : null;
-        if (r != null) {
+        TransformRequest request = value instanceof TransformRequest transform ? transform : null;
+        if (request != null) {
             PENDING_TRANSFORM.remove();
         }
-        return r;
+        return request;
     }
 
     /**
@@ -229,7 +158,6 @@ public final class ToolCallContextHolder {
         return copy;
     }
 
-    @SuppressWarnings("unchecked")
     private static @NonNull List<@NonNull TurnRecord> pendingTurns() {
         Object value = PENDING_TURNS.get();
         if (value instanceof List<?>) {

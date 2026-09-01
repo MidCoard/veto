@@ -16,11 +16,13 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
+import top.focess.veto.agent.mcp.ToolCallContext;
 import top.focess.veto.agent.mcp.ToolCallContextHolder;
 import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.mcp.ToolErrors;
 import top.focess.veto.agent.mcp.ToolExecutionException;
 import top.focess.veto.agent.screening.DeployerPolicy;
+import top.focess.veto.llm.core.ToolResultPresentationMode;
 import top.focess.veto.sandbox.BackgroundTaskManager;
 import top.focess.veto.sandbox.SandboxManager;
 import top.focess.veto.sandbox.TestSandboxFactory;
@@ -48,7 +50,15 @@ class RunTaskToolTest {
         runTask = new RunTaskTool(manager, mapper);
         status = new ViewTaskTool(manager, mapper);
         stop = new StopTaskTool(manager, mapper);
-        ToolCallContextHolder.set("agent-x", UUID.randomUUID());
+        ToolCallContextHolder.set(
+                new ToolCallContext(
+                        "agent-x",
+                        UUID.randomUUID(),
+                        null,
+                        null,
+                        null,
+                        ToolResultPresentationMode.BASIC,
+                        ToolExecutionPermit.empty()));
     }
 
     @AfterEach
@@ -71,7 +81,15 @@ class RunTaskToolTest {
                         List.of(tempDir),
                         DeployerPolicy.FULL_ACCESS,
                         Set.of());
-        ToolCallContextHolder.set("agent-x", UUID.randomUUID(), null, null, null, permit);
+        ToolCallContextHolder.set(
+                new ToolCallContext(
+                        "agent-x",
+                        UUID.randomUUID(),
+                        null,
+                        null,
+                        null,
+                        ToolResultPresentationMode.BASIC,
+                        permit));
         boolean win = System.getProperty("os.name").toLowerCase().contains("win");
         String exe =
                 Path.of(System.getProperty("java.home"), "bin", win ? "java.exe" : "java")

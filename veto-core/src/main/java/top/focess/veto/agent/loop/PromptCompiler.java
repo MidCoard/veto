@@ -126,7 +126,7 @@ public class PromptCompiler {
                 history,
                 guidedSwitch,
                 correctionFactor,
-                ToolResultPresentationMode.CONTENT_ONLY);
+                ToolResultPresentationMode.BASIC);
     }
 
     public @NonNull CompiledPrompt compile(

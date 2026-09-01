@@ -20,12 +20,12 @@ public class ToolResultPresenter {
     }
 
     public @NonNull String present(@NonNull ToolResult result) {
-        return present(result, ToolResultPresentationMode.CONTENT_ONLY);
+        return present(result, ToolResultPresentationMode.BASIC);
     }
 
     public @NonNull String present(
             @NonNull ToolResult result, @NonNull ToolResultPresentationMode mode) {
-        if (mode == ToolResultPresentationMode.CONTENT_ONLY) {
+        if (!mode.detailed()) {
             return result.content();
         }
         ObjectNode envelope = mapper.createObjectNode();

@@ -32,61 +32,10 @@ public record ToolDefinition(
         @NonNull List<String> returnExamples,
         @NonNull List<ToolResultFormat> resultFormats) {
 
-    /** Convenience for tools without examples or a long description; delegates with empties. */
-    public ToolDefinition(
-            @NonNull String name,
-            @NonNull String description,
-            @NonNull Map<String, Object> inputSchema) {
-        this(name, description, inputSchema, List.of(), "", List.of(), defaultResultFormats());
-    }
-
-    /**
-     * Convenience for tools without a long description; delegates with an empty long description.
-     */
-    public ToolDefinition(
-            @NonNull String name,
-            @NonNull String description,
-            @NonNull Map<String, Object> inputSchema,
-            @NonNull List<String> examples) {
-        this(name, description, inputSchema, examples, "", List.of(), defaultResultFormats());
-    }
-
-    /** Convenience for tools without return examples; delegates with an empty list. */
-    public ToolDefinition(
-            @NonNull String name,
-            @NonNull String description,
-            @NonNull Map<String, Object> inputSchema,
-            @NonNull List<String> examples,
-            @NonNull String longDescription) {
-        this(
-                name,
-                description,
-                inputSchema,
-                examples,
-                longDescription,
-                List.of(),
-                defaultResultFormats());
-    }
-
-    /** Compatibility constructor with explicit examples but legacy implicit result formats. */
-    public ToolDefinition(
-            @NonNull String name,
-            @NonNull String description,
-            @NonNull Map<String, Object> inputSchema,
-            @NonNull List<String> examples,
-            @NonNull String longDescription,
-            @NonNull List<String> returnExamples) {
-        this(
-                name,
-                description,
-                inputSchema,
-                examples,
-                longDescription,
-                returnExamples,
-                defaultResultFormats());
-    }
-
-    private static @NonNull List<@NonNull ToolResultFormat> defaultResultFormats() {
-        return List.of(ToolResultFormat.JSON, ToolResultFormat.PLAINTEXT);
+    public ToolDefinition {
+        inputSchema = Map.copyOf(inputSchema);
+        examples = List.copyOf(examples);
+        returnExamples = List.copyOf(returnExamples);
+        resultFormats = List.copyOf(resultFormats);
     }
 }

@@ -49,6 +49,7 @@ import top.focess.veto.agent.loop.ResponseEnforcer;
 import top.focess.veto.agent.loop.Scope;
 import top.focess.veto.agent.loop.StopAction;
 import top.focess.veto.agent.mcp.AgentToolDefinition;
+import top.focess.veto.agent.mcp.ToolCallContext;
 import top.focess.veto.agent.mcp.ToolCallContextHolder;
 import top.focess.veto.agent.mcp.ToolDefinition;
 import top.focess.veto.agent.mcp.ToolEngine;
@@ -106,7 +107,7 @@ public class AgentRunner {
     private final @NonNull List<LoopInterceptor> interceptors;
     private final @NonNull PromptCompiler promptCompiler;
     private @NonNull ToolResultPresentationMode toolResultPresentation =
-            ToolResultPresentationMode.CONTENT_ONLY;
+            ToolResultPresentationMode.BASIC;
     private final @NonNull UniformLLMCaller caller;
     private final @NonNull ObjectMapper objectMapper;
     private final @NonNull LoopBreaker breaker;
@@ -1169,13 +1170,14 @@ public class AgentRunner {
 
         // (d) execute with tool call context (agentId + userId + groupId) threaded through.
         ToolCallContextHolder.set(
-                agentId,
-                userId,
-                groupId,
-                owner,
-                sessionId,
-                toolResultPresentation,
-                executionPermit);
+                new ToolCallContext(
+                        agentId,
+                        userId,
+                        groupId,
+                        owner,
+                        sessionId,
+                        toolResultPresentation,
+                        executionPermit));
         try {
             // (e) plugin postAction chain
             ToolResult transformed = mcpEngine.execute(call, def);

@@ -84,7 +84,7 @@ class SessionServiceTest {
                 new SessionService(sessions, agents, patterns, agentService, loader, tierRegistry);
 
         SessionEntity session = service.createSession("alice", "coder");
-        assertEquals(ToolResultPresentationMode.CONTENT_ONLY, session.getToolResultPresentation());
+        assertEquals(ToolResultPresentationMode.BASIC, session.getToolResultPresentation());
         requirePrimaryAgentId(session, "primary agent created and linked");
         verify(agents)
                 .save(any(top.focess.veto.agent.mcp.ToolDocs.nonNullClass(AgentEntity.class)));
@@ -122,15 +122,9 @@ class SessionServiceTest {
 
         SessionEntity session =
                 service.createSession(
-                        "alice",
-                        "coder",
-                        "mysession",
-                        CWD,
-                        ToolResultPresentationMode.CONTENT_WITH_METADATA);
+                        "alice", "coder", "mysession", CWD, ToolResultPresentationMode.DETAILED);
         assertEquals("mysession", session.getName());
-        assertEquals(
-                ToolResultPresentationMode.CONTENT_WITH_METADATA,
-                session.getToolResultPresentation());
+        assertEquals(ToolResultPresentationMode.DETAILED, session.getToolResultPresentation());
 
         ArgumentCaptor<SessionEntity> captor =
                 ArgumentCaptor.forClass(
@@ -539,7 +533,7 @@ class SessionServiceTest {
                         any(),
                         eq("alice"),
                         any(),
-                        eq(ToolResultPresentationMode.CONTENT_ONLY));
+                        eq(ToolResultPresentationMode.BASIC));
     }
 
     // ── workspace binding ─────────────────────────────────────────────────

@@ -17,7 +17,16 @@ import top.focess.veto.llm.provider.LLMProviderStrategy;
 class DefaultUniformLLMCallerTest {
     private @NonNull VetoRequest request(@NonNull ProviderType type) {
         return new VetoRequest(
-                "sys", "user", List.of(), type, "model-x", "openai-key", LlmOptions.defaults());
+                "sys",
+                "user",
+                List.of(),
+                type,
+                "model-x",
+                "openai-key",
+                LlmOptions.defaults(),
+                List.of(),
+                null,
+                null);
     }
 
     private @NonNull LlmEgress egressReturning(@NonNull String apiKey) {

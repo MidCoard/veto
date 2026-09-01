@@ -26,9 +26,4 @@ public record MateBinding(
         @NonNull ModelTier tier,
         String systemPromptBase,
         String owner,
-        @NonNull ToolResultPresentationMode toolResultPresentation) {
-
-    public MateBinding(@NonNull ModelTier tier, String systemPromptBase, String owner) {
-        this(tier, systemPromptBase, owner, ToolResultPresentationMode.CONTENT_ONLY);
-    }
-}
+        @NonNull ToolResultPresentationMode toolResultPresentation) {}

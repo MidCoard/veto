@@ -36,6 +36,7 @@ import top.focess.veto.agent.mcp.tools.WriteToFileTool;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.ToolCall;
+import top.focess.veto.llm.core.ToolResultPresentationMode;
 import top.focess.veto.sandbox.BackgroundTaskManager;
 import top.focess.veto.sandbox.SandboxManager;
 import top.focess.veto.sandbox.TestSandboxFactory;
@@ -143,7 +144,14 @@ class ToolEngineImplTest {
                 ToolExecutionPermit.capture(
                         call, definition, Workspace.single(workspaceRoot, PathMode.REAL));
         ToolCallContextHolder.set(
-                new ToolCallContext("test-agent", UUID.randomUUID(), null, null, null, permit));
+                new ToolCallContext(
+                        "test-agent",
+                        UUID.randomUUID(),
+                        null,
+                        null,
+                        null,
+                        ToolResultPresentationMode.BASIC,
+                        permit));
         try {
             return engine.execute(call, definition);
         } finally {
@@ -252,7 +260,14 @@ class ToolEngineImplTest {
                 ToolExecutionPermit.capture(
                         screened, definition, Workspace.single(tempDir, PathMode.REAL));
         ToolCallContextHolder.set(
-                new ToolCallContext("test-agent", UUID.randomUUID(), null, null, null, permit));
+                new ToolCallContext(
+                        "test-agent",
+                        UUID.randomUUID(),
+                        null,
+                        null,
+                        null,
+                        ToolResultPresentationMode.BASIC,
+                        permit));
         try {
             ToolResult result =
                     engine.execute(
@@ -697,7 +712,14 @@ class ToolEngineImplTest {
                 ToolExecutionPermit.capture(
                         screened, definition, Workspace.single(tempDir, PathMode.REAL));
         ToolCallContextHolder.set(
-                new ToolCallContext("test-agent", UUID.randomUUID(), null, null, null, permit));
+                new ToolCallContext(
+                        "test-agent",
+                        UUID.randomUUID(),
+                        null,
+                        null,
+                        null,
+                        ToolResultPresentationMode.BASIC,
+                        permit));
         try {
             ToolCall changed =
                     new ToolCall(

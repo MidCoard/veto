@@ -49,7 +49,10 @@ class DeepSeekProviderIntegrationTest {
                         ProviderType.DEEPSEEK,
                         model,
                         "deepseek-key",
-                        LlmOptions.defaults());
+                        LlmOptions.defaults(),
+                        List.of(),
+                        null,
+                        null);
 
         ResolvedRequest resolved = new ResolvedRequest(request, "https://api.deepseek.com", apiKey);
         VetoResponse response = provider.execute(resolved);
@@ -77,7 +80,10 @@ class DeepSeekProviderIntegrationTest {
                         ProviderType.DEEPSEEK,
                         model,
                         "deepseek-key",
-                        options);
+                        options,
+                        List.of(),
+                        null,
+                        null);
 
         ResolvedRequest resolved = new ResolvedRequest(request, "https://api.deepseek.com", apiKey);
         VetoResponse response = provider.execute(resolved);
