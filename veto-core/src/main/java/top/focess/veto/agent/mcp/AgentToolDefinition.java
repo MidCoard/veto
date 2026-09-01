@@ -61,15 +61,14 @@ public record AgentToolDefinition(
     }
 
     @Override
-    public @NonNull String longDescription() {
-        return ToolDocs.descriptionOf(argsClass);
+    public @NonNull ToolDocumentation documentation() {
+        return ToolDocs.documentationOf(argsClass);
     }
 
     /**
      * Factory: reflects schema off the args record to build an {@link AgentToolDefinition}. Derives
-     * the tool name from the class name, reads the one-liner {@link ToolDoc#description()} (falling
-     * back to the first sentence of {@link ToolDoc#usage()}), and extracts {@link SecurityHint}
-     * annotations via {@link ToolSchemaCompiler#hintsOf}.
+     * the tool name from the class name, reads the one-liner {@link ToolDoc#description()}, and
+     * extracts {@link SecurityHint} annotations via {@link ToolSchemaCompiler#hintsOf}.
      *
      * <p>Use {@link #from(String, Class)} when the tool name is known explicitly (e.g. from {@link
      * AgentTool#getName()}) — this avoids the class-name derivation which breaks for inner-class
@@ -96,7 +95,7 @@ public record AgentToolDefinition(
         String description =
                 (doc != null && !doc.description().isEmpty())
                         ? doc.description()
-                        : ToolDocs.firstSentenceOf(doc != null ? doc.usage() : "");
+                        : ToolDocs.firstSentenceOf(doc != null ? doc.behavior() : "");
         Map<@NonNull String, @NonNull ParamCategory> hints = ToolSchemaCompiler.hintsOf(argsClass);
         return new AgentToolDefinition(name, description, capability, argsClass, hints);
     }

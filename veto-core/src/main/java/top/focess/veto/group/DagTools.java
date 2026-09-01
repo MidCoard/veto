@@ -46,41 +46,45 @@ public final class DagTools {
             description =
                     "Add a node to your group's execution plan - one discrete task with "
                             + "a required skillset.",
-            usage =
+            behavior =
                     """
-                    #### When to use
-                    Use `create_node` to build your plan node by node: one call per discrete \
-                    task. Create dependencies before the nodes that need them - you author the \
-                    plan from its foundations up. Also use it to extend the plan while the group \
-                    is running.
-
-                    #### When NOT to use
-                    - Do not create a node before you have investigated enough to describe it \
-                    concretely - vague nodes make vague work.
-                    - Do not create nodes for work that needs no mate; synthesis is your job, \
-                    not a node.
-                    - Do not depend on a node that does not exist yet; create it first.
-
-                    #### Behavior
                     Adds one node to the execution plan. `dependsOn` may reference only existing, \
                     live nodes - the plan stays acyclic by construction. The node starts PENDING. \
                     On an orchestration tick after its dependencies are verified, the engine may \
                     reuse a suitable Mate or provision one and then dispatch the node. Each plan \
                     mutation is validated atomically before it takes effect.
-
-                    #### Return format
+                    """,
+            whenToUse =
+                    """
+                    Use `create_node` to build your plan node by node: one call per discrete \
+                    task. Create dependencies before the nodes that need them - you author the \
+                    plan from its foundations up. Also use it to extend the plan while the group \
+                    is running.
+                    """,
+            whenNotToUse =
+                    """
+                    - Do not create a node before you have investigated enough to describe it \
+                    concretely - vague nodes make vague work.
+                    - Do not create nodes for work that needs no mate; synthesis is your job, \
+                    not a node.
+                    - Do not depend on a node that does not exist yet; create it first.
+                    """,
+            resultContract =
+                    """
                     On success - one prose line per created node:
                       Node created: node-1 (skillset: coding). It is eligible for dispatch.
                     On rejection:
                       Node not created: <reason and what to do next>
-
-                    #### Errors & edge cases
+                    """,
+            errorsAndEdgeCases =
+                    """
                     - Duplicate `nodeId` -> rejected; choose a unique id.
                     - `dependsOn` references an unknown or retired (stale) node -> rejected naming \
                     the id; create dependencies first.
                     - Blank `nodeId`, `description`, or `skillset` -> rejected.
-
-                    #### Security
+                    """,
+            security =
+                    """
                     Agent tool (`RiskCategory.AGENT`). The Gateway returns `NotScreened`; each \
                     call is structurally validated by the engine before it takes effect. \
                     Leader-only.
@@ -178,37 +182,41 @@ public final class DagTools {
             description =
                     "Retire a node from your group's plan - re-planning marks it stale "
                             + "rather than deleting it.",
-            usage =
+            behavior =
                     """
-                    #### When to use
+                    Marks the node STALE and keeps it in the plan record for audit. New nodes cannot \
+                    depend on it, and live dependents must be removed or re-planned first. This call \
+                    does not stop a running Mate or clear the recorded assignment.
+                    """,
+            whenToUse =
+                    """
                     Use `remove_node` when re-planning makes a node obsolete - a strategic \
                     pivot, a task that turned out unnecessary, or a failed node you are replacing \
                     with a different approach.
-
-                    #### When NOT to use
+                    """,
+            whenNotToUse =
+                    """
                     - Do not remove a VERIFIED node; verified work is checkpointed and stays.
                     - Do not remove a node others still depend on; re-plan or remove the \
                     dependents first (the error names them).
                     - Do not remove a node as a reaction to a single failure - the engine already \
                     routes retries; removal is for plan-level changes.
-
-                    #### Behavior
-                    Marks the node STALE and keeps it in the plan record for audit. New nodes cannot \
-                    depend on it, and live dependents must be removed or re-planned first. This call \
-                    does not stop a running Mate or clear the recorded assignment.
-
-                    #### Return format
+                    """,
+            resultContract =
+                    """
                     On success:
                       Node removed: node-2 (marked stale).
                     On refusal:
                       Node not removed: node-3 depends on node-1. Remove or re-plan it first.
-
-                    #### Errors & edge cases
+                    """,
+            errorsAndEdgeCases =
+                    """
                     - Unknown `nodeId` -> `Node not removed: node not found: <id>`.
                     - Live dependents exist -> refused, naming the dependents.
                     - Already stale or VERIFIED -> not removed; verified work remains checkpointed.
-
-                    #### Security
+                    """,
+            security =
+                    """
                     Agent tool (`RiskCategory.AGENT`). The Gateway returns `NotScreened`; the \
                     engine validates the removal before it takes effect. Leader-only.
                     """,

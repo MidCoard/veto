@@ -38,26 +38,8 @@ public final class GrepSearchTool implements NativeTool<GrepSearchTool.Args> {
     @ToolDoc(
             resultFormats = {ToolResultFormat.PLAINTEXT},
             description = "Search for exact pattern matches inside files.",
-            usage =
+            behavior =
                     """
-                    #### When to use
-                    Use `grep_search` to locate occurrences of an exact text pattern across a tree of files \
-                    - finding where a symbol is referenced, tracking down a `TODO`/`FIXME` marker, finding the \
-                    definition site of a function, or enumerating every call site before a refactor. It is the \
-                    primary tool for "where is X mentioned in the codebase?".
-
-                    Prefer it over `view_file` when you do not yet know which file holds the text: grep tells you \
-                    the file and line, `view_file` then reads the surrounding context.
-
-                    #### When NOT to use
-                    - Do not use `grep_search` to read a file whose path you already know - use `view_file` instead \
-                    (it returns line numbers and full surrounding context, which grep does not).
-                    - Do not use it to list what is in a directory - use `list_dir`.
-                    - Do not use it for whole-file inspection or to follow an import chain.
-                    - The match is an exact substring only. There is no regex, no alternation, no anchoring - do \
-                    not reach for it expecting `.*` or `^foo`; refine your literal pattern instead.
-
-                    #### Behavior
                     Walks `absolutePath` recursively, opens every regular file as UTF-8, and reports each line that \
                     contains `query` as a substring. Matching is byte-exact against the decoded text. When \
                     `caseInsensitive` is true, both the query and each line are lowercased before the substring \
@@ -68,28 +50,50 @@ public final class GrepSearchTool implements NativeTool<GrepSearchTool.Args> {
                     Directory symbolic links are not followed. Regular-file symbolic links are read like their \
                     targets, subject to the authorized filesystem boundary. At most 10000 files, 2000 matches, \
                     and 1000000 output characters are processed; a truncation marker means the result is incomplete.
+                    """,
+            whenToUse =
+                    """
+                    Use `grep_search` to locate occurrences of an exact text pattern across a tree of files \
+                    - finding where a symbol is referenced, tracking down a `TODO`/`FIXME` marker, finding the \
+                    definition site of a function, or enumerating every call site before a refactor. It is the \
+                    primary tool for "where is X mentioned in the codebase?".
 
-                    #### Return format
+                    Prefer it over `view_file` when you do not yet know which file holds the text: grep tells you \
+                    the file and line, `view_file` then reads the surrounding context.
+                    """,
+            whenNotToUse =
+                    """
+                    - Do not use `grep_search` to read a file whose path you already know - use `view_file` instead \
+                    (it returns line numbers and full surrounding context, which grep does not).
+                    - Do not use it to list what is in a directory - use `list_dir`.
+                    - Do not use it for whole-file inspection or to follow an import chain.
+                    - The match is an exact substring only. There is no regex, no alternation, no anchoring - do \
+                    not reach for it expecting `.*` or `^foo`; refine your literal pattern instead.
+                    """,
+            resultContract =
+                    """
                     - Success: one match per line as \
                     `<file>:<lineNumber>: <line text>` (1-indexed). No hits returns `(no matches)`; \
                     bounded results end with `[truncated: ...]`.
-                    - Supplied target does not exist (failure): \
-                    `Path not found: <path>`.
+                    - Supplied `absolutePath` does not exist (failure): \
+                    `Search path does not exist: <absolutePath>`.
+                    - Supplied `query` is empty (failure): \
+                    `query must not be empty`.
                     - Invalid `includes` glob (failure): \
                     `Invalid includes glob`.
-
-                    #### Errors & edge cases
+                    """,
+            errorsAndEdgeCases =
+                    """
                     - `absolutePath` is a file rather than a directory -> it is still walked; that single file is \
                     searched.
-                    - An empty `query` matches every line of every file (the empty substring is in every string) - \
-                    avoid passing an empty query.
                     - Very large trees are truncated; narrow with `includes` or scope `absolutePath` tighter.
                     - A traversal/read failure can make the result incomplete even when no truncation marker is \
                     available; retry with a narrower path when completeness matters.
                     - `caseInsensitive` and `includes` are optional; omit them for a plain case-sensitive search \
                     of all files.
-
-                    #### Security
+                    """,
+            security =
+                    """
                     `absolutePath` is a FILESYSTEM_PATH parameter: the Gateway screens it against the deployer \
                     policy and allowed roots before the walk begins. The operation is read-only \
                     (`RiskCategory.READ_ONLY`); no file is modified. Matched content flows back as tool output \
@@ -134,9 +138,12 @@ public final class GrepSearchTool implements NativeTool<GrepSearchTool.Args> {
 
     @Override
     public @NonNull String execute(@NonNull Args args) throws IOException {
+        if (args.query().isEmpty()) {
+            return ToolErrors.failure("query must not be empty");
+        }
         Path root = Path.of(args.absolutePath());
         if (!Files.exists(root)) {
-            return ToolErrors.failure("Path not found: " + args.absolutePath());
+            return ToolErrors.failure("Search path does not exist: " + args.absolutePath());
         }
         boolean ci = Boolean.TRUE.equals(args.caseInsensitive());
         String query = ci ? args.query().toLowerCase(Locale.ROOT) : args.query();

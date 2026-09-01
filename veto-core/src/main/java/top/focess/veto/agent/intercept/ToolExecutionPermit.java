@@ -28,18 +28,20 @@ public record ToolExecutionPermit(
         @NonNull Map<@NonNull String, Object> screenedArguments,
         @NonNull Map<@NonNull String, @NonNull AuthorizedPath> filesystemPaths,
         @NonNull List<@NonNull Path> workspaceRoots,
+        Path executionRoot,
         @NonNull DeployerPolicy deployerPolicy,
         @NonNull Set<@NonNull Path> protectedPaths) {
 
     private static final @NonNull ToolExecutionPermit EMPTY =
             new ToolExecutionPermit(
-                    "", Map.of(), Map.of(), List.of(), DeployerPolicy.FULL_ACCESS, Set.of());
+                    "", Map.of(), Map.of(), List.of(), null, DeployerPolicy.FULL_ACCESS, Set.of());
 
     public ToolExecutionPermit {
         screenedArguments = Map.copyOf(screenedArguments);
         filesystemPaths = Map.copyOf(filesystemPaths);
         workspaceRoots =
                 workspaceRoots.stream().map(path -> path.toAbsolutePath().normalize()).toList();
+        executionRoot = executionRoot == null ? null : executionRoot.toAbsolutePath().normalize();
         protectedPaths =
                 protectedPaths.stream()
                         .map(path -> path.toAbsolutePath().normalize())
@@ -68,11 +70,18 @@ public record ToolExecutionPermit(
             @NonNull ProtectedSet protectedSet) {
         Map<@NonNull String, @NonNull ParamCategory> hints = parameterHints(definition);
         List<Path> roots = workspace.hostRoots();
+        Path executionRoot = workspace.currentHostRoot();
         Set<Path> denied =
                 deployerPolicy == DeployerPolicy.FULL_ACCESS ? Set.of() : protectedSet.paths();
         if (hints.isEmpty()) {
             return new ToolExecutionPermit(
-                    call.toolName(), call.args(), Map.of(), roots, deployerPolicy, denied);
+                    call.toolName(),
+                    call.args(),
+                    Map.of(),
+                    roots,
+                    executionRoot,
+                    deployerPolicy,
+                    denied);
         }
         Map<@NonNull String, @NonNull AuthorizedPath> paths = new LinkedHashMap<>();
         for (var entry : hints.entrySet()) {
@@ -99,7 +108,7 @@ public record ToolExecutionPermit(
                             resolution.inScope()));
         }
         return new ToolExecutionPermit(
-                call.toolName(), call.args(), paths, roots, deployerPolicy, denied);
+                call.toolName(), call.args(), paths, roots, executionRoot, deployerPolicy, denied);
     }
 
     /** Whether this permit still binds the exact immutable tool call. */
@@ -117,6 +126,7 @@ public record ToolExecutionPermit(
             return false;
         }
         if (!workspaceRoots.equals(current.workspaceRoots)
+                || !Objects.equals(executionRoot, current.executionRoot)
                 || deployerPolicy != current.deployerPolicy
                 || !protectedPaths.equals(current.protectedPaths)) {
             return false;
@@ -136,6 +146,14 @@ public record ToolExecutionPermit(
 
     public AuthorizedPath path(@NonNull String argumentName) {
         return filesystemPaths.get(argumentName);
+    }
+
+    /** Returns the session-selected execution root captured during Gateway screening. */
+    public @NonNull Path requireExecutionRoot() {
+        if (executionRoot == null) {
+            throw new SecurityException("Missing screened workspace execution root");
+        }
+        return executionRoot;
     }
 
     /** Returns the declared workspace root that contains an authorized path. */

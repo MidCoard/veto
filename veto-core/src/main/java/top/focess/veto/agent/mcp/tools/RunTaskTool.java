@@ -10,9 +10,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.mcp.Doc;
 import top.focess.veto.agent.mcp.NativeTool;
-import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RiskCategory;
-import top.focess.veto.agent.mcp.SecurityHint;
 import top.focess.veto.agent.mcp.ToolCallContextHolder;
 import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDoc;
@@ -57,24 +55,8 @@ public final class RunTaskTool implements NativeTool<RunTaskTool.Args> {
             description =
                     "Launch a long-running command as a detached background task (non-blocking). "
                             + "Returns a taskId immediately; the process keeps running across turns.",
-            usage =
+            behavior =
                     """
-                    #### When to use
-                    Use `run_task` for a long-running process that you want running while you keep \
-                    working - a dev server (`npm run dev`), a file watcher, \
-                    a long build you will check later. The call returns at once with a `taskId`; \
-                    the process survives across turns and its output is captured for you.
-
-                    #### When NOT to use
-                    - Do not use it for a command whose result you need inline in this turn - use \
-                    `run_command` (blocking) instead.
-                    - Do not launch more than one command per call - background mode does not \
-                    chain; express a pipeline as separate steps.
-                    - Do not stop a task you launched with an OS kill command (`taskkill` / `kill`) \
-                    - use `stop_task` with its `taskId`. That is the only sanctioned stop path and \
-                    it keeps the task registry consistent.
-
-                    #### Behavior
                     Starts the single `commands[0]` entry through the sandbox substrate and returns \
                     immediately. Ordinary executables use direct argv execution; Windows `.cmd`/`.bat` \
                     launchers use the restricted `ComSpec` bridge. Output (stdout+stderr merged) is \
@@ -83,41 +65,59 @@ public final class RunTaskTool implements NativeTool<RunTaskTool.Args> {
                     lifetime - it is auto-killed after it elapses. When the task ends you are told \
                     about it on your next turn; you can also inspect it any time with `view_task` \
                     or end it with `stop_task`.
-
-                    #### Return format
+                    """,
+            whenToUse =
+                    """
+                    Use `run_task` for a long-running process that you want running while you keep \
+                    working - a dev server (`npm run dev`), a file watcher, \
+                    a long build you will check later. The call returns at once with a `taskId`; \
+                    the process survives across turns and its output is captured for you.
+                    """,
+            whenNotToUse =
+                    """
+                    - Do not use it for a command whose result you need inline in this turn - use \
+                    `run_command` (blocking) instead.
+                    - Do not launch more than one command per call - background mode does not \
+                    chain; express a pipeline as separate steps.
+                    - Do not stop a task you launched with an OS kill command (`taskkill` / `kill`) \
+                    - use `stop_task` with its `taskId`. That is the only sanctioned stop path and \
+                    it keeps the task registry consistent.
+                    """,
+            resultContract =
+                    """
                     A JSON outcome: `{"status":"started","taskId":"bg-3","pid":1234, \
                     "command":"npm run dev","cwd":"...","requestedTimeoutSeconds":0, \
                     "effectiveTimeoutSeconds":600}`.
-
-                    #### Errors & edge cases
+                    """,
+            errorsAndEdgeCases =
+                    """
                     - Any supplied command count other than one -> rejected (background mode does not chain).
                     - A negative supplied `timeout` -> rejected.
                     - Only the latest 5000 output lines are retained; an unterminated line is capped at 65536 bytes.
-                    - `cwd` outside an allowed root -> the Gateway blocks the call.
-
-                    #### Security
-                    Same screening as `run_command`: `commands` carries SHELL_COMMAND and `cwd` \
-                    carries FILESYSTEM_PATH; `RiskCategory.SHELL_EXEC`, always audited and may \
+                    - The working directory is the session-selected workspace root and cannot be overridden by the call.
+                    """,
+            security =
+                    """
+                    Same screening as `run_command`: `commands` carries SHELL_COMMAND; the working directory \
+                    is bound to the session-selected workspace root. `RiskCategory.SHELL_EXEC`, always audited and may \
                     require human approval. Ordinary executables are direct argv launches; Windows \
                     `.cmd`/`.bat` shims use the restricted `ComSpec` bridge and reject interpreter \
-                    metacharacters. Prefer the narrowest `cwd`.
+                    metacharacters.
                     """,
             examples = {
-                "{\"commands\": [{\"executable\": \"npm\", \"args\": [\"run\", \"dev\"]}], \"cwd\": \"/abs/app\", \"timeout\": 0}",
-                "{\"commands\": [{\"executable\": \"python\", \"args\": [\"-m\", \"http.server\", \"8000\"]}], \"cwd\": \"/abs/site\", \"timeout\": 3600}",
-                "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"test\", \"--continuous\"]}], \"cwd\": \"/abs\", \"timeout\": 1800}"
+                "{\"commands\": [{\"executable\": \"npm\", \"args\": [\"run\", \"dev\"]}], \"timeout\": 0}",
+                "{\"commands\": [{\"executable\": \"python\", \"args\": [\"-m\", \"http.server\", \"8000\"]}], \"timeout\": 3600}",
+                "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"test\", \"--continuous\"]}], \"timeout\": 1800}"
             },
             returnExamples = {
                 "{\"status\": \"started\", \"taskId\": \"bg-3\", \"pid\": 12345, \"command\": \"npm run dev\","
                         + " \"cwd\": \"/abs/app\", \"requestedTimeoutSeconds\": 0, \"effectiveTimeoutSeconds\": 600}"
             })
     public record Args(
-            @SecurityHint(ParamCategory.SHELL_COMMAND)
+            @top.focess.veto.agent.mcp.SecurityHint(
+                            top.focess.veto.agent.mcp.ParamCategory.SHELL_COMMAND)
                     @Doc("Exactly one command: {executable, args}. Background mode does not chain.")
                     @NonNull List<RunCommandTool.CommandInput> commands,
-            @SecurityHint(ParamCategory.FILESYSTEM_PATH)
-                    @Doc("Working directory; must be under an allowed root (Gateway-checked).")
-                    @NonNull String cwd,
             @Doc(
                             "Request network access for this task. Defaults to false; true is separately Gateway-screened.")
                     Boolean network,
@@ -162,10 +162,10 @@ public final class RunTaskTool implements NativeTool<RunTaskTool.Args> {
         }
         String agentId = ctx.agentId();
         java.util.UUID sessionId = ctx.sessionId();
-        Path cwd = Path.of(args.cwd());
+        Path cwd = ctx.executionPermit().requireExecutionRoot();
         SandboxProfile profile =
                 SandboxProfile.forExecution(
-                        ctx.executionPermit().sandboxRoot("cwd"),
+                        cwd,
                         ctx.executionPermit().protectedPaths(),
                         Boolean.TRUE.equals(args.network()));
         BackgroundTaskManager.TaskInfo info =

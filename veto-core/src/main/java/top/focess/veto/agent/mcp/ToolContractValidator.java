@@ -11,6 +11,9 @@ public final class ToolContractValidator {
 
     public static void validate(@NonNull ToolDefinition definition) {
         validateResultFormats(definition);
+        if (!(definition instanceof RemoteToolDefinition)) {
+            validateDocumentation(definition);
+        }
         switch (definition) {
             case NativeToolDefinition nativeDefinition -> validateNative(nativeDefinition);
             case AgentToolDefinition agentDefinition -> validateAgent(agentDefinition);
@@ -36,6 +39,36 @@ public final class ToolContractValidator {
                 formats.contains(ToolResultFormat.JSON)
                         || formats.contains(ToolResultFormat.PLAINTEXT),
                 "at least one successful result format (JSON or PLAINTEXT) is required");
+    }
+
+    private static void validateDocumentation(@NonNull ToolDefinition definition) {
+        ToolDocumentation documentation = definition.documentation();
+        require(definition, !documentation.behavior().isBlank(), "behavior is required");
+        require(definition, !documentation.whenToUse().isBlank(), "whenToUse is required");
+        require(definition, !documentation.whenNotToUse().isBlank(), "whenNotToUse is required");
+        require(
+                definition,
+                !documentation.resultContract().isBlank(),
+                "resultContract is required");
+        require(
+                definition,
+                !documentation.errorsAndEdgeCases().isBlank(),
+                "errorsAndEdgeCases is required");
+        require(definition, !documentation.security().isBlank(), "security is required");
+        boolean embedsHeading =
+                java.util.List.of(
+                                documentation.behavior(),
+                                documentation.whenToUse(),
+                                documentation.whenNotToUse(),
+                                documentation.resultContract(),
+                                documentation.errorsAndEdgeCases(),
+                                documentation.security())
+                        .stream()
+                        .anyMatch(section -> section.contains("#### "));
+        require(
+                definition,
+                !embedsHeading,
+                "documentation fields must not embed Markdown section headings");
     }
 
     private static void validateNative(@NonNull NativeToolDefinition definition) {

@@ -1,6 +1,7 @@
 package top.focess.veto.agent.mcp;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import java.lang.reflect.RecordComponent;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
@@ -17,6 +18,7 @@ final class NativeToolArgumentValidator {
         JsonNode schema = ToolSchemaCompiler.compileFromRecord(argsClass);
         List<String> issues = new ArrayList<>();
         validateNode(arguments, schema, "", issues);
+        validateConditionalRequirements(arguments, argsClass, "", issues);
         if (!issues.isEmpty()) {
             List<String> expected = fieldNames(schema.path("properties"));
             throw new InvalidArgumentsException(
@@ -27,6 +29,55 @@ final class NativeToolArgumentValidator {
                             + ". Expected parameters: "
                             + expected);
         }
+    }
+
+    private static void validateConditionalRequirements(
+            @NonNull JsonNode arguments,
+            @NonNull Class<?> argsClass,
+            @NonNull String path,
+            @NonNull List<String> issues) {
+        if (!arguments.isObject()) {
+            return;
+        }
+        for (RecordComponent component : argsClass.getRecordComponents()) {
+            RequiredWhen requiredWhen =
+                    component.getAnnotation(ToolDocs.nonNullClass(RequiredWhen.class));
+            if (requiredWhen == null) {
+                continue;
+            }
+            JsonNode discriminator = arguments.get(requiredWhen.field());
+            if (!matchesAny(discriminator, requiredWhen.values())) {
+                continue;
+            }
+            JsonNode value = arguments.get(component.getName());
+            String componentPath = childPath(path, component.getName());
+            String condition =
+                    " when '"
+                            + childPath(path, requiredWhen.field())
+                            + "' is '"
+                            + discriminator.asText()
+                            + "'";
+            if (value == null || value.isNull()) {
+                issues.add("missing required parameter '" + componentPath + "'" + condition);
+            } else if (requiredWhen.rejectBlank()
+                    && value.isTextual()
+                    && value.asText().isBlank()) {
+                issues.add("parameter '" + componentPath + "' must not be blank" + condition);
+            }
+        }
+    }
+
+    private static boolean matchesAny(JsonNode actual, String @NonNull [] expectedValues) {
+        if (actual == null || actual.isNull() || !actual.isValueNode()) {
+            return false;
+        }
+        String serialized = actual.asText();
+        for (String expected : expectedValues) {
+            if (expected.equals(serialized)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static void validateNode(

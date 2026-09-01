@@ -5,8 +5,8 @@ import org.jspecify.annotations.NonNull;
 
 /**
  * Reflects {@link ToolDoc} off a tool's args class into the {@link ToolDefinition#examples()} and
- * {@link ToolDefinition#longDescription()} accessors. Centralized so {@link AgentToolDefinition}
- * and {@link NativeToolDefinition} share one read path; a missing annotation yields an empty list /
+ * {@link ToolDefinition#documentation()} accessors. Centralized so {@link AgentToolDefinition} and
+ * {@link NativeToolDefinition} share one read path; a missing annotation yields an empty list /
  * empty string (the tool renders without long-form doc or examples).
  *
  * <p>The annotation is resolved by {@link #toolDocOf(Class)}: read directly off the args class, and
@@ -72,13 +72,18 @@ public final class ToolDocs {
         return formats == null ? List.of() : List.of(formats);
     }
 
-    /**
-     * Returns the long-form {@link ToolDoc#usage()} for the given args class, or an empty string
-     * when the class is null or has no {@code @ToolDoc}.
-     */
-    public static @NonNull String descriptionOf(Class<?> argsClass) {
+    /** Returns the typed documentation sections for a tool. */
+    public static @NonNull ToolDocumentation documentationOf(Class<?> argsClass) {
         ToolDoc doc = toolDocOf(argsClass);
-        return doc == null ? "" : doc.usage();
+        return doc == null
+                ? ToolDocumentation.empty()
+                : new ToolDocumentation(
+                        doc.behavior(),
+                        doc.whenToUse(),
+                        doc.whenNotToUse(),
+                        doc.resultContract(),
+                        doc.errorsAndEdgeCases(),
+                        doc.security());
     }
 
     /**
@@ -94,10 +99,7 @@ public final class ToolDocs {
         return simple.replaceAll("([a-z])([A-Z])", "$1_$2").toLowerCase();
     }
 
-    /**
-     * Fallback description when {@link ToolDoc#description()} is empty: extracts the first sentence
-     * (up to and including the first period) from the usage text.
-     */
+    /** Extracts the first sentence (up to and including the first period) from text. */
     public static @NonNull String firstSentenceOf(@NonNull String text) {
         if (text.isEmpty()) {
             return "";

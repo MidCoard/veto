@@ -12,6 +12,7 @@ import top.focess.veto.agent.mcp.NativeToolDefinition;
 import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.ToolDocs;
+import top.focess.veto.agent.mcp.ToolDocumentation;
 import top.focess.veto.agent.mcp.ToolResultFormat;
 import top.focess.veto.agent.mcp.tools.LoadSkillArgs;
 
@@ -94,7 +95,7 @@ class VetoCapabilityTranslatorTest {
                                 "Read a file.",
                                 viewArgs,
                                 List.of(),
-                                "",
+                                ToolDocumentation.empty(),
                                 List.of(),
                                 List.of(ToolResultFormat.PLAINTEXT)),
                         new top.focess.veto.llm.core.ToolDefinition(
@@ -102,7 +103,7 @@ class VetoCapabilityTranslatorTest {
                                 "Continue deliberately.",
                                 thinkArgs,
                                 List.of(),
-                                "",
+                                ToolDocumentation.empty(),
                                 List.of(),
                                 List.of(ToolResultFormat.PLAINTEXT)));
 
@@ -166,11 +167,11 @@ class VetoCapabilityTranslatorTest {
                 flat.get(1).examples().isEmpty(),
                 "agent tool @ToolDoc examples flow through translateTools");
         assertFalse(
-                flat.get(0).longDescription().isEmpty(),
-                "native tool @ToolDoc longDescription flows through translateTools");
+                flat.get(0).documentation().behavior().isEmpty(),
+                "native tool @ToolDoc documentation flows through translateTools");
         assertFalse(
-                flat.get(1).longDescription().isEmpty(),
-                "agent tool @ToolDoc longDescription flows through translateTools");
+                flat.get(1).documentation().behavior().isEmpty(),
+                "agent tool @ToolDoc documentation flows through translateTools");
     }
 
     private static boolean contains(JsonNode array, @NonNull String value) {
@@ -197,7 +198,7 @@ class VetoCapabilityTranslatorTest {
                         "Read a file.",
                         args,
                         List.of(),
-                        "",
+                        ToolDocumentation.empty(),
                         List.of(),
                         List.of(ToolResultFormat.PLAINTEXT));
 

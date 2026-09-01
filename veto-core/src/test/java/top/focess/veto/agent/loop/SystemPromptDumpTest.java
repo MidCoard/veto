@@ -67,6 +67,8 @@ class SystemPromptDumpTest {
     void dumpFullSystemPrompts() throws IOException {
         Files.createDirectories(DUMP_DIR);
 
+        List<ToolDefinition> registeredFlatTools =
+                translator.translateTools(mcpEngine.getActiveTools(null));
         List<ToolDefinition> flatTools =
                 translator.translateTools(
                         PromptCompiler.availableTools(mcpEngine.getActiveTools(null), true));
@@ -80,6 +82,7 @@ class SystemPromptDumpTest {
         String catalog = PromptBlocks.tools(flatTools);
         write("01-tool-catalog.md", catalog);
         write("02-tool-inventory.md", inventory(flatTools));
+        write("02-registered-tool-inventory.md", inventory(registeredFlatTools));
         writeJson("04-response-autonomous.json", translator.vetoResponseSchema(false, flatTools));
         writeJson("05-response-guided.json", translator.vetoResponseSchema(true, flatTools));
 
@@ -100,14 +103,15 @@ class SystemPromptDumpTest {
             write("03-tools-" + role + ".md", inventory(roleTools));
         }
 
-        int count = 5 + roles.length * (policies.length + 1);
+        int count = 6 + roles.length * (policies.length + 1);
         System.out.println(
                 "=== System-prompt dump written to "
                         + DUMP_DIR.toAbsolutePath()
                         + " ("
                         + count
                         + " files) ===");
-        System.out.println("Tools registered: " + flatTools.size());
+        System.out.println("Tools registered: " + registeredFlatTools.size());
+        System.out.println("Tools active without skills: " + flatTools.size());
         assertTrue(!flatTools.isEmpty(), "tool catalog is non-empty");
         assertTrue(
                 toolNames(flatTools).contains("create_group"),
@@ -115,6 +119,9 @@ class SystemPromptDumpTest {
         assertFalse(
                 toolNames(flatTools).contains("load_skill"),
                 "load_skill must not be exposed when the persona has no registered skills");
+        assertTrue(
+                toolNames(registeredFlatTools).contains("load_skill"),
+                "the registered-tool inventory must retain conditional load_skill");
         assertTrue(
                 toolNames(
                                 translator.translateTools(
@@ -263,12 +270,13 @@ class SystemPromptDumpTest {
         String diagnostic =
                 switch (toolName) {
                     case "forget" -> "memory not found or not owned; nothing forgotten";
-                    case "grep_search" -> "Path not found: <path>";
-                    case "list_dir" -> "Not a directory: <path>";
-                    case "replace_file_content", "view_file" -> "Not a regular file: <path>";
+                    case "grep_search" -> "Search path does not exist: <absolutePath>";
+                    case "list_dir" -> "Not a directory: <absolutePath>";
+                    case "replace_file_content", "view_file" ->
+                            "Not a regular file: <absolutePath>";
                     case "stop_task", "view_task" -> "task not found: <taskId>";
                     case "web_search" -> "(no results)";
-                    case "write_to_file" -> "File exists and overwrite=false: <path>";
+                    case "write_to_file" -> "File exists and overwrite=false: <absolutePath>";
                     default -> null;
                 };
         if (diagnostic != null) {

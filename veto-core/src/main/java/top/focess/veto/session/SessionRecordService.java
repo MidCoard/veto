@@ -57,6 +57,7 @@ public class SessionRecordService {
 
         int visible = (int) annotated.stream().filter(SessionRecord::active).count();
         int rewound = annotated.stream().mapToInt(SessionRecord::rewoundRecords).sum();
+        List<SessionRecord> records = List.copyOf(annotated);
         return new SessionRecordsView(
                 sessionId,
                 sessionName,
@@ -64,7 +65,8 @@ public class SessionRecordService {
                 visible,
                 rewound,
                 toolResultPresentation,
-                List.copyOf(annotated));
+                ToolUsageProjector.project(records),
+                records);
     }
 
     private SessionRecord decode(@NonNull TurnRecordEntity row, @NonNull String sessionId) {
@@ -116,5 +118,6 @@ public class SessionRecordService {
             int visibleRecordCount,
             int rewoundRecordCount,
             @NonNull ToolResultPresentationMode toolResultPresentation,
+            @NonNull ToolUsageSummary toolUsage,
             @NonNull List<@NonNull SessionRecord> records) {}
 }

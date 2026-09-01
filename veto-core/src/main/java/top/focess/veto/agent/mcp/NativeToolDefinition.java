@@ -68,7 +68,7 @@ public record NativeToolDefinition(
     }
 
     @Override
-    public @NonNull String longDescription() {
-        return ToolDocs.descriptionOf(argsClass);
+    public @NonNull ToolDocumentation documentation() {
+        return ToolDocs.documentationOf(argsClass);
     }
 }

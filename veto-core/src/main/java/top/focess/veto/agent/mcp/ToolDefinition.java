@@ -62,12 +62,8 @@ public sealed interface ToolDefinition
         return List.of();
     }
 
-    /**
-     * Long-form, LLM-facing usage doc reflected from a {@link ToolDoc} on the tool's args record;
-     * rendered verbatim as the body of the tool's catalog entry by the prompt compiler. Empty by
-     * default (the short {@link #description()} is rendered alone).
-     */
-    default @NonNull String longDescription() {
-        return "";
+    /** Typed LLM-facing documentation sections. */
+    default @NonNull ToolDocumentation documentation() {
+        return ToolDocumentation.empty();
     }
 }

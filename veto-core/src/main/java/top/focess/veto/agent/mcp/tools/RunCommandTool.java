@@ -44,23 +44,8 @@ public final class RunCommandTool implements NativeTool<RunCommandTool.Args> {
             description =
                     "Run one or more commands inside the sandbox. The model lists discrete commands; "
                             + "Veto connects them per `connect`.",
-            usage =
+            behavior =
                     """
-                    #### When to use
-                    Use `run_command` to execute one or more discrete external programs inside the sandbox - \
-                    building the project (`gradle build`), running tests, invoking a code generator, or querying \
-                    a tool whose CLI you need. You list each command as a separate `{executable, args}` entry; \
-                    Veto connects them per `connect`.
-
-                    #### When NOT to use
-                    - Do not use `run_command` to read or edit files - use `view_file` / `write_to_file` / \
-                    `replace_file_content`.
-                    - Do not use it to search text - use `grep_search`.
-                    - Do not pass a shell string with operators (`&&`, `|`, `>`); there is no shell. Express each \
-                    step as its own command entry and let `connect` wire them.
-                    - Do not reach for it for trivially in-memory work the model can do directly.
-
-                    #### Behavior
                     Each `commands` entry is `{executable, args}` where `executable` is a binary name or path \
                     classified by the Gateway and resolved by the sandbox, and `args` is an argv array of \
                     literal strings; neither Veto nor a shell expands globs or environment variables. ToolEngine \
@@ -75,41 +60,60 @@ public final class RunCommandTool implements NativeTool<RunCommandTool.Args> {
                     timed-out chain is forcibly killed and the result carries `[timeout]`. For a long-running \
                     server that never exits (e.g. `npm run dev`), use `run_task` instead so the call does not \
                     block the turn.
-
-                    #### Return format
+                    """,
+            whenToUse =
+                    """
+                    Use `run_command` to execute one or more discrete external programs inside the sandbox - \
+                    building the project (`gradle build`), running tests, invoking a code generator, or querying \
+                    a tool whose CLI you need. You list each command as a separate `{executable, args}` entry; \
+                    Veto connects them per `connect`.
+                    """,
+            whenNotToUse =
+                    """
+                    - Do not use `run_command` to read or edit files - use `view_file` / `write_to_file` / \
+                    `replace_file_content`.
+                    - Do not use it to search text - use `grep_search`.
+                    - Do not pass a shell string with operators (`&&`, `|`, `>`); there is no shell. Express each \
+                    step as its own command entry and let `connect` wire them.
+                    - Do not reach for it for trivially in-memory work the model can do directly.
+                    """,
+            resultContract =
+                    """
                     Plain text containing stdout, followed by a `[stderr]` section when stderr is present. \
                     A non-zero final command/stage status appends `(exit code: N)` and marks the tool result as \
                     failed. `RUN_ALL` and `PIPE` use the last command/stage as the overall status. Timeout output \
                     contains `[timeout]` and exit code -1. A successful command with no output returns empty text.
-
-                    #### Errors & edge cases
+                    """,
+            errorsAndEdgeCases =
+                    """
                     - A policy refusal means no process started. Revise the request or obtain the applicable \
                     approval; do not retry the unchanged call.
-                    - `cwd` must resolve under an allowed workspace root.
+                    - The working directory is the session-selected workspace root and cannot be overridden by the call.
                     - A negative `timeout` or an empty supplied `commands` array is rejected before a process starts.
                     - If an executable cannot be resolved or is not installed, select the project's wrapper or \
                     an observed executable path rather than guessing repeatedly.
-
-                    #### Security
-                    `commands` carries SHELL_COMMAND and `cwd` carries FILESYSTEM_PATH: both are screened by the \
-                    Gateway (path check + semantic screening) before execution. The operation is \
+                    """,
+            security =
+                    """
+                    `commands` carries SHELL_COMMAND and is screened by the Gateway before execution. The working \
+                    directory is bound to the session-selected workspace root in the screened execution permit. The operation is \
                     `RiskCategory.SHELL_EXEC` - the highest-risk category, always audited and may require human \
                     approval. Ordinary executables are direct argv launches. Windows `.cmd`/`.bat` shims use \
                     the OS `ComSpec` interpreter because CreateProcess cannot execute that file format directly; \
-                    Veto rejects interpreter metacharacters in shim arguments. Prefer the narrowest `cwd` and \
+                    Veto rejects interpreter metacharacters in shim arguments. Prefer \
                     the fewest entries that accomplish the goal. \
                     Do not attempt to chain around the sandbox - argv separation and the authorized cwd remain \
                     enforced after approval.
                     """,
             examples = {
-                "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"build\"]}], \"cwd\": \"/abs\", \"connect\": \"STOP_ON_FAILURE\", \"timeout\": 300}",
-                "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"test\"]}], \"cwd\": \"/abs\", \"timeout\": 300}",
-                "{\"commands\": [{\"executable\": \"git\", \"args\": [\"status\"]}], \"cwd\": \"/abs\", \"timeout\": 60}",
-                "{\"commands\": [{\"executable\": \"git\", \"args\": [\"log\", \"--oneline\", \"-10\"]}], \"cwd\": \"/abs\", \"timeout\": 60}",
-                "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"build\"]}, {\"executable\": \"gradle\", \"args\": [\"test\"]}], \"cwd\": \"/abs\", \"connect\": \"STOP_ON_FAILURE\", \"timeout\": 600}",
-                "{\"commands\": [{\"executable\": \"grep\", \"args\": [\"-r\", \"TODO\", \"src\"]}, {\"executable\": \"wc\", \"args\": [\"-l\"]}], \"cwd\": \"/abs\", \"connect\": \"PIPE\", \"timeout\": 120}",
-                "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"clean\", \"build\", \"test\"]}], \"cwd\": \"/abs\", \"connect\": \"RUN_ALL\", \"timeout\": 900}",
-                "{\"commands\": [{\"executable\": \"node\", \"args\": [\"script.js\"]}], \"cwd\": \"/abs/app\", \"timeout\": 120}"
+                "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"build\"]}], \"connect\": \"STOP_ON_FAILURE\", \"timeout\": 300}",
+                "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"test\"]}], \"timeout\": 300}",
+                "{\"commands\": [{\"executable\": \"git\", \"args\": [\"status\"]}], \"timeout\": 60}",
+                "{\"commands\": [{\"executable\": \"git\", \"args\": [\"log\", \"--oneline\", \"-10\"]}], \"timeout\": 60}",
+                "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"build\"]}, {\"executable\": \"gradle\", \"args\": [\"test\"]}], \"connect\": \"STOP_ON_FAILURE\", \"timeout\": 600}",
+                "{\"commands\": [{\"executable\": \"grep\", \"args\": [\"-r\", \"TODO\", \"src\"]}, {\"executable\": \"wc\", \"args\": [\"-l\"]}], \"connect\": \"PIPE\", \"timeout\": 120}",
+                "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"clean\", \"build\", \"test\"]}], \"connect\": \"RUN_ALL\", \"timeout\": 900}",
+                "{\"commands\": [{\"executable\": \"node\", \"args\": [\"script.js\"]}], \"timeout\": 120}"
             },
             returnExamples = {"BUILD SUCCESSFUL in 12s"})
     public record Args(
@@ -117,9 +121,6 @@ public final class RunCommandTool implements NativeTool<RunCommandTool.Args> {
                     @Doc(
                             "Discrete commands; Veto connects them per `connect`. No shell, no chaining operators in input.")
                     @NonNull List<CommandInput> commands,
-            @SecurityHint(ParamCategory.FILESYSTEM_PATH)
-                    @Doc("Working directory; must be under an allowed root (Gateway-checked).")
-                    @NonNull String cwd,
             @Doc("How Veto connects the commands: STOP_ON_FAILURE (default), RUN_ALL, or PIPE.")
                     ChainMode connect,
             @Doc(
@@ -133,11 +134,8 @@ public final class RunCommandTool implements NativeTool<RunCommandTool.Args> {
 
         /** Compatibility constructor for callers that accept the default deny-network posture. */
         public Args(
-                @NonNull List<CommandInput> commands,
-                @NonNull String cwd,
-                ChainMode connect,
-                @NonNull Integer timeout) {
-            this(commands, cwd, connect, false, timeout);
+                @NonNull List<CommandInput> commands, ChainMode connect, @NonNull Integer timeout) {
+            this(commands, connect, false, timeout);
         }
     }
 

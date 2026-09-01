@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 import top.focess.veto.agent.mcp.Doc;
 import top.focess.veto.agent.mcp.NativeTool;
 import top.focess.veto.agent.mcp.ParamCategory;
+import top.focess.veto.agent.mcp.Required;
 import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.SecurityHint;
 import top.focess.veto.agent.mcp.ToolCapability;
@@ -25,14 +26,20 @@ import top.focess.veto.agent.mcp.ToolSecurity;
 @ToolSecurity(risk = RiskCategory.FILE_WRITE, capability = ToolCapability.WORKSPACE_WRITE)
 public final class ReplaceFileContentTool implements NativeTool<ReplaceFileContentTool.Args> {
 
-    private static final long MAX_FILE_BYTES = 16L * 1024L * 1024L;
-
     @ToolDoc(
             resultFormats = {ToolResultFormat.JSON},
             description = "Replace a single contiguous block of code in an existing file.",
-            usage =
+            behavior =
                     """
-                    #### When to use
+                    Reads `absolutePath` as UTF-8 and searches only the inclusive `startLine`/`endLine` range. \
+                    Exactly one occurrence of `targetContent` must exist inside that range. The updated content \
+                    is written through a same-directory temporary file and replacement move. An empty \
+                    `replacementContent` deletes the matched block. Both the original file and the resulting \
+                    UTF-8 content are limited to 16 MiB (16,777,216 bytes). The limit bounds the complete \
+                    in-memory edit and the temporary-file write performed by one call.
+                    """,
+            whenToUse =
+                    """
                     Use `replace_file_content` to make a localized, surgical edit to an existing file - renaming \
                     a symbol in one spot, fixing a few lines, or swapping a block for new text. It targets a \
                     contiguous range and replaces the unique exact occurrence of `targetContent` within that \
@@ -40,8 +47,9 @@ public final class ReplaceFileContentTool implements NativeTool<ReplaceFileConte
 
                     Always `view_file` the target range first so your `targetContent` matches the file exactly \
                     (whitespace included).
-
-                    #### When NOT to use
+                    """,
+            whenNotToUse =
+                    """
                     - Do not use `replace_file_content` to create a file or rewrite most of it - use \
                     `write_to_file`.
                     - Do not use it blind - if `targetContent` does not match the file byte-for-byte, the call \
@@ -50,24 +58,21 @@ public final class ReplaceFileContentTool implements NativeTool<ReplaceFileConte
                     sites, call it repeatedly or use `write_to_file`.
                     - Do not pass a `targetContent` so short it could match unintended locations (e.g. a bare \
                     `}`); include enough surrounding context to be unique.
-
-                    #### Behavior
-                    Reads `absolutePath` as UTF-8 and searches only the inclusive `startLine`/`endLine` range. \
-                    Exactly one occurrence of `targetContent` must exist inside that range. The updated content \
-                    is written through a same-directory temporary file and replacement move. An empty \
-                    `replacementContent` deletes the matched block.
-
-                    #### Return format
-                    - Success: `{"status":"ok","file":"<path>"}`.
-                    - Invalid target (failure): one of \
-                    `Not a regular file: <path>`, `File exceeds 16777216 bytes`, \
+                    """,
+            resultContract =
+                    """
+                    - Success: `{"status":"ok","file":"<absolutePath>"}`.
+                    - Invalid `absolutePath`, range, or replacement (failure): one of \
+                    `Not a regular file: <absolutePath>`, `File exceeds 16 MiB (16,777,216 bytes)`, \
                     `Invalid line range`, `Line range outside file`, or \
-                    `targetContent must not be empty` or `Replacement exceeds 16777216 bytes`.
+                    `targetContent must not be empty` or \
+                    `Replacement exceeds 16 MiB (16,777,216 bytes)`.
                     - Match failure (failure): \
                     `targetContent not found in selected range.` or \
                     `targetContent is not unique in selected range.` The file remains unchanged.
-
-                    #### Errors & edge cases
+                    """,
+            errorsAndEdgeCases =
+                    """
                     - After a match failure, reread the selected range and quote enough surrounding context \
                     to make the target unique before retrying.
                     - Only regular files are editable; discover the target with `list_dir` and inspect it \
@@ -77,8 +82,9 @@ public final class ReplaceFileContentTool implements NativeTool<ReplaceFileConte
                     - `startLine`/`endLine` must form a valid inclusive range and restrict the search.
                     - Replacing the directory entry can replace filesystem metadata or a symbolic-link entry; \
                     it does not write through a symbolic link to its target.
-
-                    #### Security
+                    """,
+            security =
+                    """
                     `absolutePath` is a FILESYSTEM_PATH; `targetContent` and `replacementContent` are CODE_CONTENT. \
                     The Gateway screens the path and applies semantic screening to the replacement content \
                     before the write. The operation is `RiskCategory.FILE_WRITE` (elevated + audited). Do not \
@@ -98,8 +104,8 @@ public final class ReplaceFileContentTool implements NativeTool<ReplaceFileConte
     public record Args(
             @SecurityHint(ParamCategory.FILESYSTEM_PATH) @Doc("Absolute path of the file to patch.")
                     @NonNull String absolutePath,
-            @Doc("1-indexed starting line (inclusive).") int startLine,
-            @Doc("1-indexed ending line (inclusive).") int endLine,
+            @Required @Doc("1-indexed starting line (inclusive).") int startLine,
+            @Required @Doc("1-indexed ending line (inclusive).") int endLine,
             @SecurityHint(ParamCategory.CODE_CONTENT) @Doc("Exact text range to replace.")
                     @NonNull String targetContent,
             @SecurityHint(ParamCategory.CODE_CONTENT) @Doc("The replacement text.")
@@ -126,8 +132,8 @@ public final class ReplaceFileContentTool implements NativeTool<ReplaceFileConte
         if (!Files.isRegularFile(path)) {
             return ToolErrors.failure("Not a regular file: " + args.absolutePath());
         }
-        if (Files.size(path) > MAX_FILE_BYTES) {
-            return ToolErrors.failure("File exceeds 16777216 bytes");
+        if (Files.size(path) > TextFileToolLimits.MAX_BYTES) {
+            return ToolErrors.failure("File exceeds " + TextFileToolLimits.DISPLAY_SIZE);
         }
         if (args.startLine() < 1 || args.endLine() < args.startLine()) {
             return ToolErrors.failure("Invalid line range");
@@ -154,8 +160,8 @@ public final class ReplaceFileContentTool implements NativeTool<ReplaceFileConte
                         + args.replacementContent()
                         + content.substring(idx + args.targetContent().length());
         byte[] updatedBytes = updated.getBytes(StandardCharsets.UTF_8);
-        if (updatedBytes.length > MAX_FILE_BYTES) {
-            return ToolErrors.failure("Replacement exceeds 16777216 bytes");
+        if (updatedBytes.length > TextFileToolLimits.MAX_BYTES) {
+            return ToolErrors.failure("Replacement exceeds " + TextFileToolLimits.DISPLAY_SIZE);
         }
         AtomicFileWrites.write(path, updatedBytes, true);
         return ToolJson.object(Map.of("status", "ok", "file", args.absolutePath()));

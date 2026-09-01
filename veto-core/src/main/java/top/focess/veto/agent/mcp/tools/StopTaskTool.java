@@ -43,39 +43,43 @@ public final class StopTaskTool implements NativeTool<StopTaskTool.Args> {
             description =
                     "Force-stop a background task launched by run_task. The only sanctioned way to"
                             + " stop a task; idempotent.",
-            usage =
+            behavior =
                     """
-                    #### When to use
-                    Use `stop_task` to end a background task you launched with `run_task` - a dev \
-                    server you no longer need, a watcher you are done with, or a runaway process \
-                    before its `timeout` elapses. This is the ONLY sanctioned way to stop a \
-                    background task.
-
-                    #### When NOT to use
-                    - Do not stop tasks with an OS kill command (`taskkill` / `kill`) - that \
-                    bypasses the task registry, is classified DANGEROUS, and needs approval. Use \
-                    `stop_task` instead.
-                    - Do not use it to run or inspect anything - it only stops (use `view_task` \
-                    to inspect).
-
-                    #### Behavior
                     Requests a force-stop of the task's direct process and waits up to five seconds \
                     for its final status. A completed stop is recorded with cause AGENT_STOP. \
                     Idempotent: stopping a task that already exited reports `already_exited` and its \
                     final status without error. The task stays in the \
                     registry (queryable via `view_task`) so you can still read its final output.
-
-                    #### Return format
+                    """,
+            whenToUse =
+                    """
+                    Use `stop_task` to end a background task you launched with `run_task` - a dev \
+                    server you no longer need, a watcher you are done with, or a runaway process \
+                    before its `timeout` elapses. This is the ONLY sanctioned way to stop a \
+                    background task.
+                    """,
+            whenNotToUse =
+                    """
+                    - Do not stop tasks with an OS kill command (`taskkill` / `kill`) - that \
+                    bypasses the task registry, is classified DANGEROUS, and needs approval. Use \
+                    `stop_task` instead.
+                    - Do not use it to run or inspect anything - it only stops (use `view_task` \
+                    to inspect).
+                    """,
+            resultContract =
+                    """
                     - Success: `status`, `taskId`, `alive`, and optional `exitCode`. `status` is \
                     `stopped`, `stop_requested` when still alive after the wait, or `already_exited`.
                     - Unknown task (failure): \
                     `task not found: <taskId>`.
-
-                    #### Errors & edge cases
+                    """,
+            errorsAndEdgeCases =
+                    """
                     - If the process does not exit within the five-second wait, the returned status may still \
                     be alive; inspect it with `view_task` before assuming termination completed.
-
-                    #### Security
+                    """,
+            security =
+                    """
                     Native task-control tool (`RiskCategory.AGENT`). Scoped to the calling agent - \
                     you can only stop your own tasks. Prefer this over any OS-level kill.
                     """,

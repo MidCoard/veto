@@ -74,11 +74,9 @@ class RunTaskToolTest {
                 new ToolExecutionPermit(
                         "run_task",
                         Map.of(),
-                        Map.of(
-                                "cwd",
-                                new ToolExecutionPermit.AuthorizedPath(
-                                        "cwd", tempDir.toString(), tempDir, 0, true)),
+                        Map.of(),
                         List.of(tempDir),
+                        tempDir,
                         DeployerPolicy.FULL_ACCESS,
                         Set.of());
         ToolCallContextHolder.set(
@@ -97,7 +95,6 @@ class RunTaskToolTest {
         RunTaskTool.Args args =
                 new RunTaskTool.Args(
                         List.of(new RunCommandTool.CommandInput(exe, List.of("-version"))),
-                        tempDir.toString(),
                         false,
                         0);
 
@@ -131,7 +128,6 @@ class RunTaskToolTest {
                         List.of(
                                 new RunCommandTool.CommandInput("a", List.of()),
                                 new RunCommandTool.CommandInput("b", List.of())),
-                        tempDir.toString(),
                         false,
                         0);
         ToolExecutionException error =

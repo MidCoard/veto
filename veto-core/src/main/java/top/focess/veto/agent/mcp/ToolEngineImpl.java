@@ -263,7 +263,12 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
             NativeToolArgumentValidator.validate(def.name(), jsonArgs, def.argsClass());
         } catch (NativeToolArgumentValidator.InvalidArgumentsException e) {
             return new ToolResult(
-                    call.toolName(), call.callId(), false, ToolErrors.normalize(e.getMessage()));
+                    call.toolName(),
+                    call.callId(),
+                    ToolResultStatus.FAILURE,
+                    ToolResultFormat.PLAINTEXT,
+                    ToolErrors.normalize(e.getMessage()),
+                    "INVALID_ARGUMENTS");
         }
         jsonArgs = authorizedArguments(call, jsonArgs, def);
         if ("run_command".equals(def.name())) {
@@ -374,13 +379,13 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
                 args.commands().stream().map(c -> new Command(c.executable(), c.args())).toList();
         ChainMode requestedConnect = args.connect();
         ChainMode connect = requestedConnect != null ? requestedConnect : ChainMode.STOP_ON_FAILURE;
-        Path cwd = Path.of(args.cwd());
         ToolCallContext context = ToolCallContextHolder.get();
         if (context == null || !context.executionPermit().matchesCall(call)) {
             throw new SecurityException("run_command requires its screened execution permit");
         }
         ToolExecutionPermit permit = context.executionPermit();
-        Path workspaceRoot = permit.sandboxRoot("cwd");
+        Path workspaceRoot = permit.requireExecutionRoot();
+        Path cwd = workspaceRoot;
         SandboxProfile profile =
                 SandboxProfile.forExecution(
                         workspaceRoot,
@@ -437,6 +442,14 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
                     declaredFormat(def),
                     result,
                     null);
+        } catch (NativeToolArgumentValidator.InvalidArgumentsException e) {
+            return new ToolResult(
+                    call.toolName(),
+                    call.callId(),
+                    ToolResultStatus.FAILURE,
+                    ToolResultFormat.PLAINTEXT,
+                    ToolErrors.normalize(e.getMessage()),
+                    "INVALID_ARGUMENTS");
         } catch (ToolExecutionException e) {
             return new ToolResult(
                     call.toolName(), call.callId(), false, ToolErrors.normalize(e.getMessage()));

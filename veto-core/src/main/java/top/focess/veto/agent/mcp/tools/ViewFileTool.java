@@ -26,7 +26,6 @@ import top.focess.veto.agent.mcp.ToolSecurity;
 @ToolSecurity(risk = RiskCategory.READ_ONLY, capability = ToolCapability.WORKSPACE_READ)
 public final class ViewFileTool implements NativeTool<ViewFileTool.Args> {
 
-    private static final long MAX_FILE_BYTES = 16L * 1024L * 1024L;
     private static final int MAX_OUTPUT_LINES = 5000;
     private static final int MAX_OUTPUT_CHARS = 1_000_000;
 
@@ -34,9 +33,21 @@ public final class ViewFileTool implements NativeTool<ViewFileTool.Args> {
     @ToolDoc(
             resultFormats = {ToolResultFormat.PLAINTEXT},
             description = "Read lines of a text file from the local filesystem.",
-            usage =
+            behavior =
                     """
-                    #### When to use
+                    Reads the file at `absolutePath` as UTF-8 and returns the requested line range. `startLine` \
+                    and `endLine` are 1-indexed and inclusive. When `startLine` is omitted, reading starts at \
+                    line 1; when `endLine` is omitted, it runs to the last line. Ranges are clamped: `startLine` \
+                    is floored at 1, `endLine` is capped at the file's line count. Passing neither returns the \
+                    whole file. The implementation reads the complete file before applying the requested range. \
+                    Files larger than 16 MiB (16,777,216 bytes) are rejected before UTF-8 decoding because the \
+                    complete file is held in memory; requesting a line range therefore does not bypass this \
+                    per-call input limit. \
+                    Output is capped at 5000 lines or 1000000 characters and then ends with \
+                    `[truncated; request a narrower line range]`.
+                    """,
+            whenToUse =
+                    """
                     Use `view_file` to read the contents of a text file from the local filesystem - to inspect \
                     source before editing, understand a module's structure, read a config file, or check the \
                     current state of a file you plan to patch. It returns lines prefixed with their 1-indexed \
@@ -44,42 +55,36 @@ public final class ViewFileTool implements NativeTool<ViewFileTool.Args> {
 
                     It is the read counterpart to `write_to_file` / `replace_file_content`. Always read before \
                     you write.
-
-                    #### When NOT to use
+                    """,
+            whenNotToUse =
+                    """
                     - Do not use `view_file` to search for a pattern across many files - use `grep_search`.
                     - Do not use it to discover what files exist - use `list_dir`.
                     - Do not use it on binary or non-text files; it accepts UTF-8 text only.
                     - Do not use it to create or modify a file - it is strictly read-only.
-
-                    #### Behavior
-                    Reads the file at `absolutePath` as UTF-8 and returns the requested line range. `startLine` \
-                    and `endLine` are 1-indexed and inclusive. When `startLine` is omitted, reading starts at \
-                    line 1; when `endLine` is omitted, it runs to the last line. Ranges are clamped: `startLine` \
-                    is floored at 1, `endLine` is capped at the file's line count. Passing neither returns the \
-                    whole file. The implementation reads the complete file before applying the requested range. \
-                    Output is capped at 5000 lines or 1000000 characters and then ends with \
-                    `[truncated; request a narrower line range]`.
-
-                    #### Return format
+                    """,
+            resultContract =
+                    """
                     - Success: one output line per source line as \
                     `<lineNumber>: <line text>` (1-indexed). An empty range yields no lines.
-                    - Supplied path does not exist or is not a regular file (failure): \
-                    `Not a regular file: <path>`.
+                    - Supplied `absolutePath` does not exist or is not a regular file (failure): \
+                    `Not a regular file: <absolutePath>`.
                     - Oversized file (failure): \
-                    `File exceeds 16777216 bytes; request a smaller artifact`.
-                    - Invalid path syntax (failure): `Invalid path: <path>`.
-                    - Invalid UTF-8 (failure): `File is not valid UTF-8: <path>`.
-                    - Read failure (failure): `Cannot read file: <path>`.
-
-                    #### Errors & edge cases
+                    `File exceeds 16 MiB (16,777,216 bytes); request a smaller artifact`.
+                    - Invalid `absolutePath` syntax (failure): `Invalid path: <absolutePath>`.
+                    - Invalid UTF-8 (failure): `File is not valid UTF-8: <absolutePath>`.
+                    - Read failure (failure): `Cannot read file: <absolutePath>`.
+                    """,
+            errorsAndEdgeCases =
+                    """
                     - After a path rejection, do not retry a similar guess. Return to the last successful \
                     parent listing and reconstruct the absolute path from observed file names.
                     - `startLine` greater than the file length -> no output (range clamped to empty).
                     - `endLine` less than `startLine` -> no output.
                     - Directories, device files, and sockets are rejected as "not a regular file".
-                    - A line range narrows returned content but does not bypass the 16 MiB input limit.
-
-                    #### Security
+                    """,
+            security =
+                    """
                     `absolutePath` is a FILESYSTEM_PATH parameter: the Gateway screens it against the deployer \
                     policy and allowed roots before the read. The operation is read-only \
                     (`RiskCategory.READ_ONLY`); the file is never modified. Returned content is subject to \
@@ -131,9 +136,11 @@ public final class ViewFileTool implements NativeTool<ViewFileTool.Args> {
             return ToolErrors.failure("Not a regular file: " + args.absolutePath());
         }
         try {
-            if (Files.size(path) > MAX_FILE_BYTES) {
+            if (Files.size(path) > TextFileToolLimits.MAX_BYTES) {
                 return ToolErrors.failure(
-                        "File exceeds 16777216 bytes; request a smaller artifact");
+                        "File exceeds "
+                                + TextFileToolLimits.DISPLAY_SIZE
+                                + "; request a smaller artifact");
             }
             List<String> lines = Files.readAllLines(path, StandardCharsets.UTF_8);
             int from = args.startLine() == null ? 1 : Math.max(1, args.startLine());

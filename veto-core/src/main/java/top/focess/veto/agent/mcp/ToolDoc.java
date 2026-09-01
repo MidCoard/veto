@@ -8,28 +8,20 @@ import org.jspecify.annotations.NonNull;
 
 /**
  * LLM-facing documentation for a tool, declared on its args record or its enclosing tool class.
- * Carries a one-liner {@link #description()} (what the tool is), a long-form {@link #usage()}
- * (multi-paragraph usage doc), and concrete {@link #examples()} (args-object strings). Reflected at
- * load time into {@link ToolDefinition#description()}, {@link ToolDefinition#longDescription()},
- * and {@link ToolDefinition#examples()}, which the prompt compiler renders under the tool's catalog
- * entry. Parallels {@link Doc} (per-parameter descriptions) at the whole-tool level.
+ * Carries a one-liner {@link #description()}, typed documentation sections, and concrete
+ * call/result examples. Reflected at load time into {@link ToolDefinition#documentation()} so
+ * section identity is preserved through prompt rendering. Parallels {@link Doc} at the whole-tool
+ * level.
  *
  * <p>Resolution (see {@link ToolDocs#toolDocOf(Class)}): the annotation is read directly off the
  * args class; if absent there, off the args class's enclosing tool class. So a tool may declare
  * {@code @ToolDoc} on its args record (e.g. {@code ListDirTool.Args}, {@code LoadSkillArgs}) or on
  * its enclosing bean class (e.g. the nested agent tools in {@code MemoryTools}); both render.
  *
- * <p>The {@link #description()} is the one-liner for the manifest header — what the tool is. The
- * {@link #usage()} is the deep, whole-tool brief the model reads before deciding to call a tool:
- * when to reach for it, when not to, how it behaves, what it returns and the edges that bite. Keep
- * it concrete and example-driven. The standard {@code ####} sections are parsed and rendered in a
- * canonical order; annotation order does not control prompt order. Non-contract headings such as
- * implementation security notes are intentionally not emitted into the agent catalog. Leave it
- * empty to render only the tool's short description.
- *
- * <p>{@code Return format} owns every wire-visible success and failure shape. {@code Errors & edge
- * cases} may explain distinct triggers, recovery, limits, or policy implications, but must not
- * repeat a result body or restate a case already defined by an earlier section.
+ * <p>Each semantic block has its own annotation member. Do not embed Markdown headings in a field.
+ * The prompt renderer owns heading names and canonical order. {@link #resultContract()} owns every
+ * wire-visible success and failure shape; {@link #errorsAndEdgeCases()} explains distinct triggers,
+ * recovery, limits, and policy implications without repeating result bodies.
  *
  * <p>Each example string is a concrete {@code args} object (the JSON the model would place in a
  * {@code calls[]} entry), e.g. one showing a required argument and another showing an optional one.
@@ -46,13 +38,23 @@ public @interface ToolDoc {
      */
     @NonNull String description();
 
-    /**
-     * Long-form usage doc — how and when to use it. Surfaces as {@link
-     * ToolDefinition#longDescription()}. Parsed into standard headings and rendered in fixed
-     * semantic order by the prompt compiler. REQUIRED: every documented tool carries a real brief,
-     * so the model sees when to reach for it, its behavior, return shape, and edges.
-     */
-    @NonNull String usage();
+    /** What the tool does after a valid call reaches its handler. */
+    @NonNull String behavior();
+
+    /** Positive selection guidance. */
+    @NonNull String whenToUse();
+
+    /** Negative selection guidance and alternatives. */
+    @NonNull String whenNotToUse();
+
+    /** Normative success and failure content shapes. */
+    @NonNull String resultContract();
+
+    /** Non-duplicative limits, recovery guidance, and edge conditions. */
+    @NonNull String errorsAndEdgeCases();
+
+    /** Internal security classification and enforcement notes. */
+    @NonNull String security();
 
     /**
      * Content encoding of a successful result: {@link ToolResultFormat#JSON}, {@link
@@ -72,7 +74,7 @@ public @interface ToolDoc {
      * {@link #examples()}. Stable expected failure bodies belong in the normative Return format
      * section; their triggers and recovery belong under Errors &amp; edge cases. Failures never
      * belong in this example array. Rendered as explicitly illustrative fenced blocks after the
-     * tool's own result contract. REQUIRED.
+     * {@link #resultContract()}. REQUIRED.
      */
     @NonNull String[] returnExamples();
 }

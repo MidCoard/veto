@@ -31,39 +31,42 @@ public final class ListDirTool implements NativeTool<ListDirTool.Args> {
     @ToolDoc(
             resultFormats = {ToolResultFormat.PLAINTEXT},
             description = "List contents of a directory (files and child subdirectories).",
-            usage =
+            behavior =
                     """
-                    #### When to use
+                    Lists the direct children of `absolutePath` (files and subdirectories, one level deep). \
+                    Entries are sorted lexicographically. Subdirectory names are suffixed with `/` so you can \
+                    distinguish folders from files at a glance. Hidden files (dotfiles) are included. The \
+                    listing is not recursive.
+                    """,
+            whenToUse =
+                    """
                     Use `list_dir` to discover the immediate contents of a directory - enumerating a project's \
                     top-level layout, finding what files a module contains, or locating a subdirectory before \
                     reading a specific file. It returns the names of files and child directories in the given \
                     directory (one level deep, non-recursive).
 
                     It is the right first step when you know a directory but not its contents.
-
-                    #### When NOT to use
+                    """,
+            whenNotToUse =
+                    """
                     - Do not use `list_dir` to read a file's contents - use `view_file`.
                     - Do not use it to search for text across files - use `grep_search`.
                     - Do not use it expecting a recursive tree; it lists one level only. To descend, call \
                     `list_dir` on each child directory you care about.
                     - Do not use it to check whether a single specific file exists; `view_file` on that path \
                     tells you directly.
-
-                    #### Behavior
-                    Lists the direct children of `absolutePath` (files and subdirectories, one level deep). \
-                    Entries are sorted lexicographically. Subdirectory names are suffixed with `/` so you can \
-                    distinguish folders from files at a glance. Hidden files (dotfiles) are included. The \
-                    listing is not recursive.
-
-                    #### Return format
+                    """,
+            resultContract =
+                    """
                     - Success: one sorted entry per line. Directory \
                     entries end with `/`; file entries do not. An empty directory yields no lines.
-                    - Supplied path does not exist or is not a directory (failure): \
-                    `Not a directory: <path>`.
+                    - Supplied `absolutePath` does not exist or is not a directory (failure): \
+                    `Not a directory: <absolutePath>`.
                     - Directory cannot be opened or enumerated (failure): \
-                    `Cannot list directory: <path>`.
-
-                    #### Errors & edge cases
+                    `Cannot list directory: <absolutePath>`.
+                    """,
+            errorsAndEdgeCases =
+                    """
                     - After a path rejection, do not retry a similar guess. Return to the last \
                     successful parent listing and reconstruct the path from observed child names. A common \
                     mistake is dropping a parent segment. If the intended target is a file, use `view_file`.
@@ -71,8 +74,9 @@ public final class ListDirTool implements NativeTool<ListDirTool.Args> {
                     narrowed before relying on the listing as complete.
                     - A directory access or iteration failure rejects the listing; it is not returned as a \
                     partial success.
-
-                    #### Security
+                    """,
+            security =
+                    """
                     `absolutePath` is a FILESYSTEM_PATH parameter: the Gateway screens it against the deployer \
                     policy and allowed roots before the listing. The operation is read-only \
                     (`RiskCategory.READ_ONLY`); nothing is modified. Returned names are subject to ingress \

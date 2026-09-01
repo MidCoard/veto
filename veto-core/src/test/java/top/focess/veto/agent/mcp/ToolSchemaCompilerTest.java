@@ -15,6 +15,21 @@ import top.focess.veto.memory.MemoryTools;
  */
 class ToolSchemaCompilerTest {
 
+    private record ExplicitPrimitive(@Required int count) {}
+
+    private record ImplicitPrimitive(int count) {}
+
+    private record RequiredReference(@Required String value) {}
+
+    private enum ConditionalMode {
+        WRITE,
+        PROMOTE
+    }
+
+    private record ConditionalArgs(
+            @NonNull ConditionalMode mode,
+            @RequiredWhen(field = "mode", values = "WRITE", rejectBlank = true) String content) {}
+
     @Test
     void nestedRecordCollectionGetsObjectItemsSchema() {
         JsonNode schema =
@@ -99,5 +114,75 @@ class ToolSchemaCompilerTest {
         assertTrue(contains(mode.path("enum"), "WRITE"));
         assertTrue(contains(mode.path("enum"), "PROMOTE"));
         assertTrue(contains(schema.path("required"), "mode"));
+    }
+
+    @Test
+    void primitiveRequirementMustBeExplicit() {
+        JsonNode schema =
+                ToolSchemaCompiler.compileFromRecord(
+                        ToolDocs.nonNullClass(ExplicitPrimitive.class));
+
+        assertTrue(contains(schema.path("required"), "count"));
+        IllegalArgumentException failure =
+                assertThrows(
+                        ToolDocs.nonNullClass(IllegalArgumentException.class),
+                        () ->
+                                ToolSchemaCompiler.compileFromRecord(
+                                        ToolDocs.nonNullClass(ImplicitPrimitive.class)));
+        assertEquals(
+                "Primitive tool parameter 'count' must declare @Required or use a boxed optional type",
+                failure.getMessage());
+    }
+
+    @Test
+    void referencesUseNonNullRatherThanRequired() {
+        IllegalArgumentException failure =
+                assertThrows(
+                        ToolDocs.nonNullClass(IllegalArgumentException.class),
+                        () ->
+                                ToolSchemaCompiler.compileFromRecord(
+                                        ToolDocs.nonNullClass(RequiredReference.class)));
+
+        assertEquals(
+                "Reference tool parameter 'value' must use @NonNull instead of @Required",
+                failure.getMessage());
+    }
+
+    @Test
+    void conditionalRequirementIsValidatedBeforeDispatch() throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+
+        NativeToolArgumentValidator.InvalidArgumentsException missing =
+                assertThrows(
+                        ToolDocs.nonNullClass(
+                                NativeToolArgumentValidator.InvalidArgumentsException.class),
+                        () ->
+                                NativeToolArgumentValidator.validate(
+                                        "conditional",
+                                        mapper.readTree("{\"mode\":\"WRITE\"}"),
+                                        ToolDocs.nonNullClass(ConditionalArgs.class)));
+        assertTrue(
+                String.valueOf(missing.getMessage())
+                        .contains("missing required parameter 'content' when 'mode' is 'WRITE'"));
+
+        NativeToolArgumentValidator.InvalidArgumentsException blank =
+                assertThrows(
+                        ToolDocs.nonNullClass(
+                                NativeToolArgumentValidator.InvalidArgumentsException.class),
+                        () ->
+                                NativeToolArgumentValidator.validate(
+                                        "conditional",
+                                        mapper.readTree("{\"mode\":\"WRITE\",\"content\":\"  \"}"),
+                                        ToolDocs.nonNullClass(ConditionalArgs.class)));
+        assertTrue(
+                String.valueOf(blank.getMessage())
+                        .contains("parameter 'content' must not be blank"));
+
+        assertDoesNotThrow(
+                () ->
+                        NativeToolArgumentValidator.validate(
+                                "conditional",
+                                mapper.readTree("{\"mode\":\"PROMOTE\"}"),
+                                ToolDocs.nonNullClass(ConditionalArgs.class)));
     }
 }

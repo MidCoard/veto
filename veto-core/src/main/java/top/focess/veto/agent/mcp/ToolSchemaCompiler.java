@@ -77,8 +77,9 @@ public final class ToolSchemaCompiler {
 
     /**
      * Compiles a Java record type into a Draft-7 JSON Schema via reflection (the schema emitted to
-     * the provider manifest). {@code @Doc} supplies parameter descriptions; non-nullable components
-     * are added to {@code required}.
+     * the provider manifest). {@code @Doc} supplies parameter descriptions. Reference components
+     * are required only when explicitly {@code @NonNull}; primitive components must explicitly use
+     * {@link Required} because nullability annotations do not apply to primitives.
      */
     public static @NonNull JsonNode compileFromRecord(@NonNull Class<?> recordClass) {
         if (!recordClass.isRecord()) {
@@ -93,6 +94,8 @@ public final class ToolSchemaCompiler {
         for (RecordComponent component : recordClass.getRecordComponents()) {
             String name = component.getName();
             Class<?> type = component.getType();
+
+            validateConditionalRequirement(recordClass, component);
 
             ObjectNode paramNode;
             if (type.isArray() || Collection.class.isAssignableFrom(type)) {
@@ -123,7 +126,21 @@ public final class ToolSchemaCompiler {
             boolean explicitlyNonNull =
                     component.isAnnotationPresent(NonNull.class)
                             || component.getAnnotatedType().isAnnotationPresent(NonNull.class);
-            if (type.isPrimitive() || explicitlyNonNull) {
+            boolean explicitlyRequired =
+                    component.isAnnotationPresent(ToolDocs.nonNullClass(Required.class));
+            if (type.isPrimitive() && !explicitlyRequired) {
+                throw new IllegalArgumentException(
+                        "Primitive tool parameter '"
+                                + name
+                                + "' must declare @Required or use a boxed optional type");
+            }
+            if (!type.isPrimitive() && explicitlyRequired) {
+                throw new IllegalArgumentException(
+                        "Reference tool parameter '"
+                                + name
+                                + "' must use @NonNull instead of @Required");
+            }
+            if (explicitlyRequired || explicitlyNonNull) {
                 required.add(name);
             }
         }
@@ -134,6 +151,38 @@ public final class ToolSchemaCompiler {
         }
         schema.put("additionalProperties", false);
         return schema;
+    }
+
+    private static void validateConditionalRequirement(
+            @NonNull Class<?> recordClass, @NonNull RecordComponent component) {
+        RequiredWhen requiredWhen =
+                component.getAnnotation(ToolDocs.nonNullClass(RequiredWhen.class));
+        if (requiredWhen == null) {
+            return;
+        }
+        if (component.getType().isPrimitive()) {
+            throw new IllegalArgumentException(
+                    "Conditionally required tool parameter '"
+                            + component.getName()
+                            + "' must use an optional reference type");
+        }
+        if (requiredWhen.values().length == 0) {
+            throw new IllegalArgumentException(
+                    "Conditionally required tool parameter '"
+                            + component.getName()
+                            + "' must declare at least one discriminator value");
+        }
+        for (RecordComponent candidate : recordClass.getRecordComponents()) {
+            if (candidate.getName().equals(requiredWhen.field())) {
+                return;
+            }
+        }
+        throw new IllegalArgumentException(
+                "Conditionally required tool parameter '"
+                        + component.getName()
+                        + "' references unknown discriminator '"
+                        + requiredWhen.field()
+                        + "'");
     }
 
     /**

@@ -46,40 +46,44 @@ public final class ViewTaskTool implements NativeTool<ViewTaskTool.Args> {
             description =
                     "Inspect a background task launched by run_task (status + recent output), or"
                             + " list every task you own when taskId is omitted.",
-            usage =
+            behavior =
                     """
-                    #### When to use
+                    With `taskId`: returns that task's status (alive / exitCode / pid / uptime / \
+                    command / cwd) plus the last `lines` of its merged stdout+stderr (default 50). \
+                    Without `taskId`: returns a short list of every task you own (taskId, command, \
+                    alive, exitCode). Read-only - it never changes a task.
+                    """,
+            whenToUse =
+                    """
                     Use `view_task` to check on a background task you launched with `run_task` - \
                     whether it is still alive, its exit code once it ends, and its recent output. \
                     Call it with a `taskId` for one task, or with no `taskId` to list every task you \
                     own. You are also told automatically when a task ends (and why - user stop, \
                     your own stop_task, timeout, or its own exit), so you rarely need to poll.
-
-                    #### When NOT to use
+                    """,
+            whenNotToUse =
+                    """
                     - Do not use it for commands whose result you need inline - that is `run_command`.
                     - Do not poll it in a tight loop; the task's end is pushed to you on your next turn.
-
-                    #### Behavior
-                    With `taskId`: returns that task's status (alive / exitCode / pid / uptime / \
-                    command / cwd) plus the last `lines` of its merged stdout+stderr (default 50). \
-                    Without `taskId`: returns a short list of every task you own (taskId, command, \
-                    alive, exitCode). Read-only - it never changes a task.
-
-                    #### Return format
+                    """,
+            resultContract =
+                    """
                     - Single-task success: `taskId`, `alive`, optional `exitCode`, \
                     `pid`, `startedAt`, `uptimeSeconds`, `command`, `cwd`, and `recentOutput`.
                     - List success: `count` and `tasks`; each task contains only `taskId`, \
                     `command`, `alive`, and optional `exitCode`.
                     - Unknown task (failure): \
                     `task not found: <taskId>`.
-
-                    #### Errors & edge cases
+                    """,
+            errorsAndEdgeCases =
+                    """
                     - `lines` <= 0 or omitted -> defaults to 50 lines.
                     - A task that already exited stays queryable (its final status + output).
                     - At most the latest 5000 lines are retained, and an unterminated line is capped \
                     at 65536 bytes; older or excess output cannot be recovered through this tool.
-
-                    #### Security
+                    """,
+            security =
+                    """
                     Agent tool (`RiskCategory.AGENT`). Read-only. Scoped to the calling agent - you \
                     can only see your own tasks.
                     """,

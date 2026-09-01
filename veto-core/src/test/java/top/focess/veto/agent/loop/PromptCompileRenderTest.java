@@ -16,6 +16,7 @@ import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.mcp.AgentToolDefinition;
 import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDocs;
+import top.focess.veto.agent.mcp.ToolDocumentation;
 import top.focess.veto.agent.mcp.ToolResultFormat;
 import top.focess.veto.agent.mcp.ToolSchemaCompiler;
 import top.focess.veto.agent.mcp.tools.GrepSearchTool;
@@ -118,7 +119,13 @@ class PromptCompileRenderTest {
                         "Loads a skill.",
                         schema,
                         List.of("{\"skillName\": \"git-rebase\"}", "{\"skillName\": \"deploy\"}"),
-                        "#### When to use\nCall this to load a skill.",
+                        new ToolDocumentation(
+                                "Loads the selected skill body.",
+                                "Call this to load a skill.",
+                                "Do not call it without an advertised skill.",
+                                "Returns the skill body as plain text.",
+                                "Unknown skills fail.",
+                                "Agent-local skill read."),
                         List.of(),
                         List.of(ToolResultFormat.PLAINTEXT));
         String block = PromptBlocks.tools(List.of(tool));
@@ -187,22 +194,13 @@ class PromptCompileRenderTest {
                         "Reads a text file.",
                         schema,
                         List.of("{\"absolutePath\":\"/abs/project/Main.java\"}"),
-                        // Deliberately scrambled: renderer order must not depend on annotation
-                        // order.
-                        """
-                        #### Security
-                        Read-only filesystem capability.
-                        #### Return format
-                        Numbered text lines.
-                        #### Behavior
-                        Reads the requested range.
-                        #### When NOT to use
-                        Do not use it for directories.
-                        #### When to use
-                        Use it to inspect a known text file.
-                        #### Errors & edge cases
-                        Missing files return an error.
-                        """,
+                        new ToolDocumentation(
+                                "Reads the requested range.",
+                                "Use it to inspect a known text file.",
+                                "Do not use it for directories.",
+                                "Numbered text lines.",
+                                "Missing files return an error.",
+                                "Read-only filesystem capability."),
                         List.of("1: class Main {}"),
                         List.of(ToolResultFormat.PLAINTEXT));
 
@@ -254,7 +252,7 @@ class PromptCompileRenderTest {
                         "Fetches a page.",
                         Map.of("type", "object", "properties", Map.of()),
                         List.of(),
-                        "",
+                        ToolDocumentation.empty(),
                         List.of("[200] https://example.com\nbody"),
                         List.of(ToolResultFormat.PLAINTEXT));
 
@@ -304,7 +302,7 @@ class PromptCompileRenderTest {
 
     @Test
     void realToolArgsRenderRichCatalog() {
-        // Compile the REAL grep_search args record (its @Doc descriptions + @ToolDoc long-form doc
+        // Compile the REAL grep_search args record (its @Doc descriptions + typed @ToolDoc sections
         // + examples) the same way the engine does, then render the catalog block end-to-end.
         ObjectMapper mapper = new ObjectMapper();
         Map<String, Object> schema =
@@ -318,7 +316,7 @@ class PromptCompileRenderTest {
                         "Search for exact pattern matches inside files.",
                         schema,
                         ToolDocs.examplesOf(ToolDocs.nonNullClass(GrepSearchTool.Args.class)),
-                        ToolDocs.descriptionOf(ToolDocs.nonNullClass(GrepSearchTool.Args.class)),
+                        ToolDocs.documentationOf(ToolDocs.nonNullClass(GrepSearchTool.Args.class)),
                         ToolDocs.returnExamplesOf(ToolDocs.nonNullClass(GrepSearchTool.Args.class)),
                         ToolDocs.resultFormatsOf(ToolDocs.nonNullClass(GrepSearchTool.Args.class)));
         String block = PromptBlocks.tools(List.of(tool));
@@ -338,8 +336,10 @@ class PromptCompileRenderTest {
                 block.contains("Absolute path to search under."),
                 "real @Doc arg description rendered:\n" + block);
         assertFalse(
-                ToolDocs.descriptionOf(ToolDocs.nonNullClass(GrepSearchTool.Args.class)).isBlank(),
-                "grep_search has a long-form @ToolDoc description");
+                ToolDocs.documentationOf(ToolDocs.nonNullClass(GrepSearchTool.Args.class))
+                        .behavior()
+                        .isBlank(),
+                "grep_search has a typed @ToolDoc behavior section");
         assertTrue(
                 ToolDocs.examplesOf(ToolDocs.nonNullClass(GrepSearchTool.Args.class)).size() >= 5,
                 "grep_search carries many examples");
@@ -350,13 +350,9 @@ class PromptCompileRenderTest {
                 new ToolDefinition(
                         "run_command",
                         "runs discrete commands in the sandbox",
-                        Map.of(
-                                "type",
-                                "object",
-                                "properties",
-                                Map.of("commands", Map.of(), "cwd", Map.of())),
+                        Map.of("type", "object", "properties", Map.of("commands", Map.of())),
                         List.of(),
-                        "",
+                        ToolDocumentation.empty(),
                         List.of(),
                         List.of(ToolResultFormat.PLAINTEXT)),
                 new ToolDefinition(
@@ -364,7 +360,7 @@ class PromptCompileRenderTest {
                         "reads lines of a text file",
                         Map.of("type", "object", "properties", Map.of("absolutePath", Map.of())),
                         List.of(),
-                        "",
+                        ToolDocumentation.empty(),
                         List.of(),
                         List.of(ToolResultFormat.PLAINTEXT)));
     }

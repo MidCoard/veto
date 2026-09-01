@@ -42,38 +42,42 @@ public final class GroupTools {
             description =
                     "Spawn a delegation group for a task; you transform into its Leader "
                             + "and plan the work.",
-            usage =
+            behavior =
                     """
-                    #### When to use
-                    Use `create_group` when a goal is too large or spans too many domains for one \
-                    agent and you want to delegate it to a group you lead. Pass a short brief of \
-                    the work; you become the Leader and plan from there.
-
-                    #### When NOT to use
-                    - Do not use it for work you can finish yourself - a group adds coordination cost.
-                    - Do not use it from inside a group; the tool is not offered to Leaders or Mates.
-                    - Do not try to supply a plan up front - you build it node by node as Leader, \
-                    via `create_node`.
-
-                    #### Behavior
                     Transforms you into the Leader of a new, empty group. Your context is rewound, a \
                     Leader AGENT_INIT turn and the available Leader tools are installed, a non-empty \
                     compaction summary is appended when one is produced, and `task` becomes your \
                     planning brief. The Leader model comes from the deployer's Leader-tier binding. \
                     Mates are provisioned lazily as nodes become dispatchable. The success result is \
                     discarded by the transform; a refusal leaves you in the single-agent loop.
-
-                    #### Return format
+                    """,
+            whenToUse =
+                    """
+                    Use `create_group` when a goal is too large or spans too many domains for one \
+                    agent and you want to delegate it to a group you lead. Pass a short brief of \
+                    the work; you become the Leader and plan from there.
+                    """,
+            whenNotToUse =
+                    """
+                    - Do not use it for work you can finish yourself - a group adds coordination cost.
+                    - Do not use it from inside a group; the tool is not offered to Leaders or Mates.
+                    - Do not try to supply a plan up front - you build it node by node as Leader, \
+                    via `create_node`.
+                    """,
+            resultContract =
+                    """
                     On success - empty (the call's result is discarded with the rewind; you \
                     continue as the Leader from the brief).
                     On refusal:
                       Group not created: <reason and what to do next>
-
-                    #### Errors & edge cases
+                    """,
+            errorsAndEdgeCases =
+                    """
                     - Blank `task` -> not created; pass a real brief.
                     - Already leading or inside a group -> the tool is not offered at all.
-
-                    #### Security
+                    """,
+            security =
+                    """
                     Agent tool (`RiskCategory.AGENT`). The Gateway returns `NotScreened`. Available \
                     only in the single-agent loop - not offered to Leaders or Mates.
                     """,
@@ -166,35 +170,39 @@ public final class GroupTools {
     @ToolDoc(
             resultFormats = {ToolResultFormat.PLAINTEXT},
             description = "Tear down your active group and return to single-agent autonomous mode.",
-            usage =
+            behavior =
                     """
-                    #### When to use
-                    Use `disband_group` when the delegated work is complete or the user explicitly \
-                    requests it. Reverses the transform: you become STANDALONE again. Only the Leader \
-                    can call this.
-
-                    #### When NOT to use
-                    - Prefer waiting for Mate status when practical; disbanding stops any remaining Mates.
-                    - Do not disband without user request unless all DAG nodes are VERIFIED.
-
-                    #### Behavior
                     Resolves your group from your context (no id argument), deprovisions its Mates, \
                     and marks the group DISBANDED. It then rewinds to an AGENT_INIT with your \
                     STANDALONE persona, restores the STANDALONE tools and model binding, appends a \
                     non-empty compaction summary when one is produced, and adds an outcome brief. \
                     The Blackboard and recorded DAG remain available for audit.
-
-                    #### Return format
+                    """,
+            whenToUse =
+                    """
+                    Use `disband_group` when the delegated work is complete or the user explicitly \
+                    requests it. Reverses the transform: you become STANDALONE again. Only the Leader \
+                    can call this.
+                    """,
+            whenNotToUse =
+                    """
+                    - Prefer waiting for Mate status when practical; disbanding stops any remaining Mates.
+                    - Do not disband without user request unless all DAG nodes are VERIFIED.
+                    """,
+            resultContract =
+                    """
                     On success - empty (the call's result is discarded with the rewind; you continue \
                     as STANDALONE from the outcome brief).
                     On refusal:
                       Group not disbanded: <reason and what to do next>
-
-                    #### Errors & edge cases
+                    """,
+            errorsAndEdgeCases =
+                    """
                     No active group in your context -> refusal. Mates still RUNNING -> the disband \
                     proceeds (in-flight work may be lost).
-
-                    #### Security
+                    """,
+            security =
+                    """
                     Agent tool (`RiskCategory.AGENT`). The Gateway does not screen it. Leader-only.
                     """,
             examples = {"{}"},
@@ -288,37 +296,41 @@ public final class GroupTools {
             resultFormats = {ToolResultFormat.PLAINTEXT},
             description =
                     "Post a typed message to your group's Blackboard (Leader -> Mate, or a self-note).",
-            usage =
+            behavior =
                     """
-                    #### When to use
-                    Use `post_message` to communicate via the Blackboard - dispatch an ad-hoc \
-                    instruction to a Mate, post a status note, or record feedback. The Leader reasons \
-                    over Mate reports, then writes its own message (not a pass-through).
-
-                    #### When NOT to use
-                    - Do not echo Mate messages back - decide, don't pass-through.
-                    - Do not post full file contents - only paths / short payloads.
-                    - Do not use it for ordinary DAG dispatch - `create_node` dispatches automatically \
-                    as dependencies verify.
-
-                    #### Behavior
                     Posts a message as `LEADER` to `receiver`. Omit `receiver` to default to `LEADER` \
                     for a self-note; otherwise use an active Mate id. Unknown receivers are rejected. \
                     Message types are TASK_DISPATCH, ARTIFACT_REF, LOG_REF, FEEDBACK, STATUS, and \
                     ACCEPT. The group is resolved from your context. Payloads must be non-blank and \
                     at most 4096 characters. Use paths rather than full file contents for artifacts/logs.
-
-                    #### Return format
+                    """,
+            whenToUse =
+                    """
+                    Use `post_message` to communicate via the Blackboard - dispatch an ad-hoc \
+                    instruction to a Mate, post a status note, or record feedback. The Leader reasons \
+                    over Mate reports, then writes its own message (not a pass-through).
+                    """,
+            whenNotToUse =
+                    """
+                    - Do not echo Mate messages back - decide, don't pass-through.
+                    - Do not post full file contents - only paths / short payloads.
+                    - Do not use it for ordinary DAG dispatch - `create_node` dispatches automatically \
+                    as dependencies verify.
+                    """,
+            resultContract =
+                    """
                     On success - `posted`.
                     On refusal:
                       Not posted: <reason and what to do next>
-
-                    #### Errors & edge cases
+                    """,
+            errorsAndEdgeCases =
+                    """
                     Type names are case-sensitive enum values, and a Mate receiver must already belong to the \
                     active group. No active group indicates a role/context mismatch; do not retry until the \
                     Leader context is restored.
-
-                    #### Security
+                    """,
+            security =
+                    """
                     Agent tool (`RiskCategory.AGENT`). The Gateway does not screen it. Leader-only. \
                     Hub-and-spoke: the Leader addresses a single Mate by id.
                     """,

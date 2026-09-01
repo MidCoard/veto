@@ -6,7 +6,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
@@ -227,10 +226,10 @@ public final class PromptBlocks {
                                             .append("`: ")
                                             .append(format.description())
                                             .append(".\n"));
-            Map<String, String> usage = usageSections(t.longDescription());
-            appendUsageSection(sb, usage, "Behavior", "Behavior");
-            appendUsageSection(sb, usage, "When to use", "When to use");
-            appendUsageSection(sb, usage, "When NOT to use", "When not to use");
+            var documentation = t.documentation();
+            appendSectionIfPresent(sb, "Behavior", documentation.behavior());
+            appendSectionIfPresent(sb, "When to use", documentation.whenToUse());
+            appendSectionIfPresent(sb, "When not to use", documentation.whenNotToUse());
             List<String> examples = t.examples();
             if (!examples.isEmpty()) {
                 sb.append("#### Call examples\n");
@@ -238,7 +237,7 @@ public final class PromptBlocks {
                         .append(schematicExample(examples.getFirst()))
                         .append("\n```\n");
             }
-            appendUsageSection(sb, usage, "Return format", "Result contract");
+            appendSectionIfPresent(sb, "Result contract", documentation.resultContract());
             List<String> returnExamples = t.returnExamples();
             if (!returnExamples.isEmpty()) {
                 sb.append("#### Result examples\n");
@@ -249,44 +248,16 @@ public final class PromptBlocks {
                         .append(result)
                         .append("\n```\n");
             }
-            appendUsageSection(sb, usage, "Errors & edge cases", "Errors and edge cases");
+            appendSectionIfPresent(sb, "Errors and edge cases", documentation.errorsAndEdgeCases());
             sb.append('\n');
         }
         return sb.toString();
     }
 
-    private static @NonNull Map<String, String> usageSections(String usage) {
-        Map<String, String> sections = new LinkedHashMap<>();
-        if (usage == null || usage.isBlank()) {
-            return sections;
-        }
-        String normalized = usage.replace("\r\n", "\n").replace('\r', '\n').strip();
-        for (String chunk : normalized.split("(?m)(?=^#### )")) {
-            String part = chunk.strip();
-            if (part.isEmpty()) {
-                continue;
-            }
-            if (!part.startsWith("#### ")) {
-                sections.put("", part);
-                continue;
-            }
-            int newline = part.indexOf('\n');
-            String heading =
-                    newline < 0 ? part.substring(5).strip() : part.substring(5, newline).strip();
-            String body = newline < 0 ? "" : part.substring(newline + 1).strip();
-            sections.put(heading, body);
-        }
-        return sections;
-    }
-
-    private static void appendUsageSection(
-            @NonNull StringBuilder sb,
-            @NonNull Map<String, String> sections,
-            @NonNull String sourceHeading,
-            @NonNull String renderedHeading) {
-        String body = sections.remove(sourceHeading);
-        if (body != null && !body.isBlank()) {
-            appendSection(sb, renderedHeading, body);
+    private static void appendSectionIfPresent(
+            @NonNull StringBuilder sb, @NonNull String heading, @NonNull String body) {
+        if (!body.isBlank()) {
+            appendSection(sb, heading, body);
         }
     }
 

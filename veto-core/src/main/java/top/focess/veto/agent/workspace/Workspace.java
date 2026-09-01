@@ -62,6 +62,11 @@ public record Workspace(
         return roots.stream().map(WorkspaceRoot::hostPath).toList();
     }
 
+    /** The session-selected root used as the working directory for process tools. */
+    public @NonNull Path currentHostRoot() {
+        return roots.get(currentRootIndex).hostPath();
+    }
+
     public @NonNull VetoMdResolver vetoMdResolver() {
         return new VetoMdResolver(roots);
     }

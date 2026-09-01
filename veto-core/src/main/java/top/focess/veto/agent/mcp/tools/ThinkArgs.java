@@ -21,34 +21,38 @@ import top.focess.veto.agent.mcp.ToolResultFormat;
         description =
                 "No-op placeholder call. Occupies a calls[] slot so the loop continues "
                         + "when you have no concrete tool to invoke but are not done.",
-        usage =
+        behavior =
                 """
-                #### When to use
+                Does nothing. Returns nothing. Its only purpose is to make `calls` non-empty so the \
+                loop continues for one more turn.
+                """,
+        whenToUse =
+                """
                 Use `think` when you want another turn but have no tool to call. The loop decides \
                 continue vs. stop by whether `calls` is non-empty. If you need another turn to \
                 reason, plan, or compose a message - and no real tool fits - call `think` as a \
                 placeholder. It keeps the episode alive.
-
-                #### When NOT to use
+                """,
+        whenNotToUse =
+                """
                 - Do not call `think` when a real tool would make progress - read, search, or edit \
                 instead.
                 - Do not call it when you are done - omit `calls` and provide the non-blank final \
                 message so the episode stops.
                 - Do not call it expecting it to do anything - it is purely a placeholder.
-
-                #### Behavior
-                Does nothing. Returns nothing. Its only purpose is to make `calls` non-empty so the \
-                loop continues for one more turn.
-
-                #### Return format
+                """,
+        resultContract =
+                """
                 Empty.
-
-                #### Errors & edge cases
+                """,
+        errorsAndEdgeCases =
+                """
                 A valid `{}` call has no tool-level failure. Unknown fields are rejected by the \
                 shared argument validator before execution. The only normal cost is a wasted \
                 round-trip - use it only when you genuinely need another turn.
-
-                #### Security
+                """,
+        security =
+                """
                 Agent tool (`RiskCategory.AGENT`). The Gateway does not screen it. It touches \
                 nothing. Safe to call any time.
                 """,

@@ -50,12 +50,19 @@ class ToolEngineImplTest {
     @ToolDoc(
             description = "Fails for protocol testing.",
             resultFormats = {ToolResultFormat.PLAINTEXT},
-            usage = "#### Return format\nPlain text.",
+            behavior = "Always reports the requested protocol failure.",
+            whenToUse = "Use in protocol failure tests.",
+            whenNotToUse = "Do not use outside tests.",
+            resultContract = "Plain text.",
+            errorsAndEdgeCases = "The supplied reason is returned as a failure.",
+            security = "Test-only agent tool.",
             examples = {"{\"reason\":\"bad input\"}"},
             returnExamples = {"ok"})
     private record FailingAgentArgs(@NonNull String reason) {}
 
     private static final class FailingAgentTool implements AgentTool<FailingAgentArgs> {
+
+        private boolean executed;
 
         @Override
         public @NonNull String getName() {
@@ -74,7 +81,12 @@ class ToolEngineImplTest {
 
         @Override
         public @NonNull String execute(@NonNull FailingAgentArgs args) {
+            executed = true;
             return ToolErrors.failure(args.reason());
+        }
+
+        boolean executed() {
+            return executed;
         }
     }
 
@@ -192,6 +204,33 @@ class ToolEngineImplTest {
         assertFalse(result.success());
         assertEquals("bad input", result.content());
         assertFalse(result.content().stripLeading().startsWith("{"));
+    }
+
+    @Test
+    void missingRequiredAgentArgumentIsRejectedBeforeHandlerExecution() {
+        ObjectMapper mapper =
+                new ObjectMapper()
+                        .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+        FailingAgentTool tool = new FailingAgentTool();
+        ApplicationContext appCtx = mock(ToolDocs.nonNullClass(ApplicationContext.class));
+        when(appCtx.getBeansOfType(AgentTool.class)).thenReturn(Map.of("failingAgentTool", tool));
+        ToolEngineImpl engine =
+                new ToolEngineImpl(
+                        mapper,
+                        List.of(),
+                        new SandboxManager(TestSandboxFactory.uncontainedSubprocesses()),
+                        appCtx);
+        engine.init();
+
+        ToolResult result =
+                engine.execute(
+                        new ToolCall("failing_agent", Map.of(), "cid-agent-missing"),
+                        definition(engine, "failing_agent"));
+
+        assertFalse(result.success());
+        assertTrue(
+                result.content().contains("missing required parameter 'reason'"), result.content());
+        assertFalse(tool.executed(), "agent handler must not run for invalid arguments");
     }
 
     @Test
@@ -375,8 +414,6 @@ class ToolEngineImplTest {
                                 Map.of(
                                         "commands",
                                         List.of(Map.of("program", "java", "args", List.of())),
-                                        "cwd",
-                                        tempDir.toString(),
                                         "timeout",
                                         1),
                                 "cid-invalid-command"),
@@ -564,8 +601,6 @@ class ToolEngineImplTest {
                         Map.of(
                                 "commands",
                                 List.of(Map.of("executable", javaBin, "args", List.of("-version"))),
-                                "cwd",
-                                tempDir.toString(),
                                 "connect",
                                 "STOP_ON_FAILURE",
                                 "timeout",
@@ -592,8 +627,6 @@ class ToolEngineImplTest {
                             Map.of(
                                     "commands",
                                     List.of(command),
-                                    "cwd",
-                                    tempDir.toString(),
                                     "connect",
                                     "STOP_ON_FAILURE",
                                     "timeout",
@@ -613,13 +646,7 @@ class ToolEngineImplTest {
             ToolCall runTask =
                     new ToolCall(
                             "run_task",
-                            Map.of(
-                                    "commands",
-                                    List.of(command),
-                                    "cwd",
-                                    tempDir.toString(),
-                                    "timeout",
-                                    30),
+                            Map.of("commands", List.of(command), "timeout", 30),
                             "agent-runtask");
             ToolResult started =
                     executeAuthorized(
@@ -703,8 +730,6 @@ class ToolEngineImplTest {
                                                 executable,
                                                 "args",
                                                 List.of("-version"))),
-                                "cwd",
-                                tempDir.toString(),
                                 "timeout",
                                 30),
                         "cid-screened-command");
@@ -732,8 +757,6 @@ class ToolEngineImplTest {
                                                     executable,
                                                     "args",
                                                     List.of("-help"))),
-                                    "cwd",
-                                    tempDir.toString(),
                                     "timeout",
                                     30),
                             "cid-changed-command");
@@ -759,9 +782,7 @@ class ToolEngineImplTest {
                                                         "executable",
                                                         "java",
                                                         "args",
-                                                        List.of("-version"))),
-                                        "cwd",
-                                        tempDir.toString()),
+                                                        List.of("-version")))),
                                 "cid-no-timeout"),
                         definition(engine, "run_command"));
         assertFalse(result.success(), "run_command without an explicit timeout must fail");
