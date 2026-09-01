@@ -14,6 +14,8 @@ import top.focess.veto.agent.mcp.ToolCallContextHolder;
 import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDoc;
 import top.focess.veto.agent.mcp.ToolDocs;
+import top.focess.veto.agent.mcp.ToolErrors;
+import top.focess.veto.agent.mcp.ToolResultFormat;
 import top.focess.veto.agent.mcp.ToolSecurity;
 import top.focess.veto.llm.config.LlmJacksonConfig;
 import top.focess.veto.sandbox.BackgroundTaskManager;
@@ -37,6 +39,7 @@ public final class StopTaskTool implements NativeTool<StopTaskTool.Args> {
     }
 
     @ToolDoc(
+            resultFormats = {ToolResultFormat.JSON},
             description =
                     "Force-stop a background task launched by run_task. The only sanctioned way to"
                             + " stop a task; idempotent.",
@@ -56,18 +59,19 @@ public final class StopTaskTool implements NativeTool<StopTaskTool.Args> {
                     to inspect).
 
                     #### Behavior
-                    Force-kills the task's process (`destroyForcibly`) and records its exit with \
+                    Stops the task's process and waits up to five seconds for its final status. It records the exit with \
                     the cause AGENT_STOP - the exit notice you receive later says you stopped it, \
                     so a stop never looks like a crash. Idempotent: stopping a task that already \
                     exited just reports its final status without error. The task stays in the \
                     registry (queryable via `view_task`) so you can still read its final output.
 
                     #### Return format
-                    A JSON outcome: `{"status":"stopped","taskId":"bg-3","alive":false,"exitCode":-1}`. \
-                    Unknown `taskId` -> error envelope.
+                    - Success: `status`, `taskId`, `alive`, and `exitCode` once the process exits.
+                    - Unknown task (failure): \
+                    `task not found: <taskId>`.
 
                     #### Errors & edge cases
-                    - Unknown `taskId` -> `{"status":"error","error":"task not found: ..."}`.
+                    - Unknown `taskId` -> `task not found: ...`.
                     - Already-exited task -> still returns `stopped` with its final exit code.
 
                     #### Security
@@ -76,8 +80,7 @@ public final class StopTaskTool implements NativeTool<StopTaskTool.Args> {
                     """,
             examples = {"{\"taskId\": \"bg-3\"}"},
             returnExamples = {
-                "{\"status\": \"stopped\", \"taskId\": \"bg-3\", \"alive\": false, \"exitCode\": -1}",
-                "{\"status\": \"error\", \"error\": \"task not found: bg-9\"}"
+                "{\"status\": \"stopped\", \"taskId\": \"bg-3\", \"alive\": false, \"exitCode\": -1}"
             })
     public record Args(@NonNull @Doc("The task id (from run_task).") String taskId) {}
 
@@ -128,28 +131,6 @@ public final class StopTaskTool implements NativeTool<StopTaskTool.Args> {
     }
 
     private static @NonNull String error(@NonNull String message) {
-        return "{\"status\":\"error\",\"error\":\"" + jsonEscape(message) + "\"}";
-    }
-
-    private static @NonNull String jsonEscape(@NonNull String s) {
-        StringBuilder sb = new StringBuilder(s.length() + 8);
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            switch (c) {
-                case '"' -> sb.append("\\\"");
-                case '\\' -> sb.append("\\\\");
-                case '\n' -> sb.append("\\n");
-                case '\r' -> sb.append("\\r");
-                case '\t' -> sb.append("\\t");
-                default -> {
-                    if (c < 0x20) {
-                        sb.append(String.format("\\u%04x", (int) c));
-                    } else {
-                        sb.append(c);
-                    }
-                }
-            }
-        }
-        return sb.toString();
+        return ToolErrors.failure(message);
     }
 }

@@ -60,25 +60,30 @@ final class OpenAiLlmClient extends LlmClient {
                 configuredSchema != null
                         ? configuredSchema
                         : capabilityTranslator.vetoResponseSchema(false);
-        Map<String, Object> responseSchema =
-                objectMapper.convertValue(rawSchema, new TypeReference<Map<String, Object>>() {});
         String systemPrompt = request.systemPrompt();
 
         ChatCompletionCreateParams.Builder builder =
                 ChatCompletionCreateParams.builder().model(ChatModel.of(request.modelName()));
 
         if (supportsJsonSchema) {
+            OpenAiStrictSchemaAdapter.Adapted adapted = OpenAiStrictSchemaAdapter.adapt(rawSchema);
+            Map<String, Object> responseSchema =
+                    objectMapper.convertValue(
+                            adapted.schema(), new TypeReference<Map<String, Object>>() {});
             builder.responseFormat(
                     ChatCompletionCreateParams.ResponseFormat.ofJsonSchema(
                             ResponseFormatJsonSchema.builder()
                                     .jsonSchema(
                                             ResponseFormatJsonSchema.JsonSchema.builder()
                                                     .name("veto_pulse")
-                                                    .strict(true)
+                                                    .strict(adapted.strict())
                                                     .schema(responseSchemaOf(responseSchema))
                                                     .build())
                                     .build()));
         } else {
+            Map<String, Object> responseSchema =
+                    objectMapper.convertValue(
+                            rawSchema, new TypeReference<Map<String, Object>>() {});
             systemPrompt = augmentPromptWithSchema(systemPrompt, responseSchema);
             builder.responseFormat(
                     ChatCompletionCreateParams.ResponseFormat.ofJsonObject(
@@ -207,7 +212,7 @@ final class OpenAiLlmClient extends LlmClient {
                         ChatCompletionToolMessageParam.builder()
                                 .content(
                                         ChatCompletionToolMessageParam.Content.ofText(
-                                                msg.content()))
+                                                msg.toolResultContentWithStatus()))
                                 .toolCallId(callId != null ? callId : "")
                                 .build());
             }

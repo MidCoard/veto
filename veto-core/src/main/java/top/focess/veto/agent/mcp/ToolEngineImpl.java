@@ -5,7 +5,6 @@ import static top.focess.veto.util.LogValues.safe;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import jakarta.annotation.PostConstruct;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -19,6 +18,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Service;
@@ -57,7 +57,7 @@ import top.focess.veto.sandbox.SandboxSubstrate;
  */
 @Service
 @SuppressWarnings("DuplicatedCode") // Native and remote dispatch keep the same result envelope.
-public class ToolEngineImpl implements ToolEngine {
+public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
 
     private static final int MAX_TOOL_RESULT_CHARS = 1_000_000;
 
@@ -87,7 +87,15 @@ public class ToolEngineImpl implements ToolEngine {
         this.applicationContext = applicationContext;
     }
 
-    @PostConstruct
+    @Override
+    public void afterSingletonsInstantiated() {
+        init();
+    }
+
+    /**
+     * Delayed until every singleton exists so agent tools with a dependency back to ToolEngine are
+     * visible.
+     */
     void init() {
         // Register native tools
         for (NativeTool<?> bean : nativeToolBeans) {
@@ -185,17 +193,16 @@ public class ToolEngineImpl implements ToolEngine {
                         case RemoteToolDefinition remoteDef -> executeRemote(call, remoteDef);
                     };
             return boundResult(result);
+        } catch (ToolExecutionException e) {
+            return new ToolResult(
+                    call.toolName(), callId, false, ToolErrors.normalize(e.getMessage()));
         } catch (Exception e) {
             log.warn("Tool '{}' execution failed.", call.toolName(), e);
-            String detail = e.getMessage();
-            if (detail == null || detail.isBlank()) {
-                detail = "Unexpected error with no diagnostic message";
-            }
             return new ToolResult(
                     call.toolName(),
                     callId,
                     false,
-                    errorEnvelope("Tool execution failed: " + detail));
+                    "Tool execution failed: " + ToolErrors.normalize(e.getMessage()));
         }
     }
 
@@ -208,7 +215,7 @@ public class ToolEngineImpl implements ToolEngine {
                         + "\n[tool output truncated at "
                         + MAX_TOOL_RESULT_CHARS
                         + " chars]";
-        return new ToolResult(result.toolName(), result.callId(), result.success(), bounded);
+        return result.withContent(bounded);
     }
 
     // ── Implementation-detail API (not on the shared interface) ──────────────
@@ -256,7 +263,7 @@ public class ToolEngineImpl implements ToolEngine {
             NativeToolArgumentValidator.validate(def.name(), jsonArgs, def.argsClass());
         } catch (NativeToolArgumentValidator.InvalidArgumentsException e) {
             return new ToolResult(
-                    call.toolName(), call.callId(), false, errorEnvelope(e.getMessage()));
+                    call.toolName(), call.callId(), false, ToolErrors.normalize(e.getMessage()));
         }
         jsonArgs = authorizedArguments(call, jsonArgs, def);
         if ("run_command".equals(def.name())) {
@@ -268,18 +275,17 @@ public class ToolEngineImpl implements ToolEngine {
                     call.toolName(),
                     call.callId(),
                     false,
-                    errorEnvelope("No bean for native tool: " + def.name()));
+                    "No bean for native tool: " + def.name());
         }
         String result = bean.executeFromJson(jsonArgs, mapper);
-        // Native tools signal "this call did not do what you asked" by returning a JSON envelope
-        // `{"status":"error", "error": "<message>"}` rather than throwing. The engine has not
-        // thrown, so a naive mapping would surface success=true and the IngressDefense observation
-        // envelope would render [ok, ...] - misleading the agent into thinking the path was OK
-        // while the body reports the path is missing. Sniff the canonical error prefix and
-        // promote it to success=false so the envelope renders [error, ...] and downstream
-        // masking/alerting sees the failure.
-        boolean success = !isErrorJson(result);
-        return new ToolResult(call.toolName(), call.callId(), success, result);
+        validateSuccessfulResult(def, result);
+        return new ToolResult(
+                call.toolName(),
+                call.callId(),
+                ToolResultStatus.SUCCESS,
+                declaredFormat(def),
+                result,
+                null);
     }
 
     /**
@@ -337,59 +343,6 @@ public class ToolEngineImpl implements ToolEngine {
     }
 
     /**
-     * Returns {@code true} when {@code body} starts with the canonical native-tool error envelope
-     * {@code {"status":"error", ...}}. Centralised so the success-mapping rule lives in one place
-     * and tools that follow the documented convention get the correct {@code success} flag for
-     * free.
-     */
-    private static boolean isErrorJson(String body) {
-        if (body == null) return false;
-        // Trim leading whitespace - tools may indent their JSON before returning.
-        int i = 0;
-        while (i < body.length() && Character.isWhitespace(body.charAt(i))) i++;
-        return body.startsWith("{\"status\":\"error\"", i);
-    }
-
-    /**
-     * The uniform error envelope for engine-level failures (unknown tool, missing bean, handler
-     * exception, remote transport down). Tool-detected errors already speak this envelope; the
-     * engine synthesizes the same shape here so every tool error the model can ever see matches one
-     * prefix - it learns a single branch: the call did not happen, read {@code error}, replan.
-     */
-    private static @NonNull String errorEnvelope(String message) {
-        String detail =
-                message == null || message.isBlank()
-                        ? "Unexpected error with no diagnostic message"
-                        : message;
-        return "{\"status\":\"error\",\"error\":\"" + jsonEscape(detail) + "\"}";
-    }
-
-    /**
-     * Minimal JSON string-body escaping for {@link #errorEnvelope} (quotes, backslashes, controls).
-     */
-    private static @NonNull String jsonEscape(@NonNull String s) {
-        StringBuilder sb = new StringBuilder(s.length() + 8);
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            switch (c) {
-                case '"' -> sb.append("\\\"");
-                case '\\' -> sb.append("\\\\");
-                case '\n' -> sb.append("\\n");
-                case '\r' -> sb.append("\\r");
-                case '\t' -> sb.append("\\t");
-                default -> {
-                    if (c < 0x20) {
-                        sb.append(String.format("\\u%04x", (int) c));
-                    } else {
-                        sb.append(c);
-                    }
-                }
-            }
-        }
-        return sb.toString();
-    }
-
-    /**
      * {@code run_command} — routes through the Sandbox substrate (no shell, argv[] direct exec).
      */
     private @NonNull ToolResult executeRunCommand(
@@ -402,13 +355,26 @@ public class ToolEngineImpl implements ToolEngine {
                     call.toolName(),
                     call.callId(),
                     false,
-                    errorEnvelope("run_command arguments must be a JSON object"));
+                    "run_command arguments must be a JSON object");
         }
         int timeout = args.timeout();
+        if (timeout < 0) {
+            return new ToolResult(
+                    call.toolName(), call.callId(), false, "timeout must be zero or positive");
+        }
+        if (args.commands().isEmpty()) {
+            return new ToolResult(
+                    call.toolName(),
+                    call.callId(),
+                    false,
+                    "commands must contain at least one command");
+        }
         Duration timeoutDur = timeout <= 0 ? Duration.ZERO : Duration.ofSeconds(timeout);
         List<Command> commands =
                 args.commands().stream().map(c -> new Command(c.executable(), c.args())).toList();
-        ChainMode connect = parseChainMode(args.connect());
+        ChainMode requestedConnect = args.connect();
+        @NonNull ChainMode connect =
+                requestedConnect != null ? requestedConnect : ChainMode.STOP_ON_FAILURE;
         Path cwd = Path.of(args.cwd());
         ToolCallContext context = ToolCallContextHolder.get();
         if (context == null || !context.executionPermit().matchesCall(call)) {
@@ -434,7 +400,13 @@ public class ToolEngineImpl implements ToolEngine {
                         "\n[sandbox network is disabled; if this command requires network access, "
                                 + "submit a fresh call with `network: true` for Gateway approval]";
             }
-            return new ToolResult(call.toolName(), call.callId(), result.success(), content);
+            return new ToolResult(
+                    call.toolName(),
+                    call.callId(),
+                    result.success() ? ToolResultStatus.SUCCESS : ToolResultStatus.FAILURE,
+                    ToolResultFormat.PLAINTEXT,
+                    content,
+                    result.success() ? null : "COMMAND_FAILED");
         } finally {
             sandboxManager.deprovision(sandboxId);
         }
@@ -445,9 +417,8 @@ public class ToolEngineImpl implements ToolEngine {
         String content =
                 (result.stdout().isEmpty() ? "" : result.stdout())
                         + (stderr == null || stderr.isEmpty() ? "" : "\n[stderr]\n" + stderr);
-        // A non-zero exit is not an error envelope - the command ran and its output is the truth
-        // the model asked for. The exit code rides as a trailing CONTENT line so the model can
-        // branch on it without a separate status channel.
+        // The exit code rides in the content as well as the result status so every provider gives
+        // the model the exact process outcome.
         return result.exitCode() == 0
                 ? content
                 : content + "\n(exit code: " + result.exitCode() + ")";
@@ -458,22 +429,29 @@ public class ToolEngineImpl implements ToolEngine {
         AgentTool<?> bean = agentBeans.get(def.name());
         if (bean == null) {
             return new ToolResult(
-                    call.toolName(),
-                    call.callId(),
-                    false,
-                    errorEnvelope("Unknown agent tool: " + def.name()));
+                    call.toolName(), call.callId(), false, "Unknown agent tool: " + def.name());
         }
         try {
             JsonNode jsonArgs = mapper.valueToTree(call.args());
             NativeToolArgumentValidator.validate(def.name(), jsonArgs, def.argsClass());
             String result = bean.executeFromJson(jsonArgs, mapper);
-            return new ToolResult(call.toolName(), call.callId(), true, result);
+            validateSuccessfulResult(def, result);
+            return new ToolResult(
+                    call.toolName(),
+                    call.callId(),
+                    ToolResultStatus.SUCCESS,
+                    declaredFormat(def),
+                    result,
+                    null);
+        } catch (ToolExecutionException e) {
+            return new ToolResult(
+                    call.toolName(), call.callId(), false, ToolErrors.normalize(e.getMessage()));
         } catch (Exception e) {
             return new ToolResult(
                     call.toolName(),
                     call.callId(),
                     false,
-                    errorEnvelope("Agent tool error: " + e.getMessage()));
+                    "Agent tool error: " + ToolErrors.normalize(e.getMessage()));
         }
     }
 
@@ -491,12 +469,24 @@ public class ToolEngineImpl implements ToolEngine {
                     call.toolName(),
                     call.callId(),
                     false,
-                    errorEnvelope("No transport registered for server: " + def.serverName()));
+                    "No transport registered for server: " + def.serverName());
         }
         JsonNode result = new McpJsonRpcClient(mapper).callTool(transport, def.name(), call.args());
         boolean success = !result.path("isError").asBoolean(false);
         String content = remoteContent(result);
-        return new ToolResult(call.toolName(), call.callId(), success, content);
+        return new ToolResult(
+                call.toolName(),
+                call.callId(),
+                success ? ToolResultStatus.SUCCESS : ToolResultStatus.FAILURE,
+                ToolResultFormat.UNKNOWN,
+                content,
+                success ? null : "REMOTE_TOOL_FAILED");
+    }
+
+    private static @NonNull ToolResultFormat declaredFormat(@NonNull ToolDefinition definition) {
+        return definition.resultFormats().size() == 1
+                ? definition.resultFormats().iterator().next()
+                : ToolResultFormat.UNKNOWN;
     }
 
     static @NonNull String remoteContent(@NonNull JsonNode result) {
@@ -518,19 +508,34 @@ public class ToolEngineImpl implements ToolEngine {
             return text.toString();
         }
         if (result.path("isError").asBoolean(false)) {
-            return errorEnvelope(
-                    "Remote MCP tool reported isError=true with empty text content; raw result: "
-                            + result);
+            return "Remote MCP tool reported isError=true with empty text content; raw result: "
+                    + result;
         }
         return result.toString();
     }
 
-    private static @NonNull ChainMode parseChainMode(String connect) {
-        if (connect == null) return ChainMode.STOP_ON_FAILURE;
-        return switch (connect) {
-            case "RUN_ALL" -> ChainMode.RUN_ALL;
-            case "PIPE" -> ChainMode.PIPE;
-            default -> ChainMode.STOP_ON_FAILURE;
-        };
+    /** Enforces unambiguous JSON-only success contracts at the execution boundary. */
+    private void validateSuccessfulResult(
+            @NonNull ToolDefinition definition, @NonNull String result) {
+        boolean json = definition.resultFormats().contains(ToolResultFormat.JSON);
+        boolean plaintext = definition.resultFormats().contains(ToolResultFormat.PLAINTEXT);
+        if (!json || plaintext) {
+            return;
+        }
+        try {
+            JsonNode parsed = mapper.readTree(result);
+            if (parsed == null) {
+                ToolErrors.failure(
+                        "Tool '"
+                                + definition.name()
+                                + "' declared json but returned no JSON value");
+            }
+        } catch (IOException | RuntimeException e) {
+            if (e instanceof ToolExecutionException toolFailure) {
+                throw toolFailure;
+            }
+            ToolErrors.failure(
+                    "Tool '" + definition.name() + "' declared json but returned invalid JSON");
+        }
     }
 }

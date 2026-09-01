@@ -22,8 +22,9 @@ import org.jspecify.annotations.NonNull;
  * <p>The {@link #description()} is the one-liner for the manifest header — what the tool is. The
  * {@link #usage()} is the deep, whole-tool brief the model reads before deciding to call a tool:
  * when to reach for it, when not to, how it behaves, what it returns and the edges that bite. Keep
- * it concrete and example-driven; it is rendered verbatim under the tool's heading. Leave it empty
- * to render only the tool's short description (e.g. for trivial tools).
+ * it concrete and example-driven. The standard {@code ####} sections are parsed and rendered in a
+ * canonical order; annotation order does not control prompt order. Unknown headings are preserved
+ * as additional guidance. Leave it empty to render only the tool's short description.
  *
  * <p>Each example string is a concrete {@code args} object (the JSON the model would place in a
  * {@code calls[]} entry), e.g. one showing a required argument and another showing an optional one.
@@ -42,11 +43,18 @@ public @interface ToolDoc {
 
     /**
      * Long-form usage doc — how and when to use it. Surfaces as {@link
-     * ToolDefinition#longDescription()}. Rendered verbatim as the body of the tool's catalog entry
-     * by the prompt compiler. REQUIRED: every documented tool carries a real brief, so the model
-     * always sees when to reach for it, when not to, its behavior, return shape, and edges.
+     * ToolDefinition#longDescription()}. Parsed into standard headings and rendered in fixed
+     * semantic order by the prompt compiler. REQUIRED: every documented tool carries a real brief,
+     * so the model sees when to reach for it, its behavior, return shape, and edges.
      */
     @NonNull String usage();
+
+    /**
+     * Content encoding of a successful result: {@link ToolResultFormat#JSON}, {@link
+     * ToolResultFormat#PLAINTEXT}, or both. Failure is not a content format; it is carried by the
+     * tool result's separate success flag and normally contains a plain diagnostic body.
+     */
+    @NonNull ToolResultFormat[] resultFormats();
 
     /**
      * Concrete usage examples (args-object strings). REQUIRED: one or more concrete {@code args}
@@ -55,13 +63,11 @@ public @interface ToolDoc {
     @NonNull String[] examples();
 
     /**
-     * Concrete return-value examples - one or two REPRESENTATIVE shapes in the tool's declared
-     * output kind (CONTENT verbatim text / OUTCOME status JSON / DATA JSON; see {@code
-     * plans/mvp-core/part5_agent/tools/tool_output_contract_lld.md}), not positionally aligned with
-     * {@link #examples()}. Rendered fenced under the tool's catalog entry by the prompt compiler.
-     * The uniform error envelope and the reserved REFUSED grammar are taught once in the "## Tool
-     * Result Conventions" block, so per-tool entries should show success shapes (plus tool-specific
-     * edge markers like {@code (no matches)}), not repeat the error grammar. REQUIRED.
+     * One or two representative successful return-value shapes, not positionally aligned with
+     * {@link #examples()}. Stable expected failure bodies belong in the normative Return format
+     * section; their triggers and recovery belong under Errors &amp; edge cases. Failures never
+     * belong in this example array. Rendered as explicitly illustrative fenced blocks after the
+     * tool's own result contract. REQUIRED.
      */
     @NonNull String[] returnExamples();
 }

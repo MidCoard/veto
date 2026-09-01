@@ -118,7 +118,7 @@ public class LlamaCppBridge {
     private @NonNull ProcessBuilder llamaServerProcess(
             @NonNull String modelPath, @NonNull Path grammarFile, int port) {
         return new ProcessBuilder(
-                "llama-server",
+                config.getLlamaCpp().getExecutablePath(),
                 "--model",
                 modelPath,
                 "--ctx-size",

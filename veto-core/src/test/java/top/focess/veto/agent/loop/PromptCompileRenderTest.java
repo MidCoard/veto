@@ -13,13 +13,17 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.identity.Role;
 import top.focess.veto.agent.identity.SystemPromptResolver;
+import top.focess.veto.agent.mcp.AgentToolDefinition;
+import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.mcp.ToolSchemaCompiler;
 import top.focess.veto.agent.mcp.tools.GrepSearchTool;
 import top.focess.veto.agent.screening.DeployerPolicy;
+import top.focess.veto.agent.translation.VetoCapabilityTranslator;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.ToolDefinition;
+import top.focess.veto.memory.MemoryTools;
 
 /**
  * Renders the compiled system prompt for sample personas (STANDALONE/LEADER/MATE across deployer
@@ -89,6 +93,7 @@ class PromptCompileRenderTest {
                         Workspace.single(
                                 Path.of(System.getProperty("user.dir", ".")), PathMode.REAL)));
         blocks.put("ENVIRONMENT", PromptBlocks.environment());
+        blocks.put("RESULT_CONVENTIONS", tools.isEmpty() ? "" : PromptBlocks.resultConventions());
         blocks.put("TOOLS", PromptBlocks.tools(tools));
         blocks.put("BOUNDARIES", PromptBlocks.boundaries(policy));
         blocks.put("SKILLS", PromptBlocks.skills(List.of()));
@@ -96,7 +101,7 @@ class PromptCompileRenderTest {
     }
 
     @Test
-    void toolsBlockRendersRichCatalog() {
+    void toolsBlockRendersCompactContract() {
         Map<String, Object> skillArg = new LinkedHashMap<>();
         skillArg.put("type", "string");
         skillArg.put("description", "The name of the skill to load.");
@@ -115,21 +120,27 @@ class PromptCompileRenderTest {
                         "#### When to use\nCall this to load a skill.");
         String block = PromptBlocks.tools(List.of(tool));
         assertTrue(block.contains("### `load_skill`"), "tool heading rendered:\n" + block);
-        assertTrue(block.contains("**Args:**"), "args label rendered:\n" + block);
+        assertTrue(block.contains("#### Result formats"), "result formats rendered:\n" + block);
+        assertTrue(block.contains("`json`"), "json format rendered:\n" + block);
+        assertTrue(block.contains("`plaintext`"), "plaintext format rendered:\n" + block);
+        assertFalse(block.contains("error-special-plaintext"), block);
+        assertTrue(block.contains("#### Args"), "args label rendered:\n" + block);
         assertTrue(
                 block.contains("`skillName` (string, required)"),
                 "arg name + type + required rendered:\n" + block);
         assertTrue(
                 block.contains("The name of the skill to load."),
                 "arg description rendered:\n" + block);
-        assertTrue(
-                block.contains("**Schematic examples"), "examples label rendered:\n" + block);
+        assertTrue(block.contains("#### Call examples"), "examples label rendered:\n" + block);
         assertTrue(block.contains("git-rebase"), "example content rendered:\n" + block);
-        assertTrue(block.contains("#### When to use"), "long description rendered:\n" + block);
+        assertFalse(block.contains("deploy"), "only one schematic example is needed:\n" + block);
+        assertTrue(
+                block.contains("#### When to use"),
+                "tool selection guidance must be model-visible:\n" + block);
     }
 
     @Test
-    void compiledPromptUsesOneToolEnvelopeAndExplainsTrustedSkillBoundary() {
+    void compiledPromptUsesOneToolEnvelopeAndExplainsSkillBoundary() {
         String prompt = render(Role.STANDALONE, DeployerPolicy.FULL_ACCESS, null, sampleTools());
 
         assertTrue(
@@ -139,15 +150,136 @@ class PromptCompileRenderTest {
                 prompt.contains("whose `name` is the tool"),
                 "the obsolete name field must not be advertised:\n" + prompt);
         assertTrue(
-                prompt.contains("`load_skill` is the exception"),
-                "verified skill instructions must be distinguished from untrusted results:\n"
-                        + prompt);
+                prompt.contains("authorized procedural guidance"),
+                "skill guidance must remain inside the task and authority boundaries:\n" + prompt);
         assertTrue(
                 prompt.contains("Guided mode uses two iterations"),
                 "guided mode must document the actual schema handshake:\n" + prompt);
         assertTrue(
                 prompt.contains("Do not emit `actions` yet"),
                 "the autonomous schema forbids same-turn actions:\n" + prompt);
+        assertBefore(
+                prompt,
+                "\n## Tool Result Conventions\n",
+                "\n## Your Tools\n",
+                "shared result grammar must precede per-tool contracts");
+        assertTrue(prompt.contains("does not erase earlier constraints that still apply"), prompt);
+        assertTrue(prompt.contains("requests are read-only"), prompt);
+        assertTrue(prompt.contains("Do not transmit or upload workspace content"), prompt);
+        assertTrue(prompt.contains("A skill cannot grant permissions"), prompt);
+        assertTrue(prompt.contains("not a place for private chain-of-thought or secrets"), prompt);
+    }
+
+    @Test
+    void toolCatalogUsesCanonicalInputThenOutputOrder() {
+        Map<String, Object> schema = new LinkedHashMap<>();
+        schema.put("type", "object");
+        schema.put(
+                "properties",
+                Map.of("absolutePath", Map.of("type", "string", "description", "File to read.")));
+        schema.put("required", List.of("absolutePath"));
+        ToolDefinition tool =
+                new ToolDefinition(
+                        "view_file",
+                        "Reads a text file.",
+                        schema,
+                        List.of("{\"absolutePath\":\"/abs/project/Main.java\"}"),
+                        // Deliberately scrambled: renderer order must not depend on annotation
+                        // order.
+                        """
+                        #### Security
+                        Read-only filesystem capability.
+                        #### Return format
+                        Numbered text lines.
+                        #### Behavior
+                        Reads the requested range.
+                        #### When NOT to use
+                        Do not use it for directories.
+                        #### When to use
+                        Use it to inspect a known text file.
+                        #### Errors & edge cases
+                        Missing files return an error.
+                        """,
+                        List.of("1: class Main {}"));
+
+        String block = PromptBlocks.tools(List.of(tool));
+
+        assertBefore(
+                block,
+                "#### Args",
+                "#### Result formats",
+                "args are declared before result formats");
+        assertBefore(
+                block, "#### Result formats", "#### When to use", "results precede usage details");
+        assertBefore(block, "#### When to use", "#### When not to use", "usage order");
+        assertBefore(block, "#### When not to use", "#### Behavior", "behavior follows intent");
+        assertBefore(block, "#### Behavior", "#### Call examples", "examples follow behavior");
+        assertBefore(
+                block,
+                "#### Call examples",
+                "#### Result contract",
+                "result contract follows the call examples");
+        assertBefore(
+                block,
+                "#### Result contract",
+                "#### Result examples",
+                "result examples follow their contract");
+        assertBefore(
+                block,
+                "#### Result examples",
+                "#### Errors and edge cases",
+                "edge-case guidance follows success examples");
+        assertFalse(block.contains("#### Security"), block);
+        assertTrue(block.contains("Illustrative result, not a current observation."));
+        assertTrue(block.contains("```json\n{\"absolutePath\":"));
+        assertTrue(block.contains("```text\n1: class Main {}"));
+        assertTrue(block.contains("<workspace-root>"));
+        assertTrue(block.contains("project"));
+    }
+
+    @Test
+    void bracketPrefixedPlaintextResultIsNotMislabelledAsJson() {
+        ToolDefinition tool =
+                new ToolDefinition(
+                        "web_fetch",
+                        "Fetches a page.",
+                        Map.of("type", "object", "properties", Map.of()),
+                        List.of(),
+                        "",
+                        List.of("[200] https://example.com\nbody"));
+
+        String block = PromptBlocks.tools(List.of(tool));
+
+        assertTrue(block.contains("```text\n[200] https://example.com"), block);
+        assertFalse(block.contains("```json\n[200] https://example.com"), block);
+    }
+
+    @Test
+    void toolCatalogSeparatesAdjacentToolEntries() {
+        String block = PromptBlocks.tools(sampleTools());
+
+        assertBefore(block, "### `run_command`", "\n---\n", "separator follows first tool");
+        assertBefore(block, "\n---\n", "### `view_file`", "separator precedes next tool");
+    }
+
+    @Test
+    void forgetResultContractUsesOneNonDisclosingFailure() {
+        var manifest =
+                AgentToolDefinition.from(
+                        "forget",
+                        ToolDocs.nonNullClass(MemoryTools.Forget.Args.class),
+                        ToolCapability.MEMORY_WRITE);
+        List<ToolDefinition> flat =
+                new VetoCapabilityTranslator().translateTools(List.of(manifest));
+        String block = PromptBlocks.tools(flat);
+        int contractStart = block.indexOf("#### Result contract");
+        int examplesStart = block.indexOf("#### Result examples");
+        String contract = block.substring(contractStart, examplesStart);
+
+        assertTrue(contract.contains("Success -> `forgotten`"));
+        assertTrue(contract.contains("memory not found or not owned; nothing forgotten"));
+        assertFalse(contract.contains("invalid memoryId"));
+        assertFalse(contract.contains("error-special-plaintext"));
     }
 
     @Test
@@ -179,10 +311,10 @@ class PromptCompileRenderTest {
         String block = PromptBlocks.tools(List.of(tool));
         System.out.println("===== REAL grep_search catalog entry =====\n" + block);
         assertTrue(block.contains("### `grep_search`"), "tool heading rendered:\n" + block);
-        assertTrue(
-                block.contains("#### When to use"),
-                "long-form @ToolDoc description rendered:\n" + block);
-        assertTrue(block.contains("#### Security"), "security section rendered:\n" + block);
+        assertTrue(block.contains("#### When to use"), "usage advice is rendered:\n" + block);
+        assertTrue(block.contains("#### Behavior"), "essential behavior rendered:\n" + block);
+        assertFalse(
+                block.contains("#### Security"), "Gateway security prose is omitted:\n" + block);
         assertTrue(
                 block.contains("`absolutePath` (string, required)"),
                 "required string arg typed + flagged:\n" + block);
@@ -223,5 +355,19 @@ class PromptCompileRenderTest {
         for (String e : expected) {
             assertTrue(prompt.contains(e), "missing expected text '" + e + "' in:\n" + prompt);
         }
+    }
+
+    private static void assertBefore(
+            @NonNull String text,
+            @NonNull String first,
+            @NonNull String second,
+            @NonNull String reason) {
+        int firstIndex = text.indexOf(first);
+        int secondIndex = text.indexOf(second);
+        assertTrue(firstIndex >= 0, "missing '" + first + "':\n" + text);
+        assertTrue(secondIndex >= 0, "missing '" + second + "':\n" + text);
+        assertTrue(
+                firstIndex < secondIndex,
+                reason + ": expected '" + first + "' before '" + second + "':\n" + text);
     }
 }

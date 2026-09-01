@@ -15,6 +15,8 @@ import top.focess.veto.agent.mcp.SecurityHint;
 import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDoc;
 import top.focess.veto.agent.mcp.ToolDocs;
+import top.focess.veto.agent.mcp.ToolErrors;
+import top.focess.veto.agent.mcp.ToolResultFormat;
 import top.focess.veto.agent.mcp.ToolSecurity;
 
 /** {@code view_file} — read lines of a text file from the local filesystem. */
@@ -28,6 +30,7 @@ public final class ViewFileTool implements NativeTool<ViewFileTool.Args> {
 
     /** Parameter container for {@code view_file}. */
     @ToolDoc(
+            resultFormats = {ToolResultFormat.PLAINTEXT},
             description = "Read lines of a text file from the local filesystem.",
             usage =
                     """
@@ -55,12 +58,16 @@ public final class ViewFileTool implements NativeTool<ViewFileTool.Args> {
                     whole file.
 
                     #### Return format
-                    Plain text, one line per output line, in the form `<lineNumber>: <line text>` (1-indexed). \
-                    There is no JSON envelope. An empty range yields no output lines.
+                    - Success: one output line per source line as \
+                    `<lineNumber>: <line text>` (1-indexed). An empty range yields no lines.
+                    - Missing or non-regular path (failure): \
+                    `Not a regular file: <path>`.
+                    - Oversized file (failure): \
+                    `File exceeds 16777216 bytes; request a smaller artifact`.
 
                     #### Errors & edge cases
                     - `absolutePath` does not exist or is not a regular file -> \
-                    `{"status":"error","error":"Not a regular file: <path>"}`. **This is the canonical
+                    `Not a regular file: <path>` as a failed result. **This is the canonical
                     signal that the path you constructed does not exist as a file.** The right response
                     is NOT to retry with a similar guess - return to your last successful `list_dir`
                     observation of the parent directory and reconstruct the absolute path from the
@@ -115,12 +122,10 @@ public final class ViewFileTool implements NativeTool<ViewFileTool.Args> {
     public @NonNull String execute(@NonNull Args args) throws IOException {
         Path path = Path.of(args.absolutePath());
         if (!Files.isRegularFile(path)) {
-            return "{\"status\":\"error\",\"error\":\"Not a regular file: "
-                    + args.absolutePath()
-                    + "\"}";
+            return ToolErrors.failure("Not a regular file: " + args.absolutePath());
         }
         if (Files.size(path) > MAX_FILE_BYTES) {
-            return "{\"status\":\"error\",\"error\":\"File exceeds 16777216 bytes; request a smaller artifact\"}";
+            return ToolErrors.failure("File exceeds 16777216 bytes; request a smaller artifact");
         }
         List<String> lines = Files.readAllLines(path, StandardCharsets.UTF_8);
         int from = args.startLine() == null ? 1 : Math.max(1, args.startLine());

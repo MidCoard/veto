@@ -243,7 +243,7 @@ final class DeepSeekLlmClient extends LlmClient {
         if ("tool".equals(msg.role())) {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("role", "user");
-            m.put("content", msg.content());
+            m.put("content", msg.toolResultContentWithStatus());
             return m;
         }
         if ("assistant".equals(msg.role())) {

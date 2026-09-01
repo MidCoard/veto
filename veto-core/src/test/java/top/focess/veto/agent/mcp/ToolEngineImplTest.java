@@ -46,6 +46,37 @@ import top.focess.veto.sandbox.TestSandboxFactory;
  */
 class ToolEngineImplTest {
 
+    @ToolDoc(
+            description = "Fails for protocol testing.",
+            resultFormats = {ToolResultFormat.PLAINTEXT},
+            usage = "#### Return format\nPlain text.",
+            examples = {"{\"reason\":\"bad input\"}"},
+            returnExamples = {"ok"})
+    private record FailingAgentArgs(@NonNull String reason) {}
+
+    private static final class FailingAgentTool implements AgentTool<FailingAgentArgs> {
+
+        @Override
+        public @NonNull String getName() {
+            return "failing_agent";
+        }
+
+        @Override
+        public @NonNull String getDescription() {
+            return "Fails for protocol testing.";
+        }
+
+        @Override
+        public @NonNull Class<FailingAgentArgs> getArgsClass() {
+            return ToolDocs.nonNullClass(FailingAgentArgs.class);
+        }
+
+        @Override
+        public @NonNull String execute(@NonNull FailingAgentArgs args) {
+            return ToolErrors.failure(args.reason());
+        }
+    }
+
     private @NonNull ToolEngineImpl newEngine() {
         ObjectMapper mapper =
                 new ObjectMapper()
@@ -126,6 +157,33 @@ class ToolEngineImplTest {
         List<ToolDefinition> active = engine.getActiveTools(null);
         // 6 native tools; agent tools are discovered via ApplicationContext (none in this test)
         assertEquals(6, active.size());
+    }
+
+    @Test
+    void agentFailureUsesPlainDiagnosticAndSuccessFalse() {
+        ObjectMapper mapper =
+                new ObjectMapper()
+                        .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+        ApplicationContext appCtx = mock(ToolDocs.nonNullClass(ApplicationContext.class));
+        when(appCtx.getBeansOfType(AgentTool.class))
+                .thenReturn(Map.of("failingAgentTool", new FailingAgentTool()));
+        ToolEngineImpl engine =
+                new ToolEngineImpl(
+                        mapper,
+                        List.of(),
+                        new SandboxManager(TestSandboxFactory.uncontainedSubprocesses()),
+                        appCtx);
+        engine.init();
+
+        ToolResult result =
+                engine.execute(
+                        new ToolCall(
+                                "failing_agent", Map.of("reason", "bad input"), "cid-agent-error"),
+                        definition(engine, "failing_agent"));
+
+        assertFalse(result.success());
+        assertEquals("bad input", result.content());
+        assertFalse(result.content().stripLeading().startsWith("{"));
     }
 
     @Test
@@ -430,7 +488,7 @@ class ToolEngineImplTest {
     }
 
     @Test
-    void executeNativeListDirOnMissingPathReturnsErrorEnvelopeAndSuccessFalse(
+    void executeNativeListDirOnMissingPathReturnsSpecialPlaintextAndSuccessFalse(
             @TempDir @NonNull Path tempDir) {
         ToolEngineImpl engine = newEngine();
         // A path under tempDir that does not exist - simulating the agent's "dropped parent
@@ -448,16 +506,16 @@ class ToolEngineImplTest {
                         tempDir);
         assertFalse(
                 result.success(),
-                "a native tool that returns {\"status\":\"error\",...} must surface success=false"
-                        + " so the observation envelope renders [error, ...] and the agent does"
-                        + " not mistake the failure for a successful call");
+                "a native tool failure must use the structural failure channel so the agent does"
+                        + " not mistake it for a successful call");
         assertTrue(
-                result.content().contains("\"status\":\"error\""),
-                "the body should be the canonical error envelope verbatim: " + result.content());
+                result.content().contains("Not a directory"),
+                "the body should be a plain actionable diagnostic: " + result.content());
+        assertFalse(result.content().stripLeading().startsWith("{"), result.content());
     }
 
     @Test
-    void executeNativeViewFileOnMissingPathReturnsErrorEnvelopeAndSuccessFalse(
+    void executeNativeViewFileOnMissingPathReturnsSpecialPlaintextAndSuccessFalse(
             @TempDir @NonNull Path tempDir) {
         ToolEngineImpl engine = newEngine();
         Path missing = tempDir.resolve("does-not-exist.txt");
@@ -472,9 +530,10 @@ class ToolEngineImplTest {
                         tempDir);
         assertFalse(
                 result.success(),
-                "view_file on a missing path must also surface success=false via the same"
-                        + " canonical error envelope - this is what was broken before the fix");
-        assertTrue(result.content().contains("\"status\":\"error\""));
+                "view_file on a missing path must surface success=false through the dedicated"
+                        + " failure channel");
+        assertTrue(result.content().contains("Not a regular file"));
+        assertFalse(result.content().stripLeading().startsWith("{"), result.content());
     }
 
     @Test

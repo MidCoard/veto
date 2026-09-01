@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.mcp.Doc;
@@ -14,6 +15,9 @@ import top.focess.veto.agent.mcp.SecurityHint;
 import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDoc;
 import top.focess.veto.agent.mcp.ToolDocs;
+import top.focess.veto.agent.mcp.ToolErrors;
+import top.focess.veto.agent.mcp.ToolJson;
+import top.focess.veto.agent.mcp.ToolResultFormat;
 import top.focess.veto.agent.mcp.ToolSecurity;
 
 /** {@code write_to_file} — create a new file or completely overwrite an existing file. */
@@ -24,6 +28,7 @@ public final class WriteToFileTool implements NativeTool<WriteToFileTool.Args> {
     private static final int MAX_CONTENT_BYTES = 16 * 1024 * 1024;
 
     @ToolDoc(
+            resultFormats = {ToolResultFormat.JSON},
             description = "Create a new file or completely overwrite an existing file.",
             usage =
                     """
@@ -48,9 +53,13 @@ public final class WriteToFileTool implements NativeTool<WriteToFileTool.Args> {
                     an existing file is truncated and replaced with the new content.
 
                     #### Return format
-                    On success: `{"status":"ok","file":"<path>","bytes":<byteCount>}` where `byteCount` is the \
-                    UTF-8 byte length written. On refusal: \
-                    `{"status":"error","error":"File exists and overwrite=false: <path>"}`.
+                    - Success: \
+                    `{"status":"ok","file":"<path>","bytes":<byteCount>}`, where `byteCount` is \
+                    the UTF-8 byte length written.
+                    - Oversized content (failure): \
+                    `Content exceeds 16777216 bytes`.
+                    - Existing target with overwrite disabled (failure): \
+                    `File exists and overwrite=false: <path>`.
 
                     #### Errors & edge cases
                     - File exists and `overwrite` is false -> error status (see above); nothing is written.
@@ -75,7 +84,7 @@ public final class WriteToFileTool implements NativeTool<WriteToFileTool.Args> {
                 "{\"absolutePath\": \"/abs/config/local.properties\", \"codeContent\": \"debug=true\\n\", \"overwrite\": false}",
                 "{\"absolutePath\": \"/abs/src/Main.java\", \"codeContent\": \"// rewritten\\n\", \"overwrite\": true}"
             },
-            returnExamples = {"{\"status\":\"ok\",\"file\":\"/abs/src/Main.java\"}"})
+            returnExamples = {"{\"status\":\"ok\",\"file\":\"/abs/src/Main.java\",\"bytes\":128}"})
     public record Args(
             @SecurityHint(ParamCategory.FILESYSTEM_PATH) @Doc("Absolute path of the file to write.")
                     @NonNull String absolutePath,
@@ -103,18 +112,13 @@ public final class WriteToFileTool implements NativeTool<WriteToFileTool.Args> {
         Path path = Path.of(args.absolutePath());
         byte[] content = args.codeContent().getBytes(StandardCharsets.UTF_8);
         if (content.length > MAX_CONTENT_BYTES) {
-            return "{\"status\":\"error\",\"error\":\"Content exceeds 16777216 bytes\"}";
+            return ToolErrors.failure("Content exceeds 16777216 bytes");
         }
         if (!args.overwrite() && Files.exists(path)) {
-            return "{\"status\":\"error\",\"error\":\"File exists and overwrite=false: "
-                    + args.absolutePath()
-                    + "\"}";
+            return ToolErrors.failure("File exists and overwrite=false: " + args.absolutePath());
         }
         AtomicFileWrites.write(path, content, args.overwrite());
-        return "{\"status\":\"ok\",\"file\":\""
-                + args.absolutePath()
-                + "\",\"bytes\":"
-                + content.length
-                + "}";
+        return ToolJson.object(
+                Map.of("status", "ok", "file", args.absolutePath(), "bytes", content.length));
     }
 }

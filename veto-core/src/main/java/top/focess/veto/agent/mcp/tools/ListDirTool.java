@@ -16,6 +16,8 @@ import top.focess.veto.agent.mcp.SecurityHint;
 import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDoc;
 import top.focess.veto.agent.mcp.ToolDocs;
+import top.focess.veto.agent.mcp.ToolErrors;
+import top.focess.veto.agent.mcp.ToolResultFormat;
 import top.focess.veto.agent.mcp.ToolSecurity;
 import top.focess.veto.util.Nullness;
 
@@ -27,6 +29,7 @@ public final class ListDirTool implements NativeTool<ListDirTool.Args> {
     private static final int MAX_ENTRIES = 5000;
 
     @ToolDoc(
+            resultFormats = {ToolResultFormat.PLAINTEXT},
             description = "List contents of a directory (files and child subdirectories).",
             usage =
                     """
@@ -53,12 +56,14 @@ public final class ListDirTool implements NativeTool<ListDirTool.Args> {
                     listing is not recursive.
 
                     #### Return format
-                    Plain text, one entry per line, sorted. Directory entries end with `/`; file entries do not. \
-                    There is no JSON envelope. An empty directory yields no output lines.
+                    - Success: one sorted entry per line. Directory \
+                    entries end with `/`; file entries do not. An empty directory yields no lines.
+                    - Missing or non-directory path (failure): \
+                    `Not a directory: <path>`.
 
                     #### Errors & edge cases
                     - `absolutePath` does not exist or is not a directory -> \
-                    `{"status":"error","error":"Not a directory: <path>"}`. **This is the canonical
+                    `Not a directory: <path>` as a failed result. **This is the canonical
                     signal that the path you constructed does not exist.** The right response is NOT
                     to retry with a similar guess - return to your last successful `list_dir`
                     observation and reconstruct the absolute path from the actual subdirectory names
@@ -111,17 +116,19 @@ public final class ListDirTool implements NativeTool<ListDirTool.Args> {
     public @NonNull String execute(@NonNull Args args) throws IOException {
         Path path = Path.of(args.absolutePath());
         if (!Files.isDirectory(path)) {
-            return "{\"status\":\"error\",\"error\":\"Not a directory: "
-                    + args.absolutePath()
-                    + "\"}";
+            return ToolErrors.failure("Not a directory: " + args.absolutePath());
         }
         StringBuilder sb = new StringBuilder();
         List<Path> entries = new ArrayList<>(MAX_ENTRIES + 1);
-        try (var stream = Files.list(path)) {
-            var iterator = stream.iterator();
-            while (iterator.hasNext() && entries.size() <= MAX_ENTRIES) {
-                entries.add(iterator.next());
+        try {
+            try (var stream = Files.list(path)) {
+                var iterator = stream.iterator();
+                while (iterator.hasNext() && entries.size() <= MAX_ENTRIES) {
+                    entries.add(iterator.next());
+                }
             }
+        } catch (IOException | java.io.UncheckedIOException e) {
+            return ToolErrors.failure("Cannot list directory: " + args.absolutePath());
         }
         boolean truncated = entries.size() > MAX_ENTRIES;
         if (truncated) {

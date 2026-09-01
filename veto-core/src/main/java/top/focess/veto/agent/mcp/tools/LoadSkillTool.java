@@ -6,6 +6,7 @@ import top.focess.veto.agent.mcp.AgentTool;
 import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDoc;
 import top.focess.veto.agent.mcp.ToolDocs;
+import top.focess.veto.agent.mcp.ToolErrors;
 import top.focess.veto.agent.skills.SkillRegistry;
 
 /**
@@ -54,13 +55,11 @@ public final class LoadSkillTool implements AgentTool<LoadSkillArgs> {
     public @NonNull String execute(@NonNull LoadSkillArgs args) throws Exception {
         var skill = skillRegistry.loadVerified(args.skillName());
         if (skill.isEmpty()) {
-            return "{\"status\":\"error\",\"error\":\"Skill '"
-                    + args.skillName()
-                    + "' not found or tampered.\"}";
+            return ToolErrors.failure("Skill '" + args.skillName() + "' not found or tampered.");
         }
         String instructions = skill.get().promptInstructions();
         return instructions == null
-                ? "{\"status\":\"error\",\"error\":\"Skill body is not loaded.\"}"
+                ? ToolErrors.failure("Skill body is not loaded.")
                 : instructions;
     }
 }

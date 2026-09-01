@@ -185,11 +185,7 @@ class AgentRunnerTest {
                                 null);
                     }
                     return new VetoResponse(
-                            null,
-                            List.of(),
-                            null,
-                            new VetoResponse.Features(true),
-                            guidedActions);
+                            null, List.of(), null, new VetoResponse.Features(true), guidedActions);
                 };
 
         AgentResult result =

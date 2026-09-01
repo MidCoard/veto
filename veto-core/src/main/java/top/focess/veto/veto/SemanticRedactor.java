@@ -69,7 +69,13 @@ public class SemanticRedactor {
                     // Paths to credential files
                     new RedactionRule(
                             Pattern.compile(
-                                    "(?i)(?:~?/\\w+/)?(?:\\.ssh|credentials|secrets|passwd|keys)/?\\S*"),
+                                    "(?i)(?<![A-Za-z0-9_.-])(?:"
+                                            + "(?:(?:(?:~|[A-Za-z]:)?[\\\\/])?"
+                                            + "(?:[^\\\\/\\s]+[\\\\/])*"
+                                            + "(?:\\.ssh|\\.aws|credentials|secrets|keys)"
+                                            + "[\\\\/][^\\\\/\\s]+(?:[\\\\/][^\\\\/\\s]+)*)"
+                                            + "|(?:(?:~|[A-Za-z]:)?[\\\\/]etc[\\\\/]"
+                                            + "(?:passwd|shadow)))"),
                             "[REDACTED_CREDENTIAL_PATH]",
                             RedactionType.SSH_PROFILE),
                     // Database connection strings

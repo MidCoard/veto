@@ -5,6 +5,7 @@ import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.AgentRunner;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.group.GroupTools;
+import top.focess.veto.llm.core.ToolResultPresentationMode;
 
 /**
  * The call context for a tool execution: the calling agent's id, the user id, the group id when the
@@ -31,7 +32,25 @@ public record ToolCallContext(
         UUID groupId,
         String owner,
         UUID sessionId,
+        @NonNull ToolResultPresentationMode toolResultPresentation,
         @NonNull ToolExecutionPermit executionPermit) {
+
+    public ToolCallContext(
+            @NonNull String agentId,
+            @NonNull UUID userId,
+            UUID groupId,
+            String owner,
+            UUID sessionId,
+            @NonNull ToolExecutionPermit executionPermit) {
+        this(
+                agentId,
+                userId,
+                groupId,
+                owner,
+                sessionId,
+                ToolResultPresentationMode.CONTENT_ONLY,
+                executionPermit);
+    }
 
     /** Compatibility constructor for a normal call without an execution permit. */
     public ToolCallContext(
@@ -40,22 +59,50 @@ public record ToolCallContext(
             UUID groupId,
             String owner,
             UUID sessionId) {
-        this(agentId, userId, groupId, owner, sessionId, ToolExecutionPermit.empty());
+        this(
+                agentId,
+                userId,
+                groupId,
+                owner,
+                sessionId,
+                ToolResultPresentationMode.CONTENT_ONLY,
+                ToolExecutionPermit.empty());
     }
 
     /** Compatibility constructor without a session id. */
     public ToolCallContext(
             @NonNull String agentId, @NonNull UUID userId, UUID groupId, String owner) {
-        this(agentId, userId, groupId, owner, null, ToolExecutionPermit.empty());
+        this(
+                agentId,
+                userId,
+                groupId,
+                owner,
+                null,
+                ToolResultPresentationMode.CONTENT_ONLY,
+                ToolExecutionPermit.empty());
     }
 
     /** Compatibility constructor for callers without a group or an owner (STANDALONE / tests). */
     public ToolCallContext(@NonNull String agentId, @NonNull UUID userId, UUID groupId) {
-        this(agentId, userId, groupId, null, null, ToolExecutionPermit.empty());
+        this(
+                agentId,
+                userId,
+                groupId,
+                null,
+                null,
+                ToolResultPresentationMode.CONTENT_ONLY,
+                ToolExecutionPermit.empty());
     }
 
     /** Compatibility constructor for callers without a group (STANDALONE agents). */
     public ToolCallContext(@NonNull String agentId, @NonNull UUID userId) {
-        this(agentId, userId, null, null, null, ToolExecutionPermit.empty());
+        this(
+                agentId,
+                userId,
+                null,
+                null,
+                null,
+                ToolResultPresentationMode.CONTENT_ONLY,
+                ToolExecutionPermit.empty());
     }
 }

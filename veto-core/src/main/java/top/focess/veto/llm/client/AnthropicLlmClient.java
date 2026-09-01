@@ -68,10 +68,7 @@ final class AnthropicLlmClient extends LlmClient {
                     Tool.builder()
                             .name(t.name())
                             .description(t.description())
-                            .inputSchema(
-                                    Tool.InputSchema.builder()
-                                            .properties(toolProperties(t.inputSchema()))
-                                            .build())
+                            .inputSchema(toolInputSchema(t.inputSchema()))
                             .build());
         }
 
@@ -161,6 +158,22 @@ final class AnthropicLlmClient extends LlmClient {
         return builder.build();
     }
 
+    private static Tool.@NonNull InputSchema toolInputSchema(
+            @NonNull Map<String, Object> inputSchema) {
+        Tool.InputSchema.Builder builder =
+                Tool.InputSchema.builder().properties(toolProperties(inputSchema));
+        Object required = inputSchema.get("required");
+        if (required != null) {
+            builder.putAdditionalProperty("required", JsonValue.from(required));
+        }
+        Object additionalProperties = inputSchema.get("additionalProperties");
+        if (additionalProperties != null) {
+            builder.putAdditionalProperty(
+                    "additionalProperties", JsonValue.from(additionalProperties));
+        }
+        return builder.build();
+    }
+
     /**
      * Maps the compiled conversation to Anthropic message params, merging consecutive same-role
      * messages (the API requires strict role alternation). System messages are dropped - the
@@ -218,6 +231,7 @@ final class AnthropicLlmClient extends LlmClient {
                                         ToolResultBlockParam.builder()
                                                 .toolUseId(callId)
                                                 .content(m.content())
+                                                .isError(Boolean.FALSE.equals(m.toolSuccess()))
                                                 .build()));
                     } else {
                         blocks.add(

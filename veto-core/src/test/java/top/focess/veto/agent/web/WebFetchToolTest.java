@@ -1,6 +1,7 @@
 package top.focess.veto.agent.web;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.sun.net.httpserver.HttpServer;
@@ -8,6 +9,9 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
+import top.focess.veto.agent.mcp.ToolDocs;
+import top.focess.veto.agent.mcp.ToolErrors;
+import top.focess.veto.agent.mcp.ToolExecutionException;
 
 class WebFetchToolTest {
 
@@ -15,9 +19,13 @@ class WebFetchToolTest {
     void productionPolicyRejectsPrivateDestinations() {
         WebFetchTool tool = new WebFetchTool(5, 1000, false);
 
-        String result = tool.execute(new WebFetchTool.Args("http://127.0.0.1/admin"));
+        ToolExecutionException error =
+                assertThrows(
+                        ToolDocs.nonNullClass(ToolExecutionException.class),
+                        () -> tool.execute(new WebFetchTool.Args("http://127.0.0.1/admin")));
 
-        assertTrue(result.contains("private, loopback, link-local"), result);
+        assertTrue(
+                ToolErrors.normalize(error.getMessage()).contains("private, loopback, link-local"));
     }
 
     @Test
@@ -83,13 +91,17 @@ class WebFetchToolTest {
         origin.start();
         try {
             WebFetchTool tool = new WebFetchTool(5, 1000);
-            String result =
-                    tool.execute(
-                            new WebFetchTool.Args(
-                                    "http://127.0.0.1:"
-                                            + origin.getAddress().getPort()
-                                            + "/start"));
-            assertTrue(result.contains("requires a separate web_fetch approval"), result);
+            ToolExecutionException error =
+                    assertThrows(
+                            ToolDocs.nonNullClass(ToolExecutionException.class),
+                            () ->
+                                    tool.execute(
+                                            new WebFetchTool.Args(
+                                                    "http://127.0.0.1:"
+                                                            + origin.getAddress().getPort()
+                                                            + "/start")));
+            String message = ToolErrors.normalize(error.getMessage());
+            assertTrue(message.contains("redirect"), message);
             assertEquals(0, destinationHits.get());
         } finally {
             origin.stop(0);

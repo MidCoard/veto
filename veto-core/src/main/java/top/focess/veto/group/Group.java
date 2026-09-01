@@ -5,6 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.llm.core.ToolResultPresentationMode;
 
 /**
  * A group is a Leader-Mate collaboration spawned via {@code create_group} (delegation_spawning.md).
@@ -31,7 +32,8 @@ public record Group(
         @NonNull GroupState state,
         @NonNull Instant createdAt,
         Instant disbandedAt,
-        String owner) {
+        String owner,
+        @NonNull ToolResultPresentationMode toolResultPresentation) {
 
     public Group {
         mates = Map.copyOf(mates);
@@ -48,7 +50,14 @@ public record Group(
             String contextBrief,
             @NonNull Blackboard blackboard,
             @NonNull ExecutionDag dag) {
-        return create(leaderId, userId, contextBrief, blackboard, dag, null);
+        return create(
+                leaderId,
+                userId,
+                contextBrief,
+                blackboard,
+                dag,
+                null,
+                ToolResultPresentationMode.CONTENT_ONLY);
     }
 
     /**
@@ -65,6 +74,24 @@ public record Group(
             @NonNull Blackboard blackboard,
             @NonNull ExecutionDag dag,
             String owner) {
+        return create(
+                leaderId,
+                userId,
+                contextBrief,
+                blackboard,
+                dag,
+                owner,
+                ToolResultPresentationMode.CONTENT_ONLY);
+    }
+
+    public static @NonNull Group create(
+            @NonNull String leaderId,
+            @NonNull String userId,
+            String contextBrief,
+            @NonNull Blackboard blackboard,
+            @NonNull ExecutionDag dag,
+            String owner,
+            @NonNull ToolResultPresentationMode toolResultPresentation) {
         UUID id = UUID.randomUUID();
         return new Group(
                 id,
@@ -77,7 +104,8 @@ public record Group(
                 GroupState.ACTIVE,
                 Instant.now(),
                 null,
-                owner);
+                owner,
+                toolResultPresentation);
     }
 
     public @NonNull Group withDag(@NonNull ExecutionDag newDag) {
@@ -92,7 +120,8 @@ public record Group(
                 state,
                 createdAt,
                 disbandedAt,
-                owner);
+                owner,
+                toolResultPresentation);
     }
 
     public @NonNull Group withState(@NonNull GroupState newState, @NonNull Instant when) {
@@ -107,7 +136,8 @@ public record Group(
                 newState,
                 createdAt,
                 newState == GroupState.DISBANDED ? when : disbandedAt,
-                owner);
+                owner,
+                toolResultPresentation);
     }
 
     public @NonNull Group withMate(@NonNull String mateId, @NonNull String skillset) {
@@ -124,7 +154,8 @@ public record Group(
                 state,
                 createdAt,
                 disbandedAt,
-                owner);
+                owner,
+                toolResultPresentation);
     }
 
     public @NonNull Group withoutMate(@NonNull String mateId) {
@@ -144,7 +175,8 @@ public record Group(
                 state,
                 createdAt,
                 disbandedAt,
-                owner);
+                owner,
+                toolResultPresentation);
     }
 
     public boolean isActive() {

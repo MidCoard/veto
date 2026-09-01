@@ -73,7 +73,14 @@ public class SessionController {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST, Msg.get("error.session.missingFields"));
         }
-        return service.createSession(user, pattern, body.name(), roots);
+        return service.createSession(
+                user,
+                pattern,
+                body.name(),
+                roots,
+                body.toolResultPresentation() != null
+                        ? body.toolResultPresentation()
+                        : top.focess.veto.llm.core.ToolResultPresentationMode.CONTENT_ONLY);
     }
 
     @DeleteMapping("/{name}")
@@ -149,9 +156,14 @@ public class SessionController {
             return ResponseEntity.status(404)
                     .body(Map.of("error", Msg.get("error.session.notFoundForUser", name, user)));
         }
-        return ResponseEntity.ok(recordService.load(cfg.sessionId(), name));
+        return ResponseEntity.ok(
+                recordService.load(cfg.sessionId(), name, cfg.toolResultPresentation()));
     }
 
     /** Request body for {@link #create}. */
-    public record CreateSessionRequest(String pattern, String name, String workspaceRoots) {}
+    public record CreateSessionRequest(
+            String pattern,
+            String name,
+            String workspaceRoots,
+            top.focess.veto.llm.core.ToolResultPresentationMode toolResultPresentation) {}
 }

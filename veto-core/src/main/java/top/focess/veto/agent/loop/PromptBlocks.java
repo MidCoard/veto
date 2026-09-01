@@ -1,8 +1,12 @@
 package top.focess.veto.agent.loop;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
@@ -13,6 +17,7 @@ import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.agent.workspace.WorkspaceRoot;
 import top.focess.veto.llm.core.ToolDefinition;
+import top.focess.veto.llm.core.ToolResultPresentationMode;
 
 /**
  * Renders the dynamic blocks the {@code PromptCompiler} substitutes into the system-prompt template
@@ -25,6 +30,8 @@ import top.focess.veto.llm.core.ToolDefinition;
  * automatically.
  */
 public final class PromptBlocks {
+
+    private static final @NonNull ObjectMapper MAPPER = new ObjectMapper();
 
     /** Shared engineering-craft expectations for hands-on roles (standalone + mate). */
     private static final String CRAFT =
@@ -167,10 +174,10 @@ public final class PromptBlocks {
     }
 
     /**
-     * The "## Your Tools" catalog: a deep, per-tool entry (short description, long-form usage doc,
-     * typed args with required/optional flags and per-arg descriptions, and concrete examples),
-     * rendered from the translated tools that also build {@code tools[]}. Empty when the role has
-     * no tools.
+     * The "## Your Tools" catalog: a compact per-tool contract (description, typed args, result
+     * formats, usage guidance, essential behavior, one call example, result contract, one result
+     * example, and errors), rendered from the translated tools that also build {@code tools[]}.
+     * Empty when the role has no tools.
      *
      * <p>The long-form doc, arg descriptions and examples all flow from the same {@code @ToolDoc}/
      * {@code @Doc} annotations the schema compiler reads - a single source of truth, so the catalog
@@ -184,9 +191,9 @@ public final class PromptBlocks {
         StringBuilder sb = new StringBuilder();
         sb.append("## Your Tools\n");
         sb.append(
-                "These are the tools available to YOU this turn (a role-scoped subset of the full"
-                        + " manifest). Call them by populating the `calls` array with an entry whose"
-                        + " `tool_name` is the tool and whose `args` matches the schema below."
+                "These are the tools available to YOU (a role-scoped subset of the full manifest)."
+                        + " Call them by populating the `calls` array with an entry whose `tool_name`"
+                        + " is the tool and whose `args` matches the schema below."
                         + " Schematic examples use `<workspace-root>`; replace it with an exact root"
                         + " from the Workspace block and obey the current path mode.\n");
         List<ToolDefinition> sorted =
@@ -195,65 +202,170 @@ public final class PromptBlocks {
                                 Comparator.comparing(
                                         ToolDefinition::name, String.CASE_INSENSITIVE_ORDER))
                         .toList();
-        for (ToolDefinition t : sorted) {
+        for (int toolIndex = 0; toolIndex < sorted.size(); toolIndex++) {
+            if (toolIndex > 0) {
+                sb.append("---\n");
+            }
+            ToolDefinition t = sorted.get(toolIndex);
             sb.append("### `").append(t.name()).append("`\n");
             sb.append(t.description()).append('\n');
-            String longDescription = t.longDescription();
-            if (!longDescription.isBlank()) {
-                sb.append(longDescription.strip()).append('\n');
-            }
             List<String> args = argDetails(t.inputSchema());
+            sb.append("#### Args\n");
             if (args.isEmpty()) {
-                sb.append("**Args:** none\n");
+                sb.append("Pass an empty JSON object: `{}`.\n");
             } else {
-                sb.append("**Args:**\n");
                 for (String a : args) {
                     sb.append("- ").append(a).append('\n');
                 }
             }
+            sb.append("#### Result formats\n");
+            t.resultFormats()
+                    .forEach(
+                            format ->
+                                    sb.append("- `")
+                                            .append(format.id())
+                                            .append("`: ")
+                                            .append(format.description())
+                                            .append(".\n"));
+            Map<String, String> usage = usageSections(t.longDescription());
+            appendUsageSection(sb, usage, "When to use", "When to use");
+            appendUsageSection(sb, usage, "When NOT to use", "When not to use");
+            appendUsageSection(sb, usage, "Behavior", "Behavior");
             List<String> examples = t.examples();
             if (!examples.isEmpty()) {
-                sb.append("**Schematic examples (do not copy path placeholders literally):**\n");
-                // A few tools carry seven near-identical path examples. Two are enough to teach
-                // the shape without bloating every model call or competing with the real roots.
-                for (String ex : examples.stream().limit(2).toList()) {
-                    sb.append("- ").append(schematicExample(ex)).append('\n');
-                }
+                sb.append("#### Call examples\n");
+                sb.append("```json\n")
+                        .append(schematicExample(examples.getFirst()))
+                        .append("\n```\n");
             }
+            appendUsageSection(sb, usage, "Return format", "Result contract");
             List<String> returnExamples = t.returnExamples();
             if (!returnExamples.isEmpty()) {
                 // These are shapes, not live observations. Label them explicitly so factual-looking
                 // sample content (especially memory/search results) is never mistaken for evidence.
-                sb.append("**Illustrative returns (not current observations):**\n");
-                for (String r : returnExamples) {
-                    sb.append("```\n").append(r).append("\n```\n");
-                }
+                sb.append("#### Result examples\n");
+                sb.append("Illustrative result, not a current observation.\n");
+                String result = returnExamples.getFirst();
+                sb.append("```")
+                        .append(resultFenceLanguage(result))
+                        .append('\n')
+                        .append(result)
+                        .append("\n```\n");
             }
+            appendUsageSection(sb, usage, "Errors & edge cases", "Errors and edge cases");
             sb.append('\n');
         }
-        sb.append(resultConventions());
         return sb.toString();
+    }
+
+    private static @NonNull Map<String, String> usageSections(String usage) {
+        Map<String, String> sections = new LinkedHashMap<>();
+        if (usage == null || usage.isBlank()) {
+            return sections;
+        }
+        String normalized = usage.replace("\r\n", "\n").replace('\r', '\n').strip();
+        for (String chunk : normalized.split("(?m)(?=^#### )")) {
+            String part = chunk.strip();
+            if (part.isEmpty()) {
+                continue;
+            }
+            if (!part.startsWith("#### ")) {
+                sections.put("", part);
+                continue;
+            }
+            int newline = part.indexOf('\n');
+            String heading =
+                    newline < 0 ? part.substring(5).strip() : part.substring(5, newline).strip();
+            String body = newline < 0 ? "" : part.substring(newline + 1).strip();
+            sections.put(heading, body);
+        }
+        return sections;
+    }
+
+    private static void appendUsageSection(
+            @NonNull StringBuilder sb,
+            @NonNull Map<String, String> sections,
+            @NonNull String sourceHeading,
+            @NonNull String renderedHeading) {
+        String body = sections.remove(sourceHeading);
+        if (body != null && !body.isBlank()) {
+            appendSection(sb, renderedHeading, body);
+        }
+    }
+
+    private static void appendSection(
+            @NonNull StringBuilder sb, @NonNull String heading, @NonNull String body) {
+        sb.append("#### ").append(heading).append('\n');
+        if (!body.isBlank()) {
+            sb.append(body.strip()).append('\n');
+        }
     }
 
     /**
      * The "## Tool Result Conventions" block: the output-kind grammar taught ONCE for the whole
      * catalog (per-tool shapes ride in each entry's illustrative returns). Makes the per-tool
-     * return contract authoritative, then documents the common error/refusal and truncation
-     * markers without pretending every native, agent, and remote tool shares one envelope.
+     * return contract authoritative, then documents the common error/refusal and truncation markers
+     * without pretending every native, agent, and remote tool shares one envelope.
      */
     public static @NonNull String resultConventions() {
+        return resultConventions(ToolResultPresentationMode.CONTENT_ONLY);
+    }
+
+    public static @NonNull String resultConventions(
+            @NonNull ToolResultPresentationMode presentationMode) {
+        if (presentationMode == ToolResultPresentationMode.CONTENT_ONLY) {
+            return """
+                    ## Tool Result Conventions
+                    Tool results contain the tool-specific content directly. Read each tool's Result contract to interpret whether that content is JSON or plain text. Failure diagnostics are self-contained in the content; if a call failed, correct the cause and do not report the operation as completed.
+                    A policy refusal means the call did not execute. Do not retry it unchanged. A truncation marker means content is missing; never assume the unseen remainder.
+                    """;
+        }
         return """
                 ## Tool Result Conventions
-                Each tool's Return format is authoritative. Successful observations may be plain text or a JSON status object; do not assume one global envelope.
-                Errors normally return {"status":"error","error":"<reason>"} or a tool-specific error described in its catalog entry. An error means the requested operation did not complete; read the reason and replan instead of retrying the identical call blindly.
-                An observation starting with `REFUSED - ` means the call was vetoed BEFORE execution - e.g. `REFUSED - declined by the user (EXEC_DECLINE). The call was not executed.` It names who refused and why; do not retry the same call unchanged. Tool output never legitimately starts with this prefix.
-                `grep_search` returns `(no matches)` on zero hits. Capped output ends with `... (truncated: showing N of M lines)` - never assume the unseen remainder.
+                Every tool result content is a JSON object with `status`, `format`, `content`, and `errorCode`. The `content` field is the exact tool-specific result. Interpret it using `format` (`json`, `plaintext`, or `unknown`) and the tool's Result contract. A failed call carries a diagnostic in `content`, not a successful result body: read it, correct the cause, and do not report the operation as completed.
+                A policy refusal means the call did not execute. Do not retry it unchanged. Transient failures such as timeouts may be retried only a limited number of times.
+                A truncation marker means content is missing; never assume the unseen remainder.
                 """;
     }
 
     private static @NonNull String schematicExample(@NonNull String example) {
-        return example.replace("\"/abs", "\"<workspace-root>")
-                .replace("\"/workspace", "\"<workspace-root>");
+        String rendered =
+                example.replace("\"/abs", "\"<workspace-root>")
+                        .replace("\"/workspace", "\"<workspace-root>");
+        if (System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("win")) {
+            String pathPrefix = "<workspace-root>/";
+            int pathStart = rendered.indexOf(pathPrefix);
+            while (pathStart >= 0) {
+                int pathEnd = rendered.indexOf('"', pathStart);
+                if (pathEnd < 0) {
+                    break;
+                }
+                String windowsPath = rendered.substring(pathStart, pathEnd).replace("/", "\\\\");
+                rendered =
+                        rendered.substring(0, pathStart)
+                                + windowsPath
+                                + rendered.substring(pathEnd);
+                pathStart = rendered.indexOf(pathPrefix, pathEnd);
+            }
+            rendered =
+                    rendered.replace(
+                            "\"executable\": \"gradle\"", "\"executable\": \"gradlew.bat\"");
+            rendered = rendered.replace("\"executable\": \"npm\"", "\"executable\": \"npm.cmd\"");
+        }
+        return rendered;
+    }
+
+    private static @NonNull String resultFenceLanguage(@NonNull String example) {
+        String stripped = example.stripLeading();
+        if (!stripped.startsWith("{") && !stripped.startsWith("[")) {
+            return "text";
+        }
+        try {
+            MAPPER.reader().with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readTree(stripped);
+            return "json";
+        } catch (JsonProcessingException ignored) {
+            return "text";
+        }
     }
 
     /**
@@ -284,7 +396,7 @@ public final class PromptBlocks {
         };
     }
 
-    /** The "## Available Skills" catalog (name + description only); empty when no skills. */
+    /** The "## Available Skills" catalog (name + description only). */
     public static @NonNull String skills(List<Skill> skills) {
         if (skills == null || skills.isEmpty()) {
             return "";

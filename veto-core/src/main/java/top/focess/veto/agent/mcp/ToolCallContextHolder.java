@@ -8,6 +8,7 @@ import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.AgentRunner;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
+import top.focess.veto.llm.core.ToolResultPresentationMode;
 
 /**
  * Thread-local holder for {@link ToolCallContext}. {@link AgentRunner} sets the context before
@@ -119,8 +120,33 @@ public final class ToolCallContextHolder {
             String owner,
             UUID sessionId,
             @NonNull ToolExecutionPermit executionPermit) {
+        set(
+                agentId,
+                userId,
+                groupId,
+                owner,
+                sessionId,
+                ToolResultPresentationMode.CONTENT_ONLY,
+                executionPermit);
+    }
+
+    public static void set(
+            @NonNull String agentId,
+            @NonNull UUID userId,
+            UUID groupId,
+            String owner,
+            UUID sessionId,
+            @NonNull ToolResultPresentationMode toolResultPresentation,
+            @NonNull ToolExecutionPermit executionPermit) {
         CONTEXT.set(
-                new ToolCallContext(agentId, userId, groupId, owner, sessionId, executionPermit));
+                new ToolCallContext(
+                        agentId,
+                        userId,
+                        groupId,
+                        owner,
+                        sessionId,
+                        toolResultPresentation,
+                        executionPermit));
     }
 
     /** Sets the tool call context for the current thread. */

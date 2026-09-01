@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.mcp.Doc;
@@ -14,6 +15,9 @@ import top.focess.veto.agent.mcp.SecurityHint;
 import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDoc;
 import top.focess.veto.agent.mcp.ToolDocs;
+import top.focess.veto.agent.mcp.ToolErrors;
+import top.focess.veto.agent.mcp.ToolJson;
+import top.focess.veto.agent.mcp.ToolResultFormat;
 import top.focess.veto.agent.mcp.ToolSecurity;
 
 /** {@code replace_file_content} — replace a single contiguous block of text in an existing file. */
@@ -24,6 +28,7 @@ public final class ReplaceFileContentTool implements NativeTool<ReplaceFileConte
     private static final long MAX_FILE_BYTES = 16L * 1024L * 1024L;
 
     @ToolDoc(
+            resultFormats = {ToolResultFormat.JSON},
             description = "Replace a single contiguous block of code in an existing file.",
             usage =
                     """
@@ -52,13 +57,20 @@ public final class ReplaceFileContentTool implements NativeTool<ReplaceFileConte
                     is written through a same-directory temporary file and replacement move.
 
                     #### Return format
-                    On success: `{"status":"ok","file":"<path>"}`. On failure to find the target: \
-                    `{"status":"error","error":"targetContent not found in file."}`. On a non-file path: \
-                    `{"status":"error","error":"Not a regular file: <path>"}`.
+                    - Success: `{"status":"ok","file":"<path>"}`.
+                    - Invalid target (failure): one of \
+                    `Not a regular file: <path>`, `File exceeds 16777216 bytes`, \
+                    `Invalid line range`, `Line range outside file`, or \
+                    `targetContent must not be empty`.
+                    - Match failure (failure): \
+                    `targetContent not found in selected range.` or \
+                    `targetContent is not unique in selected range.` The file remains unchanged.
 
                     #### Errors & edge cases
-                    - `targetContent` not present -> error status; the file is left untouched.
-                    - `absolutePath` is not a regular file -> error status.
+                    - `targetContent` not present -> `targetContent not found in selected range.` as \
+                    failed result; the file is left untouched.
+                    - `absolutePath` is not a regular file -> `Not a regular file: <path>` as \
+                    failed result.
                     - Zero or multiple matches in the selected range are refused.
                     - `targetContent` and `replacementContent` are exact (whitespace, indentation, newlines all \
                     matter). A mismatched indent means "not found".
@@ -110,41 +122,39 @@ public final class ReplaceFileContentTool implements NativeTool<ReplaceFileConte
     public @NonNull String execute(@NonNull Args args) throws IOException {
         Path path = Path.of(args.absolutePath());
         if (!Files.isRegularFile(path)) {
-            return "{\"status\":\"error\",\"error\":\"Not a regular file: "
-                    + args.absolutePath()
-                    + "\"}";
+            return ToolErrors.failure("Not a regular file: " + args.absolutePath());
         }
         if (Files.size(path) > MAX_FILE_BYTES) {
-            return "{\"status\":\"error\",\"error\":\"File exceeds 16777216 bytes\"}";
+            return ToolErrors.failure("File exceeds 16777216 bytes");
         }
         if (args.startLine() < 1 || args.endLine() < args.startLine()) {
-            return "{\"status\":\"error\",\"error\":\"Invalid line range\"}";
+            return ToolErrors.failure("Invalid line range");
         }
         if (args.targetContent().isEmpty()) {
-            return "{\"status\":\"error\",\"error\":\"targetContent must not be empty\"}";
+            return ToolErrors.failure("targetContent must not be empty");
         }
         String content = Files.readString(path, StandardCharsets.UTF_8);
         int rangeStart = lineStart(content, args.startLine());
         int rangeEnd = lineEnd(content, args.endLine());
         if (rangeStart < 0 || rangeEnd < rangeStart) {
-            return "{\"status\":\"error\",\"error\":\"Line range outside file\"}";
+            return ToolErrors.failure("Line range outside file");
         }
         int idx = content.indexOf(args.targetContent(), rangeStart);
         if (idx < 0 || idx + args.targetContent().length() > rangeEnd) {
-            return "{\"status\":\"error\",\"error\":\"targetContent not found in selected range.\"}";
+            return ToolErrors.failure("targetContent not found in selected range.");
         }
         int next =
                 content.indexOf(
                         args.targetContent(), idx + Math.max(1, args.targetContent().length()));
         if (next >= 0 && next + args.targetContent().length() <= rangeEnd) {
-            return "{\"status\":\"error\",\"error\":\"targetContent is not unique in selected range.\"}";
+            return ToolErrors.failure("targetContent is not unique in selected range.");
         }
         String updated =
                 content.substring(0, idx)
                         + args.replacementContent()
                         + content.substring(idx + args.targetContent().length());
         AtomicFileWrites.write(path, updated.getBytes(StandardCharsets.UTF_8), true);
-        return "{\"status\":\"ok\",\"file\":\"" + args.absolutePath() + "\"}";
+        return ToolJson.object(Map.of("status", "ok", "file", args.absolutePath()));
     }
 
     private static int lineStart(@NonNull String content, int lineNumber) {

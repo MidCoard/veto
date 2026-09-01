@@ -8,8 +8,13 @@ import com.google.genai.types.GenerateContentConfig;
 import com.google.genai.types.GenerateContentResponse;
 import com.google.genai.types.Part;
 import com.google.genai.types.Schema;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.translation.CapabilityTranslator;
+import top.focess.veto.llm.core.ChatMessage;
 import top.focess.veto.llm.core.ResolvedRequest;
 import top.focess.veto.llm.core.VetoRequest;
 import top.focess.veto.llm.exceptions.ModelCapabilityException;
@@ -58,9 +63,10 @@ final class GeminiLlmClient extends LlmClient {
             configBuilder.maxOutputTokens(maxTokens);
         }
 
+        List<Content> contents = conversationContents(request);
         GenerateContentResponse response =
                 sdkClient.models.generateContent(
-                        request.modelName(), request.userPrompt(), configBuilder.build());
+                        request.modelName(), contents, configBuilder.build());
         if (response.usageMetadata().isPresent()) {
             var usage = response.usageMetadata().get();
             long prompt = usage.promptTokenCount().map(Number::longValue).orElse(0L);
@@ -74,5 +80,64 @@ final class GeminiLlmClient extends LlmClient {
         }
         String summary = "model=" + request.modelName() + ", tools=" + request.tools().size();
         return new RawCompletion(summary, text);
+    }
+
+    private @NonNull List<Content> conversationContents(@NonNull VetoRequest request) {
+        List<ChatMessage> history = request.messages();
+        if (history.isEmpty()) {
+            return List.of(Content.fromParts(Part.fromText(request.userPrompt())));
+        }
+        List<Content> contents = new ArrayList<>();
+        for (ChatMessage message : history) {
+            if ("system".equals(message.role())) {
+                continue;
+            }
+            String role = "assistant".equals(message.role()) ? "model" : "user";
+            contents.add(
+                    Content.builder()
+                            .role(role)
+                            .parts(Part.fromText(renderHistoryMessage(message)))
+                            .build());
+        }
+        return List.copyOf(contents);
+    }
+
+    private @NonNull String renderHistoryMessage(@NonNull ChatMessage message) {
+        if ("tool".equals(message.role())) {
+            return message.toolResultContentWithStatus();
+        }
+        if (!"assistant".equals(message.role())) {
+            return message.content();
+        }
+        Map<String, Object> response = new LinkedHashMap<>();
+        if (message.callId() != null) {
+            Map<String, Object> call = new LinkedHashMap<>();
+            String toolName = message.toolName();
+            call.put("tool_name", toolName != null ? toolName : "");
+            call.put("args", parseArgs(message.toolArgs()));
+            if (!message.content().isEmpty()) {
+                response.put("thought", message.content());
+            }
+            response.put("calls", List.of(call));
+        } else {
+            response.put("message", message.content());
+        }
+        response.put("features", Map.of("guided", false));
+        try {
+            return objectMapper.writeValueAsString(response);
+        } catch (Exception e) {
+            throw new ModelCapabilityException("Could not encode Gemini conversation history", e);
+        }
+    }
+
+    private @NonNull Object parseArgs(String rawArgs) {
+        if (rawArgs == null || rawArgs.isBlank()) {
+            return Map.of();
+        }
+        try {
+            return objectMapper.readValue(rawArgs, Object.class);
+        } catch (Exception e) {
+            return Map.of();
+        }
     }
 }

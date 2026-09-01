@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import java.time.Instant;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.llm.core.ToolResultPresentationMode;
 
 /**
  * A session - the conversation container a terminal/frontend attaches to. Holds one primary agent
@@ -33,6 +34,11 @@ public class SessionEntity {
     @Column(name = "primary_agent_id")
     private String primaryAgentId;
 
+    /** Immutable session-start feature selection; null legacy rows mean CONTENT_ONLY. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "tool_result_presentation")
+    private ToolResultPresentationMode toolResultPresentation;
+
     @Column(name = "created_at", nullable = false)
     private @NonNull Instant createdAt = Instant.EPOCH;
 
@@ -53,10 +59,19 @@ public class SessionEntity {
      *     top.focess.veto.agent.AgentService})
      */
     public SessionEntity(@NonNull String owner, @NonNull String name, String workspaceRoots) {
+        this(owner, name, workspaceRoots, ToolResultPresentationMode.CONTENT_ONLY);
+    }
+
+    public SessionEntity(
+            @NonNull String owner,
+            @NonNull String name,
+            String workspaceRoots,
+            @NonNull ToolResultPresentationMode toolResultPresentation) {
         this.id = UUID.randomUUID().toString();
         this.owner = owner;
         this.name = name;
         this.workspaceRoots = workspaceRoots;
+        this.toolResultPresentation = toolResultPresentation;
         this.createdAt = Instant.now();
         this.lastActiveAt = this.createdAt;
     }
@@ -91,6 +106,11 @@ public class SessionEntity {
 
     public void setPrimaryAgentId(String primaryAgentId) {
         this.primaryAgentId = primaryAgentId;
+    }
+
+    public @NonNull ToolResultPresentationMode getToolResultPresentation() {
+        ToolResultPresentationMode stored = toolResultPresentation;
+        return stored != null ? stored : ToolResultPresentationMode.CONTENT_ONLY;
     }
 
     public @NonNull Instant getCreatedAt() {

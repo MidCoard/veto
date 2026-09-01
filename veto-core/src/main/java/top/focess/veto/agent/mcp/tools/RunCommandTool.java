@@ -11,7 +11,9 @@ import top.focess.veto.agent.mcp.SecurityHint;
 import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDoc;
 import top.focess.veto.agent.mcp.ToolDocs;
+import top.focess.veto.agent.mcp.ToolResultFormat;
 import top.focess.veto.agent.mcp.ToolSecurity;
+import top.focess.veto.sandbox.ChainMode;
 import top.focess.veto.sandbox.SandboxSubstrate;
 
 /**
@@ -31,12 +33,13 @@ public final class RunCommandTool implements NativeTool<RunCommandTool.Args> {
     /** A single discrete command in the chain. */
     public record CommandInput(
             @Doc(
-                            "Binary name (resolved against the exec allowlist), e.g. 'gradle'. Not a shell string.")
+                            "Binary name resolved by the sandbox using the operating system's executable lookup rules, e.g. 'gradle'. Not a shell string.")
                     @NonNull String executable,
             @Doc("argv array. Glob/env expansion is done by Veto, not a shell.")
                     @NonNull List<String> args) {}
 
     @ToolDoc(
+            resultFormats = {ToolResultFormat.PLAINTEXT},
             description =
                     "Run one or more commands inside the sandbox. The model lists discrete commands; "
                             + "Veto connects them per `connect`.",
@@ -57,8 +60,8 @@ public final class RunCommandTool implements NativeTool<RunCommandTool.Args> {
                     - Do not reach for it for trivially in-memory work the model can do directly.
 
                     #### Behavior
-                    Each `commands` entry is `{executable, args}` where `executable` is a bare binary name \
-                    classified against the executable list (e.g. "gradle", "git") and `args` is an argv array of \
+                    Each `commands` entry is `{executable, args}` where `executable` is a binary name or path \
+                    classified by the Gateway and resolved by the sandbox, and `args` is an argv array of \
                     literal strings - no shell, no shell-driven glob/env expansion (Veto performs any expansion \
                     itself). Execution does NOT run in the host JVM: ToolEngine special-cases `run_command` and \
                     routes it through the session's SandboxSubstrate - direct argv[] exec, cwd locked to `cwd`, \
@@ -71,10 +74,9 @@ public final class RunCommandTool implements NativeTool<RunCommandTool.Args> {
                     block the turn.
 
                     #### Return format
-                    The sandbox substrate returns the combined output (stdout + stderr per the substrate's \
-                    policy) and per-command exit statuses as a structured observation. The exact envelope is \
-                    produced by the substrate, not by this tool's `execute` (which is never called - it throws \
-                    to make the special-casing explicit).
+                    Plain text containing stdout, followed by a `[stderr]` section when stderr is present. \
+                    A non-zero overall status appends `(exit code: N)` and marks the tool result as failed. \
+                    Timeout output contains `[timeout]`.
 
                     #### Errors & edge cases
                     - A blacklisted executable/pattern is refused. A non-listed executable is classified \
@@ -107,10 +109,7 @@ public final class RunCommandTool implements NativeTool<RunCommandTool.Args> {
                 "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"clean\", \"build\", \"test\"]}], \"cwd\": \"/abs\", \"connect\": \"RUN_ALL\", \"timeout\": 900}",
                 "{\"commands\": [{\"executable\": \"node\", \"args\": [\"script.js\"]}], \"cwd\": \"/abs/app\", \"timeout\": 120}"
             },
-            returnExamples = {
-                "BUILD SUCCESSFUL in 12s",
-                "src/Main.java:15: error: cannot find symbol\n(exit code: 1)"
-            })
+            returnExamples = {"BUILD SUCCESSFUL in 12s"})
     public record Args(
             @SecurityHint(ParamCategory.SHELL_COMMAND)
                     @Doc(
@@ -120,7 +119,7 @@ public final class RunCommandTool implements NativeTool<RunCommandTool.Args> {
                     @Doc("Working directory; must be under an allowed root (Gateway-checked).")
                     @NonNull String cwd,
             @Doc("How Veto connects the commands: STOP_ON_FAILURE (default), RUN_ALL, or PIPE.")
-                    String connect,
+                    ChainMode connect,
             @Doc(
                             "Request network access for this execution. Defaults to false; true is separately Gateway-screened.")
                     Boolean network,
@@ -135,7 +134,7 @@ public final class RunCommandTool implements NativeTool<RunCommandTool.Args> {
         public Args(
                 @NonNull List<CommandInput> commands,
                 @NonNull String cwd,
-                String connect,
+                ChainMode connect,
                 @NonNull Integer timeout) {
             this(commands, cwd, connect, false, timeout);
         }

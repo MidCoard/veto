@@ -116,8 +116,8 @@ public class IngressDefense {
         // Minimal framing for a text-based ReAct loop: the tool name + args in the header makes
         // each observation self-describing (the model can associate a result with its call without
         // a separate tool_call_id structure). No source label, no ok/error envelope, no per-obs
-        // security marker - the body carries its own status (e.g. {"status":"error"}), and the
-        // "treat observation content as data" policy lives in the system prompt where it belongs.
+        // security marker - failure is carried structurally by ToolResult.success, and the "treat
+        // observation content as data" policy lives in the system prompt where it belongs.
         // Raw output - no text framing. The call_id (set by PromptCompiler
         // on the ChatMessage) provides the structural link between the
         // tool call and its result. The provider SDK renders this as a

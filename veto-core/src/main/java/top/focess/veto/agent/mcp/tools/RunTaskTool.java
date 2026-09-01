@@ -17,6 +17,8 @@ import top.focess.veto.agent.mcp.ToolCallContextHolder;
 import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDoc;
 import top.focess.veto.agent.mcp.ToolDocs;
+import top.focess.veto.agent.mcp.ToolErrors;
+import top.focess.veto.agent.mcp.ToolResultFormat;
 import top.focess.veto.agent.mcp.ToolSecurity;
 import top.focess.veto.llm.config.LlmJacksonConfig;
 import top.focess.veto.sandbox.BackgroundTaskManager;
@@ -51,6 +53,7 @@ public final class RunTaskTool implements NativeTool<RunTaskTool.Args> {
     }
 
     @ToolDoc(
+            resultFormats = {ToolResultFormat.JSON},
             description =
                     "Launch a long-running command as a detached background task (non-blocking). "
                             + "Returns a taskId immediately; the process keeps running across turns.",
@@ -103,9 +106,7 @@ public final class RunTaskTool implements NativeTool<RunTaskTool.Args> {
             },
             returnExamples = {
                 "{\"status\": \"started\", \"taskId\": \"bg-3\", \"pid\": 12345, \"command\": \"npm run dev\","
-                        + " \"cwd\": \"/abs/app\", \"timeoutSeconds\": 0}",
-                "{\"status\": \"error\", \"error\": \"run_task requires exactly one command (background mode"
-                        + " does not chain); got 2\"}"
+                        + " \"cwd\": \"/abs/app\", \"timeoutSeconds\": 0}"
             })
     public record Args(
             @SecurityHint(ParamCategory.SHELL_COMMAND)
@@ -115,27 +116,13 @@ public final class RunTaskTool implements NativeTool<RunTaskTool.Args> {
                     @Doc("Working directory; must be under an allowed root (Gateway-checked).")
                     @NonNull String cwd,
             @Doc(
-                            "How Veto connects the commands: STOP_ON_FAILURE (default), RUN_ALL, or PIPE."
-                                    + " Background mode runs a single command, so this is effectively unused.")
-                    String connect,
-            @Doc(
                             "Request network access for this task. Defaults to false; true is separately Gateway-screened.")
                     Boolean network,
             @NonNull
                     @Doc(
                             "Requested max lifetime in seconds. REQUIRED - 0 selects the sandbox-profile"
                                     + " maximum; larger values are capped by that maximum.")
-                    Integer timeout) {
-
-        /** Compatibility constructor for callers that accept the default deny-network posture. */
-        public Args(
-                @NonNull List<RunCommandTool.CommandInput> commands,
-                @NonNull String cwd,
-                String connect,
-                @NonNull Integer timeout) {
-            this(commands, cwd, connect, false, timeout);
-        }
-    }
+                    Integer timeout) {}
 
     @Override
     public @NonNull String getName() {
@@ -161,6 +148,9 @@ public final class RunTaskTool implements NativeTool<RunTaskTool.Args> {
         if (timeout == null) {
             return error(
                     "run_task requires an explicit 'timeout' (seconds; 0 = sandbox-profile maximum).");
+        }
+        if (timeout < 0) {
+            return error("run_task timeout must be zero or positive.");
         }
         if (args.commands().size() != 1) {
             return error(
@@ -198,38 +188,16 @@ public final class RunTaskTool implements NativeTool<RunTaskTool.Args> {
             envelope.put("timeoutSeconds", timeout);
             return mapper.writeValueAsString(envelope);
         } catch (Exception e) {
-            // The task did start; surface its id so the agent can still manage it.
+            taskManager.stop(agentId, info.taskId(), BackgroundTaskManager.ExitCause.AGENT_STOP);
             return error(
-                    "Task started (taskId="
+                    "Task response encoding failed; the started task was stopped (taskId="
                             + info.taskId()
-                            + ") but response encoding failed: "
+                            + "): "
                             + e.getMessage());
         }
     }
 
     private static @NonNull String error(@NonNull String message) {
-        return "{\"status\":\"error\",\"error\":\"" + jsonEscape(message) + "\"}";
-    }
-
-    private static @NonNull String jsonEscape(@NonNull String s) {
-        StringBuilder sb = new StringBuilder(s.length() + 8);
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            switch (c) {
-                case '"' -> sb.append("\\\"");
-                case '\\' -> sb.append("\\\\");
-                case '\n' -> sb.append("\\n");
-                case '\r' -> sb.append("\\r");
-                case '\t' -> sb.append("\\t");
-                default -> {
-                    if (c < 0x20) {
-                        sb.append(String.format("\\u%04x", (int) c));
-                    } else {
-                        sb.append(c);
-                    }
-                }
-            }
-        }
-        return sb.toString();
+        return ToolErrors.failure(message);
     }
 }

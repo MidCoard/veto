@@ -16,6 +16,7 @@ import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.llm.core.LlmOptions;
+import top.focess.veto.llm.core.ToolResultPresentationMode;
 import top.focess.veto.model.AgentEntity;
 import top.focess.veto.model.AgentInstanceRepository;
 import top.focess.veto.model.AgentPatternEntity;
@@ -110,6 +111,21 @@ public class SessionService {
             @NonNull String patternName,
             String sessionName,
             @NonNull String workspaceRoots) {
+        return createSession(
+                owner,
+                patternName,
+                sessionName,
+                workspaceRoots,
+                ToolResultPresentationMode.CONTENT_ONLY);
+    }
+
+    @Transactional
+    public @NonNull SessionEntity createSession(
+            @NonNull String owner,
+            @NonNull String patternName,
+            String sessionName,
+            @NonNull String workspaceRoots,
+            @NonNull ToolResultPresentationMode toolResultPresentation) {
         AgentPatternEntity pattern =
                 patterns.findByNameAndOwner(patternName, owner)
                         .orElseThrow(
@@ -163,7 +179,9 @@ public class SessionService {
         }
 
         SessionEntity session =
-                sessions.save(new SessionEntity(owner, resolvedName, workspaceRoots));
+                sessions.save(
+                        new SessionEntity(
+                                owner, resolvedName, workspaceRoots, toolResultPresentation));
         ModelBinding cache = tierRegistry.resolve(owner, pattern.getTier());
         AgentEntity agent =
                 new AgentEntity(
@@ -286,7 +304,8 @@ public class SessionService {
                 history,
                 agentService.userIdForOwner(owner),
                 owner,
-                session.getWorkspaceRoots());
+                session.getWorkspaceRoots(),
+                session.getToolResultPresentation());
         session.touch();
         sessions.save(session);
         activeSessions.put(terminalId, session.getId());
@@ -388,11 +407,15 @@ public class SessionService {
         AgentEntity agent = primaryAgent(session);
         if (agent == null) return Optional.empty();
         LlmConfig config = llmConfig(tierRegistry.resolve(session.getOwner(), agent.getTier()));
-        return Optional.of(new SessionConfig(session.getId(), config));
+        return Optional.of(
+                new SessionConfig(session.getId(), config, session.getToolResultPresentation()));
     }
 
     /** A resolved session's id + LLM config, for the REST prompt path. */
-    public record SessionConfig(@NonNull String sessionId, @NonNull LlmConfig config) {}
+    public record SessionConfig(
+            @NonNull String sessionId,
+            @NonNull LlmConfig config,
+            @NonNull ToolResultPresentationMode toolResultPresentation) {}
 
     /**
      * Activates a session for the REST prompt path (no terminal, no cwd scoping): resolves the
@@ -419,10 +442,13 @@ public class SessionService {
                 history,
                 agentService.userIdForOwner(owner),
                 owner,
-                session.getWorkspaceRoots());
+                session.getWorkspaceRoots(),
+                session.getToolResultPresentation());
         session.touch();
         sessions.save(session);
-        return Optional.of(new SessionConfig(session.getId(), llmConfig(resolved)));
+        return Optional.of(
+                new SessionConfig(
+                        session.getId(), llmConfig(resolved), session.getToolResultPresentation()));
     }
 
     /**

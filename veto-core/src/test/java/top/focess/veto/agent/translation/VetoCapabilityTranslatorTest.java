@@ -48,6 +48,12 @@ class VetoCapabilityTranslatorTest {
         assertTrue(contains(required, "actions"), "actions required when guided");
         assertTrue(contains(required, "features"));
         assertFalse(contains(required, "thought"), "thought never required");
+        JsonNode actionVariants = props.path("actions").path("items").path("anyOf");
+        assertEquals(4, actionVariants.size(), "four non-tool guided action kinds without tools");
+        assertTrue(hasDiscriminator(actionVariants, "generate"));
+        assertTrue(hasDiscriminator(actionVariants, "goto"));
+        assertTrue(hasDiscriminator(actionVariants, "conditional_goto"));
+        assertTrue(hasDiscriminator(actionVariants, "STOP"));
     }
 
     @Test
@@ -60,6 +66,61 @@ class VetoCapabilityTranslatorTest {
             assertFalse(contains(features.get("required"), "thought"), "features.thought removed");
             assertFalse(features.get("properties").has("thought"), "features.thought removed");
         }
+    }
+
+    @Test
+    void autonomousCallVariantsBindEachToolNameToItsOwnArgsSchema() {
+        Map<String, Object> viewArgs =
+                Map.of(
+                        "type",
+                        "object",
+                        "properties",
+                        Map.of("absolutePath", Map.of("type", "string")),
+                        "required",
+                        List.of("absolutePath"));
+        Map<String, Object> thinkArgs =
+                Map.of(
+                        "type",
+                        "object",
+                        "properties",
+                        Map.of("thought", Map.of("type", "string")),
+                        "required",
+                        List.of("thought"));
+        List<top.focess.veto.llm.core.ToolDefinition> tools =
+                List.of(
+                        new top.focess.veto.llm.core.ToolDefinition(
+                                "view_file", "Read a file.", viewArgs),
+                        new top.focess.veto.llm.core.ToolDefinition(
+                                "think", "Continue deliberately.", thinkArgs));
+
+        JsonNode schema = translator.vetoResponseSchema(false, tools);
+        JsonNode variants = schema.path("properties").path("calls").path("items").path("anyOf");
+        assertEquals(2, variants.size());
+
+        JsonNode think = variantFor(variants, "think");
+        JsonNode viewFile = variantFor(variants, "view_file");
+        assertEquals(
+                "string",
+                think.path("properties")
+                        .path("args")
+                        .path("properties")
+                        .path("thought")
+                        .path("type")
+                        .asText());
+        assertFalse(think.path("properties").path("args").path("properties").has("absolutePath"));
+        assertEquals(
+                "string",
+                viewFile.path("properties")
+                        .path("args")
+                        .path("properties")
+                        .path("absolutePath")
+                        .path("type")
+                        .asText());
+        assertFalse(viewFile.path("properties").path("args").path("properties").has("thought"));
+        assertFalse(viewFile.path("additionalProperties").asBoolean());
+        assertFalse(
+                viewFile.path("properties").path("args").path("additionalProperties").asBoolean());
+        assertEquals(1, schema.path("properties").path("calls").path("minItems").asInt());
     }
 
     @Test
@@ -105,5 +166,73 @@ class VetoCapabilityTranslatorTest {
             if (value.equals(n.asText())) return true;
         }
         return false;
+    }
+
+    @Test
+    void guidedToolActionsBindToolNameAndInputNames() {
+        Map<String, Object> args =
+                Map.of(
+                        "type",
+                        "object",
+                        "properties",
+                        Map.of("absolutePath", Map.of("type", "string")),
+                        "required",
+                        List.of("absolutePath"));
+        var tool = new top.focess.veto.llm.core.ToolDefinition("view_file", "Read a file.", args);
+
+        JsonNode variants =
+                translator
+                        .vetoResponseSchema(true, List.of(tool))
+                        .path("properties")
+                        .path("actions")
+                        .path("items")
+                        .path("anyOf");
+        JsonNode action = actionVariantForTool(variants, "view_file");
+
+        assertEquals(
+                "string",
+                action.path("properties")
+                        .path("inputs")
+                        .path("properties")
+                        .path("absolutePath")
+                        .path("type")
+                        .asText());
+        assertTrue(
+                contains(
+                        action.path("properties").path("inputs").path("required"), "absolutePath"));
+        assertFalse(
+                action.path("properties").path("inputs").path("additionalProperties").asBoolean());
+    }
+
+    private static @NonNull JsonNode variantFor(
+            @NonNull JsonNode variants, @NonNull String toolName) {
+        for (JsonNode variant : variants) {
+            if (contains(variant.path("properties").path("tool_name").path("enum"), toolName)) {
+                return variant;
+            }
+        }
+        fail("missing call variant for " + toolName);
+        throw new AssertionError("unreachable");
+    }
+
+    private static boolean hasDiscriminator(
+            @NonNull JsonNode variants, @NonNull String discriminator) {
+        for (JsonNode variant : variants) {
+            if (contains(variant.path("properties").path("type").path("enum"), discriminator)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static @NonNull JsonNode actionVariantForTool(
+            @NonNull JsonNode variants, @NonNull String toolName) {
+        for (JsonNode variant : variants) {
+            if (contains(variant.path("properties").path("tool").path("enum"), toolName)) {
+                return variant;
+            }
+        }
+        fail("missing guided action variant for " + toolName);
+        throw new AssertionError("unreachable");
     }
 }

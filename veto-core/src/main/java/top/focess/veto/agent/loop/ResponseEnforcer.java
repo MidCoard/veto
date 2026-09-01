@@ -1,5 +1,6 @@
 package top.focess.veto.agent.loop;
 
+import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.llm.core.VetoResponse;
 import top.focess.veto.llm.exceptions.ModelSchemaException;
@@ -30,6 +31,17 @@ public final class ResponseEnforcer {
      *     calls} forbidden) vs an autonomous turn.
      */
     public static @NonNull VetoResponse enforce(@NonNull VetoResponse r, boolean guidedSwitch) {
+        return enforce(r, guidedSwitch, Set.of());
+    }
+
+    /**
+     * Enforces the response contract and, when supplied, the exact role-scoped tool-name set. An
+     * empty set retains the compatibility behavior used by schema-only callers.
+     */
+    public static @NonNull VetoResponse enforce(
+            @NonNull VetoResponse r,
+            boolean guidedSwitch,
+            @NonNull Set<@NonNull String> allowedToolNames) {
         var features = r.features();
         if (features == null) {
             throw new ModelSchemaException("features is required (next-status)");
@@ -37,18 +49,29 @@ public final class ResponseEnforcer {
 
         // (1) calls / actions mutual exclusion (a guided-switch turn emits no calls). thought is
         // always optional and unchecked here.
-        boolean hasCalls = r.hasCalls();
+        var calls = r.calls();
+        boolean hasCalls = calls != null && !calls.isEmpty();
         var actions = r.actions();
         boolean hasActions = actions != null && actions.isArray() && !actions.isEmpty();
         if (hasCalls && hasActions) {
             throw new ModelSchemaException("calls and actions are mutually exclusive");
         }
+        if (calls != null && !calls.isEmpty() && !allowedToolNames.isEmpty()) {
+            for (var call : calls) {
+                String name = call.toolName();
+                if (!allowedToolNames.contains(name)) {
+                    throw new ModelSchemaException(
+                            "calls[].tool_name must exactly name a catalog tool; '"
+                                    + name
+                                    + "' is not in this turn's tool catalog");
+                }
+            }
+        }
         if (guidedSwitch && !hasActions) {
             throw new ModelSchemaException("guided-switch turn requires actions");
         }
         if (guidedSwitch && !features.guided()) {
-            throw new ModelSchemaException(
-                    "guided-switch turn requires features.guided=true");
+            throw new ModelSchemaException("guided-switch turn requires features.guided=true");
         }
 
         // (2) message required when stopping (no calls and no actions). A thought-only turn is a

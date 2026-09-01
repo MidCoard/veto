@@ -14,6 +14,8 @@ import top.focess.veto.agent.mcp.ToolCallContext;
 import top.focess.veto.agent.mcp.ToolCallContextHolder;
 import top.focess.veto.agent.mcp.ToolDoc;
 import top.focess.veto.agent.mcp.ToolDocs;
+import top.focess.veto.agent.mcp.ToolErrors;
+import top.focess.veto.agent.mcp.ToolResultFormat;
 import top.focess.veto.group.GroupOrchestrator.NodeEdit;
 
 /**
@@ -40,6 +42,7 @@ public final class DagTools {
     /** {@code create_node} — add a node to the group's execution plan. */
     @Component
     @ToolDoc(
+            resultFormats = {ToolResultFormat.PLAINTEXT},
             description =
                     "Add a node to your group's execution plan - one discrete task with "
                             + "a required skillset.",
@@ -92,8 +95,7 @@ public final class DagTools {
             },
             returnExamples = {
                 "Node created: node-1 (skillset: coding). It dispatches as soon as a coding mate is provisioned.",
-                "Node created: node-2 (skillset: testing, depends on: node-1). It dispatches when node-1 verifies.",
-                "Node not created: unknown dependency node-9. Create dependencies before the nodes that need them."
+                "Node created: node-2 (skillset: testing, depends on: node-1). It dispatches when its dependencies verify."
             })
     public static final class CreateNode implements AgentTool<CreateNode.Args> {
 
@@ -106,14 +108,14 @@ public final class DagTools {
         public record Args(
                 @SecurityHint(ParamCategory.GENERIC)
                         @Doc("New node's id (unique within the plan, e.g. 'node-1').")
-                        String nodeId,
+                        @NonNull String nodeId,
                 @SecurityHint(ParamCategory.GENERIC)
                         @Doc(
                                 "What the node does - concrete enough for a mate to execute without asking.")
-                        String description,
+                        @NonNull String description,
                 @SecurityHint(ParamCategory.GENERIC)
                         @Doc("The skillset this node requires (e.g. 'coding', 'testing').")
-                        String skillset,
+                        @NonNull String skillset,
                 @SecurityHint(ParamCategory.GENERIC)
                         @Doc(
                                 "Ids of existing nodes that must verify before this one dispatches; "
@@ -142,8 +144,9 @@ public final class DagTools {
         public @NonNull String execute(@NonNull Args args) {
             UUID groupId = contextGroupId();
             if (groupId == null) {
-                return "Node not created: no active group in your context. create_node is "
-                        + "a Leader tool inside a group.";
+                return ToolErrors.failure(
+                        "Node not created: no active group in your context. create_node is "
+                                + "a Leader tool inside a group.");
             }
             String nodeId = args.nodeId() == null ? "" : args.nodeId().strip();
             String description = args.description() == null ? "" : args.description().strip();
@@ -152,7 +155,7 @@ public final class DagTools {
                     args.dependsOn() == null ? Set.of() : new LinkedHashSet<>(args.dependsOn());
             NodeEdit edit = orchestrator.addNode(groupId, nodeId, description, skillset, deps);
             if (edit instanceof NodeEdit.Rejected r) {
-                return "Node not created: " + r.reason();
+                return ToolErrors.failure("Node not created: " + r.reason());
             }
             if (deps.isEmpty()) {
                 return "Node created: "
@@ -176,6 +179,7 @@ public final class DagTools {
     /** {@code remove_node} — retire a node from the group's plan (marked STALE). */
     @Component
     @ToolDoc(
+            resultFormats = {ToolResultFormat.PLAINTEXT},
             description =
                     "Retire a node from your group's plan - re-planning marks it stale "
                             + "rather than deleting it.",
@@ -206,7 +210,7 @@ public final class DagTools {
                       Node not removed: node-3 depends on node-1. Remove or re-plan node-3 first.
 
                     #### Errors & edge cases
-                    - Unknown `nodeId` -> `Node not found: <id>`.
+                    - Unknown `nodeId` -> `Node not removed: node not found: <id>`.
                     - Live dependents exist -> refused, naming the dependents.
                     - Already stale or VERIFIED -> not removed; stale is final, verified is \
                     checkpointed.
@@ -216,10 +220,7 @@ public final class DagTools {
                     engine validates the removal before it takes effect. Leader-only.
                     """,
             examples = {"{\"nodeId\": \"node-2\"}", "{\"nodeId\": \"node-1\"}"},
-            returnExamples = {
-                "Node removed: node-2 (marked stale).",
-                "Node not removed: node-3 depends on node-1. Remove or re-plan node-3 first."
-            })
+            returnExamples = {"Node removed: node-2 (marked stale)."})
     public static final class RemoveNode implements AgentTool<RemoveNode.Args> {
 
         private final @NonNull GroupOrchestrator orchestrator;
@@ -230,7 +231,7 @@ public final class DagTools {
 
         public record Args(
                 @SecurityHint(ParamCategory.GENERIC) @Doc("The id of the node to retire.")
-                        String nodeId) {}
+                        @NonNull String nodeId) {}
 
         @Override
         public @NonNull String getName() {
@@ -254,13 +255,14 @@ public final class DagTools {
         public @NonNull String execute(@NonNull Args args) {
             UUID groupId = contextGroupId();
             if (groupId == null) {
-                return "Node not removed: no active group in your context. remove_node is "
-                        + "a Leader tool inside a group.";
+                return ToolErrors.failure(
+                        "Node not removed: no active group in your context. remove_node is "
+                                + "a Leader tool inside a group.");
             }
             String nodeId = args.nodeId() == null ? "" : args.nodeId().strip();
             NodeEdit edit = orchestrator.removeNode(groupId, nodeId);
             if (edit instanceof NodeEdit.Rejected r) {
-                return "Node not removed: " + r.reason();
+                return ToolErrors.failure("Node not removed: " + r.reason());
             }
             return "Node removed: " + nodeId + " (marked stale).";
         }

@@ -61,6 +61,7 @@ import top.focess.veto.llm.core.ChatMessage;
 import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.llm.core.ProviderType;
 import top.focess.veto.llm.core.ToolCall;
+import top.focess.veto.llm.core.ToolResultPresentationMode;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.llm.core.VetoRequest;
 import top.focess.veto.llm.core.VetoResponse;
@@ -104,6 +105,8 @@ public class AgentRunner {
     private final @NonNull IngressDefense ingressDefense;
     private final @NonNull List<LoopInterceptor> interceptors;
     private final @NonNull PromptCompiler promptCompiler;
+    private @NonNull ToolResultPresentationMode toolResultPresentation =
+            ToolResultPresentationMode.CONTENT_ONLY;
     private final @NonNull UniformLLMCaller caller;
     private final @NonNull ObjectMapper objectMapper;
     private final @NonNull LoopBreaker breaker;
@@ -263,6 +266,11 @@ public class AgentRunner {
         this.turnLogService = turnLogService;
         // Nullable: non-Spring callers (tests) pass null; the run_task path injects exit notices.
         this.backgroundTaskManager = backgroundTaskManager;
+    }
+
+    public void setToolResultPresentation(
+            @NonNull ToolResultPresentationMode toolResultPresentation) {
+        this.toolResultPresentation = toolResultPresentation;
     }
 
     // ── Virtual-thread loop ────────────────────────────────────────────────
@@ -822,7 +830,7 @@ public class AgentRunner {
                 throw e;
             }
             try {
-                return ResponseEnforcer.enforce(response, guidedSwitch);
+                return ResponseEnforcer.enforce(response, guidedSwitch, whitelistedTools);
             } catch (ModelSchemaException e) {
                 log.warn(
                         "Agent {} schema violation (attempt {}): {}",
@@ -846,7 +854,8 @@ public class AgentRunner {
                 binding.systemPromptBase(),
                 sourceHistory,
                 guidedSwitch,
-                this.correctionFactor);
+                this.correctionFactor,
+                toolResultPresentation);
     }
 
     private void recordAgentInit(@NonNull String systemPrompt) {
@@ -903,7 +912,7 @@ public class AgentRunner {
                 String.format(
                         "Your previous response was rejected due to a schema violation: %s.\n"
                                 + "Expected: %s.\n"
-                                + "Please regenerate a valid response matching the veto_pulse schema.",
+                                + "Please regenerate valid JSON matching the supplied response schema.",
                         e.getMessage(), getExpectedDescription(e));
         List<ChatMessage> augmented = new ArrayList<>(request.messages());
         augmented.add(ChatMessage.user(rejection));
@@ -928,7 +937,7 @@ public class AgentRunner {
     private @NonNull String getExpectedDescription(@NonNull ModelSchemaException e) {
         String msg = e.getMessage();
         if (msg == null) {
-            return "a valid veto_pulse response matching the schema";
+            return "valid JSON matching the supplied response schema";
         }
         if (msg.contains("message required")) {
             return "message field is required when stopping (no tool calls or actions)";
@@ -942,7 +951,7 @@ public class AgentRunner {
         if (msg.contains("features is required")) {
             return "features field is always required";
         }
-        return "valid JSON matching the veto_pulse schema";
+        return "valid JSON matching the supplied response schema";
     }
 
     // ── executeToolCalls — the canonical chain ─────────────────────
@@ -1145,7 +1154,7 @@ public class AgentRunner {
             executionPermit = gateway.revalidateExecution(call, def, screenedPermit);
         } catch (SecurityException e) {
             String observation =
-                    "{\"status\":\"error\",\"error\":\"Filesystem target changed after screening; submit a fresh tool call\"}";
+                    "Filesystem target changed after screening; submit a fresh tool call";
             appendTurn(TurnRecord.toolResponse(++turnNumber, call.callId(), observation, false));
             return new ToolResult(call.toolName(), call.callId(), false, observation);
         }
@@ -1159,7 +1168,14 @@ public class AgentRunner {
         }
 
         // (d) execute with tool call context (agentId + userId + groupId) threaded through.
-        ToolCallContextHolder.set(agentId, userId, groupId, owner, sessionId, executionPermit);
+        ToolCallContextHolder.set(
+                agentId,
+                userId,
+                groupId,
+                owner,
+                sessionId,
+                toolResultPresentation,
+                executionPermit);
         try {
             // (e) plugin postAction chain
             ToolResult transformed = mcpEngine.execute(call, def);
@@ -1176,9 +1192,8 @@ public class AgentRunner {
                 observation = plugin.preObservation(agentId, observation);
             }
 
-            appendTurn(
-                    TurnRecord.toolResponse(
-                            ++turnNumber, call.callId(), observation, transformed.success()));
+            ToolResult observed = transformed.withContent(observation);
+            appendTurn(TurnRecord.toolResponse(++turnNumber, observed));
 
             // Drain any turn directives the tool requested during execution (e.g. a REWIND seeded
             // by create_group to re-inject the authored brief). Each is appended with a

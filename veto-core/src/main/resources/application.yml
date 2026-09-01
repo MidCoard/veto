@@ -34,9 +34,10 @@ veto:
   veto-gateway:
     enabled: true
     llama-cpp:
+      executable-path: ${VETO_LLAMA_EXECUTABLE:llama-server}
       model-path: ${VETO_LLAMA_MODEL_PATH:./models/veto-slm.gguf}
       n-ctx: 2048
-      n-gpu-layers: 0
+      n-gpu-layers: ${VETO_LLAMA_N_GPU_LAYERS:0}
       temperature: 0.0
       gbnf-grammar-path: ./grammars/veto-output.gbnf
     intercept-all-outbound: true

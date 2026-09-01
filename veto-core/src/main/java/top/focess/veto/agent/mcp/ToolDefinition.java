@@ -40,6 +40,11 @@ public sealed interface ToolDefinition
 
     @NonNull ParameterSchema parameters();
 
+    /** Successful result content encodings. Failure status is carried separately. */
+    default @NonNull List<@NonNull ToolResultFormat> resultFormats() {
+        return List.of(ToolResultFormat.JSON, ToolResultFormat.PLAINTEXT);
+    }
+
     /**
      * Concrete usage examples (args-object strings) reflected from a {@link ToolDoc} on the tool's
      * args record; rendered under the tool entry by the prompt compiler. Empty by default.
@@ -49,8 +54,9 @@ public sealed interface ToolDefinition
     }
 
     /**
-     * Concrete return-value examples reflected from a {@link ToolDoc} on the tool's args record;
-     * the i-th entry corresponds to the i-th {@link #examples()} entry. Empty by default.
+     * Successful return-value examples reflected from a {@link ToolDoc} on the tool's args record.
+     * They are independent of {@link #examples()} and never represent the failure channel. Empty by
+     * default.
      */
     default @NonNull List<@NonNull String> returnExamples() {
         return List.of();

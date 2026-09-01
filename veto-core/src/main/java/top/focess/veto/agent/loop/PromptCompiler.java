@@ -6,16 +6,21 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.TurnType;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.SystemPromptResolver;
+import top.focess.veto.agent.mcp.ToolResultFormat;
+import top.focess.veto.agent.mcp.ToolResultStatus;
 import top.focess.veto.agent.screening.DeployerPolicy;
 import top.focess.veto.agent.translation.CapabilityTranslator;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.ChatMessage;
+import top.focess.veto.llm.core.ToolResultPresentationMode;
+import top.focess.veto.llm.core.ToolResultPresenter;
 
 /**
  * Assembles each outgoing LLM payload from the agent's turn history, persona, and resolved tool
@@ -57,6 +62,7 @@ public class PromptCompiler {
     private final @NonNull CapabilityTranslator translator;
     private final @NonNull SystemPromptResolver systemPromptResolver;
     private final com.fasterxml.jackson.databind.@NonNull ObjectMapper objectMapper;
+    private final @NonNull ToolResultPresenter toolResultPresenter;
 
     @Value("${veto.context.max_input_tokens:32000}")
     private int maxInputTokens;
@@ -73,9 +79,19 @@ public class PromptCompiler {
             @NonNull CapabilityTranslator translator,
             @NonNull SystemPromptResolver systemPromptResolver,
             com.fasterxml.jackson.databind.@NonNull ObjectMapper objectMapper) {
+        this(translator, systemPromptResolver, objectMapper, new ToolResultPresenter(objectMapper));
+    }
+
+    @Autowired
+    public PromptCompiler(
+            @NonNull CapabilityTranslator translator,
+            @NonNull SystemPromptResolver systemPromptResolver,
+            com.fasterxml.jackson.databind.@NonNull ObjectMapper objectMapper,
+            @NonNull ToolResultPresenter toolResultPresenter) {
         this.translator = translator;
         this.systemPromptResolver = systemPromptResolver;
         this.objectMapper = objectMapper;
+        this.toolResultPresenter = toolResultPresenter;
     }
 
     @PostConstruct
@@ -103,16 +119,41 @@ public class PromptCompiler {
             List<TurnRecord> history,
             boolean guidedSwitch,
             double correctionFactor) {
+        return compile(
+                persona,
+                sessionWorkspace,
+                systemPromptBase,
+                history,
+                guidedSwitch,
+                correctionFactor,
+                ToolResultPresentationMode.CONTENT_ONLY);
+    }
+
+    public @NonNull CompiledPrompt compile(
+            @NonNull AgentPersona persona,
+            @NonNull Workspace sessionWorkspace,
+            String systemPromptBase,
+            List<TurnRecord> history,
+            boolean guidedSwitch,
+            double correctionFactor,
+            @NonNull ToolResultPresentationMode toolResultPresentation) {
 
         List<top.focess.veto.llm.core.ToolDefinition> flatTools =
-                translator.translateTools(List.copyOf(persona.whitelistedTools()));
+                translator.translateTools(
+                        availableTools(
+                                persona.whitelistedTools(), persona.registeredSkills().isEmpty()));
         String systemMessage =
-                buildSystemMessage(persona, sessionWorkspace, systemPromptBase, flatTools);
-        List<ChatMessage> conversation = resolveRewinds(history);
+                buildSystemMessage(
+                        persona,
+                        sessionWorkspace,
+                        systemPromptBase,
+                        flatTools,
+                        toolResultPresentation);
+        List<ChatMessage> conversation = resolveRewinds(history, toolResultPresentation);
         List<ChatMessage> budgeted = fitBudget(systemMessage, conversation, correctionFactor);
         List<ChatMessage> messages = wellFormed(conversation, budgeted);
 
-        var responseSchema = translator.vetoResponseSchema(guidedSwitch);
+        var responseSchema = translator.vetoResponseSchema(guidedSwitch, flatTools);
 
         int trimmed = conversation.size() - budgeted.size();
         long estimate = Math.round(ceilChars(systemMessage.length()) * correctionFactor);
@@ -123,13 +164,23 @@ public class PromptCompiler {
                 systemMessage, messages, flatTools, responseSchema, trimmed, estimate);
     }
 
+    /** Removes conditional capabilities that cannot succeed for this persona. */
+    static @NonNull List<top.focess.veto.agent.mcp.@NonNull ToolDefinition> availableTools(
+            java.util.@NonNull Collection<top.focess.veto.agent.mcp.@NonNull ToolDefinition> tools,
+            boolean skillsEmpty) {
+        return tools.stream()
+                .filter(tool -> !skillsEmpty || !"load_skill".equals(tool.name()))
+                .toList();
+    }
+
     // ── System message (compile/link) ───────────────────────────────────────────
 
     private @NonNull String buildSystemMessage(
             @NonNull AgentPersona persona,
             @NonNull Workspace sessionWorkspace,
             String base,
-            @NonNull List<top.focess.veto.llm.core.ToolDefinition> flatTools) {
+            @NonNull List<top.focess.veto.llm.core.ToolDefinition> flatTools,
+            @NonNull ToolResultPresentationMode toolResultPresentation) {
         String law = sessionWorkspace.vetoMdResolver().resolve();
         // A caller-supplied base (e.g. veto.group.mate.system-prompt-base) overrides the persona
         // identity line; role, tools, boundaries, skills, and the response format are all
@@ -144,6 +195,9 @@ public class PromptCompiler {
         blocks.put("ROLE", PromptBlocks.role(persona.role()));
         blocks.put("WORKSPACE", PromptBlocks.workspace(sessionWorkspace));
         blocks.put("ENVIRONMENT", PromptBlocks.environment());
+        blocks.put(
+                "RESULT_CONVENTIONS",
+                flatTools.isEmpty() ? "" : PromptBlocks.resultConventions(toolResultPresentation));
         blocks.put("TOOLS", PromptBlocks.tools(flatTools));
         blocks.put("BOUNDARIES", PromptBlocks.boundaries(deployerPolicy));
         blocks.put("SKILLS", PromptBlocks.skills(persona.registeredSkills()));
@@ -155,7 +209,8 @@ public class PromptCompiler {
     /**
      * Walks history ascending, applying REWIND suffix-drops; returns the effective compiled list.
      */
-    private @NonNull List<ChatMessage> resolveRewinds(List<TurnRecord> history) {
+    private @NonNull List<ChatMessage> resolveRewinds(
+            List<TurnRecord> history, @NonNull ToolResultPresentationMode toolResultPresentation) {
         List<ChatMessage> compiled = new ArrayList<>();
         if (history == null) {
             return compiled;
@@ -188,7 +243,8 @@ public class PromptCompiler {
                 }
                 continue;
             }
-            ChatMessage msg = mapRole(turn, pendingThought, pendingReasoning);
+            ChatMessage msg =
+                    mapRole(turn, pendingThought, pendingReasoning, toolResultPresentation);
             if (msg != null) {
                 compiled.add(msg);
             }
@@ -217,7 +273,10 @@ public class PromptCompiler {
      * passed so the merged assistant message carries both content and reasoning_content.
      */
     private ChatMessage mapRole(
-            @NonNull TurnRecord turn, String pendingThought, String pendingReasoning) {
+            @NonNull TurnRecord turn,
+            String pendingThought,
+            String pendingReasoning,
+            @NonNull ToolResultPresentationMode toolResultPresentation) {
         String thoughtContent = pendingThought != null ? pendingThought : "";
         return switch (turn.type()) {
             case USER_PROMPT -> ChatMessage.user(renderUserPrompt(turn.payload()));
@@ -236,23 +295,47 @@ public class PromptCompiler {
                 yield ChatMessage.assistantToolCall(
                         callId, toolName, toolArgs, thoughtContent, pendingReasoning);
             }
-            case TOOL_RESPONSE -> {
-                // Raw tool output linked by callId. No text framing - the provider SDK renders
-                // it as a native tool_result with tool_call_id. Synthetic observations (llm_error,
-                // guided_program_rejected, etc.) have a null/empty call_id - these are system-
-                // injected feedback, NOT tool results, so they must be user messages (a tool
-                // message without a preceding tool_calls assistant message is rejected by the API).
-                String callId = str(turn.payload(), "call_id");
-                String content = str(turn.payload(), "content");
-                if (callId.isBlank()) {
-                    yield ChatMessage.user(content);
-                }
-                yield ChatMessage.toolResult(callId, content);
-            }
+            case TOOL_RESPONSE -> mapPresentedToolResponse(turn, toolResultPresentation);
             case AGENT_INIT -> null;
             case COMPACTION_SUMMARY -> ChatMessage.user(str(turn.payload(), "content"));
             case REWIND -> null;
         };
+    }
+
+    static @NonNull ChatMessage mapToolResponse(@NonNull TurnRecord turn) {
+        // Raw tool output linked by callId. Synthetic observations have no call id and remain user
+        // feedback because provider APIs reject an orphaned tool-result message.
+        String callId = str(turn.payload(), "call_id");
+        String content = str(turn.payload(), "content");
+        Object rawSuccess = turn.payload().get("success");
+        boolean success = !(rawSuccess instanceof Boolean value) || value;
+        return callId.isBlank()
+                ? ChatMessage.user(content)
+                : ChatMessage.toolResult(callId, content, success);
+    }
+
+    private @NonNull ChatMessage mapPresentedToolResponse(
+            @NonNull TurnRecord turn, @NonNull ToolResultPresentationMode toolResultPresentation) {
+        String callId = str(turn.payload(), "call_id");
+        String content = str(turn.payload(), "content");
+        Object rawSuccess = turn.payload().get("success");
+        boolean success = !(rawSuccess instanceof Boolean value) || value;
+        if (callId.isBlank()) {
+            return ChatMessage.user(content);
+        }
+        ToolResultStatus status = ToolResultStatus.from(turn.payload().get("status"), success);
+        ToolResultFormat format = ToolResultFormat.fromId(turn.payload().get("format"));
+        String errorCode = str(turn.payload(), "errorCode");
+        String presented =
+                toolResultPresenter.present(
+                        "",
+                        callId,
+                        status,
+                        format,
+                        content,
+                        errorCode.isBlank() ? null : errorCode,
+                        toolResultPresentation);
+        return ChatMessage.toolResult(callId, presented, status == ToolResultStatus.SUCCESS);
     }
 
     /** Serializes the args map to a JSON string for the toolCall arguments field. */
@@ -376,7 +459,7 @@ public class PromptCompiler {
             if ("assistant".equals(m.role()) && callId != null && !callId.isBlank()) {
                 out.add(m);
                 if (!isAnsweredImmediately(window, i, m)) {
-                    out.add(ChatMessage.toolResult(callId, INTERRUPTED_TOOL_RESULT));
+                    out.add(ChatMessage.toolResult(callId, INTERRUPTED_TOOL_RESULT, false));
                 }
                 continue;
             }

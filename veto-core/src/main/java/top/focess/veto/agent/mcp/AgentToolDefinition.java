@@ -56,6 +56,11 @@ public record AgentToolDefinition(
     }
 
     @Override
+    public @NonNull List<@NonNull ToolResultFormat> resultFormats() {
+        return ToolDocs.resultFormatsOf(argsClass);
+    }
+
+    @Override
     public @NonNull String longDescription() {
         return ToolDocs.descriptionOf(argsClass);
     }

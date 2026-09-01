@@ -56,13 +56,20 @@ public class VetoCapabilityTranslator implements CapabilityTranslator {
                             inputSchema,
                             def.examples(),
                             def.longDescription(),
-                            def.returnExamples()));
+                            def.returnExamples(),
+                            def.resultFormats()));
         }
         return flat;
     }
 
     @Override
     public @NonNull JsonNode vetoResponseSchema(boolean guidedSwitch) {
+        return vetoResponseSchema(guidedSwitch, List.of());
+    }
+
+    @Override
+    public @NonNull JsonNode vetoResponseSchema(
+            boolean guidedSwitch, @NonNull List<top.focess.veto.llm.core.ToolDefinition> tools) {
         ObjectNode root = MAPPER.createObjectNode();
         root.put("type", "object");
         ObjectNode properties = MAPPER.createObjectNode();
@@ -74,24 +81,10 @@ public class VetoCapabilityTranslator implements CapabilityTranslator {
                 stringNode("Optional internal reasoning before acting. Include when useful."));
 
         if (!guidedSwitch) {
-            ObjectNode callItem = MAPPER.createObjectNode();
-            callItem.put("type", "object");
-            ObjectNode itemProps = MAPPER.createObjectNode();
-            itemProps.set(
-                    "tool_name", stringNode("The tool name, exactly as listed in the manifest."));
-            itemProps.set(
-                    "args",
-                    typedSchemaNode(
-                            "object",
-                            "The tool arguments as a JSON object matching the tool's input schema."));
-            callItem.set("properties", itemProps);
-            ArrayNode itemRequired = MAPPER.createArrayNode();
-            itemRequired.add("tool_name");
-            itemRequired.add("args");
-            callItem.set("required", itemRequired);
             ObjectNode calls = MAPPER.createObjectNode();
             calls.put("type", "array");
-            calls.set("items", callItem);
+            calls.set("items", callItemSchema(tools));
+            calls.put("minItems", 1);
             calls.put(
                     "description",
                     "The list of parallel tool calls to execute. Mutually exclusive with actions.");
@@ -123,7 +116,8 @@ public class VetoCapabilityTranslator implements CapabilityTranslator {
         if (guidedSwitch) {
             ObjectNode actions = MAPPER.createObjectNode();
             actions.put("type", "array");
-            actions.set("items", typedSchemaNode("object", null));
+            actions.set("items", actionItemSchema(tools));
+            actions.put("minItems", 1);
             actions.put(
                     "description",
                     "The guided-mode IR: an ordered list of actions. Present only when"
@@ -138,17 +132,259 @@ public class VetoCapabilityTranslator implements CapabilityTranslator {
         return root;
     }
 
+    /** The complete guided IR, including per-tool input-name constraints. */
+    private static @NonNull JsonNode actionItemSchema(
+            @NonNull List<top.focess.veto.llm.core.ToolDefinition> tools) {
+        ArrayNode variants = MAPPER.createArrayNode();
+        tools.stream()
+                .sorted(
+                        java.util.Comparator.comparing(
+                                top.focess.veto.llm.core.ToolDefinition::name,
+                                String.CASE_INSENSITIVE_ORDER))
+                .forEach(tool -> variants.add(toolActionSchema(tool)));
+        variants.add(generateActionSchema());
+        variants.add(gotoActionSchema());
+        variants.add(conditionalGotoActionSchema());
+        variants.add(stopActionSchema());
+        ObjectNode union = MAPPER.createObjectNode();
+        union.set("anyOf", variants);
+        return union;
+    }
+
+    private static @NonNull ObjectNode toolActionSchema(
+            top.focess.veto.llm.core.@NonNull ToolDefinition tool) {
+        ObjectNode properties = actionProperties("tool");
+        properties.set("tool", enumString(tool.name(), "The catalogued tool to execute."));
+        properties.set("inputs", bindingInputsSchema(tool));
+        properties.set("outputs", stringMapSchema("Result variable name to result field."));
+        return closedObject(properties, "id", "label", "type", "tool", "inputs", "outputs");
+    }
+
+    private static @NonNull ObjectNode generateActionSchema() {
+        ObjectNode properties = actionProperties("generate");
+        properties.set("prompt", stringNode("Prompt for the scoped model generation."));
+        properties.set("inputs", stringMapSchema("Input name to literal or $variable reference."));
+        properties.set("outputs", stringMapSchema("Result variable name to message or thought."));
+        properties.set("thought", typedSchemaNode("boolean", "Whether to request reasoning."));
+        properties.set("model_tier", stringNode("Optional model-tier override."));
+        properties.set("temperature", typedSchemaNode("number", "Optional temperature override."));
+        return closedObject(properties, "id", "label", "type", "prompt", "inputs", "outputs");
+    }
+
+    private static @NonNull ObjectNode gotoActionSchema() {
+        ObjectNode properties = actionProperties("goto");
+        properties.set("index", typedSchemaNode("integer", "Zero-based target action index."));
+        return closedObject(properties, "id", "label", "type", "index");
+    }
+
+    private static @NonNull ObjectNode conditionalGotoActionSchema() {
+        ObjectNode properties = actionProperties("conditional_goto");
+        properties.set("check", checkSchema());
+        properties.set(
+                "true_goto", typedSchemaNode("integer", "Target index when the check passes."));
+        properties.set(
+                "false_goto", typedSchemaNode("integer", "Optional target index when it fails."));
+        return closedObject(properties, "id", "label", "type", "check", "true_goto");
+    }
+
+    private static @NonNull ObjectNode stopActionSchema() {
+        ObjectNode properties = actionProperties("STOP");
+        properties.set(
+                "result_binding", stringNode("Optional scope variable returned as the result."));
+        return closedObject(properties, "id", "label", "type");
+    }
+
+    private static @NonNull ObjectNode actionProperties(@NonNull String type) {
+        ObjectNode properties = MAPPER.createObjectNode();
+        properties.set("id", stringNode("Unique action id."));
+        properties.set("label", stringNode("Short human-readable action label."));
+        properties.set("type", enumString(type, "Action discriminator."));
+        return properties;
+    }
+
+    private static @NonNull JsonNode checkSchema() {
+        ArrayNode variants = MAPPER.createArrayNode();
+        variants.add(checkVariant("equals", "var", "value"));
+        variants.add(checkVariant("not_equals", "var", "value"));
+        variants.add(checkVariant("contains", "var", "substring"));
+        variants.add(checkVariant("matches", "var", "regex"));
+        variants.add(checkVariant("empty", "var"));
+        variants.add(checkVariant("not_empty", "var"));
+        variants.add(checkVariant("numeric", "var", "op", "value"));
+        variants.add(checkVariant("exit_ok", "step_id"));
+        variants.add(checkVariant("llm", "prompt", "var"));
+        ObjectNode union = MAPPER.createObjectNode();
+        union.set("anyOf", variants);
+        return union;
+    }
+
+    private static @NonNull ObjectNode checkVariant(
+            @NonNull String kind, String @NonNull ... fields) {
+        ObjectNode properties = MAPPER.createObjectNode();
+        properties.set("kind", enumString(kind, "Check discriminator."));
+        for (String field : fields) {
+            properties.set(field, stringNode("Check operand."));
+        }
+        String[] required = new String[fields.length + 1];
+        required[0] = "kind";
+        System.arraycopy(fields, 0, required, 1, fields.length);
+        return closedObject(properties, required);
+    }
+
+    private static @NonNull ObjectNode bindingInputsSchema(
+            top.focess.veto.llm.core.@NonNull ToolDefinition tool) {
+        ObjectNode schema = MAPPER.createObjectNode();
+        schema.put("type", "object");
+        ObjectNode properties = MAPPER.createObjectNode();
+        JsonNode toolSchema = MAPPER.valueToTree(tool.inputSchema());
+        toolSchema
+                .path("properties")
+                .fieldNames()
+                .forEachRemaining(
+                        name ->
+                                properties.set(
+                                        name,
+                                        stringNode(
+                                                "Literal value or $variable reference for "
+                                                        + name
+                                                        + ".")));
+        schema.set("properties", properties);
+        JsonNode required = toolSchema.path("required");
+        if (required.isArray() && !required.isEmpty()) {
+            schema.set("required", required.deepCopy());
+        }
+        schema.put("additionalProperties", false);
+        return schema;
+    }
+
+    private static @NonNull ObjectNode stringMapSchema(@NonNull String description) {
+        ObjectNode schema = MAPPER.createObjectNode();
+        schema.put("type", "object");
+        schema.put("description", description);
+        schema.set("additionalProperties", typedSchemaNode("string", null));
+        return schema;
+    }
+
+    private static @NonNull ObjectNode closedObject(
+            @NonNull ObjectNode properties, String @NonNull ... requiredFields) {
+        ObjectNode schema = MAPPER.createObjectNode();
+        schema.put("type", "object");
+        schema.set("properties", properties);
+        ArrayNode required = MAPPER.createArrayNode();
+        for (String field : requiredFields) {
+            required.add(field);
+        }
+        schema.set("required", required);
+        schema.put("additionalProperties", false);
+        return schema;
+    }
+
+    private static @NonNull ObjectNode enumString(
+            @NonNull String value, @NonNull String description) {
+        ObjectNode schema = stringNode(description);
+        ArrayNode allowed = MAPPER.createArrayNode();
+        allowed.add(value);
+        schema.set("enum", allowed);
+        return schema;
+    }
+
+    /**
+     * Binds every allowed tool name to that tool's exact argument schema. A single name enum beside
+     * a generic object is not sufficient: it allows a model to pair any name with any arguments and
+     * leaves the most important part of the call contract in prose only.
+     */
+    private static @NonNull JsonNode callItemSchema(
+            @NonNull List<top.focess.veto.llm.core.ToolDefinition> tools) {
+        if (tools.isEmpty()) {
+            return callVariant(null);
+        }
+
+        ArrayNode variants = MAPPER.createArrayNode();
+        tools.stream()
+                .sorted(
+                        java.util.Comparator.comparing(
+                                top.focess.veto.llm.core.ToolDefinition::name,
+                                String.CASE_INSENSITIVE_ORDER))
+                .forEach(tool -> variants.add(callVariant(tool)));
+        ObjectNode union = MAPPER.createObjectNode();
+        union.set("anyOf", variants);
+        return union;
+    }
+
+    private static @NonNull ObjectNode callVariant(top.focess.veto.llm.core.ToolDefinition tool) {
+        ObjectNode variant = MAPPER.createObjectNode();
+        variant.put("type", "object");
+
+        ObjectNode properties = MAPPER.createObjectNode();
+        ObjectNode toolName =
+                stringNode("The tool name, exactly as listed in this turn's catalog.");
+        if (tool != null) {
+            ArrayNode onlyName = MAPPER.createArrayNode();
+            onlyName.add(tool.name());
+            toolName.set("enum", onlyName);
+        }
+        properties.set("tool_name", toolName);
+        properties.set("args", tool == null ? typedSchemaNode("object", null) : argsSchema(tool));
+        variant.set("properties", properties);
+
+        ArrayNode required = MAPPER.createArrayNode();
+        required.add("tool_name");
+        required.add("args");
+        variant.set("required", required);
+        variant.put("additionalProperties", false);
+        return variant;
+    }
+
+    private static @NonNull JsonNode argsSchema(
+            top.focess.veto.llm.core.@NonNull ToolDefinition tool) {
+        JsonNode converted = MAPPER.valueToTree(tool.inputSchema());
+        if (!converted.isObject()) {
+            return typedSchemaNode("object", null);
+        }
+        ObjectNode schema = (ObjectNode) converted;
+        if (!schema.has("type")) {
+            schema.put("type", "object");
+        }
+        closeDeclaredObjects(schema);
+        return schema;
+    }
+
+    /** Rejects invented object fields while preserving an explicit remote-tool policy. */
+    private static void closeDeclaredObjects(@NonNull JsonNode schema) {
+        if (schema.isObject()) {
+            ObjectNode object = (ObjectNode) schema;
+            if ("object".equals(object.path("type").asText())
+                    && object.has("properties")
+                    && !object.has("additionalProperties")) {
+                object.put("additionalProperties", false);
+            }
+            object.elements().forEachRemaining(VetoCapabilityTranslator::closeDeclaredObjects);
+        } else if (schema.isArray()) {
+            schema.elements().forEachRemaining(VetoCapabilityTranslator::closeDeclaredObjects);
+        }
+    }
+
     /** Resolves a manifest tool's inputSchema to a flat {@code Map} for the provider tool list. */
     private @NonNull Map<String, Object> inputSchemaOf(@NonNull ToolDefinition def) {
         ParameterSchema params = def.parameters();
         JsonNode schema =
                 switch (params) {
                     case ParameterSchema.Structured s ->
-                            ToolSchemaCompiler.compileFromRecord(s.argsClass());
+                            s.argsClass().isRecord()
+                                    ? ToolSchemaCompiler.compileFromRecord(s.argsClass())
+                                    : emptyObjectSchema();
                     case ParameterSchema.Raw r -> r.jsonSchema();
                 };
         // AgentToolDefinition has no inputSchema field; derive from its Structured argsClass above.
         return MAPPER.convertValue(schema, new TypeReference<Map<String, Object>>() {});
+    }
+
+    private static @NonNull ObjectNode emptyObjectSchema() {
+        ObjectNode schema = MAPPER.createObjectNode();
+        schema.put("type", "object");
+        schema.set("properties", MAPPER.createObjectNode());
+        schema.put("additionalProperties", false);
+        return schema;
     }
 
     private static @NonNull ObjectNode stringNode(@NonNull String description) {

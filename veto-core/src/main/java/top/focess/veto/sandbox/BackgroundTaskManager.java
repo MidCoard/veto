@@ -256,6 +256,15 @@ public class BackgroundTaskManager {
     }
 
     private void finishExit(@NonNull ManagedTask task) {
+        synchronized (task) {
+            if (!task.alive) {
+                return;
+            }
+            finishExitOnce(task);
+        }
+    }
+
+    private void finishExitOnce(@NonNull ManagedTask task) {
         Process process = task.process;
         task.exitCode = process.exitValue();
         task.finishedAt = Instant.now();
@@ -308,6 +317,13 @@ public class BackgroundTaskManager {
         if (t.alive) {
             t.cause = cause; // set BEFORE the kill so the drain thread records it
             t.process.destroyForcibly();
+            try {
+                if (t.process.waitFor(5, TimeUnit.SECONDS)) {
+                    finishExit(t);
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
             log.info("Background task {} stopped (agent={}, cause={})", taskId, agentId, cause);
         }
         return Optional.of(t.toInfo());

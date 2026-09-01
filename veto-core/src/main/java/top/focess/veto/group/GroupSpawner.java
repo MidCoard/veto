@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import top.focess.veto.agent.Agent;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.Role;
+import top.focess.veto.llm.core.ToolResultPresentationMode;
 import top.focess.veto.model.tier.ModelTier;
 
 /**
@@ -123,7 +124,13 @@ public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
         ModelTier tier = configuredTier == null ? mateTier : configuredTier;
         String configuredBase = cfg == null ? null : cfg.getSystemPromptBase();
         String base = configuredBase == null ? mateSystemPromptBase : configuredBase;
-        return new MateBinding(tier, base, group != null ? group.owner() : null);
+        return new MateBinding(
+                tier,
+                base,
+                group != null ? group.owner() : null,
+                group != null
+                        ? group.toolResultPresentation()
+                        : ToolResultPresentationMode.CONTENT_ONLY);
     }
 
     /**
@@ -212,6 +219,16 @@ public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
             @NonNull String userId,
             String owner,
             @NonNull String contextBrief) {
+        return registerEmptyGroup(
+                leaderId, userId, owner, contextBrief, ToolResultPresentationMode.CONTENT_ONLY);
+    }
+
+    public @NonNull Group registerEmptyGroup(
+            @NonNull String leaderId,
+            @NonNull String userId,
+            String owner,
+            @NonNull String contextBrief,
+            @NonNull ToolResultPresentationMode toolResultPresentation) {
         Group g =
                 Group.create(
                         leaderId,
@@ -219,7 +236,8 @@ public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
                         contextBrief,
                         blackboard,
                         new ExecutionDag(UUID.randomUUID(), java.util.List.of()),
-                        owner);
+                        owner,
+                        toolResultPresentation);
         registry.put(g);
         log.info(
                 "GroupSpawner: registered empty group {} (Leader will author the DAG)",

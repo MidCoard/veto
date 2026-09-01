@@ -5,6 +5,7 @@ import org.springframework.stereotype.Component;
 import top.focess.veto.agent.mcp.AgentTool;
 import top.focess.veto.agent.mcp.ToolDoc;
 import top.focess.veto.agent.mcp.ToolDocs;
+import top.focess.veto.agent.mcp.ToolResultFormat;
 
 /**
  * {@code think} — no-op placeholder call. Occupies a {@code calls[]} slot so the loop continues
@@ -16,6 +17,7 @@ import top.focess.veto.agent.mcp.ToolDocs;
  */
 @Component
 @ToolDoc(
+        resultFormats = {ToolResultFormat.PLAINTEXT},
         description =
                 "No-op placeholder call. Occupies a calls[] slot so the loop continues "
                         + "when you have no concrete tool to invoke but are not done.",

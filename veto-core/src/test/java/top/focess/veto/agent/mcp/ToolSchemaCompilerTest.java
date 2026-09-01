@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.mcp.tools.RunCommandTool;
+import top.focess.veto.memory.MemoryTools;
 
 /**
  * Validates {@link ToolSchemaCompiler#compileFromRecord}, in particular that nested record
@@ -74,5 +75,29 @@ class ToolSchemaCompilerTest {
         String json = new ObjectMapper().writeValueAsString(schema);
         assertTrue(json.contains("\"commands\""), "serialized schema keeps commands");
         assertTrue(json.contains("\"executable\""), "serialized schema keeps nested executable");
+    }
+
+    @Test
+    void forgetMemoryIdIsRequired() {
+        JsonNode schema =
+                ToolSchemaCompiler.compileFromRecord(
+                        ToolDocs.nonNullClass(MemoryTools.Forget.Args.class));
+
+        assertTrue(
+                contains(schema.path("required"), "memoryId"),
+                "forget must reject a missing memoryId before its handler runs");
+    }
+
+    @Test
+    void enumArgumentIsRenderedAsAStringEnum() {
+        JsonNode schema =
+                ToolSchemaCompiler.compileFromRecord(
+                        ToolDocs.nonNullClass(MemoryTools.WriteInsight.Args.class));
+
+        JsonNode mode = schema.path("properties").path("mode");
+        assertEquals("string", mode.path("type").asText());
+        assertTrue(contains(mode.path("enum"), "WRITE"));
+        assertTrue(contains(mode.path("enum"), "PROMOTE"));
+        assertTrue(contains(schema.path("required"), "mode"));
     }
 }

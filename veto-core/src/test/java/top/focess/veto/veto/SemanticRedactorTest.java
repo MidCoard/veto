@@ -57,6 +57,37 @@ class SemanticRedactorTest {
     }
 
     @Test
+    void testDoesNotTreatCredentialVocabularyAsAFilePath() {
+        String payload =
+                "Summarize this harmless sentence without revealing any credentials. "
+                        + "Rotate credentials, secrets, keys, and passwords regularly.";
+        SemanticRedactor.RedactionReport report = redactor.deterministicRedact(payload);
+
+        assertFalse(report.wasModified());
+        assertEquals(0, report.getTotalRedactions());
+        assertEquals(payload, report.redactedPayload());
+    }
+
+    @Test
+    void testRedactsCredentialFilePaths() {
+        for (String path :
+                new String[] {
+                    "~/.ssh/id_ed25519",
+                    "/home/alice/.aws/credentials",
+                    "C:\\Users\\alice\\.ssh\\id_rsa",
+                    "credentials/service-account.json",
+                    "/etc/passwd"
+                }) {
+            SemanticRedactor.RedactionReport report = redactor.deterministicRedact(path);
+
+            assertTrue(report.wasModified(), path);
+            assertEquals("[REDACTED_CREDENTIAL_PATH]", report.redactedPayload(), path);
+            assertEquals(
+                    SemanticRedactor.RedactionType.SSH_PROFILE, report.entries().get(0).type());
+        }
+    }
+
+    @Test
     void testRedactsSSHKeys() {
         // SSH key with both BEGIN and END markers
         String payload =

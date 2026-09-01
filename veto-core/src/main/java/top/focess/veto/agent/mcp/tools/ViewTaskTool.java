@@ -15,6 +15,8 @@ import top.focess.veto.agent.mcp.ToolCallContextHolder;
 import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDoc;
 import top.focess.veto.agent.mcp.ToolDocs;
+import top.focess.veto.agent.mcp.ToolErrors;
+import top.focess.veto.agent.mcp.ToolResultFormat;
 import top.focess.veto.agent.mcp.ToolSecurity;
 import top.focess.veto.llm.config.LlmJacksonConfig;
 import top.focess.veto.sandbox.BackgroundTaskManager;
@@ -39,6 +41,7 @@ public final class ViewTaskTool implements NativeTool<ViewTaskTool.Args> {
     }
 
     @ToolDoc(
+            resultFormats = {ToolResultFormat.JSON},
             description =
                     "Inspect a background task launched by run_task (status + recent output), or"
                             + " list every task you own when taskId is omitted.",
@@ -62,12 +65,15 @@ public final class ViewTaskTool implements NativeTool<ViewTaskTool.Args> {
                     alive, exitCode). Read-only - it never changes a task.
 
                     #### Return format
-                    Single task - JSON with `taskId`, `alive`, `exitCode`, `pid`, `startedAt`, \
-                    `uptimeSeconds`, `command`, `cwd`, `recentOutput`. List - JSON with `count` and \
-                    `tasks`. Unknown `taskId` -> error envelope.
+                    - Single-task success: `taskId`, `alive`, optional `exitCode`, \
+                    `pid`, `startedAt`, `uptimeSeconds`, `command`, `cwd`, and `recentOutput`.
+                    - List success: `count` and `tasks`; each task contains only `taskId`, \
+                    `command`, `alive`, and optional `exitCode`.
+                    - Unknown task (failure): \
+                    `task not found: <taskId>`.
 
                     #### Errors & edge cases
-                    - Unknown `taskId` -> `{"status":"error","error":"task not found: ..."}`.
+                    - Unknown `taskId` -> `task not found: ...`.
                     - `lines` <= 0 or omitted -> defaults to 50 lines.
                     - A task that already exited stays queryable (its final status + output).
 
@@ -77,10 +83,9 @@ public final class ViewTaskTool implements NativeTool<ViewTaskTool.Args> {
                     """,
             examples = {"{\"taskId\": \"bg-3\"}", "{\"taskId\": \"bg-3\", \"lines\": 20}", "{}"},
             returnExamples = {
-                "{\"taskId\": \"bg-3\", \"alive\": true, \"exitCode\": null, \"pid\": 12345, \"uptimeSeconds\": 42,"
+                "{\"taskId\": \"bg-3\", \"alive\": true, \"pid\": 12345, \"uptimeSeconds\": 42,"
                         + " \"command\": \"npm run dev\", \"cwd\": \"/abs/app\", \"recentOutput\": \"VITE ready in 300 ms\"}",
-                "{\"count\": 1, \"tasks\": [{\"taskId\": \"bg-3\", \"command\": \"npm run dev\", \"alive\": true,"
-                        + " \"exitCode\": null}]}"
+                "{\"count\": 1, \"tasks\": [{\"taskId\": \"bg-3\", \"command\": \"npm run dev\", \"alive\": true}]}"
             })
     public record Args(
             @Doc("The task id (from run_task). Omit to list every task the calling agent owns.")
@@ -113,7 +118,22 @@ public final class ViewTaskTool implements NativeTool<ViewTaskTool.Args> {
                 List<BackgroundTaskManager.TaskInfo> all = taskManager.list(agentId);
                 Map<String, Object> envelope = new LinkedHashMap<>();
                 envelope.put("count", all.size());
-                envelope.put("tasks", all);
+                List<Map<String, Object>> tasks =
+                        all.stream()
+                                .map(
+                                        task -> {
+                                            Map<String, Object> item = new LinkedHashMap<>();
+                                            item.put("taskId", task.taskId());
+                                            item.put("command", task.command());
+                                            item.put("alive", task.alive());
+                                            Integer exitCode = task.exitCode();
+                                            if (exitCode != null) {
+                                                item.put("exitCode", exitCode);
+                                            }
+                                            return item;
+                                        })
+                                .toList();
+                envelope.put("tasks", tasks);
                 return mapper.writeValueAsString(envelope);
             }
             Optional<BackgroundTaskManager.TaskInfo> info = taskManager.status(agentId, taskId);
@@ -146,28 +166,6 @@ public final class ViewTaskTool implements NativeTool<ViewTaskTool.Args> {
     }
 
     private static @NonNull String error(@NonNull String message) {
-        return "{\"status\":\"error\",\"error\":\"" + jsonEscape(message) + "\"}";
-    }
-
-    private static @NonNull String jsonEscape(@NonNull String s) {
-        StringBuilder sb = new StringBuilder(s.length() + 8);
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            switch (c) {
-                case '"' -> sb.append("\\\"");
-                case '\\' -> sb.append("\\\\");
-                case '\n' -> sb.append("\\n");
-                case '\r' -> sb.append("\\r");
-                case '\t' -> sb.append("\\t");
-                default -> {
-                    if (c < 0x20) {
-                        sb.append(String.format("\\u%04x", (int) c));
-                    } else {
-                        sb.append(c);
-                    }
-                }
-            }
-        }
-        return sb.toString();
+        return ToolErrors.failure(message);
     }
 }

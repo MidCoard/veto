@@ -39,8 +39,8 @@ class LinuxBubblewrapSandboxTest {
         assertContainsSequence(
                 command,
                 "--ro-bind",
-                workspace.resolve(".git").toString(),
-                workspace.resolve(".git").toString());
+                workspace.resolve(".git").toRealPath().toString(),
+                workspace.resolve(".git").toRealPath().toString());
         assertContainsSequence(command, "--chdir", cwd.toRealPath().toString());
         assertTrue(command.contains("--unshare-user"));
         assertTrue(command.contains("--unshare-pid"));

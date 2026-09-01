@@ -56,11 +56,20 @@ public class VetoGatewayConfiguration {
     }
 
     public static class LlamaCppConfig {
+        private @NonNull String executablePath = "llama-server";
         private @NonNull String modelPath = "./models/veto-slm.gguf";
         private int nCtx = 2048;
         private int nGpuLayers = 0;
         private double temperature = 0.1;
         private @NonNull String gbnfGrammarPath = "./grammars/veto-output.gbnf";
+
+        public @NonNull String getExecutablePath() {
+            return executablePath;
+        }
+
+        public void setExecutablePath(@NonNull String executablePath) {
+            this.executablePath = executablePath;
+        }
 
         public @NonNull String getModelPath() {
             return modelPath;

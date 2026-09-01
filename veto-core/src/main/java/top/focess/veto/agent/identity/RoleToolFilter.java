@@ -36,7 +36,8 @@ import top.focess.veto.agent.mcp.ToolEngine;
  * <p>Filtering the <em>resolved</em> {@link ToolDefinition} list (post-{@code getActiveTools}) -
  * not the name-whitelist param - is deliberate: {@link ToolEngine#getActiveTools} always includes
  * the agent tools ({@code load_skill}, {@code think}) regardless of the whitelist, so only a
- * post-resolution filter can scope them.
+ * post-resolution filter can scope them. The prompt compiler performs the final conditional
+ * capability pass and removes {@code load_skill} when the resolved persona has no skills.
  */
 @Component
 public class RoleToolFilter {

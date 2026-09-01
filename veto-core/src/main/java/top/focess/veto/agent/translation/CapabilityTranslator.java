@@ -45,4 +45,14 @@ public interface CapabilityTranslator {
      *     allowed, {@code actions} forbidden). {@code thought} is always an optional property.
      */
     @NonNull JsonNode vetoResponseSchema(boolean guidedSwitch);
+
+    /**
+     * Builds the response schema with the exact role-scoped tool catalog for this turn. Autonomous
+     * schemas use these names to constrain {@code calls[].tool_name}; guided schemas have no calls.
+     * The default preserves compatibility for translators that do not yet add the enum.
+     */
+    default @NonNull JsonNode vetoResponseSchema(
+            boolean guidedSwitch, @NonNull List<top.focess.veto.llm.core.ToolDefinition> tools) {
+        return vetoResponseSchema(guidedSwitch);
+    }
 }

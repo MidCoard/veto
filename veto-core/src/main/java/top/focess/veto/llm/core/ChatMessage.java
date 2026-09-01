@@ -16,6 +16,8 @@ import org.jspecify.annotations.NonNull;
  *     messages.
  * @param reasoningContent nullable - the provider's reasoning content (DeepSeek thinking mode).
  *     Must be echoed back on the assistant message so the API accepts the conversation history.
+ * @param toolSuccess nullable except on tool-result messages; true when the tool executed
+ *     successfully and false when the result is a failure diagnostic.
  */
 public record ChatMessage(
         @NonNull String role,
@@ -23,24 +25,25 @@ public record ChatMessage(
         String callId,
         String toolName,
         String toolArgs,
-        String reasoningContent) {
+        String reasoningContent,
+        Boolean toolSuccess) {
 
     // ── Backward-compatible factories (structured fields = null) ────────────
 
     public static @NonNull ChatMessage system(@NonNull String content) {
-        return new ChatMessage("system", content, null, null, null, null);
+        return new ChatMessage("system", content, null, null, null, null, null);
     }
 
     public static @NonNull ChatMessage user(@NonNull String content) {
-        return new ChatMessage("user", content, null, null, null, null);
+        return new ChatMessage("user", content, null, null, null, null, null);
     }
 
     public static @NonNull ChatMessage assistant(@NonNull String content) {
-        return new ChatMessage("assistant", content, null, null, null, null);
+        return new ChatMessage("assistant", content, null, null, null, null, null);
     }
 
     public static @NonNull ChatMessage tool(@NonNull String content) {
-        return new ChatMessage("tool", content, null, null, null, null);
+        return new ChatMessage("tool", content, null, null, null, null, null);
     }
 
     // ── Tool-call / tool-result factories (with callId binding) ─────────────
@@ -60,11 +63,23 @@ public record ChatMessage(
             @NonNull String toolArgs,
             @NonNull String content,
             String reasoningContent) {
-        return new ChatMessage("assistant", content, callId, toolName, toolArgs, reasoningContent);
+        return new ChatMessage(
+                "assistant", content, callId, toolName, toolArgs, reasoningContent, null);
     }
 
     /** A tool-result message carrying the raw output of a tool call, linked by {@code callId}. */
     public static @NonNull ChatMessage toolResult(@NonNull String callId, @NonNull String content) {
-        return new ChatMessage("tool", content, callId, null, null, null);
+        return toolResult(callId, content, true);
+    }
+
+    /** A tool-result message with its execution status preserved for provider adapters. */
+    public static @NonNull ChatMessage toolResult(
+            @NonNull String callId, @NonNull String content, boolean success) {
+        return new ChatMessage("tool", content, callId, null, null, null, success);
+    }
+
+    /** Tool-result text for providers whose protocol has no native failure-status field. */
+    public @NonNull String toolResultContentWithStatus() {
+        return content;
     }
 }

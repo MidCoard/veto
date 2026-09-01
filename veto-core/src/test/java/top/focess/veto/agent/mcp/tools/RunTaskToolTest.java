@@ -18,6 +18,8 @@ import org.junit.jupiter.api.io.TempDir;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.mcp.ToolCallContextHolder;
 import top.focess.veto.agent.mcp.ToolDocs;
+import top.focess.veto.agent.mcp.ToolErrors;
+import top.focess.veto.agent.mcp.ToolExecutionException;
 import top.focess.veto.agent.screening.DeployerPolicy;
 import top.focess.veto.sandbox.BackgroundTaskManager;
 import top.focess.veto.sandbox.SandboxManager;
@@ -78,7 +80,7 @@ class RunTaskToolTest {
                 new RunTaskTool.Args(
                         List.of(new RunCommandTool.CommandInput(exe, List.of("-version"))),
                         tempDir.toString(),
-                        null,
+                        false,
                         0);
 
         String startedJson = runTask.execute(args);
@@ -112,12 +114,15 @@ class RunTaskToolTest {
                                 new RunCommandTool.CommandInput("a", List.of()),
                                 new RunCommandTool.CommandInput("b", List.of())),
                         tempDir.toString(),
-                        null,
+                        false,
                         0);
-        String json = runTask.execute(args);
+        ToolExecutionException error =
+                assertThrows(
+                        ToolDocs.nonNullClass(ToolExecutionException.class),
+                        () -> runTask.execute(args));
         assertTrue(
-                json.contains("\"status\":\"error\""), "multi-command background must be rejected");
-        assertTrue(json.contains("exactly one command"));
+                ToolErrors.normalize(error.getMessage()).contains("exactly one command"),
+                "multi-command background must be rejected");
     }
 
     @Test
@@ -128,8 +133,12 @@ class RunTaskToolTest {
                                 + tempDir.toString().replace("\\", "\\\\")
                                 + "\"}",
                         ToolDocs.nonNullClass(RunTaskTool.Args.class));
-        String json = runTask.execute(args);
-        assertTrue(json.contains("\"status\":\"error\""), "null timeout must be rejected");
-        assertTrue(json.contains("timeout"));
+        ToolExecutionException error =
+                assertThrows(
+                        ToolDocs.nonNullClass(ToolExecutionException.class),
+                        () -> runTask.execute(args));
+        assertTrue(
+                ToolErrors.normalize(error.getMessage()).contains("timeout"),
+                "null timeout must be rejected");
     }
 }

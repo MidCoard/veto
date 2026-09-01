@@ -10,6 +10,7 @@ public final class ToolContractValidator {
     private ToolContractValidator() {}
 
     public static void validate(@NonNull ToolDefinition definition) {
+        validateResultFormats(definition);
         switch (definition) {
             case NativeToolDefinition nativeDefinition -> validateNative(nativeDefinition);
             case AgentToolDefinition agentDefinition -> validateAgent(agentDefinition);
@@ -25,6 +26,16 @@ public final class ToolContractValidator {
                 }
             }
         }
+    }
+
+    private static void validateResultFormats(@NonNull ToolDefinition definition) {
+        var formats = definition.resultFormats();
+        require(definition, !formats.isEmpty(), "at least one result format is required");
+        require(
+                definition,
+                formats.contains(ToolResultFormat.JSON)
+                        || formats.contains(ToolResultFormat.PLAINTEXT),
+                "at least one successful result format (JSON or PLAINTEXT) is required");
     }
 
     private static void validateNative(@NonNull NativeToolDefinition definition) {

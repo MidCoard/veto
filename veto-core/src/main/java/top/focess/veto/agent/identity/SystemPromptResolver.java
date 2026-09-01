@@ -11,16 +11,14 @@ import org.springframework.stereotype.Component;
 
 /**
  * Resolves the agent's base system prompt (Layer 1 of the {@code PromptCompiler} assembly). The
- * default is the shipped Veto agent persona - {@code
- * plans/mvp-core/part5_agent/agent_identity_persona.md} §3.1 (ReAct-mode template) + §4.1 (shipped
- * defaults) - bundled as the classpath resource {@code veto/default-system-prompt.md}.
+ * default is the shipped Veto agent template documented by {@code
+ * plans/mvp-core/part5_agent/agent_identity_persona.md} and bundled as the classpath resource
+ * {@code veto/default-system-prompt.md}.
  *
- * <p>Per the design (§2.2), on first startup the default is bootstrapped into {@code
- * ~/.veto/users/{veto_user_id}/system-prompt.md} and the Veto user's edited version is read
- * verbatim thereafter (never overwritten, never set via REST, never persisted). That
- * bootstrap/edit-source path is a follow-up; this resolver currently returns the bundled default,
- * which already makes the designed prompt reach the model. Editing the bundled resource and
- * restarting is enough to polish it without a recompile.
+ * <p>The current implementation returns the bundled default. Per-user prompt-file bootstrapping and
+ * editing are not implemented and must not be presented as active behavior. Because the resource is
+ * loaded once when this component is constructed, a backend restart is required after changing the
+ * bundled prompt in a built application.
  */
 @Component
 public class SystemPromptResolver {
@@ -75,6 +73,6 @@ public class SystemPromptResolver {
                 + ", "
                 + Character.toLowerCase(DESCRIPTION.charAt(0))
                 + DESCRIPTION.substring(1)
-                + "\nRespond in the veto_pulse JSON schema.";
+                + "\nRespond with valid JSON matching the supplied response schema.";
     }
 }

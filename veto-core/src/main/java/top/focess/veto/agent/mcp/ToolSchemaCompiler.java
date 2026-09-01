@@ -99,6 +99,8 @@ public final class ToolSchemaCompiler {
                 paramNode = MAPPER.createObjectNode();
                 paramNode.put("type", "array");
                 paramNode.set("items", itemsSchemaOf(component));
+            } else if (type.isEnum()) {
+                paramNode = enumSchema(type);
             } else if (type.isRecord()) {
                 // A nested record component (not wrapped in a collection) - emit its full object
                 // schema inline so the provider sees the structured shape, not a bare "object".
@@ -130,6 +132,7 @@ public final class ToolSchemaCompiler {
         if (!required.isEmpty()) {
             schema.set("required", required);
         }
+        schema.put("additionalProperties", false);
         return schema;
     }
 
@@ -176,6 +179,7 @@ public final class ToolSchemaCompiler {
         if (!required.isEmpty()) {
             schema.set("required", required);
         }
+        schema.put("additionalProperties", false);
         return schema;
     }
 
@@ -198,6 +202,7 @@ public final class ToolSchemaCompiler {
 
     private static @NonNull String mapJavaTypeToSchemaType(@NonNull Class<?> type) {
         if (type == String.class) return "string";
+        if (type.isEnum()) return "string";
         if (type == int.class || type == Integer.class || type == long.class || type == Long.class)
             return "integer";
         if (type == double.class
@@ -223,9 +228,25 @@ public final class ToolSchemaCompiler {
         if (elementType != null && elementType.isRecord()) {
             return compileFromRecord(elementType);
         }
+        if (elementType != null && elementType.isEnum()) {
+            return enumSchema(elementType);
+        }
         ObjectNode items = MAPPER.createObjectNode();
         items.put("type", elementType != null ? mapJavaTypeToSchemaType(elementType) : "string");
         return items;
+    }
+
+    private static @NonNull ObjectNode enumSchema(@NonNull Class<?> enumType) {
+        ObjectNode schema = MAPPER.createObjectNode();
+        schema.put("type", "string");
+        ArrayNode values = schema.putArray("enum");
+        Object[] constants = enumType.getEnumConstants();
+        if (constants != null) {
+            for (Object constant : constants) {
+                values.add(((Enum<?>) constant).name());
+            }
+        }
+        return schema;
     }
 
     /**

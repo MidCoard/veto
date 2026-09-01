@@ -64,7 +64,8 @@ public class GroupAgentFactory implements GroupSpawner.AgentFactory {
         // on
         // the MateBinding — same user as the Leader, not the shared placeholder.
         UUID userId = ctx != null ? ctx.userId() : agentService.userIdForOwner(owner);
-        return agentService.createMate(persona, binding, userId, owner, workspace);
+        return agentService.createMate(
+                persona, binding, userId, owner, workspace, mateBinding.toolResultPresentation());
     }
 
     private AgentRunner.@NonNull LlmBinding resolveBinding(

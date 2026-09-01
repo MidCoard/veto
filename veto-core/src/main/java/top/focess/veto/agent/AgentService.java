@@ -42,6 +42,7 @@ import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.llm.config.LlmJacksonConfig;
+import top.focess.veto.llm.core.ToolResultPresentationMode;
 import top.focess.veto.llm.core.UniformLLMCaller;
 
 /**
@@ -396,6 +397,26 @@ public class AgentService {
             @NonNull UUID userId,
             String owner,
             String workspaceRoots) {
+        return getOrCreateAgent(
+                sessionId,
+                primaryAgentId,
+                binding,
+                history,
+                userId,
+                owner,
+                workspaceRoots,
+                ToolResultPresentationMode.CONTENT_ONLY);
+    }
+
+    public @NonNull Agent getOrCreateAgent(
+            @NonNull String sessionId,
+            String primaryAgentId,
+            AgentRunner.@NonNull LlmBinding binding,
+            @NonNull List<TurnRecord> history,
+            @NonNull UUID userId,
+            String owner,
+            String workspaceRoots,
+            @NonNull ToolResultPresentationMode toolResultPresentation) {
         boolean[] created = {false};
         Workspace workspace = buildWorkspace(workspaceRoots);
         VetoAgent agent =
@@ -404,7 +425,13 @@ public class AgentService {
                         k -> {
                             created[0] = true;
                             return createAgent(
-                                    k, primaryAgentId, binding, userId, owner, workspace);
+                                    k,
+                                    primaryAgentId,
+                                    binding,
+                                    userId,
+                                    owner,
+                                    workspace,
+                                    toolResultPresentation);
                         });
         agent.bind(binding);
         if (created[0] && !history.isEmpty()) {
@@ -495,6 +522,24 @@ public class AgentService {
             @NonNull UUID userId,
             String owner,
             @NonNull Workspace workspace) {
+        return createAgent(
+                agentKey,
+                primaryAgentId,
+                binding,
+                userId,
+                owner,
+                workspace,
+                ToolResultPresentationMode.CONTENT_ONLY);
+    }
+
+    private @NonNull VetoAgent createAgent(
+            @NonNull String agentKey,
+            String primaryAgentId,
+            AgentRunner.@NonNull LlmBinding binding,
+            @NonNull UUID userId,
+            String owner,
+            @NonNull Workspace workspace,
+            @NonNull ToolResultPresentationMode toolResultPresentation) {
         AgentPersona persona = buildPersona(agentKey, primaryAgentId, binding);
         // Register this agent's workspace on the HITL registry under its persona id so grant
         // matching + path canonicalization scope to this session's workspace.
@@ -530,6 +575,7 @@ public class AgentService {
         // Stamp the session owner so group-spawned Mates / Leaders resolve their tier against the
         // user's active model-tier profile via the ToolCallContext.
         runner.setOwner(owner);
+        runner.setToolResultPresentation(toolResultPresentation);
         if (primaryAgentId != null) {
             runner.setSessionId(UUID.fromString(agentKey));
         }
@@ -598,6 +644,22 @@ public class AgentService {
             @NonNull UUID userId,
             String owner,
             @NonNull Workspace workspace) {
+        return createMate(
+                persona,
+                binding,
+                userId,
+                owner,
+                workspace,
+                ToolResultPresentationMode.CONTENT_ONLY);
+    }
+
+    public @NonNull Agent createMate(
+            @NonNull AgentPersona persona,
+            AgentRunner.@NonNull LlmBinding binding,
+            @NonNull UUID userId,
+            String owner,
+            @NonNull Workspace workspace,
+            @NonNull ToolResultPresentationMode toolResultPresentation) {
         // Re-scope the persona's tools to its role. The persona may have been built with the full
         // standalone manifest before its role (MATE/LEADER) was known; the RoleToolFilter narrows
         // it to the role's allow-list (MATE: no group tools; LEADER: read + arrange only).
@@ -640,15 +702,17 @@ public class AgentService {
         // Stamp the session owner so the Mate (or one-shot Leader) resolves its tier against the
         // user's active model-tier profile via the ToolCallContext.
         runner.setOwner(owner);
+        runner.setToolResultPresentation(toolResultPresentation);
         return new VetoAgent(scoped, runner);
     }
 
     /**
      * Builds the agent persona. Resolves the tool set from the {@link ToolEngine}'s active native +
-     * remote + agent tools (agent tools like {@code load_skill} and {@code think} are always-on
-     * control/meta tools, included in every agent's manifest). Full {@code ~/.veto/} persona
-     * resolution (skills, per-agent tool grants) is not yet wired — the default grants all
-     * registered tools.
+     * remote + agent tools. Engine control/meta tools are role-scoped here; the prompt compiler
+     * additionally removes {@code load_skill} when the persona has no registered skills, so the
+     * model-facing manifest contains only capabilities that can succeed. Full {@code ~/.veto/}
+     * persona resolution (skills, per-agent tool grants) is not yet wired — the default grants all
+     * other registered tools.
      */
     private @NonNull AgentPersona buildPersona(
             @NonNull String agentKey, AgentRunner.@NonNull LlmBinding binding) {

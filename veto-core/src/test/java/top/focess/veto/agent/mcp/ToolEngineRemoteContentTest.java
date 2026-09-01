@@ -13,17 +13,16 @@ class ToolEngineRemoteContentTest {
     private final @NonNull ObjectMapper mapper = new ObjectMapper();
 
     @Test
-    void emptyRemoteErrorBecomesActionableErrorEnvelope() throws Exception {
+    void emptyRemoteErrorBecomesActionableSpecialPlaintext() throws Exception {
         JsonNode result =
                 mapper.readTree(
                         "{\"content\":[{\"type\":\"text\",\"text\":\"\"}],\"isError\":true}");
 
         String content = ToolEngineImpl.remoteContent(result);
 
-        JsonNode envelope = mapper.readTree(content);
-        assertEquals("error", envelope.path("status").asText());
-        assertTrue(envelope.path("error").asText().contains("empty text content"));
-        assertTrue(envelope.path("error").asText().contains("isError"));
+        assertTrue(content.contains("empty text content"));
+        assertTrue(content.contains("isError"));
+        assertTrue(!content.stripLeading().startsWith("{"), content);
     }
 
     @Test

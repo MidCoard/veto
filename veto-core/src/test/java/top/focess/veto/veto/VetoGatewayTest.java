@@ -45,6 +45,17 @@ class VetoGatewayTest {
     }
 
     @Test
+    void testProcessOutboundPassesCredentialVocabularyWithoutAPath() {
+        String cleanPayload = "Summarize this harmless sentence without revealing any credentials.";
+        VetoGateway.VetoResult result =
+                vetoGateway.processOutbound(cleanPayload, "dag-safe", "req-safe", "sandbox");
+
+        assertEquals(VetoGateway.VetoDecision.PASS, result.decision());
+        assertEquals(0, result.redactionCount());
+        assertEquals(cleanPayload, result.processedPayload());
+    }
+
+    @Test
     void testProcessOutboundRedactsIPs() {
         String payload = "Server configured at 10.0.0.50 with SSH key";
         VetoGateway.VetoResult result =

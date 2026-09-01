@@ -65,6 +65,13 @@ public final class ToolDocs {
         return examples == null ? List.of() : List.of(examples);
     }
 
+    /** Returns the explicitly declared wire result formats for a documented Veto tool. */
+    public static @NonNull List<@NonNull ToolResultFormat> resultFormatsOf(Class<?> argsClass) {
+        ToolDoc doc = toolDocOf(argsClass);
+        ToolResultFormat[] formats = doc == null ? null : doc.resultFormats();
+        return formats == null ? List.of() : List.of(formats);
+    }
+
     /**
      * Returns the long-form {@link ToolDoc#usage()} for the given args class, or an empty string
      * when the class is null or has no {@code @ToolDoc}.

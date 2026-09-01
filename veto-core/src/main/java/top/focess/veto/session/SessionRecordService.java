@@ -11,6 +11,7 @@ import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import top.focess.veto.llm.core.ToolResultPresentationMode;
 import top.focess.veto.memory.TurnRecordEntity;
 import top.focess.veto.memory.TurnRecordRepository;
 
@@ -32,7 +33,9 @@ public class SessionRecordService {
     }
 
     public @NonNull SessionRecordsView load(
-            @NonNull String sessionId, @NonNull String sessionName) {
+            @NonNull String sessionId,
+            @NonNull String sessionName,
+            @NonNull ToolResultPresentationMode toolResultPresentation) {
         List<TurnRecordEntity> rows = repository.findBySessionIdOrderByTimestampAsc(sessionId);
         Map<String, List<SessionRecord>> byAgent = new LinkedHashMap<>();
         for (TurnRecordEntity row : rows) {
@@ -55,7 +58,13 @@ public class SessionRecordService {
         int visible = (int) annotated.stream().filter(SessionRecord::active).count();
         int rewound = annotated.stream().mapToInt(SessionRecord::rewoundRecords).sum();
         return new SessionRecordsView(
-                sessionId, sessionName, rows.size(), visible, rewound, List.copyOf(annotated));
+                sessionId,
+                sessionName,
+                rows.size(),
+                visible,
+                rewound,
+                toolResultPresentation,
+                List.copyOf(annotated));
     }
 
     private SessionRecord decode(@NonNull TurnRecordEntity row, @NonNull String sessionId) {
@@ -106,5 +115,6 @@ public class SessionRecordService {
             int rawRecordCount,
             int visibleRecordCount,
             int rewoundRecordCount,
+            @NonNull ToolResultPresentationMode toolResultPresentation,
             @NonNull List<@NonNull SessionRecord> records) {}
 }

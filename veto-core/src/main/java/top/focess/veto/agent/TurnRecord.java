@@ -4,6 +4,9 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.agent.mcp.ToolResult;
+import top.focess.veto.agent.mcp.ToolResultFormat;
+import top.focess.veto.agent.mcp.ToolResultStatus;
 import top.focess.veto.llm.core.ToolCall;
 
 /**
@@ -105,6 +108,32 @@ public record TurnRecord(
      */
     public static @NonNull TurnRecord toolResponse(
             int turnNumber, String callId, @NonNull String content, boolean success) {
+        return toolResponse(
+                turnNumber,
+                callId,
+                success ? ToolResultStatus.SUCCESS : ToolResultStatus.FAILURE,
+                ToolResultFormat.UNKNOWN,
+                content,
+                success ? null : "TOOL_FAILURE");
+    }
+
+    public static @NonNull TurnRecord toolResponse(int turnNumber, @NonNull ToolResult result) {
+        return toolResponse(
+                turnNumber,
+                result.callId(),
+                result.status(),
+                result.format(),
+                result.content(),
+                result.errorCode());
+    }
+
+    public static @NonNull TurnRecord toolResponse(
+            int turnNumber,
+            String callId,
+            @NonNull ToolResultStatus status,
+            @NonNull ToolResultFormat format,
+            @NonNull String content,
+            String errorCode) {
         // callId is OPTIONAL (absent for synthetic observations — guided-escape, llm-error,
         // tool-not-found), so Map.of's null-hostile builder would throw; use a null-tolerant map.
         Map<String, Object> p = new LinkedHashMap<>();
@@ -112,7 +141,12 @@ public record TurnRecord(
             p.put("call_id", callId);
         }
         p.put("content", content);
-        p.put("success", success);
+        p.put("success", status == ToolResultStatus.SUCCESS);
+        p.put("status", status.id());
+        p.put("format", format.id());
+        if (errorCode != null) {
+            p.put("errorCode", errorCode);
+        }
         return new TurnRecord(turnNumber, TurnType.TOOL_RESPONSE, p, null);
     }
 

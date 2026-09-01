@@ -10,6 +10,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.mcp.ToolCallContextHolder;
+import top.focess.veto.agent.mcp.ToolDocs;
+import top.focess.veto.agent.mcp.ToolErrors;
+import top.focess.veto.agent.mcp.ToolExecutionException;
 import top.focess.veto.group.GroupOrchestrator.NodeEdit;
 
 /** Tests for the Leader's node-authoring tools (group_management_lld.md §2-§3). */
@@ -198,20 +201,30 @@ class DagToolsTest {
     void createNodeMapsRejectionToInstructiveString() {
         UUID groupId = activeGroup();
         ToolCallContextHolder.set("leader-1", UUID.randomUUID(), groupId);
-        String out =
-                createNode.execute(
-                        new DagTools.CreateNode.Args("node-1", "a", "coding", List.of("node-9")));
+        ToolExecutionException error =
+                assertThrows(
+                        ToolDocs.nonNullClass(ToolExecutionException.class),
+                        () ->
+                                createNode.execute(
+                                        new DagTools.CreateNode.Args(
+                                                "node-1", "a", "coding", List.of("node-9"))));
         assertEquals(
                 "Node not created: unknown dependency node-9. Create dependencies before the nodes that need them.",
-                out);
+                ToolErrors.normalize(error.getMessage()));
     }
 
     @Test
     void createNodeRequiresGroupContext() {
         ToolCallContextHolder.set("agent-1", UUID.randomUUID()); // STANDALONE: no groupId
-        String out =
-                createNode.execute(new DagTools.CreateNode.Args("node-1", "a", "coding", null));
-        assertTrue(out.startsWith("Node not created: no active group"), out);
+        ToolExecutionException error =
+                assertThrows(
+                        ToolDocs.nonNullClass(ToolExecutionException.class),
+                        () ->
+                                createNode.execute(
+                                        new DagTools.CreateNode.Args(
+                                                "node-1", "a", "coding", null)));
+        String message = ToolErrors.normalize(error.getMessage());
+        assertTrue(message.startsWith("Node not created: no active group"), message);
     }
 
     @Test
@@ -230,9 +243,13 @@ class DagToolsTest {
         createNode.execute(new DagTools.CreateNode.Args("node-1", "a", "coding", null));
         createNode.execute(
                 new DagTools.CreateNode.Args("node-3", "b", "testing", List.of("node-1")));
-        String out = removeNode.execute(new DagTools.RemoveNode.Args("node-1"));
+        ToolExecutionException error =
+                assertThrows(
+                        ToolDocs.nonNullClass(ToolExecutionException.class),
+                        () -> removeNode.execute(new DagTools.RemoveNode.Args("node-1")));
         assertEquals(
-                "Node not removed: node-3 depends on node-1. Remove or re-plan it first.", out);
+                "Node not removed: node-3 depends on node-1. Remove or re-plan it first.",
+                ToolErrors.normalize(error.getMessage()));
     }
 
     @Test

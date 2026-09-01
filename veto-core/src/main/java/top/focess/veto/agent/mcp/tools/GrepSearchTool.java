@@ -1,6 +1,7 @@
 package top.focess.veto.agent.mcp.tools;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
@@ -20,6 +21,8 @@ import top.focess.veto.agent.mcp.SecurityHint;
 import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDoc;
 import top.focess.veto.agent.mcp.ToolDocs;
+import top.focess.veto.agent.mcp.ToolErrors;
+import top.focess.veto.agent.mcp.ToolResultFormat;
 import top.focess.veto.agent.mcp.ToolSecurity;
 import top.focess.veto.util.Nullness;
 
@@ -33,6 +36,7 @@ public final class GrepSearchTool implements NativeTool<GrepSearchTool.Args> {
     private static final int MAX_OUTPUT_CHARS = 1_000_000;
 
     @ToolDoc(
+            resultFormats = {ToolResultFormat.PLAINTEXT},
             description = "Search for exact pattern matches inside files.",
             usage =
                     """
@@ -58,19 +62,23 @@ public final class GrepSearchTool implements NativeTool<GrepSearchTool.Args> {
                     contains `query` as a substring. Matching is byte-exact against the decoded text. When \
                     `caseInsensitive` is true, both the query and each line are lowercased before the substring \
                     test, so casing in either is ignored. `includes`, when given, restricts the walk to files \
-                    whose path matches one of the glob filters (matched against the full path).
+                    whose root-relative path or basename matches one of the glob filters.
 
                     Binary or non-UTF-8 files are skipped when they cannot be decoded. Directory symbolic links \
                     are not followed. At most 10000 files, 2000 matches, and 1000000 output characters are \
                     processed; a truncation marker means the result is incomplete.
 
                     #### Return format
-                    A plain-text report, one match per line, in the form `<file>:<lineNumber>: <line text>` \
-                    (1-indexed line numbers). There is no JSON envelope. No hits returns `(no matches)`; bounded \
-                    results end with a `[truncated: ...]` marker.
+                    - Success: one match per line as \
+                    `<file>:<lineNumber>: <line text>` (1-indexed). No hits returns `(no matches)`; \
+                    bounded results end with `[truncated: ...]`.
+                    - Missing path (failure): \
+                    `Path not found: <path>`.
+                    - Invalid `includes` glob (failure): \
+                    `Invalid includes glob`.
 
                     #### Errors & edge cases
-                    - `absolutePath` does not exist -> `{"status":"error","error":"Path not found: <path>"}`.
+                    - `absolutePath` does not exist -> `Path not found: <path>` as a failed result.
                     - `absolutePath` is a file rather than a directory -> it is still walked; that single file is \
                     searched.
                     - An empty `query` matches every line of every file (the empty substring is in every string) - \
@@ -126,9 +134,7 @@ public final class GrepSearchTool implements NativeTool<GrepSearchTool.Args> {
     public @NonNull String execute(@NonNull Args args) throws IOException {
         Path root = Path.of(args.absolutePath());
         if (!Files.exists(root)) {
-            return "{\"status\":\"error\",\"error\":\"Path not found: "
-                    + args.absolutePath()
-                    + "\"}";
+            return ToolErrors.failure("Path not found: " + args.absolutePath());
         }
         boolean ci = Boolean.TRUE.equals(args.caseInsensitive());
         String query = ci ? args.query().toLowerCase(Locale.ROOT) : args.query();
@@ -136,7 +142,7 @@ public final class GrepSearchTool implements NativeTool<GrepSearchTool.Args> {
         try {
             includes = compileIncludes(args.includes());
         } catch (IllegalArgumentException e) {
-            return "{\"status\":\"error\",\"error\":\"Invalid includes glob\"}";
+            return ToolErrors.failure("Invalid includes glob");
         }
         StringBuilder sb = new StringBuilder();
         int visitedFiles = 0;
@@ -177,10 +183,12 @@ public final class GrepSearchTool implements NativeTool<GrepSearchTool.Args> {
                         sb.append(rendered);
                         matches++;
                     }
-                } catch (IOException ignored) {
+                } catch (IOException | UncheckedIOException ignored) {
                     // Unreadable or non-text files do not abort the whole search.
                 }
             }
+        } catch (UncheckedIOException ignored) {
+            // A file can become unreadable while Files.walk is consumed. Keep prior matches.
         }
         if (truncationReason != null) {
             sb.append("[truncated: ").append(truncationReason).append("]\n");

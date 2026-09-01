@@ -10,7 +10,10 @@ import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.identity.RoleToolFilter;
 import top.focess.veto.agent.mcp.ToolCallContextHolder;
 import top.focess.veto.agent.mcp.ToolDefinition;
+import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.mcp.ToolEngine;
+import top.focess.veto.agent.mcp.ToolErrors;
+import top.focess.veto.agent.mcp.ToolExecutionException;
 import top.focess.veto.agent.mcp.ToolResult;
 import top.focess.veto.group.GroupTools.CreateGroup;
 import top.focess.veto.group.GroupTools.DisbandGroup;
@@ -115,8 +118,13 @@ class GroupToolsWiringTest {
         CreateGroup create = new CreateGroup(spawner, leaderBinding, roleToolFilter);
         ToolCallContextHolder.set("agent-blank", UUID.randomUUID());
         try {
-            String result = create.execute(new CreateGroup.Args("   "));
-            assertTrue(result.startsWith("Group not created:"), "blank brief is refused");
+            ToolExecutionException error =
+                    assertThrows(
+                            ToolDocs.nonNullClass(ToolExecutionException.class),
+                            () -> create.execute(new CreateGroup.Args("   ")));
+            assertTrue(
+                    ToolErrors.normalize(error.getMessage()).startsWith("Group not created:"),
+                    "blank brief is refused");
             assertNull(ToolCallContextHolder.drainTransform(), "no transform requested on refusal");
             assertTrue(registry.snapshot().isEmpty(), "no group registered on refusal");
         } finally {
@@ -161,8 +169,13 @@ class GroupToolsWiringTest {
         DisbandGroup disband = new DisbandGroup(spawner, registry);
         ToolCallContextHolder.set("leader", UUID.randomUUID()); // no groupId in context
         try {
-            String result = disband.execute(new DisbandGroup.Args());
-            assertTrue(result.startsWith("Group not disbanded:"), "no active group is refused");
+            ToolExecutionException error =
+                    assertThrows(
+                            ToolDocs.nonNullClass(ToolExecutionException.class),
+                            () -> disband.execute(new DisbandGroup.Args()));
+            assertTrue(
+                    ToolErrors.normalize(error.getMessage()).startsWith("Group not disbanded:"),
+                    "no active group is refused");
             assertNull(
                     ToolCallContextHolder.drainTransform(),
                     "no reverse transform requested on refusal");
@@ -174,8 +187,9 @@ class GroupToolsWiringTest {
     @Test
     void postMessagePostsToBlackboardForReceiver() {
         Group g = spawner.registerEmptyGroup("leader", "default", null, "brief");
+        registry.put(g.withMate("mate-1", "coding"));
 
-        PostMessage post = new PostMessage(blackboard);
+        PostMessage post = new PostMessage(blackboard, registry);
         ToolCallContextHolder.set("leader", UUID.randomUUID(), g.groupId());
         try {
             String result = post.execute(new PostMessage.Args("FEEDBACK", "mate-1", "oops"));
@@ -197,11 +211,16 @@ class GroupToolsWiringTest {
 
     @Test
     void postMessageRefusesWithoutActiveGroup() {
-        PostMessage post = new PostMessage(blackboard);
+        PostMessage post = new PostMessage(blackboard, registry);
         ToolCallContextHolder.set("leader", UUID.randomUUID()); // no groupId in context
         try {
-            String result = post.execute(new PostMessage.Args("STATUS", "LEADER", "note"));
-            assertTrue(result.startsWith("Not posted:"), "no active group is refused");
+            ToolExecutionException error =
+                    assertThrows(
+                            ToolDocs.nonNullClass(ToolExecutionException.class),
+                            () -> post.execute(new PostMessage.Args("STATUS", "LEADER", "note")));
+            assertTrue(
+                    ToolErrors.normalize(error.getMessage()).startsWith("Not posted:"),
+                    "no active group is refused");
         } finally {
             ToolCallContextHolder.clear();
         }

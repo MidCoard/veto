@@ -45,6 +45,17 @@ final class NativeToolArgumentValidator {
                             + actualType(value));
             return;
         }
+        JsonNode allowed = schema.path("enum");
+        if (allowed.isArray() && !allowed.isEmpty() && !containsValue(allowed, value)) {
+            issues.add(
+                    "parameter '"
+                            + displayPath(path)
+                            + "' must be one of "
+                            + allowed
+                            + ", got "
+                            + value);
+            return;
+        }
 
         if ("object".equals(expectedType)) {
             JsonNode properties = schema.path("properties");
@@ -96,6 +107,15 @@ final class NativeToolArgumentValidator {
         if (value.isBoolean()) return "boolean";
         if (value.isNull()) return "null";
         return value.getNodeType().name().toLowerCase();
+    }
+
+    private static boolean containsValue(@NonNull JsonNode allowed, @NonNull JsonNode value) {
+        for (JsonNode candidate : allowed) {
+            if (candidate.equals(value)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static @NonNull List<String> fieldNames(@NonNull JsonNode node) {

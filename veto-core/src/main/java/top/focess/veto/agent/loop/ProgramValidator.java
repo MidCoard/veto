@@ -33,6 +33,12 @@ public final class ProgramValidator {
         Set<String> ids = new HashSet<>();
         for (int i = 0; i < n; i++) {
             Action a = program.actions().get(i);
+            if (a.id().isBlank()) {
+                throw new InvalidProgramException("action id must not be blank at index " + i);
+            }
+            if (a.label().isBlank()) {
+                throw new InvalidProgramException("action " + a.id() + ": label must not be blank");
+            }
             if (!ids.add(a.id())) {
                 throw new InvalidProgramException("duplicate action id: " + a.id());
             }

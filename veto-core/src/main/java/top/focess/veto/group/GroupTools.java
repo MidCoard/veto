@@ -13,6 +13,8 @@ import top.focess.veto.agent.mcp.ToolCallContext;
 import top.focess.veto.agent.mcp.ToolCallContextHolder;
 import top.focess.veto.agent.mcp.ToolDoc;
 import top.focess.veto.agent.mcp.ToolDocs;
+import top.focess.veto.agent.mcp.ToolErrors;
+import top.focess.veto.agent.mcp.ToolResultFormat;
 
 /**
  * The agent-facing group management tools (delegation_spawning.md, blackboard.md). Model B: the
@@ -36,6 +38,7 @@ public final class GroupTools {
     /** {@code create_group} - spawn a delegation. The calling agent transforms into the Leader. */
     @Component
     @ToolDoc(
+            resultFormats = {ToolResultFormat.PLAINTEXT},
             description =
                     "Spawn a delegation group for a task; you transform into its Leader "
                             + "and plan the work.",
@@ -80,10 +83,7 @@ public final class GroupTools {
                 "{\"task\": \"Fix the authentication bug in UserService\"}",
                 "{\"task\": \"Rewrite the persistence layer\"}"
             },
-            returnExamples = {
-                "",
-                "Group not created: blank brief. Pass a real description of the work."
-            })
+            returnExamples = {""})
     public static final class CreateGroup implements AgentTool<CreateGroup.Args> {
 
         private final @NonNull GroupSpawner spawner;
@@ -103,7 +103,7 @@ public final class GroupTools {
                 @SecurityHint(ParamCategory.GENERIC)
                         @Doc(
                                 "Short brief of the work to be done (seeds your investigation as Leader).")
-                        String task) {}
+                        @NonNull String task) {}
 
         @Override
         public @NonNull String getName() {
@@ -125,7 +125,8 @@ public final class GroupTools {
         public @NonNull String execute(@NonNull Args args) {
             String task = args.task() == null ? "" : args.task().strip();
             if (task.isBlank()) {
-                return "Group not created: blank brief. Pass a real description of the work.";
+                return ToolErrors.failure(
+                        "Group not created: blank brief. Pass a real description of the work.");
             }
             // Resolve the calling STANDALONE's identity (the group owner / future Leader).
             ToolCallContext ctx = ToolCallContextHolder.get();
@@ -133,13 +134,23 @@ public final class GroupTools {
             String userId = ctx != null ? ctx.userId().toString() : "default";
             String owner = ctx != null ? ctx.owner() : null;
             if (owner == null || owner.isBlank()) {
-                return "Group not created: no authenticated session owner is available.";
+                return ToolErrors.failure(
+                        "Group not created: no authenticated session owner is available.");
             }
 
             // Register an empty group - no DAG yet, no Mates. The Leader (the transformed caller)
             // authors the DAG node by node via create_node; the engine provisions Mates lazily on
             // dispatch.
-            Group g = spawner.registerEmptyGroup(leaderId, userId, owner, task);
+            Group g =
+                    spawner.registerEmptyGroup(
+                            leaderId,
+                            userId,
+                            owner,
+                            task,
+                            ctx != null
+                                    ? ctx.toolResultPresentation()
+                                    : top.focess.veto.llm.core.ToolResultPresentationMode
+                                            .CONTENT_ONLY);
 
             // Request the delegation transform: the runner rewinds, re-seeds the Leader persona +
             // tool set + top-tier binding, stamps the group, and re-injects the brief. This call's
@@ -158,6 +169,7 @@ public final class GroupTools {
     /** {@code disband_group} - tear down the active group and return the agent to STANDALONE. */
     @Component
     @ToolDoc(
+            resultFormats = {ToolResultFormat.PLAINTEXT},
             description = "Tear down your active group and return to single-agent autonomous mode.",
             usage =
                     """
@@ -167,7 +179,7 @@ public final class GroupTools {
                     can call this.
 
                     #### When NOT to use
-                    - Do not disband while Mates are still running - wait for their status.
+                    - Prefer waiting for Mate status when practical; disbanding stops any remaining Mates.
                     - Do not disband without user request unless all DAG nodes are VERIFIED.
 
                     #### Behavior
@@ -192,8 +204,7 @@ public final class GroupTools {
                     """,
             examples = {"{}"},
             returnExamples = {
-                "(empty on success - you continue as STANDALONE from the outcome brief)",
-                "Group not disbanded: Mates still RUNNING - wait for them to finish first."
+                "(empty on success - you continue as STANDALONE from the outcome brief)"
             })
     public static final class DisbandGroup implements AgentTool<DisbandGroup.Args> {
 
@@ -227,8 +238,9 @@ public final class GroupTools {
             ToolCallContext ctx = ToolCallContextHolder.get();
             UUID groupId = ctx != null ? ctx.groupId() : null;
             if (groupId == null) {
-                return "Group not disbanded: no active group in your context. disband_group is "
-                        + "a Leader tool inside a group.";
+                return ToolErrors.failure(
+                        "Group not disbanded: no active group in your context. disband_group is "
+                                + "a Leader tool inside a group.");
             }
             // Summarize the group's outcome for the reverse-transform brief (verified nodes' \
             // results), then tear the group down.
@@ -270,6 +282,7 @@ public final class GroupTools {
     /** {@code post_message} - post a typed message to the group's Blackboard. */
     @Component
     @ToolDoc(
+            resultFormats = {ToolResultFormat.PLAINTEXT},
             description =
                     "Post a typed message to your group's Blackboard (Leader -> Mate, or a self-note).",
             usage =
@@ -286,10 +299,11 @@ public final class GroupTools {
                     as dependencies verify.
 
                     #### Behavior
-                    Posts a message to the Blackboard addressed to `receiver` (a Mate id, or `LEADER` \
-                    for a self-note). Message types: TASK_DISPATCH, ARTIFACT_REF, LOG_REF, FEEDBACK, \
+                    Posts a message to the Blackboard addressed to `receiver` (an active Mate id, or `LEADER` \
+                    for a self-note). Unknown receivers are rejected. Message types: TASK_DISPATCH, ARTIFACT_REF, LOG_REF, FEEDBACK, \
                     STATUS, ACCEPT. Resolves the group + sender from your context (no id arguments). \
-                    Payloads must be small - no file contents, paths only for artifacts/logs.
+                    Payloads must be non-blank and at most 4096 characters. Use paths rather than \
+                    full file contents for artifacts/logs.
 
                     #### Return format
                     On success - `posted`.
@@ -297,8 +311,8 @@ public final class GroupTools {
                       Not posted: <reason and what to do next>
 
                     #### Errors & edge cases
-                    No active group in your context -> refusal. Unknown `type` -> error. Oversized \
-                    payload -> warn (context saturation risk).
+                    No active group in your context -> refusal. Unknown `type`, blank payload, or \
+                    payload over 4096 characters -> failed result.
 
                     #### Security
                     Agent tool (`RiskCategory.AGENT`). The Gateway does not screen it. Leader-only. \
@@ -308,31 +322,31 @@ public final class GroupTools {
                 "{\"type\": \"TASK_DISPATCH\", \"receiver\": \"mate-coder\", \"payload\": \"node-5: Revise the JWT validation to check expiry\"}",
                 "{\"type\": \"STATUS\", \"receiver\": \"LEADER\", \"payload\": \"node-5 re-planned; new node node-5b created\"}"
             },
-            returnExamples = {
-                "posted",
-                "Not posted: unknown message type 'BROADCAST' - use one of"
-                        + " TASK_DISPATCH, ARTIFACT_REF, LOG_REF, FEEDBACK, STATUS, ACCEPT."
-            })
+            returnExamples = {"posted"})
     public static final class PostMessage implements AgentTool<PostMessage.Args> {
 
-        private final @NonNull Blackboard blackboard;
+        private static final int MAX_PAYLOAD_CHARS = 4096;
 
-        public PostMessage(@NonNull Blackboard blackboard) {
+        private final @NonNull Blackboard blackboard;
+        private final @NonNull GroupRegistry groupRegistry;
+
+        public PostMessage(@NonNull Blackboard blackboard, @NonNull GroupRegistry groupRegistry) {
             this.blackboard = blackboard;
+            this.groupRegistry = groupRegistry;
         }
 
         public record Args(
                 @SecurityHint(ParamCategory.GENERIC)
                         @Doc(
                                 "Message type: TASK_DISPATCH, ARTIFACT_REF, LOG_REF, FEEDBACK, STATUS, ACCEPT.")
-                        String type,
+                        @NonNull String type,
                 @SecurityHint(ParamCategory.GENERIC)
                         @Doc("Receiver id (a Mate id, or 'LEADER' for a self-note).")
                         String receiver,
                 @SecurityHint(ParamCategory.GENERIC)
                         @Doc(
-                                "Small payload (path / status / short feedback). No file contents - paths only.")
-                        String payload) {}
+                                "Non-blank payload up to 4096 characters. Prefer paths over file contents.")
+                        @NonNull String payload) {}
 
         @Override
         public @NonNull String getName() {
@@ -354,27 +368,36 @@ public final class GroupTools {
             ToolCallContext ctx = ToolCallContextHolder.get();
             UUID groupId = ctx != null ? ctx.groupId() : null;
             if (groupId == null) {
-                return "Not posted: no active group in your context. post_message is a Leader "
-                        + "tool inside a group.";
+                return ToolErrors.failure(
+                        "Not posted: no active group in your context. post_message is a Leader "
+                                + "tool inside a group.");
             }
             // The Blackboard identifies the Leader by the literal "LEADER" (its hub-and-spoke guard
             // + the orchestrator's ingest both key on it), so the Leader posts as "LEADER".
             BlackboardMessage.MessageType type;
             String typeName = args.type();
             if (typeName == null || typeName.isBlank()) {
-                return "Not posted: missing required message type.";
+                return ToolErrors.failure("Not posted: missing required message type.");
             }
             try {
                 type =
                         top.focess.veto.util.Nullness.requireNonNull(
                                 BlackboardMessage.MessageType.valueOf(typeName));
             } catch (IllegalArgumentException e) {
-                return "Not posted: unknown message type '" + typeName + "'.";
+                return ToolErrors.failure("Not posted: unknown message type '" + typeName + "'.");
             }
             String receiver = args.receiver() == null ? "LEADER" : args.receiver();
+            Group group = groupRegistry.get(groupId);
+            if (group == null
+                    || (!"LEADER".equals(receiver) && !group.mates().containsKey(receiver))) {
+                return ToolErrors.failure("Not posted: unknown receiver '" + receiver + "'.");
+            }
             String payload = args.payload();
-            if (payload == null) {
-                return "Not posted: missing required payload.";
+            if (payload == null || payload.isBlank()) {
+                return ToolErrors.failure("Not posted: missing required payload.");
+            }
+            if (payload.length() > MAX_PAYLOAD_CHARS) {
+                return ToolErrors.failure("Not posted: payload exceeds 4096 characters.");
             }
             blackboard.post(
                     new BlackboardMessage(

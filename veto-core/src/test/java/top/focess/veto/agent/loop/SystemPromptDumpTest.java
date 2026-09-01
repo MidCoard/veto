@@ -1,7 +1,9 @@
 package top.focess.veto.agent.loop;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -9,6 +11,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -56,12 +60,15 @@ class SystemPromptDumpTest {
     @Autowired private @NonNull RoleToolFilter roleToolFilter;
 
     private final @NonNull SystemPromptResolver resolver = new SystemPromptResolver();
+    private final @NonNull ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
     void dumpFullSystemPrompts() throws IOException {
         Files.createDirectories(DUMP_DIR);
 
-        List<ToolDefinition> flatTools = translator.translateTools(mcpEngine.getActiveTools(null));
+        List<ToolDefinition> flatTools =
+                translator.translateTools(
+                        PromptCompiler.availableTools(mcpEngine.getActiveTools(null), true));
         String law = workspace.vetoMdResolver().resolve();
         String template = resolver.defaultPrompt();
 
@@ -69,8 +76,11 @@ class SystemPromptDumpTest {
         // No labels or descriptors are prepended - each file is pure content, exactly what the
         // corresponding stage produces.
         write("00-template.md", template);
-        write("01-tool-catalog.md", PromptBlocks.tools(flatTools));
+        String catalog = PromptBlocks.tools(flatTools);
+        write("01-tool-catalog.md", catalog);
         write("02-tool-inventory.md", inventory(flatTools));
+        writeJson("04-response-autonomous.json", translator.vetoResponseSchema(false, flatTools));
+        writeJson("05-response-guided.json", translator.vetoResponseSchema(true, flatTools));
 
         // Full compiled prompt per role x policy, using the role-scoped tool set from
         // RoleToolFilter (the same path production takes via AgentService.buildPersona).
@@ -78,7 +88,8 @@ class SystemPromptDumpTest {
         Role[] roles = roles();
         for (Role role : roles) {
             List<ToolDefinition> roleTools =
-                    translator.translateTools(new ArrayList<>(roleToolFilter.resolve(role)));
+                    translator.translateTools(
+                            PromptCompiler.availableTools(roleToolFilter.resolve(role), true));
             for (DeployerPolicy policy : policies) {
                 write(
                         role + "-" + policy + ".md",
@@ -88,7 +99,7 @@ class SystemPromptDumpTest {
             write("03-tools-" + role + ".md", inventory(roleTools));
         }
 
-        int count = 3 + roles.length * (policies.length + 1);
+        int count = 5 + roles.length * (policies.length + 1);
         System.out.println(
                 "=== System-prompt dump written to "
                         + DUMP_DIR.toAbsolutePath()
@@ -97,6 +108,67 @@ class SystemPromptDumpTest {
                         + " files) ===");
         System.out.println("Tools registered: " + flatTools.size());
         assertTrue(!flatTools.isEmpty(), "tool catalog is non-empty");
+        assertTrue(
+                toolNames(flatTools).contains("create_group"),
+                "the production catalog must register the delegation entry tool");
+        assertFalse(
+                toolNames(flatTools).contains("load_skill"),
+                "load_skill must not be exposed when the persona has no registered skills");
+        assertTrue(
+                toolNames(
+                                translator.translateTools(
+                                        new ArrayList<>(roleToolFilter.resolve(Role.STANDALONE))))
+                        .contains("create_group"),
+                "STANDALONE must receive create_group");
+        assertFalse(
+                toolNames(
+                                translator.translateTools(
+                                        new ArrayList<>(roleToolFilter.resolve(Role.LEADER))))
+                        .contains("create_group"),
+                "LEADER must not receive create_group");
+        assertFalse(
+                toolNames(
+                                translator.translateTools(
+                                        new ArrayList<>(roleToolFilter.resolve(Role.MATE))))
+                        .contains("create_group"),
+                "MATE must not receive create_group");
+        assertFalse(
+                template.contains("veto_pulse"),
+                "internal response-schema names must not be exposed to the model");
+        assertTrue(
+                count(catalog, "\n### `") == flatTools.size(),
+                "every registered tool has one catalog entry");
+        assertTrue(
+                count(catalog, "\n#### Args\n") == flatTools.size(),
+                "every registered tool exposes an Args section");
+        assertFalse(
+                catalog.contains("error-special-plaintext"),
+                "failure status must not be exposed as a content format");
+        assertFalse(catalog.contains("veto_pulse"), "internal schema names must stay internal");
+        assertFalse(
+                catalog.contains("available to YOU this turn"),
+                "the persona capability catalog is not limited to one loop turn");
+        assertTrue(
+                catalog.contains("These are the tools available to YOU"),
+                "the catalog must describe the active persona capabilities");
+        assertFalse(
+                catalog.contains("success=true"), "transport flags do not belong in tool prose");
+        assertFalse(
+                catalog.contains("#### Security"),
+                "Gateway-enforced security detail must not bloat the agent catalog");
+        assertTrue(
+                catalog.length() < 60_000,
+                "the model-visible tool catalog must stay concise; actual chars="
+                        + catalog.length());
+        for (ToolDefinition tool : flatTools) {
+            String heading = "### `" + tool.name() + "`";
+            int start = catalog.indexOf(heading);
+            int end = catalog.indexOf("\n---\n", start);
+            String entry = end < 0 ? catalog.substring(start) : catalog.substring(start, end);
+            assertTrue(
+                    entry.indexOf("#### Args") < entry.indexOf("#### Result formats"),
+                    tool.name() + " must render Args before Result formats");
+        }
     }
 
     private @NonNull String render(
@@ -112,6 +184,7 @@ class SystemPromptDumpTest {
         blocks.put("ROLE", PromptBlocks.role(role));
         blocks.put("WORKSPACE", PromptBlocks.workspace(workspace));
         blocks.put("ENVIRONMENT", PromptBlocks.environment());
+        blocks.put("RESULT_CONVENTIONS", tools.isEmpty() ? "" : PromptBlocks.resultConventions());
         blocks.put("TOOLS", PromptBlocks.tools(tools));
         blocks.put("BOUNDARIES", PromptBlocks.boundaries(policy));
         blocks.put("SKILLS", PromptBlocks.skills(List.of()));
@@ -150,6 +223,24 @@ class SystemPromptDumpTest {
 
     private void write(@NonNull String name, @NonNull String content) throws IOException {
         Files.writeString(DUMP_DIR.resolve(name), content);
+    }
+
+    private void writeJson(@NonNull String name, @NonNull Object value) throws IOException {
+        write(name, objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(value));
+    }
+
+    private static int count(@NonNull String text, @NonNull String token) {
+        int count = 0;
+        int from = 0;
+        while ((from = text.indexOf(token, from)) >= 0) {
+            count++;
+            from += token.length();
+        }
+        return count;
+    }
+
+    private static @NonNull Set<String> toolNames(@NonNull List<@NonNull ToolDefinition> tools) {
+        return tools.stream().map(ToolDefinition::name).collect(Collectors.toUnmodifiableSet());
     }
 
     private static @NonNull Role @NonNull [] roles() {
