@@ -19,7 +19,6 @@ final class SessionRecordProjector {
 
         for (SessionRecord record : raw) {
             switch (record.type()) {
-                case "AGENT_INIT" -> annotated.add(record);
                 case "ASSISTANT_THOUGHT" -> {
                     if (pendingThought != null) {
                         deactivateTurns(annotated, Set.of(pendingThought), 0);

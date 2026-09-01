@@ -143,9 +143,7 @@ public final class ReplaceFileContentTool implements NativeTool<ReplaceFileConte
         if (idx < 0 || idx + args.targetContent().length() > rangeEnd) {
             return ToolErrors.failure("targetContent not found in selected range.");
         }
-        int next =
-                content.indexOf(
-                        args.targetContent(), idx + Math.max(1, args.targetContent().length()));
+        int next = content.indexOf(args.targetContent(), idx + args.targetContent().length());
         if (next >= 0 && next + args.targetContent().length() <= rangeEnd) {
             return ToolErrors.failure("targetContent is not unique in selected range.");
         }

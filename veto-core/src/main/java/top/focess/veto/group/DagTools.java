@@ -148,9 +148,9 @@ public final class DagTools {
                         "Node not created: no active group in your context. create_node is "
                                 + "a Leader tool inside a group.");
             }
-            String nodeId = args.nodeId() == null ? "" : args.nodeId().strip();
-            String description = args.description() == null ? "" : args.description().strip();
-            String skillset = args.skillset() == null ? "" : args.skillset().strip();
+            String nodeId = args.nodeId().strip();
+            String description = args.description().strip();
+            String skillset = args.skillset().strip();
             Set<String> deps =
                     args.dependsOn() == null ? Set.of() : new LinkedHashSet<>(args.dependsOn());
             NodeEdit edit = orchestrator.addNode(groupId, nodeId, description, skillset, deps);
@@ -259,7 +259,7 @@ public final class DagTools {
                         "Node not removed: no active group in your context. remove_node is "
                                 + "a Leader tool inside a group.");
             }
-            String nodeId = args.nodeId() == null ? "" : args.nodeId().strip();
+            String nodeId = args.nodeId().strip();
             NodeEdit edit = orchestrator.removeNode(groupId, nodeId);
             if (edit instanceof NodeEdit.Rejected r) {
                 return ToolErrors.failure("Node not removed: " + r.reason());

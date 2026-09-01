@@ -70,12 +70,12 @@ public class SemanticRedactor {
                     new RedactionRule(
                             Pattern.compile(
                                     "(?i)(?<![A-Za-z0-9_.-])(?:"
-                                            + "(?:(?:(?:~|[A-Za-z]:)?[\\\\/])?"
+                                            + "(?:(?:~|[A-Za-z]:)?[\\\\/])?"
                                             + "(?:[^\\\\/\\s]+[\\\\/])*"
                                             + "(?:\\.ssh|\\.aws|credentials|secrets|keys)"
-                                            + "[\\\\/][^\\\\/\\s]+(?:[\\\\/][^\\\\/\\s]+)*)"
-                                            + "|(?:(?:~|[A-Za-z]:)?[\\\\/]etc[\\\\/]"
-                                            + "(?:passwd|shadow)))"),
+                                            + "[\\\\/][^\\\\/\\s]+(?:[\\\\/][^\\\\/\\s]+)*"
+                                            + "|(?:~|[A-Za-z]:)?[\\\\/]etc[\\\\/]"
+                                            + "(?:passwd|shadow))"),
                             "[REDACTED_CREDENTIAL_PATH]",
                             RedactionType.SSH_PROFILE),
                     // Database connection strings

@@ -113,16 +113,7 @@ public class SessionController {
     // Turn payloads intentionally preserve code and model text; Jackson supplies JSON encoding.
     @SuppressWarnings("JvmTaintAnalysis")
     public @NonNull ResponseEntity<?> history(@PathVariable @NonNull String name) {
-        String user = vault.currentUser();
-        if (user == null) {
-            return ResponseEntity.status(401)
-                    .body(Map.of("error", Msg.get("error.auth.notAuthenticated")));
-        }
-        SessionConfig cfg = service.resolveByName(name, user).orElse(null);
-        if (cfg == null) {
-            return ResponseEntity.status(404)
-                    .body(Map.of("error", Msg.get("error.session.notFoundForUser", name, user)));
-        }
+        SessionConfig cfg = requireOwnedSession(name);
         List<Map<String, Object>> turns = new ArrayList<>();
         for (TurnRecord turn : historyLoader.load(cfg.sessionId())) {
             turns.add(
@@ -145,18 +136,23 @@ public class SessionController {
      */
     @GetMapping(value = "/{name}/records", produces = MediaType.APPLICATION_JSON_VALUE)
     public @NonNull ResponseEntity<?> records(@PathVariable @NonNull String name) {
-        String user = vault.currentUser();
-        if (user == null) {
-            return ResponseEntity.status(401)
-                    .body(Map.of("error", Msg.get("error.auth.notAuthenticated")));
-        }
-        SessionConfig cfg = service.resolveByName(name, user).orElse(null);
-        if (cfg == null) {
-            return ResponseEntity.status(404)
-                    .body(Map.of("error", Msg.get("error.session.notFoundForUser", name, user)));
-        }
+        SessionConfig cfg = requireOwnedSession(name);
         return ResponseEntity.ok(
                 recordService.load(cfg.sessionId(), name, cfg.toolResultPresentation()));
+    }
+
+    private @NonNull SessionConfig requireOwnedSession(@NonNull String name) {
+        String user = vault.currentUser();
+        if (user == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.UNAUTHORIZED, Msg.get("error.auth.notAuthenticated"));
+        }
+        return service.resolveByName(name, user)
+                .orElseThrow(
+                        () ->
+                                new ResponseStatusException(
+                                        HttpStatus.NOT_FOUND,
+                                        Msg.get("error.session.notFoundGeneric")));
     }
 
     /** Request body for {@link #create}. */

@@ -130,6 +130,11 @@ public final class ViewFileTool implements NativeTool<ViewFileTool.Args> {
         List<String> lines = Files.readAllLines(path, StandardCharsets.UTF_8);
         int from = args.startLine() == null ? 1 : Math.max(1, args.startLine());
         int to = args.endLine() == null ? lines.size() : Math.min(lines.size(), args.endLine());
+        return renderLines(lines, from, to);
+    }
+
+    private static @NonNull String renderLines(
+            @NonNull List<@NonNull String> lines, int from, int to) {
         StringBuilder sb = new StringBuilder();
         boolean truncated = false;
         int emitted = 0;

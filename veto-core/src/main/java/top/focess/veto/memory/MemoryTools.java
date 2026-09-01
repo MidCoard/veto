@@ -484,7 +484,7 @@ public final class MemoryTools {
                 return ToolErrors.failure("no user context; nothing forgotten");
             }
             String id = args.memoryId();
-            if (id == null || id.isBlank()) {
+            if (id.isBlank()) {
                 return ToolErrors.failure("memory not found or not owned; nothing forgotten");
             }
             try {

@@ -60,7 +60,7 @@ final class WindowsWorkspaceSecurity {
     }
 
     boolean isAvailable() {
-        return api != null;
+        return true;
     }
 
     synchronized @NonNull String provision(@NonNull SandboxProfile profile) {
@@ -391,17 +391,7 @@ final class WindowsWorkspaceSecurity {
                 }
             }
 
-            ExplicitAccess access = new ExplicitAccess();
-            access.grfAccessPermissions = permissions;
-            access.grfAccessMode = accessMode;
-            access.grfInheritance = inheritance;
-            access.trustee = new Trustee();
-            access.trustee.pMultipleTrustee = null;
-            access.trustee.multipleTrusteeOperation = 0;
-            access.trustee.trusteeForm = TRUSTEE_IS_SID;
-            access.trustee.trusteeType = TRUSTEE_IS_UNKNOWN;
-            access.trustee.ptstrName = sid;
-            access.write();
+            ExplicitAccess access = explicitSidAccess(sid, permissions, accessMode, inheritance);
 
             int aclResult = api.SetEntriesInAclW(1, access, oldAcl.getValue(), newAcl);
             if (aclResult != 0) {
@@ -469,6 +459,21 @@ final class WindowsWorkspaceSecurity {
         if (pointer != null) {
             Kernel32.INSTANCE.LocalFree(pointer);
         }
+    }
+
+    static @NonNull ExplicitAccess explicitSidAccess(
+            @NonNull Pointer sid, int permissions, int accessMode, int inheritance) {
+        ExplicitAccess access = new ExplicitAccess();
+        access.grfAccessPermissions = permissions;
+        access.grfAccessMode = accessMode;
+        access.grfInheritance = inheritance;
+        access.trustee.pMultipleTrustee = null;
+        access.trustee.multipleTrusteeOperation = 0;
+        access.trustee.trusteeForm = TRUSTEE_IS_SID;
+        access.trustee.trusteeType = TRUSTEE_IS_UNKNOWN;
+        access.trustee.ptstrName = sid;
+        access.write();
+        return access;
     }
 
     @Structure.FieldOrder({

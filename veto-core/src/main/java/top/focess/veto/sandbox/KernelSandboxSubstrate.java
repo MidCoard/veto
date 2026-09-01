@@ -10,7 +10,6 @@ import com.sun.jna.WString;
 import com.sun.jna.platform.win32.BaseTSD;
 import com.sun.jna.platform.win32.Kernel32;
 import com.sun.jna.platform.win32.WinNT;
-import java.io.File;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -146,6 +145,7 @@ public class KernelSandboxSubstrate {
      * Attach a spawned trusted bootstrap to the kernel process wall and retain the wall until the
      * process exits. Unsupported platforms and attachment failures fail closed.
      */
+    @SuppressWarnings("AutoCloseableResource") // The process-exit callback owns this async handle.
     public void attach(@NonNull Process process, @NonNull SandboxProfile profile) {
         AutoCloseable handle = attachRequired(process, profile);
         process.onExit()
@@ -241,13 +241,13 @@ public class KernelSandboxSubstrate {
         WindowsAppContainerLauncher.PrivateDesktop privateDesktop =
                 WindowsAppContainerLauncher.createPrivateDesktop(appContainerName);
         WinNT.HANDLE gate = kernel.CreateEventW(null, false, false, new WString(gateName));
-        if (!isValidHandle(gate)) {
+        if (gate == null || !isValidHandle(gate)) {
             privateDesktop.close();
             throw new IllegalStateException("CreateEventW(gate) failed");
         }
         gate = requireHandle(gate, "CreateEventW(gate)");
         WinNT.HANDLE ready = kernel.CreateEventW(null, false, false, new WString(readyName));
-        if (!isValidHandle(ready)) {
+        if (ready == null || !isValidHandle(ready)) {
             standardKernel.CloseHandle(gate);
             privateDesktop.close();
             throw new IllegalStateException("CreateEventW(ready) failed");
@@ -280,8 +280,8 @@ public class KernelSandboxSubstrate {
         return kernel;
     }
 
-    private static boolean isValidHandle(WinNT.HANDLE handle) {
-        if (handle == null || handle.getPointer() == null) {
+    private static boolean isValidHandle(WinNT.@NonNull HANDLE handle) {
+        if (handle.getPointer() == null) {
             return false;
         }
         long address = Pointer.nativeValue(handle.getPointer());
@@ -297,47 +297,7 @@ public class KernelSandboxSubstrate {
     }
 
     private static @NonNull List<String> bootstrapInvocation() {
-        List<String> command = new ArrayList<>();
-        if (System.getProperty("org.graalvm.nativeimage.imagecode") != null) {
-            String executable =
-                    ProcessHandle.current()
-                            .info()
-                            .command()
-                            .orElseThrow(
-                                    () ->
-                                            new IllegalStateException(
-                                                    "Native Veto executable path is unavailable"));
-            command.add(executable);
-            return command;
-        }
-        Path javaExecutable =
-                Path.of(System.getProperty("java.home"), "bin", IS_WINDOWS ? "java.exe" : "java");
-        String classPath = System.getProperty("java.class.path", "");
-        if (classPath.isBlank()) {
-            throw new IllegalStateException("Java classpath is unavailable for sandbox bootstrap");
-        }
-        classPath = SandboxBootstrap.absoluteClassPath(classPath);
-        command.add(javaExecutable.toString());
-        // The bootstrap itself is inside the aggregate Job memory cap. Keep its JVM deliberately
-        // small so a development/classpath launch does not consume the target's entire allowance.
-        // Native-image releases reuse the Veto executable and do not pay this second-JVM cost.
-        command.add("--enable-native-access=ALL-UNNAMED");
-        command.add("-Xms8m");
-        command.add("-Xmx64m");
-        command.add("-XX:MaxMetaspaceSize=64m");
-        command.add("-XX:ReservedCodeCacheSize=32m");
-        command.add("-XX:+UseSerialGC");
-        if (!classPath.contains(File.pathSeparator) && classPath.endsWith(".jar")) {
-            command.add("-Dloader.main=" + SandboxBootstrap.class.getName());
-            command.add("-cp");
-            command.add(classPath);
-            command.add("org.springframework.boot.loader.launch.PropertiesLauncher");
-        } else {
-            command.add("-cp");
-            command.add(classPath);
-            command.add(SandboxBootstrap.class.getName());
-        }
-        return command;
+        return new ArrayList<>(SandboxBootstrap.processInvocation());
     }
 
     /** Parent-owned handles for one two-hop launch. */

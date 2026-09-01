@@ -19,6 +19,8 @@ import top.focess.veto.sandbox.SandboxBootstrap;
 @EnableScheduling
 public class VetoApplication {
 
+    @SuppressWarnings(
+            "UnnecessaryModifier") // Stable public entry point for launchers and native tooling.
     public static void main(@NonNull String @NonNull [] args) {
         if (SandboxBootstrap.isInvocation(args)) {
             System.exit(SandboxBootstrap.run(args));

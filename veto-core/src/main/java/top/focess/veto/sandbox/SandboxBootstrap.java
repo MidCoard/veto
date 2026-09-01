@@ -7,6 +7,7 @@ import com.sun.jna.platform.win32.Kernel32;
 import com.sun.jna.platform.win32.WinNT;
 import java.io.File;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.regex.Pattern;
@@ -30,6 +31,7 @@ public final class SandboxBootstrap {
     }
 
     /** Entry point used when Veto is running from a regular JVM classpath. */
+    @SuppressWarnings("UnnecessaryModifier") // Invoked by classpath and Spring Boot launchers.
     public static void main(@NonNull String @NonNull [] args) {
         System.exit(run(args));
     }
@@ -80,6 +82,50 @@ public final class SandboxBootstrap {
                 Arrays.stream(classPath.split(Pattern.quote(File.pathSeparator), -1))
                         .map(SandboxBootstrap::absoluteClassPathEntry)
                         .toList());
+    }
+
+    /**
+     * Command prefix that launches this bootstrap from either a native image or the current JVM.
+     */
+    static @NonNull List<@NonNull String> processInvocation() {
+        List<String> command = new ArrayList<>();
+        if (System.getProperty("org.graalvm.nativeimage.imagecode") != null) {
+            command.add(
+                    ProcessHandle.current()
+                            .info()
+                            .command()
+                            .orElseThrow(
+                                    () ->
+                                            new IllegalStateException(
+                                                    "Native Veto executable path is unavailable")));
+            return List.copyOf(command);
+        }
+        boolean windows = System.getProperty("os.name", "").toLowerCase().contains("win");
+        Path javaExecutable =
+                Path.of(System.getProperty("java.home"), "bin", windows ? "java.exe" : "java");
+        String classPath = System.getProperty("java.class.path", "");
+        if (classPath.isBlank()) {
+            throw new IllegalStateException("Java classpath is unavailable for sandbox bootstrap");
+        }
+        classPath = absoluteClassPath(classPath);
+        command.add(javaExecutable.toString());
+        command.add("--enable-native-access=ALL-UNNAMED");
+        command.add("-Xms8m");
+        command.add("-Xmx64m");
+        command.add("-XX:MaxMetaspaceSize=64m");
+        command.add("-XX:ReservedCodeCacheSize=32m");
+        command.add("-XX:+UseSerialGC");
+        if (!classPath.contains(File.pathSeparator) && classPath.endsWith(".jar")) {
+            command.add("-Dloader.main=" + SandboxBootstrap.class.getName());
+            command.add("-cp");
+            command.add(classPath);
+            command.add("org.springframework.boot.loader.launch.PropertiesLauncher");
+        } else {
+            command.add("-cp");
+            command.add(classPath);
+            command.add(SandboxBootstrap.class.getName());
+        }
+        return List.copyOf(command);
     }
 
     private static @NonNull String absoluteClassPathEntry(@NonNull String entry) {

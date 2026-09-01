@@ -123,7 +123,6 @@ final class WindowsAppContainerLauncher {
 
         Memory attributeList = null;
         List<Pointer> capabilitySids = new ArrayList<>();
-        SidAndAttributes[] capabilityEntries = null;
         WinBase.PROCESS_INFORMATION child = new WinBase.PROCESS_INFORMATION();
         boolean childThreadClosed = false;
         try {
@@ -142,7 +141,7 @@ final class WindowsAppContainerLauncher {
             SecurityCapabilities capabilities = new SecurityCapabilities();
             capabilities.appContainerSid = appContainerSid.getValue();
             if (networkAllowed) {
-                capabilityEntries =
+                SidAndAttributes[] capabilityEntries =
                         (SidAndAttributes[])
                                 new SidAndAttributes().toArray(NETWORK_CAPABILITY_SIDS.size());
                 for (int i = 0; i < NETWORK_CAPABILITY_SIDS.size(); i++) {
@@ -241,16 +240,7 @@ final class WindowsAppContainerLauncher {
         }
         try {
             WindowsWorkspaceSecurity.ExplicitAccess access =
-                    new WindowsWorkspaceSecurity.ExplicitAccess();
-            access.grfAccessPermissions = GENERIC_ALL;
-            access.grfAccessMode = GRANT_ACCESS;
-            access.grfInheritance = 0;
-            access.trustee.pMultipleTrustee = null;
-            access.trustee.multipleTrusteeOperation = 0;
-            access.trustee.trusteeForm = TRUSTEE_IS_SID;
-            access.trustee.trusteeType = TRUSTEE_IS_UNKNOWN;
-            access.trustee.ptstrName = sid;
-            access.write();
+                    WindowsWorkspaceSecurity.explicitSidAccess(sid, GENERIC_ALL, GRANT_ACCESS, 0);
             int aclResult = security.SetEntriesInAclW(1, access, oldAcl.getValue(), newAcl);
             if (aclResult != 0) {
                 throw new IllegalStateException(
@@ -295,8 +285,8 @@ final class WindowsAppContainerLauncher {
                 : Integer.toUnsignedLong(memory.getInt(0));
     }
 
-    private static boolean validHandle(WinNT.HANDLE handle) {
-        if (handle == null || handle.getPointer() == null) {
+    private static boolean validHandle(WinNT.@NonNull HANDLE handle) {
+        if (handle.getPointer() == null) {
             return false;
         }
         long value = Pointer.nativeValue(handle.getPointer());

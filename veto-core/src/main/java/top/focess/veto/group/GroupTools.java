@@ -123,33 +123,31 @@ public final class GroupTools {
 
         @Override
         public @NonNull String execute(@NonNull Args args) {
-            String task = args.task() == null ? "" : args.task().strip();
+            String task = args.task().strip();
             if (task.isBlank()) {
                 return ToolErrors.failure(
                         "Group not created: blank brief. Pass a real description of the work.");
             }
             // Resolve the calling STANDALONE's identity (the group owner / future Leader).
             ToolCallContext ctx = ToolCallContextHolder.get();
-            String leaderId = ctx != null ? ctx.agentId() : "leader";
-            String userId = ctx != null ? ctx.userId().toString() : "default";
-            String owner = ctx != null ? ctx.owner() : null;
+            if (ctx == null) {
+                return ToolErrors.failure(
+                        "Group not created: no authenticated session owner is available.");
+            }
+            String owner = ctx.owner();
             if (owner == null || owner.isBlank()) {
                 return ToolErrors.failure(
                         "Group not created: no authenticated session owner is available.");
             }
+            String leaderId = ctx.agentId();
+            String userId = ctx.userId().toString();
 
             // Register an empty group - no DAG yet, no Mates. The Leader (the transformed caller)
             // authors the DAG node by node via create_node; the engine provisions Mates lazily on
             // dispatch.
             Group g =
                     spawner.registerEmptyGroup(
-                            leaderId,
-                            userId,
-                            owner,
-                            task,
-                            ctx != null
-                                    ? ctx.toolResultPresentation()
-                                    : top.focess.veto.llm.core.ToolResultPresentationMode.BASIC);
+                            leaderId, userId, owner, task, ctx.toolResultPresentation());
 
             // Request the delegation transform: the runner rewinds, re-seeds the Leader persona +
             // tool set + top-tier binding, stamps the group, and re-injects the brief. This call's
@@ -375,7 +373,7 @@ public final class GroupTools {
             // + the orchestrator's ingest both key on it), so the Leader posts as "LEADER".
             BlackboardMessage.MessageType type;
             String typeName = args.type();
-            if (typeName == null || typeName.isBlank()) {
+            if (typeName.isBlank()) {
                 return ToolErrors.failure("Not posted: missing required message type.");
             }
             try {
@@ -392,7 +390,7 @@ public final class GroupTools {
                 return ToolErrors.failure("Not posted: unknown receiver '" + receiver + "'.");
             }
             String payload = args.payload();
-            if (payload == null || payload.isBlank()) {
+            if (payload.isBlank()) {
                 return ToolErrors.failure("Not posted: missing required payload.");
             }
             if (payload.length() > MAX_PAYLOAD_CHARS) {

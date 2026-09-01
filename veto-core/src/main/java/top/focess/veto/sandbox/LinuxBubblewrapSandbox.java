@@ -110,43 +110,7 @@ final class LinuxBubblewrapSandbox {
     }
 
     private static @NonNull List<@NonNull String> innerBootstrapInvocation() {
-        List<String> command = new ArrayList<>();
-        if (System.getProperty("org.graalvm.nativeimage.imagecode") != null) {
-            command.add(
-                    ProcessHandle.current()
-                            .info()
-                            .command()
-                            .orElseThrow(
-                                    () ->
-                                            new IllegalStateException(
-                                                    "Native Veto executable path is unavailable")));
-            return command;
-        }
-        Path javaExecutable = Path.of(System.getProperty("java.home"), "bin", "java");
-        String classPath = System.getProperty("java.class.path", "");
-        if (classPath.isBlank()) {
-            throw new IllegalStateException(
-                    "Java classpath is unavailable for Linux sandbox bootstrap");
-        }
-        classPath = SandboxBootstrap.absoluteClassPath(classPath);
-        command.add(javaExecutable.toString());
-        command.add("--enable-native-access=ALL-UNNAMED");
-        command.add("-Xms8m");
-        command.add("-Xmx64m");
-        command.add("-XX:MaxMetaspaceSize=64m");
-        command.add("-XX:ReservedCodeCacheSize=32m");
-        command.add("-XX:+UseSerialGC");
-        if (!classPath.contains(File.pathSeparator) && classPath.endsWith(".jar")) {
-            command.add("-Dloader.main=" + SandboxBootstrap.class.getName());
-            command.add("-cp");
-            command.add(classPath);
-            command.add("org.springframework.boot.loader.launch.PropertiesLauncher");
-        } else {
-            command.add("-cp");
-            command.add(classPath);
-            command.add(SandboxBootstrap.class.getName());
-        }
-        return command;
+        return SandboxBootstrap.processInvocation();
     }
 
     private Path findBubblewrap(@NonNull Path excludedRoot) {

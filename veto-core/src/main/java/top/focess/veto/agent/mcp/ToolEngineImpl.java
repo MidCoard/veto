@@ -369,12 +369,11 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
                     false,
                     "commands must contain at least one command");
         }
-        Duration timeoutDur = timeout <= 0 ? Duration.ZERO : Duration.ofSeconds(timeout);
+        Duration timeoutDur = timeout == 0 ? Duration.ZERO : Duration.ofSeconds(timeout);
         List<Command> commands =
                 args.commands().stream().map(c -> new Command(c.executable(), c.args())).toList();
         ChainMode requestedConnect = args.connect();
-        @NonNull ChainMode connect =
-                requestedConnect != null ? requestedConnect : ChainMode.STOP_ON_FAILURE;
+        ChainMode connect = requestedConnect != null ? requestedConnect : ChainMode.STOP_ON_FAILURE;
         Path cwd = Path.of(args.cwd());
         ToolCallContext context = ToolCallContextHolder.get();
         if (context == null || !context.executionPermit().matchesCall(call)) {
@@ -416,7 +415,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
         String stderr = result.stderr();
         String content =
                 (result.stdout().isEmpty() ? "" : result.stdout())
-                        + (stderr == null || stderr.isEmpty() ? "" : "\n[stderr]\n" + stderr);
+                        + (stderr.isEmpty() ? "" : "\n[stderr]\n" + stderr);
         // The exit code rides in the content as well as the result status so every provider gives
         // the model the exact process outcome.
         return result.exitCode() == 0

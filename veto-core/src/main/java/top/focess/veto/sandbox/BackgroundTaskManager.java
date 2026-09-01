@@ -132,22 +132,20 @@ public class BackgroundTaskManager {
                 timeoutSeconds <= 0
                         ? profileTimeoutSeconds
                         : Math.min(timeoutSeconds, profileTimeoutSeconds);
-        if (effectiveTimeoutSeconds > 0) {
-            task.killer =
-                    killer.schedule(
-                            () -> {
-                                if (task.alive) {
-                                    log.debug(
-                                            "Background task {} auto-killed after {}s",
-                                            taskId,
-                                            effectiveTimeoutSeconds);
-                                    task.cause = ExitCause.AUTO_KILL;
-                                    process.destroyForcibly();
-                                }
-                            },
-                            effectiveTimeoutSeconds,
-                            TimeUnit.SECONDS);
-        }
+        task.killer =
+                killer.schedule(
+                        () -> {
+                            if (task.alive) {
+                                log.debug(
+                                        "Background task {} auto-killed after {}s",
+                                        taskId,
+                                        effectiveTimeoutSeconds);
+                                task.cause = ExitCause.AUTO_KILL;
+                                process.destroyForcibly();
+                            }
+                        },
+                        effectiveTimeoutSeconds,
+                        TimeUnit.SECONDS);
         log.info(
                 "Background task {} started (agent={}, pid={}, cmd={})",
                 taskId,
@@ -256,7 +254,7 @@ public class BackgroundTaskManager {
     }
 
     private void finishExit(@NonNull ManagedTask task) {
-        synchronized (task) {
+        synchronized (task.lifecycleLock) {
             if (!task.alive) {
                 return;
             }
@@ -417,6 +415,7 @@ public class BackgroundTaskManager {
         final @NonNull Instant startedAt;
         final long pid;
         final UUID sessionId;
+        final @NonNull Object lifecycleLock = new Object();
         final @NonNull LineBuffer buffer = new LineBuffer(MAX_LINES);
         volatile boolean alive = true;
         volatile Integer exitCode = null;
