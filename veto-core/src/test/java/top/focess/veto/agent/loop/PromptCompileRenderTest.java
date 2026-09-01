@@ -46,6 +46,7 @@ class PromptCompileRenderTest {
                 prompt.contains("## Your Tools"),
                 "standalone with tools should show the Tools block");
         assertTrue(prompt.contains("FULL_ACCESS deployer policy"));
+        assertFalse(prompt.contains("[git:"), "Workspace metadata must not probe or expose Git");
     }
 
     @Test

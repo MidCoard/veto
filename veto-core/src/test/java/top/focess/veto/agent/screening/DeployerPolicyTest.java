@@ -71,8 +71,8 @@ class DeployerPolicyTest {
         Workspace ws =
                 new Workspace(
                         List.of(
-                                WorkspaceRoot.probe(aliceRoot, TrustMarker.OWNED),
-                                WorkspaceRoot.probe(bobRoot, TrustMarker.OWNED)),
+                                WorkspaceRoot.of(aliceRoot, TrustMarker.OWNED),
+                                WorkspaceRoot.of(bobRoot, TrustMarker.OWNED)),
                         PathMode.REAL,
                         0);
         // Alice (currentRootIndex=0) tries to read Bob's file.
@@ -97,8 +97,8 @@ class DeployerPolicyTest {
         Workspace ws =
                 new Workspace(
                         List.of(
-                                WorkspaceRoot.probe(aliceRoot, TrustMarker.OWNED),
-                                WorkspaceRoot.probe(bobRoot, TrustMarker.SHARED_GRANT)),
+                                WorkspaceRoot.of(aliceRoot, TrustMarker.OWNED),
+                                WorkspaceRoot.of(bobRoot, TrustMarker.SHARED_GRANT)),
                         PathMode.REAL,
                         0);
         ToolCall call =

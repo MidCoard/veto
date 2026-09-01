@@ -14,6 +14,7 @@ import org.mockito.ArgumentCaptor;
 import top.focess.veto.agent.Agent;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.TurnRecord;
+import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.llm.core.ProviderType;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
 import top.focess.veto.model.AgentEntity;
@@ -206,7 +207,7 @@ class SessionServiceTest {
         when(agents.findById(agent.getId())).thenReturn(Optional.of(agent));
         when(loader.load(session.getId(), agent.getId())).thenReturn(List.of());
         when(agentService.getOrCreateAgent(
-                        anyString(), any(), any(), anyList(), any(), any(), any()))
+                        anyString(), any(), any(), anyList(), any(), any(), any(), anyInt(), any()))
                 .thenReturn(mock(top.focess.veto.agent.mcp.ToolDocs.nonNullClass(Agent.class)));
 
         SessionService service =
@@ -492,7 +493,13 @@ class SessionServiceTest {
         SessionHistoryLoader loader =
                 mock(top.focess.veto.agent.mcp.ToolDocs.nonNullClass(SessionHistoryLoader.class));
 
-        SessionEntity session = new SessionEntity("alice", "coder");
+        SessionEntity session =
+                new SessionEntity(
+                        "alice",
+                        "coder",
+                        CWD + "," + fakeDir("selected-root"),
+                        1,
+                        ToolResultPresentationMode.BASIC);
         AgentEntity agent =
                 new AgentEntity(
                         session.getId(),
@@ -515,7 +522,7 @@ class SessionServiceTest {
         when(agents.findById(agent.getId())).thenReturn(Optional.of(agent));
         when(loader.load(session.getId(), agent.getId())).thenReturn(history);
         when(agentService.getOrCreateAgent(
-                        anyString(), any(), any(), anyList(), any(), any(), any()))
+                        anyString(), any(), any(), anyList(), any(), any(), any(), anyInt(), any()))
                 .thenReturn(mock(top.focess.veto.agent.mcp.ToolDocs.nonNullClass(Agent.class)));
 
         SessionService service =
@@ -533,7 +540,67 @@ class SessionServiceTest {
                         any(),
                         eq("alice"),
                         any(),
+                        eq(1),
                         eq(ToolResultPresentationMode.BASIC));
+    }
+
+    @Test
+    void createSessionPersistsAnExplicitCurrentWorkspaceRoot() {
+        SessionRepository sessions = mock(ToolDocs.nonNullClass(SessionRepository.class));
+        AgentInstanceRepository agents = mock(ToolDocs.nonNullClass(AgentInstanceRepository.class));
+        AgentPatternRepository patterns = mock(ToolDocs.nonNullClass(AgentPatternRepository.class));
+        AgentService agentService = mock(ToolDocs.nonNullClass(AgentService.class));
+        SessionHistoryLoader loader = mock(ToolDocs.nonNullClass(SessionHistoryLoader.class));
+        AgentPatternEntity pattern =
+                new AgentPatternEntity(
+                        "coder", "DEEPSEEK", "deepseek-v4", "pattern-coder", "alice");
+        String roots = fakeDir("root-a") + "," + fakeDir("root-b");
+        when(patterns.findByNameAndOwner("coder", "alice")).thenReturn(Optional.of(pattern));
+        when(sessions.findByOwnerAndNameAndWorkspaceRoots("alice", "selected", roots))
+                .thenReturn(Optional.empty());
+        when(sessions.save(any(ToolDocs.nonNullClass(SessionEntity.class))))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(agents.save(any(ToolDocs.nonNullClass(AgentEntity.class))))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        SessionService service =
+                new SessionService(sessions, agents, patterns, agentService, loader, tierRegistry);
+
+        SessionEntity created =
+                service.createSession(
+                        "alice", "coder", "selected", roots, 1, ToolResultPresentationMode.BASIC);
+
+        assertEquals(1, created.getCurrentWorkspaceRootIndex());
+    }
+
+    @Test
+    void createSessionRejectsAnOutOfRangeCurrentWorkspaceRoot() {
+        SessionRepository sessions = mock(ToolDocs.nonNullClass(SessionRepository.class));
+        AgentInstanceRepository agents = mock(ToolDocs.nonNullClass(AgentInstanceRepository.class));
+        AgentPatternRepository patterns = mock(ToolDocs.nonNullClass(AgentPatternRepository.class));
+        AgentService agentService = mock(ToolDocs.nonNullClass(AgentService.class));
+        SessionHistoryLoader loader = mock(ToolDocs.nonNullClass(SessionHistoryLoader.class));
+        AgentPatternEntity pattern =
+                new AgentPatternEntity(
+                        "coder", "DEEPSEEK", "deepseek-v4", "pattern-coder", "alice");
+        String roots = fakeDir("only-root");
+        when(patterns.findByNameAndOwner("coder", "alice")).thenReturn(Optional.of(pattern));
+        SessionService service =
+                new SessionService(sessions, agents, patterns, agentService, loader, tierRegistry);
+
+        IllegalArgumentException failure =
+                assertThrows(
+                        ToolDocs.nonNullClass(IllegalArgumentException.class),
+                        () ->
+                                service.createSession(
+                                        "alice",
+                                        "coder",
+                                        "invalid-root",
+                                        roots,
+                                        1,
+                                        ToolResultPresentationMode.BASIC));
+
+        assertTrue(String.valueOf(failure.getMessage()).contains("currentWorkspaceRootIndex"));
+        verify(sessions, never()).save(any(ToolDocs.nonNullClass(SessionEntity.class)));
     }
 
     // ── workspace binding ─────────────────────────────────────────────────

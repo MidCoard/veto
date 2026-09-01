@@ -31,8 +31,8 @@ class PathResolverTest {
     private @NonNull Workspace twoRoots(@NonNull Path a, @NonNull Path b) {
         return new Workspace(
                 java.util.List.of(
-                        WorkspaceRoot.probe(a, TrustMarker.OWNED),
-                        WorkspaceRoot.probe(b, TrustMarker.OWNED)),
+                        WorkspaceRoot.of(a, TrustMarker.OWNED),
+                        WorkspaceRoot.of(b, TrustMarker.OWNED)),
                 PathMode.VIRTUAL,
                 0);
     }
@@ -85,8 +85,8 @@ class PathResolverTest {
         Workspace ws =
                 new Workspace(
                         java.util.List.of(
-                                WorkspaceRoot.probe(a, TrustMarker.OWNED),
-                                WorkspaceRoot.probe(b, TrustMarker.OWNED)),
+                                WorkspaceRoot.of(a, TrustMarker.OWNED),
+                                WorkspaceRoot.of(b, TrustMarker.OWNED)),
                         PathMode.REAL,
                         0);
         PathResolver r = ws.pathResolver();
@@ -104,8 +104,8 @@ class PathResolverTest {
         Workspace ws =
                 new Workspace(
                         java.util.List.of(
-                                WorkspaceRoot.probe(a, TrustMarker.OWNED),
-                                WorkspaceRoot.probe(b, TrustMarker.OWNED)),
+                                WorkspaceRoot.of(a, TrustMarker.OWNED),
+                                WorkspaceRoot.of(b, TrustMarker.OWNED)),
                         PathMode.REAL,
                         0);
         PathResolver r = ws.pathResolver();

@@ -56,7 +56,7 @@ public record Workspace(
 
     /**
      * The absolute host paths of each workspace root (canonicalized by {@link
-     * WorkspaceRoot#probe}).
+     * WorkspaceRoot#of(Path, TrustMarker)}).
      */
     public @NonNull List<@NonNull Path> hostRoots() {
         return roots.stream().map(WorkspaceRoot::hostPath).toList();
@@ -73,7 +73,7 @@ public record Workspace(
 
     /** The N=1 case (today's single-root usage). */
     public static @NonNull Workspace single(@NonNull Path hostPath, @NonNull PathMode mode) {
-        return new Workspace(List.of(WorkspaceRoot.probe(hostPath, TrustMarker.OWNED)), mode, 0);
+        return new Workspace(List.of(WorkspaceRoot.of(hostPath, TrustMarker.OWNED)), mode, 0);
     }
 
     /**
@@ -84,20 +84,31 @@ public record Workspace(
      */
     public static @NonNull Workspace fromConfig(
             @NonNull String legacyRoot, @NonNull String rootsCsv, @NonNull String pathMode) {
+        return fromConfig(legacyRoot, rootsCsv, pathMode, 0);
+    }
+
+    public static @NonNull Workspace fromConfig(
+            @NonNull String legacyRoot,
+            @NonNull String rootsCsv,
+            @NonNull String pathMode,
+            int currentRootIndex) {
         PathMode mode = "VIRTUAL".equalsIgnoreCase(pathMode) ? PathMode.VIRTUAL : PathMode.REAL;
         if (!rootsCsv.isBlank()) {
             List<@NonNull WorkspaceRoot> roots =
                     Arrays.stream(rootsCsv.split(","))
                             .map(String::trim)
                             .filter(s -> !s.isEmpty())
-                            .map(p -> WorkspaceRoot.probe(Path.of(p), TrustMarker.OWNED))
+                            .map(p -> WorkspaceRoot.of(Path.of(p), TrustMarker.OWNED))
                             .toList();
-            return new Workspace(roots, mode, 0);
+            return new Workspace(roots, mode, currentRootIndex);
         }
         Path single =
                 legacyRoot.isBlank()
                         ? Path.of(System.getProperty("user.dir", "."))
                         : Path.of(legacyRoot);
+        if (currentRootIndex != 0) {
+            throw new IllegalArgumentException("currentRootIndex out of range");
+        }
         return Workspace.single(single, mode);
     }
 }

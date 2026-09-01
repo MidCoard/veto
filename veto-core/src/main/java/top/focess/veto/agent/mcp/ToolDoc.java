@@ -15,8 +15,8 @@ import org.jspecify.annotations.NonNull;
  *
  * <p>Resolution (see {@link ToolDocs#toolDocOf(Class)}): the annotation is read directly off the
  * args class; if absent there, off the args class's enclosing tool class. So a tool may declare
- * {@code @ToolDoc} on its args record (e.g. {@code ListDirTool.Args}, {@code LoadSkillArgs}) or on
- * its enclosing bean class (e.g. the nested agent tools in {@code MemoryTools}); both render.
+ * {@code @ToolDoc} on its args record (e.g. {@code ListDirTool.Args}, {@code LoadSkillTool.Args})
+ * or on its enclosing bean class (e.g. the nested agent tools in {@code MemoryTools}); both render.
  *
  * <p>Each semantic block has its own annotation member. Do not embed Markdown headings in a field.
  * The prompt renderer owns heading names and canonical order. {@link #resultContract()} owns every

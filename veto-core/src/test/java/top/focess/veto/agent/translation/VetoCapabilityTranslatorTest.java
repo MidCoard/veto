@@ -14,7 +14,7 @@ import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.mcp.ToolDocumentation;
 import top.focess.veto.agent.mcp.ToolResultFormat;
-import top.focess.veto.agent.mcp.tools.LoadSkillArgs;
+import top.focess.veto.agent.mcp.tools.LoadSkillTool;
 
 /**
  * Validates {@link VetoCapabilityTranslator} against the per-turn veto_pulse variant matrix and the
@@ -145,13 +145,13 @@ class VetoCapabilityTranslatorTest {
                         "Read a file.",
                         RiskCategory.READ_ONLY,
                         false,
-                        ToolDocs.nonNullClass(LoadSkillArgs.class),
+                        ToolDocs.nonNullClass(LoadSkillTool.Args.class),
                         Map.<String, ParamCategory>of());
         AgentToolDefinition agent =
                 new AgentToolDefinition(
                         "load_skill",
                         "Load a skill.",
-                        ToolDocs.nonNullClass(LoadSkillArgs.class),
+                        ToolDocs.nonNullClass(LoadSkillTool.Args.class),
                         Map.<String, ParamCategory>of());
         List<top.focess.veto.llm.core.ToolDefinition> flat =
                 translator.translateTools(List.of(nativeDef, agent));

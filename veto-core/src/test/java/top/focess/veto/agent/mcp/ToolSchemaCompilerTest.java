@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.mcp.tools.RunCommandTool;
+import top.focess.veto.agent.mcp.tools.RunTaskTool;
 import top.focess.veto.memory.MemoryTools;
 
 /**
@@ -68,6 +69,19 @@ class ToolSchemaCompilerTest {
                 network.path("type").asText(),
                 "network is a boolean capability request");
         assertFalse(contains(schema.path("required"), "network"), "network defaults to denied");
+        assertFalse(schema.path("properties").has("cwd"), "cwd is supplied by the session");
+    }
+
+    @Test
+    void processToolSchemasDoNotExposeWorkingDirectory() {
+        JsonNode runCommand =
+                ToolSchemaCompiler.compileFromRecord(
+                        ToolDocs.nonNullClass(RunCommandTool.Args.class));
+        JsonNode runTask =
+                ToolSchemaCompiler.compileFromRecord(ToolDocs.nonNullClass(RunTaskTool.Args.class));
+
+        assertFalse(runCommand.path("properties").has("cwd"));
+        assertFalse(runTask.path("properties").has("cwd"));
     }
 
     private static boolean contains(@NonNull JsonNode array, @NonNull String value) {

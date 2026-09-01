@@ -49,7 +49,8 @@ public final class RunCommandTool implements NativeTool<RunCommandTool.Args> {
                     Each `commands` entry is `{executable, args}` where `executable` is a binary name or path \
                     classified by the Gateway and resolved by the sandbox, and `args` is an argv array of \
                     literal strings; neither Veto nor a shell expands globs or environment variables. ToolEngine \
-                    routes execution through the session's SandboxSubstrate with a fixed `cwd` and \
+                    routes execution through the session's SandboxSubstrate using the Session-selected workspace \
+                    root as its working directory and \
                     Veto-controlled chaining. Ordinary executables use direct argv execution. On Windows, \
                     `.cmd`/`.bat` launchers use a restricted `ComSpec` bridge because CreateProcess cannot execute \
                     those formats directly; interpreter metacharacters are rejected. The `connect` mode decides \
@@ -102,7 +103,7 @@ public final class RunCommandTool implements NativeTool<RunCommandTool.Args> {
                     the OS `ComSpec` interpreter because CreateProcess cannot execute that file format directly; \
                     Veto rejects interpreter metacharacters in shim arguments. Prefer \
                     the fewest entries that accomplish the goal. \
-                    Do not attempt to chain around the sandbox - argv separation and the authorized cwd remain \
+                    Do not attempt to chain around the sandbox - argv separation and the permit-bound working directory remain \
                     enforced after approval.
                     """,
             examples = {

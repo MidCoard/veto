@@ -16,8 +16,7 @@ class VetoMdResolverTest {
         Path root = tmp.resolve("r1");
         Files.createDirectories(root);
         Files.writeString(root.resolve("VETO.md"), "# Law A\n- rule A1");
-        VetoMdResolver r =
-                new VetoMdResolver(List.of(WorkspaceRoot.probe(root, TrustMarker.OWNED)));
+        VetoMdResolver r = new VetoMdResolver(List.of(WorkspaceRoot.of(root, TrustMarker.OWNED)));
         String law = r.resolve();
         assertTrue(law.contains("# Law A"));
         assertTrue(law.contains("- rule A1"));
@@ -30,8 +29,7 @@ class VetoMdResolverTest {
         Files.createDirectories(root.resolve(".veto"));
         Files.writeString(root.resolve("VETO.md"), "# Law A\n- rule A1");
         Files.writeString(root.resolve(".veto/VETO.md"), "# Override\n- rule O1");
-        VetoMdResolver r =
-                new VetoMdResolver(List.of(WorkspaceRoot.probe(root, TrustMarker.OWNED)));
+        VetoMdResolver r = new VetoMdResolver(List.of(WorkspaceRoot.of(root, TrustMarker.OWNED)));
         String law = r.resolve();
         // override appended after primary (later rules win)
         assertTrue(law.indexOf("# Law A") < law.indexOf("# Override"));
@@ -43,8 +41,7 @@ class VetoMdResolverTest {
             throws Exception {
         Path root = tmp.resolve("r1");
         Files.createDirectories(root);
-        VetoMdResolver r =
-                new VetoMdResolver(List.of(WorkspaceRoot.probe(root, TrustMarker.OWNED)));
+        VetoMdResolver r = new VetoMdResolver(List.of(WorkspaceRoot.of(root, TrustMarker.OWNED)));
         assertEquals("", r.resolve());
     }
 
@@ -60,8 +57,8 @@ class VetoMdResolverTest {
         VetoMdResolver r =
                 new VetoMdResolver(
                         List.of(
-                                WorkspaceRoot.probe(r1, TrustMarker.OWNED),
-                                WorkspaceRoot.probe(r2, TrustMarker.OWNED)));
+                                WorkspaceRoot.of(r1, TrustMarker.OWNED),
+                                WorkspaceRoot.of(r2, TrustMarker.OWNED)));
         String law = r.resolve();
         assertTrue(law.indexOf("# Law R1") < law.indexOf("# Law R2"));
     }
@@ -77,7 +74,7 @@ class VetoMdResolverTest {
         boolean denied = veto.toFile().setReadable(false);
         try {
             VetoMdResolver r =
-                    new VetoMdResolver(List.of(WorkspaceRoot.probe(root, TrustMarker.OWNED)));
+                    new VetoMdResolver(List.of(WorkspaceRoot.of(root, TrustMarker.OWNED)));
             String law = r.resolve();
             if (denied) {
                 assertEquals("", law, "unreadable VETO.md should be skipped, not throw");

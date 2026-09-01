@@ -10,7 +10,9 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.mcp.Doc;
 import top.focess.veto.agent.mcp.NativeTool;
+import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RiskCategory;
+import top.focess.veto.agent.mcp.SecurityHint;
 import top.focess.veto.agent.mcp.ToolCallContextHolder;
 import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDoc;
@@ -114,8 +116,7 @@ public final class RunTaskTool implements NativeTool<RunTaskTool.Args> {
                         + " \"cwd\": \"/abs/app\", \"requestedTimeoutSeconds\": 0, \"effectiveTimeoutSeconds\": 600}"
             })
     public record Args(
-            @top.focess.veto.agent.mcp.SecurityHint(
-                            top.focess.veto.agent.mcp.ParamCategory.SHELL_COMMAND)
+            @SecurityHint(ParamCategory.SHELL_COMMAND)
                     @Doc("Exactly one command: {executable, args}. Background mode does not chain.")
                     @NonNull List<RunCommandTool.CommandInput> commands,
             @Doc(

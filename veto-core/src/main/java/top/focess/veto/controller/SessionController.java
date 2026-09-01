@@ -58,8 +58,8 @@ public class SessionController {
      * Creates a session from a pattern, declaring its workspace roots.
      *
      * @param body {@code pattern} and {@code workspaceRoots} (CSV, multi-root) are both required;
-     *     {@code name} is optional. A remote UI has no cwd to report, so it must name the workspace
-     *     roots explicitly - the request is rejected with 400 when either is missing/blank.
+     *     {@code name} is optional. {@code currentWorkspaceRootIndex} selects the root used for
+     *     relative paths and process execution and defaults to zero.
      */
     @PostMapping
     @SuppressWarnings(
@@ -78,6 +78,7 @@ public class SessionController {
                 pattern,
                 body.name(),
                 roots,
+                body.currentWorkspaceRootIndex() == null ? 0 : body.currentWorkspaceRootIndex(),
                 top.focess.veto.llm.core.ToolResultPresentationMode.canonicalize(
                         body.toolResultPresentation()));
     }
@@ -160,5 +161,6 @@ public class SessionController {
             String pattern,
             String name,
             String workspaceRoots,
+            Integer currentWorkspaceRootIndex,
             top.focess.veto.llm.core.ToolResultPresentationMode toolResultPresentation) {}
 }

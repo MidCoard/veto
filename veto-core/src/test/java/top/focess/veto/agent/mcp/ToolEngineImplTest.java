@@ -34,7 +34,9 @@ import top.focess.veto.agent.mcp.tools.ViewFileTool;
 import top.focess.veto.agent.mcp.tools.ViewTaskTool;
 import top.focess.veto.agent.mcp.tools.WriteToFileTool;
 import top.focess.veto.agent.workspace.PathMode;
+import top.focess.veto.agent.workspace.TrustMarker;
 import top.focess.veto.agent.workspace.Workspace;
+import top.focess.veto.agent.workspace.WorkspaceRoot;
 import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
 import top.focess.veto.sandbox.BackgroundTaskManager;
@@ -610,6 +612,85 @@ class ToolEngineImplTest {
         ToolResult result = executeAuthorized(engine, call, definition, tempDir);
         assertTrue(result.success(), "java -version should exit 0");
         assertNotNull(result.content());
+    }
+
+    @Test
+    void runCommandUsesTheSessionSelectedWorkspaceRoot(@TempDir @NonNull Path tempDir) {
+        ToolEngineImpl engine = newEngine();
+        Path first = tempDir.resolve("first");
+        Path selected = tempDir.resolve("selected");
+        assertDoesNotThrow(() -> Files.createDirectories(first));
+        assertDoesNotThrow(() -> Files.createDirectories(selected));
+        Workspace workspace =
+                new Workspace(
+                        List.of(
+                                WorkspaceRoot.of(first, TrustMarker.OWNED),
+                                WorkspaceRoot.of(selected, TrustMarker.OWNED)),
+                        PathMode.REAL,
+                        1);
+        String exe =
+                System.getProperty("os.name").toLowerCase().contains("win") ? "java.exe" : "java";
+        String javaBin = Path.of(System.getProperty("java.home"), "bin", exe).toString();
+        ToolCall call =
+                new ToolCall(
+                        "run_command",
+                        Map.of(
+                                "commands",
+                                List.of(
+                                        Map.of(
+                                                "executable",
+                                                javaBin,
+                                                "args",
+                                                List.of("-XshowSettings:properties", "-version"))),
+                                "timeout",
+                                30),
+                        "cid-selected-root");
+        ToolDefinition definition = definition(engine, "run_command");
+        ToolExecutionPermit permit = ToolExecutionPermit.capture(call, definition, workspace);
+        ToolCallContextHolder.set(
+                new ToolCallContext(
+                        "test-agent",
+                        UUID.randomUUID(),
+                        null,
+                        null,
+                        null,
+                        ToolResultPresentationMode.BASIC,
+                        permit));
+        try {
+            ToolResult result = engine.execute(call, definition);
+            assertTrue(result.success(), result.content());
+            assertTrue(
+                    result.content().contains(selected.toAbsolutePath().normalize().toString()),
+                    result.content());
+        } finally {
+            ToolCallContextHolder.clear();
+        }
+    }
+
+    @Test
+    void runCommandRejectsModelSuppliedWorkingDirectory(@TempDir @NonNull Path tempDir) {
+        ToolEngineImpl engine = newEngine();
+        ToolResult result =
+                engine.execute(
+                        new ToolCall(
+                                "run_command",
+                                Map.of(
+                                        "commands",
+                                        List.of(
+                                                Map.of(
+                                                        "executable",
+                                                        "java",
+                                                        "args",
+                                                        List.of("-version"))),
+                                        "cwd",
+                                        tempDir.toString(),
+                                        "timeout",
+                                        30),
+                                "cid-model-cwd"),
+                        definition(engine, "run_command"));
+
+        assertFalse(result.success());
+        assertTrue(result.content().contains("unknown parameter 'cwd'"), result.content());
     }
 
     @Test

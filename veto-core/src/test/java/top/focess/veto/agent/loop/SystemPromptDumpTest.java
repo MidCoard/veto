@@ -72,7 +72,8 @@ class SystemPromptDumpTest {
         List<ToolDefinition> flatTools =
                 translator.translateTools(
                         PromptCompiler.availableTools(mcpEngine.getActiveTools(null), true));
-        String law = workspace.vetoMdResolver().resolve();
+        Workspace renderedWorkspace = dumpWorkspace();
+        String law = renderedWorkspace.vetoMdResolver().resolve();
         String template = resolver.defaultPrompt();
 
         // Raw template, the full tool catalog (reference, pre-role-filter), and a plain inventory.
@@ -97,7 +98,14 @@ class SystemPromptDumpTest {
             for (DeployerPolicy policy : policies) {
                 write(
                         role + "-" + policy + ".md",
-                        render(role, policy, identityFor(role), roleTools, law, template));
+                        render(
+                                role,
+                                policy,
+                                identityFor(role),
+                                roleTools,
+                                law,
+                                template,
+                                renderedWorkspace));
             }
             // Per-role tool inventory so the role-scoping is visible at a glance.
             write("03-tools-" + role + ".md", inventory(roleTools));
@@ -196,18 +204,30 @@ class SystemPromptDumpTest {
             @NonNull String identity,
             @NonNull List<@NonNull ToolDefinition> tools,
             String law,
-            @NonNull String template) {
+            @NonNull String template,
+            @NonNull Workspace renderedWorkspace) {
         Map<String, String> blocks = new LinkedHashMap<>();
         blocks.put("LAW", PromptBlocks.law(law != null ? law : ""));
         blocks.put("IDENTITY", identity);
         blocks.put("ROLE", PromptBlocks.role(role));
-        blocks.put("WORKSPACE", PromptBlocks.workspace(workspace));
+        blocks.put("WORKSPACE", PromptBlocks.workspace(renderedWorkspace));
         blocks.put("ENVIRONMENT", PromptBlocks.environment());
         blocks.put("RESULT_CONVENTIONS", tools.isEmpty() ? "" : PromptBlocks.resultConventions());
         blocks.put("TOOLS", PromptBlocks.tools(tools));
         blocks.put("BOUNDARIES", PromptBlocks.boundaries(policy));
         blocks.put("SKILLS", PromptBlocks.skills(List.of()));
         return PromptTemplate.render(template, blocks);
+    }
+
+    private @NonNull Workspace dumpWorkspace() {
+        String roots = System.getenv("VETO_PROMPT_DUMP_WORKSPACE_ROOTS");
+        if (roots == null || roots.isBlank()) {
+            return workspace;
+        }
+        String indexValue = System.getenv("VETO_PROMPT_DUMP_CURRENT_ROOT_INDEX");
+        int currentRootIndex =
+                indexValue == null || indexValue.isBlank() ? 0 : Integer.parseInt(indexValue);
+        return Workspace.fromConfig("", roots, workspace.pathMode().name(), currentRootIndex);
     }
 
     private @NonNull String identityFor(@NonNull Role role) {

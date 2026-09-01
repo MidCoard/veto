@@ -2,7 +2,6 @@ package top.focess.veto.agent.workspace;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -10,21 +9,15 @@ import org.junit.jupiter.api.io.TempDir;
 class WorkspaceRootTest {
 
     @Test
-    void probesGitRepoAndBranch(@TempDir @org.jspecify.annotations.NonNull Path dir)
-            throws Exception {
-        Files.createDirectories(dir.resolve(".git"));
-        WorkspaceRoot root = WorkspaceRoot.probe(dir, TrustMarker.OWNED);
-        assertTrue(root.isGitRepo());
-        // currentBranch may be null if git not on PATH — assert only the field is reachable.
-        assertNotNull(root.hostPath());
+    void normalizesTheAuthorizedPath(@TempDir @org.jspecify.annotations.NonNull Path dir) {
+        WorkspaceRoot root = WorkspaceRoot.of(dir.resolve("child/.."), TrustMarker.OWNED);
+        assertEquals(dir.toAbsolutePath().normalize(), root.hostPath());
         assertEquals(TrustMarker.OWNED, root.trust());
     }
 
     @Test
-    void nonGitRootIsNotGitRepo(@TempDir @org.jspecify.annotations.NonNull Path dir) {
-        WorkspaceRoot root = WorkspaceRoot.probe(dir, TrustMarker.SHARED_GRANT);
-        assertFalse(root.isGitRepo());
-        assertNull(root.currentBranch());
+    void retainsItsAccessMarker(@TempDir @org.jspecify.annotations.NonNull Path dir) {
+        WorkspaceRoot root = WorkspaceRoot.of(dir, TrustMarker.SHARED_GRANT);
         assertEquals(TrustMarker.SHARED_GRANT, root.trust());
     }
 }

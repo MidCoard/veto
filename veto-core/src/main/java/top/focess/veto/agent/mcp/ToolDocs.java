@@ -88,8 +88,8 @@ public final class ToolDocs {
 
     /**
      * Derives the tool name from an args class: strips the {@code Args} suffix and converts
-     * CamelCase to snake_case. E.g. {@code ThinkArgs} -> {@code "think"}, {@code LoadSkillArgs} ->
-     * {@code "load_skill"}.
+     * CamelCase to snake_case. This is retained for standalone legacy definitions; registered tools
+     * declare their names explicitly.
      */
     public static @NonNull String toolNameOf(@NonNull Class<?> argsClass) {
         String simple = argsClass.getSimpleName();

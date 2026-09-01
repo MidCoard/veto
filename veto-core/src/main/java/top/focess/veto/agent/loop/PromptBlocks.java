@@ -97,9 +97,9 @@ public final class PromptBlocks {
 
     /**
      * The "## Workspace" block: mounts the session's workspace roots + path mode so the agent can
-     * address files with correct absolute paths. The native file tools take absolute host paths
-     * verbatim ({@link java.nio.file.Path#of}), so the agent must know its roots to construct them.
-     * Empty when the workspace has no roots.
+     * address files with correct absolute paths. The Gateway resolves and authorizes those paths
+     * against these roots before a native file tool executes. Empty when the workspace has no
+     * roots.
      */
     public static @NonNull String workspace(Workspace workspace) {
         if (workspace == null) {
@@ -114,8 +114,8 @@ public final class PromptBlocks {
         sb.append("## Workspace\n");
         sb.append(
                 "This session is pointed at the workspace below. Address files with **absolute"
-                        + " paths** rooted under one of these roots - the file tools take the path"
-                        + " verbatim.\n");
+                        + " paths** rooted under one of these roots; the Gateway resolves each path"
+                        + " to an authorized canonical target before execution.\n");
         sb.append("- Path mode: `").append(workspace.pathMode()).append("` - ");
         if (workspace.pathMode() == PathMode.VIRTUAL) {
             sb.append(
@@ -128,9 +128,6 @@ public final class PromptBlocks {
             sb.append("  - `").append(root.hostPath()).append("`");
             if (root.hostPath().equals(operational)) {
                 sb.append("  (operational root)");
-            }
-            if (root.isGitRepo() && root.currentBranch() != null) {
-                sb.append("  [git: ").append(root.currentBranch()).append("]");
             }
             sb.append('\n');
         }

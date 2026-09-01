@@ -88,8 +88,8 @@ public final class ToolContractValidator {
             case PROCESS_EXECUTION ->
                     require(
                             definition,
-                            definition.risk() == RiskCategory.SHELL_EXEC && hasPath && hasCommand,
-                            "PROCESS_EXECUTION requires SHELL_EXEC risk plus FILESYSTEM_PATH and SHELL_COMMAND parameters");
+                            definition.risk() == RiskCategory.SHELL_EXEC && !hasPath && hasCommand,
+                            "PROCESS_EXECUTION requires SHELL_EXEC risk and SHELL_COMMAND parameters; its working directory comes from the session permit, not a FILESYSTEM_PATH argument");
             case TASK_CONTROL ->
                     require(
                             definition,

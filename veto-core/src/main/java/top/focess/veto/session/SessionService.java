@@ -122,6 +122,18 @@ public class SessionService {
             String sessionName,
             @NonNull String workspaceRoots,
             @NonNull ToolResultPresentationMode toolResultPresentation) {
+        return createSession(
+                owner, patternName, sessionName, workspaceRoots, 0, toolResultPresentation);
+    }
+
+    @Transactional
+    public @NonNull SessionEntity createSession(
+            @NonNull String owner,
+            @NonNull String patternName,
+            String sessionName,
+            @NonNull String workspaceRoots,
+            int currentWorkspaceRootIndex,
+            @NonNull ToolResultPresentationMode toolResultPresentation) {
         AgentPatternEntity pattern =
                 patterns.findByNameAndOwner(patternName, owner)
                         .orElseThrow(
@@ -134,11 +146,21 @@ public class SessionService {
         // The workspace roots must exist before the agent can operate in them - create missing
         // directories up front so the model never has to mkdir its own workspace (observed live:
         // a model burning a turn on `cmd /c if not exist ... mkdir ...` for a fresh root).
-        for (String root : workspaceRoots.split(",")) {
-            String trimmed = root.trim();
-            if (trimmed.isEmpty()) {
-                continue;
-            }
+        List<String> declaredRoots =
+                Arrays.stream(workspaceRoots.split(","))
+                        .map(String::trim)
+                        .filter(root -> !root.isEmpty())
+                        .toList();
+        if (declaredRoots.isEmpty()) {
+            throw new IllegalArgumentException(
+                    Msg.get("error.session.workspaceInvalid", workspaceRoots, "no roots declared"));
+        }
+        if (currentWorkspaceRootIndex < 0 || currentWorkspaceRootIndex >= declaredRoots.size()) {
+            throw new IllegalArgumentException(
+                    "currentWorkspaceRootIndex must be between 0 and "
+                            + (declaredRoots.size() - 1));
+        }
+        for (String trimmed : declaredRoots) {
             try {
                 // Only normalized absolute workspace roots reach the filesystem operation.
                 //noinspection tainting
@@ -177,7 +199,11 @@ public class SessionService {
         SessionEntity session =
                 sessions.save(
                         new SessionEntity(
-                                owner, resolvedName, workspaceRoots, toolResultPresentation));
+                                owner,
+                                resolvedName,
+                                workspaceRoots,
+                                currentWorkspaceRootIndex,
+                                toolResultPresentation));
         ModelBinding cache = tierRegistry.resolve(owner, pattern.getTier());
         AgentEntity agent =
                 new AgentEntity(
@@ -301,6 +327,7 @@ public class SessionService {
                 agentService.userIdForOwner(owner),
                 owner,
                 session.getWorkspaceRoots(),
+                session.getCurrentWorkspaceRootIndex(),
                 session.getToolResultPresentation());
         session.touch();
         sessions.save(session);
@@ -439,6 +466,7 @@ public class SessionService {
                 agentService.userIdForOwner(owner),
                 owner,
                 session.getWorkspaceRoots(),
+                session.getCurrentWorkspaceRootIndex(),
                 session.getToolResultPresentation());
         session.touch();
         sessions.save(session);

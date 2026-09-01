@@ -417,8 +417,30 @@ public class AgentService {
             String owner,
             String workspaceRoots,
             @NonNull ToolResultPresentationMode toolResultPresentation) {
+        return getOrCreateAgent(
+                sessionId,
+                primaryAgentId,
+                binding,
+                history,
+                userId,
+                owner,
+                workspaceRoots,
+                0,
+                toolResultPresentation);
+    }
+
+    public @NonNull Agent getOrCreateAgent(
+            @NonNull String sessionId,
+            String primaryAgentId,
+            AgentRunner.@NonNull LlmBinding binding,
+            @NonNull List<TurnRecord> history,
+            @NonNull UUID userId,
+            String owner,
+            String workspaceRoots,
+            int currentWorkspaceRootIndex,
+            @NonNull ToolResultPresentationMode toolResultPresentation) {
         boolean[] created = {false};
-        Workspace workspace = buildWorkspace(workspaceRoots);
+        Workspace workspace = buildWorkspace(workspaceRoots, currentWorkspaceRootIndex);
         VetoAgent agent =
                 agents.computeIfAbsent(
                         sessionId,
@@ -770,10 +792,17 @@ public class AgentService {
      * (JVM working dir) to avoid re-probing the filesystem on every call.
      */
     public @NonNull Workspace buildWorkspace(String workspaceRoots) {
+        return buildWorkspace(workspaceRoots, 0);
+    }
+
+    public @NonNull Workspace buildWorkspace(String workspaceRoots, int currentWorkspaceRootIndex) {
         if (workspaceRoots == null || workspaceRoots.isBlank()) {
+            if (currentWorkspaceRootIndex != 0) {
+                throw new IllegalArgumentException("currentWorkspaceRootIndex out of range");
+            }
             return defaultWorkspace;
         }
-        return Workspace.fromConfig("", workspaceRoots, pathMode);
+        return Workspace.fromConfig("", workspaceRoots, pathMode, currentWorkspaceRootIndex);
     }
 
     /**

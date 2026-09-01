@@ -20,8 +20,8 @@ class WorkspaceTest {
         Workspace ws =
                 new Workspace(
                         List.of(
-                                WorkspaceRoot.probe(a, TrustMarker.OWNED),
-                                WorkspaceRoot.probe(b, TrustMarker.OWNED)),
+                                WorkspaceRoot.of(a, TrustMarker.OWNED),
+                                WorkspaceRoot.of(b, TrustMarker.OWNED)),
                         PathMode.VIRTUAL,
                         0);
         assertEquals(2, ws.roots().size());
@@ -44,9 +44,7 @@ class WorkspaceTest {
                 IllegalArgumentException.class,
                 () ->
                         new Workspace(
-                                List.of(WorkspaceRoot.probe(a, TrustMarker.OWNED)),
-                                PathMode.REAL,
-                                5));
+                                List.of(WorkspaceRoot.of(a, TrustMarker.OWNED)), PathMode.REAL, 5));
     }
 
     @Test
@@ -57,6 +55,17 @@ class WorkspaceTest {
         Workspace ws = Workspace.single(a, PathMode.REAL);
         assertEquals(1, ws.roots().size());
         assertEquals(PathMode.REAL, ws.pathMode());
+    }
+
+    @Test
+    void configSelectsAnExplicitCurrentRoot(@TempDir @org.jspecify.annotations.NonNull Path tmp)
+            throws Exception {
+        Path first = Files.createDirectories(tmp.resolve("first"));
+        Path selected = Files.createDirectories(tmp.resolve("selected"));
+        Workspace ws = Workspace.fromConfig("", first + "," + selected, PathMode.REAL.name(), 1);
+
+        assertEquals(1, ws.currentRootIndex());
+        assertEquals(selected.toAbsolutePath().normalize(), ws.currentHostRoot());
     }
 
     @Test

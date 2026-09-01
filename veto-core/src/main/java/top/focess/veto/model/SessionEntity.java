@@ -32,6 +32,10 @@ public class SessionEntity {
     @Column(name = "workspace_roots")
     private String workspaceRoots;
 
+    /** Index of the root used for relative paths and process execution. Null legacy rows mean 0. */
+    @Column(name = "current_workspace_root_index")
+    private Integer currentWorkspaceRootIndex;
+
     @Column(name = "primary_agent_id")
     private String primaryAgentId;
 
@@ -68,10 +72,20 @@ public class SessionEntity {
             @NonNull String name,
             String workspaceRoots,
             @NonNull ToolResultPresentationMode toolResultPresentation) {
+        this(owner, name, workspaceRoots, 0, toolResultPresentation);
+    }
+
+    public SessionEntity(
+            @NonNull String owner,
+            @NonNull String name,
+            String workspaceRoots,
+            int currentWorkspaceRootIndex,
+            @NonNull ToolResultPresentationMode toolResultPresentation) {
         this.id = UUID.randomUUID().toString();
         this.owner = owner;
         this.name = name;
         this.workspaceRoots = workspaceRoots;
+        this.currentWorkspaceRootIndex = currentWorkspaceRootIndex;
         this.toolResultPresentation = toolResultPresentation.canonical();
         this.createdAt = Instant.now();
         this.lastActiveAt = this.createdAt;
@@ -99,6 +113,10 @@ public class SessionEntity {
 
     public void setWorkspaceRoots(String workspaceRoots) {
         this.workspaceRoots = workspaceRoots;
+    }
+
+    public int getCurrentWorkspaceRootIndex() {
+        return currentWorkspaceRootIndex == null ? 0 : currentWorkspaceRootIndex;
     }
 
     public String getPrimaryAgentId() {

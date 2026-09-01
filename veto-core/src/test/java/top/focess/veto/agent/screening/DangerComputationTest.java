@@ -207,10 +207,10 @@ class DangerComputationTest {
         Files.createDirectories(sharedRoot);
 
         top.focess.veto.agent.workspace.WorkspaceRoot owned =
-                top.focess.veto.agent.workspace.WorkspaceRoot.probe(
+                top.focess.veto.agent.workspace.WorkspaceRoot.of(
                         ownedRoot, top.focess.veto.agent.workspace.TrustMarker.OWNED);
         top.focess.veto.agent.workspace.WorkspaceRoot shared =
-                top.focess.veto.agent.workspace.WorkspaceRoot.probe(
+                top.focess.veto.agent.workspace.WorkspaceRoot.of(
                         sharedRoot, top.focess.veto.agent.workspace.TrustMarker.SHARED_GRANT);
 
         Workspace ws = new Workspace(List.of(owned, shared), PathMode.REAL, 0);
