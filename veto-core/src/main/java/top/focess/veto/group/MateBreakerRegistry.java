@@ -9,10 +9,9 @@ import org.springframework.stereotype.Component;
 import top.focess.veto.agent.loop.LoopBreaker;
 
 /**
- * The per-Mate breaker registry (Part 2.5 — per-agent breakers, no group breaker). Each Mate in an
- * active group has its own {@link LoopBreaker} tracking the model-call count between two
- * dispatches. On trip, the Mate posts a terminal {@code STATUS} to the Leader and the orchestrator
- * re-assigns the node.
+ * Per-Mate breaker registry. Each Mate in an active group has its own {@link LoopBreaker} tracking
+ * the model-call count between two dispatches. On trip, the Mate posts a terminal {@code STATUS} to
+ * the Leader and the orchestrator re-assigns the node.
  *
  * <p>Replaced the earlier "group breaker" (iteration count + wall-clock + cumulative cost) with the
  * single per-agent metric; cumulative cost remains display-only.

@@ -9,7 +9,7 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-/** Tests for the Part 2 group orchestration engine (leader_mate_topology.md §3). */
+/** Tests for the leader-and-mate group orchestration lifecycle. */
 @SuppressWarnings("initialization.field.uninitialized")
 class GroupOrchestratorTest {
 

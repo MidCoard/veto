@@ -9,15 +9,15 @@ import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
 
 /**
- * A group is a Leader-Mate collaboration spawned via {@code create_group} (delegation_spawning.md).
- * It owns its Blackboard, its ExecutionDAG, and the set of Mates under the Leader.
+ * A group is a Leader-Mate collaboration spawned via {@code create_group}. It owns its Blackboard,
+ * its ExecutionDAG, and the set of Mates under the Leader.
  *
  * <p>A Group's lifetime:
  *
  * <ol>
  *   <li>{@code create_group} → state {@code ACTIVE}; Leader initialized, DAG authored.
- *   <li>Engine drives the DAG: dispatches dispatchable nodes, ingests Blackboard messages, runs the
- *       verify loop (leader_mate_topology.md §3).
+ *   <li>The engine drives the DAG: dispatches ready nodes, ingests Blackboard messages, and
+ *       verifies completed work.
  *   <li>All nodes {@code VERIFIED} → state {@code COMPLETED}; the Leader inspects the reports and
  *       synthesizes the result.
  *   <li>{@code disband_group} → state {@code DISBANDED}; Blackboard retained for audit.

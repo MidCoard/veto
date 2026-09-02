@@ -9,9 +9,9 @@ import top.focess.veto.agent.mcp.ToolDefinition;
 import top.focess.veto.agent.skills.Skill;
 
 /**
- * JPA persistence for {@link AgentPersona} (Part 5 persona DB persistence). The persona's skills +
- * whitelisted tools are persisted as comma-separated values; the production wiring would resolve
- * tool names -> {@link ToolDefinition} and skill names -> {@link Skill} at load time.
+ * JPA persistence for {@link AgentPersona}. The persona's skills and whitelisted tools are
+ * persisted as comma-separated values; runtime wiring resolves tool names -> {@link ToolDefinition}
+ * and skill names -> {@link Skill} at load time.
  *
  * <p>The model tier is not persisted here - it lives on the {@link
  * top.focess.veto.model.AgentEntity} (sourced from the pattern) and is resolved to a concrete model

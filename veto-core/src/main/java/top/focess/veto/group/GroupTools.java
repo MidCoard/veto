@@ -19,13 +19,12 @@ import top.focess.veto.agent.mcp.ToolErrors;
 import top.focess.veto.agent.mcp.ToolResultFormat;
 
 /**
- * The agent-facing group management tools (delegation_spawning.md, blackboard.md). Model B: the
- * caller of {@code create_group} <em>transforms</em> into the Leader in place (state, not type) and
- * authors the execution DAG node by node via {@code create_node} / {@code remove_node} (defined in
- * {@link DagTools}). The Leader tears the group down with {@code disband_group} (context-derived,
- * no id) which reverses the transform back to STANDALONE. {@code inspect_group} gives the Leader a
- * bounded-wait view of DAG state and Mate reports; Mates report via their {@link MateAgent}
- * wrapper.
+ * Agent-facing group management tools. The caller of {@code create_group} <em>transforms</em> into
+ * the Leader in place (state, not type) and authors the execution DAG node by node via {@code
+ * create_node} / {@code remove_node} (defined in {@link DagTools}). The Leader tears the group down
+ * with {@code disband_group} (context-derived, no id) which reverses the transform back to
+ * STANDALONE. {@code inspect_group} gives the Leader a bounded-wait view of DAG state and Mate
+ * reports; Mates report via their {@link MateAgent} wrapper.
  *
  * <p>These are agent tools - they carry {@link top.focess.veto.agent.mcp.RiskCategory#AGENT}; the
  * Gateway returns {@code NotScreened}. Each tool resolves the caller's group from the {@link

@@ -9,13 +9,12 @@ import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 
 /**
- * The append-only group message log (blackboard.md). Strict hub-and-spoke: a Mate can only post to
- * {@code receiverId == "LEADER"}; a Leader can dispatch to any Mate. Messages are ordered by {@code
- * turnSeq}; reads observe a consistent MVCC snapshot.
+ * The append-only group message log. Strict hub-and-spoke: a Mate can only post to {@code
+ * receiverId == "LEADER"}; a Leader can dispatch to any Mate. Messages are ordered by {@code
+ * turnSeq}; reads observe a consistent snapshot.
  *
- * <p>Tenant-isolated: a Mate/Leader can only read its own group's messages. (RLS-equivalent
- * filtering happens here in-process for the MVP; production RLS is in {@code
- * database_concurrency_isolation.md §2}.)
+ * <p>Tenant-isolated: a Mate or Leader can only read its own group's messages. The in-process
+ * implementation enforces this boundary before returning messages.
  */
 @Component
 public class Blackboard {

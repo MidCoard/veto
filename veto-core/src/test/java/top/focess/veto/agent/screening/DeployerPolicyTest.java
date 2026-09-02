@@ -19,7 +19,7 @@ import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.agent.workspace.WorkspaceRoot;
 import top.focess.veto.llm.core.ToolCall;
 
-/** Tests for the Part 3.6 group/multi-user deployer policies (SANDBOXED, TENANT). */
+/** Tests for group and multi-user deployer policies (SANDBOXED and TENANT). */
 class DeployerPolicyTest {
 
     @Test

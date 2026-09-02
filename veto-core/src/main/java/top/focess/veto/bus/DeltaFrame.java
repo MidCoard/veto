@@ -12,9 +12,9 @@ import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 
 /**
- * The Part 8 Delta-frame broker abstraction. A {@code DeltaFrame} is a single streaming update
- * emitted by the agent loop and consumed by a transport (terminal, REST client, WebSocket session).
- * Frames are ordered by {@code sequence} within a session.
+ * A single streaming update emitted by the agent loop and consumed by a transport such as a
+ * terminal, REST client, or WebSocket session. Frames are ordered by {@code sequence} within a
+ * session.
  *
  * <p>Frame kinds:
  *

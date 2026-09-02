@@ -22,8 +22,7 @@ import org.springframework.stereotype.Component;
 import top.focess.veto.agent.mcp.ToolDocs;
 
 /**
- * The Part 5 §4.1 kernel-level process-containment wall used by {@link
- * ConstrainedSubprocessSubstrate}.
+ * Kernel-level process containment used by {@link ConstrainedSubprocessSubstrate}.
  *
  * <p>Platform support:
  *

@@ -21,7 +21,7 @@ import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.ToolCall;
 
 /**
- * Tests for the permission-grant system (screening_model.md §7.1). Covers:
+ * Tests for the session-scoped permission-grant system. Covers:
  *
  * <ul>
  *   <li>Read grants match by directory prefix + the exact read tool (1.0.72: per-tool, not family)

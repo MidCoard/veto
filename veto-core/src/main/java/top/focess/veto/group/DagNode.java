@@ -5,8 +5,8 @@ import java.util.Set;
 import org.jspecify.annotations.NonNull;
 
 /**
- * A single node in the group's Execution DAG (execution_dag.md). Each node is a unit of work
- * assigned to a single Mate, with explicit dependencies on other nodes.
+ * A single node in the group's execution DAG. Each node is a unit of work assigned to one Mate,
+ * with explicit dependencies on other nodes.
  */
 public record DagNode(
         @NonNull String nodeId,

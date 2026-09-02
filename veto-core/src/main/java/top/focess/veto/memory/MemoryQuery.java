@@ -6,8 +6,8 @@ import org.jspecify.annotations.NonNull;
 
 /**
  * A query against the {@link MemoryStore}. Carries the query text (to be embedded at search time),
- * scope filters (tier / session / project), top-K, and a similarity score floor (results below the
- * floor are not returned — "better no memory than a wrong one", long_term_memory_tiers.md §5).
+ * scope filters (tier, session, and project), top-K, and a similarity score floor. Results below
+ * the floor are not returned to avoid injecting weakly related memories.
  */
 public record MemoryQuery(
         @NonNull String queryText,

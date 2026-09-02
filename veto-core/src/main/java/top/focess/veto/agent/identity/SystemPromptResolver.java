@@ -10,10 +10,8 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 
 /**
- * Resolves the agent's base system prompt (Layer 1 of the {@code PromptCompiler} assembly). The
- * default is the shipped Veto agent template documented by {@code
- * plans/mvp-core/part5_agent/agent_identity_persona.md} and bundled as the classpath resource
- * {@code veto/default-system-prompt.md}.
+ * Resolves the agent's base system prompt (Layer 1 of the {@code PromptCompiler} assembly) from the
+ * bundled classpath resource {@code veto/default-system-prompt.md}.
  *
  * <p>The current implementation returns the bundled default. Per-user prompt-file bootstrapping and
  * editing are not implemented and must not be presented as active behavior. Because the resource is
@@ -28,10 +26,10 @@ public class SystemPromptResolver {
 
     private static final @NonNull String RESOURCE = "veto/default-system-prompt.md";
 
-    /** §4.1 default agent name. */
+    /** Default agent name. */
     public static final @NonNull String NAME = "VetoCoreAgent";
 
-    /** §4.1 default agent description. */
+    /** Default agent description. */
     public static final @NonNull String DESCRIPTION =
             "General-purpose engineering assistant for workspace and code automation.";
 

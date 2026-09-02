@@ -9,12 +9,11 @@ import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 
 /**
- * The in-process registry of active Groups. {@code create_group} creates a Group and stores it
- * here; {@code disband_group} removes it (the Blackboard is retained for audit per {@code
- * blackboard.md §5.2}).
+ * The in-process registry of active Groups. {@code create_group} creates and stores a Group; {@code
+ * disband_group} marks it disbanded while retaining its Blackboard for audit.
  *
- * <p>For the MVP path, groups live in the JVM process. Production would persist the Group metadata
- * (state + DAG + members) so a Leader crash can be reconstructed.
+ * <p>Groups currently live in the JVM process. A persistent implementation would store state, DAG,
+ * and member metadata so a Leader can be reconstructed after a crash.
  */
 @Component
 public class GroupRegistry {

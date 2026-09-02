@@ -15,10 +15,10 @@ import org.jspecify.annotations.NonNull;
  * #responseSchema} is present, providers use it as the {@code response_format}; otherwise they fall
  * back to a provider default.
  *
- * <p>Security note: this object intentionally does <b>not</b> carry a plaintext API key. Per the
- * Trust Model and the vault Vault design, credentials are referenced by {@code credentialKey} and
- * resolved at call time by the {@code CredentialResolver}, so secrets never live in a request
- * object that may be logged, serialized, or echoed into the audit trail.
+ * <p>Security note: this object intentionally does <b>not</b> carry a plaintext API key.
+ * Credentials are referenced by {@code credentialKey} and resolved at call time by the {@code
+ * CredentialResolver}, so secrets never live in a request object that may be logged, serialized, or
+ * echoed into the audit trail.
  */
 public record VetoRequest(
         @NonNull String systemPrompt,

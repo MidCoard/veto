@@ -15,10 +15,10 @@ import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.memory.embedder.Embedder;
 
 /**
- * A {@link MemoryStore} backed by the in-memory {@link VectorIndex} (a brute-force cosine
- * similarity index, the MVP reference for the pgvector production path). Stores memories in a
- * thread-safe map + vector index; supports the two-axis abstraction (Axis A storage/query is this
- * vector index; Axis B triggering is whatever calls search).
+ * A {@link MemoryStore} backed by the in-memory {@link VectorIndex}, which performs brute-force
+ * cosine similarity search. It stores memories in a thread-safe map + vector index; supports the
+ * two-axis abstraction (Axis A storage/query is this vector index; Axis B triggering is whatever
+ * calls search).
  *
  * <p>Activated by setting {@code veto.memory.store=vector}. Falls back to {@link
  * InMemoryMemoryStore} (default) or {@link JpaMemoryStore} otherwise.

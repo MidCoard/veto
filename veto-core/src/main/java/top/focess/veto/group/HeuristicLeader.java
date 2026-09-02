@@ -9,10 +9,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * The Leader's reasoning stub (Part 2 LLM-driven orchestration). The real Leader is a Top-Tier LLM
- * agent that authors the DAG, chooses Mates, decides when to escalate on FAILED, and triggers
- * Strategic Pivot. This {@code HeuristicLeader} is a deterministic stand-in that performs those
- * decisions by simple rules:
+ * A deterministic stand-in for an LLM-backed Leader. It authors the DAG, chooses Mates, decides
+ * when to escalate failed work, and triggers a strategic pivot using simple rules:
  *
  * <ul>
  *   <li><b>Mate assignment</b>: for each PENDING node, pick the Mate whose skillset matches the
@@ -26,8 +24,8 @@ import org.springframework.stereotype.Component;
  *       without an ACCEPT, the engine re-plans all that Mate's PENDING nodes.
  * </ul>
  *
- * <p>This is the MVP path. A real LLM Leader would replace these heuristics with reasoning calls
- * (re-authoring the DAG, deciding on backoff, etc.).
+ * <p>An LLM-backed Leader can replace these rules with model decisions such as re-authoring the DAG
+ * or choosing a retry strategy.
  */
 @Component
 public class HeuristicLeader {
@@ -106,8 +104,8 @@ public class HeuristicLeader {
             // Fallback: any Mate
             candidates.addAll(mates.keySet());
         }
-        // Sort by least-loaded (fewest RUNNING assignments) — for the MVP just return
-        // the first candidate; a real Leader would query the live state.
+        // This implementation returns the first candidate; an LLM-backed Leader can inspect live
+        // assignment state before choosing.
         return candidates.get(0);
     }
 
@@ -192,8 +190,8 @@ public class HeuristicLeader {
      * Decide whether the group should pivot (per Leader heuristics). Returns true when:
      *
      * <ul>
-     *   <li>any single Mate has more than {@code pivotThreshold} messages without an ACCEPT
-     *       (Progress Deadlock per the LLD), or
+     *   <li>any single Mate has more than {@code pivotThreshold} messages without an ACCEPT, which
+     *       indicates progress deadlock, or
      *   <li>the group's active reasoning buffer is over the saturation threshold (Context
      *       Saturation).
      * </ul>
@@ -216,16 +214,16 @@ public class HeuristicLeader {
     /**
      * Compute the context saturation ratio for a group. This is a heuristic measure of how "full"
      * the group's reasoning context is, based on the number of messages, artifacts, and DAG nodes.
-     * For the MVP, this returns a simple ratio based on DAG size; a real LLM Leader would use token
-     * counting or embedding-based similarity.
+     * This implementation returns a simple ratio based on DAG size; an LLM-backed Leader could use
+     * token counting or embedding-based similarity.
      *
      * @return a value between 0.0 (empty) and 1.0 (saturated)
      */
     public double contextSaturation(@NonNull Group group) {
         ExecutionDag dag = group.dag();
         int nodeCount = dag.nodes().size();
-        // Simple heuristic: assume saturation at ~20 nodes (arbitrary MVP threshold)
-        // A real implementation would count tokens in the blackboard + DAG.
+        // Simple heuristic: assume saturation at about 20 nodes. A model-aware implementation could
+        // count tokens in the Blackboard and DAG.
         double ratio = nodeCount / 20.0;
         return Math.min(1.0, ratio);
     }

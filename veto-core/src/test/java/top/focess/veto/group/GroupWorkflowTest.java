@@ -9,7 +9,7 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-/** Tests for the Part 2 group workflow core (Group, ExecutionDag, Blackboard, GroupRegistry). */
+/** Tests for the group workflow core (Group, ExecutionDag, Blackboard, GroupRegistry). */
 @SuppressWarnings("initialization.field.uninitialized")
 class GroupWorkflowTest {
 

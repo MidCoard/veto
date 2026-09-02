@@ -33,10 +33,10 @@ public class IngressDefense {
             LoggerFactory.getLogger("top.focess.veto.agent.intercept.IngressDefense");
 
     /**
-     * The advisory semantic masker (Part 3.3). Layered over the deterministic {@link SecretMasker}
-     * floor: it consults the local SLM to flag likely-exfiltration observations, while always
-     * applying the deterministic redaction regardless of SLM availability. Nullable so the no-arg
-     * construction path (existing tests, no SLM configured) degrades to deterministic-only.
+     * The advisory semantic masker, layered over the deterministic {@link SecretMasker} floor. It
+     * consults the local SLM to flag likely-exfiltration observations while always applying the
+     * deterministic redaction regardless of SLM availability. Nullable so the no-arg construction
+     * path (existing tests, no SLM configured) degrades to deterministic-only.
      */
     private final SemanticMasker semanticMasker;
 
@@ -81,8 +81,8 @@ public class IngressDefense {
 
         // apply accept_and_mask: scrub secrets from read / exec observations before they enter
         // context. Default-on; the caller's flag is authoritative. Writes have no observation
-        // content to mask (they return void / success), so we skip them. The SLM semantic masker
-        // (Part 3.3) is the advisory layer over the deterministic SecretMasker floor — it always
+        // content to mask (they return void / success), so we skip them. The SLM semantic masker is
+        // the advisory layer over the deterministic SecretMasker floor — it always
         // applies the deterministic redaction and may additionally surface a HighRiskSignal.
         if (maskObservation
                 && (def.risk() == RiskCategory.READ_ONLY

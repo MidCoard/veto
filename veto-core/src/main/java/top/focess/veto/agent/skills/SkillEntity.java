@@ -11,10 +11,9 @@ import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 
 /**
- * JPA persistence for a skill's integrity hash (Part 5 "skill DB hash storage"). The hash is the
- * tamper-evidence anchor — the body itself lives in the {@code SKILL.md} file in the personal /
- * project skill directory; the database only stores the hash + metadata needed to detect tampering
- * on load.
+ * JPA persistence for a skill's integrity hash. The hash is the tamper-evidence anchor — the body
+ * itself lives in the {@code SKILL.md} file in the personal or project skill directory; the
+ * database only stores the hash + metadata needed to detect tampering on load.
  *
  * <p>Unique key on {@code (name, sourceType)} — the same skill name may exist in multiple source
  * tiers (NATIVE, PERSONAL, PROJECT); the tier is part of the identity.

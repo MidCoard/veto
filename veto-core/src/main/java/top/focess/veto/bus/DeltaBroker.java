@@ -13,8 +13,8 @@ import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 
 /**
- * The Part 8 Delta-frame broker. Sits between the agent loop and the transport layer ({@link
- * WebSocketBus}); multiplexes per-session {@link DeltaFrame} streams to subscribed consumers.
+ * Sits between the agent loop and the transport layer ({@link WebSocketBus}) and multiplexes
+ * per-session {@link DeltaFrame} streams to subscribed consumers.
  *
  * <p>Per-session sequence is monotonic (assigned by the broker on publish). Consumers subscribe to
  * a session id and receive frames in order. The transport layer (e.g. the WebSocket bus) is one

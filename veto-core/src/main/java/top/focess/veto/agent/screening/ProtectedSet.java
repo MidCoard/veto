@@ -10,8 +10,8 @@ import org.jspecify.annotations.NonNull;
 /**
  * The PROTECTED protected set — paths default-blocked (CRITICAL on access). Seeded with deployer
  * defaults: ~/.veto/users/{veto_user_id}/, ~/.ssh, ~/.aws, ~/.gnupg and each workspace root's
- * {@code .env} (spec §6). The immutable value is resolved from deployer configuration for each
- * user/workspace. covers() is canonical prefix match. Under FULL_ACCESS the set is empty.
+ * {@code .env}. The immutable value is resolved from deployer configuration for each user and
+ * workspace. {@link #covers} uses canonical prefix matching. Under FULL_ACCESS the set is empty.
  */
 public record ProtectedSet(@NonNull Set<Path> paths) {
 
@@ -24,8 +24,8 @@ public record ProtectedSet(@NonNull Set<Path> paths) {
     }
 
     /**
-     * Seeded with deployer defaults per spec §6: {@code ~/.veto/users/{vetoUserId}/}, {@code
-     * ~/.ssh}, {@code ~/.aws}, {@code ~/.gnupg}, plus {@code <root>/.env} for each workspace root.
+     * Creates the deployer defaults: {@code ~/.veto/users/{vetoUserId}/}, {@code ~/.ssh}, {@code
+     * ~/.aws}, {@code ~/.gnupg}, plus {@code <root>/.env} for each workspace root.
      */
     public static @NonNull ProtectedSet withDeployerDefaults(
             @NonNull String vetoUserId, @NonNull List<Path> workspaceRoots) {

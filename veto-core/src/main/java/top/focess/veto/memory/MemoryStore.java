@@ -6,20 +6,19 @@ import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.TurnRecord;
 
 /**
- * The memory storage and query interface (long_term_memory_tiers.md §7.1, Axis A). All memory
- * backends — pgvector, graph/entity, KV/relational, file — implement this same surface. The
- * agent-facing tools (recall_session, recall_insights, write_insight, forget) are thin wrappers
- * over this interface.
+ * The memory storage and query interface. All memory backends — pgvector, graph/entity,
+ * KV/relational, or file — implement this same surface. The agent-facing tools (recall_session,
+ * recall_insights, write_insight, forget) are thin wrappers over this interface.
  *
- * <p>Implementations must enforce tenant isolation: a query for user U must only see memories owned
- * by U (per database_concurrency_isolation.md §2; RLS + application-side filters).
+ * <p>Implementations must enforce tenant isolation: a query for user U may only return memories
+ * owned by U, using database row-level security and application-side filters as appropriate.
  */
 public interface MemoryStore {
 
     /**
-     * Forgiving retrieval (long_term_memory_tiers.md §5). Returns up to {@code query.topK()}
-     * memories whose embedding cosine-similarity to the query embedding is at or above the
-     * configured score floor, ranked descending. Results carry their source attribution.
+     * Forgiving retrieval. Returns up to {@code query.topK()} memories whose embedding
+     * cosine-similarity to the query embedding is at or above the configured score floor, ranked
+     * descending. Results carry their source attribution.
      */
     @NonNull List<ScoredMemory> search(@NonNull MemoryQuery query);
 
@@ -27,9 +26,8 @@ public interface MemoryStore {
     @NonNull MemoryId add(@NonNull Memory memory);
 
     /**
-     * Capture one turn's content into Session LTM (long_term_memory_tiers.md §3.1 capture point).
-     * The engine calls this at the capture points (after tool execution, after a thought, after a
-     * user prompt). The content is already masked at the capture point.
+     * Captures one turn's already-masked content into session memory. The engine calls this after
+     * tool execution, after a thought, and after a user prompt.
      */
     void capture(@NonNull TurnRecord turn, @NonNull UUID sessionId, @NonNull UUID userId);
 

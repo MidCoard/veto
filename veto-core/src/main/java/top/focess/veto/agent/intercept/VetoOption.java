@@ -6,11 +6,10 @@ import org.jspecify.annotations.NonNull;
 
 /**
  * A resolution option offered at a veto prompt. The offered set is determined by the tool's {@link
- * VetoScenario} (screening_model.md §8). The {@code _LIKE_THIS} variants create a permission grant
- * that converts future matching {@code ASK} calls into {@code APPROVE} without a prompt; the
- * non-{@code _LIKE_THIS} variants approve just this call. The {@code ACCEPT_AND_MASK_*} variants
- * apply output masking to the result before it enters context; the plain {@code ACCEPT_*} variants
- * do not.
+ * VetoScenario}. The {@code _LIKE_THIS} variants create a permission grant that converts future
+ * matching {@code ASK} calls into {@code APPROVE} without a prompt; the non-{@code _LIKE_THIS}
+ * variants approve just this call. The {@code ACCEPT_AND_MASK_*} variants apply output masking to
+ * the result before it enters context; the plain {@code ACCEPT_*} variants do not.
  */
 @SuppressWarnings(
         "DeprecatedIsStillUsed") // Legacy aliases intentionally remain behaviorally active.
@@ -75,8 +74,8 @@ public enum VetoOption {
     DECLINE_AND_CONTINUE,
 
     // ── Legacy aliases (backward-compat for older callers) ────────────────────
-    // The LLD's per-tool option sets supersede these; they remain as aliases so older
-    // call-sites and tests still compile. New code should use the per-tool names above.
+    // The per-tool option sets supersede these aliases. They remain so older call sites and tests
+    // still compile; new code should use the per-tool names above.
     @Deprecated
     READ_MASK,
     @Deprecated

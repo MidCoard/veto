@@ -7,7 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import org.junit.jupiter.api.Test;
 
-/** Tests for the JSON-RPC client (Part 5 remote-MCP tools/list discovery + stdio/SSE execution). */
+/** Tests for remote MCP tool discovery and invocation over JSON-RPC transports. */
 class McpJsonRpcClientTest {
 
     @Test

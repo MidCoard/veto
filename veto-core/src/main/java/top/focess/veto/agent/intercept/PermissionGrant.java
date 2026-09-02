@@ -12,14 +12,14 @@ import org.jspecify.annotations.NonNull;
  * <ul>
  *   <li>Session-scoped (lifetime = the agent's session; cleared on terminate).
  *   <li>ASK-only (a grant never lets a CRITICAL call through; the deterministic floor re-runs
- *       path/shell classification regardless — secret/protected/out-of-scope paths refuse even with
- *       a grant, screening_model.md §7.2 #3).
+ *       path/shell classification regardless, so secret, protected, or out-of-scope paths remain
+ *       refused even with a grant).
  *   <li>Identical-match on the match key (not fuzzy) — structural, byte-exact on the matched
  *       positions.
  *   <li>Audited + revocable (the user can see what's been granted and clear them).
  * </ul>
  *
- * <p>Three flavours correspond to the three match-key shapes per screening_model.md §7.1:
+ * <p>Three grant types correspond to the supported match-key shapes:
  *
  * <ul>
  *   <li>{@link ReadGrant} — directory prefix (canonical) + the exact read tool + flag-shape.
@@ -123,10 +123,10 @@ public sealed interface PermissionGrant
 
     /**
      * Command grant: matches future {@code run_command} calls by <b>executable + leading
-     * subcommand(s) + flag presence/structure</b> (screening_model.md §7.1). Value positions (e.g.
-     * the {@code -m} message, a branch name) are wildcarded — any value accepted. Paths in args are
-     * never wildcarded — re-screened every call (this happens at the danger floor; matching here
-     * confirms the structural shape only).
+     * subcommand(s) + flag presence/structure</b>. Value positions (e.g. the {@code -m} message, a
+     * branch name) are wildcarded — any value accepted. Paths in args are never wildcarded —
+     * re-screened every call (this happens at the danger floor; matching here confirms the
+     * structural shape only).
      */
     record CommandGrant(
             @NonNull String executable,

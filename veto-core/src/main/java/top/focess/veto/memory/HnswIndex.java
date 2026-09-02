@@ -15,8 +15,8 @@ import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 
 /**
- * A Hierarchical Navigable Small World (HNSW) index — approximate nearest neighbor search with
- * sub-linear query time. The reference implementation for the pgvector production path.
+ * A Hierarchical Navigable Small World (HNSW) index for approximate nearest-neighbor search with
+ * sub-linear query time.
  *
  * <p>HNSW builds a multi-layer graph: layer 0 is the densest (every node is present); higher layers
  * are sparser (a subset of nodes with longer "express" edges). Search starts at the top layer's
@@ -25,8 +25,7 @@ import org.springframework.stereotype.Component;
  *
  * <p>This is a simplified HNSW. The full paper (Malkov & Yashunin 2018) tunes {@code M}, {@code
  * efConstruction}, {@code efSearch}, and the neighbor-selection heuristic. We use modest defaults
- * ({@code M=8}, {@code efConstruction=64}, {@code efSearch=32}) which are sufficient for the MVP
- * corpus size.
+ * ({@code M=8}, {@code efConstruction=64}, {@code efSearch=32}) intended for modest corpus sizes.
  */
 @Component
 public class HnswIndex {

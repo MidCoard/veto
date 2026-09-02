@@ -18,7 +18,7 @@ import top.focess.veto.agent.mcp.ToolExecutionException;
 import top.focess.veto.group.GroupOrchestrator.NodeEdit;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
 
-/** Tests for the Leader's node-authoring tools (group_management_lld.md §2-§3). */
+/** Tests for the Leader's execution-DAG node-authoring tools. */
 @SuppressWarnings("initialization.field.uninitialized")
 class DagToolsTest {
 

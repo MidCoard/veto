@@ -21,10 +21,8 @@ import org.slf4j.LoggerFactory;
  * discovery and {@code tools/call} invocation over both stdio (subprocess stdin/stdout JSON lines)
  * and SSE (HTTP POST + Server-Sent-Events) transports.
  *
- * <p>This is the production path for the Part 5 "real remote-MCP JSON-RPC tools/list discovery +
- * stdio/SSE/socket execution" item (mcp_tool_foundation.md §10.7). The client is intentionally
- * small: it only implements the methods the Veto engine needs ({@code tools/list} + {@code
- * tools/call}); it does NOT implement notifications, sampling, roots, or any of the optional MCP
+ * <p>The client intentionally implements only the MCP methods Veto needs ({@code tools/list} and
+ * {@code tools/call}); it does not implement notifications, sampling, roots, or other optional MCP
  * capabilities.
  */
 public final class McpJsonRpcClient {

@@ -4,9 +4,9 @@ import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 
 /**
- * A single message on the group Blackboard (blackboard.md §2). Append-only, ordered by {@code
- * turnSeq}. The payload is always a small value — paths, status strings, short feedback, or
- * node-task instructions — never file contents.
+ * A single append-only message on the group Blackboard, ordered by {@code turnSeq}. The payload is
+ * always a small value — paths, status strings, short feedback, or node-task instructions — never
+ * file contents.
  */
 public record BlackboardMessage(
         @NonNull String messageId,

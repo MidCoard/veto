@@ -22,9 +22,9 @@ import top.focess.veto.agent.mcp.ToolResultFormat;
 import top.focess.veto.memory.embedder.Embedder;
 
 /**
- * The agent-facing memory tools (long_term_memory_tiers.md §6). These are agent tools — they carry
- * {@link top.focess.veto.agent.mcp.RiskCategory#AGENT}; the Gateway returns {@code NotScreened}.
- * They still flow through the LoopInterceptor chain for audit.
+ * Agent-facing memory tools. They carry {@link top.focess.veto.agent.mcp.RiskCategory#AGENT}, so
+ * the Gateway returns {@code NotScreened}. They still flow through the LoopInterceptor chain for
+ * audit.
  */
 @SuppressWarnings("DuplicatedCode") // Each native memory tool applies the same context guard.
 public final class MemoryTools {

@@ -21,10 +21,10 @@ import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.memory.embedder.Embedder;
 
 /**
- * The pgvector-backed {@link MemoryStore} — the production LTM backend (long_term_memory_tiers.md
- * §4). Stores memories in PostgreSQL with a {@code vector(N)} embedding column and performs
- * approximate-nearest-neighbor search in SQL via pgvector's cosine-distance operator {@code <=>}
- * (backed by an HNSW index), rather than the in-Java cosine loop the in-memory/JPA backends use.
+ * A pgvector-backed {@link MemoryStore}. It stores memories in PostgreSQL with a {@code vector(N)}
+ * embedding column and performs approximate-nearest-neighbor search in SQL via pgvector's
+ * cosine-distance operator {@code <=>} backed by an HNSW index, rather than the in-Java cosine loop
+ * used by in-memory/JPA backends.
  *
  * <p>Activated by setting {@code veto.memory.store=pgvector}. <b>Requires PostgreSQL with the
  * pgvector extension installed</b> (the {@code vector} type and {@code <=>} operator are not part

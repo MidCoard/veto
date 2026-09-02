@@ -27,8 +27,7 @@ import top.focess.veto.i18n.Msg;
 import top.focess.veto.llm.core.ToolCall;
 
 /**
- * The single human-in-the-loop registry. Owns four responsibilities (screening_model.md §7,
- * network_hitl_protocol.md §3):
+ * The single human-in-the-loop registry. It owns four responsibilities:
  *
  * <ol>
  *   <li>{@link #decide} — resolve the {@link GatewayResult} (via the {@link ScreeningMode} matrix)
@@ -43,8 +42,7 @@ import top.focess.veto.llm.core.ToolCall;
  *       {@code _LIKE_THIS} options, cache a {@link PermissionGrant} (read / write / command) with
  *       the appropriate match key.
  *   <li>Tool-declared option sets — {@link #scenarioFor} maps tool family + danger to a {@link
- *       VetoScenario}; {@link #optionsFor} returns that scenario's option list (per
- *       screening_model.md §8).
+ *       VetoScenario}; {@link #optionsFor} returns that scenario's option list.
  * </ol>
  *
  * <p>This is <b>not</b> the {@code LoopInterceptor} plugin chain — HITL is a dedicated mechanism,
@@ -205,7 +203,7 @@ public class HitlRegistry {
         return fallback;
     }
 
-    // ── Tool-declared scenarios + option sets (screening_model.md §8) ────────
+    // ── Tool-declared scenarios and option sets ─────────────────────────────
 
     /**
      * Maps a call + tool + screening → {@link VetoScenario}. Read tools → READ; write tools → WRITE
@@ -239,10 +237,7 @@ public class HitlRegistry {
         return VetoScenario.GENERIC;
     }
 
-    /**
-     * The option set for a {@link VetoScenario} (screening_model.md §8). R/W/E1/E2/E3/generic per
-     * the LLD table.
-     */
+    /** Returns the fixed resolution options offered for a scenario. */
     public @NonNull List<@NonNull VetoOption> optionsFor(@NonNull VetoScenario scenario) {
         return switch (scenario) {
             case READ -> R_OPTIONS;
@@ -255,7 +250,7 @@ public class HitlRegistry {
         };
     }
 
-    // Per-scenario option sets (screening_model.md §8). Constants avoid per-call allocation.
+    // Per-scenario option sets. Constants avoid per-call allocation.
     static final @NonNull List<@NonNull VetoOption> R_OPTIONS =
             List.of(
                     VetoOption.ACCEPT_AND_MASK_READ,
@@ -299,12 +294,12 @@ public class HitlRegistry {
                     VetoOption.ACCEPT_GENERIC_LIKE_THIS,
                     VetoOption.GENERIC_DECLINE);
 
-    // ── Grant matching (screening_model.md §7.1) ────────────────────────────
+    // ── Grant matching ──────────────────────────────────────────────────────
 
     /**
      * Returns true if any session grant for this agent covers the call's match key AND the
-     * deterministic floor passes (the floor re-runs for every call — secret/protected paths refuse
-     * even with a grant, §7.2 #3).
+     * deterministic floor passes. The floor re-runs for every call, so secret and protected paths
+     * remain refused even with a grant.
      */
     private boolean grantCovers(
             @NonNull String agentId,
@@ -691,7 +686,7 @@ public class HitlRegistry {
         locales.remove(agentId);
     }
 
-    /** Revoke a single grant (audited + revocable, screening_model.md §7.2 #5). */
+    /** Revokes one session grant. */
     public boolean revokeGrant(@NonNull String agentId, @NonNull PermissionGrant grant) {
         Set<@NonNull PermissionGrant> agentGrants = grants.get(agentId);
         if (agentGrants == null) {
@@ -700,7 +695,7 @@ public class HitlRegistry {
         return agentGrants.remove(grant);
     }
 
-    /** Returns the audit log of grants created for the agent (screening_model.md §7.2 #5). */
+    /** Returns the audit log of grants created for the agent. */
     public @NonNull List<@NonNull PermissionGrant> grantLog(@NonNull String agentId) {
         List<@NonNull PermissionGrant> log = grantLog.get(agentId);
         return log == null ? List.of() : List.copyOf(log);

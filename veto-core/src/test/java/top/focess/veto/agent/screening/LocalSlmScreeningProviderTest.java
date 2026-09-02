@@ -17,7 +17,7 @@ import top.focess.veto.veto.GBNFGrammarEngine;
 import top.focess.veto.veto.LlamaCppBridge;
 import top.focess.veto.veto.SlmConfiguration;
 
-/** Tests for the Part 3.2 local-SLM-backed relevance-and-danger provider. */
+/** Tests for the local-SLM-backed relevance-and-danger provider. */
 class LocalSlmScreeningProviderTest {
 
     /** A test double for LlamaCppBridge that returns canned responses. */

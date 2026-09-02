@@ -34,9 +34,9 @@ class ProtectedSetTest {
 
     @Test
     void deployerDefaultsCoverWorkspaceEnvFiles() {
-        // Spec §6: project .env files are among the protected defaults. They are
-        // workspace-root-relative, so the roots must be threaded into withDeployerDefaults —
-        // a project .env under PROTECT_SENSITIVE must be CRITICAL (covered), not DANGEROUS.
+        // Project .env files are protected defaults. They are workspace-root-relative, so the
+        // roots must be passed to withDeployerDefaults. Under PROTECT_SENSITIVE, a covered .env is
+        // CRITICAL rather than DANGEROUS.
         Path root1 = Path.of("/home/u/proj1").toAbsolutePath().normalize();
         Path root2 = Path.of("/home/u/proj2").toAbsolutePath().normalize();
         ProtectedSet ps = ProtectedSet.withDeployerDefaults("default", List.of(root1, root2));

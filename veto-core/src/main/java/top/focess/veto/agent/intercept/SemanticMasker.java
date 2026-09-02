@@ -15,10 +15,9 @@ import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.veto.LlamaCppBridge;
 
 /**
- * The Part 3.3 advisory semantic masker (targeted_redaction_performance.md). Asks the local SLM
- * (via {@link LlamaCppBridge}) whether the agent's emitted call is likely to exfiltrate a secret —
- * semantic, not pattern-based. Distinct from {@link SecretMasker}, which is the deterministic
- * pattern-based scrubber (the LLD's "deterministic floor").
+ * Advisory semantic masker. Asks the local SLM (via {@link LlamaCppBridge}) whether the agent's
+ * emitted call is likely to exfiltrate a secret. This semantic check complements {@link
+ * SecretMasker}, the deterministic pattern-based scrubber.
  *
  * <p>The SLM returns a structured JSON verdict: {@code {"risk": "high|medium|low", "reason":
  * "..."}}. On any verdict (high, medium, low) the masker applies {@link SecretMasker} as the

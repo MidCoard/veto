@@ -9,9 +9,8 @@ import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 
 /**
- * The plan for a group's work (execution_dag.md). An ordered list of {@link DagNode}s with explicit
- * dependencies. The Leader authors the DAG; the group engine drives the nodes through their state
- * machine.
+ * The plan for a group's work: an ordered list of {@link DagNode}s with explicit dependencies. The
+ * Leader authors the DAG; the group engine drives the nodes through their state machine.
  *
  * <p>Topological order is implicit in the dependency graph: a node is dispatchable iff all of its
  * {@code dependsOn} are in {@link DagNode.NodeState#VERIFIED}.

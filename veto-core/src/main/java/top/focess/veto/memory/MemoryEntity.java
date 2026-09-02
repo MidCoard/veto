@@ -10,13 +10,12 @@ import org.jspecify.annotations.NonNull;
 
 /**
  * JPA persistence for a {@link Memory}. Stored in PostgreSQL with JSONB columns (Hibernate's {@code
- * jsonb} type). The embedding is stored as a float array (the production path would use pgvector's
- * {@code vector} type — the float-array form is a portable fallback that the reference {@link
- * InMemoryMemoryStore} can also use for similarity search).
+ * jsonb} type). The embedding is stored as a float array; a pgvector backend instead uses its
+ * {@code vector} type. The float-array representation remains portable across storage backends.
  *
  * <p>Unique key on id; secondary index on (user_id, session_id, tier) for the common query "list a
- * user's session LTM". The {@code @Filter} (or equivalent RLS predicate, per Part 4.6
- * database_concurrency_isolation.md) restricts reads to the current user.
+ * user's session memory". Application filters or an equivalent row-level-security predicate must
+ * restrict reads to the current user.
  */
 @Entity
 @Table(name = "memories")

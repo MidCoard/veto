@@ -11,16 +11,14 @@ import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 
 /**
- * A simple in-memory vector index (the production path is pgvector; this is the MVP reference that
- * gives us the abstraction in place). Uses brute-force cosine similarity for now — a real HNSW
- * implementation would bucket vectors by approximate nearest neighbors for sub-linear search. For
- * the MVP the corpus size is small enough that brute force is acceptable.
+ * A simple in-memory vector index using brute-force cosine similarity. For larger corpora, an HNSW
+ * or pgvector-backed implementation provides sub-linear approximate-nearest-neighbor search.
  *
  * <p>The index is thread-safe: a single {@link ReentrantReadWriteLock} guards the vector array.
  * Reads (search) are concurrent; writes (insert) are exclusive.
  *
- * <p>Part 4.3: the production path uses pgvector's HNSW index for scalable similarity search; this
- * in-memory backend is the fallback + the reference implementation.
+ * <p>This in-memory backend is a dependency-free fallback for deployments that do not select a
+ * persistent vector store.
  */
 @Component
 public class VectorIndex {

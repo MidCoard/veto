@@ -8,12 +8,10 @@ import org.jspecify.annotations.NonNull;
 
 /**
  * Best-effort secret-pattern scrubber. Replaces common secret tokens in tool observation text with
- * {@code [REDACTED_*]} markers before the observation enters the LLM's context (screening_model.md
- * §4.2, network_hitl_protocol.md §4.2).
+ * {@code [REDACTED_*]} markers before the observation enters the LLM's context.
  *
- * <p>Patterns are deliberately broad to err on the side of scrubbing; the authoritative secrets
- * control is the Vault (per_user_credential_isolation.md). This masker is the second line of
- * defense.
+ * <p>Patterns are deliberately broad to err on the side of scrubbing. The credential vault is the
+ * authoritative secrets boundary; this masker is a second line of defense.
  *
  * <p>Stable for testing: every replacement is non-empty and the same input always produces the same
  * output.

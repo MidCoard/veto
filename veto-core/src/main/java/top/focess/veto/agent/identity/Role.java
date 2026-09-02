@@ -5,9 +5,6 @@ package top.focess.veto.agent.identity;
  * AgentPersona#whitelistedTools()}) and selects the role-specific instructions the {@code
  * PromptCompiler} injects into the system prompt.
  *
- * <p>Maps to the Leader-Mate topology ({@code
- * plans/mvp-core/part2_workflows/leader_mate_topology.md}):
- *
  * <ul>
  *   <li>{@link #STANDALONE} - a directly-addressable agent operating on the workspace. May delegate
  *       a decomposable task by calling {@code create_group}.

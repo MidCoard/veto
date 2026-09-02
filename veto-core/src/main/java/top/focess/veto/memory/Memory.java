@@ -9,10 +9,9 @@ import org.jspecify.annotations.NonNull;
  * A single memory entry stored by the {@link MemoryStore}. Carries the captured content (already
  * masked via {@code accept_and_mask}), its embedding, source attribution, and tier tag.
  *
- * <p>Per long_term_memory_tiers.md §2: Session LTM entries have a non-null {@code sessionId};
- * Cross-Session LTM entries have a null {@code sessionId} (the curating boundary that strips it).
- * The {@code tier} is a runtime convenience (derivable from sessionId==null) but stored explicitly
- * for query speed.
+ * <p>Session entries have a non-null {@code sessionId}; cross-session entries have a null {@code
+ * sessionId}. The {@code tier} is derivable from that distinction but stored explicitly for query
+ * speed.
  */
 public record Memory(
         @NonNull MemoryId id,

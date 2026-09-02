@@ -19,10 +19,9 @@ import top.focess.veto.agent.AgentResult;
 import top.focess.veto.agent.identity.AgentPersona;
 
 /**
- * The real LLM Leader (Part 2 — leader_mate_topology.md). Wraps a {@link Agent} (Top-Tier model,
- * Part 14.1) that authors the DAG, assigns Mates, reasons over feedback, and triggers Strategic
- * Pivot. The agent is invoked with a prompt template that frames the current group state + the
- * leader's role + a structured output schema.
+ * LLM-backed Leader that wraps an {@link Agent}. It authors the DAG, assigns Mates, reasons over
+ * feedback, and triggers a strategic pivot when necessary. The agent receives the current group
+ * state, its leader role, and a structured output schema.
  *
  * <p>Falls back to {@link HeuristicLeader} when the underlying agent is {@code null} (no LLM
  * configured) or the prompt round-trip fails. The composition is a Strategy pattern — the
@@ -132,10 +131,9 @@ public class LlmLeader {
      *   <li>any JSON containing a top-level boolean {@code pivot} field
      * </ul>
      *
-     * <p>Returns false on parse failure or missing field — the heuristic's no is the safe default
-     * (matches the "deterministic-floor" pattern from §3.2: the LLM can only raise, never lower,
-     * the heuristic's signal — and since the heuristic already said no we are by definition below
-     * its threshold).
+     * <p>Returns false on parse failure or a missing field. The LLM can only raise, never lower,
+     * the deterministic heuristic's signal; this method is called only after that heuristic
+     * returned false.
      */
     static boolean parsePivotDecision(String response) {
         if (response == null || response.isBlank()) {

@@ -17,7 +17,7 @@ import org.jspecify.annotations.NonNull;
  *     _LIKE_THIS} grant-creating variants)
  * @param maskObservation whether the engine should apply {@code accept_and_mask} to the observation
  *     before it enters context. Defaults to {@code true} for approvals when the user did not
- *     explicitly choose otherwise (screening_model.md §4.2, §8).
+ *     explicitly choose otherwise.
  */
 public record InterceptResolution(
         @NonNull VetoOption option, Map<String, Object> editedArgs, boolean maskObservation) {

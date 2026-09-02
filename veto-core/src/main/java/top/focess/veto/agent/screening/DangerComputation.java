@@ -157,9 +157,8 @@ public class DangerComputation {
                 top.focess.veto.agent.workspace.WorkspaceRoot root =
                         workspace.roots().get(res.rootIndex());
                 if (root.trust() == top.focess.veto.agent.workspace.TrustMarker.SHARED_GRANT) {
-                    // Shared root — reads are allowed, writes are CRITICAL (grant mode would
-                    // distinguish read vs read+write, but for the MVP read is grantable
-                    // and write is grant-gated).
+                    // Shared-root reads may proceed through approval; writes remain CRITICAL and
+                    // cannot be authorized by a session grant.
                     if (risk == RiskCategory.FILE_WRITE) {
                         return Danger.CRITICAL;
                     }

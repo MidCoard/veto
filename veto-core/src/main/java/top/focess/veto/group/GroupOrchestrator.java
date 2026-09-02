@@ -19,8 +19,7 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
 /**
- * The Part 2 group orchestration engine (leader_mate_topology.md, execution_dag.md). Drives a
- * {@link Group} through its lifecycle:
+ * Drives a {@link Group} through its leader-and-mate lifecycle:
  *
  * <ol>
  *   <li><b>tick</b> the group: ingest new Blackboard messages, advance the DAG, dispatch
@@ -38,9 +37,8 @@ import org.springframework.stereotype.Component;
  * </ol>
  *
  * <p>The engine is <b>deterministic</b>: given the same Blackboard input sequence, it produces the
- * same DAG state transitions. The Leader's "reasoning" — choosing which Mate to assign a node to,
- * deciding when to escalate, re-planning on FAILED — is the Leader's role (delegation_spawning.md
- * §3); the engine is the runtime over the Leader's decisions.
+ * same DAG state transitions. Choosing which Mate receives a node, deciding when to escalate, and
+ * re-planning failed work remain the Leader's responsibility; the engine applies those decisions.
  */
 @Component
 public class GroupOrchestrator {
@@ -578,10 +576,9 @@ public class GroupOrchestrator {
     }
 
     /**
-     * The Mate-execution simulator. Real Mates are agent loops; for the MVP orchestration harness
-     * this stands in: it turns a TASK_DISPATCH into a synthetic ACCEPT (after a configurable
-     * work-cost). The Leader's tools can override this by posting messages directly to the
-     * Blackboard.
+     * The Mate-execution simulator. Real Mates are agent loops; this testable stand-in turns a
+     * TASK_DISPATCH into a synthetic ACCEPT after a configurable work cost. The Leader's tools can
+     * override this by posting messages directly to the Blackboard.
      */
     public static class MateExecutor {
         /**
@@ -646,12 +643,11 @@ public class GroupOrchestrator {
 
     /**
      * Callback when a group is disbanded. This hook is called by {@link GroupSpawner} when a
-     * group's lifecycle ends (either naturally complete or explicitly disbanded). For the MVP, this
-     * is a no-op placeholder that logs the event; a real implementation would clean up resources,
-     * persist final state, and notify downstream systems.
+     * group's lifecycle ends, either naturally or through explicit disbanding. The current hook
+     * records the event but does not perform resource cleanup, persistence, or notifications.
      */
     public void onGroupDisbanded(@NonNull UUID groupId) {
         log.info("GroupOrchestrator: group {} disbanded", groupId);
-        // MVP: no additional cleanup needed; the registry already holds the final state.
+        // The registry already holds the final state; no additional cleanup is required.
     }
 }

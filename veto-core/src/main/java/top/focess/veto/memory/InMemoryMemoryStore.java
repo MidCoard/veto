@@ -15,17 +15,17 @@ import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.memory.embedder.Embedder;
 
 /**
- * A simple in-process {@link MemoryStore} for the MVP path. Stores all memories in a {@link
- * ConcurrentHashMap} keyed by id, with cosine-similarity search in Java. Not persistent; on JVM
- * restart all memories are lost.
+ * A simple in-process {@link MemoryStore}. Stores all memories in a {@link ConcurrentHashMap} keyed
+ * by id, with cosine-similarity search in Java. Not persistent; on JVM restart all memories are
+ * lost.
  *
- * <p>The reference production backend is pgvector (long_term_memory_tiers.md §4); this in-memory
- * implementation gives us a working memory stack without the operational complexity of standing up
- * PostgreSQL + pgvector for tests and the local CLI path.
+ * <p>This implementation supports tests and local CLI use without requiring PostgreSQL and
+ * pgvector. Deployments that need persistence and scalable similarity search can select the
+ * pgvector-backed store.
  *
  * <p>The embed(String) method is a deterministic stub — it hashes the text to produce a
  * fixed-length vector so similarity is meaningful (identical texts → 1.0; very different texts →
- * ~0). The production backend plugs into the local embedding model (Part 14.4).
+ * ~0). Deployments can instead supply an {@link Embedder} backed by a local embedding model.
  */
 @Component
 @ConditionalOnProperty(name = "veto.memory.store", havingValue = "memory", matchIfMissing = true)
@@ -184,9 +184,8 @@ public class InMemoryMemoryStore implements MemoryStore {
     }
 
     /**
-     * Prune Cross-Session LTM per the LLD's pruning policy (recency + size cap). Removes the oldest
-     * Cross-Session LTM entries when the count exceeds {@code maxCrossSessionSize}.
-     * Newest-by-createdAt is kept.
+     * Prunes cross-session memory by recency and size. Removes the oldest entries when the count
+     * exceeds {@code maxCrossSessionSize}; newest-by-createdAt entries are retained.
      */
     public int pruneCrossSessionLtm(int maxCrossSessionSize) {
         if (maxCrossSessionSize < 0) {
