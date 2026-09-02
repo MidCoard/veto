@@ -41,7 +41,7 @@ class GatewayScreeningTest {
         return new Gateway(
                 ws,
                 new DangerComputation(),
-                new DegradedSlmRelevanceProvider(),
+                new UnavailableSlmScreeningProvider(),
                 DeployerPolicy.FULL_ACCESS,
                 ProtectedSet.empty(),
                 new ReadHistory());
@@ -87,15 +87,19 @@ class GatewayScreeningTest {
         Screening s = ((GatewayResult.Screened) r).screening();
         assertEquals(Danger.SAFE, s.danger());
         assertEquals(Relevance.HIGH, s.relevance());
+        assertFalse(s.slmEvaluated());
     }
 
     @Test
     void advisoryModelCanRaiseButNeverLowerDeterministicDanger() throws Exception {
         Workspace ws = Workspace.single(root, PathMode.REAL);
-        SlmRelevanceProvider raisesDanger =
+        SlmScreeningProvider raisesDanger =
                 (call, def, activeTask, thought) ->
-                        new SlmScreening(
-                                Relevance.LOW, Danger.DANGEROUS, "intent is unrelated and risky");
+                        java.util.Optional.of(
+                                new SlmScreening(
+                                        Relevance.LOW,
+                                        Danger.DANGEROUS,
+                                        "intent is unrelated and risky"));
         Gateway raises =
                 new Gateway(
                         ws,
@@ -111,10 +115,12 @@ class GatewayScreeningTest {
                         .screening();
         assertEquals(Relevance.LOW, raised.relevance());
         assertEquals(Danger.DANGEROUS, raised.danger());
+        assertTrue(raised.slmEvaluated());
 
-        SlmRelevanceProvider claimsSafe =
+        SlmScreeningProvider claimsSafe =
                 (call, def, activeTask, thought) ->
-                        new SlmScreening(Relevance.HIGH, Danger.SAFE, "model claims safe");
+                        java.util.Optional.of(
+                                new SlmScreening(Relevance.HIGH, Danger.SAFE, "model claims safe"));
         Gateway deterministicFloor =
                 new Gateway(
                         ws,
@@ -139,7 +145,7 @@ class GatewayScreeningTest {
                 new Gateway(
                         ws,
                         new DangerComputation(),
-                        new DegradedSlmRelevanceProvider(),
+                        new UnavailableSlmScreeningProvider(),
                         DeployerPolicy.SANDBOXED,
                         ProtectedSet.empty(),
                         new ReadHistory());
@@ -162,7 +168,7 @@ class GatewayScreeningTest {
                 new Gateway(
                         ws,
                         new DangerComputation(),
-                        new DegradedSlmRelevanceProvider(),
+                        new UnavailableSlmScreeningProvider(),
                         DeployerPolicy.FULL_ACCESS,
                         ProtectedSet.empty(),
                         rh);

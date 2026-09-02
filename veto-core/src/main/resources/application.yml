@@ -74,9 +74,29 @@ veto:
 
   security:
     # Install-time deployer policy: FULL_ACCESS (no path is CRITICAL) | PROTECTED (deny-list) | SANDBOXED (scoped to root) | TENANT (multi-user workspace).
-    # Runtime screening matrix: STRICT | BALANCED | BYPASS_ALL.
+    # Runtime screening matrix: STRICT | BALANCED | PERMISSIVE. Legacy BYPASS_ALL maps to PERMISSIVE.
     deployer-policy: ${VETO_DEPLOYER_POLICY:FULL_ACCESS}
     screening-mode: STRICT
+    # FULL_ACCESS needs no extra block: selecting it is the complete configuration.
+    protected-policy:
+      include-defaults: true
+      include-application-paths: true
+      paths: []
+    sandboxed:
+      # Deployer-owned project zones. Required when deployer-policy=SANDBOXED.
+      roots: []
+      protection:
+        include-defaults: true
+        include-application-paths: true
+        paths: []
+    tenant:
+      # Deployer-owned tenant zones. Each user's admitted roots must be below <zone>/<owner>/.
+      # Required when deployer-policy=TENANT.
+      roots: []
+      protection:
+        include-defaults: true
+        include-application-paths: true
+        paths: []
     # How accounts may be created:
     #   solo   - single-user: first /signup wins (ADMIN), then blocked.
     #   public - multi-user: anonymous self-signup (first ADMIN, rest USER).

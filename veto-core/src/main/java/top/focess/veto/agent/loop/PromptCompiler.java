@@ -142,14 +142,17 @@ public class PromptCompiler {
                 translator.translateTools(
                         availableTools(
                                 persona.whitelistedTools(), persona.registeredSkills().isEmpty()));
-        String systemMessage =
+        String linkedSystemMessage =
                 buildSystemMessage(
                         persona,
                         sessionWorkspace,
                         systemPromptBase,
                         flatTools,
                         toolResultPresentation);
-        List<ChatMessage> conversation = resolveRewinds(history, toolResultPresentation);
+        ResolvedHistory resolved =
+                resolveRewinds(history, linkedSystemMessage, toolResultPresentation);
+        String systemMessage = resolved.systemMessage();
+        List<ChatMessage> conversation = resolved.messages();
         List<ChatMessage> budgeted = fitBudget(systemMessage, conversation, correctionFactor);
         List<ChatMessage> messages = wellFormed(conversation, budgeted);
 
@@ -162,6 +165,24 @@ public class PromptCompiler {
         }
         return new CompiledPrompt(
                 systemMessage, messages, flatTools, responseSchema, trimmed, estimate);
+    }
+
+    /**
+     * Links the current runtime definition for a brand-new AGENT_INIT. Resume compilation must not
+     * call this to replace a recorded prompt; {@link #compile} takes the active system prompt from
+     * the ordered AGENT_INIT records whenever one exists.
+     */
+    public @NonNull String linkSystemMessage(
+            @NonNull AgentPersona persona,
+            @NonNull Workspace sessionWorkspace,
+            String systemPromptBase,
+            @NonNull ToolResultPresentationMode toolResultPresentation) {
+        List<top.focess.veto.llm.core.ToolDefinition> flatTools =
+                translator.translateTools(
+                        availableTools(
+                                persona.whitelistedTools(), persona.registeredSkills().isEmpty()));
+        return buildSystemMessage(
+                persona, sessionWorkspace, systemPromptBase, flatTools, toolResultPresentation);
     }
 
     /** Removes conditional capabilities that cannot succeed for this persona. */
@@ -214,11 +235,14 @@ public class PromptCompiler {
     /**
      * Walks history ascending, applying REWIND suffix-drops; returns the effective compiled list.
      */
-    private @NonNull List<ChatMessage> resolveRewinds(
-            List<TurnRecord> history, @NonNull ToolResultPresentationMode toolResultPresentation) {
+    private @NonNull ResolvedHistory resolveRewinds(
+            List<TurnRecord> history,
+            @NonNull String fallbackSystemMessage,
+            @NonNull ToolResultPresentationMode toolResultPresentation) {
         List<ChatMessage> compiled = new ArrayList<>();
+        String activeSystemMessage = fallbackSystemMessage;
         if (history == null) {
-            return compiled;
+            return new ResolvedHistory(activeSystemMessage, compiled);
         }
         // Pending thought from an ASSISTANT_THOUGHT turn - merged into the next TOOL_CALL's
         // assistant message (as content + reasoningContent) so the model sees its thought and
@@ -226,6 +250,19 @@ public class PromptCompiler {
         String pendingThought = null;
         String pendingReasoning = null;
         for (TurnRecord turn : history) {
+            if (turn.type() == TurnType.AGENT_INIT) {
+                // AGENT_INIT is an ordered system-prompt insertion event. Do not synthesize,
+                // reorder, or replace it with the current runtime template on resume. Provider
+                // APIs expose one system/instructions slot, so the last insertion encountered in
+                // durable record order is the active system prompt for this request.
+                if (pendingThought != null && !pendingThought.isBlank()) {
+                    compiled.add(ChatMessage.assistant(pendingThought));
+                }
+                pendingThought = null;
+                pendingReasoning = null;
+                activeSystemMessage = str(turn.payload(), "system_prompt");
+                continue;
+            }
             if (turn.type() == TurnType.REWIND) {
                 int fromIndex = number(turn.payload(), "from_index").intValue();
                 truncate(compiled, fromIndex);
@@ -260,8 +297,11 @@ public class PromptCompiler {
         if (pendingThought != null && !pendingThought.isBlank()) {
             compiled.add(ChatMessage.assistant(pendingThought));
         }
-        return compiled;
+        return new ResolvedHistory(activeSystemMessage, compiled);
     }
+
+    private record ResolvedHistory(
+            @NonNull String systemMessage, @NonNull List<@NonNull ChatMessage> messages) {}
 
     private static void truncate(@NonNull List<ChatMessage> compiled, int fromIndex) {
         if (fromIndex < 0) {
@@ -301,7 +341,7 @@ public class PromptCompiler {
                         callId, toolName, toolArgs, thoughtContent, pendingReasoning);
             }
             case TOOL_RESPONSE -> mapPresentedToolResponse(turn, toolResultPresentation);
-            case AGENT_INIT -> null;
+            case AGENT_INIT -> null; // handled as an ordered system insertion before role mapping
             case COMPACTION_SUMMARY -> ChatMessage.user(str(turn.payload(), "content"));
             case REWIND -> null;
         };

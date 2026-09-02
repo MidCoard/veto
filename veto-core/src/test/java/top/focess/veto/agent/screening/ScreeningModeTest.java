@@ -42,13 +42,13 @@ class ScreeningModeTest {
     }
 
     @Test
-    void bypassAllApprovesEverythingExceptCritical() {
-        ScreeningMode m = ScreeningMode.BYPASS_ALL;
+    void permissiveStillRequiresAuthorizationForDangerousCalls() {
+        ScreeningMode m = ScreeningMode.PERMISSIVE;
         assertEquals(ScreeningOutcome.APPROVE, m.cell(Relevance.HIGH, Danger.SAFE));
         assertEquals(ScreeningOutcome.APPROVE, m.cell(Relevance.HIGH, Danger.ELEVATED));
-        assertEquals(ScreeningOutcome.APPROVE, m.cell(Relevance.HIGH, Danger.DANGEROUS));
+        assertEquals(ScreeningOutcome.ASK, m.cell(Relevance.HIGH, Danger.DANGEROUS));
         assertEquals(ScreeningOutcome.REFUSED, m.cell(Relevance.HIGH, Danger.CRITICAL));
-        assertEquals(ScreeningOutcome.APPROVE, m.cell(Relevance.LOW, Danger.DANGEROUS));
+        assertEquals(ScreeningOutcome.ASK, m.cell(Relevance.LOW, Danger.DANGEROUS));
     }
 
     @Test
@@ -76,15 +76,14 @@ class ScreeningModeTest {
     }
 
     @Test
-    void lowDangerousIsAskInStrictBalancedButApprovedInBypassAll() {
-        // (LOW, DANGEROUS) — the injection signature. STRICT/BALANCED -> ASK (grant-skippable);
-        // BYPASS_ALL -> APPROVE (everything except CRITICAL auto-approves).
+    void lowDangerousAlwaysRequiresAuthorization() {
+        // (LOW, DANGEROUS) is the injection signature and must never auto-approve.
         assertEquals(
                 ScreeningOutcome.ASK, ScreeningMode.STRICT.cell(Relevance.LOW, Danger.DANGEROUS));
         assertEquals(
                 ScreeningOutcome.ASK, ScreeningMode.BALANCED.cell(Relevance.LOW, Danger.DANGEROUS));
         assertEquals(
-                ScreeningOutcome.APPROVE,
-                ScreeningMode.BYPASS_ALL.cell(Relevance.LOW, Danger.DANGEROUS));
+                ScreeningOutcome.ASK,
+                ScreeningMode.PERMISSIVE.cell(Relevance.LOW, Danger.DANGEROUS));
     }
 }

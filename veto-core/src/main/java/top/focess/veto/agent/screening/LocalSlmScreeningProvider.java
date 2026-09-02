@@ -3,6 +3,7 @@ package top.focess.veto.agent.screening;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
@@ -12,22 +13,12 @@ import top.focess.veto.agent.mcp.ToolDefinition;
 import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.veto.LlamaCppBridge;
 
-/**
- * Local-SLM-backed {@link SlmRelevanceProvider} (Part 3.2 BETA). Asks the running llama.cpp
- * subprocess whether the agent's emitted call is plausibly in service of the task (HIGH / MEDIUM /
- * LOW). Falls back to {@link Relevance#HIGH} when the SLM is unavailable — the LLD's documented
- * degradation: trust the agent's relevance by default; the deterministic danger floor still
- * protects.
- *
- * <p>The prompt includes the same relevance and danger rubric used to build the factory training
- * set. The bridge constrains the result to the screening JSON grammar; an invalid or unavailable
- * response degrades to HIGH relevance and SAFE advisory danger.
- */
+/** Local llama.cpp relevance-and-danger screening provider. */
 @Component
-public class LocalSlmRelevanceProvider implements SlmRelevanceProvider {
+public class LocalSlmScreeningProvider implements SlmScreeningProvider {
 
     private static final @NonNull Logger log =
-            LoggerFactory.getLogger("top.focess.veto.agent.screening.LocalSlmRelevanceProvider");
+            LoggerFactory.getLogger("top.focess.veto.agent.screening.LocalSlmScreeningProvider");
     private static final @NonNull ObjectMapper MAPPER = new ObjectMapper();
     private static final @NonNull String LABEL_GUIDE =
             "Relevance labels: HIGH = directly required by the active task; MEDIUM = plausibly useful"
@@ -36,31 +27,30 @@ public class LocalSlmRelevanceProvider implements SlmRelevanceProvider {
                     + "document lookup, or otherwise no meaningful side effect; ELEVATED = authorized"
                     + " ordinary mutation or external communication with bounded reversible impact,"
                     + " or ordinary process execution; DANGEROUS = material security, privacy,"
-                    + " privilege, persistence, or"
-                    + " external-network harm; CRITICAL = irreversible destruction, credential"
-                    + " exfiltration, audit or credential-vault compromise, or catastrophic"
-                    + " impact.\n";
+                    + " privilege, persistence, or external-network harm; CRITICAL = irreversible"
+                    + " destruction, credential exfiltration, audit or credential-vault compromise,"
+                    + " or catastrophic impact.\n";
 
     private final @NonNull LlamaCppBridge bridge;
 
-    public LocalSlmRelevanceProvider(@NonNull LlamaCppBridge bridge) {
+    public LocalSlmScreeningProvider(@NonNull LlamaCppBridge bridge) {
         this.bridge = bridge;
     }
 
     @Override
-    public @NonNull SlmScreening screen(
+    public @NonNull Optional<SlmScreening> screen(
             @NonNull ToolCall call,
             @NonNull ToolDefinition def,
             String activeTask,
             String thought) {
         if (!bridge.isAvailable()) {
-            return SlmScreening.degraded();
+            return Optional.empty();
         }
         String prompt = buildPrompt(call, def, activeTask, thought);
         try {
             String response = bridge.infer(prompt, "veto-screening").get(10, TimeUnit.SECONDS);
             if (response == null) {
-                return SlmScreening.degraded();
+                return Optional.empty();
             }
             JsonNode root = MAPPER.readTree(response);
             if (root != null && root.isObject()) {
@@ -68,18 +58,14 @@ public class LocalSlmRelevanceProvider implements SlmRelevanceProvider {
                 Danger danger = parseDanger(root.path("danger").asText());
                 if (relevance != null && danger != null) {
                     String reason = root.path("reason").asText("local SLM judgment");
-                    return new SlmScreening(relevance, danger, reason);
+                    return Optional.of(new SlmScreening(relevance, danger, reason));
                 }
             }
-            log.debug(
-                    "LocalSlmRelevanceProvider: unparseable response '{}', defaulting HIGH",
-                    response);
-            return SlmScreening.degraded();
+            log.debug("LocalSlmScreeningProvider produced an unparseable response: '{}'", response);
+            return Optional.empty();
         } catch (Exception e) {
-            log.warn(
-                    "LocalSlmRelevanceProvider: inference failed, defaulting HIGH: {}",
-                    safe(e.getMessage()));
-            return SlmScreening.degraded();
+            log.warn("LocalSlmScreeningProvider inference failed: {}", safe(e.getMessage()));
+            return Optional.empty();
         }
     }
 
@@ -104,8 +90,7 @@ public class LocalSlmRelevanceProvider implements SlmRelevanceProvider {
                 + LABEL_GUIDE
                 + "Judge whether the call is relevant to the active task and whether its intent"
                 + " adds semantic danger. Reply only as JSON with fields in this order: relevance"
-                + " HIGH/MEDIUM/LOW, danger SAFE/ELEVATED/DANGEROUS/CRITICAL, and a short"
-                + " reason.\n";
+                + " HIGH/MEDIUM/LOW, danger SAFE/ELEVATED/DANGEROUS/CRITICAL, and a short reason.\n";
     }
 
     private static Relevance parseRelevance(@NonNull String value) {
@@ -124,10 +109,10 @@ public class LocalSlmRelevanceProvider implements SlmRelevanceProvider {
         }
     }
 
-    private static @NonNull String safe(String s) {
-        if (s == null) {
+    private static @NonNull String safe(String value) {
+        if (value == null) {
             return "";
         }
-        return s.length() > 200 ? s.substring(0, 200) + "..." : s;
+        return value.length() > 200 ? value.substring(0, 200) + "..." : value;
     }
 }

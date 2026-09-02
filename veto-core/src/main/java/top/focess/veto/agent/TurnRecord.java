@@ -174,10 +174,10 @@ public record TurnRecord(
     }
 
     /**
-     * A role-start marker (session start, delegation transform). Delimits a role-segment: {@link
-     * top.focess.veto.agent.loop.PromptCompiler} maps it to no message (the front system message
-     * already carries the role), and compaction uses it as the anchor for the current segment. The
-     * payload is the immutable role-start definition used by audit, restart, and the Records UI.
+     * An ordered system-prompt insertion (session start or an actual role transformation). The
+     * prompt compiler treats the payload's {@code system_prompt} as authoritative: the last
+     * insertion encountered in durable record order supplies the provider's system/instructions
+     * slot. Resume must not synthesize a replacement insertion from the current runtime template.
      */
     public static @NonNull TurnRecord agentInit(
             int turnNumber,

@@ -5,6 +5,7 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Optional;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,25 +19,23 @@ import top.focess.veto.agent.screening.DeployerPolicy;
 import top.focess.veto.agent.screening.ProtectedSet;
 import top.focess.veto.agent.screening.Relevance;
 import top.focess.veto.agent.screening.Screening;
-import top.focess.veto.agent.screening.SlmRelevanceProvider;
 import top.focess.veto.agent.screening.SlmScreening;
+import top.focess.veto.agent.screening.SlmScreeningProvider;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.ToolCall;
 
 /**
  * The tool-call security screen. Screens every native/remote tool call into a typed {@link
  * GatewayResult}: a {@link GatewayResult.Screened} ({@link Relevance}, {@link Danger}) result
- * computed via {@link DangerComputation} + {@link SlmRelevanceProvider}, a {@link
+ * computed via {@link DangerComputation} plus an optional {@link SlmScreeningProvider}, a {@link
  * GatewayResult.DriftResult} when a write target changed since the agent last read it (Scenario W;
  * a correctness check, not a danger class), or {@link GatewayResult.NotScreened} when an agent tool
  * early-routes past the Gateway. The {@link HitlRegistry} decides {@link ApprovalDecision} from it.
  * Agent tools early-route past the Gateway entirely and never reach here.
  *
- * <p><b>Note:</b> the advisory local-SLM semantic screening (relevance &amp; judgmental danger) is
- * not enabled; the degraded SLM relevance provider returns {@link Relevance#HIGH}. Under that
- * degradation the deterministic layer ({@link DangerComputation}) is authoritative. Constructed
- * per-agent so {@link #screen} matches the signature (the agent's {@link ReadHistory} is instance
- * state).
+ * <p>When no usable SLM judgment exists, the result explicitly records {@code slmEvaluated=false};
+ * the deterministic danger layer remains authoritative and relevance conservatively defaults to
+ * HIGH without pretending that the SLM produced that value.
  */
 public class Gateway {
 
@@ -45,7 +44,7 @@ public class Gateway {
 
     private final @NonNull Workspace workspace;
     private final @NonNull DangerComputation dangerComputation;
-    private final @NonNull SlmRelevanceProvider slmRelevance;
+    private final @NonNull SlmScreeningProvider slmScreeningProvider;
     private final @NonNull DeployerPolicy policy;
     private final @NonNull ProtectedSet protectedSet;
     private final @NonNull ReadHistory readHistory;
@@ -53,12 +52,12 @@ public class Gateway {
     /**
      * Constructs a per-agent Gateway wired to its screening dependencies. The caller ({@link
      * top.focess.veto.agent.AgentService}) assembles the deterministic {@link DangerComputation},
-     * the (degraded) {@link SlmRelevanceProvider}, the deployer {@link DeployerPolicy} + {@link
+     * the optional {@link SlmScreeningProvider}, the deployer {@link DeployerPolicy} + {@link
      * ProtectedSet}, and this agent's {@link ReadHistory}.
      *
      * @param workspace the agent's workspace; incoming paths resolve against its resolver.
      * @param dangerComputation the deterministic danger computation (path/shell classification).
-     * @param slmRelevance the SLM relevance seam (degraded → HIGH).
+     * @param slmScreeningProvider the optional SLM relevance-and-danger seam.
      * @param policy the install-time deployer policy (FULL_ACCESS / PROTECTED / SANDBOXED /
      *     TENANT).
      * @param protectedSet the protected paths (empty under FULL_ACCESS).
@@ -67,13 +66,13 @@ public class Gateway {
     public Gateway(
             @NonNull Workspace workspace,
             @NonNull DangerComputation dangerComputation,
-            @NonNull SlmRelevanceProvider slmRelevance,
+            @NonNull SlmScreeningProvider slmScreeningProvider,
             @NonNull DeployerPolicy policy,
             @NonNull ProtectedSet protectedSet,
             @NonNull ReadHistory readHistory) {
         this.workspace = workspace;
         this.dangerComputation = dangerComputation;
-        this.slmRelevance = slmRelevance;
+        this.slmScreeningProvider = slmScreeningProvider;
         this.policy = policy;
         this.protectedSet = protectedSet;
         this.readHistory = readHistory;
@@ -84,7 +83,7 @@ public class Gateway {
      * GatewayResult.NotScreened}; write-tool drift (the target changed since the agent last read
      * it) routes to {@link GatewayResult.DriftResult} as a correctness check before danger;
      * otherwise the call is screened to a {@link GatewayResult.Screened} ({@link Relevance}, {@link
-     * Danger}) via {@link DangerComputation} + {@link SlmRelevanceProvider}. The {@link
+     * Danger}) via {@link DangerComputation} plus optional {@link SlmScreeningProvider}. The {@link
      * HitlRegistry} decides {@link ApprovalDecision} from the result.
      */
     public @NonNull GatewayResult screen(@NonNull ToolCall call, @NonNull ToolDefinition def) {
@@ -116,13 +115,17 @@ public class Gateway {
         }
         Danger deterministicDanger =
                 dangerComputation.compute(def, call, workspace, policy, protectedSet);
-        SlmScreening advisory = slmRelevance.screen(call, def, activeTask, thought);
-        Danger danger = maxDanger(deterministicDanger, advisory.danger());
-        Relevance relevance = advisory.relevance();
+        Optional<SlmScreening> advisory =
+                slmScreeningProvider.screen(call, def, activeTask, thought);
+        Danger danger =
+                advisory.map(screening -> maxDanger(deterministicDanger, screening.danger()))
+                        .orElse(deterministicDanger);
+        Relevance relevance = advisory.map(SlmScreening::relevance).orElse(Relevance.HIGH);
         VetoScenario scenario = scenarioFor(danger, def);
         String reason = reasonFor(deterministicDanger, advisory, danger, def);
         return new GatewayResult.Screened(
-                new Screening(relevance, danger, scenario, reason), executionPermit);
+                new Screening(relevance, danger, advisory.isPresent(), scenario, reason),
+                executionPermit);
     }
 
     /**
@@ -165,19 +168,19 @@ public class Gateway {
 
     private @NonNull String reasonFor(
             @NonNull Danger deterministicDanger,
-            @NonNull SlmScreening advisory,
+            @NonNull Optional<SlmScreening> advisory,
             @NonNull Danger finalDanger,
             @NonNull ToolDefinition def) {
+        String slm =
+                advisory.map(value -> value.danger() + " (" + value.reason() + ")")
+                        .orElse("unavailable");
         return def.risk()
                 + " -> deterministic="
                 + deterministicDanger
                 + ", slm="
-                + advisory.danger()
+                + slm
                 + ", final="
-                + finalDanger
-                + " ("
-                + advisory.reason()
-                + ")";
+                + finalDanger;
     }
 
     // ── Write drift ─────────────

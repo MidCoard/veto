@@ -123,6 +123,8 @@ class AgentServiceHistorySeedTest {
         List<TurnRecord> replayed = first.history();
         assertEquals(TurnType.AGENT_INIT, replayed.get(0).type());
         assertEquals(1, count(replayed, TurnType.AGENT_INIT));
+        String recordedSystemPrompt =
+                (String) requireField(replayed.get(0).payload().get("system_prompt"));
         first.terminate();
 
         AtomicReference<VetoRequest> resumedRequest = new AtomicReference<>();
@@ -149,10 +151,13 @@ class AgentServiceHistorySeedTest {
         VetoRequest request =
                 assertInstanceOf(ToolDocs.nonNullClass(VetoRequest.class), resumedRequest.get());
         assertEquals("system", request.messages().get(0).role());
-        assertTrue(
+        assertEquals(
+                recordedSystemPrompt,
+                request.messages().get(0).content(),
+                "resume must use the recorded AGENT_INIT system prompt exactly");
+        assertFalse(
                 request.messages().get(0).content().contains("updated after restart"),
-                "the resumed request uses the current compiled prompt without recording a second"
-                        + " AGENT_INIT");
+                "a changed runtime template must not replace the durable system insertion");
         assertTrue(
                 request.messages().stream()
                         .anyMatch(message -> "first request".equals(message.content())));

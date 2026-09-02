@@ -290,6 +290,7 @@ class PermissionGrantTest {
                 new top.focess.veto.agent.screening.Screening(
                         top.focess.veto.agent.screening.Relevance.HIGH,
                         top.focess.veto.agent.screening.Danger.ELEVATED,
+                        false,
                         top.focess.veto.agent.intercept.VetoScenario.READ,
                         "test");
         assertEquals(VetoScenario.READ, registry.scenarioFor(call, readDef, screening));
@@ -311,6 +312,7 @@ class PermissionGrantTest {
                 new top.focess.veto.agent.screening.Screening(
                         top.focess.veto.agent.screening.Relevance.LOW,
                         top.focess.veto.agent.screening.Danger.CRITICAL,
+                        false,
                         VetoScenario.EXEC_DETERMINISTIC,
                         "test");
         assertEquals(
@@ -333,6 +335,7 @@ class PermissionGrantTest {
                 new top.focess.veto.agent.screening.Screening(
                         top.focess.veto.agent.screening.Relevance.LOW,
                         top.focess.veto.agent.screening.Danger.DANGEROUS,
+                        true,
                         VetoScenario.EXEC_SEMANTIC,
                         "test");
         assertEquals(VetoScenario.EXEC_SEMANTIC, registry.scenarioFor(call, execDef, screening));
@@ -348,6 +351,7 @@ class PermissionGrantTest {
                 new top.focess.veto.agent.screening.Screening(
                         top.focess.veto.agent.screening.Relevance.HIGH,
                         top.focess.veto.agent.screening.Danger.SAFE,
+                        false,
                         VetoScenario.GENERIC,
                         "test");
         assertEquals(VetoScenario.GENERIC, registry.scenarioFor(call, agentDef, screening));

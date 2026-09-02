@@ -12,8 +12,8 @@ import org.jspecify.annotations.NonNull;
 /**
  * The PROTECTED protected set — paths default-blocked (CRITICAL on access). Seeded with deployer
  * defaults: ~/.veto/users/{veto_user_id}/, ~/.ssh, ~/.aws, ~/.gnupg and each workspace root's
- * {@code .env} (spec §6). User-editable. covers() is canonical prefix match. Under FULL_ACCESS the
- * set is empty.
+ * {@code .env} (spec §6). The immutable value is resolved from deployer configuration for each
+ * user/workspace. covers() is canonical prefix match. Under FULL_ACCESS the set is empty.
  */
 public record ProtectedSet(@NonNull Set<Path> paths) {
 

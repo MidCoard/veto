@@ -45,13 +45,13 @@ class PromptCompileRenderTest {
         assertTrue(
                 prompt.contains("## Your Tools"),
                 "standalone with tools should show the Tools block");
-        assertTrue(prompt.contains("FULL_ACCESS deployer policy"));
-        assertTrue(prompt.contains("default working context rather than an access boundary"));
-        assertTrue(prompt.contains("any absolute host path on this computer"));
+        assertTrue(prompt.contains("running under FULL_ACCESS"));
+        assertTrue(prompt.contains("default working context, not an access boundary"));
+        assertTrue(prompt.contains("any absolute host path"));
         assertTrue(
                 prompt.contains(
-                        "do not claim that a path is blocked merely because it is outside the"
-                                + " listed workspace roots"));
+                        "do not claim that an outside path is blocked merely because it is outside"
+                                + " these roots"));
         assertFalse(prompt.contains("[git:"), "Workspace metadata must not probe or expose Git");
     }
 
@@ -67,8 +67,10 @@ class PromptCompileRenderTest {
         assertFalse(
                 prompt.contains("## Your Tools\n"),
                 "leader with no tools should drop the Tools block");
-        assertTrue(prompt.contains("PROTECTED deployer policy"));
-        assertFalse(prompt.contains("any absolute host path on this computer"));
+        assertTrue(prompt.contains("running under PROTECTED"));
+        assertTrue(prompt.contains("protected set is a hard deny-list"));
+        assertTrue(prompt.contains("outside these roots remain addressable"));
+        assertFalse(prompt.contains("another user's unshared workspace"));
     }
 
     @Test
@@ -85,7 +87,25 @@ class PromptCompileRenderTest {
                 "Role: MATE.",
                 "The engine captures that final message and delivers it to the Leader",
                 "do NOT delegate further");
-        assertTrue(prompt.contains("SANDBOXED deployer policy"));
+        assertTrue(prompt.contains("running under SANDBOXED"));
+        assertTrue(prompt.contains("session workspace roots admitted within those zones"));
+        assertFalse(prompt.contains("owner-issued sharing"));
+    }
+
+    @Test
+    void everyDeployerPolicyHasADistinctBoundaryContract() {
+        String full = render(Role.STANDALONE, DeployerPolicy.FULL_ACCESS, null, List.of());
+        String protectedPrompt = render(Role.STANDALONE, DeployerPolicy.PROTECTED, null, List.of());
+        String sandboxed = render(Role.STANDALONE, DeployerPolicy.SANDBOXED, null, List.of());
+        String tenant = render(Role.STANDALONE, DeployerPolicy.TENANT, null, List.of());
+
+        assertTrue(full.contains("unrestricted host-path reachability"));
+        assertTrue(protectedPrompt.contains("protected target is CRITICAL"));
+        assertTrue(sandboxed.contains("deployer configured project zones"));
+        assertTrue(tenant.contains("owner-issued sharing"));
+        assertFalse(full.equals(protectedPrompt));
+        assertFalse(protectedPrompt.equals(sandboxed));
+        assertFalse(sandboxed.equals(tenant));
     }
 
     private @NonNull String render(

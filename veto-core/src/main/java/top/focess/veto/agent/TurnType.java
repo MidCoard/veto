@@ -19,7 +19,7 @@ public enum TurnType {
     TOOL_RESPONSE,
     /** A rewind directive — 0-based suffix-drop of the compiled view (not emitted as a message). */
     REWIND,
-    /** A role-start marker carrying the linked system prompt and concrete model binding. */
+    /** An ordered system-prompt insertion carrying the role and concrete model binding. */
     AGENT_INIT,
     /** A compaction summary seed, re-injected after a {@link #REWIND}. */
     COMPACTION_SUMMARY

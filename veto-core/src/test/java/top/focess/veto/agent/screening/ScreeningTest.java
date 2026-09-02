@@ -12,20 +12,24 @@ import top.focess.veto.llm.core.ToolCall;
 class ScreeningTest {
 
     @Test
-    void degradedProviderAlwaysReturnsHigh() {
-        SlmRelevanceProvider provider = new DegradedSlmRelevanceProvider();
+    void unavailableProviderReturnsNoFabricatedJudgment() {
+        SlmScreeningProvider provider = new UnavailableSlmScreeningProvider();
         ToolCall call = new ToolCall("any", java.util.Map.of());
-        assertEquals(Relevance.HIGH, provider.relevance(call, anAgentToolDef(), "any thought"));
-        assertEquals(Danger.SAFE, provider.screen(call, anAgentToolDef(), "any thought").danger());
+        assertTrue(provider.screen(call, anAgentToolDef(), "any thought").isEmpty());
     }
 
     @Test
     void screeningCarriesRelevanceDangerScenarioReason() {
         Screening s =
                 new Screening(
-                        Relevance.HIGH, Danger.ELEVATED, VetoScenario.GENERIC, "project write");
+                        Relevance.HIGH,
+                        Danger.ELEVATED,
+                        true,
+                        VetoScenario.GENERIC,
+                        "project write");
         assertEquals(Relevance.HIGH, s.relevance());
         assertEquals(Danger.ELEVATED, s.danger());
+        assertTrue(s.slmEvaluated());
         assertEquals(VetoScenario.GENERIC, s.scenario());
         assertEquals("project write", s.reason());
     }

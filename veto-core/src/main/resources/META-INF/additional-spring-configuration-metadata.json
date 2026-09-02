@@ -7,6 +7,18 @@
       "defaultValue": "jpa"
     },
     {
+      "name": "veto.security.deployer-policy",
+      "type": "java.lang.String",
+      "description": "Active install-time path and tenant policy. PROTECTED, SANDBOXED, and TENANT use their matching veto.security section; FULL_ACCESS needs no additional settings.",
+      "defaultValue": "FULL_ACCESS"
+    },
+    {
+      "name": "veto.security.screening-mode",
+      "type": "java.lang.String",
+      "description": "Per-session auto-approval matrix. DANGEROUS always requires authorization and CRITICAL is always refused.",
+      "defaultValue": "STRICT"
+    },
+    {
       "name": "veto.terminal.enabled",
       "type": "java.lang.Boolean",
       "description": "Whether the local terminal IPC server is enabled.",
@@ -38,6 +50,23 @@
     }
   ],
   "hints": [
+    {
+      "name": "veto.security.deployer-policy",
+      "values": [
+        { "value": "FULL_ACCESS", "description": "Host paths are unrestricted; Gateway screening and HITL remain active." },
+        { "value": "PROTECTED", "description": "Host paths are reachable except for the policy's hard protected-path deny-list." },
+        { "value": "SANDBOXED", "description": "Session roots must be admitted within deployer-configured project zones and form a hard execution boundary." },
+        { "value": "TENANT", "description": "Per-owner session roots are admitted within tenant zones with cross-user isolation." }
+      ]
+    },
+    {
+      "name": "veto.security.screening-mode",
+      "values": [
+        { "value": "STRICT", "description": "Only HIGH/SAFE calls auto-approve." },
+        { "value": "BALANCED", "description": "On-task SAFE/ELEVATED work may auto-approve." },
+        { "value": "PERMISSIVE", "description": "SAFE/ELEVATED calls auto-approve; DANGEROUS still requires authorization." }
+      ]
+    },
     {
       "name": "veto.memory.store",
       "values": [

@@ -2,7 +2,6 @@ package top.focess.veto.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
@@ -36,16 +35,15 @@ import top.focess.veto.agent.mcp.ToolEngine;
 import top.focess.veto.agent.screening.DangerComputation;
 import top.focess.veto.agent.screening.DeployerPolicy;
 import top.focess.veto.agent.screening.ProtectedSet;
+import top.focess.veto.agent.screening.ProtectedSetResolver;
 import top.focess.veto.agent.screening.ScreeningMode;
-import top.focess.veto.agent.screening.SlmRelevanceProvider;
+import top.focess.veto.agent.screening.SlmScreeningProvider;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.llm.config.LlmJacksonConfig;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
 import top.focess.veto.llm.core.UniformLLMCaller;
-import top.focess.veto.observability.ObservabilityConfiguration;
-import top.focess.veto.vault.CredentialVaultConfiguration;
 
 /**
  * The shared agent service ("Multi-Client Unification"). Both the ZMQ terminal ({@code
@@ -84,9 +82,8 @@ public class AgentService {
     // each AgentRunner so appendTurn persists to the raw-turn audit/replay log.
     private final top.focess.veto.memory.TurnLogService turnLogService;
     private final top.focess.veto.sandbox.@NonNull BackgroundTaskManager backgroundTaskManager;
-    private @NonNull List<@NonNull Path> configuredSystemProtectedPaths =
-            ProtectedSet.standardSystemProtected(Path.of(System.getProperty("user.dir", ".")));
-    private @NonNull SlmRelevanceProvider slmRelevanceProvider = SlmRelevanceProvider.degraded();
+    private final @NonNull ProtectedSetResolver protectedSetResolver;
+    private @NonNull SlmScreeningProvider slmScreeningProvider = SlmScreeningProvider.unavailable();
 
     /**
      * The fallback memory-tenant userId for legacy/test paths that bypass session activation (the
@@ -100,6 +97,7 @@ public class AgentService {
     private final @NonNull ConcurrentHashMap<@NonNull String, @NonNull VetoAgent> agents =
             new ConcurrentHashMap<>();
 
+    @Autowired
     public AgentService(
             @NonNull ToolEngine mcpEngine,
             @NonNull HitlRegistry hitlRegistry,
@@ -116,7 +114,8 @@ public class AgentService {
             @Value("${veto.security.screening-mode:STRICT}") @NonNull String screeningModeRaw,
             DeltaBroker deltaBroker,
             top.focess.veto.memory.TurnLogService turnLogService,
-            top.focess.veto.sandbox.@NonNull BackgroundTaskManager backgroundTaskManager) {
+            top.focess.veto.sandbox.@NonNull BackgroundTaskManager backgroundTaskManager,
+            @NonNull ProtectedSetResolver protectedSetResolver) {
         this.mcpEngine = mcpEngine;
         this.hitlRegistry = hitlRegistry;
         this.ingressDefense = ingressDefense;
@@ -130,10 +129,10 @@ public class AgentService {
         this.maxCallsPerEpisode = maxCallsPerEpisode;
         this.deployerPolicy = parseDeployerPolicy(deployerPolicyRaw);
         if (this.deployerPolicy == DeployerPolicy.FULL_ACCESS) {
-            log.warn(
-                    "deployer-policy=FULL_ACCESS: the agent can read application.yml and any secrets"
-                            + " stored in it. Do not store high-value secrets in application.yml under"
-                            + " this policy; use env vars or the keystead vault.");
+            log.info(
+                    "deployer-policy=FULL_ACCESS: workspace roots are context rather than path"
+                            + " fences; Gateway screening and HITL remain active. Use PROTECTED for"
+                            + " deployer-defined hard path exclusions.");
         }
         // Thread the runtime screening matrix + a fallback workspace to the (shared) HITL registry.
         // Each session registers its own workspace per-agentId at create time (see createAgent /
@@ -143,11 +142,51 @@ public class AgentService {
         this.deltaBroker = deltaBroker;
         this.turnLogService = turnLogService;
         this.backgroundTaskManager = backgroundTaskManager;
+        this.protectedSetResolver = protectedSetResolver;
+    }
+
+    /** Constructor retained for focused unit tests that do not start the Spring container. */
+    AgentService(
+            @NonNull ToolEngine mcpEngine,
+            @NonNull HitlRegistry hitlRegistry,
+            @NonNull IngressDefense ingressDefense,
+            @NonNull PromptCompiler promptCompiler,
+            @NonNull UniformLLMCaller caller,
+            @NonNull ObjectMapper objectMapper,
+            List<LoopInterceptor> interceptors,
+            @NonNull RoleToolFilter roleToolFilter,
+            @NonNull String pathMode,
+            long maxCallsPerEpisode,
+            @NonNull String deployerPolicyRaw,
+            @NonNull String screeningModeRaw,
+            DeltaBroker deltaBroker,
+            top.focess.veto.memory.TurnLogService turnLogService,
+            top.focess.veto.sandbox.@NonNull BackgroundTaskManager backgroundTaskManager) {
+        this(
+                mcpEngine,
+                hitlRegistry,
+                ingressDefense,
+                promptCompiler,
+                caller,
+                objectMapper,
+                interceptors,
+                roleToolFilter,
+                pathMode,
+                maxCallsPerEpisode,
+                deployerPolicyRaw,
+                screeningModeRaw,
+                deltaBroker,
+                turnLogService,
+                backgroundTaskManager,
+                new ProtectedSetResolver(
+                        new top.focess.veto.agent.screening.DeployerPolicyConfiguration(),
+                        new top.focess.veto.observability.ObservabilityConfiguration(),
+                        new top.focess.veto.vault.CredentialVaultConfiguration()));
     }
 
     @Autowired(required = false)
-    void setSlmRelevanceProvider(@NonNull SlmRelevanceProvider provider) {
-        this.slmRelevanceProvider = provider;
+    void setSlmScreeningProvider(@NonNull SlmScreeningProvider provider) {
+        this.slmScreeningProvider = provider;
     }
 
     /** Replaces the constructor's test fallback with the deployer-configured Workspace bean. */
@@ -155,20 +194,6 @@ public class AgentService {
     void setConfiguredDefaultWorkspace(@NonNull Workspace workspace) {
         this.defaultWorkspace = workspace;
         this.hitlRegistry.setDefaultWorkspace(workspace);
-    }
-
-    /** Binds protected paths to the actual configured audit and Vault locations. */
-    @Autowired
-    void setProtectedPathConfigurations(
-            @NonNull ObservabilityConfiguration observability,
-            @NonNull CredentialVaultConfiguration vault) {
-        List<Path> paths =
-                new java.util.ArrayList<>(
-                        ProtectedSet.standardSystemProtected(
-                                Path.of(System.getProperty("user.dir", "."))));
-        paths.add(Path.of(observability.getAuditLogPath()));
-        paths.add(Path.of(vault.getVaultHome()));
-        this.configuredSystemProtectedPaths = List.copyOf(paths);
     }
 
     /**
@@ -598,7 +623,7 @@ public class AgentService {
                 new Gateway(
                         workspace,
                         new DangerComputation(),
-                        slmRelevanceProvider,
+                        slmScreeningProvider,
                         deployerPolicy,
                         userProtectedSet,
                         readHistory);
@@ -715,7 +740,7 @@ public class AgentService {
                 new Gateway(
                         workspace,
                         new DangerComputation(),
-                        slmRelevanceProvider,
+                        slmScreeningProvider,
                         deployerPolicy,
                         mateProtectedSet,
                         readHistory);
@@ -826,28 +851,10 @@ public class AgentService {
         return Workspace.fromConfig("", workspaceRoots, pathMode, currentWorkspaceRootIndex);
     }
 
-    /**
-     * The app's own config/audit paths the agent must never read (shielded under non-FULL_ACCESS).
-     */
-    private @NonNull List<@NonNull Path> systemProtectedPaths() {
-        return configuredSystemProtectedPaths;
-    }
-
-    /**
-     * The protected set for an agent under the configured deployer policy: empty under FULL_ACCESS;
-     * otherwise the deployer defaults (per {@code vetoUserId}) plus the app's own config/audit
-     * material, so the agent cannot read {@code application.yml} / {@code config/} / {@code
-     * audit/}. {@link DangerComputation} checks the set before scoping, so this applies under every
-     * non-FULL_ACCESS policy. Listed as specific subpaths so a workspace nested under the launch
-     * dir is unaffected.
-     */
+    /** Resolves the deployer-configured hard path exclusions for this user and workspace. */
     private @NonNull ProtectedSet protectedSetFor(
             @NonNull String vetoUserId, @NonNull Workspace workspace) {
-        if (this.deployerPolicy == DeployerPolicy.FULL_ACCESS) {
-            return ProtectedSet.empty();
-        }
-        return ProtectedSet.withDeployerDefaults(vetoUserId, workspace.hostRoots())
-                .withSystemProtected(systemProtectedPaths());
+        return protectedSetResolver.resolve(this.deployerPolicy, vetoUserId, workspace);
     }
 
     private static @NonNull DeployerPolicy parseDeployerPolicy(@NonNull String raw) {
@@ -859,9 +866,13 @@ public class AgentService {
         if (raw == null || raw.isBlank()) {
             return ScreeningMode.STRICT;
         }
+        String normalized = raw.trim();
+        if ("BYPASS_ALL".equalsIgnoreCase(normalized)) {
+            return ScreeningMode.PERMISSIVE;
+        }
         var modes = top.focess.veto.util.Nullness.requireNonNull(ScreeningMode.values());
         for (ScreeningMode m : modes) {
-            if (m.name().equalsIgnoreCase(raw.trim())) {
+            if (m.name().equalsIgnoreCase(normalized)) {
                 return m;
             }
         }

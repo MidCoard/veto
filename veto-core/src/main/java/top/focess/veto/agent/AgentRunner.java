@@ -173,11 +173,9 @@ public class AgentRunner {
     // Captured in callModel via ReasoningContentHolder, stored in the ASSISTANT_THOUGHT turn by
     // appendThought, and echoed back on the next request's assistant message by PromptCompiler.
     private String lastReasoningContent = null;
-    // AGENT_INIT marks a logical role lifecycle, not a compiled-prompt revision. A backend resume
-    // may legitimately compile different prompt text after an upgrade, but it is still the same
-    // logical agent and must not append a second system-prompt snapshot. Role transforms reset this
-    // marker naturally because the role changes.
-    private String lastAgentInitRole = null;
+    // True once the ordered record stream contains an AGENT_INIT system-prompt insertion. Resume
+    // replays that record verbatim; it never generates a replacement from the current templates.
+    private boolean agentInitPresent = false;
     // The episode's first request is compiled against a prospective history containing the new
     // user turn. That exact immutable payload is dispatched after AGENT_INIT → USER_PROMPT are
     // persisted in logical order. Null after the first dispatch.
@@ -378,6 +376,9 @@ public class AgentRunner {
                         : null;
         this.activeUserTask = resumeContext != null ? resumeContext : prompt;
         awaitingBreakerContinuation = false;
+        if (!agentInitPresent) {
+            appendAgentInit(linkCurrentSystemMessage());
+        }
         TurnRecord prospectiveUserTurn =
                 resumeContext != null
                         ? TurnRecord.breakerContinuation(turnNumber + 1, prompt, resumeContext)
@@ -388,9 +389,6 @@ public class AgentRunner {
         }
         prospectiveHistory.add(prospectiveUserTurn);
         preparedFirstPrompt = compilePrompt(prospectiveHistory, false);
-        // Persist the root and user event in logical order, then dispatch this exact compiled
-        // payload. There is no second linking pass that could observe different laws or tools.
-        recordAgentInit(preparedFirstPrompt.systemMessage());
         appendTurn(
                 resumeContext != null
                         ? TurnRecord.breakerContinuation(++turnNumber, prompt, resumeContext)
@@ -804,7 +802,6 @@ public class AgentRunner {
         if (compiled == null) {
             compiled = compilePrompt(List.copyOf(history), guidedSwitch);
         }
-        recordAgentInit(compiled.systemMessage());
         long estimatedTokens = compiled.estimatedTokens();
         VetoRequest request = buildRequest(compiled);
         for (int attempt = 0; ; attempt++) {
@@ -861,12 +858,14 @@ public class AgentRunner {
                 toolResultPresentation);
     }
 
-    private void recordAgentInit(@NonNull String systemPrompt) {
+    private @NonNull String linkCurrentSystemMessage() {
+        return promptCompiler.linkSystemMessage(
+                persona, gateway.workspace(), binding.systemPromptBase(), toolResultPresentation);
+    }
+
+    private void appendAgentInit(@NonNull String systemPrompt) {
         LlmBinding current = binding;
         String role = persona.role().name().toLowerCase(Locale.ROOT);
-        if (role.equals(lastAgentInitRole)) {
-            return;
-        }
         appendTurn(
                 TurnRecord.agentInit(
                         ++turnNumber,
@@ -874,7 +873,7 @@ public class AgentRunner {
                         systemPrompt,
                         current.provider().name(),
                         current.model()));
-        lastAgentInitRole = role;
+        agentInitPresent = true;
     }
 
     private @NonNull VetoRequest buildRequest(@NonNull CompiledPrompt compiled) {
@@ -1711,10 +1710,7 @@ public class AgentRunner {
                 max = t.turnNumber();
             }
             if (t.type() == TurnType.AGENT_INIT) {
-                Object role = t.payload().get("role");
-                if (role instanceof String roleName) {
-                    lastAgentInitRole = roleName;
-                }
+                agentInitPresent = true;
             }
         }
         turnNumber = max;
@@ -2063,7 +2059,7 @@ public class AgentRunner {
         setGroupId(directive.groupId());
 
         appendTurn(TurnRecord.rewind(++turnNumber, 0));
-        recordAgentInit(compilePrompt(List.copyOf(history), false).systemMessage());
+        appendAgentInit(linkCurrentSystemMessage());
         if (!summary.isBlank() && !"{}".equals(summary)) {
             appendTurn(TurnRecord.compactionSummary(++turnNumber, summary));
         }
@@ -2122,7 +2118,7 @@ public class AgentRunner {
         this.preTransformBinding = null;
 
         appendTurn(TurnRecord.rewind(++turnNumber, 0));
-        recordAgentInit(compilePrompt(List.copyOf(history), false).systemMessage());
+        appendAgentInit(linkCurrentSystemMessage());
         if (!summary.isBlank() && !"{}".equals(summary)) {
             appendTurn(TurnRecord.compactionSummary(++turnNumber, summary));
         }

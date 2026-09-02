@@ -9,17 +9,18 @@ import java.util.Deque;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.screening.DeployerPolicy;
+import top.focess.veto.agent.screening.DeployerPolicyConfiguration;
 import top.focess.veto.security.HostPathInput;
 
 /**
  * Admits session-declared roots against deployer-owned filesystem mounts.
  *
  * <p>A client declaration selects authorized directories; it never creates ownership. SANDBOXED
- * accepts roots only below configured {@code veto.workspace.root/roots} mounts. TENANT additionally
- * confines each user below a mount's direct {@code <owner>} child.
+ * accepts roots only below {@code veto.security.sandboxed.roots}. TENANT uses its own {@code
+ * veto.security.tenant.roots} and additionally confines each user below a mount's direct {@code
+ * <owner>} child.
  */
 @Component
 public final class WorkspaceAdmissionPolicy {
@@ -29,11 +30,14 @@ public final class WorkspaceAdmissionPolicy {
     private final boolean canonicalize;
 
     @Autowired
-    public WorkspaceAdmissionPolicy(
-            @NonNull Workspace defaultWorkspace,
-            @Value("${veto.security.deployer-policy:FULL_ACCESS}")
-                    @NonNull String deployerPolicyRaw) {
-        this(defaultWorkspace.hostRoots(), DeployerPolicy.parse(deployerPolicyRaw));
+    public WorkspaceAdmissionPolicy(@NonNull DeployerPolicyConfiguration configuration) {
+        DeployerPolicy policy = configuration.getDeployerPolicy();
+        this.deployerPolicy = policy;
+        this.canonicalize = true;
+        this.deployerRoots =
+                configuredRoots(policy, configuration).stream()
+                        .map(path -> canonicalForCreation(path, "configured policy root"))
+                        .toList();
     }
 
     public WorkspaceAdmissionPolicy(
@@ -80,7 +84,7 @@ public final class WorkspaceAdmissionPolicy {
         }
         if (deployerRoots.isEmpty()) {
             throw new IllegalStateException(
-                    deployerPolicy + " requires at least one configured veto.workspace root");
+                    deployerPolicy + " requires at least one configured policy root");
         }
 
         List<Path> authorizedBases =
@@ -107,6 +111,14 @@ public final class WorkspaceAdmissionPolicy {
             result.add(canonicalForCreation(root.resolve(owner), "tenant workspace root"));
         }
         return List.copyOf(result);
+    }
+
+    private static @NonNull List<@NonNull Path> configuredRoots(
+            @NonNull DeployerPolicy policy, @NonNull DeployerPolicyConfiguration configuration) {
+        return configuration.rootsFor(policy).stream()
+                .filter(root -> !root.isBlank())
+                .map(root -> HostPathInput.absoluteNormalized(root, "configured policy root"))
+                .toList();
     }
 
     /** Resolves existing segments so a symlink cannot disguise an out-of-scope future child. */

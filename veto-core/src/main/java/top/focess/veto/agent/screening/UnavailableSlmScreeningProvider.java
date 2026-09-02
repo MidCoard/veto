@@ -1,17 +1,18 @@
 package top.focess.veto.agent.screening;
 
+import java.util.Optional;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.mcp.ToolDefinition;
 import top.focess.veto.llm.core.ToolCall;
 
-/** Degraded SLM relevance provider — always returns HIGH (SLM absent). */
-public class DegradedSlmRelevanceProvider implements SlmRelevanceProvider {
+/** Provider used when no local semantic screening model is available. */
+public class UnavailableSlmScreeningProvider implements SlmScreeningProvider {
     @Override
-    public @NonNull SlmScreening screen(
+    public @NonNull Optional<SlmScreening> screen(
             @NonNull ToolCall call,
             @NonNull ToolDefinition def,
             String activeTask,
             String thought) {
-        return SlmScreening.degraded();
+        return Optional.empty();
     }
 }
