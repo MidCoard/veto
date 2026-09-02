@@ -38,7 +38,6 @@ import top.focess.veto.veto.VetoGatewayConfiguration;
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
             "veto.veto-gateway.enabled=true",
-            "veto.veto-gateway.redact-secrets=true",
             "veto.veto-gateway.enforce-structural-constraints=true",
             "veto.vault.master-key-env=veto.test.key",
             "veto.observability.encryption-enabled=false"

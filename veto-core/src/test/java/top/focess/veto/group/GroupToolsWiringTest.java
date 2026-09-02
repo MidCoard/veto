@@ -2,12 +2,14 @@ package top.focess.veto.group;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.identity.RoleToolFilter;
+import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.mcp.ToolCallContext;
 import top.focess.veto.agent.mcp.ToolCallContextHolder;
@@ -17,8 +19,11 @@ import top.focess.veto.agent.mcp.ToolEngine;
 import top.focess.veto.agent.mcp.ToolErrors;
 import top.focess.veto.agent.mcp.ToolExecutionException;
 import top.focess.veto.agent.mcp.ToolResult;
+import top.focess.veto.agent.workspace.PathMode;
+import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.group.GroupTools.CreateGroup;
 import top.focess.veto.group.GroupTools.DisbandGroup;
+import top.focess.veto.group.GroupTools.InspectGroup;
 import top.focess.veto.group.GroupTools.PostMessage;
 import top.focess.veto.llm.core.ProviderType;
 import top.focess.veto.llm.core.ToolCall;
@@ -85,7 +90,10 @@ class GroupToolsWiringTest {
 
     @Test
     void createGroupRegistersEmptyGroupAndRequestsTransform() {
-        CreateGroup create = new CreateGroup(spawner, leaderBinding, roleToolFilter);
+        HitlRegistry hitlRegistry = new HitlRegistry();
+        Workspace workspace = Workspace.single(Path.of("group-workspace"), PathMode.REAL);
+        hitlRegistry.setWorkspace("agent-1", workspace);
+        CreateGroup create = new CreateGroup(spawner, leaderBinding, roleToolFilter, hitlRegistry);
 
         ToolCallContextHolder.set(
                 new ToolCallContext(
@@ -118,6 +126,10 @@ class GroupToolsWiringTest {
             assertEquals(
                     directive.groupId(), g.groupId(), "the directive stamps the registered group");
             assertTrue(g.dag().nodes().isEmpty(), "the group starts with an empty DAG");
+            assertSame(
+                    workspace,
+                    top.focess.veto.util.Nullness.requireNonNull(g.workspace()),
+                    "the group carries the Leader's workspace");
             spawner.disband(g.groupId());
         } finally {
             ToolCallContextHolder.clear();
@@ -274,6 +286,43 @@ class GroupToolsWiringTest {
                     "no active group is refused");
         } finally {
             ToolCallContextHolder.clear();
+        }
+    }
+
+    @Test
+    void inspectGroupReturnsOnlyNewMateReportsAndCursor() {
+        Group g = spawner.registerEmptyGroup("leader", "default", null, "brief");
+        registry.put(g.withMate("mate-1", "coding"));
+        blackboard.post(
+                new BlackboardMessage(
+                        UUID.randomUUID().toString(),
+                        g.groupId(),
+                        "mate-1",
+                        "LEADER",
+                        BlackboardMessage.MessageType.FEEDBACK,
+                        "node-1:feedback:test failed",
+                        0));
+
+        InspectGroup inspect = new InspectGroup(registry, blackboard);
+        ToolCallContextHolder.set(
+                new ToolCallContext(
+                        "leader",
+                        UUID.randomUUID(),
+                        g.groupId(),
+                        null,
+                        null,
+                        ToolResultPresentationMode.BASIC,
+                        ToolExecutionPermit.empty()));
+        try {
+            String first = inspect.execute(new InspectGroup.Args(0L, 0));
+            assertTrue(first.contains("sender=mate-1 type=FEEDBACK"));
+            assertTrue(first.contains("nextSinceSeq: 1"));
+
+            String second = inspect.execute(new InspectGroup.Args(1L, 0));
+            assertTrue(second.contains("New Mate messages:\n- (none)"));
+        } finally {
+            ToolCallContextHolder.clear();
+            spawner.disband(g.groupId());
         }
     }
 

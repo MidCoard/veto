@@ -60,8 +60,9 @@ class DeployerPolicyTest {
     }
 
     @Test
-    void tenantNonSharedCrossUserIsCritical(@TempDir @NonNull Path tmp) throws Exception {
-        // Two roots: alice's own + bob's (not shared)
+    void tenantAllowsEveryServerAdmittedOwnedRoot(@TempDir @NonNull Path tmp) throws Exception {
+        // Workspace admission, not currentRootIndex, establishes ownership. Multiple OWNED roots
+        // in one session all belong to that session's owner.
         Path canonical = tmp.toRealPath();
         Path aliceRoot = canonical.resolve("alice");
         Path bobRoot = canonical.resolve("bob");
@@ -75,14 +76,16 @@ class DeployerPolicyTest {
                                 WorkspaceRoot.of(bobRoot, TrustMarker.OWNED)),
                         PathMode.REAL,
                         0);
-        // Alice (currentRootIndex=0) tries to read Bob's file.
         ToolCall call =
                 new ToolCall(
                         "view_file", Map.of("path", bobRoot.resolve("private.txt").toString()));
         Danger danger =
                 new DangerComputation()
                         .compute(readDef(), call, ws, DeployerPolicy.TENANT, ProtectedSet.empty());
-        assertEquals(Danger.CRITICAL, danger, "TENANT must refuse non-shared cross-user paths");
+        assertNotEquals(
+                Danger.CRITICAL,
+                danger,
+                "TENANT must not reinterpret another OWNED root as another user's root");
     }
 
     @Test

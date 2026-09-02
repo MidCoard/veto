@@ -19,7 +19,7 @@ class LinuxBubblewrapSandboxTest {
             throws Exception {
         Path workspace = Files.createDirectory(root.resolve("workspace"));
         Path cwd = Files.createDirectories(workspace.resolve("nested"));
-        Files.createDirectory(workspace.resolve(".git"));
+        Files.createDirectory(workspace.resolve(".agents"));
         Path launcher = currentJavaExecutable();
         LinuxBubblewrapSandbox sandbox = new LinuxBubblewrapSandbox(launcher);
 
@@ -39,8 +39,8 @@ class LinuxBubblewrapSandboxTest {
         assertContainsSequence(
                 command,
                 "--ro-bind",
-                workspace.resolve(".git").toRealPath().toString(),
-                workspace.resolve(".git").toRealPath().toString());
+                workspace.resolve(".agents").toRealPath().toString(),
+                workspace.resolve(".agents").toRealPath().toString());
         assertContainsSequence(command, "--chdir", cwd.toRealPath().toString());
         assertTrue(command.contains("--unshare-user"));
         assertTrue(command.contains("--unshare-pid"));

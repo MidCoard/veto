@@ -173,9 +173,11 @@ public class AgentRunner {
     // Captured in callModel via ReasoningContentHolder, stored in the ASSISTANT_THOUGHT turn by
     // appendThought, and echoed back on the next request's assistant message by PromptCompiler.
     private String lastReasoningContent = null;
-    // The linked prompt is durable UI/audit data, but it is large and normally stable. Record it
-    // only when either the content or concrete model binding changes.
-    private String lastAgentInitKey = null;
+    // AGENT_INIT marks a logical role lifecycle, not a compiled-prompt revision. A backend resume
+    // may legitimately compile different prompt text after an upgrade, but it is still the same
+    // logical agent and must not append a second system-prompt snapshot. Role transforms reset this
+    // marker naturally because the role changes.
+    private String lastAgentInitRole = null;
     // The episode's first request is compiled against a prospective history containing the new
     // user turn. That exact immutable payload is dispatched after AGENT_INIT → USER_PROMPT are
     // persisted in logical order. Null after the first dispatch.
@@ -862,15 +864,7 @@ public class AgentRunner {
     private void recordAgentInit(@NonNull String systemPrompt) {
         LlmBinding current = binding;
         String role = persona.role().name().toLowerCase(Locale.ROOT);
-        String key =
-                role
-                        + '\u0000'
-                        + current.provider().name()
-                        + '\u0000'
-                        + current.model()
-                        + '\u0000'
-                        + systemPrompt;
-        if (key.equals(lastAgentInitKey)) {
+        if (role.equals(lastAgentInitRole)) {
             return;
         }
         appendTurn(
@@ -880,7 +874,7 @@ public class AgentRunner {
                         systemPrompt,
                         current.provider().name(),
                         current.model()));
-        lastAgentInitKey = key;
+        lastAgentInitRole = role;
     }
 
     private @NonNull VetoRequest buildRequest(@NonNull CompiledPrompt compiled) {
@@ -1718,21 +1712,8 @@ public class AgentRunner {
             }
             if (t.type() == TurnType.AGENT_INIT) {
                 Object role = t.payload().get("role");
-                Object content = t.payload().get("system_prompt");
-                Object provider = t.payload().get("provider");
-                Object model = t.payload().get("model");
-                if (role instanceof String roleName
-                        && content instanceof String prompt
-                        && provider instanceof String providerName
-                        && model instanceof String modelName) {
-                    lastAgentInitKey =
-                            roleName
-                                    + '\u0000'
-                                    + providerName
-                                    + '\u0000'
-                                    + modelName
-                                    + '\u0000'
-                                    + prompt;
+                if (role instanceof String roleName) {
+                    lastAgentInitRole = roleName;
                 }
             }
         }

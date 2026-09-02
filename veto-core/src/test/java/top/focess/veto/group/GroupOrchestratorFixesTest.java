@@ -98,7 +98,7 @@ class GroupOrchestratorFixesTest {
     void tickIsSerializedPerGroup() throws Exception {
         // F4: two concurrent ticks on the same groupId must NOT double-ingest the same
         // Blackboard message. The per-group lock means one tick runs to completion before the
-        // other starts; the second tick sees the group as DISBANDED and returns without
+        // other starts; the second tick sees the group as COMPLETED and returns without
         // re-processing. The final state must show n1=VERIFIED (not double-processed).
         Blackboard blackboard = new Blackboard();
         GroupRegistry registry = new GroupRegistry();
@@ -115,16 +115,9 @@ class GroupOrchestratorFixesTest {
         g = g.withMate("Mate-A", "coding");
         registry.put(g);
 
-        // Post a single ACCEPT and run two concurrent ticks.
-        blackboard.post(
-                new BlackboardMessage(
-                        UUID.randomUUID().toString(),
-                        groupId,
-                        "Mate-A",
-                        "LEADER",
-                        BlackboardMessage.MessageType.ACCEPT,
-                        "n1:accept:/x",
-                        0));
+        // First dispatch the node; only its assigned Mate may then post an outcome.
+        orch.tick(groupId);
+        orch.simulateAccept(groupId, "Mate-A", "n1");
 
         ExecutorService pool = Executors.newFixedThreadPool(2);
         CountDownLatch start = new CountDownLatch(1);
@@ -145,25 +138,27 @@ class GroupOrchestratorFixesTest {
         // F4 invariants under the per-group lock:
         // - The group must still exist in the registry.
         // - The node must be VERIFIED exactly once (no double-ingest).
-        // - The group must be DISBANDED (maybeComplete saw all nodes VERIFIED).
-        // - Subsequent ticks return the DISBANDED group without re-dispatching.
+        // - The group must be COMPLETED (maybeComplete saw all nodes VERIFIED).
+        // - Subsequent ticks return the COMPLETED group without re-dispatching.
         Group finalG =
                 requireGroup(
                         registry.get(groupId),
                         "F4: group must still exist in registry after concurrent ticks");
         assertEquals(1, finalG.dag().nodes().size());
         assertEquals(
-                Group.GroupState.DISBANDED,
+                Group.GroupState.COMPLETED,
                 finalG.state(),
-                "F4: group must be DISBANDED after the ACCEPT was processed");
+                "F4: group must be COMPLETED after the ACCEPT was processed");
         assertEquals(
                 DagNode.NodeState.VERIFIED,
                 finalG.dag().nodes().get(0).state(),
                 "F4: n1 must be VERIFIED — not RUNNING (a re-dispatch would race the lock)");
-        // A follow-up tick on the DISBANDED group must be a no-op (early return).
+        // A follow-up tick on the COMPLETED group must be a no-op (early return).
         Group after = requireGroup(orch.tick(groupId), "F4: post-DISBAND tick must return group");
         assertEquals(
-                Group.GroupState.DISBANDED, after.state(), "F4: post-DISBAND tick must be a no-op");
+                Group.GroupState.COMPLETED,
+                after.state(),
+                "F4: post-COMPLETE tick must be a no-op");
     }
 
     @Test

@@ -8,12 +8,14 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import org.jspecify.annotations.NonNull;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import top.focess.veto.agent.Agent;
 import top.focess.veto.agent.AgentRunner;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.TurnRecord;
+import top.focess.veto.agent.workspace.WorkspaceAdmissionPolicy;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
@@ -25,7 +27,6 @@ import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTierRegistry;
-import top.focess.veto.security.HostPathInput;
 
 /**
  * Owns the session lifecycle: create/list/activate/deactivate, plus the per-terminal active-session
@@ -46,11 +47,31 @@ public class SessionService {
     private final @NonNull AgentService agentService;
     private final @NonNull SessionHistoryLoader historyLoader;
     private final @NonNull ModelTierRegistry tierRegistry;
+    private final @NonNull WorkspaceAdmissionPolicy workspaceAdmissionPolicy;
 
     /** Per-terminal active session id. Key = terminal id, value = session id. */
     private final @NonNull ConcurrentHashMap<String, String> activeSessions =
             new ConcurrentHashMap<>();
 
+    @Autowired
+    public SessionService(
+            @NonNull SessionRepository sessions,
+            @NonNull AgentInstanceRepository agents,
+            @NonNull AgentPatternRepository patterns,
+            @NonNull AgentService agentService,
+            @NonNull SessionHistoryLoader historyLoader,
+            @NonNull ModelTierRegistry tierRegistry,
+            @NonNull WorkspaceAdmissionPolicy workspaceAdmissionPolicy) {
+        this.sessions = sessions;
+        this.agents = agents;
+        this.patterns = patterns;
+        this.agentService = agentService;
+        this.historyLoader = historyLoader;
+        this.tierRegistry = tierRegistry;
+        this.workspaceAdmissionPolicy = workspaceAdmissionPolicy;
+    }
+
+    /** Test/embedded compatibility constructor; Spring always supplies the admission policy. */
     public SessionService(
             @NonNull SessionRepository sessions,
             @NonNull AgentInstanceRepository agents,
@@ -58,12 +79,14 @@ public class SessionService {
             @NonNull AgentService agentService,
             @NonNull SessionHistoryLoader historyLoader,
             @NonNull ModelTierRegistry tierRegistry) {
-        this.sessions = sessions;
-        this.agents = agents;
-        this.patterns = patterns;
-        this.agentService = agentService;
-        this.historyLoader = historyLoader;
-        this.tierRegistry = tierRegistry;
+        this(
+                sessions,
+                agents,
+                patterns,
+                agentService,
+                historyLoader,
+                tierRegistry,
+                WorkspaceAdmissionPolicy.unrestricted());
     }
 
     /**
@@ -146,53 +169,56 @@ public class SessionService {
         // The workspace roots must exist before the agent can operate in them - create missing
         // directories up front so the model never has to mkdir its own workspace (observed live:
         // a model burning a turn on `cmd /c if not exist ... mkdir ...` for a fresh root).
-        List<String> declaredRoots =
-                Arrays.stream(workspaceRoots.split(","))
-                        .map(String::trim)
-                        .filter(root -> !root.isEmpty())
-                        .toList();
-        if (declaredRoots.isEmpty()) {
+        List<Path> declaredRoots;
+        try {
+            declaredRoots = workspaceAdmissionPolicy.admit(owner, workspaceRoots);
+        } catch (RuntimeException e) {
             throw new IllegalArgumentException(
-                    Msg.get("error.session.workspaceInvalid", workspaceRoots, "no roots declared"));
+                    Msg.get(
+                            "error.session.workspaceInvalid",
+                            workspaceRoots,
+                            e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()),
+                    e);
         }
         if (currentWorkspaceRootIndex < 0 || currentWorkspaceRootIndex >= declaredRoots.size()) {
             throw new IllegalArgumentException(
                     "currentWorkspaceRootIndex must be between 0 and "
                             + (declaredRoots.size() - 1));
         }
-        for (String trimmed : declaredRoots) {
+        for (Path admittedRoot : declaredRoots) {
             try {
-                // Only normalized absolute workspace roots reach the filesystem operation.
-                //noinspection tainting
-                java.nio.file.Files.createDirectories(
-                        HostPathInput.absoluteNormalized(trimmed, "workspace root"));
+                java.nio.file.Files.createDirectories(admittedRoot);
             } catch (Exception e) {
                 throw new IllegalArgumentException(
                         Msg.get(
                                 "error.session.workspaceInvalid",
-                                trimmed,
+                                admittedRoot,
                                 e.getMessage() == null
                                         ? e.getClass().getSimpleName()
-                                        : e.getMessage()));
+                                        : e.getMessage()),
+                        e);
             }
         }
+        String admittedWorkspaceRoots =
+                String.join(",", declaredRoots.stream().map(Path::toString).toList());
 
         String resolvedName;
         if (sessionName == null || sessionName.isEmpty()) {
             // Implicit session name: always produce a workspace-unique name so `/session create ds`
             // succeeds even when another `ds` session exists in this workspace. The generated name
             // keeps the pattern name as a human-readable prefix.
-            resolvedName = generateUniqueSessionName(owner, patternName, workspaceRoots);
+            resolvedName = generateUniqueSessionName(owner, patternName, admittedWorkspaceRoots);
         } else {
             resolvedName = sessionName;
             // Uniqueness is scoped to (owner, name, workspaceRoots): the same name is allowed in a
             // different workspace. The match is an exact CSV-string compare; a legacy row with
             // workspace_roots = NULL is a distinct workspace from any new row (SQL NULL != 'X'), so
             // it does not block creation in a concrete workspace.
-            if (sessions.findByOwnerAndNameAndWorkspaceRoots(owner, resolvedName, workspaceRoots)
+            if (sessions.findByOwnerAndNameAndWorkspaceRoots(
+                            owner, resolvedName, admittedWorkspaceRoots)
                     .isPresent()) {
                 throw new IllegalArgumentException(
-                        Msg.get("error.session.nameExists", resolvedName, workspaceRoots));
+                        Msg.get("error.session.nameExists", resolvedName, admittedWorkspaceRoots));
             }
         }
 
@@ -201,7 +227,7 @@ public class SessionService {
                         new SessionEntity(
                                 owner,
                                 resolvedName,
-                                workspaceRoots,
+                                admittedWorkspaceRoots,
                                 currentWorkspaceRootIndex,
                                 toolResultPresentation));
         ModelBinding cache = tierRegistry.resolve(owner, pattern.getTier());

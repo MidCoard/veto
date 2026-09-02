@@ -94,11 +94,13 @@ public final class GrepSearchTool implements NativeTool<GrepSearchTool.Args> {
                     """,
             security =
                     """
-                    `absolutePath` is a FILESYSTEM_PATH parameter: the Gateway screens it against the deployer \
-                    policy and allowed roots before the walk begins. The operation is read-only \
+                    `absolutePath` is a FILESYSTEM_PATH parameter: the Gateway canonicalizes it and screens it \
+                    under the deployer policy before the walk begins. Under FULL_ACCESS, workspace roots are \
+                    working context rather than a path boundary, so any absolute host path may be targeted; \
+                    restrictive policies may fence paths. The operation is read-only \
                     (`RiskCategory.READ_ONLY`); no file is modified. Matched content flows back as tool output \
-                    and is subject to ingress masking. Do not attempt to search roots the deployer has fenced \
-                    off - the call is blocked upstream; change scope instead.
+                    and is subject to ingress masking. If the Gateway actually refuses a deployer-fenced path, \
+                    change scope instead.
                     """,
             examples = {
                 "{\"absolutePath\": \"/abs/src\", \"query\": \"TODO\"}",

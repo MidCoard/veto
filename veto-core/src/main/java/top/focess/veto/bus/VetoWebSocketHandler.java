@@ -5,7 +5,6 @@ import static top.focess.veto.util.LogValues.safe;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
-import java.net.URI;
 import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -17,7 +16,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.*;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
-import top.focess.veto.model.DAGPayload;
+import top.focess.veto.model.SessionRepository;
 import top.focess.veto.veto.VetoGateway;
 
 /**
@@ -33,36 +32,36 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
 
     private final @NonNull ObjectMapper objectMapper;
     private final @NonNull VetoGateway vetoGateway;
+    private final @NonNull SessionRepository sessionRepository;
 
     private final @NonNull CopyOnWriteArrayList<@NonNull WebSocketSession> sessions =
             new CopyOnWriteArrayList<>();
     private final @NonNull ConcurrentHashMap<@NonNull String, @NonNull String> sessionRoutes =
             new ConcurrentHashMap<>();
+    private final @NonNull ConcurrentHashMap<@NonNull String, @NonNull String> sessionUsers =
+            new ConcurrentHashMap<>();
 
     private final @NonNull AtomicLong messageCounter = new AtomicLong(0);
 
     public VetoWebSocketHandler(
-            @NonNull ObjectMapper objectMapper, @NonNull VetoGateway vetoGateway) {
+            @NonNull ObjectMapper objectMapper,
+            @NonNull VetoGateway vetoGateway,
+            @NonNull SessionRepository sessionRepository) {
         this.objectMapper = objectMapper;
         this.vetoGateway = vetoGateway;
+        this.sessionRepository = sessionRepository;
     }
 
     @Override
-    public void afterConnectionEstablished(@NonNull WebSocketSession session) {
-        sessions.add(session);
-        URI uri = session.getUri();
-        if (uri != null) {
-            String query = uri.getQuery();
-            if (query != null && query.contains("route=")) {
-                String route = query.replaceAll(".*route=([^&]+).*", "$1");
-                sessionRoutes.put(session.getId(), route);
-                log.info("WS Bus: Client '{}' connected with route='{}'", session.getId(), route);
-            } else {
-                log.info("WS Bus: Client '{}' connected (no route)", session.getId());
-            }
-        } else {
-            log.info("WS Bus: Client '{}' connected", session.getId());
+    public void afterConnectionEstablished(@NonNull WebSocketSession session) throws IOException {
+        String authenticatedUser = authenticatedUser(session);
+        if (authenticatedUser == null) {
+            session.close(CloseStatus.POLICY_VIOLATION.withReason("authentication required"));
+            return;
         }
+        sessions.add(session);
+        sessionUsers.put(session.getId(), authenticatedUser);
+        log.info("WS Bus: Authenticated client '{}' connected", session.getId());
 
         try {
             String welcome =
@@ -269,6 +268,7 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
             @NonNull WebSocketSession session, @NonNull CloseStatus status) {
         sessions.remove(session);
         sessionRoutes.remove(session.getId());
+        sessionUsers.remove(session.getId());
         log.info(
                 "WS Bus: Client '{}' disconnected (code={}, reason='{}')",
                 session.getId(),
@@ -285,6 +285,7 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
                 safe(exception.getMessage()));
         sessions.remove(session);
         sessionRoutes.remove(session.getId());
+        sessionUsers.remove(session.getId());
     }
 
     /** Broadcast a message to all connected clients except the sender. */
@@ -297,6 +298,10 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
             return;
         }
 
+        String senderUser = sessionUsers.get(excludeSessionId);
+        if (senderUser == null) {
+            return;
+        }
         for (WebSocketSession s : sessions) {
             String route = sessionRoutes.get(s.getId());
             Object messageType = message.get("type");
@@ -306,7 +311,10 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
                             || "sub:all".equals(route)
                             || route.equals(messageType)
                             || route.equals("sub:" + messageType);
-            if (s.isOpen() && !s.getId().equals(excludeSessionId) && acceptsRoute) {
+            if (s.isOpen()
+                    && !s.getId().equals(excludeSessionId)
+                    && senderUser.equals(sessionUsers.get(s.getId()))
+                    && acceptsRoute) {
                 try {
                     s.sendMessage(new TextMessage(json));
                 } catch (IOException e) {
@@ -316,54 +324,24 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
         }
     }
 
-    /** Send a DAGPayload result to all connected clients. */
-    public void streamDAGResult(@NonNull DAGPayload payload) {
-        try {
-            String json =
-                    objectMapper.writeValueAsString(
-                            Map.of(
-                                    "type",
-                                    "dag.result",
-                                    "payload",
-                                    payload,
-                                    "timestamp",
-                                    Instant.now().toString()));
-            broadcastRaw(json);
-        } catch (Exception e) {
-            log.warn("WS Bus: Failed to stream DAG result", e);
+    /** Sends one agent frame only to authenticated connections that own its session. */
+    public void sendFrame(@NonNull DeltaFrame frame) {
+        String owner =
+                sessionRepository
+                        .findById(frame.sessionId().toString())
+                        .map(session -> session.getOwner())
+                        .orElse(null);
+        if (owner == null) {
+            log.warn("WS Bus: Dropped frame for unknown session {}", frame.sessionId());
+            return;
         }
-    }
-
-    /** Stream a veto result to all connected clients. */
-    public void streamVetoResult(
-            VetoGateway.@NonNull VetoResult result, @NonNull String dagPayloadId) {
-        try {
-            String json =
-                    objectMapper.writeValueAsString(
-                            Map.of(
-                                    "type", "veto.stream",
-                                    "dagPayloadId", dagPayloadId,
-                                    "decision", result.decision().name(),
-                                    "redactionCount", result.redactionCount(),
-                                    "reason", result.reason(),
-                                    "timestamp", Instant.now().toString()));
-            broadcastRaw(json);
-        } catch (Exception e) {
-            log.warn("WS Bus: Failed to stream veto result", e);
-        }
-    }
-
-    /**
-     * Broadcast a raw JSON string to all connected clients. Public so the {@link DeltaBusBridge}
-     * can forward serialized {@link DeltaFrame}s to every connected client.
-     */
-    public void broadcastRaw(@NonNull String json) {
-        for (WebSocketSession s : sessions) {
-            if (s.isOpen()) {
+        String json = frame.toJson(objectMapper);
+        for (WebSocketSession session : sessions) {
+            if (session.isOpen() && owner.equals(sessionUsers.get(session.getId()))) {
                 try {
-                    s.sendMessage(new TextMessage(json));
+                    session.sendMessage(new TextMessage(json));
                 } catch (IOException e) {
-                    log.warn("WS Bus: Failed to broadcast to '{}'", s.getId(), e);
+                    log.warn("WS Bus: Failed to send frame to '{}'", session.getId(), e);
                 }
             }
         }
@@ -387,6 +365,13 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
 
     public long getTotalMessages() {
         return messageCounter.get();
+    }
+
+    private static String authenticatedUser(@NonNull WebSocketSession session) {
+        Object value =
+                session.getAttributes()
+                        .get(VetoWebSocketAuthInterceptor.AUTHENTICATED_USER_ATTRIBUTE);
+        return value instanceof String user && !user.isBlank() ? user : null;
     }
 
     private static @NonNull String stringValue(

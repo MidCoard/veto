@@ -77,11 +77,12 @@ public final class ListDirTool implements NativeTool<ListDirTool.Args> {
                     """,
             security =
                     """
-                    `absolutePath` is a FILESYSTEM_PATH parameter: the Gateway screens it against the deployer \
-                    policy and allowed roots before the listing. The operation is read-only \
+                    `absolutePath` is a FILESYSTEM_PATH parameter: the Gateway canonicalizes it and screens it \
+                    under the deployer policy before the listing. Under FULL_ACCESS, workspace roots are working \
+                    context rather than a path boundary, so any absolute host path may be targeted; restrictive \
+                    policies may fence paths. The operation is read-only \
                     (`RiskCategory.READ_ONLY`); nothing is modified. Returned names are subject to ingress \
-                    masking. Do not attempt to list deployer-fenced roots - the call is blocked upstream; \
-                    change scope instead.
+                    masking. If the Gateway actually refuses a deployer-fenced path, change scope instead.
                     """,
             examples = {
                 "{\"absolutePath\": \"/abs/src\"}",

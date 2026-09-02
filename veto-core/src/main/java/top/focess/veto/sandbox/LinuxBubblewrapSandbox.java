@@ -16,7 +16,7 @@ final class LinuxBubblewrapSandbox {
     private static final @NonNull List<@NonNull Path> SYSTEM_BWRAP_CANDIDATES =
             List.of(Path.of("/usr/bin/bwrap"), Path.of("/bin/bwrap"));
     private static final @NonNull List<@NonNull String> PROTECTED_METADATA_NAMES =
-            List.of(".git", ".agents", ".codex");
+            List.of(".agents", ".codex");
     private final Path configuredBubblewrap;
 
     LinuxBubblewrapSandbox() {

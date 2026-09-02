@@ -153,7 +153,7 @@ final class MacOsSeatbeltSandbox {
     private static @NonNull String protectedMetadataRules(@NonNull Path workspace) {
         List<String> rules = new ArrayList<>();
         rules.add("; agent-control metadata stays read-only inside a writable workspace");
-        for (String name : List.of(".git", ".agents", ".codex")) {
+        for (String name : List.of(".agents", ".codex")) {
             String protectedPath = seatbeltString(workspace.resolve(name).toString());
             rules.add("(deny file-write* (subpath \"" + protectedPath + "\"))");
         }

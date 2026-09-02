@@ -10,10 +10,8 @@ import org.springframework.context.annotation.Configuration;
 public class ObservabilityConfiguration {
 
     private @NonNull String auditLogPath = "./audit/";
-    private int logRotationDays = 365;
     private boolean encryptionEnabled = true;
     private @NonNull String encryptionKey = "default-veto-audit-key-change-me";
-    private boolean tamperProof = true;
 
     public @NonNull String getAuditLogPath() {
         return auditLogPath;
@@ -21,14 +19,6 @@ public class ObservabilityConfiguration {
 
     public void setAuditLogPath(@NonNull String auditLogPath) {
         this.auditLogPath = auditLogPath;
-    }
-
-    public int getLogRotationDays() {
-        return logRotationDays;
-    }
-
-    public void setLogRotationDays(int logRotationDays) {
-        this.logRotationDays = logRotationDays;
     }
 
     public boolean isEncryptionEnabled() {
@@ -45,13 +35,5 @@ public class ObservabilityConfiguration {
 
     public void setEncryptionKey(@NonNull String encryptionKey) {
         this.encryptionKey = encryptionKey;
-    }
-
-    public boolean isTamperProof() {
-        return tamperProof;
-    }
-
-    public void setTamperProof(boolean tamperProof) {
-        this.tamperProof = tamperProof;
     }
 }

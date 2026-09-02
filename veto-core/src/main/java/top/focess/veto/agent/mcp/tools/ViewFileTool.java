@@ -53,8 +53,8 @@ public final class ViewFileTool implements NativeTool<ViewFileTool.Args> {
                     current state of a file you plan to patch. It returns lines prefixed with their 1-indexed \
                     line numbers, which you can quote back when composing a `replace_file_content` call.
 
-                    It is the read counterpart to `write_to_file` / `replace_file_content`. Always read before \
-                    you write.
+                    If your role has write tools, inspect the current file before changing it. Read-only roles \
+                    use this tool for investigation and planning.
                     """,
             whenNotToUse =
                     """
@@ -85,12 +85,13 @@ public final class ViewFileTool implements NativeTool<ViewFileTool.Args> {
                     """,
             security =
                     """
-                    `absolutePath` is a FILESYSTEM_PATH parameter: the Gateway screens it against the deployer \
-                    policy and allowed roots before the read. The operation is read-only \
+                    `absolutePath` is a FILESYSTEM_PATH parameter: the Gateway canonicalizes it and screens it \
+                    under the deployer policy before the read. Under FULL_ACCESS, workspace roots are working \
+                    context rather than a path boundary, so any absolute host path may be targeted; restrictive \
+                    policies may fence paths. The operation is read-only \
                     (`RiskCategory.READ_ONLY`); the file is never modified. Returned content is subject to \
-                    ingress masking. Do not attempt to read deployer-fenced material (`application.yml`, \
-                    `audit/`, etc. under non-FULL_ACCESS policies) - the call is blocked upstream; change \
-                    approach instead.
+                    ingress masking. If the Gateway actually refuses deployer-fenced material under a \
+                    restrictive policy, change approach instead.
                     """,
             examples = {
                 "{\"absolutePath\": \"/abs/src/Main.java\"}",

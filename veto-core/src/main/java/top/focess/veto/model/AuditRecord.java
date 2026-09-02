@@ -133,6 +133,7 @@ public class AuditRecord {
     public enum AuditAction {
         TOOL_EXECUTION,
         VETO_INTERCEPTION,
+        LLM_EXCHANGE,
         CREDENTIAL_INJECTION,
         MCP_DISCOVERY,
         HEARTBEAT,

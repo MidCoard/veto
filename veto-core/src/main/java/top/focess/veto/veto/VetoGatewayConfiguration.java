@@ -11,8 +11,6 @@ public class VetoGatewayConfiguration {
 
     private boolean enabled = true;
     private @NonNull LlamaCppConfig llamaCpp = new LlamaCppConfig();
-    private boolean interceptAllOutbound = true;
-    private boolean redactSecrets = true;
     private boolean enforceStructuralConstraints = true;
 
     public boolean isEnabled() {
@@ -29,22 +27,6 @@ public class VetoGatewayConfiguration {
 
     public void setLlamaCpp(@NonNull LlamaCppConfig llamaCpp) {
         this.llamaCpp = llamaCpp;
-    }
-
-    public boolean isInterceptAllOutbound() {
-        return interceptAllOutbound;
-    }
-
-    public void setInterceptAllOutbound(boolean interceptAllOutbound) {
-        this.interceptAllOutbound = interceptAllOutbound;
-    }
-
-    public boolean isRedactSecrets() {
-        return redactSecrets;
-    }
-
-    public void setRedactSecrets(boolean redactSecrets) {
-        this.redactSecrets = redactSecrets;
     }
 
     public boolean isEnforceStructuralConstraints() {

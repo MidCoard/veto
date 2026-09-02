@@ -17,7 +17,8 @@ import org.springframework.stereotype.Component;
  *
  * <p>Each tick is per-group serialized inside the orchestrator, so a single scheduler thread is
  * safe. The cadence defaults to 1s and is tunable via {@code veto.group.tick.interval-ms}. A group
- * reaches {@code DISBANDED} (all nodes VERIFIED) on its own; the scheduler skips disbanded groups.
+ * reaches {@code COMPLETED} when all nodes verify; the scheduler then stops ticking it while the
+ * Leader inspects results and calls {@code disband_group} to reverse-transform.
  */
 @Component
 public class GroupTickScheduler {

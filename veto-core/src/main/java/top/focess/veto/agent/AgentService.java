@@ -44,6 +44,8 @@ import top.focess.veto.i18n.Msg;
 import top.focess.veto.llm.config.LlmJacksonConfig;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
 import top.focess.veto.llm.core.UniformLLMCaller;
+import top.focess.veto.observability.ObservabilityConfiguration;
+import top.focess.veto.vault.CredentialVaultConfiguration;
 
 /**
  * The shared agent service ("Multi-Client Unification"). Both the ZMQ terminal ({@code
@@ -70,7 +72,7 @@ public class AgentService {
     private final @NonNull UniformLLMCaller caller;
     private final @NonNull ObjectMapper objectMapper;
     private final @NonNull List<@NonNull LoopInterceptor> interceptors;
-    private final @NonNull Workspace defaultWorkspace;
+    private @NonNull Workspace defaultWorkspace;
     private final @NonNull String pathMode;
     private final @NonNull RoleToolFilter roleToolFilter;
     private final long maxCallsPerEpisode;
@@ -82,6 +84,8 @@ public class AgentService {
     // each AgentRunner so appendTurn persists to the raw-turn audit/replay log.
     private final top.focess.veto.memory.TurnLogService turnLogService;
     private final top.focess.veto.sandbox.@NonNull BackgroundTaskManager backgroundTaskManager;
+    private @NonNull List<@NonNull Path> configuredSystemProtectedPaths =
+            ProtectedSet.standardSystemProtected(Path.of(System.getProperty("user.dir", ".")));
     private @NonNull SlmRelevanceProvider slmRelevanceProvider = SlmRelevanceProvider.degraded();
 
     /**
@@ -144,6 +148,27 @@ public class AgentService {
     @Autowired(required = false)
     void setSlmRelevanceProvider(@NonNull SlmRelevanceProvider provider) {
         this.slmRelevanceProvider = provider;
+    }
+
+    /** Replaces the constructor's test fallback with the deployer-configured Workspace bean. */
+    @Autowired
+    void setConfiguredDefaultWorkspace(@NonNull Workspace workspace) {
+        this.defaultWorkspace = workspace;
+        this.hitlRegistry.setDefaultWorkspace(workspace);
+    }
+
+    /** Binds protected paths to the actual configured audit and Vault locations. */
+    @Autowired
+    void setProtectedPathConfigurations(
+            @NonNull ObservabilityConfiguration observability,
+            @NonNull CredentialVaultConfiguration vault) {
+        List<Path> paths =
+                new java.util.ArrayList<>(
+                        ProtectedSet.standardSystemProtected(
+                                Path.of(System.getProperty("user.dir", "."))));
+        paths.add(Path.of(observability.getAuditLogPath()));
+        paths.add(Path.of(vault.getVaultHome()));
+        this.configuredSystemProtectedPaths = List.copyOf(paths);
     }
 
     /**
@@ -567,7 +592,8 @@ public class AgentService {
         // matching + path canonicalization scope to this session's workspace.
         hitlRegistry.setWorkspace(persona.id(), workspace);
         ReadHistory readHistory = new ReadHistory();
-        ProtectedSet userProtectedSet = protectedSetFor(agentKey, workspace);
+        String protectionOwner = owner == null || owner.isBlank() ? userId.toString() : owner;
+        ProtectedSet userProtectedSet = protectedSetFor(protectionOwner, workspace);
         Gateway gateway =
                 new Gateway(
                         workspace,
@@ -683,13 +709,8 @@ public class AgentService {
         AgentPersona scoped = persona.withWhitelistedTools(roleToolFilter.resolve(persona.role()));
         hitlRegistry.setWorkspace(scoped.id(), workspace);
         ReadHistory readHistory = new ReadHistory();
-        // Mates are not wired with per-user deployer defaults (see createMate javadoc), but the
-        // app's own config/audit material is system-wide and must be shielded under
-        // non-FULL_ACCESS.
-        ProtectedSet mateProtectedSet =
-                this.deployerPolicy == DeployerPolicy.FULL_ACCESS
-                        ? ProtectedSet.empty()
-                        : ProtectedSet.empty().withSystemProtected(systemProtectedPaths());
+        String protectionOwner = owner == null || owner.isBlank() ? userId.toString() : owner;
+        ProtectedSet mateProtectedSet = protectedSetFor(protectionOwner, workspace);
         Gateway gateway =
                 new Gateway(
                         workspace,
@@ -808,8 +829,8 @@ public class AgentService {
     /**
      * The app's own config/audit paths the agent must never read (shielded under non-FULL_ACCESS).
      */
-    private static @NonNull List<@NonNull Path> systemProtectedPaths() {
-        return ProtectedSet.standardSystemProtected(Path.of(System.getProperty("user.dir", ".")));
+    private @NonNull List<@NonNull Path> systemProtectedPaths() {
+        return configuredSystemProtectedPaths;
     }
 
     /**

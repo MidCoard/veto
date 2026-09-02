@@ -61,9 +61,7 @@ public class VetoGateway {
         }
 
         log.info(
-                "gateway VetoGateway: Initialized. interceptAllOutbound={}, redactSecrets={}, enforceConstraints={}",
-                config.isInterceptAllOutbound(),
-                config.isRedactSecrets(),
+                "gateway VetoGateway: Initialized. deterministicRedaction=true, enforceConstraints={}",
                 config.isEnforceStructuralConstraints());
     }
 
@@ -161,7 +159,6 @@ public class VetoGateway {
                     payload,
                     finalPayload,
                     diff,
-                    previousRecordHash(),
                     decision == VetoDecision.REDACT);
 
             if (wasRedacted) {
@@ -238,10 +235,6 @@ public class VetoGateway {
                     .append(")");
         }
         return diff.toString();
-    }
-
-    private @NonNull String previousRecordHash() {
-        return ""; // Will be chained by AuditLogger
     }
 
     public boolean isEnabled() {

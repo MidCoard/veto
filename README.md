@@ -247,13 +247,20 @@ Defaults are defined in `veto-core/src/main/resources/application.yml`.
 | `VETO_MEMORY_STORE` | `jpa` | `memory`, `jpa`, `vector`, or `pgvector` |
 | `VETO_VAULT_HOME` | `~/.veto` | vault and per-user state root |
 | `VETO_LLAMA_MODEL_PATH` | `./models/veto-slm.gguf` | local gateway model |
-| `veto.workspace.roots` | empty | optional comma-separated default workspace roots |
+| `veto.workspace.roots` | empty | deployer-authorized roots and the fallback Workspace |
 | `veto.workspace.path-mode` | `REAL` | `REAL` or `VIRTUAL` path presentation |
+| `veto.bus.websocket.allowed-origin-patterns` | local origins | allowed WebSocket UI origins |
 | `veto.breaker.max_calls_per_episode` | `50` | per-agent tool-call episode limit |
 
 `FULL_ACCESS` is convenient for local development but does not protect configuration or secret
 files from the agent. Use a narrower deployer policy and explicit workspace roots for meaningful
 path confinement.
+
+Under `SANDBOXED`, every Session-declared root must resolve below one of
+`veto.workspace.root/roots`. Under `TENANT`, it must additionally resolve below the direct
+`<configured-root>/<username>` subtree. Admission resolves existing symbolic links before creating
+a missing directory, so declaring a root cannot manufacture host ownership or escape through a
+link. `FULL_ACCESS` and `PROTECTED` retain their documented host-path semantics.
 
 ## API groups
 
@@ -286,6 +293,9 @@ Veto currently provides several independent controls, but they have different as
 - **Vault:** provider credentials are stored per Veto user and resolved at the execution boundary.
 - **Audit:** local records are hash-chained and tamper-evident. A local writable log cannot be
   described as tamper-proof against the same host user.
+- **WebSocket:** the login token is validated during the handshake, origins are deployer-scoped,
+  and each DeltaFrame is delivered only to connections owned by the frame's persisted Session
+  owner.
 - **Subprocess execution:** commands are passed as executable plus `argv[]`; Veto does not construct
   a shell command string. The child receives the host terminal environment, except sandbox-owned
   temp paths and deterministic no-color flags, and wall-clock timeouts are supported.

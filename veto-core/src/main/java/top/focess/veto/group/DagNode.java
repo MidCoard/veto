@@ -33,10 +33,14 @@ public record DagNode(
         STALE // superseded (Mate removed / re-assigned); not to be re-dispatched
     }
 
-    public sealed interface NodeResult permits ResultNone, ResultArtifact, ResultFailure {}
+    public sealed interface NodeResult
+            permits ResultNone, ResultSuccess, ResultArtifact, ResultFailure {}
 
     /** Default: no result yet. */
     public record ResultNone() implements NodeResult {}
+
+    /** A Mate completed the node and returned a real textual report. */
+    public record ResultSuccess(@NonNull String summary) implements NodeResult {}
 
     /** Verifier accepted: an artifact was produced at the given workspace path. */
     public record ResultArtifact(@NonNull String artifactPath) implements NodeResult {}

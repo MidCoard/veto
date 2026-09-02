@@ -61,10 +61,34 @@ public class TamperProofStore {
     }
 
     /**
-     * Append an audit record to the tamper-proof store. The record is encrypted and written to the
-     * daily audit file. The hash chain is maintained in memory and persisted in a compact index.
+     * Atomically constructs a record from the current chain tail, encrypts it, and appends it to
+     * the daily audit file and compact index.
      */
-    public synchronized void append(@NonNull AuditRecord record) {
+    public synchronized @NonNull AuditRecord append(
+            @NonNull String dagPayloadId,
+            @NonNull String requestId,
+            @NonNull String componentSource,
+            @NonNull String rawPayload,
+            @NonNull String redactedPayload,
+            @NonNull String diffExcerpt,
+            AuditRecord.@NonNull AuditAction action,
+            boolean vetoApplied) {
+        AuditRecord record =
+                new AuditRecord(
+                        dagPayloadId,
+                        requestId,
+                        componentSource,
+                        rawPayload,
+                        redactedPayload,
+                        diffExcerpt,
+                        chainTailHash,
+                        action,
+                        vetoApplied);
+        appendRecord(record);
+        return record;
+    }
+
+    private void appendRecord(@NonNull AuditRecord record) {
         try {
             // Verify previous record's hash chain
             if (!chainTailHash.isEmpty() && !record.getPreviousRecordHash().equals(chainTailHash)) {
@@ -304,10 +328,6 @@ public class TamperProofStore {
         } catch (Exception e) {
             return null;
         }
-    }
-
-    public @NonNull String getChainTailHash() {
-        return chainTailHash;
     }
 
     /** Result of an audit chain verification. */

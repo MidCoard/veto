@@ -5,6 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
 
 /**
@@ -17,7 +18,8 @@ import top.focess.veto.llm.core.ToolResultPresentationMode;
  *   <li>{@code create_group} → state {@code ACTIVE}; Leader initialized, DAG authored.
  *   <li>Engine drives the DAG: dispatches dispatchable nodes, ingests Blackboard messages, runs the
  *       verify loop (leader_mate_topology.md §3).
- *   <li>All nodes {@code VERIFIED} → final node (Leader synthesizes the result).
+ *   <li>All nodes {@code VERIFIED} → state {@code COMPLETED}; the Leader inspects the reports and
+ *       synthesizes the result.
  *   <li>{@code disband_group} → state {@code DISBANDED}; Blackboard retained for audit.
  * </ol>
  */
@@ -33,6 +35,7 @@ public record Group(
         @NonNull Instant createdAt,
         Instant disbandedAt,
         String owner,
+        Workspace workspace,
         @NonNull ToolResultPresentationMode toolResultPresentation) {
 
     public Group {
@@ -41,6 +44,7 @@ public record Group(
 
     public enum GroupState {
         ACTIVE,
+        COMPLETED,
         DISBANDED
     }
 
@@ -56,6 +60,7 @@ public record Group(
                 contextBrief,
                 blackboard,
                 dag,
+                null,
                 null,
                 ToolResultPresentationMode.BASIC);
     }
@@ -81,6 +86,7 @@ public record Group(
                 blackboard,
                 dag,
                 owner,
+                null,
                 ToolResultPresentationMode.BASIC);
     }
 
@@ -91,6 +97,26 @@ public record Group(
             @NonNull Blackboard blackboard,
             @NonNull ExecutionDag dag,
             String owner,
+            @NonNull ToolResultPresentationMode toolResultPresentation) {
+        return create(
+                leaderId,
+                userId,
+                contextBrief,
+                blackboard,
+                dag,
+                owner,
+                null,
+                toolResultPresentation);
+    }
+
+    public static @NonNull Group create(
+            @NonNull String leaderId,
+            @NonNull String userId,
+            String contextBrief,
+            @NonNull Blackboard blackboard,
+            @NonNull ExecutionDag dag,
+            String owner,
+            Workspace workspace,
             @NonNull ToolResultPresentationMode toolResultPresentation) {
         UUID id = UUID.randomUUID();
         return new Group(
@@ -105,6 +131,7 @@ public record Group(
                 Instant.now(),
                 null,
                 owner,
+                workspace,
                 toolResultPresentation);
     }
 
@@ -121,6 +148,7 @@ public record Group(
                 createdAt,
                 disbandedAt,
                 owner,
+                workspace,
                 toolResultPresentation);
     }
 
@@ -137,6 +165,7 @@ public record Group(
                 createdAt,
                 newState == GroupState.DISBANDED ? when : disbandedAt,
                 owner,
+                workspace,
                 toolResultPresentation);
     }
 
@@ -155,6 +184,7 @@ public record Group(
                 createdAt,
                 disbandedAt,
                 owner,
+                workspace,
                 toolResultPresentation);
     }
 
@@ -176,6 +206,7 @@ public record Group(
                 createdAt,
                 disbandedAt,
                 owner,
+                workspace,
                 toolResultPresentation);
     }
 

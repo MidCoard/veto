@@ -64,8 +64,9 @@ public class DangerComputation {
             @NonNull ProtectedSet protectedSet) {
         Danger base = baseFromRisk(def.risk());
         Danger pathDanger = pathDanger(def, call, workspace, policy, protectedSet);
+        Danger executionRootDanger = executionRootDanger(def, workspace, policy, protectedSet);
         Danger shellDanger = shellDanger(def, call);
-        return max(base, pathDanger, shellDanger);
+        return max(base, pathDanger, executionRootDanger, shellDanger);
     }
 
     private @NonNull Danger baseFromRisk(@NonNull RiskCategory risk) {
@@ -105,6 +106,24 @@ public class DangerComputation {
         return worst;
     }
 
+    /**
+     * Process tools can mutate their working directory even though it is not a model-supplied
+     * argument. Classify that implicit target with write semantics before any process starts.
+     */
+    private @NonNull Danger executionRootDanger(
+            @NonNull ToolDefinition def,
+            @NonNull Workspace workspace,
+            @NonNull DeployerPolicy policy,
+            @NonNull ProtectedSet protectedSet) {
+        if (def.risk() != RiskCategory.SHELL_EXEC) {
+            return Danger.SAFE;
+        }
+        int rootIndex = workspace.currentRootIndex();
+        Resolution executionRoot = new Resolution(workspace.currentHostRoot(), rootIndex, true);
+        return classifyPath(
+                executionRoot, RiskCategory.FILE_WRITE, policy, protectedSet, workspace);
+    }
+
     private @NonNull Danger classifyPath(
             @NonNull Resolution res,
             @NonNull RiskCategory risk,
@@ -134,7 +153,6 @@ public class DangerComputation {
             if (res.rootIndex() >= 0 && res.rootIndex() < workspace.roots().size()) {
                 top.focess.veto.agent.workspace.WorkspaceRoot root =
                         workspace.roots().get(res.rootIndex());
-                int currentRoot = workspace.currentRootIndex();
                 if (root.trust() == top.focess.veto.agent.workspace.TrustMarker.SHARED_GRANT) {
                     // Shared root — reads are allowed, writes are CRITICAL (grant mode would
                     // distinguish read vs read+write, but for the MVP read is grantable
@@ -142,10 +160,6 @@ public class DangerComputation {
                     if (risk == RiskCategory.FILE_WRITE) {
                         return Danger.CRITICAL;
                     }
-                } else if (res.rootIndex() != currentRoot) {
-                    // Another root, not shared, not the current root → another user's
-                    // workspace, not shared with me → CRITICAL (owner-gated).
-                    return Danger.CRITICAL;
                 }
             }
         }

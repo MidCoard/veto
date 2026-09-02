@@ -137,8 +137,10 @@ class AgentServiceHistorySeedTest {
                                     new VetoResponse.Features(false),
                                     null);
                         });
+        AgentRunner.LlmBinding updatedPromptBinding = binding("updated after restart");
         Agent resumed =
-                afterRestart.getOrCreateAgent(sessionId.toString(), binding, replayed, userId);
+                afterRestart.getOrCreateAgent(
+                        sessionId.toString(), updatedPromptBinding, replayed, userId);
         resumed.submit("second request");
         assertTrue(resumed.await(TIMEOUT).success());
 
@@ -147,6 +149,10 @@ class AgentServiceHistorySeedTest {
         VetoRequest request =
                 assertInstanceOf(ToolDocs.nonNullClass(VetoRequest.class), resumedRequest.get());
         assertEquals("system", request.messages().get(0).role());
+        assertTrue(
+                request.messages().get(0).content().contains("updated after restart"),
+                "the resumed request uses the current compiled prompt without recording a second"
+                        + " AGENT_INIT");
         assertTrue(
                 request.messages().stream()
                         .anyMatch(message -> "first request".equals(message.content())));
@@ -189,8 +195,16 @@ class AgentServiceHistorySeedTest {
     }
 
     private static AgentRunner.@NonNull LlmBinding binding() {
+        return binding(null);
+    }
+
+    private static AgentRunner.@NonNull LlmBinding binding(String systemPromptBase) {
         return new AgentRunner.LlmBinding(
-                ProviderType.DEEPSEEK, "stub-model", "stub-key", LlmOptions.defaults(), null);
+                ProviderType.DEEPSEEK,
+                "stub-model",
+                "stub-key",
+                LlmOptions.defaults(),
+                systemPromptBase);
     }
 
     private static @NonNull Object requireField(Object value) {

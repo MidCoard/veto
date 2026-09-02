@@ -9,20 +9,19 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
+import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.Role;
 import top.focess.veto.agent.identity.RoleToolFilter;
 import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.mcp.ToolEngine;
-import top.focess.veto.agent.screening.DeployerPolicy;
 import top.focess.veto.agent.translation.CapabilityTranslator;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.ToolDefinition;
@@ -40,8 +39,8 @@ import top.focess.veto.llm.core.ToolDefinition;
  * }</pre>
  *
  * <p>Then open the files under {@code veto-core/build/prompt-dump/}. This bypasses the running app
- * (no bootRun, no login) but uses the production prompt-assembly path ({@link PromptBlocks} +
- * {@link PromptTemplate}), so what you read is exactly what a real agent turn would receive.
+ * (no bootRun, no login) but calls {@link PromptCompiler#compile}, including the configured
+ * Leader/Mate prompt bases, so what you read follows the production prompt-assembly path.
  *
  * <p><b>Note:</b> each role's tools are resolved through the production {@link RoleToolFilter} (the
  * same filter {@code AgentService.buildPersona} applies), so the {@code ## Your Tools} block in
@@ -59,6 +58,15 @@ class SystemPromptDumpTest {
     @Autowired private @NonNull CapabilityTranslator translator;
     @Autowired private @NonNull Workspace workspace;
     @Autowired private @NonNull RoleToolFilter roleToolFilter;
+    @Autowired private @NonNull PromptCompiler promptCompiler;
+
+    @Value(
+            "${veto.group.leader.system-prompt-base:Decompose the task and arrange the execution DAG node by node.}")
+    private @NonNull String leaderSystemPromptBase;
+
+    @Value(
+            "${veto.group.mate.system-prompt-base:Execute the assigned task and return a concise internal report for the Leader.}")
+    private @NonNull String mateSystemPromptBase;
 
     private final @NonNull SystemPromptResolver resolver = new SystemPromptResolver();
     private final @NonNull ObjectMapper objectMapper = new ObjectMapper();
@@ -73,7 +81,6 @@ class SystemPromptDumpTest {
                 translator.translateTools(
                         PromptCompiler.availableTools(mcpEngine.getActiveTools(null), true));
         Workspace renderedWorkspace = dumpWorkspace();
-        String law = renderedWorkspace.vetoMdResolver().resolve();
         String template = resolver.defaultPrompt();
 
         // Raw template, the full tool catalog (reference, pre-role-filter), and a plain inventory.
@@ -87,31 +94,29 @@ class SystemPromptDumpTest {
         writeJson("04-response-autonomous.json", translator.vetoResponseSchema(false, flatTools));
         writeJson("05-response-guided.json", translator.vetoResponseSchema(true, flatTools));
 
-        // Full compiled prompt per role x policy, using the role-scoped tool set from
-        // RoleToolFilter (the same path production takes via AgentService.buildPersona).
-        DeployerPolicy[] policies = {DeployerPolicy.FULL_ACCESS, DeployerPolicy.SANDBOXED};
+        // Full compiled prompt per role, using the production compiler and configured role bases.
         Role[] roles = roles();
         for (Role role : roles) {
             List<ToolDefinition> roleTools =
                     translator.translateTools(
                             PromptCompiler.availableTools(roleToolFilter.resolve(role), true));
-            for (DeployerPolicy policy : policies) {
-                write(
-                        role + "-" + policy + ".md",
-                        render(
-                                role,
-                                policy,
-                                identityFor(role),
-                                roleTools,
-                                law,
-                                template,
-                                renderedWorkspace));
-            }
+            write(
+                    role + ".md",
+                    promptCompiler
+                            .compile(
+                                    personaFor(role),
+                                    renderedWorkspace,
+                                    baseFor(role),
+                                    List.of(),
+                                    false,
+                                    1.0)
+                            .systemMessage());
             // Per-role tool inventory so the role-scoping is visible at a glance.
             write("03-tools-" + role + ".md", inventory(roleTools));
         }
+        deleteLegacyRolePolicyDumps(roles);
 
-        int count = 6 + roles.length * (policies.length + 1);
+        int count = 6 + roles.length * 2;
         System.out.println(
                 "=== System-prompt dump written to "
                         + DUMP_DIR.toAbsolutePath()
@@ -148,6 +153,21 @@ class SystemPromptDumpTest {
                                         new ArrayList<>(roleToolFilter.resolve(Role.MATE))))
                         .contains("create_group"),
                 "MATE must not receive create_group");
+        Set<String> leaderTools =
+                toolNames(
+                        translator.translateTools(
+                                new ArrayList<>(roleToolFilter.resolve(Role.LEADER))));
+        assertTrue(leaderTools.contains("inspect_group"), "LEADER must observe Mate outcomes");
+        assertFalse(leaderTools.contains("post_message"), "unwired Leader messaging stays hidden");
+        Set<String> mateTools =
+                toolNames(
+                        translator.translateTools(
+                                new ArrayList<>(roleToolFilter.resolve(Role.MATE))));
+        assertFalse(mateTools.contains("forget"), "MATE cannot delete user memory");
+        assertFalse(mateTools.contains("write_insight"), "MATE cannot mutate user memory");
+        assertFalse(
+                Files.readString(DUMP_DIR.resolve("LEADER.md")).contains("execute in parallel"),
+                "prompt must match ordered runtime tool execution");
         assertFalse(
                 template.contains("veto_pulse"),
                 "internal response-schema names must not be exposed to the model");
@@ -198,27 +218,6 @@ class SystemPromptDumpTest {
         }
     }
 
-    private @NonNull String render(
-            @NonNull Role role,
-            @NonNull DeployerPolicy policy,
-            @NonNull String identity,
-            @NonNull List<@NonNull ToolDefinition> tools,
-            String law,
-            @NonNull String template,
-            @NonNull Workspace renderedWorkspace) {
-        Map<String, String> blocks = new LinkedHashMap<>();
-        blocks.put("LAW", PromptBlocks.law(law != null ? law : ""));
-        blocks.put("IDENTITY", identity);
-        blocks.put("ROLE", PromptBlocks.role(role));
-        blocks.put("WORKSPACE", PromptBlocks.workspace(renderedWorkspace));
-        blocks.put("ENVIRONMENT", PromptBlocks.environment());
-        blocks.put("RESULT_CONVENTIONS", tools.isEmpty() ? "" : PromptBlocks.resultConventions());
-        blocks.put("TOOLS", PromptBlocks.tools(tools));
-        blocks.put("BOUNDARIES", PromptBlocks.boundaries(policy));
-        blocks.put("SKILLS", PromptBlocks.skills(List.of()));
-        return PromptTemplate.render(template, blocks);
-    }
-
     private @NonNull Workspace dumpWorkspace() {
         String roots = System.getenv("VETO_PROMPT_DUMP_WORKSPACE_ROOTS");
         if (roots == null || roots.isBlank()) {
@@ -230,21 +229,50 @@ class SystemPromptDumpTest {
         return Workspace.fromConfig("", roots, workspace.pathMode().name(), currentRootIndex);
     }
 
-    private @NonNull String identityFor(@NonNull Role role) {
+    private @NonNull AgentPersona personaFor(@NonNull Role role) {
+        Set<top.focess.veto.agent.mcp.ToolDefinition> tools = roleToolFilter.resolve(role);
         return switch (role) {
             case STANDALONE ->
-                    PromptBlocks.identity(
+                    new AgentPersona(
+                            "dump-standalone",
                             "VetoCoreAgent",
-                            "a standalone coding agent that plans and executes tasks directly.");
+                            "a standalone coding agent that plans and executes tasks directly.",
+                            tools,
+                            List.of(),
+                            role);
             case LEADER ->
-                    PromptBlocks.identity(
-                            "Leader",
-                            "a Leader agent that decomposes a task into a DAG and arranges Mates to execute it.");
+                    new AgentPersona(
+                            "dump-leader",
+                            "VetoCoreAgent",
+                            "a standalone coding agent transformed into the Leader of this delegation.",
+                            tools,
+                            List.of(),
+                            role);
             case MATE ->
-                    PromptBlocks.identity(
-                            "Mate",
-                            "a Mate worker agent that executes the task nodes dispatched to it.");
+                    new AgentPersona(
+                            "dump-mate",
+                            "mate-sample",
+                            "Mate mate-sample (skillset: coding)",
+                            tools,
+                            List.of(),
+                            role);
         };
+    }
+
+    private String baseFor(@NonNull Role role) {
+        return switch (role) {
+            case STANDALONE -> null;
+            case LEADER -> leaderSystemPromptBase;
+            case MATE -> mateSystemPromptBase;
+        };
+    }
+
+    private static void deleteLegacyRolePolicyDumps(@NonNull Role @NonNull [] roles)
+            throws IOException {
+        for (Role role : roles) {
+            Files.deleteIfExists(DUMP_DIR.resolve(role + "-FULL_ACCESS.md"));
+            Files.deleteIfExists(DUMP_DIR.resolve(role + "-SANDBOXED.md"));
+        }
     }
 
     private @NonNull String inventory(@NonNull List<@NonNull ToolDefinition> tools) {

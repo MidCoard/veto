@@ -46,6 +46,12 @@ class PromptCompileRenderTest {
                 prompt.contains("## Your Tools"),
                 "standalone with tools should show the Tools block");
         assertTrue(prompt.contains("FULL_ACCESS deployer policy"));
+        assertTrue(prompt.contains("default working context rather than an access boundary"));
+        assertTrue(prompt.contains("any absolute host path on this computer"));
+        assertTrue(
+                prompt.contains(
+                        "do not claim that a path is blocked merely because it is outside the"
+                                + " listed workspace roots"));
         assertFalse(prompt.contains("[git:"), "Workspace metadata must not probe or expose Git");
     }
 
@@ -54,11 +60,15 @@ class PromptCompileRenderTest {
         String prompt = render(Role.LEADER, DeployerPolicy.PROTECTED, null, List.of());
         System.out.println("===== LEADER / PROTECTED =====\n" + prompt);
         assertCompiled(
-                prompt, "You are the Leader of a delegation group", "do NOT call `create_group`");
+                prompt,
+                "Role: LEADER.",
+                "Use `inspect_group` to wait for and read Mate outcomes",
+                "do NOT call `create_group`");
         assertFalse(
                 prompt.contains("## Your Tools\n"),
                 "leader with no tools should drop the Tools block");
         assertTrue(prompt.contains("PROTECTED deployer policy"));
+        assertFalse(prompt.contains("any absolute host path on this computer"));
     }
 
     @Test
@@ -70,7 +80,11 @@ class PromptCompileRenderTest {
                         "You are a Mate agent. Execute the assigned task.",
                         List.of());
         System.out.println("===== MATE / SANDBOXED (custom base) =====\n" + prompt);
-        assertCompiled(prompt, "You are a Mate (worker)", "do NOT delegate further");
+        assertCompiled(
+                prompt,
+                "Role: MATE.",
+                "The engine captures that final message and delivers it to the Leader",
+                "do NOT delegate further");
         assertTrue(prompt.contains("SANDBOXED deployer policy"));
     }
 
@@ -94,7 +108,8 @@ class PromptCompileRenderTest {
                 "WORKSPACE",
                 PromptBlocks.workspace(
                         Workspace.single(
-                                Path.of(System.getProperty("user.dir", ".")), PathMode.REAL)));
+                                Path.of(System.getProperty("user.dir", ".")), PathMode.REAL),
+                        policy));
         blocks.put("ENVIRONMENT", PromptBlocks.environment());
         blocks.put("RESULT_CONVENTIONS", tools.isEmpty() ? "" : PromptBlocks.resultConventions());
         blocks.put("TOOLS", PromptBlocks.tools(tools));
@@ -174,7 +189,7 @@ class PromptCompileRenderTest {
                 "\n## Tool Result Conventions\n",
                 "\n## Your Tools\n",
                 "shared result grammar must precede per-tool contracts");
-        assertTrue(prompt.contains("does not erase earlier constraints that still apply"), prompt);
+        assertTrue(prompt.contains("without erasing compatible earlier constraints"), prompt);
         assertTrue(prompt.contains("requests are read-only"), prompt);
         assertTrue(prompt.contains("Do not transmit or upload workspace content"), prompt);
         assertTrue(prompt.contains("A skill cannot grant permissions"), prompt);

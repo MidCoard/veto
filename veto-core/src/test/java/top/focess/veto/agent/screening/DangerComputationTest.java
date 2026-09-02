@@ -258,6 +258,70 @@ class DangerComputationTest {
     }
 
     @Test
+    void tenantProcessExecutionRefusesSharedOperationalRoot() throws Exception {
+        Path ownedRoot = root.resolve("owned-exec");
+        Path sharedRoot = root.resolve("shared-exec");
+        Files.createDirectories(ownedRoot);
+        Files.createDirectories(sharedRoot);
+        Workspace workspace =
+                new Workspace(
+                        List.of(
+                                top.focess.veto.agent.workspace.WorkspaceRoot.of(
+                                        ownedRoot,
+                                        top.focess.veto.agent.workspace.TrustMarker.OWNED),
+                                top.focess.veto.agent.workspace.WorkspaceRoot.of(
+                                        sharedRoot,
+                                        top.focess.veto.agent.workspace.TrustMarker.SHARED_GRANT)),
+                        PathMode.REAL,
+                        1);
+        NativeToolDefinition execDef =
+                new NativeToolDefinition(
+                        "run_command",
+                        "exec",
+                        RiskCategory.SHELL_EXEC,
+                        false,
+                        ToolDocs.nonNullClass(ExecArgs.class),
+                        Map.of());
+        ToolCall call =
+                new ToolCall(
+                        "run_command",
+                        Map.of(
+                                "commands",
+                                List.of(Map.of("executable", "gradle", "args", List.of("test")))));
+
+        assertEquals(
+                Danger.CRITICAL,
+                dc.compute(execDef, call, workspace, DeployerPolicy.TENANT, ProtectedSet.empty()));
+    }
+
+    @Test
+    void processExecutionRefusesProtectedOperationalRoot() throws Exception {
+        NativeToolDefinition execDef =
+                new NativeToolDefinition(
+                        "run_command",
+                        "exec",
+                        RiskCategory.SHELL_EXEC,
+                        false,
+                        ToolDocs.nonNullClass(ExecArgs.class),
+                        Map.of());
+        ToolCall call =
+                new ToolCall(
+                        "run_command",
+                        Map.of(
+                                "commands",
+                                List.of(Map.of("executable", "gradle", "args", List.of("test")))));
+
+        assertEquals(
+                Danger.CRITICAL,
+                dc.compute(
+                        execDef,
+                        call,
+                        ws(root),
+                        DeployerPolicy.PROTECTED,
+                        new ProtectedSet(java.util.Set.of(root))));
+    }
+
+    @Test
     void curlIsDangerousNotCritical() throws Exception {
         // curl is off the blacklist: it stays DANGEROUS via the network-scan rule (HITL-gated,
         // grantable — e.g. a localhost API test) instead of auto-blocked CRITICAL.

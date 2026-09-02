@@ -64,6 +64,7 @@ class GroupOrchestratorTest {
     void acceptAdvancesNode() {
         Group g = setupGroup();
         registry.put(g);
+        orchestrator.tick(g.groupId());
         // Simulate Mate-A accepting n1.
         orchestrator.simulateAccept(g.groupId(), "Mate-A", "n1");
         Group ticked = requireGroup(orchestrator.tick(g.groupId()));
@@ -74,6 +75,7 @@ class GroupOrchestratorTest {
     void feedbackMarksNodeFailed() {
         Group g = setupGroup();
         registry.put(g);
+        orchestrator.tick(g.groupId());
         orchestrator.simulateFeedback(g.groupId(), "Mate-A", "n1", "test failure");
         Group ticked = requireGroup(orchestrator.tick(g.groupId()));
         assertEquals(DagNode.NodeState.FAILED, findNode(ticked, "n1").state());
@@ -104,14 +106,15 @@ class GroupOrchestratorTest {
         assertEquals(DagNode.NodeState.VERIFIED, findNode(t3a, "n2").state());
         Group t3 = requireGroup(orchestrator.tick(g.groupId()));
 
-        // Step 4: group should be complete (DISBANDED).
-        assertEquals(Group.GroupState.DISBANDED, t3.state());
+        // Step 4: group is complete but remains inspectable until the Leader disbands it.
+        assertEquals(Group.GroupState.COMPLETED, t3.state());
     }
 
     @Test
     void replanFailedReturnsNodeToPending() {
         Group g = setupGroup();
         registry.put(g);
+        orchestrator.tick(g.groupId());
         orchestrator.simulateFeedback(g.groupId(), "Mate-A", "n1", "needs another pass");
         Group ticked = requireGroup(orchestrator.tick(g.groupId()));
         assertEquals(DagNode.NodeState.FAILED, findNode(ticked, "n1").state());
@@ -194,6 +197,18 @@ class GroupOrchestratorTest {
         orchestrator.simulateAccept(g.groupId(), "Mate-A", "n1");
         Group ticked = requireGroup(orchestrator.tick(g.groupId()));
         assertEquals(DagNode.NodeState.STALE, findNode(ticked, "n1").state());
+    }
+
+    @Test
+    void acceptFromUnassignedSenderCannotVerifyNode() {
+        Group g = setupGroup();
+        registry.put(g);
+        orchestrator.tick(g.groupId());
+
+        orchestrator.simulateAccept(g.groupId(), "Mate-B", "n1");
+        Group ticked = requireGroup(orchestrator.tick(g.groupId()));
+
+        assertEquals(DagNode.NodeState.RUNNING, findNode(ticked, "n1").state());
     }
 
     private @NonNull Group setupGroup() {

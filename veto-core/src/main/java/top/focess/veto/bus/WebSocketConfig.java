@@ -20,17 +20,27 @@ public class WebSocketConfig implements WebSocketConfigurer {
             LoggerFactory.getLogger("top.focess.veto.bus.WebSocketConfig");
 
     private final @NonNull VetoWebSocketHandler vetoWebSocketHandler;
+    private final @NonNull VetoWebSocketAuthInterceptor authInterceptor;
+    private final @NonNull BusConfiguration busConfiguration;
 
-    public WebSocketConfig(@NonNull VetoWebSocketHandler vetoWebSocketHandler) {
+    public WebSocketConfig(
+            @NonNull VetoWebSocketHandler vetoWebSocketHandler,
+            @NonNull VetoWebSocketAuthInterceptor authInterceptor,
+            @NonNull BusConfiguration busConfiguration) {
         this.vetoWebSocketHandler = vetoWebSocketHandler;
+        this.authInterceptor = authInterceptor;
+        this.busConfiguration = busConfiguration;
     }
 
     @Override
     public void registerWebSocketHandlers(@NonNull WebSocketHandlerRegistry registry) {
         registry.addHandler(vetoWebSocketHandler, "/ws/veto/bus")
-                // SockJS enables session cookies (allowCredentials), so "*" is rejected in
-                // allowedOrigins – use origin patterns, which Spring expands per-request.
-                .setAllowedOriginPatterns("*")
+                .addInterceptors(authInterceptor)
+                .setAllowedOriginPatterns(
+                        busConfiguration
+                                .getWebsocket()
+                                .getAllowedOriginPatterns()
+                                .toArray(String[]::new))
                 .withSockJS()
                 .setClientLibraryUrl(
                         "https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js");

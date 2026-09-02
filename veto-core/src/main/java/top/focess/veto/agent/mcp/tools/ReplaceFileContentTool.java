@@ -86,10 +86,11 @@ public final class ReplaceFileContentTool implements NativeTool<ReplaceFileConte
             security =
                     """
                     `absolutePath` is a FILESYSTEM_PATH; `targetContent` and `replacementContent` are CODE_CONTENT. \
-                    The Gateway screens the path and applies semantic screening to the replacement content \
-                    before the write. The operation is `RiskCategory.FILE_WRITE` (elevated + audited). Do not \
-                    attempt to patch deployer-fenced paths or smuggle disallowed content - the call is blocked \
-                    upstream; change approach instead.
+                    The Gateway canonicalizes the path and applies deployer-policy and semantic screening before \
+                    the write. Under FULL_ACCESS, workspace roots are working context rather than a path boundary, \
+                    so any absolute host path may be targeted; restrictive policies may fence paths. The operation \
+                    is `RiskCategory.FILE_WRITE` (elevated + audited) and may require approval. If the Gateway \
+                    actually refuses a path, change approach instead; never smuggle disallowed content.
                     """,
             examples = {
                 "{\"absolutePath\": \"/abs/src/Main.java\", \"startLine\": 5, \"endLine\": 8, \"targetContent\": \"old\", \"replacementContent\": \"new\"}",

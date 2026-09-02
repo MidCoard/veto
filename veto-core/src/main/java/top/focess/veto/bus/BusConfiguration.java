@@ -1,5 +1,6 @@
 package top.focess.veto.bus;
 
+import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
@@ -34,6 +35,14 @@ public class BusConfiguration {
         private int heartbeatIntervalMs = 30000;
         private int reconnectDelayMs = 5000;
         private int maxReconnectAttempts = 10;
+        private @NonNull List<@NonNull String> allowedOriginPatterns =
+                List.of(
+                        "http://localhost:*",
+                        "https://localhost:*",
+                        "http://127.0.0.1:*",
+                        "https://127.0.0.1:*",
+                        "http://[::1]:*",
+                        "https://[::1]:*");
 
         public int getPort() {
             return port;
@@ -74,11 +83,18 @@ public class BusConfiguration {
         public void setMaxReconnectAttempts(int maxReconnectAttempts) {
             this.maxReconnectAttempts = maxReconnectAttempts;
         }
+
+        public @NonNull List<@NonNull String> getAllowedOriginPatterns() {
+            return allowedOriginPatterns;
+        }
+
+        public void setAllowedOriginPatterns(@NonNull List<@NonNull String> allowedOriginPatterns) {
+            this.allowedOriginPatterns = List.copyOf(allowedOriginPatterns);
+        }
     }
 
     public static class GrpcConfig {
         private int port = 9091;
-        private int maxMessageSize = 4194304;
 
         public int getPort() {
             return port;
@@ -86,14 +102,6 @@ public class BusConfiguration {
 
         public void setPort(int port) {
             this.port = port;
-        }
-
-        public int getMaxMessageSize() {
-            return maxMessageSize;
-        }
-
-        public void setMaxMessageSize(int maxMessageSize) {
-            this.maxMessageSize = maxMessageSize;
         }
     }
 }

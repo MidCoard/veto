@@ -35,8 +35,7 @@ public final class PromptBlocks {
     /** Shared engineering-craft expectations for hands-on roles (standalone + mate). */
     private static final String CRAFT =
             "Before proposing changes, read the relevant files and understand the structure. "
-                    + "Write clean, self-documenting code that matches the surrounding style. "
-                    + "Explain your decisions concisely in your user-facing message.";
+                    + "Write clean, self-documenting code that matches the surrounding style.";
 
     private PromptBlocks() {}
 
@@ -71,37 +70,42 @@ public final class PromptBlocks {
         return switch (r) {
             case STANDALONE ->
                     "## Your Role\n"
-                            + "You operate directly on the user's workspace. "
+                            + "Role: STANDALONE. You operate directly on the user's workspace. "
                             + CRAFT
+                            + " Explain your decisions concisely in the final response."
                             + " Act autonomously: gather information with tools, make changes, and verify them"
                             + " - only stop to ask the user when you genuinely cannot proceed. "
                             + "You may delegate a decomposable task by calling `create_group` (you transform"
                             + " into the Leader of a new group).";
             case LEADER ->
                     "## Your Role\n"
-                            + "You are the Leader of a delegation group. You author the execution DAG node by"
+                            + "Role: LEADER. You author the execution DAG node by"
                             + " node via `create_node`/`remove_node`; the engine dispatches nodes to Mates as"
-                            + " their dependencies verify. Use `post_message` to relay feedback or ad-hoc"
-                            + " instructions, and `disband_group` (which returns you to single-agent mode)"
-                            + " when the work is done. You do NOT execute task nodes directly (no"
+                            + " their dependencies verify. Use `inspect_group` to wait for and read Mate"
+                            + " outcomes. Re-plan failed nodes with `remove_node`/`create_node`, and call"
+                            + " `disband_group` (which returns you to single-agent mode) after the DAG is"
+                            + " complete. You do NOT execute task nodes directly (no"
                             + " `write_to_file`/`run_command`/etc.) and you do NOT call `create_group`. You"
-                            + " never read raw logs; Mates post `LOG_REF` + `FEEDBACK` summaries for you.";
+                            + " reason from the node states and Mate reports returned by `inspect_group`.";
             case MATE ->
                     "## Your Role\n"
-                            + "You are a Mate (worker) in a delegation group. "
+                            + "Role: MATE. You are a worker in a delegation group. "
                             + CRAFT
-                            + " Execute the nodes dispatched to you and report results to the Leader via the"
-                            + " Blackboard. You do NOT delegate further (no `create_group`).";
+                            + " Execute the assigned node and finish with a concise internal report. The"
+                            + " engine captures that final message and delivers it to the Leader; you do not"
+                            + " address the end user or post to the Blackboard yourself. You do NOT delegate"
+                            + " further and cannot mutate the user's persistent memory.";
         };
     }
 
     /**
-     * The "## Workspace" block: mounts the session's workspace roots + path mode so the agent can
-     * address files with correct absolute paths. The Gateway resolves and authorizes those paths
-     * against these roots before a native file tool executes. Empty when the workspace has no
-     * roots.
+     * The "## Workspace" block: identifies the session's working context and path mode. Under
+     * FULL_ACCESS with real host paths, roots are navigation/default-execution context rather than
+     * an authorization boundary. Restrictive deployer policies continue to describe them as the
+     * addressable scope. Empty when the workspace has no roots.
      */
-    public static @NonNull String workspace(Workspace workspace) {
+    public static @NonNull String workspace(
+            Workspace workspace, @NonNull DeployerPolicy deployerPolicy) {
         if (workspace == null) {
             return "";
         }
@@ -112,10 +116,21 @@ public final class PromptBlocks {
         Path operational = workspace.pathResolver().operationalRoot();
         StringBuilder sb = new StringBuilder();
         sb.append("## Workspace\n");
-        sb.append(
-                "This session is pointed at the workspace below. Address files with **absolute"
-                        + " paths** rooted under one of these roots; the Gateway resolves each path"
-                        + " to an authorized canonical target before execution.\n");
+        if (deployerPolicy == DeployerPolicy.FULL_ACCESS && workspace.pathMode() == PathMode.REAL) {
+            sb.append(
+                    "This session is pointed at the workspace below, which is the default working"
+                            + " context rather than an access boundary. Under `FULL_ACCESS`, you may"
+                            + " use native file tools with any absolute host path on this computer"
+                            + " when the user's task requires it. The Gateway still canonicalizes"
+                            + " targets, evaluates danger, audits calls, and may require approval;"
+                            + " do not claim that a path is blocked merely because it is outside the"
+                            + " listed workspace roots.\n");
+        } else {
+            sb.append(
+                    "This session is pointed at the workspace below. Address files with **absolute"
+                            + " paths** rooted under one of these roots; the Gateway resolves each"
+                            + " path to an authorized canonical target before execution.\n");
+        }
         sb.append("- Path mode: `").append(workspace.pathMode()).append("` - ");
         if (workspace.pathMode() == PathMode.VIRTUAL) {
             sb.append(
@@ -142,6 +157,11 @@ public final class PromptBlocks {
      * Static per JVM - computed once.
      */
     public static @NonNull String environment() {
+        return environment(true);
+    }
+
+    /** Render host facts, including command semantics only when this role can execute commands. */
+    public static @NonNull String environment(boolean commandToolsAvailable) {
         String osName = System.getProperty("os.name", "unknown");
         String osArch = System.getProperty("os.arch", "unknown");
         boolean windows = osName.toLowerCase(java.util.Locale.ROOT).contains("win");
@@ -151,21 +171,27 @@ public final class PromptBlocks {
         if (windows) {
             sb.append(
                     "- Paths: Windows-style absolute paths with backslashes (e.g. `E:\\test\\Main.java`).\n");
-            sb.append(
-                    "- Invoke build tools by their Windows launchers: `gradlew.bat` (not `./gradlew`),"
-                            + " `mvnw.cmd`, `npm.cmd`. Native compilers (e.g. `g++`, `cl`) exist only if"
-                            + " installed - prefer the project's own build wrapper over assuming one.\n");
+            if (commandToolsAvailable) {
+                sb.append(
+                        "- Invoke build tools by their Windows launchers: `gradlew.bat` (not `./gradlew`),"
+                                + " `mvnw.cmd`, `npm.cmd`. Native compilers (e.g. `g++`, `cl`) exist only if"
+                                + " installed - prefer the project's own build wrapper over assuming one.\n");
+            }
         } else {
             sb.append(
                     "- Paths: POSIX-style absolute paths with forward slashes (e.g. `/home/user/Main.java`).\n");
-            sb.append(
-                    "- Invoke build tools by their Unix launchers: `./gradlew`, `./mvnw`, `npm`.\n");
+            if (commandToolsAvailable) {
+                sb.append(
+                        "- Invoke build tools by their Unix launchers: `./gradlew`, `./mvnw`, `npm`.\n");
+            }
         }
-        sb.append(
-                "- `run_command` spawns each executable directly (argv, no shell). Shell syntax does NOT"
-                        + " work: no `&&`, `||`, `;`, pipes, redirections (`>`, `>>`), globs (`*`), or"
-                        + " variable expansion (`%VAR%`/`$VAR`). Chain steps as separate `commands`"
-                        + " entries with `connect`; pipe via `connect: \"PIPE\"`.\n");
+        if (commandToolsAvailable) {
+            sb.append(
+                    "- `run_command` spawns each executable directly (argv, no shell). Shell syntax does NOT"
+                            + " work: no `&&`, `||`, `;`, pipes, redirections (`>`, `>>`), globs (`*`), or"
+                            + " variable expansion (`%VAR%`/`$VAR`). Chain steps as separate `commands`"
+                            + " entries with `connect`; pipe via `connect: \"PIPE\"`.\n");
+        }
         return sb.toString();
     }
 
@@ -238,7 +264,7 @@ public final class PromptBlocks {
             List<String> returnExamples = t.returnExamples();
             if (!returnExamples.isEmpty()) {
                 sb.append("#### Result examples\n");
-                String result = returnExamples.getFirst();
+                String result = schematicResult(returnExamples.getFirst());
                 sb.append("```")
                         .append(resultFenceLanguage(result))
                         .append('\n')
@@ -320,6 +346,13 @@ public final class PromptBlocks {
         return rendered;
     }
 
+    /**
+     * Keep result examples portable instead of teaching POSIX-only placeholder paths on Windows.
+     */
+    private static @NonNull String schematicResult(@NonNull String example) {
+        return example.replaceAll("/(?:abs|workspace)(?:/[^\\s\\\",}\\]]+)*", "<absolute-path>");
+    }
+
     private static @NonNull String resultFenceLanguage(@NonNull String example) {
         String stripped = example.stripLeading();
         if (!stripped.startsWith("{") && !stripped.startsWith("[")) {
@@ -345,11 +378,14 @@ public final class PromptBlocks {
         return switch (policy) {
             case FULL_ACCESS ->
                     "## Boundaries\n"
-                            + "You are running under the FULL_ACCESS deployer policy: you may read the app's"
-                            + " config files, including `application.yml`. FULL_ACCESS does not make secrets"
-                            + " safe to disclose or persist: do not place credentials in workspace files or"
-                            + " user-facing output. Ask the user to provision required credentials through"
-                            + " Veto's credential vault.\n";
+                            + "You are running under the FULL_ACCESS deployer policy. The listed workspace is"
+                            + " the default context, not a filesystem permission boundary: when the task"
+                            + " requires it, you may access any absolute host path available to the Veto"
+                            + " process, including app config such as `application.yml`. Calls still pass"
+                            + " through danger screening, auditing, and any required user approval."
+                            + " FULL_ACCESS does not make secrets safe to disclose or persist: do not place"
+                            + " credentials in workspace files or external output. Report that required"
+                            + " credentials must be provisioned through Veto's credential vault.\n";
             case PROTECTED, SANDBOXED, TENANT ->
                     "## Boundaries\n"
                             + "You are running under the "

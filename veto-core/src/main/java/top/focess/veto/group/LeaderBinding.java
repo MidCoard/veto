@@ -31,7 +31,7 @@ public class LeaderBinding {
     public LeaderBinding(
             @Value("${veto.group.leader.tier:TOP}") String tier,
             @Value(
-                            "${veto.group.leader.system-prompt-base:You are a Leader agent. Decompose the task and arrange the execution DAG node by node.}")
+                            "${veto.group.leader.system-prompt-base:Decompose the task and arrange the execution DAG node by node.}")
                     @NonNull String systemPromptBase,
             @NonNull ModelTierRegistry tierRegistry) {
         this.tierRegistry = tierRegistry;

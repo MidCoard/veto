@@ -25,8 +25,6 @@ class VetoGatewayTest {
     void setUp() {
         config = new VetoGatewayConfiguration();
         config.setEnabled(true);
-        config.setInterceptAllOutbound(true);
-        config.setRedactSecrets(true);
         config.setEnforceStructuralConstraints(true);
 
         semanticRedactor = new SemanticRedactor();

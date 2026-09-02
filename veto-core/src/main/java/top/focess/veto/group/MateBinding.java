@@ -1,6 +1,7 @@
 package top.focess.veto.group;
 
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
 import top.focess.veto.model.tier.ModelTier;
 
@@ -26,4 +27,5 @@ public record MateBinding(
         @NonNull ModelTier tier,
         String systemPromptBase,
         String owner,
+        Workspace workspace,
         @NonNull ToolResultPresentationMode toolResultPresentation) {}

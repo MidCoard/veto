@@ -31,12 +31,12 @@ import top.focess.veto.llm.core.ToolResultPresenter;
  * <ol>
  *   <li><b>System message</b> - compiled ("linked") by substituting dynamic blocks into the
  *       template at {@code default-system-prompt.md}. Blocks: {@code {{LAW}}} (VETO.md, resolved
- *       per-root + cross-root), {@code {{IDENTITY}}} (persona name+description, or a caller base),
- *       {@code {{ROLE}}} (STANDALONE/LEADER/MATE - drives the tool set), {@code {{WORKSPACE}}}
- *       (session roots + path mode), {@code {{ENVIRONMENT}}} (host OS/arch + no-shell run_command
- *       semantics), {@code {{TOOLS}}} (role-scoped catalog, from the SAME flat tools that build
- *       {@code tools[]}), {@code {{BOUNDARIES}}} (deployer-policy "not-do" fence), {@code
- *       {{SKILLS}}} (name+desc catalog). See {@link PromptTemplate} + {@link PromptBlocks}.
+ *       per-root + cross-root), {@code {{IDENTITY}}} (persona name+description plus optional
+ *       deployer role guidance), {@code {{ROLE}}} (STANDALONE/LEADER/MATE - drives the tool set),
+ *       {@code {{WORKSPACE}}} (session roots + path mode), {@code {{ENVIRONMENT}}} (host OS/arch +
+ *       no-shell run_command semantics), {@code {{TOOLS}}} (role-scoped catalog, from the SAME flat
+ *       tools that build {@code tools[]}), {@code {{BOUNDARIES}}} (deployer-policy "not-do" fence),
+ *       {@code {{SKILLS}}} (name+desc catalog). See {@link PromptTemplate} + {@link PromptBlocks}.
  *   <li><b>messages[]</b> - role-mapped, REWIND-resolved, token-budgeted (pair-safe truncation,
  *       system never trimmed), emitted oldest->newest and passed through {@link #wellFormed} so the
  *       result is the conversation every strict provider accepts (opens on a user message; every
@@ -106,9 +106,9 @@ public class PromptCompiler {
      * @param sessionWorkspace the per-session workspace (the session's actual roots, from the
      *     Gateway). Mounted into the system prompt and used to resolve VETO.md (The Law) so the
      *     prompt reflects the session's real roots, not the default bean workspace.
-     * @param systemPromptBase optional identity override (e.g. the Mate base from {@code
-     *     veto.group.mate.system-prompt-base}); null/blank -> the persona name+description is used.
-     *     Role/tools/boundaries are persona-driven.
+     * @param systemPromptBase optional additional role guidance (e.g. the Mate base from {@code
+     *     veto.group.mate.system-prompt-base}); it never replaces persona identity or skillset
+     *     context. Role/tools/boundaries are persona-driven.
      * @param history the raw, append-only turn history (oldest->newest)
      * @param guidedSwitch whether this is the guided-switch turn (emits {@code actions})
      */
@@ -182,19 +182,24 @@ public class PromptCompiler {
             @NonNull List<top.focess.veto.llm.core.ToolDefinition> flatTools,
             @NonNull ToolResultPresentationMode toolResultPresentation) {
         String law = sessionWorkspace.vetoMdResolver().resolve();
-        // A caller-supplied base (e.g. veto.group.mate.system-prompt-base) overrides the persona
-        // identity line; role, tools, boundaries, skills, and the response format are all
-        // persona/config-driven via the template markers (see PromptBlocks).
-        String identity =
-                (base != null && !base.isBlank())
-                        ? base.strip()
-                        : PromptBlocks.identity(persona.name(), persona.description());
+        // Persona identity is always retained. A deployer-supplied role base is additional trusted
+        // guidance, not an identity replacement; otherwise Mate id/skillset context disappears.
+        String identity = PromptBlocks.identity(persona.name(), persona.description());
+        if (base != null && !base.isBlank()) {
+            identity += "\n\n## Additional Role Guidance\n" + base.strip();
+        }
         Map<String, String> blocks = new LinkedHashMap<>();
         blocks.put("LAW", PromptBlocks.law(law));
         blocks.put("IDENTITY", identity);
         blocks.put("ROLE", PromptBlocks.role(persona.role()));
-        blocks.put("WORKSPACE", PromptBlocks.workspace(sessionWorkspace));
-        blocks.put("ENVIRONMENT", PromptBlocks.environment());
+        blocks.put("WORKSPACE", PromptBlocks.workspace(sessionWorkspace, deployerPolicy));
+        boolean commandToolsAvailable =
+                flatTools.stream()
+                        .anyMatch(
+                                tool ->
+                                        "run_command".equals(tool.name())
+                                                || "run_task".equals(tool.name()));
+        blocks.put("ENVIRONMENT", PromptBlocks.environment(commandToolsAvailable));
         blocks.put(
                 "RESULT_CONVENTIONS",
                 flatTools.isEmpty() ? "" : PromptBlocks.resultConventions(toolResultPresentation));

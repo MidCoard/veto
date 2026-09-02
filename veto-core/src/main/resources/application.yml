@@ -29,7 +29,6 @@ veto:
       max-reconnect-attempts: 10
     grpc:
       port: 9091
-      max-message-size: 4194304  # 4 MB
 
   veto-gateway:
     enabled: true
@@ -40,8 +39,6 @@ veto:
       n-gpu-layers: ${VETO_LLAMA_N_GPU_LAYERS:0}
       temperature: 0.0
       gbnf-grammar-path: ./grammars/veto-output.gbnf
-    intercept-all-outbound: true
-    redact-secrets: true
     enforce-structural-constraints: true
 
   # Model tiers: the single source of truth for an agent's model. Patterns and agents bind to a
@@ -59,21 +56,21 @@ veto:
   group:
     leader:
       tier: TOP
-      # system-prompt-base: "You are a Leader agent. Decompose the task and arrange the execution DAG node by node."
+      # system-prompt-base: "Decompose the task and arrange the execution DAG node by node."
     mate:
       tier: MID
       max_calls_per_episode: 50
-      # system-prompt-base: "You are a Mate agent. Execute the assigned task."
+      # system-prompt-base: "Execute the assigned task and return a concise internal report for the Leader."
       # Per-skillset overrides: a skillset entry may set either field; unset fields fall back to
       # the global mate.tier / mate.system-prompt-base above. A coding skillset can run on a
       # stronger tier with a coding-focused prompt while a research skillset runs cheaper.
       # skillsets:
       #   coder:
       #     tier: MID
-      #     system-prompt-base: "You are a coding Mate. Implement the assigned task."
+      #     system-prompt-base: "Implement the assigned coding task and report verification evidence."
       #   researcher:
       #     tier: LOW
-      #     system-prompt-base: "You are a research Mate. Gather and summarize."
+      #     system-prompt-base: "Gather and summarize the assigned research task."
 
   security:
     # Install-time deployer policy: FULL_ACCESS (no path is CRITICAL) | PROTECTED (deny-list) | SANDBOXED (scoped to root) | TENANT (multi-user workspace).
@@ -113,9 +110,7 @@ veto:
 
   observability:
     audit-log-path: ./audit/
-    log-rotation-days: 365
     encryption-enabled: true
-    tamper-proof: true
 
   training:
     python-path: python
@@ -128,7 +123,6 @@ veto:
     venv-path: ./training/.venv
     restart-bridge-on-deploy: true
     quality-filter-enabled: true
-    custom-data-dir: ""
 
 logging:
   level:

@@ -1,5 +1,7 @@
 package top.focess.veto.group;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -30,9 +32,9 @@ import top.focess.veto.agent.TurnRecord;
  *       addressed to this Mate (default 200ms cadence).
  *   <li>On a {@code TASK_DISPATCH} message: parse the instruction, submit it as a {@link
  *       AgentAction.UserPromptAction} to the wrapped Agent, await the result.
- *   <li>On result success: post {@code ARTIFACT_REF} (last tool output) + {@code ACCEPT} to the
- *       Blackboard. If the agent's per-episode call ceiling tripped, post a terminal {@code STATUS}
- *       instead.
+ *   <li>On result success: post the Mate's actual final report in an {@code ACCEPT} message. The
+ *       wrapper never fabricates an artifact path. If the agent's per-episode call ceiling tripped,
+ *       post a terminal {@code STATUS} instead.
  *   <li>On result failure: post {@code FEEDBACK} with the failure reason.
  * </ol>
  *
@@ -233,27 +235,17 @@ public class MateAgent {
 
         // 5. Dispatch the result.
         if (result.success()) {
-            String artifact = extractArtifact(result);
-            if (artifact != null) {
-                postArtifactRef(nodeId, artifact);
-            }
-            postAccept(nodeId, artifact);
+            postAccept(nodeId, result.message());
         } else {
             postFeedback(nodeId, result.message());
         }
     }
 
-    private String extractArtifact(@NonNull AgentResult result) {
-        // Heuristic: the last assistant message is the artifact description. For a real
-        // deployment the Mate would write to a workspace path; the path is what we post.
-        if (result.message().isBlank()) {
-            return null;
-        }
-        return "/mate/" + mateId + "/" + System.currentTimeMillis();
-    }
-
-    private void postAccept(@NonNull String nodeId, String artifactPath) {
-        String payload = nodeId + ":accept:" + (artifactPath == null ? "/artifact" : artifactPath);
+    private void postAccept(@NonNull String nodeId, @NonNull String summary) {
+        String encoded =
+                Base64.getEncoder()
+                        .encodeToString(summary.strip().getBytes(StandardCharsets.UTF_8));
+        String payload = nodeId + ":accept-base64:" + encoded;
         blackboard.post(
                 new BlackboardMessage(
                         UUID.randomUUID().toString(),
@@ -262,18 +254,6 @@ public class MateAgent {
                         "LEADER",
                         BlackboardMessage.MessageType.ACCEPT,
                         payload,
-                        0));
-    }
-
-    private void postArtifactRef(@NonNull String nodeId, @NonNull String path) {
-        blackboard.post(
-                new BlackboardMessage(
-                        UUID.randomUUID().toString(),
-                        groupId,
-                        mateId,
-                        "LEADER",
-                        BlackboardMessage.MessageType.ARTIFACT_REF,
-                        nodeId + ":" + path,
                         0));
     }
 

@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import top.focess.veto.agent.Agent;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.Role;
+import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
 import top.focess.veto.model.tier.ModelTier;
 
@@ -42,7 +43,7 @@ public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
             LoggerFactory.getLogger("top.focess.veto.group.GroupSpawner");
 
     private static final String DEFAULT_MATE_SYSTEM_PROMPT_BASE =
-            "You are a Mate agent. Execute the assigned task.";
+            "Execute the assigned task and return a concise internal report for the Leader.";
 
     private final @NonNull Blackboard blackboard;
     private final @NonNull GroupRegistry registry;
@@ -128,6 +129,7 @@ public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
                 tier,
                 base,
                 group != null ? group.owner() : null,
+                group != null ? group.workspace() : null,
                 group != null ? group.toolResultPresentation() : ToolResultPresentationMode.BASIC);
     }
 
@@ -218,7 +220,7 @@ public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
             String owner,
             @NonNull String contextBrief) {
         return registerEmptyGroup(
-                leaderId, userId, owner, contextBrief, ToolResultPresentationMode.BASIC);
+                leaderId, userId, owner, contextBrief, null, ToolResultPresentationMode.BASIC);
     }
 
     public @NonNull Group registerEmptyGroup(
@@ -226,6 +228,17 @@ public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
             @NonNull String userId,
             String owner,
             @NonNull String contextBrief,
+            @NonNull ToolResultPresentationMode toolResultPresentation) {
+        return registerEmptyGroup(
+                leaderId, userId, owner, contextBrief, null, toolResultPresentation);
+    }
+
+    public @NonNull Group registerEmptyGroup(
+            @NonNull String leaderId,
+            @NonNull String userId,
+            String owner,
+            @NonNull String contextBrief,
+            Workspace workspace,
             @NonNull ToolResultPresentationMode toolResultPresentation) {
         Group g =
                 Group.create(
@@ -235,6 +248,7 @@ public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
                         blackboard,
                         new ExecutionDag(UUID.randomUUID(), java.util.List.of()),
                         owner,
+                        workspace,
                         toolResultPresentation);
         registry.put(g);
         log.info(

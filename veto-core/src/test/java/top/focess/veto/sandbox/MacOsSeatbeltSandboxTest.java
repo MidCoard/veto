@@ -27,7 +27,8 @@ class MacOsSeatbeltSandboxTest {
         assertTrue(profile.contains("workspace with space"));
         assertTrue(profile.contains("(allow file-write* (subpath"));
         assertTrue(profile.contains("(deny file-write* (subpath"));
-        assertTrue(profile.contains(".git"));
+        assertTrue(profile.contains(".agents"));
+        assertFalse(profile.contains(".git"));
         assertFalse(profile.contains("(allow network"));
         assertFalse(profile.contains("(allow file-read*)"));
         assertFalse(profile.contains("(allow sysctl-read)"));

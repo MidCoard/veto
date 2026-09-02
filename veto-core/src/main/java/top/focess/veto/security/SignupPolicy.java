@@ -12,7 +12,7 @@ import org.springframework.stereotype.Component;
  * against the deployer policy at startup.
  *
  * <p>The only hard coupling is: {@code deployer-policy=TENANT} requires a multi-user signup mode
- * ({@code open} or {@code closed}). Every other deployer policy supports all four signup modes
+ * ({@code public} or {@code invite}). Every other deployer policy supports all three signup modes
  * (single- or multi-user).
  */
 @Component

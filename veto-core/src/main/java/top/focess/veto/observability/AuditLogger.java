@@ -36,8 +36,7 @@ public class AuditLogger {
     public void init() {
         tamperProofStore.initialize();
         log.info(
-                "observability AuditLogger: Initialized. tamperProof={}, encryption={}",
-                config.isTamperProof(),
+                "observability AuditLogger: Initialized. hashChain=true, encryption={}",
                 config.isEncryptionEnabled());
     }
 
@@ -56,22 +55,18 @@ public class AuditLogger {
             @NonNull String originalPayload,
             @NonNull String redactedPayload,
             @NonNull String diffExcerpt,
-            @NonNull String previousRecordHash,
             boolean vetoApplied) {
 
         AuditRecord record =
-                new AuditRecord(
+                tamperProofStore.append(
                         dagPayloadId,
                         requestId,
                         componentSource,
                         originalPayload,
                         redactedPayload,
                         diffExcerpt,
-                        previousRecordHash,
                         AuditRecord.AuditAction.VETO_INTERCEPTION,
                         vetoApplied);
-
-        tamperProofStore.append(record);
         totalRecordsWritten.incrementAndGet();
 
         log.info(
@@ -89,19 +84,15 @@ public class AuditLogger {
             @NonNull String componentSource,
             @NonNull String requestPayload,
             @NonNull String resultPayload) {
-        AuditRecord record =
-                new AuditRecord(
-                        dagPayloadId,
-                        requestId,
-                        componentSource,
-                        requestPayload,
-                        resultPayload,
-                        "(tool execution)",
-                        tamperProofStore.getChainTailHash(),
-                        AuditRecord.AuditAction.TOOL_EXECUTION,
-                        false);
-
-        tamperProofStore.append(record);
+        tamperProofStore.append(
+                dagPayloadId,
+                requestId,
+                componentSource,
+                requestPayload,
+                resultPayload,
+                "(tool execution)",
+                AuditRecord.AuditAction.TOOL_EXECUTION,
+                false);
         totalRecordsWritten.incrementAndGet();
     }
 
@@ -111,39 +102,31 @@ public class AuditLogger {
             @NonNull String modelName,
             @NonNull String requestPayload,
             @NonNull String rawResponsePayload) {
-        AuditRecord record =
-                new AuditRecord(
-                        "LLM-EXCHANGE",
-                        requestId,
-                        "gateway",
-                        requestPayload,
-                        rawResponsePayload,
-                        "Model: " + modelName,
-                        tamperProofStore.getChainTailHash(),
-                        AuditRecord.AuditAction.VETO_INTERCEPTION, // Reusing action or add new one?
-                        // VETO_INTERCEPTION is for gateway
-                        false);
+        tamperProofStore.append(
+                "LLM-EXCHANGE",
+                requestId,
+                "gateway",
+                requestPayload,
+                rawResponsePayload,
+                "Model: " + modelName,
+                AuditRecord.AuditAction.LLM_EXCHANGE,
+                false);
 
-        tamperProofStore.append(record);
         totalRecordsWritten.incrementAndGet();
     }
 
     /** Log a credential injection event (without the actual credential values). */
     public void logCredentialInjection(
             @NonNull String dagPayloadId, @NonNull String requestId, @NonNull String credKeys) {
-        AuditRecord record =
-                new AuditRecord(
-                        dagPayloadId,
-                        requestId,
-                        "vault",
-                        credKeys,
-                        "(injected)",
-                        "(credential injection - values redacted from audit)",
-                        tamperProofStore.getChainTailHash(),
-                        AuditRecord.AuditAction.CREDENTIAL_INJECTION,
-                        false);
-
-        tamperProofStore.append(record);
+        tamperProofStore.append(
+                dagPayloadId,
+                requestId,
+                "vault",
+                credKeys,
+                "(injected)",
+                "(credential injection - values redacted from audit)",
+                AuditRecord.AuditAction.CREDENTIAL_INJECTION,
+                false);
         totalRecordsWritten.incrementAndGet();
     }
 
@@ -153,19 +136,15 @@ public class AuditLogger {
             @NonNull String requestId,
             @NonNull String componentSource,
             @NonNull String errorMessage) {
-        AuditRecord record =
-                new AuditRecord(
-                        dagPayloadId,
-                        requestId,
-                        componentSource,
-                        errorMessage,
-                        "(error)",
-                        "(error event)",
-                        tamperProofStore.getChainTailHash(),
-                        AuditRecord.AuditAction.SYSTEM_ERROR,
-                        true);
-
-        tamperProofStore.append(record);
+        tamperProofStore.append(
+                dagPayloadId,
+                requestId,
+                componentSource,
+                errorMessage,
+                "(error)",
+                "(error event)",
+                AuditRecord.AuditAction.SYSTEM_ERROR,
+                true);
         totalRecordsWritten.incrementAndGet();
     }
 

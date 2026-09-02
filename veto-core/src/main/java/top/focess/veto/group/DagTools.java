@@ -51,7 +51,9 @@ public final class DagTools {
                     Adds one node to the execution plan. `dependsOn` may reference only existing, \
                     live nodes - the plan stays acyclic by construction. The node starts PENDING. \
                     On an orchestration tick after its dependencies are verified, the engine may \
-                    reuse a suitable Mate or provision one and then dispatch the node. Each plan \
+                    reuse a Mate whose skillset label is exactly equal, or provision one and then \
+                    dispatch the node. Skillsets are free-form scheduling labels; an unconfigured \
+                    label uses the deployer's default Mate binding. Each plan \
                     mutation is validated atomically before it takes effect.
                     """,
             whenToUse =
@@ -115,7 +117,8 @@ public final class DagTools {
                                 "What the node does - concrete enough for a mate to execute without asking.")
                         @NonNull String description,
                 @SecurityHint(ParamCategory.GENERIC)
-                        @Doc("The skillset this node requires (e.g. 'coding', 'testing').")
+                        @Doc(
+                                "Free-form scheduling label (e.g. 'coding', 'testing'); exact matches reuse a Mate, and unconfigured labels use the default Mate binding.")
                         @NonNull String skillset,
                 @SecurityHint(ParamCategory.GENERIC)
                         @Doc(

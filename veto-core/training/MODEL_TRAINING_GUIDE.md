@@ -253,7 +253,6 @@ veto:
     venv-path: ./training/.venv
     restart-bridge-on-deploy: true
     quality-filter-enabled: true       # Feature 6.3 quality gate
-    custom-data-dir: ""                # User-supplied training data directory
 ```
 
 ## Troubleshooting

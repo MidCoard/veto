@@ -21,16 +21,16 @@ import top.focess.veto.agent.mcp.ToolEngine;
  *       {@code create_group} (the delegation transform), the file/command tools, memory, and the
  *       always-on meta tools. Deny-list based so newly registered tools (e.g. a future remote MCP
  *       tool) surface to the standalone agent by default.
- *   <li><b>MATE</b> - everything <em>except</em> all group tools (no {@code create_group}, no
- *       arrangement). A Mate executes task nodes with the file/command + memory tools; it never
- *       delegates or arranges. Also deny-list based.
+ *   <li><b>MATE</b> - a fail-closed allow-list of execution, observation, and read-only recall
+ *       tools. A Mate cannot mutate cross-session memory and a newly registered high-privilege tool
+ *       is not exposed accidentally.
  *   <li><b>LEADER</b> - a strict allow-list: the read-only investigation tools ({@code view_file},
  *       {@code grep_search}, {@code list_dir}) so it can research the brief, the arrangement tools
- *       ({@code create_node}/{@code remove_node}/{@code post_message}/{@code disband_group}) so it
- *       authors the DAG and talks to the blackboard, and the always-on meta tools. No {@code
- *       create_group} (a Leader never spawns sub-groups), no file-write/command tools (a Leader
- *       never executes task nodes), no memory tools. Mates are provisioned lazily by the
- *       orchestrator on dispatch, so the Leader has no mate-spawning tool.
+ *       ({@code create_node}/{@code remove_node}/{@code inspect_group}/{@code disband_group}) so it
+ *       authors and inspects the DAG, and the always-on meta tools. No {@code create_group} (a
+ *       Leader never spawns sub-groups), no file-write/command tools (a Leader never executes task
+ *       nodes), no memory tools. Mates are provisioned lazily by the orchestrator on dispatch, so
+ *       the Leader has no mate-spawning tool.
  * </ul>
  *
  * <p>Filtering the <em>resolved</em> {@link ToolDefinition} list (post-{@code getActiveTools}) -
@@ -44,11 +44,26 @@ public class RoleToolFilter {
 
     /** Leader-only arrangement tools - never exposed to STANDALONE or MATE. */
     private static final @NonNull Set<@NonNull String> ARRANGE =
-            Set.of("create_node", "remove_node", "post_message", "disband_group");
+            Set.of("create_node", "remove_node", "post_message", "inspect_group", "disband_group");
 
-    /** All group tools - never exposed to a MATE (it neither delegates nor arranges). */
-    private static final @NonNull Set<@NonNull String> GROUP =
-            Set.of("create_group", "create_node", "remove_node", "post_message", "disband_group");
+    /** A Mate's complete capability set. New tools remain unavailable until reviewed here. */
+    private static final @NonNull Set<@NonNull String> MATE_ALLOWED =
+            Set.of(
+                    "grep_search",
+                    "list_dir",
+                    "load_skill",
+                    "recall_insights",
+                    "recall_session",
+                    "replace_file_content",
+                    "run_command",
+                    "run_task",
+                    "stop_task",
+                    "think",
+                    "view_file",
+                    "view_task",
+                    "web_fetch",
+                    "web_search",
+                    "write_to_file");
 
     /**
      * The Leader's strict allow-list: read-only investigation + arrangement + the always-on meta
@@ -61,7 +76,7 @@ public class RoleToolFilter {
                     "list_dir",
                     "create_node",
                     "remove_node",
-                    "post_message",
+                    "inspect_group",
                     "disband_group",
                     "load_skill",
                     "think");
@@ -82,7 +97,7 @@ public class RoleToolFilter {
                             .collect(Collectors.toUnmodifiableSet());
             case MATE ->
                     all.stream()
-                            .filter(t -> !GROUP.contains(t.name()))
+                            .filter(t -> MATE_ALLOWED.contains(t.name()))
                             .collect(Collectors.toUnmodifiableSet());
             case LEADER ->
                     all.stream()

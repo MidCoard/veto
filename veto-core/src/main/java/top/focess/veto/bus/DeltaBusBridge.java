@@ -1,6 +1,5 @@
 package top.focess.veto.bus;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.jspecify.annotations.NonNull;
@@ -11,8 +10,8 @@ import org.springframework.stereotype.Component;
 /**
  * The Part-8 bridge between the {@link DeltaBroker} and the multi-client WebSocket transport
  * ({@link VetoWebSocketHandler}). Subscribes to <em>every</em> session's frame stream on startup
- * and forwards each serialized {@link DeltaFrame} to all connected WebSocket clients via {@link
- * VetoWebSocketHandler#broadcastRaw(String)}.
+ * and forwards each structured {@link DeltaFrame} only to authenticated clients that own its
+ * session.
  *
  * <p>This closes the loop: {@code AgentRunner.emitMessage → DeltaBroker.publish → DeltaBusBridge →
  * VetoWebSocketHandler → connected clients}. The broker fans out per-session to its direct
@@ -28,16 +27,11 @@ public class DeltaBusBridge {
 
     private final @NonNull DeltaBroker broker;
     private final @NonNull VetoWebSocketHandler handler;
-    private final @NonNull ObjectMapper mapper;
     private AutoCloseable subscription;
 
-    public DeltaBusBridge(
-            @NonNull DeltaBroker broker,
-            @NonNull VetoWebSocketHandler handler,
-            @NonNull ObjectMapper mapper) {
+    public DeltaBusBridge(@NonNull DeltaBroker broker, @NonNull VetoWebSocketHandler handler) {
         this.broker = broker;
         this.handler = handler;
-        this.mapper = mapper;
     }
 
     @PostConstruct
@@ -46,7 +40,7 @@ public class DeltaBusBridge {
                 broker.subscribeAll(
                         frame -> {
                             try {
-                                handler.broadcastRaw(frame.toJson(mapper));
+                                handler.sendFrame(frame);
                             } catch (RuntimeException e) {
                                 log.warn(
                                         "DeltaBusBridge: failed to forward frame (kind={}, seq={})",

@@ -2,9 +2,11 @@ package top.focess.veto.group;
 
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.identity.Role;
 import top.focess.veto.agent.identity.RoleToolFilter;
+import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.mcp.AgentTool;
 import top.focess.veto.agent.mcp.Doc;
 import top.focess.veto.agent.mcp.ParamCategory;
@@ -21,15 +23,15 @@ import top.focess.veto.agent.mcp.ToolResultFormat;
  * caller of {@code create_group} <em>transforms</em> into the Leader in place (state, not type) and
  * authors the execution DAG node by node via {@code create_node} / {@code remove_node} (defined in
  * {@link DagTools}). The Leader tears the group down with {@code disband_group} (context-derived,
- * no id) which reverses the transform back to STANDALONE. {@code post_message} posts to the
- * Blackboard (Leader -> Mate, or a self-note); Mates do not get it - they report via their {@link
- * MateAgent} wrapper.
+ * no id) which reverses the transform back to STANDALONE. {@code inspect_group} gives the Leader a
+ * bounded-wait view of DAG state and Mate reports; Mates report via their {@link MateAgent}
+ * wrapper.
  *
  * <p>These are agent tools - they carry {@link top.focess.veto.agent.mcp.RiskCategory#AGENT}; the
  * Gateway returns {@code NotScreened}. Each tool resolves the caller's group from the {@link
  * ToolCallContext} (the calling agent leads exactly one group), so none of them takes a {@code
  * groupId} argument. Role gating is enforced by tool availability: {@code create_group} is offered
- * only to STANDALONE; {@code disband_group} / {@code post_message} only to the Leader.
+ * only to STANDALONE; {@code disband_group} / {@code inspect_group} only to the Leader.
  */
 public final class GroupTools {
 
@@ -91,7 +93,21 @@ public final class GroupTools {
         private final @NonNull GroupSpawner spawner;
         private final @NonNull LeaderBinding leaderBinding;
         private final @NonNull RoleToolFilter roleToolFilter;
+        private final HitlRegistry hitlRegistry;
 
+        @Autowired
+        public CreateGroup(
+                @NonNull GroupSpawner spawner,
+                @NonNull LeaderBinding leaderBinding,
+                @NonNull RoleToolFilter roleToolFilter,
+                @NonNull HitlRegistry hitlRegistry) {
+            this.spawner = spawner;
+            this.leaderBinding = leaderBinding;
+            this.roleToolFilter = roleToolFilter;
+            this.hitlRegistry = hitlRegistry;
+        }
+
+        /** Test compatibility constructor; production always supplies the workspace registry. */
         public CreateGroup(
                 @NonNull GroupSpawner spawner,
                 @NonNull LeaderBinding leaderBinding,
@@ -99,6 +115,7 @@ public final class GroupTools {
             this.spawner = spawner;
             this.leaderBinding = leaderBinding;
             this.roleToolFilter = roleToolFilter;
+            this.hitlRegistry = null;
         }
 
         public record Args(
@@ -149,7 +166,12 @@ public final class GroupTools {
             // dispatch.
             Group g =
                     spawner.registerEmptyGroup(
-                            leaderId, userId, owner, task, ctx.toolResultPresentation());
+                            leaderId,
+                            userId,
+                            owner,
+                            task,
+                            hitlRegistry == null ? null : hitlRegistry.workspace(leaderId),
+                            ctx.toolResultPresentation());
 
             // Request the delegation transform: the runner rewinds, re-seeds the Leader persona +
             // tool set + top-tier binding, stamps the group, and re-injects the brief. This call's
@@ -176,7 +198,8 @@ public final class GroupTools {
                     and marks the group DISBANDED. It then rewinds to an AGENT_INIT with your \
                     STANDALONE persona, restores the STANDALONE tools and model binding, appends a \
                     non-empty compaction summary when one is produced, and adds an outcome brief. \
-                    The Blackboard and recorded DAG remain available for audit.
+                    The in-memory Blackboard and recorded DAG remain inspectable only for the \
+                    lifetime of this backend process; durable group audit persistence is not yet wired.
                     """,
             whenToUse =
                     """
@@ -276,6 +299,8 @@ public final class GroupTools {
                 sb.append("): ").append(n.description()).append('\n');
                 if (n.result() instanceof DagNode.ResultArtifact artifact) {
                     sb.append("    Artifact: ").append(artifact.artifactPath()).append('\n');
+                } else if (n.result() instanceof DagNode.ResultSuccess success) {
+                    sb.append("    Mate report: ").append(success.summary()).append('\n');
                 } else if (n.result() instanceof DagNode.ResultFailure failure) {
                     sb.append("    Failure: ").append(failure.feedback()).append('\n');
                     if (!failure.logRefs().isEmpty()) {
@@ -290,8 +315,196 @@ public final class GroupTools {
         }
     }
 
-    /** {@code post_message} - post a typed message to the group's Blackboard. */
+    /** {@code inspect_group} - read DAG state and new Mate reports, optionally waiting briefly. */
     @Component
+    @ToolDoc(
+            resultFormats = {ToolResultFormat.PLAINTEXT},
+            description = "Inspect your active group's DAG state and Mate reports.",
+            behavior =
+                    """
+                    Returns the current group state, every DAG node, and Blackboard messages addressed \
+                    to the Leader whose sequence is greater than `sinceSeq`. `waitSeconds` performs a \
+                    bounded wait for a new Mate message or a group state change, avoiding tight polling. \
+                    The final line contains `nextSinceSeq`; pass that value on the next call.
+                    """,
+            whenToUse =
+                    """
+                    Use `inspect_group` after creating nodes to observe dispatch, wait for Mate outcomes, \
+                    read failure reports, and confirm that all nodes are VERIFIED before disbanding.
+                    """,
+            whenNotToUse =
+                    """
+                    - Do not guess node completion from elapsed time; inspect the group.
+                    - Do not repeatedly request the same messages; carry forward `nextSinceSeq`.
+                    - Do not use it outside a Leader context.
+                    """,
+            resultContract =
+                    """
+                    On success - a plaintext snapshot with group state, node lines, zero or more new \
+                    message lines, and `nextSinceSeq: <number>`.
+                    On refusal:
+                      Group not inspected: <reason and what to do next>
+                    """,
+            errorsAndEdgeCases =
+                    """
+                    `sinceSeq` must be non-negative. `waitSeconds` is clamped to 0..30. A completed group \
+                    remains inspectable until `disband_group` performs the reverse transform.
+                    """,
+            security =
+                    """
+                    Agent tool (`RiskCategory.AGENT`). Leader-only. The group id comes from the authenticated \
+                    tool-call context; callers cannot inspect another group by id.
+                    """,
+            examples = {"{}", "{\"sinceSeq\": 4, \"waitSeconds\": 15}"},
+            returnExamples = {
+                "Group state: ACTIVE\nNodes:\n- node-1 [RUNNING] mate=mate-1 skillset=coding\nNew Mate messages:\n- seq=5 sender=mate-1 type=FEEDBACK payload=node-1:feedback:test failed\nnextSinceSeq: 5"
+            })
+    public static final class InspectGroup implements AgentTool<InspectGroup.Args> {
+
+        private final @NonNull GroupRegistry registry;
+        private final @NonNull Blackboard blackboard;
+
+        public InspectGroup(@NonNull GroupRegistry registry, @NonNull Blackboard blackboard) {
+            this.registry = registry;
+            this.blackboard = blackboard;
+        }
+
+        public record Args(
+                @SecurityHint(ParamCategory.GENERIC)
+                        @Doc("Last consumed Blackboard sequence; omit or use 0 for the first read.")
+                        Long sinceSeq,
+                @SecurityHint(ParamCategory.GENERIC)
+                        @Doc("Seconds to wait for new Mate information, from 0 to 30; default 0.")
+                        Integer waitSeconds) {}
+
+        @Override
+        public @NonNull String getName() {
+            return "inspect_group";
+        }
+
+        @Override
+        public @NonNull String getDescription() {
+            return "Inspect your active group's DAG state and Mate reports.";
+        }
+
+        @Override
+        public @NonNull Class<Args> getArgsClass() {
+            return ToolDocs.nonNullClass(Args.class);
+        }
+
+        @Override
+        public @NonNull String execute(@NonNull Args args) {
+            ToolCallContext ctx = ToolCallContextHolder.get();
+            UUID groupId = ctx != null ? ctx.groupId() : null;
+            if (groupId == null) {
+                return ToolErrors.failure(
+                        "Group not inspected: no active group in your context. inspect_group is a "
+                                + "Leader tool inside a group.");
+            }
+            long since = args.sinceSeq() == null ? 0 : args.sinceSeq();
+            if (since < 0) {
+                return ToolErrors.failure("Group not inspected: sinceSeq must be non-negative.");
+            }
+            int waitSeconds = args.waitSeconds() == null ? 0 : args.waitSeconds();
+            waitSeconds = Math.max(0, Math.min(30, waitSeconds));
+            Group initial = registry.get(groupId);
+            if (initial == null) {
+                return ToolErrors.failure("Group not inspected: group record not found.");
+            }
+            Group group = initial;
+            java.util.List<BlackboardMessage> messages = newMessages(groupId, since);
+            long deadline =
+                    System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(waitSeconds);
+            while (messages.isEmpty()
+                    && group.state() == initial.state()
+                    && System.nanoTime() < deadline) {
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return ToolErrors.failure("Group not inspected: wait interrupted.");
+                }
+                Group refreshed = registry.get(groupId);
+                if (refreshed == null) {
+                    return ToolErrors.failure("Group not inspected: group record disappeared.");
+                }
+                group = refreshed;
+                messages = newMessages(groupId, since);
+            }
+            return render(group, messages, since);
+        }
+
+        private java.util.@NonNull List<@NonNull BlackboardMessage> newMessages(
+                @NonNull UUID groupId, long since) {
+            Group group = registry.get(groupId);
+            if (group == null) {
+                return java.util.List.of();
+            }
+            return blackboard.readFor(groupId, "LEADER").stream()
+                    .filter(message -> message.turnSeq() > since)
+                    .filter(
+                            message ->
+                                    group.mates().containsKey(message.senderId())
+                                            || "LEADER".equals(message.senderId()))
+                    .toList();
+        }
+
+        private static @NonNull String render(
+                @NonNull Group group,
+                java.util.@NonNull List<@NonNull BlackboardMessage> messages,
+                long since) {
+            StringBuilder result = new StringBuilder();
+            result.append("Group state: ").append(group.state()).append('\n');
+            result.append("Nodes:\n");
+            if (group.dag().nodes().isEmpty()) {
+                result.append("- (none)\n");
+            }
+            for (DagNode node : group.dag().nodes()) {
+                result.append("- ")
+                        .append(node.nodeId())
+                        .append(" [")
+                        .append(node.state())
+                        .append("] mate=")
+                        .append(
+                                node.assignedMateId() == null
+                                        ? "(unassigned)"
+                                        : node.assignedMateId())
+                        .append(" skillset=")
+                        .append(node.requiredSkillset())
+                        .append('\n');
+                if (node.result() instanceof DagNode.ResultSuccess success) {
+                    result.append("  report: ").append(oneLine(success.summary())).append('\n');
+                } else if (node.result() instanceof DagNode.ResultFailure failure) {
+                    result.append("  failure: ").append(oneLine(failure.feedback())).append('\n');
+                }
+            }
+            result.append("New Mate messages:\n");
+            if (messages.isEmpty()) {
+                result.append("- (none)\n");
+            }
+            long next = since;
+            for (BlackboardMessage message : messages) {
+                next = Math.max(next, message.turnSeq());
+                result.append("- seq=")
+                        .append(message.turnSeq())
+                        .append(" sender=")
+                        .append(message.senderId())
+                        .append(" type=")
+                        .append(message.type())
+                        .append(" payload=")
+                        .append(oneLine(message.payload()))
+                        .append('\n');
+            }
+            result.append("nextSinceSeq: ").append(next);
+            return result.toString();
+        }
+
+        private static @NonNull String oneLine(@NonNull String value) {
+            return value.replace("\r", "\\r").replace("\n", "\\n");
+        }
+    }
+
+    /** Legacy implementation retained for compatibility; no production role exports this tool. */
     @ToolDoc(
             resultFormats = {ToolResultFormat.PLAINTEXT},
             description =

@@ -42,9 +42,6 @@ public class TrainingConfiguration {
     /** Whether to run the quality filter (Feature 6.3) before training. */
     private boolean qualityFilterEnabled = true;
 
-    /** Directory for user-supplied custom training data. */
-    private @NonNull String customDataDir = "";
-
     // ── Getters & Setters ──
 
     public @NonNull String getPythonPath() {
@@ -125,13 +122,5 @@ public class TrainingConfiguration {
 
     public void setQualityFilterEnabled(boolean qualityFilterEnabled) {
         this.qualityFilterEnabled = qualityFilterEnabled;
-    }
-
-    public @NonNull String getCustomDataDir() {
-        return customDataDir;
-    }
-
-    public void setCustomDataDir(@NonNull String customDataDir) {
-        this.customDataDir = customDataDir;
     }
 }

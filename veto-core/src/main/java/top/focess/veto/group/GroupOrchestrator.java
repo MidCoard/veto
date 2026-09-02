@@ -1,7 +1,9 @@
 package top.focess.veto.group;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -334,27 +336,22 @@ public class GroupOrchestrator {
             return group; // not addressed to the Leader
         }
         return switch (message.type()) {
-            case ACCEPT -> acceptNode(group, message);
-            case FEEDBACK -> failNode(group, message);
+            case ACCEPT -> transitionFromMate(group, message, DagNode.NodeState.VERIFIED);
+            case FEEDBACK -> transitionFromMate(group, message, DagNode.NodeState.FAILED);
             case STATUS -> handleStatus(group, message);
             case ARTIFACT_REF, LOG_REF, TASK_DISPATCH -> group; // Leader-side, no transition
         };
     }
 
-    private @NonNull Group acceptNode(@NonNull Group group, @NonNull BlackboardMessage message) {
+    private @NonNull Group transitionFromMate(
+            @NonNull Group group,
+            @NonNull BlackboardMessage message,
+            DagNode.@NonNull NodeState newState) {
         String nodeId = extractNodeId(message.payload());
         if (nodeId == null) {
             return group;
         }
-        return markNode(group, nodeId, DagNode.NodeState.VERIFIED, message.payload());
-    }
-
-    private @NonNull Group failNode(@NonNull Group group, @NonNull BlackboardMessage message) {
-        String nodeId = extractNodeId(message.payload());
-        if (nodeId == null) {
-            return group;
-        }
-        return markNode(group, nodeId, DagNode.NodeState.FAILED, message.payload());
+        return markNodeFromMate(group, nodeId, newState, message);
     }
 
     /**
@@ -371,18 +368,48 @@ public class GroupOrchestrator {
             return group;
         }
         String nodeId = parts[1];
-        return markNode(
-                group,
-                nodeId,
-                DagNode.NodeState.PENDING,
-                "re-assigned: " + (parts.length > 2 ? parts[2] : "terminal"));
+        return markNodeFromMate(group, nodeId, DagNode.NodeState.PENDING, message);
     }
 
-    private @NonNull Group markNode(
+    /** Only the currently assigned Mate may transition a RUNNING node. */
+    private @NonNull Group markNodeFromMate(
             @NonNull Group group,
             @NonNull String nodeId,
             DagNode.@NonNull NodeState newState,
-            @NonNull String result) {
+            @NonNull BlackboardMessage message) {
+        ExecutionDag dag = group.dag();
+        for (DagNode node : dag.nodes()) {
+            if (!node.nodeId().equals(nodeId)) {
+                continue;
+            }
+            String assignedMateId = node.assignedMateId();
+            if (node.state() != DagNode.NodeState.RUNNING
+                    || assignedMateId == null
+                    || !assignedMateId.equals(message.senderId())) {
+                log.warn(
+                        "Ignored {} for node {} from unassigned sender {}",
+                        message.type(),
+                        nodeId,
+                        message.senderId());
+                return group;
+            }
+            DagNode updated =
+                    new DagNode(
+                            node.nodeId(),
+                            node.description(),
+                            node.assignedMateId(),
+                            node.requiredSkillset(),
+                            node.dependsOn(),
+                            newState,
+                            resultFromMate(message),
+                            node.retryCount());
+            return group.withDag(dag.withNode(nodeId, updated));
+        }
+        return group;
+    }
+
+    private @NonNull Group markNode(
+            @NonNull Group group, @NonNull String nodeId, DagNode.@NonNull NodeState newState) {
         ExecutionDag dag = group.dag();
         for (DagNode n : dag.nodes()) {
             if (!n.nodeId().equals(nodeId)) {
@@ -401,22 +428,28 @@ public class GroupOrchestrator {
                             n.requiredSkillset(),
                             n.dependsOn(),
                             newState,
-                            resultArtifact(result));
+                            new DagNode.ResultNone(),
+                            n.retryCount());
             return group.withDag(dag.withNode(nodeId, updated));
         }
         return group;
     }
 
-    private static DagNode.@NonNull NodeResult resultArtifact(String result) {
-        if (result == null) {
-            return new DagNode.ResultNone();
+    private static DagNode.@NonNull NodeResult resultFromMate(@NonNull BlackboardMessage message) {
+        String[] parts = message.payload().split(":", 3);
+        if (message.type() == BlackboardMessage.MessageType.ACCEPT
+                && parts.length == 3
+                && "accept-base64".equals(parts[1])) {
+            try {
+                String summary =
+                        new String(Base64.getDecoder().decode(parts[2]), StandardCharsets.UTF_8);
+                return new DagNode.ResultSuccess(summary);
+            } catch (IllegalArgumentException e) {
+                return new DagNode.ResultSuccess("Mate completed without a decodable report.");
+            }
         }
-        if (result.startsWith("accept:")) {
-            return new DagNode.ResultArtifact(result.substring("accept:".length()).strip());
-        }
-        if (result.startsWith("feedback:")) {
-            String body = result.substring("feedback:".length()).strip();
-            return new DagNode.ResultFailure(body, List.of());
+        if (message.type() == BlackboardMessage.MessageType.FEEDBACK && parts.length == 3) {
+            return new DagNode.ResultFailure(parts[2].strip(), List.of());
         }
         return new DagNode.ResultNone();
     }
@@ -506,7 +539,7 @@ public class GroupOrchestrator {
         if (group == null) {
             return null;
         }
-        return markNode(group, nodeId, DagNode.NodeState.PENDING, "re-plan");
+        return markNode(group, nodeId, DagNode.NodeState.PENDING);
     }
 
     private @NonNull Group maybeComplete(@NonNull Group group) {
@@ -538,9 +571,10 @@ public class GroupOrchestrator {
         if (anyOpen) {
             return group; // Leader needs to re-plan or assign
         }
-        // All nodes VERIFIED → group complete.
+        // All nodes VERIFIED → completed, but not yet disbanded. The Leader must first inspect the
+        // reports and call disband_group so its persona can reverse-transform to STANDALONE.
         log.info("GroupOrchestrator: group {} complete (all nodes VERIFIED)", group.groupId());
-        return group.withState(Group.GroupState.DISBANDED, Instant.now());
+        return group.withState(Group.GroupState.COMPLETED, Instant.now());
     }
 
     /**
@@ -560,8 +594,13 @@ public class GroupOrchestrator {
                 @NonNull String mateId,
                 @NonNull String nodeId,
                 String artifactPath) {
+            String summary =
+                    artifactPath == null ? "Synthetic Mate completion." : artifactPath.strip();
             String payload =
-                    nodeId + ":accept:" + (artifactPath == null ? "/artifact" : artifactPath);
+                    nodeId
+                            + ":accept-base64:"
+                            + Base64.getEncoder()
+                                    .encodeToString(summary.getBytes(StandardCharsets.UTF_8));
             return new BlackboardMessage(
                     UUID.randomUUID().toString(),
                     groupId,

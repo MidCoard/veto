@@ -75,11 +75,13 @@ public final class WriteToFileTool implements NativeTool<WriteToFileTool.Args> {
                     """,
             security =
                     """
-                    `absolutePath` is a FILESYSTEM_PATH and `codeContent` is CODE_CONTENT: the Gateway screens the \
-                    path against the deployer policy and allowed roots, and applies semantic screening to the \
-                    content before the write. The operation is `RiskCategory.FILE_WRITE` (elevated + audited). \
-                    Do not attempt to write outside allowed roots or to deployer-fenced paths - the call is \
-                    blocked upstream; change approach instead. Do not embed high-value secrets in written files.
+                    `absolutePath` is a FILESYSTEM_PATH and `codeContent` is CODE_CONTENT: the Gateway canonicalizes \
+                    the path, screens it under the deployer policy, and applies semantic screening to the content \
+                    before the write. Under FULL_ACCESS, workspace roots are working context rather than a path \
+                    boundary, so any absolute host path may be targeted; restrictive policies may fence paths. \
+                    The operation is `RiskCategory.FILE_WRITE` (elevated + audited) and may require approval. If \
+                    the Gateway actually refuses a path, change approach instead. Do not embed high-value secrets \
+                    in written files.
                     """,
             examples = {
                 "{\"absolutePath\": \"/abs/src/Main.java\", \"codeContent\": \"package x;\\n\", \"overwrite\": false}",
