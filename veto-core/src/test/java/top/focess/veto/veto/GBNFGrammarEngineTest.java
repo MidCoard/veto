@@ -13,7 +13,7 @@ class GBNFGrammarEngineTest {
 
     @BeforeEach
     void setUp() {
-        grammarEngine = new GBNFGrammarEngine(new VetoGatewayConfiguration());
+        grammarEngine = new GBNFGrammarEngine(new SlmConfiguration());
     }
 
     @Test
@@ -21,10 +21,11 @@ class GBNFGrammarEngineTest {
         String grammar = grammarEngine.getDefaultVetoGrammar();
         assertNotNull(grammar);
         assertTrue(grammar.contains("veto-response"));
-        assertTrue(grammar.contains("veto_decision"));
-        assertTrue(grammar.contains("\"pass\""));
-        assertTrue(grammar.contains("\"redact\""));
-        assertTrue(grammar.contains("\"block\""));
+        assertTrue(grammar.contains("\"\\\"veto_decision\\\"\""));
+        assertTrue(grammar.contains("\"\\\"data\\\"\""));
+        assertTrue(grammar.contains("\"\\\"pass\\\"\""));
+        assertTrue(grammar.contains("\"\\\"redact\\\"\""));
+        assertTrue(grammar.contains("\"\\\"block\\\"\""));
     }
 
     @Test
@@ -32,8 +33,8 @@ class GBNFGrammarEngineTest {
         String grammar = grammarEngine.getCodeConstraintGrammar();
         assertNotNull(grammar);
         assertTrue(grammar.contains("code-constraint-response"));
-        assertTrue(grammar.contains("violations"));
-        assertTrue(grammar.contains("redacted"));
+        assertTrue(grammar.contains("\"\\\"violations\\\"\""));
+        assertTrue(grammar.contains("\"\\\"redacted\\\"\""));
     }
 
     @Test
@@ -41,8 +42,8 @@ class GBNFGrammarEngineTest {
         String grammar = grammarEngine.getSecretsRedactionGrammar();
         assertNotNull(grammar);
         assertTrue(grammar.contains("redaction-response"));
-        assertTrue(grammar.contains("secrets_found"));
-        assertTrue(grammar.contains("redacted_fields"));
+        assertTrue(grammar.contains("\"\\\"secrets_found\\\"\""));
+        assertTrue(grammar.contains("\"\\\"redacted_fields\\\"\""));
     }
 
     @Test
@@ -53,6 +54,17 @@ class GBNFGrammarEngineTest {
         assertTrue(grammar.contains("CRITICAL"));
         assertTrue(grammar.contains("\"\\\"relevance\\\"\""));
         assertTrue(grammar.contains("\"\\\"CRITICAL\\\"\""));
+    }
+
+    @Test
+    void semanticMaskGrammarMatchesTheParserContract() {
+        String grammar = grammarEngine.resolveGrammar("veto-semantic-mask");
+        assertTrue(grammar.contains("risk"));
+        assertTrue(grammar.contains("reason"));
+        assertTrue(grammar.contains("high"));
+        assertTrue(grammar.contains("\"\\\"risk\\\"\""));
+        assertTrue(grammar.contains("\"\\\"reason\\\"\""));
+        assertFalse(grammar.contains("secrets_found"));
     }
 
     @Test

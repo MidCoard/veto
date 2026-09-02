@@ -69,7 +69,7 @@ class PromptCompileRenderTest {
                 "leader with no tools should drop the Tools block");
         assertTrue(prompt.contains("running under PROTECTED"));
         assertTrue(prompt.contains("protected set is a hard deny-list"));
-        assertTrue(prompt.contains("outside these roots remain addressable"));
+        assertTrue(prompt.contains("outside workspace roots remain addressable"));
         assertFalse(prompt.contains("another user's unshared workspace"));
     }
 
@@ -108,6 +108,20 @@ class PromptCompileRenderTest {
         assertFalse(sandboxed.equals(tenant));
     }
 
+    @Test
+    void virtualPathModeDoesNotClaimUnrestrictedHostReachability() {
+        String workspace =
+                PromptBlocks.workspace(
+                        Workspace.single(
+                                Path.of(System.getProperty("user.dir", ".")), PathMode.VIRTUAL));
+        String boundaries = PromptBlocks.boundaries(DeployerPolicy.FULL_ACCESS, PathMode.VIRTUAL);
+
+        assertTrue(workspace.contains("mounted roots"));
+        assertTrue(boundaries.contains("only the mounted workspace roots"));
+        assertFalse(boundaries.contains("unrestricted host-path reachability"));
+        assertFalse(boundaries.contains("any absolute host path"));
+    }
+
     private @NonNull String render(
             @NonNull Role role,
             @NonNull DeployerPolicy policy,
@@ -128,12 +142,11 @@ class PromptCompileRenderTest {
                 "WORKSPACE",
                 PromptBlocks.workspace(
                         Workspace.single(
-                                Path.of(System.getProperty("user.dir", ".")), PathMode.REAL),
-                        policy));
+                                Path.of(System.getProperty("user.dir", ".")), PathMode.REAL)));
         blocks.put("ENVIRONMENT", PromptBlocks.environment());
         blocks.put("RESULT_CONVENTIONS", tools.isEmpty() ? "" : PromptBlocks.resultConventions());
         blocks.put("TOOLS", PromptBlocks.tools(tools));
-        blocks.put("BOUNDARIES", PromptBlocks.boundaries(policy));
+        blocks.put("BOUNDARIES", PromptBlocks.boundaries(policy, PathMode.REAL));
         blocks.put("SKILLS", PromptBlocks.skills(List.of()));
         return PromptTemplate.render(resolver.defaultPrompt(), blocks);
     }

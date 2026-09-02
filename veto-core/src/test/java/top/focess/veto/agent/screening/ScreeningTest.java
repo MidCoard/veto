@@ -13,7 +13,7 @@ class ScreeningTest {
 
     @Test
     void unavailableProviderReturnsNoFabricatedJudgment() {
-        SlmScreeningProvider provider = new UnavailableSlmScreeningProvider();
+        SlmScreeningProvider provider = SlmScreeningProvider.unavailable();
         ToolCall call = new ToolCall("any", java.util.Map.of());
         assertTrue(provider.screen(call, anAgentToolDef(), "any thought").isEmpty());
     }

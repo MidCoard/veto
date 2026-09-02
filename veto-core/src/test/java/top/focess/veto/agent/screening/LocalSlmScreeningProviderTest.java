@@ -15,7 +15,7 @@ import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.veto.GBNFGrammarEngine;
 import top.focess.veto.veto.LlamaCppBridge;
-import top.focess.veto.veto.VetoGatewayConfiguration;
+import top.focess.veto.veto.SlmConfiguration;
 
 /** Tests for the Part 3.2 local-SLM-backed relevance-and-danger provider. */
 class LocalSlmScreeningProviderTest {
@@ -28,7 +28,7 @@ class LocalSlmScreeningProviderTest {
 
         FakeBridge(boolean available, @NonNull String cannedResponse) {
             super(
-                    mock(ToolDocs.nonNullClass(VetoGatewayConfiguration.class)),
+                    mock(ToolDocs.nonNullClass(SlmConfiguration.class)),
                     mock(ToolDocs.nonNullClass(GBNFGrammarEngine.class)));
             this.available = available;
             this.cannedResponse = cannedResponse;

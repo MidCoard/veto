@@ -41,7 +41,7 @@ class GatewayScreeningTest {
         return new Gateway(
                 ws,
                 new DangerComputation(),
-                new UnavailableSlmScreeningProvider(),
+                SlmScreeningProvider.unavailable(),
                 DeployerPolicy.FULL_ACCESS,
                 ProtectedSet.empty(),
                 new ReadHistory());
@@ -145,7 +145,7 @@ class GatewayScreeningTest {
                 new Gateway(
                         ws,
                         new DangerComputation(),
-                        new UnavailableSlmScreeningProvider(),
+                        SlmScreeningProvider.unavailable(),
                         DeployerPolicy.SANDBOXED,
                         ProtectedSet.empty(),
                         new ReadHistory());
@@ -168,7 +168,7 @@ class GatewayScreeningTest {
                 new Gateway(
                         ws,
                         new DangerComputation(),
-                        new UnavailableSlmScreeningProvider(),
+                        SlmScreeningProvider.unavailable(),
                         DeployerPolicy.FULL_ACCESS,
                         ProtectedSet.empty(),
                         rh);

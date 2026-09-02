@@ -64,13 +64,13 @@ public class PromptCompiler {
     private final com.fasterxml.jackson.databind.@NonNull ObjectMapper objectMapper;
     private final @NonNull ToolResultPresenter toolResultPresenter;
 
-    @Value("${veto.context.max_input_tokens:32000}")
+    @Value("${veto.context.max_input_tokens}")
     private int maxInputTokens;
 
-    @Value("${veto.context.context_fill_ratio:0.9}")
+    @Value("${veto.context.context_fill_ratio}")
     private double contextFillRatio;
 
-    @Value("${veto.security.deployer-policy:FULL_ACCESS}")
+    @Value("${veto.security.deployer-policy}")
     private @NonNull String deployerPolicyRaw = "FULL_ACCESS";
 
     private @NonNull DeployerPolicy deployerPolicy = DeployerPolicy.FULL_ACCESS;
@@ -213,7 +213,7 @@ public class PromptCompiler {
         blocks.put("LAW", PromptBlocks.law(law));
         blocks.put("IDENTITY", identity);
         blocks.put("ROLE", PromptBlocks.role(persona.role()));
-        blocks.put("WORKSPACE", PromptBlocks.workspace(sessionWorkspace, deployerPolicy));
+        blocks.put("WORKSPACE", PromptBlocks.workspace(sessionWorkspace));
         boolean commandToolsAvailable =
                 flatTools.stream()
                         .anyMatch(
@@ -225,7 +225,8 @@ public class PromptCompiler {
                 "RESULT_CONVENTIONS",
                 flatTools.isEmpty() ? "" : PromptBlocks.resultConventions(toolResultPresentation));
         blocks.put("TOOLS", PromptBlocks.tools(flatTools));
-        blocks.put("BOUNDARIES", PromptBlocks.boundaries(deployerPolicy));
+        blocks.put(
+                "BOUNDARIES", PromptBlocks.boundaries(deployerPolicy, sessionWorkspace.pathMode()));
         blocks.put("SKILLS", PromptBlocks.skills(persona.registeredSkills()));
         return PromptTemplate.render(systemPromptResolver.defaultPrompt(), blocks);
     }

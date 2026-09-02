@@ -34,6 +34,7 @@ import top.focess.veto.agent.mcp.ToolDefinition;
 import top.focess.veto.agent.mcp.ToolEngine;
 import top.focess.veto.agent.screening.DangerComputation;
 import top.focess.veto.agent.screening.DeployerPolicy;
+import top.focess.veto.agent.screening.DeployerPolicyConfiguration;
 import top.focess.veto.agent.screening.ProtectedSet;
 import top.focess.veto.agent.screening.ProtectedSetResolver;
 import top.focess.veto.agent.screening.ScreeningMode;
@@ -83,7 +84,7 @@ public class AgentService {
     private final top.focess.veto.memory.TurnLogService turnLogService;
     private final top.focess.veto.sandbox.@NonNull BackgroundTaskManager backgroundTaskManager;
     private final @NonNull ProtectedSetResolver protectedSetResolver;
-    private @NonNull SlmScreeningProvider slmScreeningProvider = SlmScreeningProvider.unavailable();
+    private final @NonNull SlmScreeningProvider slmScreeningProvider;
 
     /**
      * The fallback memory-tenant userId for legacy/test paths that bypass session activation (the
@@ -107,15 +108,15 @@ public class AgentService {
             @Qualifier(LlmJacksonConfig.LLM_OBJECT_MAPPER) @NonNull ObjectMapper objectMapper,
             List<LoopInterceptor> interceptors,
             @NonNull RoleToolFilter roleToolFilter,
-            @Value("${veto.workspace.path-mode:REAL}") @NonNull String pathMode,
-            @Value("${veto.breaker.max_calls_per_episode:50}") long maxCallsPerEpisode,
-            @Value("${veto.security.deployer-policy:FULL_ACCESS}")
-                    @NonNull String deployerPolicyRaw,
-            @Value("${veto.security.screening-mode:STRICT}") @NonNull String screeningModeRaw,
+            @Value("${veto.workspace.path-mode}") @NonNull String pathMode,
+            @Value("${veto.breaker.max_calls_per_episode}") long maxCallsPerEpisode,
+            @NonNull DeployerPolicyConfiguration deployerPolicyConfiguration,
+            @Value("${veto.security.screening-mode}") @NonNull String screeningModeRaw,
             DeltaBroker deltaBroker,
             top.focess.veto.memory.TurnLogService turnLogService,
             top.focess.veto.sandbox.@NonNull BackgroundTaskManager backgroundTaskManager,
-            @NonNull ProtectedSetResolver protectedSetResolver) {
+            @NonNull ProtectedSetResolver protectedSetResolver,
+            @NonNull SlmScreeningProvider slmScreeningProvider) {
         this.mcpEngine = mcpEngine;
         this.hitlRegistry = hitlRegistry;
         this.ingressDefense = ingressDefense;
@@ -127,7 +128,7 @@ public class AgentService {
         this.defaultWorkspace = Workspace.fromConfig("", "", pathMode);
         this.roleToolFilter = roleToolFilter;
         this.maxCallsPerEpisode = maxCallsPerEpisode;
-        this.deployerPolicy = parseDeployerPolicy(deployerPolicyRaw);
+        this.deployerPolicy = deployerPolicyConfiguration.getDeployerPolicy();
         if (this.deployerPolicy == DeployerPolicy.FULL_ACCESS) {
             log.info(
                     "deployer-policy=FULL_ACCESS: workspace roots are context rather than path"
@@ -143,6 +144,7 @@ public class AgentService {
         this.turnLogService = turnLogService;
         this.backgroundTaskManager = backgroundTaskManager;
         this.protectedSetResolver = protectedSetResolver;
+        this.slmScreeningProvider = slmScreeningProvider;
     }
 
     /** Constructor retained for focused unit tests that do not start the Spring container. */
@@ -173,20 +175,16 @@ public class AgentService {
                 roleToolFilter,
                 pathMode,
                 maxCallsPerEpisode,
-                deployerPolicyRaw,
+                policyConfigurationFor(deployerPolicyRaw),
                 screeningModeRaw,
                 deltaBroker,
                 turnLogService,
                 backgroundTaskManager,
                 new ProtectedSetResolver(
-                        new top.focess.veto.agent.screening.DeployerPolicyConfiguration(),
+                        policyConfigurationFor(deployerPolicyRaw),
                         new top.focess.veto.observability.ObservabilityConfiguration(),
-                        new top.focess.veto.vault.CredentialVaultConfiguration()));
-    }
-
-    @Autowired(required = false)
-    void setSlmScreeningProvider(@NonNull SlmScreeningProvider provider) {
-        this.slmScreeningProvider = provider;
+                        new top.focess.veto.vault.CredentialVaultConfiguration()),
+                SlmScreeningProvider.unavailable());
     }
 
     /** Replaces the constructor's test fallback with the deployer-configured Workspace bean. */
@@ -857,8 +855,11 @@ public class AgentService {
         return protectedSetResolver.resolve(this.deployerPolicy, vetoUserId, workspace);
     }
 
-    private static @NonNull DeployerPolicy parseDeployerPolicy(@NonNull String raw) {
-        return DeployerPolicy.parse(raw);
+    private static @NonNull DeployerPolicyConfiguration policyConfigurationFor(
+            @NonNull String raw) {
+        DeployerPolicyConfiguration configuration = new DeployerPolicyConfiguration();
+        configuration.setDeployerPolicy(DeployerPolicy.parse(raw));
+        return configuration;
     }
 
     /** Parses the screening mode (case-insensitive; defaults to STRICT on blank/unknown). */

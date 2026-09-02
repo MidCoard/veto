@@ -16,7 +16,6 @@ import com.sun.jna.ptr.PointerByReference;
 import com.sun.jna.win32.StdCallLibrary;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.mcp.ToolDocs;
 
@@ -26,18 +25,12 @@ final class WindowsAppContainerLauncher {
     private static final int INFINITE = -1;
     private static final int WAIT_OBJECT_0 = 0;
     private static final int EXTENDED_STARTUPINFO_PRESENT = 0x00080000;
+    private static final int CREATE_NO_WINDOW = 0x08000000;
     private static final int PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES = 0x00020009;
     private static final int STARTF_USESTDHANDLES = 0x00000100;
     private static final int STD_INPUT_HANDLE = -10;
     private static final int STD_OUTPUT_HANDLE = -11;
     private static final int STD_ERROR_HANDLE = -12;
-    private static final int DESKTOP_ALL_ACCESS = 0x000F01FF;
-    private static final int SE_WINDOW_OBJECT = 7;
-    private static final int DACL_SECURITY_INFORMATION = 0x00000004;
-    private static final int GENERIC_ALL = 0x10000000;
-    private static final int GRANT_ACCESS = 1;
-    private static final int TRUSTEE_IS_SID = 0;
-    private static final int TRUSTEE_IS_UNKNOWN = 0;
     private static final int SE_GROUP_ENABLED = 0x00000004;
     private static final @NonNull List<@NonNull String> NETWORK_CAPABILITY_SIDS =
             List.of("S-1-15-3-1", "S-1-15-3-2", "S-1-15-3-3");
@@ -48,7 +41,6 @@ final class WindowsAppContainerLauncher {
         try {
             Native.load("userenv", ToolDocs.nonNullClass(AppContainerApi.class));
             Native.load("kernel32", ToolDocs.nonNullClass(ProcessApi.class));
-            Native.load("user32", ToolDocs.nonNullClass(DesktopApi.class));
             Native.load("advapi32", ToolDocs.nonNullClass(SecurityApi.class));
             return true;
         } catch (LinkageError | RuntimeException unavailable) {
@@ -56,53 +48,9 @@ final class WindowsAppContainerLauncher {
         }
     }
 
-    static @NonNull PrivateDesktop createPrivateDesktop(@NonNull String appContainerName) {
-        AppContainerApi containers =
-                Native.load("userenv", ToolDocs.nonNullClass(AppContainerApi.class));
-        DesktopApi desktops = Native.load("user32", ToolDocs.nonNullClass(DesktopApi.class));
-        SecurityApi security = Native.load("advapi32", ToolDocs.nonNullClass(SecurityApi.class));
-        PointerByReference appContainerSid = new PointerByReference();
-        int derive =
-                containers.DeriveAppContainerSidFromAppContainerName(
-                        new WString(appContainerName), appContainerSid);
-        if (derive != 0 || appContainerSid.getValue() == null) {
-            throw new IllegalStateException(
-                    "AppContainer SID derivation failed (HRESULT=" + derive + ")");
-        }
-        try {
-            String desktopName = "VetoSandbox-" + UUID.randomUUID();
-            WinNT.HANDLE desktop =
-                    desktops.CreateDesktopW(
-                            new WString(desktopName), null, null, 0, DESKTOP_ALL_ACCESS, null);
-            desktop = requireHandle(desktop, "CreateDesktopW");
-            try {
-                grantDesktopAccess(security, desktop, appContainerSid.getValue());
-                return new PrivateDesktop(desktopName, desktop, desktops);
-            } catch (RuntimeException failure) {
-                desktops.CloseDesktop(desktop);
-                throw failure;
-            }
-        } finally {
-            security.FreeSid(appContainerSid.getValue());
-        }
-    }
-
-    static WinNT.@NonNull HANDLE openPrivateDesktop(@NonNull String desktopName) {
-        DesktopApi desktops = Native.load("user32", ToolDocs.nonNullClass(DesktopApi.class));
-        return requireHandle(
-                desktops.OpenDesktopW(new WString(desktopName), 0, false, DESKTOP_ALL_ACCESS),
-                "OpenDesktopW");
-    }
-
-    static void closePrivateDesktop(WinNT.@NonNull HANDLE desktop) {
-        DesktopApi desktops = Native.load("user32", ToolDocs.nonNullClass(DesktopApi.class));
-        desktops.CloseDesktop(desktop);
-    }
-
     static int run(
             @NonNull List<@NonNull String> target,
             @NonNull String appContainerName,
-            @NonNull String desktopName,
             boolean networkAllowed) {
         if (target.isEmpty()) {
             System.err.println("AppContainer target command is empty");
@@ -175,7 +123,7 @@ final class WindowsAppContainerLauncher {
                 return nativeFailure("UpdateProcThreadAttribute(SecurityCapabilities)");
             }
 
-            StartupInfoEx startup = inheritedStandardHandles(attributeList, desktopName);
+            StartupInfoEx startup = inheritedStandardHandles(attributeList);
             char[] commandLine = nullTerminated(SandboxBootstrap.windowsCommandLine(target));
             if (!processes.CreateProcessW(
                     new WString(target.get(0)),
@@ -183,7 +131,7 @@ final class WindowsAppContainerLauncher {
                     null,
                     null,
                     true,
-                    EXTENDED_STARTUPINFO_PRESENT,
+                    EXTENDED_STARTUPINFO_PRESENT | CREATE_NO_WINDOW,
                     null,
                     null,
                     startup,
@@ -219,58 +167,10 @@ final class WindowsAppContainerLauncher {
         }
     }
 
-    private static void grantDesktopAccess(
-            @NonNull SecurityApi security, WinNT.@NonNull HANDLE desktop, @NonNull Pointer sid) {
-        PointerByReference oldAcl = new PointerByReference();
-        PointerByReference descriptor = new PointerByReference();
-        PointerByReference newAcl = new PointerByReference();
-        int getResult =
-                security.GetSecurityInfo(
-                        desktop,
-                        SE_WINDOW_OBJECT,
-                        DACL_SECURITY_INFORMATION,
-                        null,
-                        null,
-                        oldAcl,
-                        null,
-                        descriptor);
-        if (getResult != 0) {
-            throw new IllegalStateException(
-                    "GetSecurityInfo(desktop) failed (Win32 error=" + getResult + ")");
-        }
-        try {
-            WindowsWorkspaceSecurity.ExplicitAccess access =
-                    WindowsWorkspaceSecurity.explicitSidAccess(sid, GENERIC_ALL, GRANT_ACCESS, 0);
-            int aclResult = security.SetEntriesInAclW(1, access, oldAcl.getValue(), newAcl);
-            if (aclResult != 0) {
-                throw new IllegalStateException(
-                        "SetEntriesInAclW(desktop) failed (Win32 error=" + aclResult + ")");
-            }
-            int setResult =
-                    security.SetSecurityInfo(
-                            desktop,
-                            SE_WINDOW_OBJECT,
-                            DACL_SECURITY_INFORMATION,
-                            null,
-                            null,
-                            newAcl.getValue(),
-                            null);
-            if (setResult != 0) {
-                throw new IllegalStateException(
-                        "SetSecurityInfo(desktop) failed (Win32 error=" + setResult + ")");
-            }
-        } finally {
-            localFree(newAcl.getValue());
-            localFree(descriptor.getValue());
-        }
-    }
-
-    private static @NonNull StartupInfoEx inheritedStandardHandles(
-            @NonNull Pointer attributes, @NonNull String desktopName) {
+    private static @NonNull StartupInfoEx inheritedStandardHandles(@NonNull Pointer attributes) {
         StartupInfoEx startup = new StartupInfoEx();
         startup.startupInfo.cb = new WinDef.DWORD(startup.size());
         startup.startupInfo.dwFlags = STARTF_USESTDHANDLES;
-        startup.startupInfo.lpDesktop = desktopName;
         startup.startupInfo.hStdInput = Kernel32.INSTANCE.GetStdHandle(STD_INPUT_HANDLE);
         startup.startupInfo.hStdOutput = Kernel32.INSTANCE.GetStdHandle(STD_OUTPUT_HANDLE);
         startup.startupInfo.hStdError = Kernel32.INSTANCE.GetStdHandle(STD_ERROR_HANDLE);
@@ -350,49 +250,10 @@ final class WindowsAppContainerLauncher {
                 WinBase.PROCESS_INFORMATION processInformation);
     }
 
-    interface DesktopApi extends StdCallLibrary {
-        WinNT.HANDLE CreateDesktopW(
-                WString desktop,
-                WString device,
-                Pointer deviceMode,
-                int flags,
-                int desiredAccess,
-                WinBase.SECURITY_ATTRIBUTES securityAttributes);
-
-        WinNT.HANDLE OpenDesktopW(WString desktop, int flags, boolean inherit, int desiredAccess);
-
-        boolean CloseDesktop(WinNT.HANDLE desktop);
-    }
-
     interface SecurityApi extends StdCallLibrary {
         Pointer FreeSid(Pointer sid);
 
         boolean ConvertStringSidToSidW(WString stringSid, PointerByReference sid);
-
-        int GetSecurityInfo(
-                WinNT.HANDLE handle,
-                int objectType,
-                int securityInfo,
-                PointerByReference owner,
-                PointerByReference group,
-                PointerByReference dacl,
-                PointerByReference sacl,
-                PointerByReference securityDescriptor);
-
-        int SetEntriesInAclW(
-                int explicitEntries,
-                WindowsWorkspaceSecurity.ExplicitAccess explicitAccess,
-                Pointer oldAcl,
-                PointerByReference newAcl);
-
-        int SetSecurityInfo(
-                WinNT.HANDLE handle,
-                int objectType,
-                int securityInfo,
-                Pointer owner,
-                Pointer group,
-                Pointer dacl,
-                Pointer sacl);
     }
 
     @Structure.FieldOrder({"appContainerSid", "capabilities", "capabilityCount", "reserved"})
@@ -413,27 +274,5 @@ final class WindowsAppContainerLauncher {
     public static class StartupInfoEx extends Structure {
         public WinBase.@NonNull STARTUPINFO startupInfo = new WinBase.STARTUPINFO();
         public Pointer attributeList;
-    }
-
-    static final class PrivateDesktop implements AutoCloseable {
-        private final @NonNull String name;
-        private final WinNT.@NonNull HANDLE handle;
-        private final @NonNull DesktopApi api;
-
-        PrivateDesktop(
-                @NonNull String name, WinNT.@NonNull HANDLE handle, @NonNull DesktopApi api) {
-            this.name = name;
-            this.handle = handle;
-            this.api = api;
-        }
-
-        @NonNull String name() {
-            return name;
-        }
-
-        @Override
-        public void close() {
-            api.CloseDesktop(handle);
-        }
     }
 }

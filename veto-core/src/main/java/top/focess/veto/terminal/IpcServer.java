@@ -146,7 +146,7 @@ public class IpcServer {
     private @NonNull ServerTransport transport;
     private volatile boolean running;
 
-    @Value("${veto.terminal.bind-address:tcp://127.0.0.1:5555}")
+    @Value("${veto.terminal.bind-address}")
     private @NonNull String bindAddress = "tcp://127.0.0.1:5555";
 
     /**

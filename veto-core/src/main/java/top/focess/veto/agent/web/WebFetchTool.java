@@ -57,10 +57,9 @@ public final class WebFetchTool implements NativeTool<WebFetchTool.Args> {
 
     @Autowired
     public WebFetchTool(
-            @Value("${veto.webfetch.timeout-seconds:30}") int timeoutSeconds,
-            @Value("${veto.webfetch.max-chars:40000}") int maxChars,
-            @Value("${veto.webfetch.allow-private-addresses:false}")
-                    boolean allowPrivateAddresses) {
+            @Value("${veto.webfetch.timeout-seconds}") int timeoutSeconds,
+            @Value("${veto.webfetch.max-chars}") int maxChars,
+            @Value("${veto.webfetch.allow-private-addresses}") boolean allowPrivateAddresses) {
         this.timeoutSeconds = timeoutSeconds;
         this.maxChars = maxChars;
         if (timeoutSeconds <= 0 || maxChars <= 0) {

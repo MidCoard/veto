@@ -60,12 +60,10 @@ class SystemPromptDumpTest {
     @Autowired private @NonNull RoleToolFilter roleToolFilter;
     @Autowired private @NonNull PromptCompiler promptCompiler;
 
-    @Value(
-            "${veto.group.leader.system-prompt-base:Decompose the task and arrange the execution DAG node by node.}")
+    @Value("${veto.group.leader.system-prompt-base}")
     private @NonNull String leaderSystemPromptBase;
 
-    @Value(
-            "${veto.group.mate.system-prompt-base:Execute the assigned task and return a concise internal report for the Leader.}")
+    @Value("${veto.group.mate.system-prompt-base}")
     private @NonNull String mateSystemPromptBase;
 
     private final @NonNull SystemPromptResolver resolver = new SystemPromptResolver();

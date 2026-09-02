@@ -1,7 +1,6 @@
 package top.focess.veto.veto;
 
 import jakarta.annotation.PostConstruct;
-import jakarta.annotation.PreDestroy;
 import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
@@ -53,9 +52,7 @@ public class VetoGateway {
             return;
         }
 
-        // Start llama.cpp SLM
-        boolean slmStarted = llamaCppBridge.start();
-        if (!slmStarted) {
+        if (!llamaCppBridge.isAvailable()) {
             log.warn(
                     "gateway VetoGateway: SLM not available. Running in deterministic-only redaction mode.");
         }
@@ -63,16 +60,6 @@ public class VetoGateway {
         log.info(
                 "gateway VetoGateway: Initialized. deterministicRedaction=true, enforceConstraints={}",
                 config.isEnforceStructuralConstraints());
-    }
-
-    @PreDestroy
-    public void shutdown() {
-        llamaCppBridge.stop();
-        log.info(
-                "gateway VetoGateway: Shut down. Processed {} vetoes, {} passes, {} redactions",
-                totalVetoes.get(),
-                totalPasses.get(),
-                totalRedactions.get());
     }
 
     /**

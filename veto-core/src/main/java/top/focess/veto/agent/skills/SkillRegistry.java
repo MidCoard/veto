@@ -31,7 +31,7 @@ public class SkillRegistry {
     private final @NonNull ConcurrentHashMap<String, Skill> skills = new ConcurrentHashMap<>();
 
     @SuppressWarnings("method.invocation")
-    public SkillRegistry(@Value("${veto.skills.project-dir:}") String projectSkillsDir) {
+    public SkillRegistry(@Value("${veto.skills.project-dir}") String projectSkillsDir) {
         register(loadSkillsFrom(homeSkillsDir(), SkillSourceType.PERSONAL));
         if (projectSkillsDir != null && !projectSkillsDir.isBlank()) {
             register(loadSkillsFrom(Path.of(projectSkillsDir), SkillSourceType.PROJECT));

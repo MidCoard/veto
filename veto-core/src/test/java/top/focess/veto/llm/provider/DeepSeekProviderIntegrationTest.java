@@ -26,10 +26,10 @@ class DeepSeekProviderIntegrationTest {
 
     @Autowired private @NonNull DeepSeekProvider provider;
 
-    @Value("${veto.test.deepseek.api-key:}")
+    @Value("${veto.test.deepseek.api-key}")
     private @NonNull String apiKey;
 
-    @Value("${veto.test.deepseek.model:deepseek-v4-pro}")
+    @Value("${veto.test.deepseek.model}")
     private @NonNull String model;
 
     @BeforeEach

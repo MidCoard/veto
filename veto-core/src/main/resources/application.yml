@@ -30,16 +30,47 @@ veto:
     grpc:
       port: 9091
 
+  slm:
+    enabled: true
+    executable-path: llama-server
+    model-path: ./models/veto-slm.gguf
+    n-ctx: 2048
+    n-gpu-layers: 99
+    temperature: 0.0
+    gbnf-grammar-path: ./grammars/veto-output.gbnf
+
   veto-gateway:
     enabled: true
-    llama-cpp:
-      executable-path: ${VETO_LLAMA_EXECUTABLE:llama-server}
-      model-path: ${VETO_LLAMA_MODEL_PATH:./models/veto-slm.gguf}
-      n-ctx: 2048
-      n-gpu-layers: ${VETO_LLAMA_N_GPU_LAYERS:0}
-      temperature: 0.0
-      gbnf-grammar-path: ./grammars/veto-output.gbnf
     enforce-structural-constraints: true
+
+  terminal:
+    enabled: true
+    bind-address: tcp://127.0.0.1:5555
+
+  workspace:
+    root: ""
+    roots: ""
+    path-mode: REAL
+
+  breaker:
+    max_calls_per_episode: 50
+
+  context:
+    max_input_tokens: 32000
+    context_fill_ratio: 0.9
+
+  skills:
+    project-dir: ""
+
+  webfetch:
+    timeout-seconds: 30
+    max-chars: 40000
+    allow-private-addresses: false
+
+  websearch:
+    provider: duckduckgo
+    brave:
+      api-key: ${BRAVE_API_KEY}
 
   # Model tiers: the single source of truth for an agent's model. Patterns and agents bind to a
   # tier name (TOP/MID/LOW/LOCAL); each user configures their own named profiles (provider + base
@@ -54,13 +85,15 @@ veto:
   # system-prompt base live here. credential-key is a vault SECURE_NOTE title; store it via
   # /credential set <key>.
   group:
+    tick:
+      interval-ms: 1000
     leader:
       tier: TOP
-      # system-prompt-base: "Decompose the task and arrange the execution DAG node by node."
+      system-prompt-base: "Decompose the task and arrange the execution DAG node by node."
     mate:
       tier: MID
       max_calls_per_episode: 50
-      # system-prompt-base: "Execute the assigned task and return a concise internal report for the Leader."
+      system-prompt-base: "Execute the assigned task and return a concise internal report for the Leader."
       # Per-skillset overrides: a skillset entry may set either field; unset fields fall back to
       # the global mate.tier / mate.system-prompt-base above. A coding skillset can run on a
       # stronger tier with a coding-focused prompt while a research skillset runs cheaper.
@@ -75,7 +108,7 @@ veto:
   security:
     # Install-time deployer policy: FULL_ACCESS (no path is CRITICAL) | PROTECTED (deny-list) | SANDBOXED (scoped to root) | TENANT (multi-user workspace).
     # Runtime screening matrix: STRICT | BALANCED | PERMISSIVE. Legacy BYPASS_ALL maps to PERMISSIVE.
-    deployer-policy: ${VETO_DEPLOYER_POLICY:FULL_ACCESS}
+    deployer-policy: FULL_ACCESS
     screening-mode: STRICT
     # FULL_ACCESS needs no extra block: selecting it is the complete configuration.
     protected-policy:
@@ -105,17 +138,17 @@ veto:
     # /signup (no plaintext credential in this file). Under non-FULL_ACCESS policies the agent is
     # blocked from reading application.yml/config/audit via the ProtectedSet.
     signup:
-      mode: ${VETO_SIGNUP_MODE:invite}
+      mode: invite
 
   vault:
-    vault-home: ${VETO_VAULT_HOME:~/.veto}
+    vault-home: ~/.veto
 
   memory:
     # Persist long-term memory across restarts. Backends: memory (in-process, lost on restart),
     # jpa (PostgreSQL via MemoryRepository), vector (in-process VectorIndex), pgvector (Postgres
     # + pgvector extension). Default jpa so the agent is not "totally new" each run; uses the
     # Postgres datasource above.
-    store: ${VETO_MEMORY_STORE:jpa}
+    store: jpa
     # Hybrid embedder (see top.focess.veto.memory.embedder). Default: local HashEmbedder stub
     # (deterministic 64-dim hash; weak semantic recall but no dependency). Activate a
     # ProviderEmbedder by setting VETO_MEMORY_EMBEDDER_PROVIDER (openai|gemini) plus model,

@@ -6,8 +6,11 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -26,6 +29,7 @@ import top.focess.veto.observability.AuditLogger;
 import top.focess.veto.veto.GBNFGrammarEngine;
 import top.focess.veto.veto.LlamaCppBridge;
 import top.focess.veto.veto.SemanticRedactor;
+import top.focess.veto.veto.SlmConfiguration;
 import top.focess.veto.veto.VetoGateway;
 import top.focess.veto.veto.VetoGatewayConfiguration;
 
@@ -39,6 +43,7 @@ import top.focess.veto.veto.VetoGatewayConfiguration;
         properties = {
             "veto.veto-gateway.enabled=true",
             "veto.veto-gateway.enforce-structural-constraints=true",
+            "veto.slm.enabled=true",
             "veto.vault.master-key-env=veto.test.key",
             "veto.observability.encryption-enabled=false"
         })
@@ -57,6 +62,10 @@ class VetoApplicationTests {
     @Autowired private @NonNull SemanticRedactor semanticRedactor;
 
     @Autowired private @NonNull GBNFGrammarEngine grammarEngine;
+
+    @Autowired private @NonNull LlamaCppBridge llamaCppBridge;
+
+    @Autowired private @NonNull SlmConfiguration slmConfiguration;
 
     private final @NonNull RestTemplate restTemplate = new RestTemplate();
 
@@ -188,12 +197,25 @@ class VetoApplicationTests {
         assertTrue(
                 defaultGrammar.contains("veto_decision"),
                 "Default grammar should define veto_decision");
-        assertTrue(defaultGrammar.contains("\"pass\""), "Default grammar should allow pass");
-        assertTrue(defaultGrammar.contains("\"block\""), "Default grammar should allow block");
+        assertTrue(
+                defaultGrammar.contains("\"\\\"pass\\\"\""),
+                "Default grammar should allow the JSON string pass");
+        assertTrue(
+                defaultGrammar.contains("\"\\\"block\\\"\""),
+                "Default grammar should allow the JSON string block");
 
         String codeGrammar = grammarEngine.getCodeConstraintGrammar();
         assertNotNull(codeGrammar);
         assertTrue(codeGrammar.contains("violations"), "Code grammar should define violations");
+    }
+
+    @Test
+    void localSlmLoadsWhenTheModelArtifactIsPresent() {
+        Path model = slmConfiguration.resolvePath(slmConfiguration.getModelPath());
+        Assumptions.assumeTrue(Files.isRegularFile(model), "local GGUF model is not installed");
+        assertTrue(
+                llamaCppBridge.isAvailable(),
+                "llama.cpp must load the configured local model when the artifact is present");
     }
 
     @Test

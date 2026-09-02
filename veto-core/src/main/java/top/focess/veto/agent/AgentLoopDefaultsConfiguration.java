@@ -53,9 +53,9 @@ public class AgentLoopDefaultsConfiguration {
     @Bean
     @ConditionalOnMissingBean(Workspace.class)
     public @NonNull Workspace defaultWorkspace(
-            @Value("${veto.workspace.root:}") @NonNull String legacyRoot,
-            @Value("${veto.workspace.roots:}") @NonNull String rootsCsv,
-            @Value("${veto.workspace.path-mode:REAL}") @NonNull String pathMode) {
+            @Value("${veto.workspace.root}") @NonNull String legacyRoot,
+            @Value("${veto.workspace.roots}") @NonNull String rootsCsv,
+            @Value("${veto.workspace.path-mode}") @NonNull String pathMode) {
         return Workspace.fromConfig(legacyRoot, rootsCsv, pathMode);
     }
 }

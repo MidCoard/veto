@@ -1,8 +1,8 @@
 package top.focess.veto.veto;
 
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import java.io.*;
-import java.net.InetSocketAddress;
-import java.net.Socket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -32,7 +32,7 @@ public class LlamaCppBridge {
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.veto.LlamaCppBridge");
 
-    private final @NonNull VetoGatewayConfiguration config;
+    private final @NonNull SlmConfiguration config;
     private final @NonNull GBNFGrammarEngine grammarEngine;
 
     private Process llamaProcess;
@@ -50,7 +50,7 @@ public class LlamaCppBridge {
     private volatile boolean available = false;
 
     public LlamaCppBridge(
-            @NonNull VetoGatewayConfiguration config, @NonNull GBNFGrammarEngine grammarEngine) {
+            @NonNull SlmConfiguration config, @NonNull GBNFGrammarEngine grammarEngine) {
         this.config = config;
         this.grammarEngine = grammarEngine;
     }
@@ -59,19 +59,25 @@ public class LlamaCppBridge {
      * Start the llama.cpp subprocess with the configured model. The process is started with GBNF
      * grammar-constrained decoding. Parses the server port from startup output for HTTP API access.
      */
+    @PostConstruct
     public synchronized boolean start() {
         if (available) {
             return true;
         }
 
-        String modelPath = config.getLlamaCpp().getModelPath();
-        Path resolved = Path.of(modelPath);
+        if (!config.isEnabled()) {
+            log.info("Local SLM is disabled by veto.slm.enabled");
+            return false;
+        }
+
+        String modelPath = config.getModelPath();
+        Path resolved = config.resolvePath(modelPath);
 
         if (!Files.exists(resolved)) {
             log.warn(
                     "gateway LlamaCpp: Model not found at '{}'. SLM inference disabled. "
                             + "Place a quantized GGUF model (1B-3B) at this path.",
-                    modelPath);
+                    resolved);
             this.available = false;
             return false;
         }
@@ -86,7 +92,7 @@ public class LlamaCppBridge {
             // Use a fixed port for reliability (0 = random, but we need to discover it)
             int port = findAvailablePort();
 
-            ProcessBuilder pb = llamaServerProcess(modelPath, grammarFile, port);
+            ProcessBuilder pb = llamaServerProcess(resolved.toString(), grammarFile, port);
 
             pb.redirectErrorStream(true);
             Process process = pb.start();
@@ -98,9 +104,9 @@ public class LlamaCppBridge {
             available = true;
             log.info(
                     "gateway LlamaCpp: Started llama.cpp with model '{}' (ctx={}, temp={}, port={})",
-                    modelPath,
-                    config.getLlamaCpp().getNCtx(),
-                    config.getLlamaCpp().getTemperature(),
+                    resolved,
+                    config.getNCtx(),
+                    config.getTemperature(),
                     serverPort);
 
             // Start health monitor
@@ -118,20 +124,39 @@ public class LlamaCppBridge {
     private @NonNull ProcessBuilder llamaServerProcess(
             @NonNull String modelPath, @NonNull Path grammarFile, int port) {
         return new ProcessBuilder(
-                config.getLlamaCpp().getExecutablePath(),
+                resolveExecutablePath(),
                 "--model",
                 modelPath,
                 "--ctx-size",
-                String.valueOf(config.getLlamaCpp().getNCtx()),
+                String.valueOf(config.getNCtx()),
                 "--n-gpu-layers",
-                String.valueOf(config.getLlamaCpp().getNGpuLayers()),
+                String.valueOf(config.getNGpuLayers()),
                 "--temp",
-                String.valueOf(config.getLlamaCpp().getTemperature()),
+                String.valueOf(config.getTemperature()),
                 "--grammar-file",
                 grammarFile.toAbsolutePath().toString(),
                 "--port",
                 String.valueOf(port),
                 "--cont-batching");
+    }
+
+    /** Uses an explicitly configured executable, PATH, or the ignored local runtime directory. */
+    private @NonNull String resolveExecutablePath() {
+        String configured = config.getExecutablePath();
+        if (!"llama-server".equals(configured)) {
+            return configured.indexOf('/') >= 0 || configured.indexOf('\\') >= 0
+                    ? config.resolvePath(configured).toString()
+                    : configured;
+        }
+        boolean windows = System.getProperty("os.name", "").toLowerCase().contains("win");
+        Path local =
+                config.resolvePath(
+                        Path.of(
+                                        "models",
+                                        "llama.cpp",
+                                        windows ? "llama-server.exe" : "llama-server")
+                                .toString());
+        return Files.isRegularFile(local) ? local.toString() : configured;
     }
 
     /**
@@ -155,7 +180,7 @@ public class LlamaCppBridge {
                                         "{\"prompt\":\"%s\",\"n_predict\":512,\"temperature\":%s,"
                                                 + "\"stop\":[\"###\"],\"grammar\":\"%s\"}",
                                         escapeJson(prompt),
-                                        config.getLlamaCpp().getTemperature(),
+                                        config.getTemperature(),
                                         escapeJson(grammar));
 
                         HttpRequest request =
@@ -198,6 +223,7 @@ public class LlamaCppBridge {
     }
 
     /** Gracefully stop the llama.cpp subprocess. */
+    @PreDestroy
     public synchronized void stop() {
         available = false;
         serverPort = -1;
@@ -229,7 +255,7 @@ public class LlamaCppBridge {
         stop();
 
         // Update the config model path
-        this.config.getLlamaCpp().setModelPath(newModelPath);
+        this.config.setModelPath(newModelPath);
 
         // Small delay to let ports release
         try {
@@ -296,11 +322,23 @@ public class LlamaCppBridge {
                     new IOException("llama-server exited before opening its HTTP port"));
             return;
         }
-        try (Socket socket = new Socket()) {
-            socket.connect(new InetSocketAddress("127.0.0.1", port), 250);
-            readiness.complete(null);
+        try {
+            HttpRequest request =
+                    HttpRequest.newBuilder()
+                            .uri(URI.create("http://127.0.0.1:" + port + "/health"))
+                            .timeout(Duration.ofMillis(500))
+                            .GET()
+                            .build();
+            HttpResponse<Void> response =
+                    httpClient.send(request, HttpResponse.BodyHandlers.discarding());
+            if (response.statusCode() == 200) {
+                readiness.complete(null);
+            }
         } catch (IOException notReady) {
             // The scheduled probe retries until the server listens, exits, or times out.
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            readiness.completeExceptionally(interrupted);
         }
     }
 

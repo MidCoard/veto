@@ -20,17 +20,17 @@ public class GBNFGrammarEngine {
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.veto.GBNFGrammarEngine");
 
-    private final @NonNull VetoGatewayConfiguration config;
+    private final @NonNull SlmConfiguration config;
     private final @NonNull ConcurrentHashMap<String, String> grammarCache =
             new ConcurrentHashMap<>();
 
-    public GBNFGrammarEngine(@NonNull VetoGatewayConfiguration config) {
+    public GBNFGrammarEngine(@NonNull SlmConfiguration config) {
         this.config = config;
     }
 
     /** Load the main veto output grammar from the configured path. */
     public @NonNull String loadVetoOutputGrammar() {
-        return loadGrammar(config.getLlamaCpp().getGbnfGrammarPath());
+        return loadGrammar(config.getGbnfGrammarPath());
     }
 
     /** Load a grammar from file, with caching. */
@@ -39,17 +39,17 @@ public class GBNFGrammarEngine {
                 grammarPath,
                 path -> {
                     try {
-                        Path resolved = Path.of(path);
+                        Path resolved = config.resolvePath(path);
                         if (!Files.exists(resolved)) {
                             log.warn(
                                     "gateway GBNF: Grammar file not found at '{}', using default",
-                                    path);
+                                    resolved);
                             return getDefaultVetoGrammar();
                         }
                         String grammar = Files.readString(resolved);
                         log.info(
                                 "gateway GBNF: Loaded grammar from '{}' ({} bytes)",
-                                path,
+                                resolved,
                                 grammar.length());
                         return grammar;
                     } catch (IOException e) {
@@ -65,8 +65,8 @@ public class GBNFGrammarEngine {
     public @NonNull String getDefaultVetoGrammar() {
         return """
                 root ::= veto-response
-                veto-response ::= "{" ws "veto_decision" ws ":" ws decision ws "," ws "data" ws ":" ws data-block ws "}"
-                decision ::= ""pass"" | ""redact"" | ""block""
+                veto-response ::= "{" ws "\\"veto_decision\\"" ws ":" ws decision ws "," ws "\\"data\\"" ws ":" ws data-block ws "}"
+                decision ::= "\\"pass\\"" | "\\"redact\\"" | "\\"block\\""
                 data-block ::= "{" ws data-fields ws "}"
                 data-fields ::= data-field ("," ws data-field)*
                 data-field ::= string ":" ws (string | number | "null")
@@ -83,11 +83,11 @@ public class GBNFGrammarEngine {
     public @NonNull String getCodeConstraintGrammar() {
         return """
                 root ::= code-constraint-response
-                code-constraint-response ::= "{" ws "valid" ws ":" ws boolean ws "," ws "violations" ws ":" ws violations-list ws "," ws "redacted" ws ":" ws redacted-block ws "}"
+                code-constraint-response ::= "{" ws "\\"valid\\"" ws ":" ws boolean ws "," ws "\\"violations\\"" ws ":" ws violations-list ws "," ws "\\"redacted\\"" ws ":" ws redacted-block ws "}"
                 boolean ::= "true" | "false"
                 violations-list ::= "[" ws (violation ("," ws violation)*)? ws "]"
-                violation ::= "{" ws "type" ws ":" ws string ws "," ws "field" ws ":" ws string ws "," ws "severity" ws ":" ws severity ws "}"
-                severity ::= ""low"" | ""medium"" | ""high"" | ""critical""
+                violation ::= "{" ws "\\"type\\"" ws ":" ws string ws "," ws "\\"field\\"" ws ":" ws string ws "," ws "\\"severity\\"" ws ":" ws severity ws "}"
+                severity ::= "\\"low\\"" | "\\"medium\\"" | "\\"high\\"" | "\\"critical\\""
                 redacted-block ::= "{" ws (redacted-field ("," ws redacted-field)*)? ws "}"
                 redacted-field ::= string ":" ws string
                 string ::= "\\"" [^"]* "\\""
@@ -99,9 +99,9 @@ public class GBNFGrammarEngine {
     public @NonNull String getSecretsRedactionGrammar() {
         return """
                 root ::= redaction-response
-                redaction-response ::= "{" ws "secrets_found" ws ":" ws boolean ws "," ws "redacted_fields" ws ":" ws redacted-fields ws "," ws "safe_payload" ws ":" ws string ws "}"
+                redaction-response ::= "{" ws "\\"secrets_found\\"" ws ":" ws boolean ws "," ws "\\"redacted_fields\\"" ws ":" ws redacted-fields ws "," ws "\\"safe_payload\\"" ws ":" ws string ws "}"
                 redacted-fields ::= "[" ws (redacted-field ("," ws redacted-field)*)? ws "]"
-                redacted-field ::= "{" ws "field" ws ":" ws string ws "," ws "type" ws ":" ws string ws "}"
+                redacted-field ::= "{" ws "\\"field\\"" ws ":" ws string ws "," ws "\\"type\\"" ws ":" ws string ws "}"
                 boolean ::= "true" | "false"
                 string ::= "\\"" [^"]* "\\""
                 ws ::= [ \\t\\n]*
@@ -119,6 +119,16 @@ public class GBNFGrammarEngine {
                 """;
     }
 
+    /** Grammar for the semantic exfiltration-risk contract consumed by SemanticMasker. */
+    public @NonNull String getSemanticMaskGrammar() {
+        return """
+                root ::= "{" ws "\\"risk\\"" ws ":" ws risk "," ws "\\"reason\\"" ws ":" ws string ws "}"
+                risk ::= "\\"high\\"" | "\\"medium\\"" | "\\"low\\""
+                string ::= "\\\"" ([^"\\\\] | "\\\\" (["\\\\/bfnrt] | "u" [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F]))* "\\\""
+                ws ::= [ \\t\\n]*
+                """;
+    }
+
     /** Resolve a public grammar name to the actual GBNF text expected by llama.cpp. */
     public @NonNull String resolveGrammar(@NonNull String name) {
         String registered = grammarCache.get(name);
@@ -127,7 +137,7 @@ public class GBNFGrammarEngine {
         }
         return switch (name) {
             case "veto-screening", "veto-relevance" -> getScreeningGrammar();
-            case "veto-semantic-mask" -> getSecretsRedactionGrammar();
+            case "veto-semantic-mask" -> getSemanticMaskGrammar();
             case "veto-output" -> loadVetoOutputGrammar();
             default -> loadGrammar(name);
         };

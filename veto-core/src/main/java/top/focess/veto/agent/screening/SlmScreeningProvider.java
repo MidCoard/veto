@@ -20,6 +20,6 @@ public interface SlmScreeningProvider {
     }
 
     static @NonNull SlmScreeningProvider unavailable() {
-        return new UnavailableSlmScreeningProvider();
+        return (call, def, activeTask, thought) -> Optional.empty();
     }
 }

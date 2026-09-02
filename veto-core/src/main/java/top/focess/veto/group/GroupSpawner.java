@@ -76,10 +76,9 @@ public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
             @NonNull GroupOrchestrator orchestrator,
             @NonNull MateBreakerRegistry breakers,
             @NonNull SkillsetProperties skillsetProperties,
-            @Value("${veto.group.mate.max_calls_per_episode:50}") long defaultMaxCallsPerEpisode,
-            @Value("${veto.group.mate.tier:MID}") String mateTier,
-            @Value("${veto.group.mate.system-prompt-base:" + DEFAULT_MATE_SYSTEM_PROMPT_BASE + "}")
-                    @NonNull String mateSystemPromptBase,
+            @Value("${veto.group.mate.max_calls_per_episode}") long defaultMaxCallsPerEpisode,
+            @Value("${veto.group.mate.tier}") String mateTier,
+            @Value("${veto.group.mate.system-prompt-base}") @NonNull String mateSystemPromptBase,
             AgentFactory agentFactory) {
         this.blackboard = blackboard;
         this.registry = registry;

@@ -13,7 +13,48 @@ spring:
         dialect: org.hibernate.dialect.H2Dialect
 
 veto:
+  slm:
+    enabled: false
   terminal:
     enabled: false
+    bind-address: tcp://127.0.0.1:5555
+  workspace:
+    root: ""
+    roots: ""
+    path-mode: REAL
+  breaker:
+    max_calls_per_episode: 50
+  context:
+    max_input_tokens: 32000
+    context_fill_ratio: 0.9
+  skills:
+    project-dir: ""
+  webfetch:
+    timeout-seconds: 30
+    max-chars: 40000
+    allow-private-addresses: false
+  websearch:
+    provider: duckduckgo
+    brave:
+      api-key: ""
+  group:
+    tick:
+      interval-ms: 1000
+    leader:
+      tier: TOP
+      system-prompt-base: "Decompose the task and arrange the execution DAG node by node."
+    mate:
+      tier: MID
+      max_calls_per_episode: 50
+      system-prompt-base: "Execute the assigned task and return a concise internal report for the Leader."
+  security:
+    deployer-policy: FULL_ACCESS
+    screening-mode: STRICT
+    signup:
+      mode: solo
   vault:
     vault-home: ./build/tmp/veto-test
+  test:
+    deepseek:
+      api-key: ""
+      model: deepseek-v4-pro

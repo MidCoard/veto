@@ -114,7 +114,8 @@ public class Gateway {
             }
         }
         Danger deterministicDanger =
-                dangerComputation.compute(def, call, workspace, policy, protectedSet);
+                dangerComputation.compute(
+                        def, call, workspace, policy, protectedSet, executionPermit);
         Optional<SlmScreening> advisory =
                 slmScreeningProvider.screen(call, def, activeTask, thought);
         Danger danger =
@@ -242,11 +243,6 @@ public class Gateway {
         return readHistory;
     }
 
-    /** The operational workspace root this Gateway resolves against (for tests). */
-    public @NonNull Path workspaceRoot() {
-        return workspace.pathResolver().operationalRoot();
-    }
-
     /**
      * The per-session {@link Workspace} this Gateway screens against. Threaded to the {@link
      * top.focess.veto.agent.loop.PromptCompiler} so the system prompt mounts the session's actual
@@ -254,10 +250,5 @@ public class Gateway {
      */
     public @NonNull Workspace workspace() {
         return workspace;
-    }
-
-    /** Computes a SHA-256 hex hash of the given path (for read-time recording by the sandbox). */
-    public static @NonNull String hashOf(@NonNull Path path) {
-        return computeHash(path);
     }
 }

@@ -5,11 +5,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.agent.mcp.NativeToolDefinition;
-import top.focess.veto.agent.mcp.ParamCategory;
+import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.ToolDefinition;
-import top.focess.veto.agent.workspace.PathResolver;
 import top.focess.veto.agent.workspace.Resolution;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.ToolCall;
@@ -62,9 +60,23 @@ public class DangerComputation {
             @NonNull Workspace workspace,
             @NonNull DeployerPolicy policy,
             @NonNull ProtectedSet protectedSet) {
+        ToolExecutionPermit permit =
+                ToolExecutionPermit.capture(call, def, workspace, policy, protectedSet);
+        return compute(def, call, workspace, policy, protectedSet, permit);
+    }
+
+    /** Computes danger from the exact canonical targets already captured for this tool call. */
+    public @NonNull Danger compute(
+            @NonNull ToolDefinition def,
+            @NonNull ToolCall call,
+            @NonNull Workspace workspace,
+            @NonNull DeployerPolicy policy,
+            @NonNull ProtectedSet protectedSet,
+            @NonNull ToolExecutionPermit permit) {
         Danger base = baseFromRisk(def.risk());
-        Danger pathDanger = pathDanger(def, call, workspace, policy, protectedSet);
-        Danger executionRootDanger = executionRootDanger(def, workspace, policy, protectedSet);
+        Danger pathDanger = pathDanger(def, permit, workspace, policy, protectedSet);
+        Danger executionRootDanger =
+                executionRootDanger(def, permit, workspace, policy, protectedSet);
         Danger shellDanger = shellDanger(def, call);
         return max(base, pathDanger, executionRootDanger, shellDanger);
     }
@@ -79,27 +91,13 @@ public class DangerComputation {
 
     private @NonNull Danger pathDanger(
             @NonNull ToolDefinition def,
-            @NonNull ToolCall call,
+            @NonNull ToolExecutionPermit permit,
             @NonNull Workspace workspace,
             @NonNull DeployerPolicy policy,
             @NonNull ProtectedSet protectedSet) {
-        Map<String, ParamCategory> hints =
-                def instanceof NativeToolDefinition n ? n.paramHints() : Map.of();
-        if (hints.isEmpty()) {
-            return Danger.SAFE; // remote tools carry no path hints
-        }
-        Map<String, Object> args = call.args();
-        PathResolver resolver = workspace.pathResolver();
         Danger worst = Danger.SAFE;
-        for (var entry : hints.entrySet()) {
-            if (entry.getValue() != ParamCategory.FILESYSTEM_PATH) {
-                continue;
-            }
-            Object v = args.get(entry.getKey());
-            if (!(v instanceof String s) || s.isBlank()) {
-                continue;
-            }
-            Resolution res = resolver.resolveToHost(s);
+        for (ToolExecutionPermit.AuthorizedPath path : permit.filesystemPaths().values()) {
+            Resolution res = new Resolution(path.hostPath(), path.rootIndex(), path.inScope());
             Danger d = classifyPath(res, def.risk(), policy, protectedSet, workspace);
             worst = max(worst, d);
         }
@@ -112,14 +110,19 @@ public class DangerComputation {
      */
     private @NonNull Danger executionRootDanger(
             @NonNull ToolDefinition def,
+            @NonNull ToolExecutionPermit permit,
             @NonNull Workspace workspace,
             @NonNull DeployerPolicy policy,
             @NonNull ProtectedSet protectedSet) {
         if (def.risk() != RiskCategory.SHELL_EXEC) {
             return Danger.SAFE;
         }
+        Path executionPath = permit.executionRoot();
+        if (executionPath == null) {
+            return Danger.CRITICAL;
+        }
         int rootIndex = workspace.currentRootIndex();
-        Resolution executionRoot = new Resolution(workspace.currentHostRoot(), rootIndex, true);
+        Resolution executionRoot = new Resolution(executionPath, rootIndex, true);
         return classifyPath(
                 executionRoot, RiskCategory.FILE_WRITE, policy, protectedSet, workspace);
     }

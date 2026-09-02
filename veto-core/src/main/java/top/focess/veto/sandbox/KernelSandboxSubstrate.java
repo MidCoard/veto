@@ -217,11 +217,11 @@ public class KernelSandboxSubstrate {
         }
         if (IS_MACOS) {
             return new PreparedCommand(
-                    macOsSeatbelt.wrap(targetCommand, profile), null, null, null, false);
+                    macOsSeatbelt.wrap(targetCommand, profile), null, null, false);
         }
         if (IS_LINUX) {
             return new PreparedCommand(
-                    linuxBubblewrap.wrap(targetCommand, profile, cwd), null, null, null, false);
+                    linuxBubblewrap.wrap(targetCommand, profile, cwd), null, null, false);
         }
         WindowsKernel32 kernel = requiredWindowsKernel();
         Kernel32 standardKernel = requiredWindowsStdKernel();
@@ -238,18 +238,14 @@ public class KernelSandboxSubstrate {
         String readyName = "Local\\VetoSandboxReady-" + suffix;
         String appContainerName =
                 WindowsWorkspaceSecurity.appContainerName(profile.workspaceRoot());
-        WindowsAppContainerLauncher.PrivateDesktop privateDesktop =
-                WindowsAppContainerLauncher.createPrivateDesktop(appContainerName);
         WinNT.HANDLE gate = kernel.CreateEventW(null, false, false, new WString(gateName));
         if (gate == null || !isValidHandle(gate)) {
-            privateDesktop.close();
             throw new IllegalStateException("CreateEventW(gate) failed");
         }
         gate = requireHandle(gate, "CreateEventW(gate)");
         WinNT.HANDLE ready = kernel.CreateEventW(null, false, false, new WString(readyName));
         if (ready == null || !isValidHandle(ready)) {
             standardKernel.CloseHandle(gate);
-            privateDesktop.close();
             throw new IllegalStateException("CreateEventW(ready) failed");
         }
         List<String> wrapped = bootstrapInvocation();
@@ -257,11 +253,10 @@ public class KernelSandboxSubstrate {
         wrapped.add(gateName);
         wrapped.add(readyName);
         wrapped.add(appContainerName);
-        wrapped.add(privateDesktop.name());
         wrapped.add(profile.networkAllowed() ? "allow-network" : "deny-network");
         wrapped.add("--");
         wrapped.addAll(targetCommand);
-        return new PreparedCommand(wrapped, gate, ready, privateDesktop, true);
+        return new PreparedCommand(wrapped, gate, ready, true);
     }
 
     private @NonNull WindowsKernel32 requiredWindowsKernel() {
@@ -306,18 +301,15 @@ public class KernelSandboxSubstrate {
         private final boolean gated;
         private WinNT.HANDLE gate;
         private WinNT.HANDLE ready;
-        private WindowsAppContainerLauncher.PrivateDesktop privateDesktop;
 
         private PreparedCommand(
                 @NonNull List<@NonNull String> command,
                 WinNT.HANDLE gate,
                 WinNT.HANDLE ready,
-                WindowsAppContainerLauncher.PrivateDesktop privateDesktop,
                 boolean gated) {
             this.command = List.copyOf(command);
             this.gate = gate;
             this.ready = ready;
-            this.privateDesktop = privateDesktop;
             this.gated = gated;
         }
 
@@ -372,18 +364,13 @@ public class KernelSandboxSubstrate {
         public void close() {
             WinNT.HANDLE gateHandle = gate;
             WinNT.HANDLE readyHandle = ready;
-            WindowsAppContainerLauncher.PrivateDesktop desktop = privateDesktop;
             gate = null;
             ready = null;
-            privateDesktop = null;
             if (gateHandle != null) {
                 requiredWindowsStdKernel().CloseHandle(gateHandle);
             }
             if (readyHandle != null) {
                 requiredWindowsStdKernel().CloseHandle(readyHandle);
-            }
-            if (desktop != null) {
-                desktop.close();
             }
         }
     }

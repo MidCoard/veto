@@ -2,11 +2,9 @@ package top.focess.veto.agent.screening;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 
 /**
@@ -23,18 +21,6 @@ public record ProtectedSet(@NonNull Set<Path> paths) {
 
     public static @NonNull ProtectedSet empty() {
         return new ProtectedSet(Set.of());
-    }
-
-    /**
-     * Seeded with the home-relative deployer defaults only ({@code ~/.veto/users/default/}, {@code
-     * ~/.ssh}, {@code ~/.aws}, {@code ~/.gnupg}).
-     */
-    public static @NonNull ProtectedSet withDeployerDefaults() {
-        return withDeployerDefaults("default", List.of());
-    }
-
-    public static @NonNull ProtectedSet withDeployerDefaults(@NonNull List<Path> workspaceRoots) {
-        return withDeployerDefaults("default", workspaceRoots);
     }
 
     /**
@@ -58,49 +44,6 @@ public record ProtectedSet(@NonNull Set<Path> paths) {
     }
 
     /**
-     * Seeded with deployer defaults plus owner-issued shared-grant paths (Part 3.6 /
-     * group_screening §1.3). Each shared-grant entry is a workspace root the owning user has
-     * explicitly shared with the requesting user; the requesting user gets {@code READ_ONLY} or
-     * {@code READ_WRITE} on it per the grant mode.
-     */
-    public static @NonNull ProtectedSet withSharedGrants(
-            @NonNull String vetoUserId,
-            @NonNull List<Path> workspaceRoots,
-            List<SharedGrant> sharedGrants) {
-        ProtectedSet base = withDeployerDefaults(vetoUserId, workspaceRoots);
-        if (sharedGrants == null || sharedGrants.isEmpty()) {
-            return base;
-        }
-        Set<Path> paths = new HashSet<>(base.paths());
-        for (SharedGrant g : sharedGrants) {
-            if (g == null) {
-                continue;
-            }
-            paths.add(g.rootPath());
-        }
-        return new ProtectedSet(paths);
-    }
-
-    /**
-     * Returns a copy of this set with additional system-protected paths merged in. Used to shield
-     * the application's own config/audit material (application.yml, ./config/, ./audit/) from the
-     * agent under every non-{@code FULL_ACCESS} policy - see {@link
-     * #standardSystemProtected(Path)}.
-     */
-    public @NonNull ProtectedSet withSystemProtected(@NonNull Collection<Path> systemPaths) {
-        if (systemPaths.isEmpty()) {
-            return this;
-        }
-        Set<Path> merged = new HashSet<>(this.paths);
-        for (Path p : systemPaths) {
-            if (p != null) {
-                merged.add(p);
-            }
-        }
-        return new ProtectedSet(merged);
-    }
-
-    /**
      * The standard system-protected paths relative to the application launch directory: {@code
      * application.yml} / {@code application.yaml} / {@code application.properties}, the {@code
      * config/} directory, and the {@code audit/} directory. These hold deployer config and audit
@@ -117,18 +60,6 @@ public record ProtectedSet(@NonNull Set<Path> paths) {
         return paths;
     }
 
-    /**
-     * A user-issued grant (Part 3.6 / group_screening §1.3). {@code rootPath} is the workspace root
-     * being shared; {@code mode} is the access level. The grant is a per-user authorization — it is
-     * checked when {@code DangerComputation} runs under {@link DeployerPolicy#TENANT}.
-     */
-    public record SharedGrant(@NonNull Path rootPath, @NonNull GrantMode mode) {}
-
-    public enum GrantMode {
-        READ_ONLY,
-        READ_WRITE
-    }
-
     /** True if the canonical path is under any protected entry. */
     public boolean covers(@NonNull Path canonical) {
         Path c = canonical.toAbsolutePath().normalize();
@@ -141,6 +72,8 @@ public record ProtectedSet(@NonNull Set<Path> paths) {
     }
 
     private static @NonNull Set<Path> canonicalizeAll(@NonNull Set<Path> in) {
-        return in.stream().map(p -> p.toAbsolutePath().normalize()).collect(Collectors.toSet());
+        return in.stream()
+                .map(p -> p.toAbsolutePath().normalize())
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
 }

@@ -45,35 +45,19 @@ public final class SandboxBootstrap {
         if (args.length >= 3 && LINUX_CHILD_MARKER.equals(args[0]) && "--".equals(args[1])) {
             return LinuxSandboxBootstrap.run(Arrays.asList(args).subList(2, args.length));
         }
-        if (args.length < 8 || !MARKER.equals(args[0]) || !"--".equals(args[6])) {
+        if (args.length < 7 || !MARKER.equals(args[0]) || !"--".equals(args[5])) {
             System.err.println("Invalid Veto sandbox bootstrap invocation");
             return 125;
         }
         String gateName = args[1];
         String readyName = args[2];
         String appContainerName = args[3];
-        String desktopName = args[4];
-        boolean networkAllowed = "allow-network".equals(args[5]);
-        List<String> target = Arrays.asList(args).subList(7, args.length);
-        WinNT.HANDLE desktop;
-        try {
-            // Open before the parent attaches this bootstrap to the Job. The Job deliberately
-            // forbids
-            // creating or opening additional desktops after the readiness signal.
-            desktop = WindowsAppContainerLauncher.openPrivateDesktop(desktopName);
-        } catch (RuntimeException failure) {
-            System.err.println(failure.getMessage());
+        boolean networkAllowed = "allow-network".equals(args[4]);
+        List<String> target = Arrays.asList(args).subList(6, args.length);
+        if (!awaitGate(gateName, readyName)) {
             return 125;
         }
-        try {
-            if (!awaitGate(gateName, readyName)) {
-                return 125;
-            }
-            return WindowsAppContainerLauncher.run(
-                    target, appContainerName, desktopName, networkAllowed);
-        } finally {
-            WindowsAppContainerLauncher.closePrivateDesktop(desktop);
-        }
+        return WindowsAppContainerLauncher.run(target, appContainerName, networkAllowed);
     }
 
     static @NonNull String absoluteClassPath(@NonNull String classPath) {

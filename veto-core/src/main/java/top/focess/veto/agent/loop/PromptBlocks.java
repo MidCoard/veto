@@ -104,8 +104,7 @@ public final class PromptBlocks {
      * an authorization boundary. Restrictive deployer policies continue to describe them as the
      * addressable scope. Empty when the workspace has no roots.
      */
-    public static @NonNull String workspace(
-            Workspace workspace, @NonNull DeployerPolicy deployerPolicy) {
+    public static @NonNull String workspace(Workspace workspace) {
         if (workspace == null) {
             return "";
         }
@@ -118,36 +117,12 @@ public final class PromptBlocks {
         sb.append("## Workspace\n");
         if (workspace.pathMode() == PathMode.VIRTUAL) {
             sb.append(
-                    "This session uses virtual workspace paths. Only the mounted roots listed below"
-                            + " are addressable through native file tools, regardless of deployer"
-                            + " policy.\n");
+                    "This session uses virtual workspace paths; the mounted roots below define the"
+                            + " paths visible to native file tools.\n");
         } else {
-            switch (deployerPolicy) {
-                case FULL_ACCESS ->
-                        sb.append(
-                                "This workspace is the default working context, not an access"
-                                        + " boundary. You may use any absolute host path when the"
-                                        + " user's task requires it; do not claim that an outside"
-                                        + " path is blocked merely because it is outside these"
-                                        + " roots.\n");
-                case PROTECTED ->
-                        sb.append(
-                                "This workspace is the default working context, not the hard path"
-                                        + " boundary. Absolute host paths outside these roots remain"
-                                        + " addressable unless they match the deployer-owned"
-                                        + " protected set; every target is still screened.\n");
-                case SANDBOXED ->
-                        sb.append(
-                                "These session roots are a hard filesystem boundary within the"
-                                        + " deployer-configured SANDBOXED zones. Do not access paths"
-                                        + " outside them; canonical escapes are refused.\n");
-                case TENANT ->
-                        sb.append(
-                                "These session roots are this user's hard filesystem boundary"
-                                        + " within the deployer-configured TENANT zone. Do not access"
-                                        + " outside roots or another user's unshared workspace;"
-                                        + " canonical and cross-user escapes are refused.\n");
-            }
+            sb.append(
+                    "This workspace is the default working context. The effective access boundary"
+                            + " is stated once in the Boundaries section below.\n");
         }
         sb.append("- Path mode: `").append(workspace.pathMode()).append("` - ");
         if (workspace.pathMode() == PathMode.VIRTUAL) {
@@ -389,16 +364,45 @@ public final class PromptBlocks {
      * non-FULL_ACCESS; a one-line advisory under FULL_ACCESS. Defense-in-depth - the gateway
      * enforces these, but telling the model avoids wasted turns on blocked operations.
      */
-    public static @NonNull String boundaries(DeployerPolicy policy) {
+    public static @NonNull String boundaries(DeployerPolicy policy, @NonNull PathMode pathMode) {
         if (policy == null) {
             return "";
+        }
+        if (pathMode == PathMode.VIRTUAL) {
+            return switch (policy) {
+                case FULL_ACCESS ->
+                        "## Boundaries\n"
+                                + "You are running under FULL_ACCESS, but this session uses VIRTUAL paths:"
+                                + " native file tools can address only the mounted workspace roots. Every"
+                                + " call still passes Gateway screening, jailbreak defenses, auditing, and"
+                                + " HITL; DANGEROUS actions require user authorization and CRITICAL policy"
+                                + " violations remain refused.\n";
+                case PROTECTED ->
+                        "## Boundaries\n"
+                                + "You are running under PROTECTED with VIRTUAL paths. Native file tools can"
+                                + " address only mounted roots, and deployer-protected targets remain a hard"
+                                + " deny-list. Other calls still pass Gateway screening and HITL.\n";
+                case SANDBOXED ->
+                        "## Boundaries\n"
+                                + "You are running under SANDBOXED with VIRTUAL paths. Mounted session roots"
+                                + " are the hard filesystem boundary; canonical escapes and protected targets"
+                                + " are CRITICAL and refused. Other calls still pass Gateway screening and"
+                                + " HITL.\n";
+                case TENANT ->
+                        "## Boundaries\n"
+                                + "You are running under TENANT with VIRTUAL paths. This user's mounted roots"
+                                + " are the hard filesystem boundary; cross-user access requires an"
+                                + " owner-issued share. Other calls still pass Gateway screening and HITL.\n";
+            };
         }
         return switch (policy) {
             case FULL_ACCESS ->
                     "## Boundaries\n"
                             + "You are running under FULL_ACCESS. The deployer intentionally chose unrestricted"
                             + " host-path reachability and is responsible for that choice. Workspace roots are"
-                            + " context, not permission boundaries. Every call still passes Gateway relevance"
+                            + " the default working context, not an access boundary. You may use any absolute"
+                            + " host path required by the task; do not claim that an outside path is blocked"
+                            + " merely because it is outside these roots. Every call still passes Gateway relevance"
                             + " and danger screening, jailbreak defenses, auditing, and HITL; DANGEROUS actions"
                             + " require user authorization and CRITICAL policy violations remain refused. If"
                             + " unrestricted host-path reachability is not intended, the deployer should use"
@@ -407,7 +411,8 @@ public final class PromptBlocks {
                     "## Boundaries\n"
                             + "You are running under PROTECTED. Host paths remain generally reachable, but"
                             + " the deployer-owned protected set is a hard deny-list. A protected target is"
-                            + " CRITICAL and cannot be approved; do not retry it. Non-protected calls still"
+                            + " CRITICAL and cannot be approved; do not retry it. Absolute host paths outside"
+                            + " workspace roots remain addressable unless protected. Non-protected calls still"
                             + " pass relevance/danger screening, jailbreak defenses, auditing, and HITL, and"
                             + " DANGEROUS actions require user authorization.\n";
             case SANDBOXED ->

@@ -35,7 +35,7 @@ public class GroupTickScheduler {
         this.registry = registry;
     }
 
-    @Scheduled(fixedDelayString = "${veto.group.tick.interval-ms:1000}")
+    @Scheduled(fixedDelayString = "${veto.group.tick.interval-ms}")
     public void tickActiveGroups() {
         Map<UUID, Group> snapshot = registry.snapshot();
         if (snapshot.isEmpty()) {

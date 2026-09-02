@@ -4,7 +4,7 @@
 
 root ::= veto-response
 
-veto-response ::= "{" ws "veto_decision" ws ":" ws decision ws "," ws "data" ws ":" ws data-block ws "}"
+veto-response ::= "{" ws "\"veto_decision\"" ws ":" ws decision ws "," ws "\"data\"" ws ":" ws data-block ws "}"
 
 decision ::= "\"pass\"" | "\"redact\"" | "\"block\""
 

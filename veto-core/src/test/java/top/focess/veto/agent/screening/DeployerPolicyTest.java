@@ -131,20 +131,6 @@ class DeployerPolicyTest {
         assertEquals(Danger.CRITICAL, danger, "SANDBOXED + protected-set path → CRITICAL");
     }
 
-    @Test
-    void sharedGrantsWithDeployerDefaults(@TempDir @NonNull Path tmp) throws Exception {
-        Path root = tmp.toRealPath();
-        ProtectedSet ps =
-                ProtectedSet.withSharedGrants(
-                        "alice",
-                        List.of(root),
-                        List.of(
-                                new ProtectedSet.SharedGrant(
-                                        root, ProtectedSet.GrantMode.READ_ONLY)));
-        assertTrue(ps.paths().stream().anyMatch(p -> p.toString().contains(".veto")));
-        assertTrue(ps.paths().contains(root));
-    }
-
     private @NonNull NativeToolDefinition readDef() {
         return new NativeToolDefinition(
                 "view_file",

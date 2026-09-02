@@ -25,9 +25,8 @@ public class SignupPolicy {
     private final @NonNull String deployerPolicy;
 
     public SignupPolicy(
-            @Value("${veto.security.signup.mode:solo}") @NonNull String modeRaw,
-            @Value("${veto.security.deployer-policy:FULL_ACCESS}")
-                    @NonNull String deployerPolicyRaw) {
+            @Value("${veto.security.signup.mode}") @NonNull String modeRaw,
+            @Value("${veto.security.deployer-policy}") @NonNull String deployerPolicyRaw) {
         this.mode = parseMode(modeRaw);
         this.deployerPolicy = deployerPolicyRaw.trim().toUpperCase();
     }

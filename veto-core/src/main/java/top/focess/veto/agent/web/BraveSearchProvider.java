@@ -36,8 +36,7 @@ public class BraveSearchProvider implements SearchProvider {
     private final @NonNull ObjectMapper mapper = new ObjectMapper();
     private final String apiKey;
 
-    public BraveSearchProvider(
-            @Value("${veto.websearch.brave.api-key:${BRAVE_API_KEY:}}") String apiKey) {
+    public BraveSearchProvider(@Value("${veto.websearch.brave.api-key}") String apiKey) {
         this.apiKey = apiKey;
     }
 

@@ -151,7 +151,11 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
         List<String> command = new ArrayList<>();
         String executable = resolveExecutable(c.executable(), workdir);
         if (isWindowsCommandShim(executable)) {
-            validateWindowsCommandShimToken(executable);
+            String shimInvocation =
+                    c.executable().indexOf('/') < 0 && c.executable().indexOf('\\') < 0
+                            ? c.executable()
+                            : executable;
+            validateWindowsCommandShimToken(shimInvocation);
             c.args().forEach(ConstrainedSubprocessSubstrate::validateWindowsCommandShimToken);
             String commandInterpreter = System.getenv("ComSpec");
             if (commandInterpreter == null || commandInterpreter.isBlank()) {
@@ -160,8 +164,7 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
             command.add(resolveExecutable(commandInterpreter, workdir));
             command.add("/d");
             command.add("/c");
-            command.add("call");
-            command.add(executable);
+            command.add(shimInvocation);
             command.addAll(c.args());
         } else {
             command.add(executable);
