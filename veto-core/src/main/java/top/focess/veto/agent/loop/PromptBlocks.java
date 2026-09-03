@@ -94,7 +94,8 @@ public final class PromptBlocks {
                             + " Execute the assigned node and finish with a concise internal report. The"
                             + " engine captures that final message and delivers it to the Leader; you do not"
                             + " address the end user or post to the Blackboard yourself. You do NOT delegate"
-                            + " further and cannot mutate the user's persistent memory.";
+                            + " further. You may recall existing session memories and cross-session insights,"
+                            + " but you cannot create, promote, delete, or otherwise mutate them.";
         };
     }
 

@@ -13,6 +13,7 @@ import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.SecurityHint;
 import top.focess.veto.agent.mcp.ToolCallContext;
 import top.focess.veto.agent.mcp.ToolCallContextHolder;
+import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDoc;
 import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.mcp.ToolErrors;
@@ -140,6 +141,11 @@ public final class GroupTools {
         }
 
         @Override
+        public @NonNull ToolCapability getCapability() {
+            return ToolCapability.DELEGATION;
+        }
+
+        @Override
         public @NonNull String execute(@NonNull Args args) {
             String task = args.task().strip();
             if (task.isBlank()) {
@@ -254,6 +260,11 @@ public final class GroupTools {
         @Override
         public @NonNull Class<Args> getArgsClass() {
             return ToolDocs.nonNullClass(Args.class);
+        }
+
+        @Override
+        public @NonNull ToolCapability getCapability() {
+            return ToolCapability.GROUP_CONTROL;
         }
 
         @Override
@@ -389,6 +400,11 @@ public final class GroupTools {
         @Override
         public @NonNull Class<Args> getArgsClass() {
             return ToolDocs.nonNullClass(Args.class);
+        }
+
+        @Override
+        public @NonNull ToolCapability getCapability() {
+            return ToolCapability.GROUP_CONTROL;
         }
 
         @Override
@@ -589,6 +605,11 @@ public final class GroupTools {
         @Override
         public @NonNull Class<Args> getArgsClass() {
             return ToolDocs.nonNullClass(Args.class);
+        }
+
+        @Override
+        public @NonNull ToolCapability getCapability() {
+            return ToolCapability.GROUP_CONTROL;
         }
 
         @Override

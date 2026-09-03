@@ -89,21 +89,20 @@ veto:
       interval-ms: 1000
     leader:
       tier: TOP
-      system-prompt-base: "Decompose the task and arrange the execution DAG node by node."
+      system-prompt-base: ""
     mate:
       tier: MID
       max_calls_per_episode: 50
-      system-prompt-base: "Execute the assigned task and return a concise internal report for the Leader."
-      # Per-skillset overrides: a skillset entry may set either field; unset fields fall back to
-      # the global mate.tier / mate.system-prompt-base above. A coding skillset can run on a
-      # stronger tier with a coding-focused prompt while a research skillset runs cheaper.
-      # skillsets:
-      #   coder:
-      #     tier: MID
-      #     system-prompt-base: "Implement the assigned coding task and report verification evidence."
-      #   researcher:
-      #     tier: LOW
-      #     system-prompt-base: "Gather and summarize the assigned research task."
+      system-prompt-base: ""
+    # Per-skillset overrides live under group.skillsets, alongside mate (not inside it). An unset
+    # field falls back to the global mate value above.
+    # skillsets:
+    #   coder:
+    #     tier: MID
+    #     system-prompt-base: "Implement the assigned coding task and report verification evidence."
+    #   researcher:
+    #     tier: LOW
+    #     system-prompt-base: "Gather and summarize the assigned research task."
 
   security:
     # Install-time deployer policy: FULL_ACCESS (no path is CRITICAL) | PROTECTED (deny-list) | SANDBOXED (scoped to root) | TENANT (multi-user workspace).

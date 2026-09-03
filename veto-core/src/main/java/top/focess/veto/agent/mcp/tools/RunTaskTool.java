@@ -77,7 +77,7 @@ public final class RunTaskTool implements NativeTool<RunTaskTool.Args> {
                     """,
             whenNotToUse =
                     """
-                    - Do not use it for a command whose result you need inline in this turn - use \
+                    - Do not use it for a command whose result you need immediately - use \
                     `run_command` (blocking) instead.
                     - Do not launch more than one command per call - background mode does not \
                     chain; express a pipeline as separate steps.

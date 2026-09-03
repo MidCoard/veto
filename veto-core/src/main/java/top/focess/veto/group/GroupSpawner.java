@@ -294,7 +294,7 @@ public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
                 new AgentPersona(
                         mateId,
                         mateId,
-                        "Mate " + mateId + " (skillset: " + skillset + ")",
+                        "a Mate assigned to the " + skillset + " skillset",
                         java.util.Set.of(),
                         java.util.List.of(),
                         Role.MATE);

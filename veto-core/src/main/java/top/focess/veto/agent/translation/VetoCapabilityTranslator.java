@@ -87,7 +87,7 @@ public class VetoCapabilityTranslator implements CapabilityTranslator {
             calls.put("minItems", 1);
             calls.put(
                     "description",
-                    "The list of parallel tool calls to execute. Mutually exclusive with actions.");
+                    "The ordered tool calls to execute. Mutually exclusive with actions.");
             properties.set("calls", calls);
         }
         // guidedSwitch -> calls absent; additionalProperties:false forbids it.
@@ -95,7 +95,7 @@ public class VetoCapabilityTranslator implements CapabilityTranslator {
         properties.set(
                 "message",
                 stringNode(
-                        "User-facing text. Required when stopping (no tool calls and no actions)."));
+                        "Final response text. Required when stopping (no tool calls and no actions)."));
 
         ObjectNode features = MAPPER.createObjectNode();
         features.put("type", "object");
@@ -317,7 +317,7 @@ public class VetoCapabilityTranslator implements CapabilityTranslator {
 
         ObjectNode properties = MAPPER.createObjectNode();
         ObjectNode toolName =
-                stringNode("The tool name, exactly as listed in this turn's catalog.");
+                stringNode("The tool name, exactly as listed in the available tool catalog.");
         if (tool != null) {
             ArrayNode onlyName = MAPPER.createArrayNode();
             onlyName.add(tool.name());

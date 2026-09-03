@@ -42,11 +42,11 @@ veto:
       interval-ms: 1000
     leader:
       tier: TOP
-      system-prompt-base: "Decompose the task and arrange the execution DAG node by node."
+      system-prompt-base: ""
     mate:
       tier: MID
       max_calls_per_episode: 50
-      system-prompt-base: "Execute the assigned task and return a concise internal report for the Leader."
+      system-prompt-base: ""
   security:
     deployer-policy: FULL_ACCESS
     screening-mode: STRICT

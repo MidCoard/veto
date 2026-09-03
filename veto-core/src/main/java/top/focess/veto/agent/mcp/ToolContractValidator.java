@@ -100,7 +100,14 @@ public final class ToolContractValidator {
                             definition,
                             definition.risk() == RiskCategory.NETWORK,
                             "NETWORK_EGRESS requires NETWORK risk");
-            case SKILL_READ, MEMORY_READ, MEMORY_WRITE, AGENT_CONTROL, REMOTE_UNKNOWN ->
+            case SKILL_READ,
+                    MEMORY_READ,
+                    MEMORY_WRITE,
+                    LOOP_CONTROL,
+                    DELEGATION,
+                    GROUP_CONTROL,
+                    AGENT_CONTROL,
+                    REMOTE_UNKNOWN ->
                     throw invalid(
                             definition,
                             "native tool uses an agent/remote-only capability: "
@@ -125,7 +132,13 @@ public final class ToolContractValidator {
                     "agent tools may not early-route with filesystem, command, or URL parameters");
         }
         switch (definition.capability()) {
-            case SKILL_READ, MEMORY_READ, MEMORY_WRITE, AGENT_CONTROL -> {
+            case SKILL_READ,
+                    MEMORY_READ,
+                    MEMORY_WRITE,
+                    LOOP_CONTROL,
+                    DELEGATION,
+                    GROUP_CONTROL,
+                    AGENT_CONTROL -> {
                 // These capabilities execute through typed, caller-scoped runtime services.
             }
             case WORKSPACE_READ,

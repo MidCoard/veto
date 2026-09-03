@@ -21,15 +21,16 @@ import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.Role;
 import top.focess.veto.agent.identity.RoleToolFilter;
 import top.focess.veto.agent.identity.SystemPromptResolver;
+import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolEngine;
 import top.focess.veto.agent.translation.CapabilityTranslator;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.ToolDefinition;
 
 /**
- * Diagnostic dump: compiles the FULL system prompt for each role/policy combination using the REAL
- * tool catalog (from {@link ToolEngine}), the REAL {@code default-system-prompt.md} template, and
- * the REAL resolved {@code VETO.md} law - then writes each rendered prompt to {@code
+ * Diagnostic dump: compiles the full system prompt for each role under the active deployer policy
+ * using the real tool catalog (from {@link ToolEngine}), the REAL {@code default-system-prompt.md}
+ * template, and the REAL resolved {@code VETO.md} law - then writes each rendered prompt to {@code
  * veto-core/build/prompt-dump/} for human inspection.
  *
  * <p>Run it on demand:
@@ -45,8 +46,8 @@ import top.focess.veto.llm.core.ToolDefinition;
  * <p><b>Note:</b> each role's tools are resolved through the production {@link RoleToolFilter} (the
  * same filter {@code AgentService.buildPersona} applies), so the {@code ## Your Tools} block in
  * each role's dump reflects exactly what a real agent of that role would see - STANDALONE sees
- * everything except Leader-only arrangement tools; LEADER sees only investigation + arrangement;
- * MATE sees everything except all group tools.
+ * execution/delegation capabilities; LEADER sees investigation + group control; MATE sees
+ * execution capabilities without delegation or memory mutation.
  */
 @SpringBootTest
 @SuppressWarnings("initialization.field.uninitialized")
@@ -134,6 +135,10 @@ class SystemPromptDumpTest {
                 toolNames(registeredFlatTools).contains("load_skill"),
                 "the registered-tool inventory must retain conditional load_skill");
         assertTrue(
+                mcpEngine.getActiveTools(null).stream()
+                        .noneMatch(tool -> tool.capability() == ToolCapability.AGENT_CONTROL),
+                "every registered agent tool must declare a specific capability");
+        assertTrue(
                 toolNames(
                                 translator.translateTools(
                                         new ArrayList<>(roleToolFilter.resolve(Role.STANDALONE))))
@@ -156,7 +161,7 @@ class SystemPromptDumpTest {
                         translator.translateTools(
                                 new ArrayList<>(roleToolFilter.resolve(Role.LEADER))));
         assertTrue(leaderTools.contains("inspect_group"), "LEADER must observe Mate outcomes");
-        assertFalse(leaderTools.contains("post_message"), "unwired Leader messaging stays hidden");
+        assertTrue(leaderTools.contains("post_message"), "LEADER must communicate with Mates");
         Set<String> mateTools =
                 toolNames(
                         translator.translateTools(
@@ -169,6 +174,35 @@ class SystemPromptDumpTest {
         assertFalse(
                 template.contains("veto_pulse"),
                 "internal response-schema names must not be exposed to the model");
+        assertFalse(
+                template.contains("For a Mate"),
+                "the shared response protocol must not contain role-specific behavior");
+        assertFalse(
+                objectMapper
+                        .writeValueAsString(translator.vetoResponseSchema(false, flatTools))
+                        .contains("parallel tool calls"),
+                "the response schema must match ordered runtime execution");
+        assertFalse(
+                objectMapper
+                        .writeValueAsString(translator.vetoResponseSchema(false, flatTools))
+                        .contains("this turn's catalog"),
+                "the response schema must describe the stable available catalog");
+        assertFalse(
+                objectMapper
+                        .writeValueAsString(translator.vetoResponseSchema(false, flatTools))
+                        .contains("User-facing text"),
+                "the shared response schema must also be accurate for Mate internal reports");
+        assertFalse(
+                Files.readString(DUMP_DIR.resolve("LEADER.md"))
+                        .contains("## Additional Role Guidance"),
+                "default Leader guidance must not repeat the role contract");
+        assertFalse(
+                Files.readString(DUMP_DIR.resolve("MATE.md"))
+                        .contains("## Additional Role Guidance"),
+                "default Mate guidance must not repeat the role contract");
+        assertFalse(
+                Files.readString(DUMP_DIR.resolve("MATE.md")).contains("mate mate-sample"),
+                "the Mate identity must not repeat its name and role");
         assertTrue(
                 count(catalog, "\n### `") == flatTools.size(),
                 "every registered tool has one catalog entry");
@@ -250,7 +284,7 @@ class SystemPromptDumpTest {
                     new AgentPersona(
                             "dump-mate",
                             "mate-sample",
-                            "Mate mate-sample (skillset: coding)",
+                            "a Mate assigned to the coding skillset",
                             tools,
                             List.of(),
                             role);

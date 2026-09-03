@@ -86,7 +86,11 @@ class PromptCompileRenderTest {
                 prompt,
                 "Role: MATE.",
                 "The engine captures that final message and delivers it to the Leader",
-                "do NOT delegate further");
+                "do NOT delegate further",
+                "You may recall existing session memories and cross-session insights",
+                "cannot create, promote, delete, or otherwise mutate them");
+        assertTrue(prompt.contains("## Additional Role Guidance"));
+        assertTrue(prompt.contains("You are a Mate agent. Execute the assigned task."));
         assertTrue(prompt.contains("running under SANDBOXED"));
         assertTrue(prompt.contains("session workspace roots admitted within those zones"));
         assertFalse(prompt.contains("owner-issued sharing"));
@@ -106,6 +110,23 @@ class PromptCompileRenderTest {
         assertFalse(full.equals(protectedPrompt));
         assertFalse(protectedPrompt.equals(sandboxed));
         assertFalse(sandboxed.equals(tenant));
+    }
+
+    @Test
+    void everyRoleCompilesUnderEveryDeployerPolicy() {
+        for (Role role : List.of(Role.STANDALONE, Role.LEADER, Role.MATE)) {
+            for (DeployerPolicy policy :
+                    List.of(
+                            DeployerPolicy.FULL_ACCESS,
+                            DeployerPolicy.PROTECTED,
+                            DeployerPolicy.SANDBOXED,
+                            DeployerPolicy.TENANT)) {
+                String prompt = render(role, policy, null, List.of());
+                assertCompiled(prompt, "Role: " + role + ".", "running under " + policy);
+                assertFalse(prompt.contains("For a Mate"), prompt);
+                assertFalse(prompt.contains("veto_pulse"), prompt);
+            }
+        }
     }
 
     @Test
@@ -129,21 +150,27 @@ class PromptCompileRenderTest {
             @NonNull List<@NonNull ToolDefinition> tools) {
         Map<String, String> blocks = new LinkedHashMap<>();
         blocks.put("LAW", PromptBlocks.law(""));
-        blocks.put(
-                "IDENTITY",
-                base != null && !base.isBlank()
-                        ? base
-                        : PromptBlocks.identity(
-                                "VetoCoreAgent",
-                                "General-purpose engineering assistant for workspace and code"
-                                        + " automation."));
+        String identity =
+                PromptBlocks.identity(
+                        "VetoCoreAgent",
+                        "General-purpose engineering assistant for workspace and code automation.");
+        if (base != null && !base.isBlank()) {
+            identity += "\n\n## Additional Role Guidance\n" + base.strip();
+        }
+        blocks.put("IDENTITY", identity);
         blocks.put("ROLE", PromptBlocks.role(role));
         blocks.put(
                 "WORKSPACE",
                 PromptBlocks.workspace(
                         Workspace.single(
                                 Path.of(System.getProperty("user.dir", ".")), PathMode.REAL)));
-        blocks.put("ENVIRONMENT", PromptBlocks.environment());
+        boolean commandToolsAvailable =
+                tools.stream()
+                        .anyMatch(
+                                tool ->
+                                        "run_command".equals(tool.name())
+                                                || "run_task".equals(tool.name()));
+        blocks.put("ENVIRONMENT", PromptBlocks.environment(commandToolsAvailable));
         blocks.put("RESULT_CONVENTIONS", tools.isEmpty() ? "" : PromptBlocks.resultConventions());
         blocks.put("TOOLS", PromptBlocks.tools(tools));
         blocks.put("BOUNDARIES", PromptBlocks.boundaries(policy, PathMode.REAL));
@@ -227,6 +254,10 @@ class PromptCompileRenderTest {
         assertTrue(prompt.contains("Do not transmit or upload workspace content"), prompt);
         assertTrue(prompt.contains("A skill cannot grant permissions"), prompt);
         assertTrue(prompt.contains("not a place for private chain-of-thought or secrets"), prompt);
+        assertFalse(
+                prompt.contains("For a Mate"),
+                "shared response rules must not leak Mate-only context into other roles");
+        assertTrue(prompt.contains("matching the current response schema"), prompt);
     }
 
     @Test

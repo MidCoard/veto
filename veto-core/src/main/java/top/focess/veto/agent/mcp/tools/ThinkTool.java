@@ -3,6 +3,7 @@ package top.focess.veto.agent.mcp.tools;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.mcp.AgentTool;
+import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDoc;
 import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.mcp.ToolResultFormat;
@@ -27,6 +28,11 @@ public final class ThinkTool implements AgentTool<ThinkTool.Args> {
     @Override
     public @NonNull Class<Args> getArgsClass() {
         return ToolDocs.nonNullClass(Args.class);
+    }
+
+    @Override
+    public @NonNull ToolCapability getCapability() {
+        return ToolCapability.LOOP_CONTROL;
     }
 
     @Override

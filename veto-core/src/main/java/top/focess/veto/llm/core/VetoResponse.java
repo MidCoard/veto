@@ -15,10 +15,9 @@ import org.jspecify.annotations.NonNull;
  * <ul>
  *   <li>{@code thought}—optional; the model's internal reasoning before acting. Never required,
  *       never forbidden: include it when it helps, omit it when it does not.
- *   <li>{@code calls}—optional; the parallel tool calls to execute. Mutually exclusive with {@code
+ *   <li>{@code calls}—optional; the ordered tool calls to execute. Mutually exclusive with {@code
  *       actions}. Populated in autonomous mode.
- *   <li>{@code message}—optional user-facing text; required when stopping (no calls and no
- *       actions).
+ *   <li>{@code message}—optional response text; required when stopping (no calls and no actions).
  *   <li>{@code features}—required; describes the NEXT iteration's status ({@code guided}).
  *   <li>{@code actions}—optional; the guided-mode IR (a flat, ordered list of actions), present
  *       only when {@code features.guided=true}. Held as a raw {@link JsonNode}—the harness
