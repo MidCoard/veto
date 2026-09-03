@@ -184,7 +184,8 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
 
     @Override
     public @NonNull ToolResult execute(@NonNull ToolCall call, @NonNull ToolDefinition def) {
-        String callId = call.callId();
+        String callId = call.requireCallId();
+        ToolCallContextHolder.setCurrentCallId(callId);
         try {
             ToolResult result =
                     switch (def) {
@@ -195,7 +196,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
             return boundResult(result);
         } catch (ToolExecutionException e) {
             return new ToolResult(
-                    call.toolName(), callId, false, ToolErrors.normalize(e.getMessage()));
+                    call.toolName(), callId, e.status(), e.format(), e.content(), e.errorCode());
         } catch (Exception e) {
             log.warn("Tool '{}' execution failed.", call.toolName(), e);
             return new ToolResult(
@@ -203,6 +204,8 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
                     callId,
                     false,
                     "Tool execution failed: " + ToolErrors.normalize(e.getMessage()));
+        } finally {
+            ToolCallContextHolder.setCurrentCallId("");
         }
     }
 
@@ -452,7 +455,12 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
                     "INVALID_ARGUMENTS");
         } catch (ToolExecutionException e) {
             return new ToolResult(
-                    call.toolName(), call.callId(), false, ToolErrors.normalize(e.getMessage()));
+                    call.toolName(),
+                    call.callId(),
+                    e.status(),
+                    e.format(),
+                    e.content(),
+                    e.errorCode());
         } catch (Exception e) {
             return new ToolResult(
                     call.toolName(),

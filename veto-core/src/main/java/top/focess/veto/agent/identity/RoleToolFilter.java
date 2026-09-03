@@ -46,6 +46,7 @@ public class RoleToolFilter {
                     ToolCapability.MEMORY_WRITE,
                     ToolCapability.LOOP_CONTROL,
                     ToolCapability.DELEGATION,
+                    ToolCapability.USER_INTERACTION,
                     ToolCapability.REMOTE_UNKNOWN);
 
     private static final @NonNull Set<@NonNull ToolCapability> MATE_CAPABILITIES =
@@ -64,6 +65,7 @@ public class RoleToolFilter {
                     ToolCapability.WORKSPACE_READ,
                     ToolCapability.SKILL_READ,
                     ToolCapability.LOOP_CONTROL,
+                    ToolCapability.USER_INTERACTION,
                     ToolCapability.GROUP_CONTROL);
 
     private final @NonNull ToolEngine mcpEngine;

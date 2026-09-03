@@ -46,6 +46,8 @@ import org.springframework.stereotype.Service;
 public class BackgroundTaskManager {
 
     private static final int MAX_UNTERMINATED_LINE_BYTES = 64 * 1024;
+    private static final int MAX_INPUT_BYTES_PER_CALL = 64 * 1024;
+    private static final int MAX_QUEUED_INPUT_BYTES = 256 * 1024;
 
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.sandbox.BackgroundTaskManager");
@@ -115,11 +117,14 @@ public class BackgroundTaskManager {
                         taskId,
                         agentId,
                         process,
+                        cmd,
+                        profile,
                         cmd.executable() + " " + String.join(" ", cmd.args()),
                         cwd.toString(),
                         Instant.now(),
                         process.pid(),
-                        sessionId);
+                        sessionId,
+                        UUID.randomUUID());
         tasks.put(taskId, task);
 
         // Drain merged stdout+stderr into the ring buffer, then record exit. A virtual thread keeps
@@ -303,6 +308,83 @@ public class BackgroundTaskManager {
         return Optional.of(String.join("\n", t.buffer.tail(n)));
     }
 
+    /** Queues bytes for a running task's standard input without blocking the calling agent. */
+    public @NonNull InputResult queueInput(
+            @NonNull String agentId,
+            @NonNull String taskId,
+            byte @NonNull [] bytes,
+            boolean closeStdin) {
+        ManagedTask task = owned(agentId, taskId);
+        if (task == null) return InputResult.failure(InputStatus.TASK_NOT_FOUND);
+        synchronized (task.inputLock) {
+            if (!task.alive) return InputResult.failure(InputStatus.TASK_NOT_RUNNING);
+            if (task.stdinClosed || task.stdinCloseQueued) {
+                return InputResult.failure(InputStatus.STDIN_CLOSED);
+            }
+            if (bytes.length > MAX_INPUT_BYTES_PER_CALL) {
+                return InputResult.failure(InputStatus.INPUT_TOO_LARGE);
+            }
+            if (task.queuedInputBytes + bytes.length > MAX_QUEUED_INPUT_BYTES) {
+                return InputResult.failure(InputStatus.INPUT_QUEUE_FULL);
+            }
+            task.pendingInput.addLast(new PendingInput(bytes.clone(), closeStdin));
+            task.queuedInputBytes += bytes.length;
+            task.stdinCloseQueued |= closeStdin;
+            if (!task.inputWriterRunning) {
+                task.inputWriterRunning = true;
+                Thread.startVirtualThread(() -> drainInput(task));
+            }
+            return new InputResult(InputStatus.QUEUED, bytes.length, closeStdin);
+        }
+    }
+
+    /** Recent asynchronous standard-input write failures for a task. */
+    public @NonNull List<@NonNull String> inputFailures(
+            @NonNull String agentId, @NonNull String taskId) {
+        ManagedTask task = owned(agentId, taskId);
+        if (task == null) return List.of();
+        synchronized (task.inputLock) {
+            return List.copyOf(task.inputFailures);
+        }
+    }
+
+    private void drainInput(@NonNull ManagedTask task) {
+        while (true) {
+            PendingInput pending;
+            synchronized (task.inputLock) {
+                pending = task.pendingInput.pollFirst();
+                if (pending == null) {
+                    task.inputWriterRunning = false;
+                    return;
+                }
+                task.queuedInputBytes -= pending.bytes().length;
+            }
+            try {
+                task.process.getOutputStream().write(pending.bytes());
+                task.process.getOutputStream().flush();
+                if (pending.closeStdin()) {
+                    task.process.getOutputStream().close();
+                    synchronized (task.inputLock) {
+                        task.stdinClosed = true;
+                    }
+                }
+            } catch (IOException e) {
+                synchronized (task.inputLock) {
+                    task.stdinClosed = true;
+                    task.pendingInput.clear();
+                    task.queuedInputBytes = 0;
+                    task.inputFailures.add(
+                            "stdin write failed: "
+                                    + (e.getMessage() == null
+                                            ? e.getClass().getSimpleName()
+                                            : e.getMessage()));
+                    while (task.inputFailures.size() > 20) task.inputFailures.removeFirst();
+                }
+                return;
+            }
+        }
+    }
+
     /**
      * Force-stops a running task, recording WHY it ended ({@code cause}) so the exit notice can
      * tell the agent a user stop from an agent stop from a crash. Returns the post-stop status, or
@@ -410,13 +492,23 @@ public class BackgroundTaskManager {
         final @NonNull String taskId;
         final @NonNull String agentId;
         final @NonNull Process process;
+        final @NonNull Command originalCommand;
+        final @NonNull SandboxProfile sandboxProfile;
         final @NonNull String command;
         final @NonNull String cwd;
         final @NonNull Instant startedAt;
         final long pid;
         final UUID sessionId;
+        final @NonNull UUID taskInstanceId;
         final @NonNull Object lifecycleLock = new Object();
         final @NonNull LineBuffer buffer = new LineBuffer(MAX_LINES);
+        final @NonNull Object inputLock = new Object();
+        final @NonNull Deque<PendingInput> pendingInput = new ArrayDeque<>();
+        final @NonNull Deque<String> inputFailures = new ArrayDeque<>();
+        int queuedInputBytes;
+        boolean stdinCloseQueued;
+        boolean stdinClosed;
+        boolean inputWriterRunning;
         volatile boolean alive = true;
         volatile Integer exitCode = null;
         volatile Instant finishedAt = null;
@@ -429,19 +521,25 @@ public class BackgroundTaskManager {
                 @NonNull String taskId,
                 @NonNull String agentId,
                 @NonNull Process process,
+                @NonNull Command originalCommand,
+                @NonNull SandboxProfile sandboxProfile,
                 @NonNull String command,
                 @NonNull String cwd,
                 @NonNull Instant startedAt,
                 long pid,
-                UUID sessionId) {
+                UUID sessionId,
+                @NonNull UUID taskInstanceId) {
             this.taskId = taskId;
             this.agentId = agentId;
             this.process = process;
+            this.originalCommand = originalCommand;
+            this.sandboxProfile = sandboxProfile;
             this.command = command;
             this.cwd = cwd;
             this.startedAt = startedAt;
             this.pid = pid;
             this.sessionId = sessionId;
+            this.taskInstanceId = taskInstanceId;
         }
 
         @NonNull TaskInfo toInfo() {
@@ -455,7 +553,8 @@ public class BackgroundTaskManager {
                     exitCode,
                     pid,
                     finishedAt,
-                    sessionId);
+                    sessionId,
+                    taskInstanceId);
         }
     }
 
@@ -497,7 +596,8 @@ public class BackgroundTaskManager {
             Integer exitCode,
             long pid,
             Instant finishedAt,
-            UUID sessionId) {
+            UUID sessionId,
+            @NonNull UUID taskInstanceId) {
 
         /** Convenience: elapsed seconds since start (0 if somehow negative). */
         public long uptimeSeconds() {
@@ -535,4 +635,26 @@ public class BackgroundTaskManager {
             @NonNull String command,
             int exitCode,
             @NonNull ExitCause cause) {}
+
+    /** Immediate queueing result returned to the input_task tool. */
+    public record InputResult(@NonNull InputStatus status, int bytes, boolean closeQueued) {
+        static @NonNull InputResult failure(@NonNull InputStatus status) {
+            return new InputResult(status, 0, false);
+        }
+
+        public boolean queued() {
+            return status == InputStatus.QUEUED;
+        }
+    }
+
+    public enum InputStatus {
+        QUEUED,
+        TASK_NOT_FOUND,
+        TASK_NOT_RUNNING,
+        STDIN_CLOSED,
+        INPUT_TOO_LARGE,
+        INPUT_QUEUE_FULL
+    }
+
+    private record PendingInput(byte @NonNull [] bytes, boolean closeStdin) {}
 }

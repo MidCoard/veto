@@ -10,6 +10,8 @@ public enum ParamCategory {
     CODE_CONTENT,
     /** Needs egress check. */
     URL,
+    /** Text queued to the standard input of an already-authorized background task. */
+    PROCESS_INPUT,
     /** No special handling beyond the tool-level risk category. */
     GENERIC
 }

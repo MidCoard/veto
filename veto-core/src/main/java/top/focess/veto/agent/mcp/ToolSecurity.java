@@ -5,6 +5,7 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.agent.screening.Danger;
 
 /**
  * Declares the risk category of a native tool class (the level of danger it represents). Read by
@@ -22,4 +23,7 @@ public @interface ToolSecurity {
 
     /** Whether this tool always requires semantic screening regardless of risk category. */
     boolean requiresSemanticScreening() default false;
+
+    /** Deterministic danger floor applied after the risk-derived baseline. */
+    @NonNull Danger minimumDanger() default Danger.SAFE;
 }

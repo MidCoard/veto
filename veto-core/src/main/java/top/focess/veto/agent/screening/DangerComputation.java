@@ -74,6 +74,9 @@ public class DangerComputation {
             @NonNull ProtectedSet protectedSet,
             @NonNull ToolExecutionPermit permit) {
         Danger base = baseFromRisk(def.risk());
+        if (def instanceof top.focess.veto.agent.mcp.NativeToolDefinition nativeDefinition) {
+            base = max(base, nativeDefinition.minimumDanger());
+        }
         Danger pathDanger = pathDanger(def, permit, workspace, policy, protectedSet);
         Danger executionRootDanger =
                 executionRootDanger(def, permit, workspace, policy, protectedSet);

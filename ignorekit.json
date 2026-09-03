@@ -33,6 +33,7 @@
     "veto-core/benchmarks/agentdojo/runs/",
     "/conversion_log.jsonl",
     "/training_log.jsonl",
+    "/veto.log",
     "plans/",
     "scripts/",
     "docs/",

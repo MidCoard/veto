@@ -160,6 +160,7 @@ public final class ViewTaskTool implements NativeTool<ViewTaskTool.Args> {
             envelope.put("command", info.get().command());
             envelope.put("cwd", info.get().cwd());
             envelope.put("recentOutput", out.orElse(""));
+            envelope.put("inputFailures", taskManager.inputFailures(agentId, taskId));
             return mapper.writeValueAsString(envelope);
         } catch (ToolExecutionException e) {
             throw e;

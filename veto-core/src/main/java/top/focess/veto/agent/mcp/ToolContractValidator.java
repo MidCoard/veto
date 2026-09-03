@@ -106,6 +106,7 @@ public final class ToolContractValidator {
                     LOOP_CONTROL,
                     DELEGATION,
                     GROUP_CONTROL,
+                    USER_INTERACTION,
                     AGENT_CONTROL,
                     REMOTE_UNKNOWN ->
                     throw invalid(
@@ -138,6 +139,7 @@ public final class ToolContractValidator {
                     LOOP_CONTROL,
                     DELEGATION,
                     GROUP_CONTROL,
+                    USER_INTERACTION,
                     AGENT_CONTROL -> {
                 // These capabilities execute through typed, caller-scoped runtime services.
             }

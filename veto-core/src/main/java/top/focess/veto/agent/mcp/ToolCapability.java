@@ -18,6 +18,7 @@ public enum ToolCapability {
     LOOP_CONTROL,
     DELEGATION,
     GROUP_CONTROL,
+    USER_INTERACTION,
     /** Fail-closed fallback for an agent tool that has not yet declared a specific capability. */
     AGENT_CONTROL,
     REMOTE_UNKNOWN

@@ -35,7 +35,9 @@ class RoleToolFilterTest {
                 Set.of("read", "think", "create_group"), names(filter.resolve(Role.STANDALONE)));
         assertEquals(Set.of("read", "think"), names(filter.resolve(Role.MATE)));
         assertEquals(Set.of("read", "think", "post_message"), names(filter.resolve(Role.LEADER)));
-        for (Role role : Role.values()) {
+        for (Role role :
+                java.util.EnumSet.allOf(
+                        top.focess.veto.agent.mcp.ToolDocs.nonNullClass(Role.class))) {
             assertFalse(names(filter.resolve(role)).contains("unclassified"));
         }
     }

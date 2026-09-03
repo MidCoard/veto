@@ -37,6 +37,7 @@ public final class ToolCallContextHolder {
     // ThreadLocal.get() is intrinsically nullable. Keep its element type nullable-by-default and
     // refine with instanceof at the access boundary instead of pretending the slot is non-null.
     private static final @NonNull ThreadLocal CONTEXT = new ThreadLocal();
+    private static final @NonNull ThreadLocal CURRENT_CALL_ID = new ThreadLocal();
 
     /**
      * Pending rewind directives a tool requested during its execution. {@link AgentRunner} owns the
@@ -92,6 +93,15 @@ public final class ToolCallContextHolder {
     public static ToolCallContext get() {
         Object value = CONTEXT.get();
         return value instanceof ToolCallContext context ? context : null;
+    }
+
+    static void setCurrentCallId(@NonNull String callId) {
+        CURRENT_CALL_ID.set(callId);
+    }
+
+    public static String currentCallId() {
+        Object value = CURRENT_CALL_ID.get();
+        return value instanceof String callId ? callId : null;
     }
 
     /**
@@ -171,6 +181,7 @@ public final class ToolCallContextHolder {
     /** Clears the tool call context (and any pending turn directives) for the current thread. */
     public static void clear() {
         CONTEXT.remove();
+        CURRENT_CALL_ID.remove();
         PENDING_TURNS.remove();
         PENDING_TRANSFORM.remove();
     }

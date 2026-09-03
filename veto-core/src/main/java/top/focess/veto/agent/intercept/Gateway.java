@@ -121,6 +121,11 @@ public class Gateway {
         Danger danger =
                 advisory.map(screening -> maxDanger(deterministicDanger, screening.danger()))
                         .orElse(deterministicDanger);
+        if (def instanceof top.focess.veto.agent.mcp.NativeToolDefinition nativeDefinition
+                && nativeDefinition.requiresSemanticScreening()
+                && advisory.isEmpty()) {
+            danger = maxDanger(danger, Danger.DANGEROUS);
+        }
         Relevance relevance = advisory.map(SlmScreening::relevance).orElse(Relevance.HIGH);
         VetoScenario scenario = scenarioFor(danger, def);
         String reason = reasonFor(deterministicDanger, advisory, danger, def);

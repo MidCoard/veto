@@ -3,6 +3,7 @@ package top.focess.veto.agent.mcp;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.agent.screening.Danger;
 
 /**
  * A native (shipped) tool. Defined by a Java class annotated with {@code @ToolSecurity}. {@link
@@ -15,6 +16,7 @@ public record NativeToolDefinition(
         @NonNull RiskCategory risk,
         @NonNull ToolCapability capability,
         boolean requiresSemanticScreening,
+        @NonNull Danger minimumDanger,
         @NonNull Class<?> argsClass,
         @NonNull Map<@NonNull String, @NonNull ParamCategory> paramHints)
         implements ToolDefinition {
@@ -33,6 +35,27 @@ public record NativeToolDefinition(
                 risk,
                 defaultCapability(risk),
                 requiresSemanticScreening,
+                Danger.SAFE,
+                argsClass,
+                paramHints);
+    }
+
+    /** Compatibility constructor for explicit-capability callers predating danger floors. */
+    public NativeToolDefinition(
+            @NonNull String name,
+            @NonNull String description,
+            @NonNull RiskCategory risk,
+            @NonNull ToolCapability capability,
+            boolean requiresSemanticScreening,
+            @NonNull Class<?> argsClass,
+            @NonNull Map<@NonNull String, @NonNull ParamCategory> paramHints) {
+        this(
+                name,
+                description,
+                risk,
+                capability,
+                requiresSemanticScreening,
+                Danger.SAFE,
                 argsClass,
                 paramHints);
     }

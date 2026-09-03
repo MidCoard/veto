@@ -56,6 +56,7 @@ public final class ToolSchemaCompiler {
                 security.risk(),
                 security.capability(),
                 security.requiresSemanticScreening(),
+                security.minimumDanger(),
                 argsClass,
                 hints);
     }

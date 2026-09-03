@@ -567,6 +567,7 @@ public final class GroupTools {
                 "{\"type\": \"STATUS\", \"receiver\": \"LEADER\", \"payload\": \"node-5 re-planned; new node node-5b created\"}"
             },
             returnExamples = {"posted"})
+    @Component
     public static final class PostMessage implements AgentTool<PostMessage.Args> {
 
         private static final int MAX_PAYLOAD_CHARS = 4096;
