@@ -1,6 +1,5 @@
 package top.focess.veto.agent.identity;
 
-import java.util.List;
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
@@ -84,8 +83,7 @@ public class RoleToolFilter {
      * grant one forbidden to the role.
      */
     public @NonNull Set<@NonNull ToolDefinition> resolve(
-            @NonNull Role role,
-            @NonNull Set<@NonNull ToolCapability> selectedCapabilities) {
+            @NonNull Role role, @NonNull Set<@NonNull ToolCapability> selectedCapabilities) {
         Set<@NonNull ToolCapability> allowed = capabilitiesFor(role);
         return mcpEngine.getActiveTools(null).stream()
                 .filter(tool -> allowed.contains(tool.capability()))

@@ -46,8 +46,8 @@ import top.focess.veto.llm.core.ToolDefinition;
  * <p><b>Note:</b> each role's tools are resolved through the production {@link RoleToolFilter} (the
  * same filter {@code AgentService.buildPersona} applies), so the {@code ## Your Tools} block in
  * each role's dump reflects exactly what a real agent of that role would see - STANDALONE sees
- * execution/delegation capabilities; LEADER sees investigation + group control; MATE sees
- * execution capabilities without delegation or memory mutation.
+ * execution/delegation capabilities; LEADER sees investigation + group control; MATE sees execution
+ * capabilities without delegation or memory mutation.
  */
 @SpringBootTest
 @SuppressWarnings("initialization.field.uninitialized")

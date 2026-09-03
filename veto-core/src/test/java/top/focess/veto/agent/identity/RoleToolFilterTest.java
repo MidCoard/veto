@@ -32,8 +32,7 @@ class RoleToolFilterTest {
         RoleToolFilter filter = new RoleToolFilter(engine());
 
         assertEquals(
-                Set.of("read", "think", "create_group"),
-                names(filter.resolve(Role.STANDALONE)));
+                Set.of("read", "think", "create_group"), names(filter.resolve(Role.STANDALONE)));
         assertEquals(Set.of("read", "think"), names(filter.resolve(Role.MATE)));
         assertEquals(Set.of("read", "think", "post_message"), names(filter.resolve(Role.LEADER)));
         for (Role role : Role.values()) {
@@ -53,10 +52,7 @@ class RoleToolFilterTest {
         assertEquals(Set.of("read"), names(selected));
         assertTrue(
                 selected.stream()
-                        .allMatch(
-                                tool ->
-                                        tool.capability()
-                                                == ToolCapability.WORKSPACE_READ));
+                        .allMatch(tool -> tool.capability() == ToolCapability.WORKSPACE_READ));
     }
 
     private static @NonNull AgentToolDefinition tool(
