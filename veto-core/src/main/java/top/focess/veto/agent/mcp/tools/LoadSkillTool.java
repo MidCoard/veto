@@ -15,8 +15,8 @@ import top.focess.veto.agent.skills.SkillRegistry;
  * {@code load_skill} — load a skill's full instructions into context as an observation, so the
  * agent can follow its procedure for the current task.
  *
- * <p>Agent tools carry {@link top.focess.veto.agent.mcp.RiskCategory#AGENT}; the Gateway returns
- * {@code NotScreened}.
+ * <p>Agent tools are identified by their definition flavour; the Gateway returns {@code
+ * NotScreened}.
  */
 @Component
 public final class LoadSkillTool implements AgentTool<LoadSkillTool.Args> {
@@ -100,7 +100,7 @@ public final class LoadSkillTool implements AgentTool<LoadSkillTool.Args> {
                     """,
             security =
                     """
-                    Agent tool (`RiskCategory.AGENT`), so the Gateway does not screen the call. A loaded body remains \
+                    Agent tool with `SKILL_READ` capability, so the Gateway does not screen the call. A loaded body remains \
                     subordinate to higher-authority system and user instructions.
                     """,
             examples = {"{\"skillName\": \"verify_suite\"}"},

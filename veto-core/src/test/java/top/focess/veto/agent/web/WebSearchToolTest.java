@@ -1,5 +1,6 @@
 package top.focess.veto.agent.web;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -10,8 +11,22 @@ import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.mcp.ToolErrors;
 import top.focess.veto.agent.mcp.ToolExecutionException;
+import top.focess.veto.agent.mcp.ToolSecurity;
+import top.focess.veto.agent.screening.Danger;
 
 class WebSearchToolTest {
+
+    @Test
+    void anonymousSearchIsElevatedByDefault() {
+        ToolSecurity security =
+                ToolDocs.nonNullClass(WebSearchTool.class)
+                        .getAnnotation(ToolDocs.nonNullClass(ToolSecurity.class));
+        if (security == null) {
+            throw new AssertionError("web_search must declare @ToolSecurity");
+        }
+
+        assertEquals(Danger.ELEVATED, security.defaultDanger());
+    }
 
     @Test
     void timeoutReturnsCanonicalUnsuccessfulObservation() throws Exception {

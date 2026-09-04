@@ -88,7 +88,7 @@ public final class DagTools {
                     """,
             security =
                     """
-                    Agent tool (`RiskCategory.AGENT`). The Gateway returns `NotScreened`; each \
+                    Agent tool with `GROUP_CONTROL` capability. The Gateway returns `NotScreened`; each \
                     call is structurally validated by the engine before it takes effect. \
                     Leader-only.
                     """,
@@ -226,7 +226,7 @@ public final class DagTools {
                     """,
             security =
                     """
-                    Agent tool (`RiskCategory.AGENT`). The Gateway returns `NotScreened`; the \
+                    Agent tool with `GROUP_CONTROL` capability. The Gateway returns `NotScreened`; the \
                     engine validates the removal before it takes effect. Leader-only.
                     """,
             examples = {"{\"nodeId\": \"node-2\"}", "{\"nodeId\": \"node-1\"}"},

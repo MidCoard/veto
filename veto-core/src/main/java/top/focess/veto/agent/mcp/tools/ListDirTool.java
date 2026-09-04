@@ -1,32 +1,23 @@
 package top.focess.veto.agent.mcp.tools;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
+import top.focess.veto.agent.capability.WorkspaceReadCapability;
 import top.focess.veto.agent.mcp.Doc;
-import top.focess.veto.agent.mcp.NativeTool;
 import top.focess.veto.agent.mcp.ParamCategory;
-import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.SecurityHint;
 import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDoc;
 import top.focess.veto.agent.mcp.ToolDocs;
-import top.focess.veto.agent.mcp.ToolErrors;
 import top.focess.veto.agent.mcp.ToolResultFormat;
 import top.focess.veto.agent.mcp.ToolSecurity;
-import top.focess.veto.util.Nullness;
+import top.focess.veto.agent.mcp.WorkspaceReadTool;
+import top.focess.veto.agent.screening.Danger;
 
 /** {@code list_dir} — list contents of a directory (files and child subdirectories). */
 @Component
-@ToolSecurity(risk = RiskCategory.READ_ONLY, capability = ToolCapability.WORKSPACE_READ)
-public final class ListDirTool implements NativeTool<ListDirTool.Args> {
-
-    private static final int MAX_ENTRIES = 5000;
+@ToolSecurity(capability = ToolCapability.WORKSPACE_READ, defaultDanger = Danger.SAFE)
+public final class ListDirTool implements WorkspaceReadTool<ListDirTool.Args> {
 
     @ToolDoc(
             resultFormats = {ToolResultFormat.PLAINTEXT},
@@ -81,7 +72,7 @@ public final class ListDirTool implements NativeTool<ListDirTool.Args> {
                     under the deployer policy before the listing. Under FULL_ACCESS, workspace roots are working \
                     context rather than a path boundary, so any absolute host path may be targeted; restrictive \
                     policies may fence paths. The operation is read-only \
-                    (`RiskCategory.READ_ONLY`); nothing is modified. Returned names are subject to ingress \
+                    (`WORKSPACE_READ`, default danger `SAFE`); nothing is modified. Returned names are subject to ingress \
                     masking. If the Gateway actually refuses a deployer-fenced path, change scope instead.
                     """,
             examples = {
@@ -114,42 +105,8 @@ public final class ListDirTool implements NativeTool<ListDirTool.Args> {
     }
 
     @Override
-    public @NonNull String execute(@NonNull Args args) throws IOException {
-        Path path = Path.of(args.absolutePath());
-        if (!Files.isDirectory(path)) {
-            return ToolErrors.failure("Not a directory: " + args.absolutePath());
-        }
-        StringBuilder sb = new StringBuilder();
-        List<Path> entries = new ArrayList<>(MAX_ENTRIES + 1);
-        try {
-            try (var stream = Files.list(path)) {
-                var iterator = stream.iterator();
-                while (iterator.hasNext() && entries.size() <= MAX_ENTRIES) {
-                    entries.add(iterator.next());
-                }
-            }
-        } catch (IOException | java.io.UncheckedIOException e) {
-            return ToolErrors.failure("Cannot list directory: " + args.absolutePath());
-        }
-        boolean truncated = entries.size() > MAX_ENTRIES;
-        if (truncated) {
-            entries.remove(entries.size() - 1);
-        }
-        entries.sort(
-                Comparator.comparing(
-                        p ->
-                                Nullness.requireNonNull(
-                                                p.getFileName(), "Directory entry has no file name")
-                                        .toString()));
-        for (Path entry : entries) {
-            sb.append(
-                            Nullness.requireNonNull(
-                                    entry.getFileName(), "Directory entry has no file name"))
-                    .append(Files.isDirectory(entry) ? "/\n" : "\n");
-        }
-        if (truncated) {
-            sb.append("[truncated at ").append(MAX_ENTRIES).append(" entries]\n");
-        }
-        return sb.toString();
+    public @NonNull String execute(
+            @NonNull Args args, @NonNull WorkspaceReadCapability capability) {
+        return capability.listDirectory("absolutePath");
     }
 }

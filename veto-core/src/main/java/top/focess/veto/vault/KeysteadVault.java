@@ -357,7 +357,6 @@ public class KeysteadVault {
     }
 
     /** Thrown when an operation is attempted on a locked vault. */
-    @SuppressWarnings("serial")
     public static class VaultLockedException extends RuntimeException {
         public VaultLockedException(@NonNull String message) {
             super(message);

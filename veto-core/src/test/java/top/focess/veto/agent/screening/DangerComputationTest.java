@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import top.focess.veto.agent.mcp.NativeToolDefinition;
 import top.focess.veto.agent.mcp.ParamCategory;
-import top.focess.veto.agent.mcp.RiskCategory;
+import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
@@ -43,7 +43,8 @@ class DangerComputationTest {
         return new NativeToolDefinition(
                 "view_file",
                 "read",
-                RiskCategory.READ_ONLY,
+                ToolCapability.WORKSPACE_READ,
+                Danger.SAFE,
                 false,
                 ToolDocs.nonNullClass(ReadArgs.class),
                 Map.of("path", ParamCategory.FILESYSTEM_PATH));
@@ -53,7 +54,8 @@ class DangerComputationTest {
         return new NativeToolDefinition(
                 "write_to_file",
                 "write",
-                RiskCategory.FILE_WRITE,
+                ToolCapability.WORKSPACE_WRITE,
+                Danger.ELEVATED,
                 false,
                 ToolDocs.nonNullClass(WriteArgs.class),
                 Map.of("path", ParamCategory.FILESYSTEM_PATH));
@@ -73,6 +75,31 @@ class DangerComputationTest {
                 Danger.SAFE,
                 dc.compute(
                         readDef(),
+                        call,
+                        ws(root),
+                        DeployerPolicy.FULL_ACCESS,
+                        ProtectedSet.empty()));
+    }
+
+    @Test
+    void explicitDefaultDangerIsTheFloorRegardlessOfCapability() throws Exception {
+        NativeToolDefinition dangerousRead =
+                new NativeToolDefinition(
+                        "sensitive_read",
+                        "read",
+                        ToolCapability.WORKSPACE_READ,
+                        Danger.DANGEROUS,
+                        false,
+                        ToolDocs.nonNullClass(ReadArgs.class),
+                        Map.of("path", ParamCategory.FILESYSTEM_PATH));
+        ToolCall call =
+                new ToolCall(
+                        "sensitive_read", Map.of("path", root.resolve("README.md").toString()));
+
+        assertEquals(
+                Danger.DANGEROUS,
+                dc.compute(
+                        dangerousRead,
                         call,
                         ws(root),
                         DeployerPolicy.FULL_ACCESS,
@@ -154,7 +181,8 @@ class DangerComputationTest {
                 new NativeToolDefinition(
                         "run_command",
                         "exec",
-                        RiskCategory.SHELL_EXEC,
+                        ToolCapability.PROCESS_EXECUTION,
+                        Danger.ELEVATED,
                         false,
                         ToolDocs.nonNullClass(ExecArgs.class),
                         Map.of());
@@ -181,7 +209,8 @@ class DangerComputationTest {
                 new NativeToolDefinition(
                         "run_command",
                         "exec",
-                        RiskCategory.SHELL_EXEC,
+                        ToolCapability.PROCESS_EXECUTION,
+                        Danger.ELEVATED,
                         false,
                         ToolDocs.nonNullClass(ExecArgs.class),
                         Map.of());
@@ -278,7 +307,8 @@ class DangerComputationTest {
                 new NativeToolDefinition(
                         "run_command",
                         "exec",
-                        RiskCategory.SHELL_EXEC,
+                        ToolCapability.PROCESS_EXECUTION,
+                        Danger.ELEVATED,
                         false,
                         ToolDocs.nonNullClass(ExecArgs.class),
                         Map.of());
@@ -300,7 +330,8 @@ class DangerComputationTest {
                 new NativeToolDefinition(
                         "run_command",
                         "exec",
-                        RiskCategory.SHELL_EXEC,
+                        ToolCapability.PROCESS_EXECUTION,
+                        Danger.ELEVATED,
                         false,
                         ToolDocs.nonNullClass(ExecArgs.class),
                         Map.of());
@@ -329,7 +360,8 @@ class DangerComputationTest {
                 new NativeToolDefinition(
                         "run_command",
                         "exec",
-                        RiskCategory.SHELL_EXEC,
+                        ToolCapability.PROCESS_EXECUTION,
+                        Danger.ELEVATED,
                         false,
                         ToolDocs.nonNullClass(ExecArgs.class),
                         Map.of());
@@ -358,7 +390,8 @@ class DangerComputationTest {
                 new NativeToolDefinition(
                         "run_command",
                         "exec",
-                        RiskCategory.SHELL_EXEC,
+                        ToolCapability.PROCESS_EXECUTION,
+                        Danger.ELEVATED,
                         false,
                         ToolDocs.nonNullClass(ExecArgs.class),
                         Map.of());
@@ -387,7 +420,8 @@ class DangerComputationTest {
                 new NativeToolDefinition(
                         "run_command",
                         "exec",
-                        RiskCategory.SHELL_EXEC,
+                        ToolCapability.PROCESS_EXECUTION,
+                        Danger.ELEVATED,
                         false,
                         ToolDocs.nonNullClass(ExecArgs.class),
                         Map.of());

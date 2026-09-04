@@ -23,10 +23,12 @@ import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.mcp.AgentToolDefinition;
 import top.focess.veto.agent.mcp.DefaultToolEngine;
 import top.focess.veto.agent.mcp.ToolCallContextHolder;
+import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDefinition;
 import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.mcp.ToolEngine;
 import top.focess.veto.agent.mcp.ToolResult;
+import top.focess.veto.agent.screening.Danger;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.llm.core.ProviderType;
@@ -480,7 +482,12 @@ class AgentEndToEndTest {
         public ToolDefinition resolveDefinition(@NonNull String toolName) {
             if ("create_group".equals(toolName) || "disband_group".equals(toolName)) {
                 return new AgentToolDefinition(
-                        toolName, "transform stub", ToolDocs.nonNullClass(Void.class), Map.of());
+                        toolName,
+                        "transform stub",
+                        ToolCapability.GROUP_CONTROL,
+                        Danger.SAFE,
+                        ToolDocs.nonNullClass(Void.class),
+                        Map.of());
             }
             return null;
         }

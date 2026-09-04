@@ -9,7 +9,6 @@ import org.jspecify.annotations.NonNull;
  * it converts this back into a graceful plain-text {@code VetoResponse} via {@link #text()}, so a
  * persistently non-JSON answer still surfaces as the agent's message instead of an episode error.
  */
-@SuppressWarnings("serial")
 public class PlainTextResponseException extends LlmException {
 
     private final @NonNull String text;

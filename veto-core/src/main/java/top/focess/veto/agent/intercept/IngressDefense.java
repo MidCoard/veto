@@ -11,7 +11,7 @@ import top.focess.veto.agent.mcp.AgentToolDefinition;
 import top.focess.veto.agent.mcp.NativeToolDefinition;
 import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.RemoteToolDefinition;
-import top.focess.veto.agent.mcp.RiskCategory;
+import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDefinition;
 import top.focess.veto.llm.core.ToolCall;
 
@@ -75,7 +75,7 @@ public class IngressDefense {
         String body = result.content();
 
         // On a successful write, the recorded read-snapshot is now stale — invalidate it.
-        if (result.success() && def.risk() == RiskCategory.FILE_WRITE) {
+        if (result.success() && def.capability() == ToolCapability.WORKSPACE_WRITE) {
             invalidateWritePath(call, def, readHistory);
         }
 
@@ -85,9 +85,10 @@ public class IngressDefense {
         // the advisory layer over the deterministic SecretMasker floor — it always
         // applies the deterministic redaction and may additionally surface a HighRiskSignal.
         if (maskObservation
-                && (def.risk() == RiskCategory.READ_ONLY
-                        || def.risk() == RiskCategory.SHELL_EXEC
-                        || def.risk() == RiskCategory.NETWORK)) {
+                && (def.capability() == ToolCapability.WORKSPACE_READ
+                        || def.capability() == ToolCapability.PROCESS_EXECUTION
+                        || def.capability() == ToolCapability.NETWORK_EGRESS
+                        || def.capability() == ToolCapability.REMOTE_UNKNOWN)) {
             if (semanticMasker != null) {
                 SemanticMasker.MaskResult masked = semanticMasker.maskWithSignal(body, call, def);
                 body = masked.masked();

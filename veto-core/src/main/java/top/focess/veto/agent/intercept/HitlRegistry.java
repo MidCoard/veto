@@ -15,7 +15,7 @@ import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.mcp.AgentToolDefinition;
 import top.focess.veto.agent.mcp.NativeToolDefinition;
 import top.focess.veto.agent.mcp.ParamCategory;
-import top.focess.veto.agent.mcp.RiskCategory;
+import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDefinition;
 import top.focess.veto.agent.screening.Danger;
 import top.focess.veto.agent.screening.Relevance;
@@ -218,14 +218,16 @@ public class HitlRegistry {
         if (def instanceof AgentToolDefinition) {
             return VetoScenario.GENERIC;
         }
-        RiskCategory risk = def.risk();
-        if (risk == RiskCategory.READ_ONLY) {
+        ToolCapability capability = def.capability();
+        if (capability == ToolCapability.WORKSPACE_READ) {
             return VetoScenario.READ;
         }
-        if (risk == RiskCategory.FILE_WRITE) {
+        if (capability == ToolCapability.WORKSPACE_WRITE) {
             return VetoScenario.WRITE;
         }
-        if (risk == RiskCategory.SHELL_EXEC || risk == RiskCategory.NETWORK) {
+        if (capability == ToolCapability.PROCESS_EXECUTION
+                || capability == ToolCapability.NETWORK_EGRESS
+                || capability == ToolCapability.REMOTE_UNKNOWN) {
             if (screening.danger() == Danger.CRITICAL) {
                 return VetoScenario.EXEC_DETERMINISTIC;
             }
@@ -500,13 +502,15 @@ public class HitlRegistry {
             return new PermissionGrant.LegacySessionRule(call.toolName(), args);
         }
         // Per-tool shape: read / write / command.
-        if (def.risk() == RiskCategory.READ_ONLY) {
+        if (def.capability() == ToolCapability.WORKSPACE_READ) {
             return buildReadGrant(agentId, call, def);
         }
-        if (def.risk() == RiskCategory.FILE_WRITE) {
+        if (def.capability() == ToolCapability.WORKSPACE_WRITE) {
             return buildWriteGrant(agentId, call, def);
         }
-        if (def.risk() == RiskCategory.SHELL_EXEC || def.risk() == RiskCategory.NETWORK) {
+        if (def.capability() == ToolCapability.PROCESS_EXECUTION
+                || def.capability() == ToolCapability.NETWORK_EGRESS
+                || def.capability() == ToolCapability.REMOTE_UNKNOWN) {
             return buildCommandGrant(agentId, call);
         }
         return null;

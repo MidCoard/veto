@@ -30,19 +30,21 @@ import top.focess.veto.sandbox.TestSandboxFactory;
 class InputTaskToolTest {
 
     private @NonNull BackgroundTaskManager manager;
+    private @NonNull UUID sessionId;
 
     @BeforeEach
     void setUp() {
         manager =
                 new BackgroundTaskManager(
                         new SandboxManager(TestSandboxFactory.uncontainedSubprocesses()));
+        sessionId = UUID.randomUUID();
         ToolCallContextHolder.set(
                 new ToolCallContext(
                         "agent-input",
-                        UUID.randomUUID(),
+                        sessionId,
                         null,
                         null,
-                        UUID.randomUUID(),
+                        sessionId,
                         ToolResultPresentationMode.BASIC,
                         ToolExecutionPermit.empty()));
     }
@@ -69,10 +71,27 @@ class InputTaskToolTest {
                                 List.of(
                                         "-NoProfile",
                                         "-Command",
-                                        "$line=[Console]::In.ReadLine(); [Console]::Out.WriteLine('got:'+$line)")),
+                                        "$line=[Console]::In.ReadLine();"
+                                                + " [Console]::Out.WriteLine('got:'+$line)")),
                         cwd,
                         30,
-                        null);
+                        sessionId);
+
+        ToolCallContextHolder.set(
+                new ToolCallContext(
+                        "agent-input",
+                        UUID.randomUUID(),
+                        null,
+                        null,
+                        sessionId,
+                        ToolResultPresentationMode.BASIC,
+                        ToolExecutionPermit.empty()
+                                .withTaskBinding(
+                                        new ToolExecutionPermit.TaskBinding(
+                                                task.taskId(),
+                                                "agent-input",
+                                                sessionId,
+                                                task.taskInstanceId()))));
 
         String response =
                 new InputTaskTool(manager)

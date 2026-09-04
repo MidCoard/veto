@@ -1,6 +1,8 @@
 package top.focess.veto.memory;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -20,47 +22,44 @@ import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.mcp.ToolErrors;
 import top.focess.veto.agent.mcp.ToolResultFormat;
 import top.focess.veto.memory.embedder.Embedder;
+import top.focess.veto.util.Nullness;
 
 /**
- * Agent-facing memory tools. They carry {@link top.focess.veto.agent.mcp.RiskCategory#AGENT}, so
- * the Gateway returns {@code NotScreened}. They still flow through the LoopInterceptor chain for
- * audit.
+ * Agent-facing memory tools. Their agent-tool definition flavour means the Gateway returns {@code
+ * NotScreened}. They still flow through the LoopInterceptor chain for audit.
  */
-@SuppressWarnings("DuplicatedCode") // Each native memory tool applies the same context guard.
 public final class MemoryTools {
 
     private static final int MAX_QUERY_CHARS = 4000;
-    private static final int MAX_TOP_K = 20;
-    private static final int MAX_INSIGHT_CHARS = 64_000;
+    private static final int RECALL_RESULT_LIMIT = 5;
+    private static final float RECALL_SCORE_FLOOR = 0.5f;
+    private static final int MAX_MEMORY_CHARS = 64_000;
 
     private MemoryTools() {}
 
-    /** {@code recall_session} — search captured chunks from the current Session LTM. */
+    /** {@code recall_memory} — search current-session memories and cross-session insights. */
     @Component
     @ToolDoc(
             resultFormats = {ToolResultFormat.PLAINTEXT},
             description =
-                    "Search the current session's captured long-term memory (Session LTM) "
-                            + "for relevant context.",
+                    "Search the current session's captured memory and the user's cross-session "
+                            + "insights together.",
             behavior =
                     """
-                    Embeds `query` using the local embedding model, performs cosine similarity search \
-                    in Session LTM, filters results by `scoreFloor`, and returns the top-K matches \
-                    ranked by similarity. `query` is capped at 4000 characters; `topK` defaults to \
-                    5 for non-positive values and is capped at 20; `scoreFloor` defaults to 0.5 and \
-                    is clamped into [0,1]. Source attribution and a content snippet of at most 240 \
-                    characters are included.
+                    Embeds `query`, searches both the current session and the user's cross-session \
+                    insights, combines the matches, and returns the 5 highest-scoring results above \
+                    the 0.5 similarity threshold. `query` is capped at 4000 characters. Every result \
+                    identifies its tier and source and includes a content snippet of at most 240 \
+                    characters.
                     """,
             whenToUse =
                     """
-                    Use `recall_session` when you need to recover context from earlier in this session \
-                    - a previous tool result, a decision made, or an observation that is no longer in \
-                    the active context window. The vector search returns the most similar memories \
-                    ranked by cosine similarity.
+                    Use `recall_memory` when relevant information is no longer in the active context: \
+                    earlier decisions or observations from this session, or reusable knowledge saved \
+                    from previous sessions.
                     """,
             whenNotToUse =
                     """
-                    - Do not use `recall_session` for cross-session knowledge - use `recall_insights`.
                     - Do not use it when the information is still in your active context - just \
                     reference it directly.
                     - Do not use it as a substitute for `view_file` or `grep_search` for finding code.
@@ -74,47 +73,47 @@ public final class MemoryTools {
                     """,
             errorsAndEdgeCases =
                     """
-                    Empty or unknown queries and a restrictive `scoreFloor` can legitimately yield zero \
-                    matches. Refine the query or lower the floor; never invent absent memories.
+                    An unknown query or empty memory stores can legitimately yield zero matches. \
+                    Refine the query before retrying; never invent absent memories.
                     """,
             security =
                     """
-                    Agent tool (`RiskCategory.AGENT`). The Gateway does not screen it. Tenant \
-                    isolation enforced - the agent can only see memories belonging to its user. \
-                    Safe to call any time.
+                    Agent tool with `MEMORY_READ` capability. The Gateway does not screen it. Results \
+                    from the current session are restricted to this session, and all results are restricted to \
+                    the owning user. Safe to call any time.
                     """,
             examples = {
                 "{\"query\": \"UserService authentication\"}",
-                "{\"query\": \"build configuration\", \"topK\": 3, \"scoreFloor\": 0.6}"
+                "{\"query\": \"build configuration\"}"
             },
             returnExamples = {
-                "1 memories:\n- [SESSION] id=123e4567-e89b-12d3-a456-426614174000 score=0.820 src=turn_range {from=12, to=12}\n"
+                "2 memories:\n- [CROSS_SESSION] id=123e4567-e89b-12d3-a456-426614174000 score=0.880 src=INSIGHT {}\n"
+                        + "  Prefer constructor injection over field injection...\n"
+                        + "- [SESSION] id=123e4567-e89b-12d3-a456-426614174001 score=0.820 src=turn_range {from=12, to=12}\n"
                         + "  UserService.authenticate validates the JWT expiry and...",
                 "no matching memories"
             })
-    public static final class RecallSession implements AgentTool<RecallSession.Args> {
+    public static final class RecallMemory implements AgentTool<RecallMemory.Args> {
 
         private final @NonNull MemoryStore store;
 
-        public RecallSession(@NonNull MemoryStore store) {
+        public RecallMemory(@NonNull MemoryStore store) {
             this.store = store;
         }
 
         public record Args(
                 @SecurityHint(ParamCategory.GENERIC) @Doc("Free-text query to embed + search.")
-                        @NonNull String query,
-                @Doc("Optional top-K; defaults to 5.") Integer topK,
-                @Doc("Optional score floor in [0,1]; defaults to 0.5.") Float scoreFloor) {}
+                        @NonNull String query) {}
 
         @Override
         public @NonNull String getName() {
-            return "recall_session";
+            return "recall_memory";
         }
 
         @Override
         public @NonNull String getDescription() {
-            return "Search the current session's captured long-term memory (Session LTM) "
-                    + "for relevant context.";
+            return "Search the current session's captured memory and the user's cross-session "
+                    + "insights together.";
         }
 
         @Override
@@ -129,13 +128,8 @@ public final class MemoryTools {
 
         @Override
         public @NonNull String execute(@NonNull Args args) {
-            ToolCallContext ctx = ToolCallContextHolder.get();
-            if (ctx == null) {
-                return ToolErrors.failure("no session context; memories not recalled");
-            }
+            ToolCallContext ctx = contextOrFailure("no session context; memories not recalled");
             String query = boundedQuery(args.query());
-            int topK = boundedTopK(args.topK());
-            float scoreFloor = args.scoreFloor() != null ? clamp01(args.scoreFloor()) : 0.5f;
             UUID sessionId = ctx.sessionId();
             if (sessionId == null) {
                 try {
@@ -144,143 +138,45 @@ public final class MemoryTools {
                     return ToolErrors.failure("no session context; memories not recalled");
                 }
             }
-            MemoryQuery q =
+            MemoryQuery sessionQuery =
                     new MemoryQuery(
                             query,
                             List.of(MemoryTier.SESSION),
                             sessionId,
                             null,
                             ctx.userId(),
-                            topK,
-                            scoreFloor);
-            return formatResults(store.search(q));
-        }
-    }
-
-    /** {@code recall_insights} — search distilled insights from Cross-Session LTM. */
-    @Component
-    @ToolDoc(
-            resultFormats = {ToolResultFormat.PLAINTEXT},
-            description =
-                    "Search the user's distilled insights (Cross-Session LTM) for knowledge "
-                            + "that spans multiple sessions.",
-            behavior =
-                    """
-                    Embeds `query` and performs cosine similarity search in Cross-Session LTM \
-                    (curated insights promoted from Session LTM). Returns top-K matches ranked by \
-                    similarity, filtered by `scoreFloor`. `query` is capped at 4000 characters; \
-                    `topK` defaults to 5 for non-positive values and is capped at 20; `scoreFloor` \
-                    defaults to 0.5 and is clamped into [0,1]. Each content snippet is capped at 240 \
-                    characters. Cross-session visibility is user-specific.
-                    """,
-            whenToUse =
-                    """
-                    Use `recall_insights` when you need knowledge that persists across sessions - \
-                    project conventions, recurring patterns, lessons learned, or architectural \
-                    decisions that were previously captured as insights.
-                    """,
-            whenNotToUse =
-                    """
-                    - Do not use `recall_insights` for current-session context - use `recall_session`.
-                    - Do not use it when the information is in your active context.
-                    - Do not use it to read files - use `view_file`.
-                    """,
-            resultContract =
-                    """
-                    Plain text beginning `<count> memories:`, followed by bullet entries containing \
-                    tier, id, score, source, and content. No match returns `no matching memories`. \
-                    Missing user context fails with `no user context; insights not recalled`.
-                    """,
-            errorsAndEdgeCases =
-                    """
-                    An unknown query, an empty insight store, or a restrictive `scoreFloor` can legitimately \
-                    yield zero matches. Refine the query or lower the floor before retrying.
-                    """,
-            security =
-                    """
-                    Agent tool (`RiskCategory.AGENT`). The Gateway does not screen it. Tenant \
-                    isolation enforced - only the owning user's insights are visible. Safe to call \
-                    any time.
-                    """,
-            examples = {
-                "{\"query\": \"project configuration patterns\"}",
-                "{\"query\": \"authentication\", \"topK\": 3}"
-            },
-            returnExamples = {
-                "1 memories:\n- [CROSS_SESSION] id=123e4567-e89b-12d3-a456-426614174000 score=0.880 src=INSIGHT {}\n"
-                        + "  Prefer constructor injection over field injection...",
-                "no matching memories"
-            })
-    public static final class RecallInsights implements AgentTool<RecallInsights.Args> {
-
-        private final @NonNull MemoryStore store;
-
-        public RecallInsights(@NonNull MemoryStore store) {
-            this.store = store;
-        }
-
-        public record Args(
-                @SecurityHint(ParamCategory.GENERIC) @Doc("Free-text query to embed + search.")
-                        @NonNull String query,
-                @Doc("Optional top-K; defaults to 5.") Integer topK,
-                @Doc("Optional score floor in [0,1]; defaults to 0.5.") Float scoreFloor) {}
-
-        @Override
-        public @NonNull String getName() {
-            return "recall_insights";
-        }
-
-        @Override
-        public @NonNull String getDescription() {
-            return "Search the user's distilled insights (Cross-Session LTM) for knowledge "
-                    + "that spans multiple sessions.";
-        }
-
-        @Override
-        public @NonNull Class<Args> getArgsClass() {
-            return ToolDocs.nonNullClass(Args.class);
-        }
-
-        @Override
-        public @NonNull ToolCapability getCapability() {
-            return ToolCapability.MEMORY_READ;
-        }
-
-        @Override
-        public @NonNull String execute(@NonNull Args args) {
-            ToolCallContext ctx = ToolCallContextHolder.get();
-            if (ctx == null) {
-                return ToolErrors.failure("no user context; insights not recalled");
-            }
-            String query = boundedQuery(args.query());
-            int topK = boundedTopK(args.topK());
-            float scoreFloor = args.scoreFloor() != null ? clamp01(args.scoreFloor()) : 0.5f;
-            MemoryQuery q =
+                            RECALL_RESULT_LIMIT,
+                            RECALL_SCORE_FLOOR);
+            MemoryQuery crossSessionQuery =
                     new MemoryQuery(
                             query,
                             List.of(MemoryTier.CROSS_SESSION),
                             null,
                             null,
                             ctx.userId(),
-                            topK,
-                            scoreFloor);
-            return formatResults(store.search(q));
+                            RECALL_RESULT_LIMIT,
+                            RECALL_SCORE_FLOOR);
+            List<MemoryStore.ScoredMemory> matches = new ArrayList<>(RECALL_RESULT_LIMIT * 2);
+            matches.addAll(store.search(sessionQuery));
+            matches.addAll(store.search(crossSessionQuery));
+            matches.sort(Comparator.comparingDouble(MemoryStore.ScoredMemory::score).reversed());
+            if (matches.size() > RECALL_RESULT_LIMIT) {
+                matches = new ArrayList<>(matches.subList(0, RECALL_RESULT_LIMIT));
+            }
+            return formatResults(matches);
         }
     }
 
-    /**
-     * {@code write_insight} — write a new insight to Cross-Session LTM, or promote a Session LTM
-     * item.
-     */
+    /** {@code write_memory} — write durable memory or promote a Session-LTM item. */
     @Component
     @ToolDoc(
             resultFormats = {ToolResultFormat.PLAINTEXT},
             description =
-                    "Write a new insight to Cross-Session LTM, or promote a Session LTM memory "
-                            + "to cross-session visibility.",
+                    "Write durable cross-session memory, or promote a Session-LTM memory to "
+                            + "cross-session visibility.",
             behavior =
                     """
-                    Set `mode` to `WRITE` to store `content` as a new Cross-Session insight, tagged \
+                    Set `mode` to `WRITE` to store `content` as new durable Cross-Session memory, tagged \
                     with a UUID `projectId` when provided. Set `mode` to `PROMOTE` and provide only \
                     `promoteMemoryId` to replace an existing Session-LTM memory with a new \
                     Cross-Session memory. Non-blank fields from the other mode are rejected. A \
@@ -288,14 +184,14 @@ public final class MemoryTools {
                     """,
             whenToUse =
                     """
-                    Use `write_insight` to persist knowledge that will be useful in future sessions - \
+                    Use `write_memory` to persist knowledge that will be useful in future sessions - \
                     project conventions, recurring patterns, architectural decisions, or lessons \
                     learned. Also use it to promote a Session LTM memory to Cross-Session LTM when \
                     its value extends beyond this session.
                     """,
             whenNotToUse =
                     """
-                    - Do not use `write_insight` for transient context that only matters this session - \
+                    - Do not use `write_memory` for transient context that only matters this session - \
                     Session LTM captures automatically.
                     - Do not use it to record verbatim file contents - reference the file path instead.
                     - Do not write trivial or obvious facts; insights should be non-obvious, reusable \
@@ -304,27 +200,27 @@ public final class MemoryTools {
             resultContract =
                     """
                     - Direct-write success: \
-                    `insight written: <memory UUID>`.
+                    `memory written: <memory UUID>`.
                     - Promotion success: `promoted: <new memory UUID>`.
                     - Promotion failure: \
                     `memory not found or not owned; not promoted`.
                     - Write failure: \
-                    `no content; insight not written` or \
-                    `insight exceeds 64000 characters; not written` or \
-                    `invalid projectId; insight not written` (the value is not a UUID).
-                    - Mode-field mismatch: `PROMOTE accepts only promoteMemoryId; insight not \
-                    promoted` or `WRITE does not accept promoteMemoryId; insight not written`.
+                    `no content; memory not written` or \
+                    `memory exceeds 64000 characters; not written` or \
+                    `invalid projectId; memory not written` (the value is not a UUID).
+                    - Mode-field mismatch: `PROMOTE accepts only promoteMemoryId; memory not \
+                    promoted` or `WRITE does not accept promoteMemoryId; memory not written`.
                     """,
             errorsAndEdgeCases =
                     """
                     `WRITE` accepts content plus an optional project id; `PROMOTE` accepts only a memory id. \
                     Correct a mode/field mismatch before retrying. Ownership and absence deliberately share a \
                     promotion failure so tenant isolation leaks nothing. Never store secrets or verbatim file \
-                    contents in an insight.
+                    contents in durable memory.
                     """,
             security =
                     """
-                    Agent tool (`RiskCategory.AGENT`). The Gateway does not screen it. Self-edit \
+                    Agent tool with `MEMORY_WRITE` capability. The Gateway does not screen it. Self-edit \
                     operation. The supplied content is stored as given; this tool does not perform \
                     Gateway redaction. Never supply secrets.
                     """,
@@ -334,15 +230,15 @@ public final class MemoryTools {
                 "{\"mode\": \"WRITE\", \"content\": \"Prefer constructor injection\", \"projectId\": \"123e4567-e89b-12d3-a456-426614174000\"}"
             },
             returnExamples = {
-                "insight written: 123e4567-e89b-12d3-a456-426614174000",
+                "memory written: 123e4567-e89b-12d3-a456-426614174000",
                 "promoted: 123e4567-e89b-12d3-a456-426614174000"
             })
-    public static final class WriteInsight implements AgentTool<WriteInsight.Args> {
+    public static final class WriteMemory implements AgentTool<WriteMemory.Args> {
 
         private final @NonNull MemoryStore store;
         private final @NonNull Embedder embedder;
 
-        public WriteInsight(@NonNull MemoryStore store, @NonNull Embedder embedder) {
+        public WriteMemory(@NonNull MemoryStore store, @NonNull Embedder embedder) {
             this.store = store;
             this.embedder = embedder;
         }
@@ -353,10 +249,11 @@ public final class MemoryTools {
         }
 
         public record Args(
-                @Doc("Required operation: WRITE a new insight or PROMOTE an existing memory.")
+                @Doc("Required operation: WRITE new durable memory or PROMOTE existing memory.")
                         @NonNull Mode mode,
                 @SecurityHint(ParamCategory.GENERIC)
-                        @Doc("Insight text; required only in WRITE mode. Never include secrets.")
+                        @Doc(
+                                "Durable memory text; required only in WRITE mode. Never include secrets.")
                         @RequiredWhen(field = "mode", values = "WRITE", rejectBlank = true)
                         String content,
                 @Doc("Session-LTM memory UUID; required only in PROMOTE mode.")
@@ -366,13 +263,13 @@ public final class MemoryTools {
 
         @Override
         public @NonNull String getName() {
-            return "write_insight";
+            return "write_memory";
         }
 
         @Override
         public @NonNull String getDescription() {
-            return "Write a new insight to Cross-Session LTM, or promote a Session LTM memory "
-                    + "to cross-session visibility.";
+            return "Write durable cross-session memory, or promote a Session-LTM memory to "
+                    + "cross-session visibility.";
         }
 
         @Override
@@ -387,19 +284,17 @@ public final class MemoryTools {
 
         @Override
         public @NonNull String execute(@NonNull Args args) {
-            ToolCallContext ctx = ToolCallContextHolder.get();
-            if (ctx == null) {
-                return ToolErrors.failure("no user context; insight not written");
-            }
+            ToolCallContext ctx = contextOrFailure("no user context; memory not written");
             if (args.mode() == Mode.PROMOTE) {
                 if ((args.content() != null && !args.content().isBlank())
                         || (args.projectId() != null && !args.projectId().isBlank())) {
                     return ToolErrors.failure(
-                            "PROMOTE accepts only promoteMemoryId; insight not promoted");
+                            "PROMOTE accepts only promoteMemoryId; memory not promoted");
                 }
-                // The pre-dispatch @RequiredWhen contract guarantees this mode-specific value.
-                @SuppressWarnings("nullness")
-                @NonNull String promoteId = args.promoteMemoryId();
+                String promoteId =
+                        Nullness.requireNonNull(
+                                args.promoteMemoryId(),
+                                "RequiredWhen validation must supply promoteMemoryId");
                 try {
                     MemoryId promoted =
                             store.promote(
@@ -413,17 +308,17 @@ public final class MemoryTools {
             }
             if (args.promoteMemoryId() != null && !args.promoteMemoryId().isBlank()) {
                 return ToolErrors.failure(
-                        "WRITE does not accept promoteMemoryId; insight not written");
+                        "WRITE does not accept promoteMemoryId; memory not written");
             }
-            // The pre-dispatch @RequiredWhen contract guarantees this mode-specific value.
-            @SuppressWarnings("nullness")
-            @NonNull String content = args.content();
-            if (content.length() > MAX_INSIGHT_CHARS) {
-                return ToolErrors.failure("insight exceeds 64000 characters; not written");
+            String content =
+                    Nullness.requireNonNull(
+                            args.content(), "RequiredWhen validation must supply content");
+            if (content.length() > MAX_MEMORY_CHARS) {
+                return ToolErrors.failure("memory exceeds 64000 characters; not written");
             }
             UUID projectId = parseUuidOrNull(args.projectId());
             if (args.projectId() != null && !args.projectId().isBlank() && projectId == null) {
-                return ToolErrors.failure("invalid projectId; insight not written");
+                return ToolErrors.failure("invalid projectId; memory not written");
             }
             Memory m =
                     new Memory(
@@ -434,14 +329,14 @@ public final class MemoryTools {
                             projectId,
                             content,
                             embedder.embed(content),
-                            Memory.SourceRef.insightOrigin("write_insight"),
+                            Memory.SourceRef.insightOrigin("write_memory"),
                             Instant.now());
             MemoryId id = store.add(m);
-            return "insight written: " + id.value();
+            return "memory written: " + id.value();
         }
     }
 
-    /** {@code forget} — explicitly drop a memory. */
+    /** {@code forget_memory} — explicitly drop a memory. */
     @Component
     @ToolDoc(
             resultFormats = {ToolResultFormat.PLAINTEXT},
@@ -453,12 +348,12 @@ public final class MemoryTools {
                     """,
             whenToUse =
                     """
-                    Use `forget` when a previously captured memory or insight is wrong, outdated, or \
+                    Use `forget_memory` when a previously captured memory or insight is wrong, outdated, or \
                     no longer relevant - correcting stale knowledge before it misleads future reasoning.
                     """,
             whenNotToUse =
                     """
-                    - Do not use `forget` to clear session context - that is automatic.
+                    - Do not use `forget_memory` to clear session context - that is automatic.
                     - Do not use it speculatively; only forget what you know is wrong.
                     - Do not forget memories you have not verified are incorrect.
                     """,
@@ -470,21 +365,21 @@ public final class MemoryTools {
                     """,
             errorsAndEdgeCases =
                     """
-                    Use an id returned by a recall or write tool. Ownership and absence deliberately \
+                    Use an id returned by `recall_memory` or `write_memory`. Ownership and absence deliberately \
                     share the contract's failure body so tenant isolation reveals nothing.
                     """,
             security =
                     """
-                    Agent tool (`RiskCategory.AGENT`). The Gateway does not screen it. Permanent \
+                    Agent tool with `MEMORY_WRITE` capability. The Gateway does not screen it. Permanent \
                     deletion. Call it only for a memory you have verified should be removed.
                     """,
             examples = {"{\"memoryId\": \"123e4567-e89b-12d3-a456-426614174000\"}"},
             returnExamples = {"forgotten: 123e4567-e89b-12d3-a456-426614174000"})
-    public static final class Forget implements AgentTool<Forget.Args> {
+    public static final class ForgetMemory implements AgentTool<ForgetMemory.Args> {
 
         private final @NonNull MemoryStore store;
 
-        public Forget(@NonNull MemoryStore store) {
+        public ForgetMemory(@NonNull MemoryStore store) {
             this.store = store;
         }
 
@@ -494,7 +389,7 @@ public final class MemoryTools {
 
         @Override
         public @NonNull String getName() {
-            return "forget";
+            return "forget_memory";
         }
 
         @Override
@@ -514,10 +409,7 @@ public final class MemoryTools {
 
         @Override
         public @NonNull String execute(@NonNull Args args) {
-            ToolCallContext ctx = ToolCallContextHolder.get();
-            if (ctx == null) {
-                return ToolErrors.failure("no user context; nothing forgotten");
-            }
+            ToolCallContext ctx = contextOrFailure("no user context; nothing forgotten");
             String id = args.memoryId();
             if (id.isBlank()) {
                 return ToolErrors.failure("memory not found or not owned; nothing forgotten");
@@ -573,18 +465,13 @@ public final class MemoryTools {
         return v instanceof UUID u ? u : null;
     }
 
-    /** Clamps a score-floor value into [0, 1] (the {@link MemoryQuery} validity range). */
-    static float clamp01(float v) {
-        return Math.clamp(v, 0f, 1f);
-    }
-
-    private static int boundedTopK(Integer requested) {
-        int value = requested != null && requested > 0 ? requested : 5;
-        return Math.min(value, MAX_TOP_K);
-    }
-
     private static @NonNull String boundedQuery(@NonNull String query) {
         return query.length() <= MAX_QUERY_CHARS ? query : query.substring(0, MAX_QUERY_CHARS);
+    }
+
+    private static @NonNull ToolCallContext contextOrFailure(@NonNull String message) {
+        ToolCallContext context = ToolCallContextHolder.get();
+        return context == null ? ToolErrors.failure(message) : context;
     }
 
     /** Parses a UUID string, returning null on blank/invalid input (for optional id args). */

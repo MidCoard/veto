@@ -15,6 +15,7 @@ import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDefinition;
 import top.focess.veto.agent.mcp.ToolEngine;
 import top.focess.veto.agent.mcp.ToolResult;
+import top.focess.veto.agent.screening.Danger;
 import top.focess.veto.llm.core.ToolCall;
 
 class RoleToolFilterTest {
@@ -59,7 +60,7 @@ class RoleToolFilterTest {
 
     private static @NonNull AgentToolDefinition tool(
             @NonNull String name, @NonNull ToolCapability capability) {
-        return new AgentToolDefinition(name, name, capability, Object.class, Map.of());
+        return new AgentToolDefinition(name, name, capability, Danger.SAFE, Object.class, Map.of());
     }
 
     private static @NonNull ToolEngine engine() {

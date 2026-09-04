@@ -9,7 +9,6 @@ import org.jspecify.annotations.NonNull;
  * decide whether a transient failure (rate-limit, timeout) is worth a backoff retry, versus a
  * permanent failure (auth, capability) that must surface immediately.
  */
-@SuppressWarnings("serial")
 public class LlmException extends RuntimeException {
 
     private final boolean retryable;

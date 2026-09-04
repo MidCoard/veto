@@ -9,7 +9,6 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.mcp.Doc;
 import top.focess.veto.agent.mcp.NativeTool;
-import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.ToolCallContextHolder;
 import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDoc;
@@ -17,6 +16,7 @@ import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.mcp.ToolErrors;
 import top.focess.veto.agent.mcp.ToolResultFormat;
 import top.focess.veto.agent.mcp.ToolSecurity;
+import top.focess.veto.agent.screening.Danger;
 import top.focess.veto.llm.config.LlmJacksonConfig;
 import top.focess.veto.sandbox.BackgroundTaskManager;
 
@@ -25,7 +25,7 @@ import top.focess.veto.sandbox.BackgroundTaskManager;
  * stopping an already-exited task reports its final status without error.
  */
 @Component
-@ToolSecurity(risk = RiskCategory.AGENT, capability = ToolCapability.TASK_CONTROL)
+@ToolSecurity(capability = ToolCapability.TASK_CONTROL, defaultDanger = Danger.SAFE)
 public final class StopTaskTool implements NativeTool<StopTaskTool.Args> {
 
     private final @NonNull BackgroundTaskManager taskManager;
@@ -46,10 +46,9 @@ public final class StopTaskTool implements NativeTool<StopTaskTool.Args> {
             behavior =
                     """
                     Requests a force-stop of the task's direct process and waits up to five seconds \
-                    for its final status. A completed stop is recorded with cause AGENT_STOP. \
-                    Idempotent: stopping a task that already exited reports `already_exited` and its \
-                    final status without error. The task stays in the \
-                    registry (queryable via `view_task`) so you can still read its final output.
+                    for its final status. Idempotent: stopping a task that already exited reports \
+                    `already_exited` and its final status without error. The task remains queryable \
+                    with `view_task`, including its final output.
                     """,
             whenToUse =
                     """
@@ -61,7 +60,7 @@ public final class StopTaskTool implements NativeTool<StopTaskTool.Args> {
             whenNotToUse =
                     """
                     - Do not stop tasks with an OS kill command (`taskkill` / `kill`) - that \
-                    bypasses the task registry, is classified DANGEROUS, and needs approval. Use \
+                    bypasses task tracking and requires separate approval. Use \
                     `stop_task` instead.
                     - Do not use it to run or inspect anything - it only stops (use `view_task` \
                     to inspect).
@@ -80,7 +79,7 @@ public final class StopTaskTool implements NativeTool<StopTaskTool.Args> {
                     """,
             security =
                     """
-                    Native task-control tool (`RiskCategory.AGENT`). Scoped to the calling agent - \
+                    Native tool with `TASK_CONTROL` capability and default danger `SAFE`. Scoped to the calling agent - \
                     you can only stop your own tasks. Prefer this over any OS-level kill.
                     """,
             examples = {"{\"taskId\": \"bg-3\"}"},

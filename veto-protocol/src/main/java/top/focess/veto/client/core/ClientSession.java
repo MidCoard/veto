@@ -204,7 +204,6 @@ public final class ClientSession {
      * @return the client frame to send (a dispatched next {@link IpcFrame.Request}), or {@code
      *     null}
      */
-    @SuppressWarnings("EmptyStatementBody")
     public IpcFrame.ClientFrame onFrame(IpcFrame.@NonNull ServerFrame frame) {
         List<Runnable> events = new ArrayList<>();
         IpcFrame.ClientFrame reply = null;

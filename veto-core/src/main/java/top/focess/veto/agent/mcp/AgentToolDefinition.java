@@ -3,15 +3,17 @@ package top.focess.veto.agent.mcp;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.agent.screening.Danger;
 
 /**
  * An agent-internal control/meta tool — used directly inside the agent loop or workflows, not a
  * host-touching capability. Examples: {@code think} (keep the episode alive), {@code load_skill}
  * (load a skill body as an observation), {@code create_group} (spawn a delegation).
  *
- * <p>These tools carry {@link RiskCategory#AGENT} — the Gateway returns {@code NotScreened} (no
- * path/semantic screening). They still flow through the LoopInterceptor chain for audit/uniformity.
- * Parameter schemas are reflected from the args record + {@link ToolDoc} annotation.
+ * <p>The Gateway identifies this definition flavour and returns {@code NotScreened}; capability
+ * still selects the caller-scoped runtime service. These tools flow through the LoopInterceptor
+ * chain for audit/uniformity. Parameter schemas are reflected from the args record + {@link
+ * ToolDoc} annotation.
  *
  * @param name the tool identifier (snake_case)
  * @param description the one-liner — what the tool is
@@ -22,23 +24,10 @@ public record AgentToolDefinition(
         @NonNull String name,
         @NonNull String description,
         @NonNull ToolCapability capability,
+        @NonNull Danger defaultDanger,
         @NonNull Class<?> argsClass,
         @NonNull Map<@NonNull String, @NonNull ParamCategory> paramHints)
         implements ToolDefinition {
-
-    /** Compatibility constructor; new registration supplies the handler's explicit capability. */
-    public AgentToolDefinition(
-            @NonNull String name,
-            @NonNull String description,
-            @NonNull Class<?> argsClass,
-            @NonNull Map<@NonNull String, @NonNull ParamCategory> paramHints) {
-        this(name, description, ToolCapability.AGENT_CONTROL, argsClass, paramHints);
-    }
-
-    @Override
-    public @NonNull RiskCategory risk() {
-        return RiskCategory.AGENT;
-    }
 
     @Override
     public @NonNull ParameterSchema parameters() {
@@ -97,6 +86,7 @@ public record AgentToolDefinition(
                         ? doc.description()
                         : ToolDocs.firstSentenceOf(doc != null ? doc.behavior() : "");
         Map<@NonNull String, @NonNull ParamCategory> hints = ToolSchemaCompiler.hintsOf(argsClass);
-        return new AgentToolDefinition(name, description, capability, argsClass, hints);
+        return new AgentToolDefinition(
+                name, description, capability, Danger.SAFE, argsClass, hints);
     }
 }

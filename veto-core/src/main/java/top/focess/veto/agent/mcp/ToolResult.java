@@ -9,7 +9,7 @@ import org.jspecify.annotations.NonNull;
  * @param callId matches the {@code ToolCall.callId} for provider tool_call_id pairing
  * @param status provider-independent execution status
  * @param format encoding of {@code content}
- * @param content exact tool output; presentation for the model is decided later
+ * @param content canonical tool output before the session-specific representation is applied
  * @param errorCode stable machine-readable failure code, or null when not applicable
  */
 public record ToolResult(

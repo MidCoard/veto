@@ -13,7 +13,7 @@ class DeltaBrokerTest {
 
     @Test
     void publishFansOutToSubscribers() throws Exception {
-        DeltaBroker broker = new DeltaBroker(new ObjectMapper());
+        DeltaBroker broker = new DeltaBroker();
         UUID sessionId = UUID.randomUUID();
         List<DeltaFrame> received1 = new CopyOnWriteArrayList<>();
         List<DeltaFrame> received2 = new CopyOnWriteArrayList<>();
@@ -43,7 +43,7 @@ class DeltaBrokerTest {
 
     @Test
     void unsubscribeStopsDelivery() throws Exception {
-        DeltaBroker broker = new DeltaBroker(new ObjectMapper());
+        DeltaBroker broker = new DeltaBroker();
         UUID sessionId = UUID.randomUUID();
         List<DeltaFrame> received = new CopyOnWriteArrayList<>();
         AutoCloseable handle = broker.subscribe(sessionId, received::add);
@@ -68,7 +68,7 @@ class DeltaBrokerTest {
 
     @Test
     void sequencesAreMonotonicPerSession() throws Exception {
-        DeltaBroker broker = new DeltaBroker(new ObjectMapper());
+        DeltaBroker broker = new DeltaBroker();
         UUID sessionId = UUID.randomUUID();
         List<DeltaFrame> received = new CopyOnWriteArrayList<>();
         try (AutoCloseable s = broker.subscribe(sessionId, received::add)) {

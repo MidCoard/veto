@@ -1,5 +1,6 @@
 package top.focess.veto.agent.web;
 
+import java.net.ProxySelector;
 import java.net.URI;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
@@ -40,11 +41,19 @@ public class DuckDuckGoSearchProvider implements SearchProvider {
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)"
                     + " Chrome/124.0 Safari/537.36";
 
-    private final @NonNull HttpClient httpClient =
-            HttpClient.newBuilder()
-                    .connectTimeout(Duration.ofSeconds(15))
-                    .followRedirects(HttpClient.Redirect.NORMAL)
-                    .build();
+    private final @NonNull HttpClient httpClient = createHttpClient();
+
+    private static @NonNull HttpClient createHttpClient() {
+        HttpClient.Builder builder =
+                HttpClient.newBuilder()
+                        .connectTimeout(Duration.ofSeconds(15))
+                        .followRedirects(HttpClient.Redirect.NORMAL);
+        ProxySelector proxySelector = WebProxySelector.fromEnvironment();
+        if (proxySelector != null) {
+            builder.proxy(proxySelector);
+        }
+        return builder.build();
+    }
 
     @Override
     public @NonNull List<SearchResult> search(@NonNull String query, @NonNull SearchOptions options)

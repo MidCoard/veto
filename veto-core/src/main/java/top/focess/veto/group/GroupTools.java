@@ -27,11 +27,11 @@ import top.focess.veto.agent.mcp.ToolResultFormat;
  * STANDALONE. {@code inspect_group} gives the Leader a bounded-wait view of DAG state and Mate
  * reports; Mates report via their {@link MateAgent} wrapper.
  *
- * <p>These are agent tools - they carry {@link top.focess.veto.agent.mcp.RiskCategory#AGENT}; the
- * Gateway returns {@code NotScreened}. Each tool resolves the caller's group from the {@link
- * ToolCallContext} (the calling agent leads exactly one group), so none of them takes a {@code
- * groupId} argument. Role gating is enforced by tool availability: {@code create_group} is offered
- * only to STANDALONE; {@code disband_group} / {@code inspect_group} only to the Leader.
+ * <p>These are agent tools, so the Gateway returns {@code NotScreened}. Each tool resolves the
+ * caller's group from the {@link ToolCallContext} (the calling agent leads exactly one group), so
+ * none of them takes a {@code groupId} argument. Role gating is enforced by tool availability:
+ * {@code create_group} is offered only to STANDALONE; {@code disband_group} / {@code inspect_group}
+ * only to the Leader.
  */
 public final class GroupTools {
 
@@ -46,12 +46,10 @@ public final class GroupTools {
                             + "and plan the work.",
             behavior =
                     """
-                    Transforms you into the Leader of a new, empty group. Your context is rewound, a \
-                    Leader AGENT_INIT turn and the available Leader tools are installed, a non-empty \
-                    compaction summary is appended when one is produced, and `task` becomes your \
-                    planning brief. The Leader model comes from the deployer's Leader-tier binding. \
-                    Mates are provisioned lazily as nodes become dispatchable. The success result is \
-                    discarded by the transform; a refusal leaves you in the single-agent loop.
+                    Transforms you into the Leader of a new, empty group and makes `task` your planning \
+                    brief. Existing context is summarized when necessary. Mates start as their nodes \
+                    become ready. A successful transform returns no content; a refusal leaves your role \
+                    unchanged.
                     """,
             whenToUse =
                     """
@@ -62,25 +60,22 @@ public final class GroupTools {
             whenNotToUse =
                     """
                     - Do not use it for work you can finish yourself - a group adds coordination cost.
-                    - Do not use it from inside a group; the tool is not offered to Leaders or Mates.
                     - Do not try to supply a plan up front - you build it node by node as Leader, \
                     via `create_node`.
                     """,
             resultContract =
                     """
-                    On success - empty (the call's result is discarded with the rewind; you \
-                    continue as the Leader from the brief).
+                    On success - empty; you continue as the Leader with `task` as the planning brief.
                     On refusal:
                       Group not created: <reason and what to do next>
                     """,
             errorsAndEdgeCases =
                     """
                     - Blank `task` -> not created; pass a real brief.
-                    - Already leading or inside a group -> the tool is not offered at all.
                     """,
             security =
                     """
-                    Agent tool (`RiskCategory.AGENT`). The Gateway returns `NotScreened`. Available \
+                    Agent tool with `DELEGATION` capability. The Gateway returns `NotScreened`. Available \
                     only in the single-agent loop - not offered to Leaders or Mates.
                     """,
             examples = {
@@ -199,18 +194,15 @@ public final class GroupTools {
             description = "Tear down your active group and return to single-agent autonomous mode.",
             behavior =
                     """
-                    Resolves your group from your context (no id argument), deprovisions its Mates, \
-                    and marks the group DISBANDED. It then rewinds to an AGENT_INIT with your \
-                    STANDALONE persona, restores the STANDALONE tools and model binding, appends a \
-                    non-empty compaction summary when one is produced, and adds an outcome brief. \
-                    The in-memory Blackboard and recorded DAG remain inspectable only for the \
-                    lifetime of this backend process; durable group audit persistence is not yet wired.
+                    Ends your current group and stops its Mates, then returns you to the standalone \
+                    role with the standalone tools and model binding. The continuation includes the \
+                    delegated outcome and any available compaction summary. Group state is unavailable \
+                    after a backend restart.
                     """,
             whenToUse =
                     """
                     Use `disband_group` when the delegated work is complete or the user explicitly \
-                    requests it. Reverses the transform: you become STANDALONE again. Only the Leader \
-                    can call this.
+                    requests it. Reverses the transform and returns you to standalone operation.
                     """,
             whenNotToUse =
                     """
@@ -219,19 +211,17 @@ public final class GroupTools {
                     """,
             resultContract =
                     """
-                    On success - empty (the call's result is discarded with the rewind; you continue \
-                    as STANDALONE from the outcome brief).
+                    On success - empty; you continue in standalone operation with the outcome brief.
                     On refusal:
                       Group not disbanded: <reason and what to do next>
                     """,
             errorsAndEdgeCases =
                     """
-                    No active group in your context -> refusal. Mates still RUNNING -> the disband \
-                    proceeds (in-flight work may be lost).
+                    Mates still RUNNING -> the disband proceeds and their in-flight work may be lost.
                     """,
             security =
                     """
-                    Agent tool (`RiskCategory.AGENT`). The Gateway does not screen it. Leader-only.
+                    Agent tool with `GROUP_CONTROL` capability. The Gateway does not screen it. Leader-only.
                     """,
             examples = {"{}"},
             returnExamples = {""})
@@ -362,7 +352,7 @@ public final class GroupTools {
                     """,
             security =
                     """
-                    Agent tool (`RiskCategory.AGENT`). Leader-only. The group id comes from the authenticated \
+                    Agent tool with `GROUP_CONTROL` capability. Leader-only. The group id comes from the authenticated \
                     tool-call context; callers cannot inspect another group by id.
                     """,
             examples = {"{}", "{\"sinceSeq\": 4, \"waitSeconds\": 15}"},
@@ -559,7 +549,7 @@ public final class GroupTools {
                     """,
             security =
                     """
-                    Agent tool (`RiskCategory.AGENT`). The Gateway does not screen it. Leader-only. \
+                    Agent tool with `GROUP_CONTROL` capability. The Gateway does not screen it. Leader-only. \
                     Hub-and-spoke: the Leader addresses a single Mate by id.
                     """,
             examples = {

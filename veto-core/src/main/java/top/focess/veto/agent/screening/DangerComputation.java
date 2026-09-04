@@ -6,16 +6,16 @@ import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
-import top.focess.veto.agent.mcp.RiskCategory;
+import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDefinition;
 import top.focess.veto.agent.workspace.Resolution;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.ToolCall;
 
 /**
- * The deterministic danger computation, max-wins across: RiskCategory base, args-aware path
- * classification (via the Workspace PathResolver), shell args. SLM danger is omitted (degraded) —
- * finalDanger = detDanger.
+ * The deterministic danger computation, max-wins across the tool's declared default, args-aware
+ * path classification (via the Workspace PathResolver), and process arguments. SLM danger is
+ * applied later by the Gateway.
  */
 public class DangerComputation {
 
@@ -73,23 +73,12 @@ public class DangerComputation {
             @NonNull DeployerPolicy policy,
             @NonNull ProtectedSet protectedSet,
             @NonNull ToolExecutionPermit permit) {
-        Danger base = baseFromRisk(def.risk());
-        if (def instanceof top.focess.veto.agent.mcp.NativeToolDefinition nativeDefinition) {
-            base = max(base, nativeDefinition.minimumDanger());
-        }
+        Danger base = def.defaultDanger();
         Danger pathDanger = pathDanger(def, permit, workspace, policy, protectedSet);
         Danger executionRootDanger =
                 executionRootDanger(def, permit, workspace, policy, protectedSet);
-        Danger shellDanger = shellDanger(def, call);
-        return max(base, pathDanger, executionRootDanger, shellDanger);
-    }
-
-    private @NonNull Danger baseFromRisk(@NonNull RiskCategory risk) {
-        return switch (risk) {
-            case READ_ONLY -> Danger.SAFE;
-            case FILE_WRITE, SHELL_EXEC, NETWORK -> Danger.ELEVATED;
-            case AGENT -> Danger.SAFE; // not screened (early-routed)
-        };
+        Danger processDanger = processDanger(def, call);
+        return max(base, pathDanger, executionRootDanger, processDanger);
     }
 
     private @NonNull Danger pathDanger(
@@ -101,7 +90,7 @@ public class DangerComputation {
         Danger worst = Danger.SAFE;
         for (ToolExecutionPermit.AuthorizedPath path : permit.filesystemPaths().values()) {
             Resolution res = new Resolution(path.hostPath(), path.rootIndex(), path.inScope());
-            Danger d = classifyPath(res, def.risk(), policy, protectedSet, workspace);
+            Danger d = classifyPath(res, def.capability(), policy, protectedSet, workspace);
             worst = max(worst, d);
         }
         return worst;
@@ -117,7 +106,7 @@ public class DangerComputation {
             @NonNull Workspace workspace,
             @NonNull DeployerPolicy policy,
             @NonNull ProtectedSet protectedSet) {
-        if (def.risk() != RiskCategory.SHELL_EXEC) {
+        if (def.capability() != ToolCapability.PROCESS_EXECUTION) {
             return Danger.SAFE;
         }
         Path executionPath = permit.executionRoot();
@@ -127,12 +116,12 @@ public class DangerComputation {
         int rootIndex = workspace.currentRootIndex();
         Resolution executionRoot = new Resolution(executionPath, rootIndex, true);
         return classifyPath(
-                executionRoot, RiskCategory.FILE_WRITE, policy, protectedSet, workspace);
+                executionRoot, ToolCapability.WORKSPACE_WRITE, policy, protectedSet, workspace);
     }
 
     private @NonNull Danger classifyPath(
             @NonNull Resolution res,
-            @NonNull RiskCategory risk,
+            @NonNull ToolCapability capability,
             @NonNull DeployerPolicy policy,
             @NonNull ProtectedSet protectedSet,
             @NonNull Workspace workspace) {
@@ -162,7 +151,7 @@ public class DangerComputation {
                 if (root.trust() == top.focess.veto.agent.workspace.TrustMarker.SHARED_GRANT) {
                     // Shared-root reads may proceed through approval; writes remain CRITICAL and
                     // cannot be authorized by a session grant.
-                    if (risk == RiskCategory.FILE_WRITE) {
+                    if (capability == ToolCapability.WORKSPACE_WRITE) {
                         return Danger.CRITICAL;
                     }
                 }
@@ -183,7 +172,9 @@ public class DangerComputation {
 
         // arbitrary host path (out of scope)
         if (!res.inScope()) {
-            return risk == RiskCategory.FILE_WRITE ? Danger.DANGEROUS : Danger.ELEVATED;
+            return capability == ToolCapability.WORKSPACE_WRITE
+                    ? Danger.DANGEROUS
+                    : Danger.ELEVATED;
         }
 
         // dependency/cache dir → ELEVATED (read only; writes stay at base ELEVATED anyway)
@@ -210,9 +201,8 @@ public class DangerComputation {
                 || p.startsWith("\\\\.\\");
     }
 
-    @SuppressWarnings("unchecked")
-    private @NonNull Danger shellDanger(@NonNull ToolDefinition def, @NonNull ToolCall call) {
-        if (def.risk() != RiskCategory.SHELL_EXEC) {
+    private @NonNull Danger processDanger(@NonNull ToolDefinition def, @NonNull ToolCall call) {
+        if (def.capability() != ToolCapability.PROCESS_EXECUTION) {
             return Danger.SAFE;
         }
         Map<String, Object> args = call.args();

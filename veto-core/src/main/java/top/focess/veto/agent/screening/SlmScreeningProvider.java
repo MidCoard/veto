@@ -12,14 +12,18 @@ import top.focess.veto.llm.core.ToolCall;
  */
 public interface SlmScreeningProvider {
     @NonNull Optional<SlmScreening> screen(
-            @NonNull ToolCall call, @NonNull ToolDefinition def, String activeTask, String thought);
+            @NonNull ToolCall call,
+            @NonNull ToolDefinition def,
+            String activeTask,
+            String thought,
+            String executionContext);
 
     default @NonNull Optional<SlmScreening> screen(
             @NonNull ToolCall call, @NonNull ToolDefinition def, String thought) {
-        return screen(call, def, null, thought);
+        return screen(call, def, null, thought, null);
     }
 
     static @NonNull SlmScreeningProvider unavailable() {
-        return (call, def, activeTask, thought) -> Optional.empty();
+        return (call, def, activeTask, thought, executionContext) -> Optional.empty();
     }
 }

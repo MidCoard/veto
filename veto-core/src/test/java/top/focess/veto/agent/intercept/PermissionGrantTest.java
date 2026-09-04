@@ -14,8 +14,9 @@ import org.junit.jupiter.api.io.TempDir;
 import top.focess.veto.agent.mcp.AgentToolDefinition;
 import top.focess.veto.agent.mcp.NativeToolDefinition;
 import top.focess.veto.agent.mcp.ParamCategory;
-import top.focess.veto.agent.mcp.RiskCategory;
+import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDocs;
+import top.focess.veto.agent.screening.Danger;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.ToolCall;
@@ -45,7 +46,8 @@ class PermissionGrantTest {
                 new NativeToolDefinition(
                         "view_file",
                         "read",
-                        RiskCategory.READ_ONLY,
+                        ToolCapability.WORKSPACE_READ,
+                        Danger.SAFE,
                         false,
                         ToolDocs.nonNullClass(Object.class),
                         Map.of("path", ParamCategory.FILESYSTEM_PATH));
@@ -74,7 +76,8 @@ class PermissionGrantTest {
                 new NativeToolDefinition(
                         "view_file",
                         "read",
-                        RiskCategory.READ_ONLY,
+                        ToolCapability.WORKSPACE_READ,
+                        Danger.SAFE,
                         false,
                         ToolDocs.nonNullClass(Object.class),
                         Map.of("path", ParamCategory.FILESYSTEM_PATH));
@@ -95,7 +98,8 @@ class PermissionGrantTest {
                 new NativeToolDefinition(
                         "write_to_file",
                         "write",
-                        RiskCategory.FILE_WRITE,
+                        ToolCapability.WORKSPACE_WRITE,
+                        Danger.ELEVATED,
                         false,
                         ToolDocs.nonNullClass(Object.class),
                         Map.of("path", ParamCategory.FILESYSTEM_PATH));
@@ -129,7 +133,8 @@ class PermissionGrantTest {
                 new NativeToolDefinition(
                         "run_command",
                         "exec",
-                        RiskCategory.SHELL_EXEC,
+                        ToolCapability.PROCESS_EXECUTION,
+                        Danger.ELEVATED,
                         false,
                         ToolDocs.nonNullClass(Object.class),
                         Map.of());
@@ -154,7 +159,8 @@ class PermissionGrantTest {
                 new NativeToolDefinition(
                         "run_command",
                         "exec",
-                        RiskCategory.SHELL_EXEC,
+                        ToolCapability.PROCESS_EXECUTION,
+                        Danger.ELEVATED,
                         false,
                         ToolDocs.nonNullClass(Object.class),
                         Map.of());
@@ -176,7 +182,8 @@ class PermissionGrantTest {
                 new NativeToolDefinition(
                         "view_file",
                         "read",
-                        RiskCategory.READ_ONLY,
+                        ToolCapability.WORKSPACE_READ,
+                        Danger.SAFE,
                         false,
                         ToolDocs.nonNullClass(Object.class),
                         Map.of("path", ParamCategory.FILESYSTEM_PATH));
@@ -281,7 +288,8 @@ class PermissionGrantTest {
                 new NativeToolDefinition(
                         "view_file",
                         "read",
-                        RiskCategory.READ_ONLY,
+                        ToolCapability.WORKSPACE_READ,
+                        Danger.SAFE,
                         false,
                         Object.class,
                         Map.of("path", ParamCategory.FILESYSTEM_PATH));
@@ -303,7 +311,8 @@ class PermissionGrantTest {
                 new NativeToolDefinition(
                         "run_command",
                         "exec",
-                        RiskCategory.SHELL_EXEC,
+                        ToolCapability.PROCESS_EXECUTION,
+                        Danger.ELEVATED,
                         false,
                         Object.class,
                         Map.of());
@@ -326,7 +335,8 @@ class PermissionGrantTest {
                 new NativeToolDefinition(
                         "run_command",
                         "exec",
-                        RiskCategory.SHELL_EXEC,
+                        ToolCapability.PROCESS_EXECUTION,
+                        Danger.ELEVATED,
                         false,
                         Object.class,
                         Map.of());
@@ -345,7 +355,13 @@ class PermissionGrantTest {
     void scenarioForAgentToolIsGeneric() {
         HitlRegistry registry = new HitlRegistry();
         AgentToolDefinition agentDef =
-                new AgentToolDefinition("create_group", "create", Object.class, Map.of());
+                new AgentToolDefinition(
+                        "create_group",
+                        "create",
+                        ToolCapability.DELEGATION,
+                        Danger.SAFE,
+                        Object.class,
+                        Map.of());
         ToolCall call = new ToolCall("create_group", Map.of());
         var screening =
                 new top.focess.veto.agent.screening.Screening(

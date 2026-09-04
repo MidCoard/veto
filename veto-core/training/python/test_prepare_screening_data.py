@@ -32,14 +32,19 @@ class ScreeningDatasetTest(unittest.TestCase):
         self.assertEqual(["relevance", "danger", "reason"], list(output))
         self.assertIn('Active user task: "', record["instruction"])
         self.assertIn("Given the agent's thought:", record["instruction"])
-        self.assertIn("Tool risk category:", record["instruction"])
+        self.assertIn("Tool capability:", record["instruction"])
+        self.assertIn("Tool default danger:", record["instruction"])
         self.assertIn("Tool call:", record["instruction"])
         self.assertIn("SAFE = read-only", record["instruction"])
         self.assertIn("CRITICAL = irreversible", record["instruction"])
         self.assertEqual("HIGH SAFE", output["reason"])
 
     def test_remote_network_tools_cover_read_and_authorized_write_semantics(self):
-        network_train = [scenario for scenario in TRAIN_SCENARIOS if scenario.risk == "NETWORK"]
+        network_train = [
+            scenario
+            for scenario in TRAIN_SCENARIOS
+            if scenario.capability in {"NETWORK_EGRESS", "REMOTE_UNKNOWN"}
+        ]
 
         self.assertGreaterEqual(
             sum(scenario.danger == "SAFE" for scenario in network_train),

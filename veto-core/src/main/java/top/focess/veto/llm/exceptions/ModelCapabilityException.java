@@ -7,7 +7,6 @@ import org.jspecify.annotations.NonNull;
  * Strict JSON Mode, Constrained Sampling), or when no provider matches the request. Permanent — not
  * retryable.
  */
-@SuppressWarnings("serial")
 public class ModelCapabilityException extends LlmException {
     /**
      * Constructs a new ModelCapabilityException with the specified message.

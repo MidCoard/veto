@@ -11,8 +11,8 @@ import top.focess.veto.util.Nullness;
  * #getArgsClass} returns the record itself, and {@link #execute(Object)} runs the tool's typed
  * logic.
  *
- * <p>Agent tools carry {@link RiskCategory#AGENT} — the Gateway does not path/semantic-screen them.
- * They still flow through the LoopInterceptor chain for audit.
+ * <p>Agent tools are identified by their definition flavour, so the Gateway does not path- or
+ * semantic-screen them. They still flow through the LoopInterceptor chain for audit.
  *
  * <p>Registration: {@link ToolEngineImpl} discovers all {@code AgentTool<?>} beans via Spring and
  * builds an {@link AgentToolDefinition} from each via {@link AgentToolDefinition#from(Class)}.

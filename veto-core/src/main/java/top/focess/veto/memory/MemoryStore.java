@@ -7,8 +7,8 @@ import top.focess.veto.agent.TurnRecord;
 
 /**
  * The memory storage and query interface. All memory backends — pgvector, graph/entity,
- * KV/relational, or file — implement this same surface. The agent-facing tools (recall_session,
- * recall_insights, write_insight, forget) are thin wrappers over this interface.
+ * KV/relational, or file — implement this same surface. The agent-facing tools (recall_memory,
+ * write_memory, forget_memory) are thin wrappers over this interface.
  *
  * <p>Implementations must enforce tenant isolation: a query for user U may only return memories
  * owned by U, using database row-level security and application-side filters as appropriate.

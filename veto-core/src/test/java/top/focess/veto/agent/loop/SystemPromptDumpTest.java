@@ -54,6 +54,7 @@ import top.focess.veto.llm.core.ToolDefinition;
 class SystemPromptDumpTest {
 
     private static final @NonNull Path DUMP_DIR = Path.of("build", "prompt-dump");
+    private static final int MAX_TOOL_CATALOG_CHARS = 64 * 1024;
 
     @Autowired private @NonNull ToolEngine mcpEngine;
     @Autowired private @NonNull CapabilityTranslator translator;
@@ -128,6 +129,27 @@ class SystemPromptDumpTest {
         assertTrue(
                 toolNames(flatTools).contains("create_group"),
                 "the production catalog must register the delegation entry tool");
+        assertTrue(
+                toolNames(flatTools).contains("recall_memory"),
+                "the production catalog must expose the unified memory-recall tool");
+        assertFalse(
+                toolNames(flatTools).contains("recall_session"),
+                "the removed session-only recall tool must not remain registered");
+        assertFalse(
+                toolNames(flatTools).contains("recall_insights"),
+                "the removed insight-only recall tool must not remain registered");
+        assertTrue(
+                toolNames(flatTools).contains("write_memory"),
+                "the production catalog must expose the consistently named memory-write tool");
+        assertTrue(
+                toolNames(flatTools).contains("forget_memory"),
+                "the production catalog must expose the consistently named memory-delete tool");
+        assertFalse(
+                toolNames(flatTools).contains("write_insight"),
+                "the replaced insight-specific write name must not remain registered");
+        assertFalse(
+                toolNames(flatTools).contains("forget"),
+                "the replaced generic forget name must not remain registered");
         assertFalse(
                 toolNames(flatTools).contains("load_skill"),
                 "load_skill must not be exposed when the persona has no registered skills");
@@ -166,8 +188,8 @@ class SystemPromptDumpTest {
                 toolNames(
                         translator.translateTools(
                                 new ArrayList<>(roleToolFilter.resolve(Role.MATE))));
-        assertFalse(mateTools.contains("forget"), "MATE cannot delete user memory");
-        assertFalse(mateTools.contains("write_insight"), "MATE cannot mutate user memory");
+        assertFalse(mateTools.contains("forget_memory"), "MATE cannot delete user memory");
+        assertFalse(mateTools.contains("write_memory"), "MATE cannot mutate user memory");
         assertFalse(
                 Files.readString(DUMP_DIR.resolve("LEADER.md")).contains("execute in parallel"),
                 "prompt must match ordered runtime tool execution");
@@ -204,34 +226,84 @@ class SystemPromptDumpTest {
                 Files.readString(DUMP_DIR.resolve("MATE.md")).contains("mate mate-sample"),
                 "the Mate identity must not repeat its name and role");
         assertTrue(
-                count(catalog, "\n### `") == flatTools.size(),
+                count(catalog, "\n#### Tool name: `") == flatTools.size(),
                 "every registered tool has one catalog entry");
         assertTrue(
-                count(catalog, "\n#### Args\n") == flatTools.size(),
+                count(catalog, "\n##### Args\n") == flatTools.size(),
                 "every registered tool exposes an Args section");
         assertFalse(
                 catalog.contains("error-special-plaintext"),
                 "failure status must not be exposed as a content format");
         assertFalse(catalog.contains("veto_pulse"), "internal schema names must stay internal");
+        for (String internalName :
+                List.of(
+                        "ToolEngine",
+                        "SandboxSubstrate",
+                        "ComSpec",
+                        "CreateProcess",
+                        "BackgroundTaskManager",
+                        "SandboxProfile",
+                        "AGENT_INIT",
+                        "deployer's Leader-tier",
+                        "FULL_ACCESS",
+                        "SANDBOXED",
+                        "TENANT",
+                        "Path mode:",
+                        "Under PROTECTED",
+                        "Policy: PROTECTED")) {
+            assertFalse(
+                    catalog.contains(internalName),
+                    "model-facing tool documentation must not expose " + internalName);
+        }
         assertFalse(
                 catalog.contains("available to YOU this turn"),
                 "the persona capability catalog is not limited to one loop turn");
+        for (String redundantMetaExplanation :
+                List.of(
+                        "not a call argument",
+                        "not call arguments",
+                        "no id argument",
+                        "cannot be overridden by the call",
+                        "cannot be supplied by the call",
+                        "managed by Veto",
+                        "sandbox-profile")) {
+            assertFalse(
+                    catalog.contains(redundantMetaExplanation),
+                    "tool documentation must state behavior directly instead of explaining an"
+                            + " absent argument: "
+                            + redundantMetaExplanation);
+        }
         assertTrue(
                 catalog.contains("These are the tools available to YOU"),
                 "the catalog must describe the active persona capabilities");
+        assertTrue(
+                catalog.contains("`questions[].header` (string, required)"),
+                "nested ask_user arguments must be explicit in the tool catalog");
+        assertTrue(
+                catalog.contains("RESULT_LIMIT, VISIT_LIMIT, TIME_LIMIT, or OUTPUT_LIMIT"),
+                "find_files must enumerate its truncation reasons");
+        assertTrue(
+                catalog.contains("queued result means accepted by the bounded input queue"),
+                "input_task must distinguish queueing from process consumption");
+        assertTrue(
+                catalog.contains("`file`, `directory`, or `symbolic_link`"),
+                "path tools must declare their stable kind values");
+        assertTrue(
+                catalog.contains("cancelled by a backend restart"),
+                "ask_user must not overclaim durable restart recovery");
         assertFalse(
                 catalog.contains("success=true"), "transport flags do not belong in tool prose");
         assertFalse(
                 catalog.contains("#### Security"),
                 "Gateway-enforced security detail must not bloat the agent catalog");
         assertTrue(
-                catalog.length() < 60_000,
+                catalog.length() < MAX_TOOL_CATALOG_CHARS,
                 "the model-visible tool catalog must stay concise; actual chars="
                         + catalog.length());
         for (ToolDefinition tool : flatTools) {
-            String heading = "### `" + tool.name() + "`";
+            String heading = "#### Tool name: `" + tool.name() + "`";
             int start = catalog.indexOf(heading);
-            int end = catalog.indexOf("\n---\n", start);
+            int end = catalog.indexOf("\n#### Tool name: `", start + heading.length());
             String entry = end < 0 ? catalog.substring(start) : catalog.substring(start, end);
             assertEquals(
                     List.of(
@@ -276,7 +348,8 @@ class SystemPromptDumpTest {
                     new AgentPersona(
                             "dump-leader",
                             "VetoCoreAgent",
-                            "a standalone coding agent transformed into the Leader of this delegation.",
+                            "a standalone coding agent transformed into the Leader of this"
+                                    + " delegation.",
                             tools,
                             List.of(),
                             role);
@@ -340,8 +413,8 @@ class SystemPromptDumpTest {
 
     private static @NonNull List<@NonNull String> sectionHeadings(@NonNull String entry) {
         return entry.lines()
-                .filter(line -> line.startsWith("#### "))
-                .map(line -> line.substring("#### ".length()).strip())
+                .filter(line -> line.startsWith("##### "))
+                .map(line -> line.substring("##### ".length()).strip())
                 .toList();
     }
 

@@ -109,7 +109,6 @@ public final class ProgramValidator {
     }
 
     /** Thrown when an actions program fails validation. */
-    @SuppressWarnings("serial")
     public static final class InvalidProgramException extends RuntimeException {
         public InvalidProgramException(@NonNull String message) {
             super(message);

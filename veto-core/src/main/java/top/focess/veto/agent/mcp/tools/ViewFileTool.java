@@ -1,33 +1,23 @@
 package top.focess.veto.agent.mcp.tools;
 
-import java.io.IOException;
-import java.nio.charset.MalformedInputException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.InvalidPathException;
-import java.nio.file.Path;
-import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
+import top.focess.veto.agent.capability.WorkspaceReadCapability;
 import top.focess.veto.agent.mcp.Doc;
-import top.focess.veto.agent.mcp.NativeTool;
 import top.focess.veto.agent.mcp.ParamCategory;
-import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.SecurityHint;
 import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDoc;
 import top.focess.veto.agent.mcp.ToolDocs;
-import top.focess.veto.agent.mcp.ToolErrors;
 import top.focess.veto.agent.mcp.ToolResultFormat;
 import top.focess.veto.agent.mcp.ToolSecurity;
+import top.focess.veto.agent.mcp.WorkspaceReadTool;
+import top.focess.veto.agent.screening.Danger;
 
 /** {@code view_file} — read lines of a text file from the local filesystem. */
 @Component
-@ToolSecurity(risk = RiskCategory.READ_ONLY, capability = ToolCapability.WORKSPACE_READ)
-public final class ViewFileTool implements NativeTool<ViewFileTool.Args> {
-
-    private static final int MAX_OUTPUT_LINES = 5000;
-    private static final int MAX_OUTPUT_CHARS = 1_000_000;
+@ToolSecurity(capability = ToolCapability.WORKSPACE_READ, defaultDanger = Danger.SAFE)
+public final class ViewFileTool implements WorkspaceReadTool<ViewFileTool.Args> {
 
     /** Parameter container for {@code view_file}. */
     @ToolDoc(
@@ -39,7 +29,7 @@ public final class ViewFileTool implements NativeTool<ViewFileTool.Args> {
                     and `endLine` are 1-indexed and inclusive. When `startLine` is omitted, reading starts at \
                     line 1; when `endLine` is omitted, it runs to the last line. Ranges are clamped: `startLine` \
                     is floored at 1, `endLine` is capped at the file's line count. Passing neither returns the \
-                    whole file. The implementation reads the complete file before applying the requested range. \
+                    whole file. The complete file is read before the requested range is selected. \
                     Files larger than 16 MiB (16,777,216 bytes) are rejected before UTF-8 decoding because the \
                     complete file is held in memory; requesting a line range therefore does not bypass this \
                     per-call input limit. \
@@ -89,7 +79,7 @@ public final class ViewFileTool implements NativeTool<ViewFileTool.Args> {
                     under the deployer policy before the read. Under FULL_ACCESS, workspace roots are working \
                     context rather than a path boundary, so any absolute host path may be targeted; restrictive \
                     policies may fence paths. The operation is read-only \
-                    (`RiskCategory.READ_ONLY`); the file is never modified. Returned content is subject to \
+                    (`WORKSPACE_READ`, default danger `SAFE`); the file is never modified. Returned content is subject to \
                     ingress masking. If the Gateway actually refuses deployer-fenced material under a \
                     restrictive policy, change approach instead.
                     """,
@@ -126,51 +116,8 @@ public final class ViewFileTool implements NativeTool<ViewFileTool.Args> {
     }
 
     @Override
-    public @NonNull String execute(@NonNull Args args) throws IOException {
-        Path path;
-        try {
-            path = Path.of(args.absolutePath());
-        } catch (InvalidPathException e) {
-            return ToolErrors.failure("Invalid path: " + args.absolutePath());
-        }
-        if (!Files.isRegularFile(path)) {
-            return ToolErrors.failure("Not a regular file: " + args.absolutePath());
-        }
-        try {
-            if (Files.size(path) > TextFileToolLimits.MAX_BYTES) {
-                return ToolErrors.failure(
-                        "File exceeds "
-                                + TextFileToolLimits.DISPLAY_SIZE
-                                + "; request a smaller artifact");
-            }
-            List<String> lines = Files.readAllLines(path, StandardCharsets.UTF_8);
-            int from = args.startLine() == null ? 1 : Math.max(1, args.startLine());
-            int to = args.endLine() == null ? lines.size() : Math.min(lines.size(), args.endLine());
-            return renderLines(lines, from, to);
-        } catch (MalformedInputException e) {
-            return ToolErrors.failure("File is not valid UTF-8: " + args.absolutePath());
-        } catch (IOException e) {
-            return ToolErrors.failure("Cannot read file: " + args.absolutePath());
-        }
-    }
-
-    private static @NonNull String renderLines(
-            @NonNull List<@NonNull String> lines, int from, int to) {
-        StringBuilder sb = new StringBuilder();
-        boolean truncated = false;
-        int emitted = 0;
-        for (int i = from; i <= to; i++) {
-            String rendered = i + ": " + lines.get(i - 1) + "\n";
-            if (emitted >= MAX_OUTPUT_LINES || sb.length() + rendered.length() > MAX_OUTPUT_CHARS) {
-                truncated = true;
-                break;
-            }
-            sb.append(rendered);
-            emitted++;
-        }
-        if (truncated) {
-            sb.append("[truncated; request a narrower line range]\n");
-        }
-        return sb.toString();
+    public @NonNull String execute(
+            @NonNull Args args, @NonNull WorkspaceReadCapability capability) {
+        return capability.readText("absolutePath", args.startLine(), args.endLine());
     }
 }

@@ -78,7 +78,8 @@ class RunTaskToolTest {
                         List.of(tempDir),
                         tempDir,
                         DeployerPolicy.FULL_ACCESS,
-                        Set.of());
+                        Set.of(),
+                        null);
         ToolCallContextHolder.set(
                 new ToolCallContext(
                         "agent-x",
@@ -107,7 +108,7 @@ class RunTaskToolTest {
         // Wait for the quick-exit task to finish, polling view_task.
         JsonNode statusNode = null;
         for (int i = 0; i < 200; i++) {
-            statusNode = mapper.readTree(status.execute(new ViewTaskTool.Args(taskId, 50)));
+            statusNode = mapper.readTree(status.execute(new ViewTaskTool.Args(taskId)));
             if (!statusNode.get("alive").asBoolean()) break;
             Thread.sleep(50);
         }

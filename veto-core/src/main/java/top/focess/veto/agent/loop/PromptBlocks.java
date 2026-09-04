@@ -5,11 +5,11 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.identity.Role;
+import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.screening.DeployerPolicy;
 import top.focess.veto.agent.skills.Skill;
 import top.focess.veto.agent.workspace.PathMode;
@@ -99,12 +99,7 @@ public final class PromptBlocks {
         };
     }
 
-    /**
-     * The "## Workspace" block: identifies the session's working context and path mode. Under
-     * FULL_ACCESS with real host paths, roots are navigation/default-execution context rather than
-     * an authorization boundary. Restrictive deployer policies continue to describe them as the
-     * addressable scope. Empty when the workspace has no roots.
-     */
+    /** The "## Workspace" block: gives the model usable paths without exposing internal modes. */
     public static @NonNull String workspace(Workspace workspace) {
         if (workspace == null) {
             return "";
@@ -118,23 +113,22 @@ public final class PromptBlocks {
         sb.append("## Workspace\n");
         if (workspace.pathMode() == PathMode.VIRTUAL) {
             sb.append(
-                    "This session uses virtual workspace paths; the mounted roots below define the"
-                            + " paths visible to native file tools.\n");
+                    "Native file tools can address only the mounted workspace roots below. Use an"
+                            + " absolute workspace path beginning with a listed root name.\n");
         } else {
             sb.append(
-                    "This workspace is the default working context. The effective access boundary"
-                            + " is stated once in the Boundaries section below.\n");
-        }
-        sb.append("- Path mode: `").append(workspace.pathMode()).append("` - ");
-        if (workspace.pathMode() == PathMode.VIRTUAL) {
-            sb.append(
-                    "address files as `/{rootDirName}/...`; the first segment selects the root.\n");
-        } else {
-            sb.append("pass the absolute host path directly.\n");
+                    "Use an absolute path for every file-tool path argument. The roots below are"
+                            + " the working context; the Boundaries section states whether other"
+                            + " paths are reachable.\n");
         }
         sb.append("- Roots:\n");
         for (WorkspaceRoot root : roots) {
-            sb.append("  - `").append(root.hostPath()).append("`");
+            Path displayedPath = root.hostPath();
+            if (workspace.pathMode() == PathMode.VIRTUAL) {
+                Path name = root.hostPath().getFileName();
+                displayedPath = Path.of("/" + (name == null ? "" : name));
+            }
+            sb.append("  - `").append(displayedPath).append("`");
             if (root.hostPath().equals(operational)) {
                 sb.append("  (operational root)");
             }
@@ -143,19 +137,8 @@ public final class PromptBlocks {
         return sb.toString();
     }
 
-    /**
-     * The "## Environment" block: the host facts the model cannot observe but must know to pick
-     * commands and paths - OS family/arch, path style, and the no-shell execution semantics of
-     * {@code run_command}. Without it the model guesses (Unix reflexes on a Windows host: {@code
-     * ./gradlew}, {@code &&} chaining, shell globs) and burns turns on calls that can never work.
-     * Static per JVM - computed once.
-     */
+    /** The "## Environment" block: host facts needed to construct valid absolute paths. */
     public static @NonNull String environment() {
-        return environment(true);
-    }
-
-    /** Render host facts, including command semantics only when this role can execute commands. */
-    public static @NonNull String environment(boolean commandToolsAvailable) {
         String osName = System.getProperty("os.name", "unknown");
         String osArch = System.getProperty("os.arch", "unknown");
         boolean windows = osName.toLowerCase(java.util.Locale.ROOT).contains("win");
@@ -163,28 +146,9 @@ public final class PromptBlocks {
         sb.append("## Environment\n");
         sb.append("- OS: ").append(osName).append(" (").append(osArch).append(").\n");
         if (windows) {
-            sb.append(
-                    "- Paths: Windows-style absolute paths with backslashes (e.g. `E:\\test\\Main.java`).\n");
-            if (commandToolsAvailable) {
-                sb.append(
-                        "- Invoke build tools by their Windows launchers: `gradlew.bat` (not `./gradlew`),"
-                                + " `mvnw.cmd`, `npm.cmd`. Native compilers (e.g. `g++`, `cl`) exist only if"
-                                + " installed - prefer the project's own build wrapper over assuming one.\n");
-            }
+            sb.append("- Use Windows absolute-path syntax for file-tool arguments.\n");
         } else {
-            sb.append(
-                    "- Paths: POSIX-style absolute paths with forward slashes (e.g. `/home/user/Main.java`).\n");
-            if (commandToolsAvailable) {
-                sb.append(
-                        "- Invoke build tools by their Unix launchers: `./gradlew`, `./mvnw`, `npm`.\n");
-            }
-        }
-        if (commandToolsAvailable) {
-            sb.append(
-                    "- `run_command` spawns each executable directly (argv, no shell). Shell syntax does NOT"
-                            + " work: no `&&`, `||`, `;`, pipes, redirections (`>`, `>>`), globs (`*`), or"
-                            + " variable expansion (`%VAR%`/`$VAR`). Chain steps as separate `commands`"
-                            + " entries with `connect`; pipe via `connect: \"PIPE\"`.\n");
+            sb.append("- Use POSIX absolute-path syntax for file-tool arguments.\n");
         }
         return sb.toString();
     }
@@ -210,23 +174,42 @@ public final class PromptBlocks {
                 "These are the tools available to YOU (a role-scoped subset of the full manifest)."
                         + " Call them by populating the `calls` array with an entry whose `tool_name`"
                         + " is the tool and whose `args` matches the schema below."
+                        + " Tools are grouped by capability; a capability heading describes the"
+                        + " shared authority boundary, not permission, danger, or execution order."
                         + " Schematic examples use `<workspace-root>`; replace it with an exact root"
-                        + " from the Workspace block and obey the current path mode.\n");
+                        + " from the Workspace block.\n");
         List<ToolDefinition> sorted =
                 flatTools.stream()
                         .sorted(
-                                Comparator.comparing(
-                                        ToolDefinition::name, String.CASE_INSENSITIVE_ORDER))
+                                (@NonNull ToolDefinition left, @NonNull ToolDefinition right) -> {
+                                    int byCapability =
+                                            Integer.compare(
+                                                    left.capability().ordinal(),
+                                                    right.capability().ordinal());
+                                    return byCapability != 0
+                                            ? byCapability
+                                            : String.CASE_INSENSITIVE_ORDER.compare(
+                                                    left.name(), right.name());
+                                })
                         .toList();
+        ToolCapability currentCapability = null;
         for (int toolIndex = 0; toolIndex < sorted.size(); toolIndex++) {
-            if (toolIndex > 0) {
+            ToolDefinition t = sorted.get(toolIndex);
+            if (t.capability() != currentCapability) {
+                if (toolIndex > 0) {
+                    sb.append('\n');
+                }
+                currentCapability = t.capability();
+                sb.append("### Tool capability: ")
+                        .append(currentCapability.displayName())
+                        .append('\n');
+            } else {
                 sb.append("---\n");
             }
-            ToolDefinition t = sorted.get(toolIndex);
-            sb.append("### `").append(t.name()).append("`\n");
+            sb.append("#### Tool name: `").append(t.name()).append("`\n");
             sb.append(t.description()).append('\n');
             List<String> args = argDetails(t.inputSchema());
-            sb.append("#### Args\n");
+            sb.append("##### Args\n");
             if (args.isEmpty()) {
                 sb.append("Pass an empty JSON object: `{}`.\n");
             } else {
@@ -234,7 +217,7 @@ public final class PromptBlocks {
                     sb.append("- ").append(a).append('\n');
                 }
             }
-            sb.append("#### Result formats\n");
+            sb.append("##### Result formats\n");
             t.resultFormats()
                     .forEach(
                             format ->
@@ -249,7 +232,7 @@ public final class PromptBlocks {
             appendSectionIfPresent(sb, "When not to use", documentation.whenNotToUse());
             List<String> examples = t.examples();
             if (!examples.isEmpty()) {
-                sb.append("#### Call examples\n");
+                sb.append("##### Call examples\n");
                 sb.append("```json\n")
                         .append(schematicExample(examples.getFirst()))
                         .append("\n```\n");
@@ -257,7 +240,7 @@ public final class PromptBlocks {
             appendSectionIfPresent(sb, "Result contract", documentation.resultContract());
             List<String> returnExamples = t.returnExamples();
             if (!returnExamples.isEmpty()) {
-                sb.append("#### Result examples\n");
+                sb.append("##### Result examples\n");
                 String result = schematicResult(returnExamples.getFirst());
                 sb.append("```")
                         .append(resultFenceLanguage(result))
@@ -280,7 +263,7 @@ public final class PromptBlocks {
 
     private static void appendSection(
             @NonNull StringBuilder sb, @NonNull String heading, @NonNull String body) {
-        sb.append("#### ").append(heading).append('\n');
+        sb.append("##### ").append(heading).append('\n');
         if (!body.isBlank()) {
             sb.append(body.strip()).append('\n');
         }
@@ -301,14 +284,19 @@ public final class PromptBlocks {
         if (!presentationMode.detailed()) {
             return """
                     ## Tool Result Conventions
-                    Tool results contain the tool-specific content directly. Read each tool's Result contract to interpret whether that content is JSON or plain text. Failure diagnostics are self-contained in the content; if a call failed, correct the cause and do not report the operation as completed.
-                    A policy refusal means the call did not execute. Do not retry it unchanged. A truncation marker means content is missing; never assume the unseen remainder.
+                    Each tool result is exactly the tool-specific content described by that tool's Result contract; no common object surrounds it. A result may therefore be JSON text or plain text. Failure, refusal, cancellation, and interruption diagnostics also arrive directly as content. Read the diagnostic, correct the cause when possible, and never report an operation as completed unless its result confirms success.
+                    A policy refusal means the call did not execute, so do not retry it unchanged. A truncation marker means content is missing; never assume the unseen remainder.
                     """;
         }
         return """
                 ## Tool Result Conventions
-                Every tool result content is a JSON object with `status`, `format`, `content`, and `errorCode`. The `content` field is the exact tool-specific result. Interpret it using `format` (`json`, `plaintext`, or `unknown`) and the tool's Result contract. A failed call carries a diagnostic in `content`, not a successful result body: read it, correct the cause, and do not report the operation as completed.
-                A policy refusal means the call did not execute. Do not retry it unchanged. Transient failures such as timeouts may be retried only a limited number of times.
+                Every tool result is a JSON object with exactly four fields:
+
+                - `status` is one of `success`, `failure`, `refused`, `cancelled`, or `interrupted`. `success` means the operation completed. `failure` means validation or execution failed. `refused` means policy prevented execution. `cancelled` means the pending operation was cancelled. `interrupted` means an operation stopped before normal completion.
+                - `format` is one of `json`, `plaintext`, or `unknown` and describes `content`. `json` means `content` is a string containing the tool-specific JSON value from its Result contract; parse that nested string before using its fields. `plaintext` means ordinary text. `unknown` means the tool did not declare an encoding, so inspect `content` without assuming that JSON-looking text is structured.
+                - `content` is always a string. On `success`, it contains the tool-specific result. Otherwise it contains the failure, refusal, cancellation, or interruption diagnostic.
+                - `errorCode` is either a stable machine-readable string or `null` when no code applies. Do not infer success from this field; use `status`.
+                Never report a non-`success` operation as completed. Do not retry `refused` calls unchanged. Retry transient failures such as timeouts only a limited number of times.
                 A truncation marker means content is missing; never assume the unseen remainder.
                 """;
     }
@@ -332,10 +320,6 @@ public final class PromptBlocks {
                                 + rendered.substring(pathEnd);
                 pathStart = rendered.indexOf(pathPrefix, pathEnd);
             }
-            rendered =
-                    rendered.replace(
-                            "\"executable\": \"gradle\"", "\"executable\": \"gradlew.bat\"");
-            rendered = rendered.replace("\"executable\": \"npm\"", "\"executable\": \"npm.cmd\"");
         }
         return rendered;
     }
@@ -360,11 +344,7 @@ public final class PromptBlocks {
         }
     }
 
-    /**
-     * The "## Boundaries" block: the deployer-policy fence. Category-level with examples under
-     * non-FULL_ACCESS; a one-line advisory under FULL_ACCESS. Defense-in-depth - the gateway
-     * enforces these, but telling the model avoids wasted turns on blocked operations.
-     */
+    /** The "## Boundaries" block: effective rules without exposing deployer policy names. */
     public static @NonNull String boundaries(DeployerPolicy policy, @NonNull PathMode pathMode) {
         if (policy == null) {
             return "";
@@ -373,65 +353,61 @@ public final class PromptBlocks {
             return switch (policy) {
                 case FULL_ACCESS ->
                         "## Boundaries\n"
-                                + "You are running under FULL_ACCESS, but this session uses VIRTUAL paths:"
-                                + " native file tools can address only the mounted workspace roots. Every"
+                                + "Native file tools can address only the mounted workspace roots. Every"
                                 + " call still passes Gateway screening, jailbreak defenses, auditing, and"
-                                + " HITL; DANGEROUS actions require user authorization and CRITICAL policy"
-                                + " violations remain refused.\n";
+                                + " human-approval checks; high-risk actions require user authorization and"
+                                + " prohibited actions remain refused.\n";
                 case PROTECTED ->
                         "## Boundaries\n"
-                                + "You are running under PROTECTED with VIRTUAL paths. Native file tools can"
-                                + " address only mounted roots, and deployer-protected targets remain a hard"
-                                + " deny-list. Other calls still pass Gateway screening and HITL.\n";
+                                + "Native file tools can address only mounted roots, and protected targets"
+                                + " remain a hard"
+                                + " deny-list. Other calls still pass Gateway screening and human-approval"
+                                + " checks.\n";
                 case SANDBOXED ->
                         "## Boundaries\n"
-                                + "You are running under SANDBOXED with VIRTUAL paths. Mounted session roots"
+                                + "Mounted session roots"
                                 + " are the hard filesystem boundary; canonical escapes and protected targets"
-                                + " are CRITICAL and refused. Other calls still pass Gateway screening and"
-                                + " HITL.\n";
+                                + " are refused. Other calls still pass Gateway screening and human-approval"
+                                + " checks.\n";
                 case TENANT ->
                         "## Boundaries\n"
-                                + "You are running under TENANT with VIRTUAL paths. This user's mounted roots"
+                                + "This user's mounted roots"
                                 + " are the hard filesystem boundary; cross-user access requires an"
-                                + " owner-issued share. Other calls still pass Gateway screening and HITL.\n";
+                                + " owner-issued share. Other calls still pass Gateway screening and"
+                                + " human-approval checks.\n";
             };
         }
         return switch (policy) {
             case FULL_ACCESS ->
                     "## Boundaries\n"
-                            + "You are running under FULL_ACCESS. The deployer intentionally chose unrestricted"
-                            + " host-path reachability and is responsible for that choice. Workspace roots are"
-                            + " the default working context, not an access boundary. You may use any absolute"
+                            + "Filesystem access is not limited to the listed workspace roots. They are the"
+                            + " default working context, not an access boundary. You may use any absolute"
                             + " host path required by the task; do not claim that an outside path is blocked"
                             + " merely because it is outside these roots. Every call still passes Gateway relevance"
-                            + " and danger screening, jailbreak defenses, auditing, and HITL; DANGEROUS actions"
-                            + " require user authorization and CRITICAL policy violations remain refused. If"
-                            + " unrestricted host-path reachability is not intended, the deployer should use"
-                            + " PROTECTED.\n";
+                            + " and risk screening, jailbreak defenses, auditing, and human-approval checks;"
+                            + " high-risk actions require user authorization and prohibited actions remain"
+                            + " refused.\n";
             case PROTECTED ->
                     "## Boundaries\n"
-                            + "You are running under PROTECTED. Host paths remain generally reachable, but"
-                            + " the deployer-owned protected set is a hard deny-list. A protected target is"
-                            + " CRITICAL and cannot be approved; do not retry it. Absolute host paths outside"
+                            + "Host paths are generally reachable, but the protected set is a hard deny-list."
+                            + " A protected target cannot be approved; do not retry it. Absolute host paths outside"
                             + " workspace roots remain addressable unless protected. Non-protected calls still"
-                            + " pass relevance/danger screening, jailbreak defenses, auditing, and HITL, and"
-                            + " DANGEROUS actions require user authorization.\n";
+                            + " pass relevance and risk screening, jailbreak defenses, auditing, and"
+                            + " human-approval checks; high-risk actions require user authorization.\n";
             case SANDBOXED ->
                     "## Boundaries\n"
-                            + "You are running under SANDBOXED. The deployer configured project zones, and"
-                            + " the session workspace roots admitted within those zones are hard path"
+                            + "The session workspace roots are hard path"
                             + " boundaries. Canonical paths outside the session roots and protected-set"
-                            + " targets are CRITICAL and refused. Calls inside the boundary still pass"
-                            + " relevance/danger screening, jailbreak defenses, auditing, and HITL;"
-                            + " DANGEROUS actions require user authorization.\n";
+                            + " targets are refused. Calls inside the boundary still pass relevance and risk"
+                            + " screening, jailbreak defenses, auditing, and human-approval checks; high-risk"
+                            + " actions require user authorization.\n";
             case TENANT ->
                     "## Boundaries\n"
-                            + "You are running under TENANT. The deployer configured tenant zones; this"
-                            + " authenticated user's admitted workspace roots are hard path boundaries."
-                            + " Outside-zone paths and another user's unshared workspace are CRITICAL and"
-                            + " refused; only owner-issued sharing can authorize cross-user access. Calls"
-                            + " within the tenant boundary still pass relevance/danger screening, jailbreak"
-                            + " defenses, auditing, and HITL, and DANGEROUS actions require user"
+                            + "This authenticated user's admitted workspace roots are hard path boundaries."
+                            + " Outside-zone paths and another user's unshared workspace are refused; only"
+                            + " owner-issued sharing can authorize cross-user access. Calls"
+                            + " within the tenant boundary still pass relevance and risk screening, jailbreak"
+                            + " defenses, auditing, and human-approval checks; high-risk actions require user"
                             + " authorization.\n";
         };
     }
@@ -461,22 +437,37 @@ public final class PromptBlocks {
         if (inputSchema == null) {
             return List.of();
         }
-        Object props = inputSchema.get("properties");
+        List<String> lines = new ArrayList<>();
+        appendArgDetails(inputSchema, "", lines, 0);
+        return lines;
+    }
+
+    private static void appendArgDetails(
+            @NonNull Map<?, ?> schema,
+            @NonNull String prefix,
+            @NonNull List<String> lines,
+            int depth) {
+        if (depth > 4) {
+            return;
+        }
+        Object props = schema.get("properties");
         if (!(props instanceof Map<?, ?> m) || m.isEmpty()) {
-            return List.of();
+            return;
         }
         List<String> required = new ArrayList<>();
-        Object req = inputSchema.get("required");
+        Object req = schema.get("required");
         if (req instanceof List<?> l) {
             for (Object r : l) {
                 required.add(String.valueOf(r));
             }
         }
-        List<String> lines = new ArrayList<>();
         for (Map.Entry<?, ?> e : m.entrySet()) {
             String name = String.valueOf(e.getKey());
+            String qualifiedName = prefix + name;
             String type = "any";
             String desc = "";
+            Map<?, ?> nested = null;
+            String nestedPrefix = qualifiedName + ".";
             if (e.getValue() instanceof Map<?, ?> prop) {
                 Object t = prop.get("type");
                 if (t != null) {
@@ -485,8 +476,15 @@ public final class PromptBlocks {
                         Object items = prop.get("items");
                         if (items instanceof Map<?, ?> im && im.get("type") != null) {
                             type = "array<" + im.get("type") + ">";
+                            if ("object".equals(String.valueOf(im.get("type")))) {
+                                nested = im;
+                                nestedPrefix = qualifiedName + "[].";
+                            }
                         }
                     }
+                }
+                if ("object".equals(type) && prop.get("properties") instanceof Map<?, ?>) {
+                    nested = prop;
                 }
                 Object d = prop.get("description");
                 if (d != null) {
@@ -496,7 +494,7 @@ public final class PromptBlocks {
             String reqWord = required.contains(name) ? "required" : "optional";
             StringBuilder line = new StringBuilder();
             line.append('`')
-                    .append(name)
+                    .append(qualifiedName)
                     .append("` (")
                     .append(type)
                     .append(", ")
@@ -506,7 +504,9 @@ public final class PromptBlocks {
                 line.append(": ").append(desc);
             }
             lines.add(line.toString());
+            if (nested != null) {
+                appendArgDetails(nested, nestedPrefix, lines, depth + 1);
+            }
         }
-        return lines;
     }
 }

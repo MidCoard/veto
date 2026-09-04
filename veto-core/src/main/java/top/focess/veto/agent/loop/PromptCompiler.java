@@ -33,10 +33,11 @@ import top.focess.veto.llm.core.ToolResultPresenter;
  *       template at {@code default-system-prompt.md}. Blocks: {@code {{LAW}}} (VETO.md, resolved
  *       per-root + cross-root), {@code {{IDENTITY}}} (persona name+description plus optional
  *       deployer role guidance), {@code {{ROLE}}} (STANDALONE/LEADER/MATE - drives the tool set),
- *       {@code {{WORKSPACE}}} (session roots + path mode), {@code {{ENVIRONMENT}}} (host OS/arch +
- *       no-shell run_command semantics), {@code {{TOOLS}}} (role-scoped catalog, from the SAME flat
- *       tools that build {@code tools[]}), {@code {{BOUNDARIES}}} (deployer-policy "not-do" fence),
- *       {@code {{SKILLS}}} (name+desc catalog). See {@link PromptTemplate} + {@link PromptBlocks}.
+ *       {@code {{WORKSPACE}}} (session roots + usable path syntax), {@code {{ENVIRONMENT}}} (host
+ *       OS/arch + no-shell run_command semantics), {@code {{TOOLS}}} (role-scoped catalog, from the
+ *       SAME flat tools that build {@code tools[]}), {@code {{BOUNDARIES}}} (deployer-policy
+ *       "not-do" fence), {@code {{SKILLS}}} (name+desc catalog). See {@link PromptTemplate} +
+ *       {@link PromptBlocks}.
  *   <li><b>messages[]</b> - role-mapped, REWIND-resolved, token-budgeted (pair-safe truncation,
  *       system never trimmed), emitted oldest->newest and passed through {@link #wellFormed} so the
  *       result is the conversation every strict provider accepts (opens on a user message; every
@@ -214,13 +215,7 @@ public class PromptCompiler {
         blocks.put("IDENTITY", identity);
         blocks.put("ROLE", PromptBlocks.role(persona.role()));
         blocks.put("WORKSPACE", PromptBlocks.workspace(sessionWorkspace));
-        boolean commandToolsAvailable =
-                flatTools.stream()
-                        .anyMatch(
-                                tool ->
-                                        "run_command".equals(tool.name())
-                                                || "run_task".equals(tool.name()));
-        blocks.put("ENVIRONMENT", PromptBlocks.environment(commandToolsAvailable));
+        blocks.put("ENVIRONMENT", PromptBlocks.environment());
         blocks.put(
                 "RESULT_CONVENTIONS",
                 flatTools.isEmpty() ? "" : PromptBlocks.resultConventions(toolResultPresentation));
@@ -370,6 +365,12 @@ public class PromptCompiler {
             return ChatMessage.user(content);
         }
         ToolResultStatus status = ToolResultStatus.from(turn.payload().get("status"), success);
+        // New records persist the exact model-visible representation. Older records predate that
+        // invariant and contain canonical tool content, so only those rows need presentation at
+        // replay time.
+        if (turn.payload().containsKey("presentation")) {
+            return ChatMessage.toolResult(callId, content, status == ToolResultStatus.SUCCESS);
+        }
         ToolResultFormat format = ToolResultFormat.fromId(turn.payload().get("format"));
         String errorCode = str(turn.payload(), "errorCode");
         String presented =

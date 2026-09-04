@@ -91,7 +91,7 @@ class DeltaBrokerWiringTest {
 
     @Test
     void emitMessagePublishesDeltaFrameToBroker() throws Exception {
-        DeltaBroker broker = new DeltaBroker(new ObjectMapper());
+        DeltaBroker broker = new DeltaBroker();
         List<DeltaFrame> frames = new CopyOnWriteArrayList<>();
         broker.subscribeAll(frames::add);
 

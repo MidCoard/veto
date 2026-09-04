@@ -1,30 +1,25 @@
 package top.focess.veto.agent.mcp.tools;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
+import top.focess.veto.agent.capability.WorkspaceWriteCapability;
 import top.focess.veto.agent.mcp.Doc;
-import top.focess.veto.agent.mcp.NativeTool;
 import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.Required;
-import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.SecurityHint;
 import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDoc;
 import top.focess.veto.agent.mcp.ToolDocs;
-import top.focess.veto.agent.mcp.ToolErrors;
-import top.focess.veto.agent.mcp.ToolJson;
 import top.focess.veto.agent.mcp.ToolResultFormat;
 import top.focess.veto.agent.mcp.ToolSecurity;
+import top.focess.veto.agent.mcp.WorkspaceWriteTool;
+import top.focess.veto.agent.screening.Danger;
 
 /** {@code replace_file_content} — replace a single contiguous block of text in an existing file. */
 @Component
-@ToolSecurity(risk = RiskCategory.FILE_WRITE, capability = ToolCapability.WORKSPACE_WRITE)
-public final class ReplaceFileContentTool implements NativeTool<ReplaceFileContentTool.Args> {
+@ToolSecurity(capability = ToolCapability.WORKSPACE_WRITE, defaultDanger = Danger.ELEVATED)
+public final class ReplaceFileContentTool
+        implements WorkspaceWriteTool<ReplaceFileContentTool.Args> {
 
     @ToolDoc(
             resultFormats = {ToolResultFormat.JSON},
@@ -89,7 +84,8 @@ public final class ReplaceFileContentTool implements NativeTool<ReplaceFileConte
                     The Gateway canonicalizes the path and applies deployer-policy and semantic screening before \
                     the write. Under FULL_ACCESS, workspace roots are working context rather than a path boundary, \
                     so any absolute host path may be targeted; restrictive policies may fence paths. The operation \
-                    is `RiskCategory.FILE_WRITE` (elevated + audited) and may require approval. If the Gateway \
+                    is exposed through a call-scoped `WORKSPACE_WRITE` capability and has default danger \
+                    `ELEVATED`; it is audited and may require approval. If the Gateway \
                     actually refuses a path, change approach instead; never smuggle disallowed content.
                     """,
             examples = {
@@ -128,65 +124,13 @@ public final class ReplaceFileContentTool implements NativeTool<ReplaceFileConte
     }
 
     @Override
-    public @NonNull String execute(@NonNull Args args) throws IOException {
-        Path path = Path.of(args.absolutePath());
-        if (!Files.isRegularFile(path)) {
-            return ToolErrors.failure("Not a regular file: " + args.absolutePath());
-        }
-        if (Files.size(path) > TextFileToolLimits.MAX_BYTES) {
-            return ToolErrors.failure("File exceeds " + TextFileToolLimits.DISPLAY_SIZE);
-        }
-        if (args.startLine() < 1 || args.endLine() < args.startLine()) {
-            return ToolErrors.failure("Invalid line range");
-        }
-        if (args.targetContent().isEmpty()) {
-            return ToolErrors.failure("targetContent must not be empty");
-        }
-        String content = Files.readString(path, StandardCharsets.UTF_8);
-        int rangeStart = lineStart(content, args.startLine());
-        int rangeEnd = lineEnd(content, args.endLine());
-        if (rangeStart < 0 || rangeEnd < rangeStart) {
-            return ToolErrors.failure("Line range outside file");
-        }
-        int idx = content.indexOf(args.targetContent(), rangeStart);
-        if (idx < 0 || idx + args.targetContent().length() > rangeEnd) {
-            return ToolErrors.failure("targetContent not found in selected range.");
-        }
-        int next = content.indexOf(args.targetContent(), idx + 1);
-        if (next >= 0 && next + args.targetContent().length() <= rangeEnd) {
-            return ToolErrors.failure("targetContent is not unique in selected range.");
-        }
-        String updated =
-                content.substring(0, idx)
-                        + args.replacementContent()
-                        + content.substring(idx + args.targetContent().length());
-        byte[] updatedBytes = updated.getBytes(StandardCharsets.UTF_8);
-        if (updatedBytes.length > TextFileToolLimits.MAX_BYTES) {
-            return ToolErrors.failure("Replacement exceeds " + TextFileToolLimits.DISPLAY_SIZE);
-        }
-        AtomicFileWrites.write(path, updatedBytes, true);
-        return ToolJson.object(Map.of("status", "ok", "file", args.absolutePath()));
-    }
-
-    private static int lineStart(@NonNull String content, int lineNumber) {
-        if (lineNumber == 1) {
-            return 0;
-        }
-        int currentLine = 1;
-        for (int i = 0; i < content.length(); i++) {
-            if (content.charAt(i) == '\n' && ++currentLine == lineNumber) {
-                return i + 1;
-            }
-        }
-        return -1;
-    }
-
-    private static int lineEnd(@NonNull String content, int lineNumber) {
-        int start = lineStart(content, lineNumber);
-        if (start < 0) {
-            return -1;
-        }
-        int newline = content.indexOf('\n', start);
-        return newline < 0 ? content.length() : newline + 1;
+    public @NonNull String execute(
+            @NonNull Args args, @NonNull WorkspaceWriteCapability capability) {
+        return capability.replaceText(
+                "absolutePath",
+                args.startLine(),
+                args.endLine(),
+                args.targetContent(),
+                args.replacementContent());
     }
 }

@@ -2,12 +2,13 @@ package top.focess.veto.agent.mcp;
 
 import java.util.List;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.agent.screening.Danger;
 
 /**
  * Unified tool definition — the capability manifest element. Every tool exposes its name,
- * description, risk category, and parameter schema through this single contract. The Gateway reads
- * {@link #risk} and {@link #parameters} to decide how to screen each call, without hard-coding
- * per-tool-name logic..
+ * description, capability, default danger, and parameter schema through this single contract. The
+ * Gateway reads these properties to select the security boundary and screen each call without
+ * hard-coding per-tool-name logic.
  *
  * <p>Three flavours:
  *
@@ -33,10 +34,11 @@ public sealed interface ToolDefinition
 
     @NonNull String description();
 
-    @NonNull RiskCategory risk();
-
-    /** The effect boundary this tool executes through. Independent from flavour and risk. */
+    /** The effect boundary this tool executes through. */
     @NonNull ToolCapability capability();
+
+    /** The deterministic danger assigned before argument-, policy-, and model-aware escalation. */
+    @NonNull Danger defaultDanger();
 
     @NonNull ParameterSchema parameters();
 

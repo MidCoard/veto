@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import top.focess.veto.agent.mcp.NativeToolDefinition;
 import top.focess.veto.agent.mcp.ParamCategory;
-import top.focess.veto.agent.mcp.RiskCategory;
+import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.TrustMarker;
@@ -135,7 +135,8 @@ class DeployerPolicyTest {
         return new NativeToolDefinition(
                 "view_file",
                 "read",
-                RiskCategory.READ_ONLY,
+                ToolCapability.WORKSPACE_READ,
+                Danger.SAFE,
                 false,
                 ToolDocs.nonNullClass(Object.class),
                 Map.of("path", ParamCategory.FILESYSTEM_PATH));

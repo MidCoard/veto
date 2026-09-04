@@ -6,13 +6,13 @@ import org.springframework.stereotype.Component;
 import top.focess.veto.agent.mcp.Doc;
 import top.focess.veto.agent.mcp.NativeTool;
 import top.focess.veto.agent.mcp.ParamCategory;
-import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.SecurityHint;
 import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDoc;
 import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.mcp.ToolResultFormat;
 import top.focess.veto.agent.mcp.ToolSecurity;
+import top.focess.veto.agent.screening.Danger;
 import top.focess.veto.sandbox.ChainMode;
 import top.focess.veto.sandbox.SandboxSubstrate;
 
@@ -27,7 +27,7 @@ import top.focess.veto.sandbox.SandboxSubstrate;
  * throws to make the special-casing explicit.
  */
 @Component
-@ToolSecurity(risk = RiskCategory.SHELL_EXEC, capability = ToolCapability.PROCESS_EXECUTION)
+@ToolSecurity(capability = ToolCapability.PROCESS_EXECUTION, defaultDanger = Danger.ELEVATED)
 public final class RunCommandTool implements NativeTool<RunCommandTool.Args> {
 
     /** A single discrete command in the chain. */
@@ -47,17 +47,18 @@ public final class RunCommandTool implements NativeTool<RunCommandTool.Args> {
             behavior =
                     """
                     Each `commands` entry is `{executable, args}` where `executable` is a binary name or path \
-                    classified by the Gateway and resolved by the sandbox, and `args` is an argv array of \
-                    literal strings; neither Veto nor a shell expands globs or environment variables. ToolEngine \
-                    routes execution through the session's SandboxSubstrate using the Session-selected workspace \
-                    root as its working directory and \
-                    Veto-controlled chaining. Ordinary executables use direct argv execution. On Windows, \
-                    `.cmd`/`.bat` launchers use a restricted `ComSpec` bridge because CreateProcess cannot execute \
-                    those formats directly; interpreter metacharacters are rejected. The `connect` mode decides \
+                    resolved for the execution environment, and `args` is an argv array of \
+                    literal strings. Each executable is spawned directly; there is no shell. Shell operators \
+                    (`&&`, `||`, `;`), redirections (`>`, `>>`), shell pipes, glob expansion (`*`), and variable \
+                    expansion (`%VAR%` or `$VAR`) do not work. Put sequential commands in separate `commands` \
+                    entries and select their relationship with `connect`; use `PIPE` to pass stdout to the next \
+                    command's stdin. The working directory is the session workspace root. Windows command-script \
+                    launchers are supported, but shell metacharacters in \
+                    their arguments are rejected. The `connect` mode decides \
                     how entries relate: \
                     `STOP_ON_FAILURE` (default) runs them in order and halts at the first non-zero exit; `RUN_ALL` \
                     runs every entry regardless of failures; `PIPE` feeds one entry's stdout into the next \
-                    entry's stdin. `timeout` in seconds (0 = sandbox-profile maximum) bounds the blocking wait - a \
+                    entry's stdin. `timeout` in seconds (0 selects the configured maximum) bounds the blocking wait - a \
                     timed-out chain is forcibly killed and the result carries `[timeout]`. For a long-running \
                     server that never exits (e.g. `npm run dev`), use `run_task` instead so the call does not \
                     block the turn.
@@ -74,8 +75,6 @@ public final class RunCommandTool implements NativeTool<RunCommandTool.Args> {
                     - Do not use `run_command` to read or edit files - use `view_file` / `write_to_file` / \
                     `replace_file_content`.
                     - Do not use it to search text - use `grep_search`.
-                    - Do not pass a shell string with operators (`&&`, `|`, `>`); there is no shell. Express each \
-                    step as its own command entry and let `connect` wire them.
                     - Do not reach for it for trivially in-memory work the model can do directly.
                     """,
             resultContract =
@@ -89,22 +88,15 @@ public final class RunCommandTool implements NativeTool<RunCommandTool.Args> {
                     """
                     - A policy refusal means no process started. Revise the request or obtain the applicable \
                     approval; do not retry the unchanged call.
-                    - The working directory is the session-selected workspace root and cannot be overridden by the call.
                     - A negative `timeout` or an empty supplied `commands` array is rejected before a process starts.
                     - If an executable cannot be resolved or is not installed, select the project's wrapper or \
                     an observed executable path rather than guessing repeatedly.
                     """,
             security =
                     """
-                    `commands` carries SHELL_COMMAND and is screened by the Gateway before execution. The working \
-                    directory is bound to the session-selected workspace root in the screened execution permit. The operation is \
-                    `RiskCategory.SHELL_EXEC` - the highest-risk category, always audited and may require human \
-                    approval. Ordinary executables are direct argv launches. Windows `.cmd`/`.bat` shims use \
-                    the OS `ComSpec` interpreter because CreateProcess cannot execute that file format directly; \
-                    Veto rejects interpreter metacharacters in shim arguments. Prefer \
-                    the fewest entries that accomplish the goal. \
-                    Do not attempt to chain around the sandbox - argv separation and the permit-bound working directory remain \
-                    enforced after approval.
+                    The command and any requested network access are screened before execution. The working \
+                    directory remains bound to the session workspace root. Execution is audited and may require \
+                    human approval. Approval does not remove the sandbox or argument-separation constraints.
                     """,
             examples = {
                 "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"build\"]}], \"connect\": \"STOP_ON_FAILURE\", \"timeout\": 300}",
@@ -129,7 +121,7 @@ public final class RunCommandTool implements NativeTool<RunCommandTool.Args> {
                     Boolean network,
             @NonNull
                     @Doc(
-                            "Timeout in seconds. 0 selects the sandbox-profile maximum; larger values are capped"
+                            "Timeout in seconds. 0 selects the configured maximum; larger values are capped"
                                     + " by that maximum.")
                     Integer timeout) {
 

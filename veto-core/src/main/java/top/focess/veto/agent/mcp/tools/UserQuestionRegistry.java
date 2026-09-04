@@ -64,7 +64,9 @@ public final class UserQuestionRegistry {
         if (answers.size() != questions.size()) return false;
         for (AskUserTool.Question question : questions) {
             String answer = answers.get(question.id());
-            if (answer == null || answer.isBlank()) return false;
+            if (answer == null
+                    || answer.isBlank()
+                    || answer.codePointCount(0, answer.length()) > 500) return false;
         }
         return true;
     }

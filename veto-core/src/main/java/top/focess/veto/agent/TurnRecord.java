@@ -8,6 +8,7 @@ import top.focess.veto.agent.mcp.ToolResult;
 import top.focess.veto.agent.mcp.ToolResultFormat;
 import top.focess.veto.agent.mcp.ToolResultStatus;
 import top.focess.veto.llm.core.ToolCall;
+import top.focess.veto.llm.core.ToolResultPresentationMode;
 
 /**
  * One durable event in the agent's turn history — the append-only raw history the {@code
@@ -127,8 +128,42 @@ public record TurnRecord(
                 result.errorCode());
     }
 
+    /**
+     * A tool response whose {@code content} is already the exact model-visible representation for
+     * this session. The separate status fields retain structured data for transports, the records
+     * UI, and usage projections; replay must not transform {@code content} again.
+     */
+    public static @NonNull TurnRecord presentedToolResponse(
+            int turnNumber,
+            @NonNull ToolResult result,
+            @NonNull String presentedContent,
+            @NonNull ToolResultPresentationMode presentation) {
+        Map<String, Object> payload =
+                toolResponsePayload(
+                        result.callId(),
+                        result.status(),
+                        result.format(),
+                        presentedContent,
+                        result.errorCode());
+        payload.put("presentation", presentation.name());
+        return new TurnRecord(turnNumber, TurnType.TOOL_RESPONSE, payload, null);
+    }
+
     public static @NonNull TurnRecord toolResponse(
             int turnNumber,
+            String callId,
+            @NonNull ToolResultStatus status,
+            @NonNull ToolResultFormat format,
+            @NonNull String content,
+            String errorCode) {
+        return new TurnRecord(
+                turnNumber,
+                TurnType.TOOL_RESPONSE,
+                toolResponsePayload(callId, status, format, content, errorCode),
+                null);
+    }
+
+    private static @NonNull Map<String, Object> toolResponsePayload(
             String callId,
             @NonNull ToolResultStatus status,
             @NonNull ToolResultFormat format,
@@ -147,7 +182,7 @@ public record TurnRecord(
         if (errorCode != null) {
             p.put("errorCode", errorCode);
         }
-        return new TurnRecord(turnNumber, TurnType.TOOL_RESPONSE, p, null);
+        return p;
     }
 
     /**

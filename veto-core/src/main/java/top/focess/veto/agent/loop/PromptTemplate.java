@@ -13,7 +13,7 @@ import org.jspecify.annotations.NonNull;
  * {{...}}} sequence in the template passes through verbatim, so prompt content that legitimately
  * contains double braces (e.g. JSON examples) is never mangled. When a marker's rendered value is
  * blank, the substitution leaves an empty line; a final pass collapses runs of 3+ newlines to 2 so
- * optional sections (skills, boundaries under FULL_ACCESS) leave no orphan headers.
+ * optional sections leave no orphan headers.
  */
 public final class PromptTemplate {
 

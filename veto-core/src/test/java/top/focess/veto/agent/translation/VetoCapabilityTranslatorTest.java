@@ -10,11 +10,12 @@ import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.mcp.AgentToolDefinition;
 import top.focess.veto.agent.mcp.NativeToolDefinition;
 import top.focess.veto.agent.mcp.ParamCategory;
-import top.focess.veto.agent.mcp.RiskCategory;
+import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.mcp.ToolDocumentation;
 import top.focess.veto.agent.mcp.ToolResultFormat;
 import top.focess.veto.agent.mcp.tools.LoadSkillTool;
+import top.focess.veto.agent.screening.Danger;
 
 /**
  * Validates {@link VetoCapabilityTranslator} against the per-turn veto_pulse variant matrix and the
@@ -93,6 +94,7 @@ class VetoCapabilityTranslatorTest {
                         new top.focess.veto.llm.core.ToolDefinition(
                                 "view_file",
                                 "Read a file.",
+                                ToolCapability.WORKSPACE_READ,
                                 viewArgs,
                                 List.of(),
                                 ToolDocumentation.empty(),
@@ -101,6 +103,7 @@ class VetoCapabilityTranslatorTest {
                         new top.focess.veto.llm.core.ToolDefinition(
                                 "think",
                                 "Continue deliberately.",
+                                ToolCapability.LOOP_CONTROL,
                                 thinkArgs,
                                 List.of(),
                                 ToolDocumentation.empty(),
@@ -143,7 +146,8 @@ class VetoCapabilityTranslatorTest {
                 new NativeToolDefinition(
                         "view_file",
                         "Read a file.",
-                        RiskCategory.READ_ONLY,
+                        ToolCapability.WORKSPACE_READ,
+                        Danger.SAFE,
                         false,
                         ToolDocs.nonNullClass(LoadSkillTool.Args.class),
                         Map.<String, ParamCategory>of());
@@ -151,6 +155,8 @@ class VetoCapabilityTranslatorTest {
                 new AgentToolDefinition(
                         "load_skill",
                         "Load a skill.",
+                        ToolCapability.SKILL_READ,
+                        Danger.SAFE,
                         ToolDocs.nonNullClass(LoadSkillTool.Args.class),
                         Map.<String, ParamCategory>of());
         List<top.focess.veto.llm.core.ToolDefinition> flat =
@@ -158,6 +164,8 @@ class VetoCapabilityTranslatorTest {
         assertEquals(2, flat.size());
         assertEquals("view_file", flat.get(0).name());
         assertEquals("Read a file.", flat.get(0).description());
+        assertEquals(ToolCapability.WORKSPACE_READ, flat.get(0).capability());
+        assertEquals(ToolCapability.SKILL_READ, flat.get(1).capability());
         assertNotNull(flat.get(0).inputSchema());
         assertEquals("object", flat.get(0).inputSchema().get("type"));
         assertFalse(
@@ -196,6 +204,7 @@ class VetoCapabilityTranslatorTest {
                 new top.focess.veto.llm.core.ToolDefinition(
                         "view_file",
                         "Read a file.",
+                        ToolCapability.WORKSPACE_READ,
                         args,
                         List.of(),
                         ToolDocumentation.empty(),

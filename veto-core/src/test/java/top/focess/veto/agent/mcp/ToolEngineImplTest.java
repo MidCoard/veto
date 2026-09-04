@@ -744,10 +744,7 @@ class ToolEngineImplTest {
             JsonNode status = null;
             for (int i = 0; i < 200; i++) {
                 ToolCall viewTask =
-                        new ToolCall(
-                                "view_task",
-                                Map.of("taskId", taskId, "lines", 50),
-                                "agent-viewtask-" + i);
+                        new ToolCall("view_task", Map.of("taskId", taskId), "agent-viewtask-" + i);
                 ToolResult viewed =
                         executeAuthorized(
                                 fixture.engine(),

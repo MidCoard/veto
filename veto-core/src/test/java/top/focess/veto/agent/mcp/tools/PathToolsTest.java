@@ -45,14 +45,33 @@ class PathToolsTest {
         JsonNode result =
                 mapper.readTree(
                         new FindFilesTool()
-                                .execute(
-                                        new FindFilesTool.Args(
-                                                root.toString(), "**/*.java", null)));
+                                .execute(new FindFilesTool.Args(root.toString(), "**/*.java")));
 
         assertEquals(2, result.get("matches").size());
         assertEquals("Root.java", result.get("matches").get(0).asText());
         assertEquals("src/Nested.java", result.get("matches").get(1).asText());
         assertFalse(result.get("truncated").asBoolean());
+    }
+
+    @Test
+    void findFilesSkipsProtectedDescendants(@TempDir @NonNull Path root) throws Exception {
+        Files.writeString(root.resolve("visible.txt"), "visible");
+        Path protectedDirectory = Files.createDirectory(root.resolve("protected"));
+        Files.writeString(protectedDirectory.resolve("secret.txt"), "secret");
+        permit(
+                "find_files",
+                root,
+                Map.of("absolutePath", root.toString()),
+                Set.of(protectedDirectory));
+
+        JsonNode result =
+                mapper.readTree(
+                        new FindFilesTool()
+                                .execute(new FindFilesTool.Args(root.toString(), "**/*.txt")));
+
+        assertEquals(1, result.get("matches").size());
+        assertEquals("visible.txt", result.get("matches").get(0).asText());
+        assertTrue(result.get("skippedEntries").asInt() >= 1);
     }
 
     @Test
@@ -79,6 +98,70 @@ class PathToolsTest {
         assertEquals("DESTINATION_EXISTS", error.errorCode());
         assertTrue(Files.exists(source));
         assertEquals("destination", Files.readString(destination));
+    }
+
+    @Test
+    void writeAndReplaceUseTheAuthorizedTarget(@TempDir @NonNull Path root) throws Exception {
+        Path file = root.resolve("created.txt");
+        permit("write_to_file", root, Map.of("absolutePath", file.toString()));
+
+        JsonNode written =
+                mapper.readTree(
+                        new WriteToFileTool()
+                                .execute(
+                                        new WriteToFileTool.Args(
+                                                file.toString(), "first\nsecond\n", false)));
+
+        assertEquals("ok", written.get("status").asText());
+        assertEquals("first\nsecond\n", Files.readString(file));
+
+        permit("replace_file_content", root, Map.of("absolutePath", file.toString()));
+        JsonNode replaced =
+                mapper.readTree(
+                        new ReplaceFileContentTool()
+                                .execute(
+                                        new ReplaceFileContentTool.Args(
+                                                file.toString(), 2, 2, "second", "updated")));
+
+        assertEquals("ok", replaced.get("status").asText());
+        assertEquals("first\nupdated\n", Files.readString(file));
+    }
+
+    @Test
+    void writeRefusesAProtectedTarget(@TempDir @NonNull Path root) {
+        Path protectedDirectory = root.resolve("protected");
+        Path file = protectedDirectory.resolve("secret.txt");
+        permit(
+                "write_to_file",
+                root,
+                Map.of("absolutePath", file.toString()),
+                Set.of(protectedDirectory));
+
+        ToolExecutionException error =
+                assertThrows(
+                        ToolDocs.nonNullClass(ToolExecutionException.class),
+                        () ->
+                                new WriteToFileTool()
+                                        .execute(
+                                                new WriteToFileTool.Args(
+                                                        file.toString(), "secret", false)));
+
+        assertEquals("PATH_PROTECTED", error.errorCode());
+        assertFalse(Files.exists(file));
+    }
+
+    @Test
+    void workspaceWriteFailsClosedWithoutAnExecutionPermit(@TempDir @NonNull Path root) {
+        Path file = root.resolve("blocked.txt");
+
+        assertThrows(
+                SecurityException.class,
+                () ->
+                        new WriteToFileTool()
+                                .execute(
+                                        new WriteToFileTool.Args(
+                                                file.toString(), "blocked", false)));
+        assertFalse(Files.exists(file));
     }
 
     @Test
@@ -109,6 +192,14 @@ class PathToolsTest {
             @NonNull String toolName,
             @NonNull Path root,
             @NonNull Map<@NonNull String, @NonNull String> paths) {
+        permit(toolName, root, paths, Set.of());
+    }
+
+    private static void permit(
+            @NonNull String toolName,
+            @NonNull Path root,
+            @NonNull Map<@NonNull String, @NonNull String> paths,
+            @NonNull Set<@NonNull Path> protectedPaths) {
         Map<String, ToolExecutionPermit.AuthorizedPath> authorized =
                 new java.util.LinkedHashMap<>();
         paths.forEach(
@@ -116,7 +207,14 @@ class PathToolsTest {
                         authorized.put(
                                 name,
                                 new ToolExecutionPermit.AuthorizedPath(
-                                        name, path, Path.of(path), 0, true)));
+                                        name,
+                                        path,
+                                        Path.of(path),
+                                        0,
+                                        true,
+                                        ToolExecutionPermit.FileIdentity.capture(Path.of(path)),
+                                        ToolExecutionPermit.FileIdentity.capture(
+                                                Path.of(path).getParent()))));
         ToolExecutionPermit permit =
                 new ToolExecutionPermit(
                         toolName,
@@ -125,7 +223,8 @@ class PathToolsTest {
                         List.of(root),
                         root,
                         DeployerPolicy.FULL_ACCESS,
-                        Set.of());
+                        protectedPaths,
+                        null);
         ToolCallContextHolder.set(
                 new ToolCallContext(
                         "agent",

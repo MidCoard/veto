@@ -53,6 +53,7 @@ public class VetoCapabilityTranslator implements CapabilityTranslator {
                     new top.focess.veto.llm.core.ToolDefinition(
                             def.name(),
                             def.description(),
+                            def.capability(),
                             inputSchema,
                             def.examples(),
                             def.documentation(),

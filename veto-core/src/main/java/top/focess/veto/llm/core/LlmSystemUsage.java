@@ -1,5 +1,7 @@
 package top.focess.veto.llm.core;
 
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import org.jspecify.annotations.NonNull;
 
 /**
@@ -7,20 +9,18 @@ import org.jspecify.annotations.NonNull;
  * the runner loop to calibrate the token estimation.
  */
 public final class LlmSystemUsage {
-    @SuppressWarnings({"rawtypes", "unchecked"})
-    private static final @NonNull ThreadLocal currentUsage = new ThreadLocal();
+    private static final @NonNull ConcurrentMap<Thread, Usage> CURRENT_USAGE =
+            new ConcurrentHashMap<>();
 
     public record Usage(long promptTokens, long completionTokens) {}
 
-    @SuppressWarnings({"rawtypes", "unchecked"})
+    private LlmSystemUsage() {}
+
     public static void set(long prompt, long completion) {
-        currentUsage.set(new Usage(prompt, completion));
+        CURRENT_USAGE.put(Thread.currentThread(), new Usage(prompt, completion));
     }
 
     public static Usage getAndClear() {
-        Object value = currentUsage.get();
-        Usage u = value instanceof Usage usage ? usage : null;
-        currentUsage.remove();
-        return u;
+        return CURRENT_USAGE.remove(Thread.currentThread());
     }
 }

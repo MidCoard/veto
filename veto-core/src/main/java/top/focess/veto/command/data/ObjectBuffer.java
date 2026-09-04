@@ -1,5 +1,8 @@
 package top.focess.veto.command.data;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.NoSuchElementException;
 import org.jspecify.annotations.NonNull;
 import top.focess.command.data.DataBuffer;
 
@@ -16,14 +19,15 @@ import top.focess.command.data.DataBuffer;
  *
  * @param <T> the element type
  */
-@SuppressWarnings({"assignment", "return"})
 public final class ObjectBuffer<T> extends DataBuffer<T> {
 
-    private final Object @NonNull [] values;
+    private final @NonNull List<T> values;
+    private final int capacity;
     private int pos;
 
     private ObjectBuffer(final int size) {
-        this.values = new Object[size];
+        this.values = new ArrayList<>(size);
+        this.capacity = size;
     }
 
     /**
@@ -44,27 +48,26 @@ public final class ObjectBuffer<T> extends DataBuffer<T> {
 
     @Override
     public void put(final T t) {
-        if (this.pos < this.values.length) {
-            this.values[this.pos] = t;
+        if (this.pos < this.capacity) {
+            if (this.pos < this.values.size()) {
+                this.values.set(this.pos, t);
+            } else {
+                this.values.add(t);
+            }
             this.pos++;
         }
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public T get() {
-        if (this.pos < this.values.length) {
-            return (T) this.values[this.pos++];
+        if (this.pos >= this.values.size()) {
+            throw new NoSuchElementException("ObjectBuffer has no remaining value");
         }
-        return null;
+        return this.values.get(this.pos++);
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public T get(final int index) {
-        if (index >= 0 && index < this.values.length) {
-            return (T) this.values[index];
-        }
-        return null;
+        return this.values.get(index);
     }
 }

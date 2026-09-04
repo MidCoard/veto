@@ -7,23 +7,17 @@ import java.lang.annotation.Target;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.screening.Danger;
 
-/**
- * Declares the risk category of a native tool class (the level of danger it represents). Read by
- * the Gateway to decide screening level..
- */
+/** Declares a native tool's execution capability and deterministic default danger. */
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.TYPE)
 public @interface ToolSecurity {
 
-    /** What kind of danger this tool represents. */
-    @NonNull RiskCategory risk();
-
     /** Which execution boundary owns the tool's effect. */
     @NonNull ToolCapability capability();
 
-    /** Whether this tool always requires semantic screening regardless of risk category. */
-    boolean requiresSemanticScreening() default false;
+    /** Danger assigned before argument-, policy-, and model-aware escalation. */
+    @NonNull Danger defaultDanger();
 
-    /** Deterministic danger floor applied after the risk-derived baseline. */
-    @NonNull Danger minimumDanger() default Danger.SAFE;
+    /** Whether this tool always requires semantic screening. */
+    boolean requiresSemanticScreening() default false;
 }

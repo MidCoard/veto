@@ -3,13 +3,13 @@ package top.focess.veto.agent.mcp.tools;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.mcp.Doc;
 import top.focess.veto.agent.mcp.NativeTool;
 import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.Required;
-import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.SecurityHint;
 import top.focess.veto.agent.mcp.ToolCallContextHolder;
 import top.focess.veto.agent.mcp.ToolCapability;
@@ -19,13 +19,14 @@ import top.focess.veto.agent.mcp.ToolErrors;
 import top.focess.veto.agent.mcp.ToolJson;
 import top.focess.veto.agent.mcp.ToolResultFormat;
 import top.focess.veto.agent.mcp.ToolSecurity;
+import top.focess.veto.agent.screening.Danger;
 import top.focess.veto.sandbox.BackgroundTaskManager;
 
 /** Queues standard-input bytes to a background task owned by the calling agent. */
 @Component
 @ToolSecurity(
-        risk = RiskCategory.AGENT,
         capability = ToolCapability.TASK_CONTROL,
+        defaultDanger = Danger.SAFE,
         requiresSemanticScreening = true)
 public final class InputTaskTool implements NativeTool<InputTaskTool.Args> {
 
@@ -39,19 +40,36 @@ public final class InputTaskTool implements NativeTool<InputTaskTool.Args> {
             resultFormats = {ToolResultFormat.JSON},
             description = "Queue text to the standard input of a running background task.",
             behavior =
-                    "Encodes content as UTF-8, optionally appends one newline, queues it in order, and optionally closes stdin after those bytes. "
-                            + "The call returns after queueing; later pipe failures are exposed by view_task.",
+                    "Encodes content as UTF-8, optionally appends one newline, queues it in order,"
+                            + " and optionally closes stdin after those bytes. The byte count includes"
+                            + " the optional `\n"
+                            + "`. A queued result means accepted by the bounded input queue, not yet"
+                            + " consumed by the process; later pipe failures appear in view_task"
+                            + " `inputFailures`.",
             whenToUse =
-                    "Use it to answer an interactive prompt or send input to a process launched by run_task.",
+                    "Use it to answer an interactive prompt or send input to a process launched by"
+                            + " run_task.",
             whenNotToUse =
-                    "Do not use it for a finished task, a task owned by another agent, or to start a new process.",
+                    "Do not use it for a finished task, a task from another session or agent, or to"
+                            + " start a new process. Do not send credentials unless the user explicitly"
+                            + " supplied and authorized them for this process.",
             resultContract =
-                    "Success returns JSON with `status`, `taskId`, `bytes`, `newline`, and `closeQueued`. Failures use TASK_NOT_FOUND, "
-                            + "TASK_NOT_RUNNING, STDIN_CLOSED, EMPTY_INPUT, INPUT_TOO_LARGE, or INPUT_QUEUE_FULL.",
+                    "Success returns JSON with `status`, `taskId`, `bytes`, `newline`, and"
+                            + " `closeQueued`. `bytes` is the queued UTF-8 byte count including an"
+                            + " appended newline. In detailed-result mode, failures use TASK_NOT_FOUND,"
+                            + " TASK_NOT_RUNNING, STDIN_CLOSED, EMPTY_INPUT, INPUT_TOO_LARGE, or"
+                            + " INPUT_QUEUE_FULL; failure content is actionable plaintext in every"
+                            + " mode.",
             errorsAndEdgeCases =
-                    "Each call is limited to 64 KiB and each task to 256 KiB of queued input. Empty content is valid only when a newline is appended or stdin is closed.",
+                    "Each call is limited to 64 KiB and each task to 256 KiB of queued input. Empty"
+                            + " content is valid only when a newline is appended or stdin is closed."
+                            + " Use view_task to inspect bounded asynchronous inputFailures and"
+                            + " stop_task if the process must be terminated.",
             security =
-                    "Agent-scoped task control. The task id is resolved only inside the calling agent and input cannot grant new process authority.",
+                    "Session- and agent-scoped task control. Gateway semantic screening receives"
+                            + " the exact process executable, argv, cwd, and network policy; execution"
+                            + " is rebound to that task instance after approval. Input cannot expand"
+                            + " the process's existing sandbox authority.",
             examples = {
                 "{\"taskId\":\"bg-3\",\"content\":\"yes\",\"appendNewline\":true,\"closeStdin\":false}",
                 "{\"taskId\":\"bg-3\",\"content\":\"\",\"appendNewline\":false,\"closeStdin\":true}"
@@ -101,8 +119,24 @@ public final class InputTaskTool implements NativeTool<InputTaskTool.Args> {
         if (context == null) {
             throw new SecurityException("input_task requires an agent execution context");
         }
+        UUID sessionId = context.sessionId();
+        var binding = context.executionPermit().taskBinding();
+        if (binding == null
+                || sessionId == null
+                || !binding.taskId().equals(args.taskId())
+                || !binding.agentId().equals(context.agentId())
+                || !binding.sessionId().equals(sessionId)) {
+            throw new SecurityException(
+                    "input_task requires the exact task instance screened by the Gateway");
+        }
         BackgroundTaskManager.InputResult queued =
-                taskManager.queueInput(context.agentId(), args.taskId(), bytes, args.closeStdin());
+                taskManager.queueInput(
+                        context.agentId(),
+                        sessionId,
+                        args.taskId(),
+                        binding.taskInstanceId(),
+                        bytes,
+                        args.closeStdin());
         if (!queued.queued()) {
             String code = queued.status().name();
             String message =

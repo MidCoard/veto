@@ -1,31 +1,24 @@
 package top.focess.veto.agent.mcp.tools;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.FileAlreadyExistsException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
+import top.focess.veto.agent.capability.WorkspaceWriteCapability;
 import top.focess.veto.agent.mcp.Doc;
-import top.focess.veto.agent.mcp.NativeTool;
 import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.Required;
-import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.SecurityHint;
 import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDoc;
 import top.focess.veto.agent.mcp.ToolDocs;
-import top.focess.veto.agent.mcp.ToolErrors;
-import top.focess.veto.agent.mcp.ToolJson;
 import top.focess.veto.agent.mcp.ToolResultFormat;
 import top.focess.veto.agent.mcp.ToolSecurity;
+import top.focess.veto.agent.mcp.WorkspaceWriteTool;
+import top.focess.veto.agent.screening.Danger;
 
 /** {@code write_to_file} — create a new file or completely overwrite an existing file. */
 @Component
-@ToolSecurity(risk = RiskCategory.FILE_WRITE, capability = ToolCapability.WORKSPACE_WRITE)
-public final class WriteToFileTool implements NativeTool<WriteToFileTool.Args> {
+@ToolSecurity(capability = ToolCapability.WORKSPACE_WRITE, defaultDanger = Danger.ELEVATED)
+public final class WriteToFileTool implements WorkspaceWriteTool<WriteToFileTool.Args> {
 
     @ToolDoc(
             resultFormats = {ToolResultFormat.JSON},
@@ -79,8 +72,9 @@ public final class WriteToFileTool implements NativeTool<WriteToFileTool.Args> {
                     the path, screens it under the deployer policy, and applies semantic screening to the content \
                     before the write. Under FULL_ACCESS, workspace roots are working context rather than a path \
                     boundary, so any absolute host path may be targeted; restrictive policies may fence paths. \
-                    The operation is `RiskCategory.FILE_WRITE` (elevated + audited) and may require approval. If \
-                    the Gateway actually refuses a path, change approach instead. Do not embed high-value secrets \
+                    The Gateway exposes the screened target through a call-scoped `WORKSPACE_WRITE` capability. \
+                    The operation has default danger `ELEVATED`; it is audited and may require approval. If the \
+                    Gateway actually refuses a path, change approach instead. Do not embed high-value secrets \
                     in written files.
                     """,
             examples = {
@@ -116,21 +110,8 @@ public final class WriteToFileTool implements NativeTool<WriteToFileTool.Args> {
     }
 
     @Override
-    public @NonNull String execute(@NonNull Args args) throws IOException {
-        Path path = Path.of(args.absolutePath());
-        byte[] content = args.codeContent().getBytes(StandardCharsets.UTF_8);
-        if (content.length > TextFileToolLimits.MAX_BYTES) {
-            return ToolErrors.failure("Content exceeds " + TextFileToolLimits.DISPLAY_SIZE);
-        }
-        if (!args.overwrite() && Files.exists(path)) {
-            return ToolErrors.failure("File exists and overwrite=false: " + args.absolutePath());
-        }
-        try {
-            AtomicFileWrites.write(path, content, args.overwrite());
-        } catch (FileAlreadyExistsException e) {
-            return ToolErrors.failure("File exists and overwrite=false: " + args.absolutePath());
-        }
-        return ToolJson.object(
-                Map.of("status", "ok", "file", args.absolutePath(), "bytes", content.length));
+    public @NonNull String execute(
+            @NonNull Args args, @NonNull WorkspaceWriteCapability capability) {
+        return capability.writeText("absolutePath", args.codeContent(), args.overwrite());
     }
 }

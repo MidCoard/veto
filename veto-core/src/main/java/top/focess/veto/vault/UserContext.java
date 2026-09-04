@@ -1,5 +1,7 @@
 package top.focess.veto.vault;
 
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import org.jspecify.annotations.NonNull;
 
 /**
@@ -9,8 +11,8 @@ import org.jspecify.annotations.NonNull;
  */
 public final class UserContext {
 
-    @SuppressWarnings({"rawtypes", "unchecked"})
-    private static final @NonNull ThreadLocal CURRENT_USER = new ThreadLocal();
+    private static final @NonNull ConcurrentMap<Thread, String> CURRENT_USERS =
+            new ConcurrentHashMap<>();
 
     private UserContext() {}
 
@@ -19,9 +21,8 @@ public final class UserContext {
      *
      * @param username the username to set
      */
-    @SuppressWarnings({"rawtypes", "unchecked"})
     public static void set(@NonNull String username) {
-        CURRENT_USER.set(username);
+        CURRENT_USERS.put(Thread.currentThread(), username);
     }
 
     /**
@@ -30,12 +31,11 @@ public final class UserContext {
      * @return the username, or null if not set
      */
     public static String get() {
-        Object value = CURRENT_USER.get();
-        return value instanceof String username ? username : null;
+        return CURRENT_USERS.get(Thread.currentThread());
     }
 
     /** Clears the context for the current thread. */
     public static void clear() {
-        CURRENT_USER.remove();
+        CURRENT_USERS.remove(Thread.currentThread());
     }
 }

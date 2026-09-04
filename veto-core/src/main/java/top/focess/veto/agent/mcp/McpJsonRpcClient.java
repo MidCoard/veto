@@ -55,11 +55,9 @@ public final class McpJsonRpcClient {
             // The schema is the raw JSON Schema; RemoteToolDefinition stores it as JsonNode.
             JsonNode inputSchema = t.path("inputSchema");
             String serverName = serverNameFor(transport);
-            // Unclassified external tools stay REMOTE_UNKNOWN with NETWORK screening risk. A
+            // Unclassified external tools stay REMOTE_UNKNOWN with an ELEVATED danger floor. A
             // server description cannot downgrade this contract.
-            out.add(
-                    new RemoteToolDefinition(
-                            name, description, RiskCategory.NETWORK, serverName, inputSchema));
+            out.add(new RemoteToolDefinition(name, description, serverName, inputSchema));
         }
         return out;
     }

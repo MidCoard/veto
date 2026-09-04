@@ -56,7 +56,7 @@ public final class ThinkTool implements AgentTool<ThinkTool.Args> {
             errorsAndEdgeCases =
                     "Unknown fields are rejected by the shared argument validator before execution.",
             security =
-                    "Agent tool (`RiskCategory.AGENT`). It performs no external or persistent operation.",
+                    "Agent tool with `LOOP_CONTROL` capability. It performs no external or persistent operation.",
             examples = {"{}"},
             returnExamples = {""})
     public record Args() {}

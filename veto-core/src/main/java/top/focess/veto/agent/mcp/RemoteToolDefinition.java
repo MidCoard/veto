@@ -2,6 +2,7 @@ package top.focess.veto.agent.mcp;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.agent.screening.Danger;
 
 /**
  * An external (user-configured) tool discovered from a registered MCP server. Carries a raw JSON
@@ -11,7 +12,6 @@ import org.jspecify.annotations.NonNull;
 public record RemoteToolDefinition(
         @NonNull String name,
         @NonNull String description,
-        @NonNull RiskCategory risk,
         @NonNull String serverName,
         @NonNull JsonNode inputSchema)
         implements ToolDefinition {
@@ -19,6 +19,11 @@ public record RemoteToolDefinition(
     @Override
     public @NonNull ToolCapability capability() {
         return ToolCapability.REMOTE_UNKNOWN;
+    }
+
+    @Override
+    public @NonNull Danger defaultDanger() {
+        return Danger.ELEVATED;
     }
 
     @Override

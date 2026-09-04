@@ -1,11 +1,17 @@
 package top.focess.veto.agent.intercept;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.mcp.AgentToolDefinition;
 import top.focess.veto.agent.mcp.NativeToolDefinition;
@@ -30,11 +36,19 @@ public record ToolExecutionPermit(
         @NonNull List<@NonNull Path> workspaceRoots,
         Path executionRoot,
         @NonNull DeployerPolicy deployerPolicy,
-        @NonNull Set<@NonNull Path> protectedPaths) {
+        @NonNull Set<@NonNull Path> protectedPaths,
+        TaskBinding taskBinding) {
 
     private static final @NonNull ToolExecutionPermit EMPTY =
             new ToolExecutionPermit(
-                    "", Map.of(), Map.of(), List.of(), null, DeployerPolicy.FULL_ACCESS, Set.of());
+                    "",
+                    Map.of(),
+                    Map.of(),
+                    List.of(),
+                    null,
+                    DeployerPolicy.FULL_ACCESS,
+                    Set.of(),
+                    null);
 
     public ToolExecutionPermit {
         screenedArguments = Map.copyOf(screenedArguments);
@@ -81,7 +95,8 @@ public record ToolExecutionPermit(
                     roots,
                     executionRoot,
                     deployerPolicy,
-                    denied);
+                    denied,
+                    null);
         }
         Map<@NonNull String, @NonNull AuthorizedPath> paths = new LinkedHashMap<>();
         for (var entry : hints.entrySet()) {
@@ -98,17 +113,43 @@ public record ToolExecutionPermit(
             } catch (RuntimeException e) {
                 resolution = Resolution.outOfScope(null);
             }
+            Path hostPath = resolution.hostPath();
+            Path parentPath = hostPath == null ? null : hostPath.getParent();
             paths.put(
                     entry.getKey(),
                     new AuthorizedPath(
                             entry.getKey(),
                             requestedPath,
-                            resolution.hostPath(),
+                            hostPath,
                             resolution.rootIndex(),
-                            resolution.inScope()));
+                            resolution.inScope(),
+                            FileIdentity.capture(hostPath),
+                            parentPath == null
+                                    ? FileIdentity.missing()
+                                    : FileIdentity.capture(parentPath)));
         }
         return new ToolExecutionPermit(
-                call.toolName(), call.args(), paths, roots, executionRoot, deployerPolicy, denied);
+                call.toolName(),
+                call.args(),
+                paths,
+                roots,
+                executionRoot,
+                deployerPolicy,
+                denied,
+                null);
+    }
+
+    /** Binds a screened process-input call to the exact background-task instance it targeted. */
+    public @NonNull ToolExecutionPermit withTaskBinding(@NonNull TaskBinding binding) {
+        return new ToolExecutionPermit(
+                toolName,
+                screenedArguments,
+                filesystemPaths,
+                workspaceRoots,
+                executionRoot,
+                deployerPolicy,
+                protectedPaths,
+                binding);
     }
 
     /** Whether this permit still binds the exact immutable tool call. */
@@ -128,7 +169,8 @@ public record ToolExecutionPermit(
         if (!workspaceRoots.equals(current.workspaceRoots)
                 || !Objects.equals(executionRoot, current.executionRoot)
                 || deployerPolicy != current.deployerPolicy
-                || !protectedPaths.equals(current.protectedPaths)) {
+                || !protectedPaths.equals(current.protectedPaths)
+                || !Objects.equals(taskBinding, current.taskBinding)) {
             return false;
         }
         for (var entry : filesystemPaths.entrySet()) {
@@ -192,14 +234,88 @@ public record ToolExecutionPermit(
             @NonNull String requestedPath,
             Path hostPath,
             int rootIndex,
-            boolean inScope) {
+            boolean inScope,
+            @NonNull FileIdentity identity,
+            @NonNull FileIdentity parentIdentity) {
 
         boolean sameTarget(@NonNull AuthorizedPath current) {
             return argumentName.equals(current.argumentName)
                     && requestedPath.equals(current.requestedPath)
                     && Objects.equals(hostPath, current.hostPath)
                     && rootIndex == current.rootIndex
-                    && inScope == current.inScope;
+                    && inScope == current.inScope
+                    && identity.sameObject(current.identity)
+                    && parentIdentity.sameObject(current.parentIdentity);
         }
     }
+
+    /** Best-effort no-follow identity used to detect path replacement after screening. */
+    public record FileIdentity(
+            @NonNull State state,
+            @NonNull String fileKey,
+            long size,
+            long lastModifiedMillis,
+            boolean directory,
+            boolean symbolicLink) {
+
+        /** Compares object identity, using provider file keys when available. */
+        public boolean sameObject(@NonNull FileIdentity current) {
+            if (state != current.state
+                    || directory != current.directory
+                    || symbolicLink != current.symbolicLink) {
+                return false;
+            }
+            if (state != State.PRESENT) {
+                return state == State.MISSING;
+            }
+            if (!fileKey.isEmpty() || !current.fileKey.isEmpty()) {
+                return fileKey.equals(current.fileKey);
+            }
+            return directory
+                    || (size == current.size && lastModifiedMillis == current.lastModifiedMillis);
+        }
+
+        public static @NonNull FileIdentity capture(Path path) {
+            if (path == null) {
+                return unavailable();
+            }
+            try {
+                BasicFileAttributes attributes =
+                        Files.readAttributes(
+                                path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+                return new FileIdentity(
+                        State.PRESENT,
+                        Objects.toString(attributes.fileKey(), ""),
+                        attributes.size(),
+                        attributes.lastModifiedTime().toMillis(),
+                        attributes.isDirectory(),
+                        attributes.isSymbolicLink());
+            } catch (NoSuchFileException e) {
+                return missing();
+            } catch (IOException | SecurityException e) {
+                return unavailable();
+            }
+        }
+
+        public static @NonNull FileIdentity missing() {
+            return new FileIdentity(State.MISSING, "", 0, 0, false, false);
+        }
+
+        public static @NonNull FileIdentity unavailable() {
+            return new FileIdentity(State.UNAVAILABLE, "", 0, 0, false, false);
+        }
+
+        public enum State {
+            PRESENT,
+            MISSING,
+            UNAVAILABLE
+        }
+    }
+
+    /** Exact process instance approved for one process-input call. */
+    public record TaskBinding(
+            @NonNull String taskId,
+            @NonNull String agentId,
+            @NonNull UUID sessionId,
+            @NonNull UUID taskInstanceId) {}
 }

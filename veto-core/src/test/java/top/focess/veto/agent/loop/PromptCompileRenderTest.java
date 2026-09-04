@@ -20,11 +20,13 @@ import top.focess.veto.agent.mcp.ToolDocumentation;
 import top.focess.veto.agent.mcp.ToolResultFormat;
 import top.focess.veto.agent.mcp.ToolSchemaCompiler;
 import top.focess.veto.agent.mcp.tools.GrepSearchTool;
+import top.focess.veto.agent.mcp.tools.RunCommandTool;
 import top.focess.veto.agent.screening.DeployerPolicy;
 import top.focess.veto.agent.translation.VetoCapabilityTranslator;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.ToolDefinition;
+import top.focess.veto.llm.core.ToolResultPresentationMode;
 import top.focess.veto.memory.MemoryTools;
 
 /**
@@ -38,6 +40,24 @@ class PromptCompileRenderTest {
     private final @NonNull SystemPromptResolver resolver = new SystemPromptResolver();
 
     @Test
+    void toolResultConventionsDescribeTheSelectedSessionRepresentation() {
+        String basic = PromptBlocks.resultConventions(ToolResultPresentationMode.BASIC);
+        String detailed = PromptBlocks.resultConventions(ToolResultPresentationMode.DETAILED);
+
+        assertTrue(basic.contains("no common object surrounds it"));
+        assertFalse(basic.contains("exactly four fields"));
+        assertTrue(detailed.contains("exactly four fields"));
+        assertTrue(
+                detailed.contains(
+                        "`success`, `failure`, `refused`, `cancelled`, or `interrupted`"));
+        assertTrue(detailed.contains("`json`, `plaintext`, or `unknown`"));
+        assertTrue(detailed.contains("`content` is always a string"));
+        assertTrue(
+                detailed.contains(
+                        "`errorCode` is either a stable machine-readable string or `null`"));
+    }
+
+    @Test
     void renderStandaloneFullAccess() {
         String prompt = render(Role.STANDALONE, DeployerPolicy.FULL_ACCESS, null, sampleTools());
         System.out.println("===== STANDALONE / FULL_ACCESS =====\n" + prompt);
@@ -45,7 +65,11 @@ class PromptCompileRenderTest {
         assertTrue(
                 prompt.contains("## Your Tools"),
                 "standalone with tools should show the Tools block");
-        assertTrue(prompt.contains("running under FULL_ACCESS"));
+        assertFalse(prompt.contains("FULL_ACCESS"));
+        assertFalse(prompt.contains("Path mode:"));
+        assertTrue(prompt.contains("Use an absolute path for every file-tool path argument"));
+        assertTrue(
+                prompt.contains("Filesystem access is not limited to the listed workspace roots"));
         assertTrue(prompt.contains("default working context, not an access boundary"));
         assertTrue(prompt.contains("any absolute host path"));
         assertTrue(
@@ -67,7 +91,7 @@ class PromptCompileRenderTest {
         assertFalse(
                 prompt.contains("## Your Tools\n"),
                 "leader with no tools should drop the Tools block");
-        assertTrue(prompt.contains("running under PROTECTED"));
+        assertFalse(prompt.contains("PROTECTED"));
         assertTrue(prompt.contains("protected set is a hard deny-list"));
         assertTrue(prompt.contains("outside workspace roots remain addressable"));
         assertFalse(prompt.contains("another user's unshared workspace"));
@@ -91,8 +115,8 @@ class PromptCompileRenderTest {
                 "cannot create, promote, delete, or otherwise mutate them");
         assertTrue(prompt.contains("## Additional Role Guidance"));
         assertTrue(prompt.contains("You are a Mate agent. Execute the assigned task."));
-        assertTrue(prompt.contains("running under SANDBOXED"));
-        assertTrue(prompt.contains("session workspace roots admitted within those zones"));
+        assertFalse(prompt.contains("SANDBOXED"));
+        assertTrue(prompt.contains("session workspace roots are hard path boundaries"));
         assertFalse(prompt.contains("owner-issued sharing"));
     }
 
@@ -103,9 +127,9 @@ class PromptCompileRenderTest {
         String sandboxed = render(Role.STANDALONE, DeployerPolicy.SANDBOXED, null, List.of());
         String tenant = render(Role.STANDALONE, DeployerPolicy.TENANT, null, List.of());
 
-        assertTrue(full.contains("unrestricted host-path reachability"));
-        assertTrue(protectedPrompt.contains("protected target is CRITICAL"));
-        assertTrue(sandboxed.contains("deployer configured project zones"));
+        assertTrue(full.contains("Filesystem access is not limited"));
+        assertTrue(protectedPrompt.contains("protected target cannot be approved"));
+        assertTrue(sandboxed.contains("session workspace roots are hard path boundaries"));
         assertTrue(tenant.contains("owner-issued sharing"));
         assertFalse(full.equals(protectedPrompt));
         assertFalse(protectedPrompt.equals(sandboxed));
@@ -122,7 +146,12 @@ class PromptCompileRenderTest {
                             DeployerPolicy.SANDBOXED,
                             DeployerPolicy.TENANT)) {
                 String prompt = render(role, policy, null, List.of());
-                assertCompiled(prompt, "Role: " + role + ".", "running under " + policy);
+                assertCompiled(prompt, "Role: " + role + ".", "## Boundaries");
+                assertFalse(prompt.contains(policy.name()), prompt);
+                for (String internalName :
+                        List.of("FULL_ACCESS", "PROTECTED", "SANDBOXED", "TENANT", "Path mode:")) {
+                    assertFalse(prompt.contains(internalName), prompt);
+                }
                 assertFalse(prompt.contains("For a Mate"), prompt);
                 assertFalse(prompt.contains("veto_pulse"), prompt);
             }
@@ -137,10 +166,28 @@ class PromptCompileRenderTest {
                                 Path.of(System.getProperty("user.dir", ".")), PathMode.VIRTUAL));
         String boundaries = PromptBlocks.boundaries(DeployerPolicy.FULL_ACCESS, PathMode.VIRTUAL);
 
-        assertTrue(workspace.contains("mounted roots"));
+        assertTrue(workspace.contains("mounted workspace roots"));
         assertTrue(boundaries.contains("only the mounted workspace roots"));
-        assertFalse(boundaries.contains("unrestricted host-path reachability"));
+        assertFalse(workspace.contains("Path mode:"));
+        assertFalse(workspace.contains("VIRTUAL"));
+        assertFalse(boundaries.contains("FULL_ACCESS"));
         assertFalse(boundaries.contains("any absolute host path"));
+    }
+
+    @Test
+    void environmentContainsHostFactsButNotToolInstructionsOrConcreteExamples() {
+        String environment = PromptBlocks.environment();
+
+        assertTrue(environment.contains("## Environment"));
+        assertFalse(environment.contains("run_command"));
+        assertFalse(environment.contains("gradlew"));
+        assertFalse(environment.contains("mvnw"));
+        assertFalse(environment.contains("npm.cmd"));
+        assertFalse(environment.contains("Main.java"));
+        assertTrue(
+                ToolDocs.documentationOf(ToolDocs.nonNullClass(RunCommandTool.Args.class))
+                        .behavior()
+                        .contains("there is no shell"));
     }
 
     private @NonNull String render(
@@ -164,13 +211,7 @@ class PromptCompileRenderTest {
                 PromptBlocks.workspace(
                         Workspace.single(
                                 Path.of(System.getProperty("user.dir", ".")), PathMode.REAL)));
-        boolean commandToolsAvailable =
-                tools.stream()
-                        .anyMatch(
-                                tool ->
-                                        "run_command".equals(tool.name())
-                                                || "run_task".equals(tool.name()));
-        blocks.put("ENVIRONMENT", PromptBlocks.environment(commandToolsAvailable));
+        blocks.put("ENVIRONMENT", PromptBlocks.environment());
         blocks.put("RESULT_CONVENTIONS", tools.isEmpty() ? "" : PromptBlocks.resultConventions());
         blocks.put("TOOLS", PromptBlocks.tools(tools));
         blocks.put("BOUNDARIES", PromptBlocks.boundaries(policy, PathMode.REAL));
@@ -193,6 +234,7 @@ class PromptCompileRenderTest {
                 new ToolDefinition(
                         "load_skill",
                         "Loads a skill.",
+                        ToolCapability.SKILL_READ,
                         schema,
                         List.of("{\"skillName\": \"git-rebase\"}", "{\"skillName\": \"deploy\"}"),
                         new ToolDocumentation(
@@ -205,23 +247,24 @@ class PromptCompileRenderTest {
                         List.of(),
                         List.of(ToolResultFormat.PLAINTEXT));
         String block = PromptBlocks.tools(List.of(tool));
-        assertTrue(block.contains("### `load_skill`"), "tool heading rendered:\n" + block);
-        assertTrue(block.contains("#### Result formats"), "result formats rendered:\n" + block);
+        assertTrue(
+                block.contains("#### Tool name: `load_skill`"), "tool heading rendered:\n" + block);
+        assertTrue(block.contains("##### Result formats"), "result formats rendered:\n" + block);
         assertFalse(block.contains("`json`"), "undeclared json format rendered:\n" + block);
         assertTrue(block.contains("`plaintext`"), "plaintext format rendered:\n" + block);
         assertFalse(block.contains("error-special-plaintext"), block);
-        assertTrue(block.contains("#### Args"), "args label rendered:\n" + block);
+        assertTrue(block.contains("##### Args"), "args label rendered:\n" + block);
         assertTrue(
                 block.contains("`skillName` (string, required)"),
                 "arg name + type + required rendered:\n" + block);
         assertTrue(
                 block.contains("The name of the skill to load."),
                 "arg description rendered:\n" + block);
-        assertTrue(block.contains("#### Call examples"), "examples label rendered:\n" + block);
+        assertTrue(block.contains("##### Call examples"), "examples label rendered:\n" + block);
         assertTrue(block.contains("git-rebase"), "example content rendered:\n" + block);
         assertFalse(block.contains("deploy"), "only one schematic example is needed:\n" + block);
         assertTrue(
-                block.contains("#### When to use"),
+                block.contains("##### When to use"),
                 "tool selection guidance must be model-visible:\n" + block);
     }
 
@@ -272,6 +315,7 @@ class PromptCompileRenderTest {
                 new ToolDefinition(
                         "view_file",
                         "Reads a text file.",
+                        ToolCapability.WORKSPACE_READ,
                         schema,
                         List.of("{\"absolutePath\":\"/abs/project/Main.java\"}"),
                         new ToolDocumentation(
@@ -288,33 +332,33 @@ class PromptCompileRenderTest {
 
         assertBefore(
                 block,
-                "#### Args",
-                "#### Result formats",
+                "##### Args",
+                "##### Result formats",
                 "args are declared before result formats");
         assertBefore(
-                block, "#### Result formats", "#### Behavior", "result formats precede behavior");
+                block, "##### Result formats", "##### Behavior", "result formats precede behavior");
         assertBefore(
-                block, "#### Behavior", "#### When to use", "behavior precedes usage guidance");
-        assertBefore(block, "#### When to use", "#### When not to use", "usage order");
+                block, "##### Behavior", "##### When to use", "behavior precedes usage guidance");
+        assertBefore(block, "##### When to use", "##### When not to use", "usage order");
         assertBefore(
                 block,
-                "#### When not to use",
-                "#### Call examples",
+                "##### When not to use",
+                "##### Call examples",
                 "examples follow usage guidance");
         assertBefore(
                 block,
-                "#### Call examples",
-                "#### Result contract",
+                "##### Call examples",
+                "##### Result contract",
                 "result contract follows the call examples");
         assertBefore(
                 block,
-                "#### Result contract",
-                "#### Result examples",
+                "##### Result contract",
+                "##### Result examples",
                 "result examples follow their contract");
         assertBefore(
                 block,
-                "#### Result examples",
-                "#### Errors and edge cases",
+                "##### Result examples",
+                "##### Errors and edge cases",
                 "edge-case guidance follows success examples");
         assertFalse(block.contains("#### Security"), block);
         assertFalse(block.contains("Example output only; no tool call was made."));
@@ -330,6 +374,7 @@ class PromptCompileRenderTest {
                 new ToolDefinition(
                         "web_fetch",
                         "Fetches a page.",
+                        ToolCapability.NETWORK_EGRESS,
                         Map.of("type", "object", "properties", Map.of()),
                         List.of(),
                         ToolDocumentation.empty(),
@@ -343,11 +388,24 @@ class PromptCompileRenderTest {
     }
 
     @Test
-    void toolCatalogSeparatesAdjacentToolEntries() {
+    void toolCatalogGroupsToolsByManifestCapability() {
         String block = PromptBlocks.tools(sampleTools());
 
-        assertBefore(block, "### `run_command`", "\n---\n", "separator follows first tool");
-        assertBefore(block, "\n---\n", "### `view_file`", "separator precedes next tool");
+        assertBefore(
+                block,
+                "### Tool capability: Workspace Read",
+                "#### Tool name: `view_file`",
+                "workspace-read heading precedes its tool");
+        assertBefore(
+                block,
+                "#### Tool name: `view_file`",
+                "### Tool capability: Process Execution",
+                "capabilities follow manifest enum order");
+        assertBefore(
+                block,
+                "### Tool capability: Process Execution",
+                "#### Tool name: `run_command`",
+                "process-execution heading precedes its tool");
     }
 
     @Test
@@ -355,13 +413,13 @@ class PromptCompileRenderTest {
         var manifest =
                 AgentToolDefinition.from(
                         "forget",
-                        ToolDocs.nonNullClass(MemoryTools.Forget.Args.class),
+                        ToolDocs.nonNullClass(MemoryTools.ForgetMemory.Args.class),
                         ToolCapability.MEMORY_WRITE);
         List<ToolDefinition> flat =
                 new VetoCapabilityTranslator().translateTools(List.of(manifest));
         String block = PromptBlocks.tools(flat);
-        int contractStart = block.indexOf("#### Result contract");
-        int examplesStart = block.indexOf("#### Result examples");
+        int contractStart = block.indexOf("##### Result contract");
+        int examplesStart = block.indexOf("##### Result examples");
         String contract = block.substring(contractStart, examplesStart);
 
         assertTrue(contract.contains("Success -> `forgotten: <memoryId>`"));
@@ -394,6 +452,7 @@ class PromptCompileRenderTest {
                 new ToolDefinition(
                         "grep_search",
                         "Search for exact pattern matches inside files.",
+                        ToolCapability.WORKSPACE_READ,
                         schema,
                         ToolDocs.examplesOf(ToolDocs.nonNullClass(GrepSearchTool.Args.class)),
                         ToolDocs.documentationOf(ToolDocs.nonNullClass(GrepSearchTool.Args.class)),
@@ -401,9 +460,11 @@ class PromptCompileRenderTest {
                         ToolDocs.resultFormatsOf(ToolDocs.nonNullClass(GrepSearchTool.Args.class)));
         String block = PromptBlocks.tools(List.of(tool));
         System.out.println("===== REAL grep_search catalog entry =====\n" + block);
-        assertTrue(block.contains("### `grep_search`"), "tool heading rendered:\n" + block);
-        assertTrue(block.contains("#### When to use"), "usage advice is rendered:\n" + block);
-        assertTrue(block.contains("#### Behavior"), "essential behavior rendered:\n" + block);
+        assertTrue(
+                block.contains("#### Tool name: `grep_search`"),
+                "tool heading rendered:\n" + block);
+        assertTrue(block.contains("##### When to use"), "usage advice is rendered:\n" + block);
+        assertTrue(block.contains("##### Behavior"), "essential behavior rendered:\n" + block);
         assertFalse(
                 block.contains("#### Security"), "Gateway security prose is omitted:\n" + block);
         assertTrue(
@@ -421,8 +482,8 @@ class PromptCompileRenderTest {
                         .isBlank(),
                 "grep_search has a typed @ToolDoc behavior section");
         assertTrue(
-                ToolDocs.examplesOf(ToolDocs.nonNullClass(GrepSearchTool.Args.class)).size() >= 5,
-                "grep_search carries many examples");
+                ToolDocs.examplesOf(ToolDocs.nonNullClass(GrepSearchTool.Args.class)).size() >= 3,
+                "grep_search demonstrates its optional filters without duplicate examples");
     }
 
     private static @NonNull List<@NonNull ToolDefinition> sampleTools() {
@@ -430,6 +491,7 @@ class PromptCompileRenderTest {
                 new ToolDefinition(
                         "run_command",
                         "runs discrete commands in the sandbox",
+                        ToolCapability.PROCESS_EXECUTION,
                         Map.of("type", "object", "properties", Map.of("commands", Map.of())),
                         List.of(),
                         ToolDocumentation.empty(),
@@ -438,6 +500,7 @@ class PromptCompileRenderTest {
                 new ToolDefinition(
                         "view_file",
                         "reads lines of a text file",
+                        ToolCapability.WORKSPACE_READ,
                         Map.of("type", "object", "properties", Map.of("absolutePath", Map.of())),
                         List.of(),
                         ToolDocumentation.empty(),

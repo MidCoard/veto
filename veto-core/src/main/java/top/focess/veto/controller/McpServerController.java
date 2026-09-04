@@ -85,7 +85,8 @@ public class McpServerController {
         return Map.of(
                 "name", tool.name(),
                 "description", tool.description(),
-                "risk", tool.risk().name(),
+                "capability", tool.capability().name(),
+                "defaultDanger", tool.defaultDanger().name(),
                 "inputSchema", tool.inputSchema());
     }
 

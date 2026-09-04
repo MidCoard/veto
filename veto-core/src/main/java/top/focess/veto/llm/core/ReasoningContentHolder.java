@@ -1,5 +1,7 @@
 package top.focess.veto.llm.core;
 
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import org.jspecify.annotations.NonNull;
 
 /**
@@ -15,22 +17,21 @@ import org.jspecify.annotations.NonNull;
  */
 public final class ReasoningContentHolder {
 
-    @SuppressWarnings({"rawtypes", "unchecked"})
-    private static final @NonNull ThreadLocal HOLDER = new ThreadLocal();
+    private static final @NonNull ConcurrentMap<Thread, String> CONTENT = new ConcurrentHashMap<>();
 
     private ReasoningContentHolder() {}
 
     /** Sets the reasoning content for the current thread's most recent LLM call. */
-    @SuppressWarnings({"rawtypes", "unchecked"})
     public static void set(String content) {
-        HOLDER.set(content);
+        if (content == null) {
+            CONTENT.remove(Thread.currentThread());
+        } else {
+            CONTENT.put(Thread.currentThread(), content);
+        }
     }
 
     /** Returns and clears the reasoning content (null if none was set). */
     public static String getAndClear() {
-        Object value = HOLDER.get();
-        String v = value instanceof String string ? string : null;
-        HOLDER.remove();
-        return v;
+        return CONTENT.remove(Thread.currentThread());
     }
 }

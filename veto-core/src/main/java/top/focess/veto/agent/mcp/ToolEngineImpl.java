@@ -56,7 +56,6 @@ import top.focess.veto.sandbox.SandboxSubstrate;
  * #registerRemoteTool}.
  */
 @Service
-@SuppressWarnings("DuplicatedCode") // Native and remote dispatch keep the same result envelope.
 public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
 
     private static final int MAX_TOOL_RESULT_CHARS = 1_000_000;
@@ -240,8 +239,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
             @NonNull JsonNode inputSchema) {
         String prefixed = serverName + "__" + originalName;
         RemoteToolDefinition def =
-                new RemoteToolDefinition(
-                        prefixed, description, RiskCategory.NETWORK, serverName, inputSchema);
+                new RemoteToolDefinition(prefixed, description, serverName, inputSchema);
         ToolContractValidator.validate(def);
         ensureUniqueName(def.name());
         remoteDefs.put(prefixed, def);
@@ -262,17 +260,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
     private @NonNull ToolResult executeNative(
             @NonNull ToolCall call, @NonNull NativeToolDefinition def) throws Exception {
         JsonNode jsonArgs = mapper.valueToTree(call.args());
-        try {
-            NativeToolArgumentValidator.validate(def.name(), jsonArgs, def.argsClass());
-        } catch (NativeToolArgumentValidator.InvalidArgumentsException e) {
-            return new ToolResult(
-                    call.toolName(),
-                    call.callId(),
-                    ToolResultStatus.FAILURE,
-                    ToolResultFormat.PLAINTEXT,
-                    ToolErrors.normalize(e.getMessage()),
-                    "INVALID_ARGUMENTS");
-        }
+        NativeToolArgumentValidator.validate(def.name(), jsonArgs, def.argsClass());
         jsonArgs = authorizedArguments(call, jsonArgs, def);
         if ("run_command".equals(def.name())) {
             return executeRunCommand(call, jsonArgs);
@@ -287,13 +275,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
         }
         String result = bean.executeFromJson(jsonArgs, mapper);
         validateSuccessfulResult(def, result);
-        return new ToolResult(
-                call.toolName(),
-                call.callId(),
-                ToolResultStatus.SUCCESS,
-                declaredFormat(def),
-                result,
-                null);
+        return successfulResult(call, def, result);
     }
 
     /**
@@ -438,29 +420,9 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
             NativeToolArgumentValidator.validate(def.name(), jsonArgs, def.argsClass());
             String result = bean.executeFromJson(jsonArgs, mapper);
             validateSuccessfulResult(def, result);
-            return new ToolResult(
-                    call.toolName(),
-                    call.callId(),
-                    ToolResultStatus.SUCCESS,
-                    declaredFormat(def),
-                    result,
-                    null);
-        } catch (NativeToolArgumentValidator.InvalidArgumentsException e) {
-            return new ToolResult(
-                    call.toolName(),
-                    call.callId(),
-                    ToolResultStatus.FAILURE,
-                    ToolResultFormat.PLAINTEXT,
-                    ToolErrors.normalize(e.getMessage()),
-                    "INVALID_ARGUMENTS");
+            return successfulResult(call, def, result);
         } catch (ToolExecutionException e) {
-            return new ToolResult(
-                    call.toolName(),
-                    call.callId(),
-                    e.status(),
-                    e.format(),
-                    e.content(),
-                    e.errorCode());
+            throw e;
         } catch (Exception e) {
             return new ToolResult(
                     call.toolName(),
@@ -552,5 +514,16 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
             ToolErrors.failure(
                     "Tool '" + definition.name() + "' declared json but returned invalid JSON");
         }
+    }
+
+    private static @NonNull ToolResult successfulResult(
+            @NonNull ToolCall call, @NonNull ToolDefinition definition, @NonNull String content) {
+        return new ToolResult(
+                call.toolName(),
+                call.callId(),
+                ToolResultStatus.SUCCESS,
+                declaredFormat(definition),
+                content,
+                null);
     }
 }

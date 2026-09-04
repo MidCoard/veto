@@ -153,8 +153,10 @@ public class SemanticMasker {
                 observation.length() > 1000 ? observation.substring(0, 1000) + "..." : observation;
         return "The agent just called "
                 + call.toolName()
-                + " on a tool with risk="
-                + def.risk()
+                + " on a tool with capability="
+                + def.capability()
+                + " and defaultDanger="
+                + def.defaultDanger()
                 + ".\nTool call args: "
                 + safe(call.args())
                 + "\nTool result (truncated to 1000 chars): "

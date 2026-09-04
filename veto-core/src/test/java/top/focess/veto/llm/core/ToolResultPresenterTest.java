@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Objects;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.mcp.ToolResult;
 import top.focess.veto.agent.mcp.ToolResultFormat;
 import top.focess.veto.agent.mcp.ToolResultStatus;
@@ -52,6 +53,24 @@ class ToolResultPresenterTest {
         assertThat(failure.path("content").asText())
                 .isEqualTo("memory not found; nothing forgotten");
         assertThat(failure.path("errorCode").asText()).isEqualTo("MEMORY_NOT_FOUND");
+    }
+
+    @Test
+    void presentedTurnStoresExactlyWhatTheModelReceivesAndKeepsStructuredMetadata() {
+        ToolResult result = failure();
+        String presented =
+                new ToolResultPresenter(mapper)
+                        .present(result, ToolResultPresentationMode.DETAILED);
+
+        TurnRecord turn =
+                TurnRecord.presentedToolResponse(
+                        7, result, presented, ToolResultPresentationMode.DETAILED);
+
+        assertThat(turn.payload().get("content")).isEqualTo(presented);
+        assertThat(turn.payload().get("presentation")).isEqualTo("DETAILED");
+        assertThat(turn.payload().get("status")).isEqualTo("failure");
+        assertThat(turn.payload().get("format")).isEqualTo("plaintext");
+        assertThat(turn.payload().get("errorCode")).isEqualTo("MEMORY_NOT_FOUND");
     }
 
     @Test

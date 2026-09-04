@@ -6,8 +6,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+import top.focess.veto.agent.mcp.tools.DeletePathTool;
+import top.focess.veto.agent.mcp.tools.FindFilesTool;
 import top.focess.veto.agent.mcp.tools.RunCommandTool;
 import top.focess.veto.agent.mcp.tools.RunTaskTool;
+import top.focess.veto.agent.mcp.tools.ViewTaskTool;
+import top.focess.veto.agent.screening.Danger;
 import top.focess.veto.memory.MemoryTools;
 
 /**
@@ -84,6 +88,38 @@ class ToolSchemaCompilerTest {
         assertFalse(runTask.path("properties").has("cwd"));
     }
 
+    @Test
+    void toolManagedLimitsAreNotExposedAsCallArguments() {
+        JsonNode findFiles =
+                ToolSchemaCompiler.compileFromRecord(
+                        ToolDocs.nonNullClass(FindFilesTool.Args.class));
+        JsonNode viewTask =
+                ToolSchemaCompiler.compileFromRecord(
+                        ToolDocs.nonNullClass(ViewTaskTool.Args.class));
+        JsonNode recallMemory =
+                ToolSchemaCompiler.compileFromRecord(
+                        ToolDocs.nonNullClass(MemoryTools.RecallMemory.Args.class));
+
+        assertFalse(findFiles.path("properties").has("maxResults"));
+        assertFalse(viewTask.path("properties").has("lines"));
+        assertFalse(recallMemory.path("properties").has("topK"));
+        assertFalse(recallMemory.path("properties").has("scoreFloor"));
+    }
+
+    @Test
+    void destructiveToolDeclaresItsDangerFloorDirectly() {
+        ToolSecurity security =
+                ToolDocs.nonNullClass(DeletePathTool.class)
+                        .getAnnotation(ToolDocs.nonNullClass(ToolSecurity.class));
+        if (security == null) {
+            throw new AssertionError("delete_path must declare @ToolSecurity");
+        }
+
+        assertEquals(ToolCapability.WORKSPACE_WRITE, security.capability());
+        assertEquals(Danger.DANGEROUS, security.defaultDanger());
+        assertTrue(security.requiresSemanticScreening());
+    }
+
     private static boolean contains(@NonNull JsonNode array, @NonNull String value) {
         if (!array.isArray()) return false;
         for (JsonNode n : array) {
@@ -110,7 +146,7 @@ class ToolSchemaCompilerTest {
     void forgetMemoryIdIsRequired() {
         JsonNode schema =
                 ToolSchemaCompiler.compileFromRecord(
-                        ToolDocs.nonNullClass(MemoryTools.Forget.Args.class));
+                        ToolDocs.nonNullClass(MemoryTools.ForgetMemory.Args.class));
 
         assertTrue(
                 contains(schema.path("required"), "memoryId"),
@@ -121,7 +157,7 @@ class ToolSchemaCompilerTest {
     void enumArgumentIsRenderedAsAStringEnum() {
         JsonNode schema =
                 ToolSchemaCompiler.compileFromRecord(
-                        ToolDocs.nonNullClass(MemoryTools.WriteInsight.Args.class));
+                        ToolDocs.nonNullClass(MemoryTools.WriteMemory.Args.class));
 
         JsonNode mode = schema.path("properties").path("mode");
         assertEquals("string", mode.path("type").asText());
@@ -166,10 +202,9 @@ class ToolSchemaCompilerTest {
     void conditionalRequirementIsValidatedBeforeDispatch() throws Exception {
         ObjectMapper mapper = new ObjectMapper();
 
-        NativeToolArgumentValidator.InvalidArgumentsException missing =
+        ToolExecutionException missing =
                 assertThrows(
-                        ToolDocs.nonNullClass(
-                                NativeToolArgumentValidator.InvalidArgumentsException.class),
+                        ToolDocs.nonNullClass(ToolExecutionException.class),
                         () ->
                                 NativeToolArgumentValidator.validate(
                                         "conditional",
@@ -178,11 +213,11 @@ class ToolSchemaCompilerTest {
         assertTrue(
                 String.valueOf(missing.getMessage())
                         .contains("missing required parameter 'content' when 'mode' is 'WRITE'"));
+        assertEquals("INVALID_ARGUMENTS", missing.errorCode());
 
-        NativeToolArgumentValidator.InvalidArgumentsException blank =
+        ToolExecutionException blank =
                 assertThrows(
-                        ToolDocs.nonNullClass(
-                                NativeToolArgumentValidator.InvalidArgumentsException.class),
+                        ToolDocs.nonNullClass(ToolExecutionException.class),
                         () ->
                                 NativeToolArgumentValidator.validate(
                                         "conditional",
@@ -191,6 +226,7 @@ class ToolSchemaCompilerTest {
         assertTrue(
                 String.valueOf(blank.getMessage())
                         .contains("parameter 'content' must not be blank"));
+        assertEquals("INVALID_ARGUMENTS", blank.errorCode());
 
         assertDoesNotThrow(
                 () ->

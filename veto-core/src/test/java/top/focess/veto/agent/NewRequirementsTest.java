@@ -26,7 +26,7 @@ import top.focess.veto.agent.intercept.VetoOption;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.mcp.NativeToolDefinition;
 import top.focess.veto.agent.mcp.ParamCategory;
-import top.focess.veto.agent.mcp.RiskCategory;
+import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDefinition;
 import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.mcp.ToolEngine;
@@ -59,7 +59,8 @@ class NewRequirementsTest {
         return new NativeToolDefinition(
                 "run_command",
                 "exec",
-                RiskCategory.SHELL_EXEC,
+                ToolCapability.PROCESS_EXECUTION,
+                Danger.ELEVATED,
                 false,
                 ToolDocs.nonNullClass(ExecArgs.class),
                 Map.of());
@@ -69,7 +70,8 @@ class NewRequirementsTest {
         return new NativeToolDefinition(
                 "view_file",
                 "read",
-                RiskCategory.READ_ONLY,
+                ToolCapability.WORKSPACE_READ,
+                Danger.SAFE,
                 false,
                 ToolDocs.nonNullClass(ReadArgs.class),
                 Map.of("path", ParamCategory.FILESYSTEM_PATH));

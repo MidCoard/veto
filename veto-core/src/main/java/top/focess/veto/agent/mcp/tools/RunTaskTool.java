@@ -1,7 +1,6 @@
 package top.focess.veto.agent.mcp.tools;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -11,7 +10,6 @@ import org.springframework.stereotype.Component;
 import top.focess.veto.agent.mcp.Doc;
 import top.focess.veto.agent.mcp.NativeTool;
 import top.focess.veto.agent.mcp.ParamCategory;
-import top.focess.veto.agent.mcp.RiskCategory;
 import top.focess.veto.agent.mcp.SecurityHint;
 import top.focess.veto.agent.mcp.ToolCallContextHolder;
 import top.focess.veto.agent.mcp.ToolCapability;
@@ -20,6 +18,7 @@ import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.mcp.ToolErrors;
 import top.focess.veto.agent.mcp.ToolResultFormat;
 import top.focess.veto.agent.mcp.ToolSecurity;
+import top.focess.veto.agent.screening.Danger;
 import top.focess.veto.llm.config.LlmJacksonConfig;
 import top.focess.veto.sandbox.BackgroundTaskManager;
 import top.focess.veto.sandbox.Command;
@@ -39,7 +38,7 @@ import top.focess.veto.sandbox.SandboxProfile;
  * turn.
  */
 @Component
-@ToolSecurity(risk = RiskCategory.SHELL_EXEC, capability = ToolCapability.PROCESS_EXECUTION)
+@ToolSecurity(capability = ToolCapability.PROCESS_EXECUTION, defaultDanger = Danger.ELEVATED)
 public final class RunTaskTool implements NativeTool<RunTaskTool.Args> {
 
     private final @NonNull BackgroundTaskManager taskManager;
@@ -59,11 +58,10 @@ public final class RunTaskTool implements NativeTool<RunTaskTool.Args> {
                             + "Returns a taskId immediately; the process keeps running across turns.",
             behavior =
                     """
-                    Starts the single `commands[0]` entry through the sandbox substrate and returns \
-                    immediately. Ordinary executables use direct argv execution; Windows `.cmd`/`.bat` \
-                    launchers use the restricted `ComSpec` bridge. Output (stdout+stderr merged) is \
-                    drained into a 5000-line ring buffer you can read via \
-                    `view_task`. `timeout` (seconds; 0 = sandbox-profile maximum) bounds the task's total \
+                    Starts the single `commands[0]` entry and returns immediately. The executable and arguments \
+                    follow the same direct-execution rules as `run_command`. It runs from the session workspace \
+                    root. Output (stdout+stderr merged) is captured for `view_task`. \
+                    `timeout` (seconds; 0 selects the configured maximum) bounds the task's total \
                     lifetime - it is auto-killed after it elapses. When the task ends you are told \
                     about it on your next turn; you can also inspect it any time with `view_task` \
                     or end it with `stop_task`.
@@ -83,7 +81,7 @@ public final class RunTaskTool implements NativeTool<RunTaskTool.Args> {
                     chain; express a pipeline as separate steps.
                     - Do not stop a task you launched with an OS kill command (`taskkill` / `kill`) \
                     - use `stop_task` with its `taskId`. That is the only sanctioned stop path and \
-                    it keeps the task registry consistent.
+                    it keeps task status and final output available to `view_task`.
                     """,
             resultContract =
                     """
@@ -96,15 +94,12 @@ public final class RunTaskTool implements NativeTool<RunTaskTool.Args> {
                     - Any supplied command count other than one -> rejected (background mode does not chain).
                     - A negative supplied `timeout` -> rejected.
                     - Only the latest 5000 output lines are retained; an unterminated line is capped at 65536 bytes.
-                    - The working directory is the session-selected workspace root and cannot be overridden by the call.
                     """,
             security =
                     """
-                    Same screening as `run_command`: `commands` carries SHELL_COMMAND; the working directory \
-                    is bound to the session-selected workspace root. `RiskCategory.SHELL_EXEC`, always audited and may \
-                    require human approval. Ordinary executables are direct argv launches; Windows \
-                    `.cmd`/`.bat` shims use the restricted `ComSpec` bridge and reject interpreter \
-                    metacharacters.
+                    The command and any requested network access are screened before execution. The working \
+                    directory remains bound to the session workspace root. Execution is audited and may require \
+                    human approval. Background execution does not remove the sandbox constraints.
                     """,
             examples = {
                 "{\"commands\": [{\"executable\": \"npm\", \"args\": [\"run\", \"dev\"]}], \"timeout\": 0}",
@@ -124,7 +119,7 @@ public final class RunTaskTool implements NativeTool<RunTaskTool.Args> {
                     Boolean network,
             @NonNull
                     @Doc(
-                            "Requested max lifetime in seconds. 0 selects the sandbox-profile"
+                            "Requested max lifetime in seconds. 0 selects the configured"
                                     + " maximum; larger values are capped by that maximum.")
                     Integer timeout) {}
 
@@ -163,7 +158,7 @@ public final class RunTaskTool implements NativeTool<RunTaskTool.Args> {
         }
         String agentId = ctx.agentId();
         java.util.UUID sessionId = ctx.sessionId();
-        Path cwd = ctx.executionPermit().requireExecutionRoot();
+        var cwd = ctx.executionPermit().requireExecutionRoot();
         SandboxProfile profile =
                 SandboxProfile.forExecution(
                         cwd,

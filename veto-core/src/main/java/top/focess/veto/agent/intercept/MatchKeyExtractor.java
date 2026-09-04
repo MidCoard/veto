@@ -8,7 +8,7 @@ import java.util.TreeSet;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.mcp.NativeToolDefinition;
 import top.focess.veto.agent.mcp.ParamCategory;
-import top.focess.veto.agent.mcp.RiskCategory;
+import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDefinition;
 import top.focess.veto.agent.workspace.Resolution;
 import top.focess.veto.agent.workspace.Workspace;
@@ -82,7 +82,7 @@ public final class MatchKeyExtractor {
      */
     private static @NonNull List<@NonNull String> flagShape(
             @NonNull ToolCall call, ToolDefinition def) {
-        if (def != null && def.risk() == RiskCategory.SHELL_EXEC) {
+        if (def != null && def.capability() == ToolCapability.PROCESS_EXECUTION) {
             return commandFlagShape(call);
         }
         // For native read/write: take the sorted set of args keys that look like flags.

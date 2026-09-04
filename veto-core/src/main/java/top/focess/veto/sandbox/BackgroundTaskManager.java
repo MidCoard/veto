@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -299,6 +300,28 @@ public class BackgroundTaskManager {
         return Optional.ofNullable(t).map(ManagedTask::toInfo);
     }
 
+    /** Stable process context captured before semantic screening of an input_task call. */
+    public @NonNull Optional<InputTaskSnapshot> inputTaskSnapshot(
+            @NonNull String agentId, @NonNull UUID sessionId, @NonNull String taskId) {
+        ManagedTask task = owned(agentId, taskId);
+        if (task == null || !Objects.equals(sessionId, task.sessionId)) {
+            return Optional.empty();
+        }
+        synchronized (task.inputLock) {
+            return Optional.of(
+                    new InputTaskSnapshot(
+                            task.taskId,
+                            task.agentId,
+                            sessionId,
+                            task.taskInstanceId,
+                            task.originalCommand,
+                            task.cwd,
+                            task.sandboxProfile.networkAllowed(),
+                            task.alive,
+                            !task.stdinClosed && !task.stdinCloseQueued));
+        }
+    }
+
     /** The last {@code maxLines} of merged output, or {@code empty} if the task is not found. */
     public @NonNull Optional<String> output(
             @NonNull String agentId, @NonNull String taskId, int maxLines) {
@@ -311,11 +334,17 @@ public class BackgroundTaskManager {
     /** Queues bytes for a running task's standard input without blocking the calling agent. */
     public @NonNull InputResult queueInput(
             @NonNull String agentId,
+            @NonNull UUID sessionId,
             @NonNull String taskId,
+            @NonNull UUID expectedTaskInstanceId,
             byte @NonNull [] bytes,
             boolean closeStdin) {
         ManagedTask task = owned(agentId, taskId);
-        if (task == null) return InputResult.failure(InputStatus.TASK_NOT_FOUND);
+        if (task == null
+                || !Objects.equals(sessionId, task.sessionId)
+                || !expectedTaskInstanceId.equals(task.taskInstanceId)) {
+            return InputResult.failure(InputStatus.TASK_NOT_FOUND);
+        }
         synchronized (task.inputLock) {
             if (!task.alive) return InputResult.failure(InputStatus.TASK_NOT_RUNNING);
             if (task.stdinClosed || task.stdinCloseQueued) {
@@ -606,6 +635,18 @@ public class BackgroundTaskManager {
             return Math.max(0, seconds);
         }
     }
+
+    /** Security-relevant context of the exact task instance targeted by input_task. */
+    public record InputTaskSnapshot(
+            @NonNull String taskId,
+            @NonNull String agentId,
+            @NonNull UUID sessionId,
+            @NonNull UUID taskInstanceId,
+            @NonNull Command command,
+            @NonNull String cwd,
+            boolean networkAllowed,
+            boolean alive,
+            boolean stdinAvailable) {}
 
     /**
      * Why a background task ended — the distinction the agent needs between an intentional stop and

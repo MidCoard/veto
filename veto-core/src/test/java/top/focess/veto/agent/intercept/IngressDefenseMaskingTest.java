@@ -10,9 +10,10 @@ import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.mcp.NativeToolDefinition;
 import top.focess.veto.agent.mcp.ParamCategory;
-import top.focess.veto.agent.mcp.RiskCategory;
+import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.mcp.ToolResult;
+import top.focess.veto.agent.screening.Danger;
 import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.veto.LlamaCppBridge;
 
@@ -29,7 +30,8 @@ class IngressDefenseMaskingTest {
         return new NativeToolDefinition(
                 "read_file",
                 "Read a file",
-                RiskCategory.READ_ONLY,
+                ToolCapability.WORKSPACE_READ,
+                Danger.SAFE,
                 false,
                 ToolDocs.nonNullClass(Void.class),
                 Map.of("path", ParamCategory.FILESYSTEM_PATH));

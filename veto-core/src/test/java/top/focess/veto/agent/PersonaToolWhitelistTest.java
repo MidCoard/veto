@@ -17,11 +17,12 @@ import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.mcp.DefaultToolEngine;
 import top.focess.veto.agent.mcp.NativeToolDefinition;
 import top.focess.veto.agent.mcp.ParamCategory;
-import top.focess.veto.agent.mcp.RiskCategory;
+import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDefinition;
 import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.mcp.ToolEngine;
 import top.focess.veto.agent.mcp.ToolResult;
+import top.focess.veto.agent.screening.Danger;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.llm.core.ProviderType;
@@ -46,7 +47,8 @@ class PersonaToolWhitelistTest {
                 new NativeToolDefinition(
                         "read_file",
                         "Read a file",
-                        RiskCategory.READ_ONLY,
+                        ToolCapability.WORKSPACE_READ,
+                        Danger.SAFE,
                         false,
                         ToolDocs.nonNullClass(Void.class),
                         Map.of("path", ParamCategory.FILESYSTEM_PATH));

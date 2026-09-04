@@ -46,17 +46,16 @@ public final class ToolSchemaCompiler {
                     toolClass.getName() + " must be annotated with @ToolSecurity");
         }
 
-        Class<?> argsClass = findArgsClass(toolClass);
+        Class<?> argsClass = toolBean.getArgsClass();
 
         Map<String, ParamCategory> hints = hintsOf(argsClass);
 
         return new NativeToolDefinition(
                 toolBean.getName(),
                 toolBean.getDescription(),
-                security.risk(),
                 security.capability(),
+                security.defaultDanger(),
                 security.requiresSemanticScreening(),
-                security.minimumDanger(),
                 argsClass,
                 hints);
     }
@@ -231,23 +230,6 @@ public final class ToolSchemaCompiler {
         }
         schema.put("additionalProperties", false);
         return schema;
-    }
-
-    /**
-     * Walks the {@link NativeTool} or {@link AgentTool} interface to find the type parameter (the
-     * args record).
-     */
-    static @NonNull Class<?> findArgsClass(@NonNull Class<?> toolClass) {
-        for (var iface : toolClass.getGenericInterfaces()) {
-            if (iface instanceof java.lang.reflect.ParameterizedType pt) {
-                var rawType = pt.getRawType();
-                if (rawType == NativeTool.class || rawType == AgentTool.class) {
-                    return (Class<?>) pt.getActualTypeArguments()[0];
-                }
-            }
-        }
-        throw new IllegalArgumentException(
-                toolClass.getName() + " must implement NativeTool<T> or AgentTool<T>");
     }
 
     private static @NonNull String mapJavaTypeToSchemaType(@NonNull Class<?> type) {

@@ -61,12 +61,7 @@ public class WebSocketBus extends TextWebSocketHandler {
                                 StandardWebSocketClient client = new StandardWebSocketClient();
                                 String wsUrl = backendUrl + config.getWebsocket().getPath();
                                 log.info("Bus: Connecting to {} ...", wsUrl);
-                                // doHandshake is deprecated-for-removal in Spring 6.x; we call
-                                // Future.get() (the base interface method) on the virtual thread so
-                                // the blocking call is cheap and no ListenableFuture chaining is
-                                // required.
-                                @SuppressWarnings("removal")
-                                WebSocketSession wsSession = client.doHandshake(this, wsUrl).get();
+                                WebSocketSession wsSession = client.execute(this, wsUrl).get();
                                 this.session = wsSession;
                                 log.info(
                                         "Bus: Connected successfully (session={})",

@@ -35,6 +35,7 @@ import top.focess.veto.agent.intercept.InterceptResolution;
 import top.focess.veto.agent.intercept.LoopInterceptor;
 import top.focess.veto.agent.intercept.RefusalObservation;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
+import top.focess.veto.agent.intercept.ToolExecutionPermit.TaskBinding;
 import top.focess.veto.agent.intercept.VetoOption;
 import top.focess.veto.agent.intercept.VetoPrompt;
 import top.focess.veto.agent.loop.ActionsProgram;
@@ -49,6 +50,8 @@ import top.focess.veto.agent.loop.ResponseEnforcer;
 import top.focess.veto.agent.loop.Scope;
 import top.focess.veto.agent.loop.StopAction;
 import top.focess.veto.agent.mcp.AgentToolDefinition;
+import top.focess.veto.agent.mcp.NativeToolDefinition;
+import top.focess.veto.agent.mcp.ParamCategory;
 import top.focess.veto.agent.mcp.ToolCallContext;
 import top.focess.veto.agent.mcp.ToolCallContextHolder;
 import top.focess.veto.agent.mcp.ToolDefinition;
@@ -63,6 +66,7 @@ import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.llm.core.ProviderType;
 import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
+import top.focess.veto.llm.core.ToolResultPresenter;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.llm.core.VetoRequest;
 import top.focess.veto.llm.core.VetoResponse;
@@ -110,6 +114,7 @@ public class AgentRunner {
             ToolResultPresentationMode.BASIC;
     private final @NonNull UniformLLMCaller caller;
     private final @NonNull ObjectMapper objectMapper;
+    private final @NonNull ToolResultPresenter toolResultPresenter;
     private final @NonNull LoopBreaker breaker;
     private final @NonNull ReadHistory readHistory;
     // The Part-8 Delta-broker seam: when present, each loop emission is published as a DeltaFrame
@@ -254,6 +259,7 @@ public class AgentRunner {
         this.promptCompiler = promptCompiler;
         this.caller = caller;
         this.objectMapper = objectMapper;
+        this.toolResultPresenter = new ToolResultPresenter(objectMapper);
         this.breaker = new LoopBreaker(maxCallsPerEpisode);
         this.readHistory = gateway.readHistory();
         this.binding = binding;
@@ -563,14 +569,17 @@ public class AgentRunner {
                             + (i + 1)
                             + " of "
                             + chunks.size()
-                            + ". Preserve specific facts. Output ONLY valid JSON matching this schema:\n"
+                            + ". Preserve specific facts. Output ONLY valid JSON matching this"
+                            + " schema:\n"
                             + "{\n"
                             + "  \"files_touched\": [\"paths\"],\n"
                             + "  \"changes_made\": [\"specific edits with file paths\"],\n"
-                            + "  \"errors_encountered\": [{\"error\": \"...\", \"file\": \"...\", \"resolved\": true/false}],\n"
+                            + "  \"errors_encountered\": [{\"error\": \"...\", \"file\": \"...\","
+                            + " \"resolved\": true/false}],\n"
                             + "  \"decisions\": [\"key decisions and why\"],\n"
                             + "  \"pending\": [\"started but incomplete tasks\"],\n"
-                            + "  \"user_feedback\": [\"explicit instructions, vetoes, corrections\"]\n"
+                            + "  \"user_feedback\": [\"explicit instructions, vetoes,"
+                            + " corrections\"]\n"
                             + "}";
             String rawSummary = callCompactor(systemPrompt, chunk);
             summaries.add(rawSummary);
@@ -588,11 +597,13 @@ public class AgentRunner {
                     .append("\n\n");
         }
         String systemPrompt =
-                "Summarize the following combined conversation summaries into a single final structured record. Output ONLY valid JSON matching this schema:\n"
+                "Summarize the following combined conversation summaries into a single final"
+                        + " structured record. Output ONLY valid JSON matching this schema:\n"
                         + "{\n"
                         + "  \"files_touched\": [\"paths\"],\n"
                         + "  \"changes_made\": [\"specific edits with file paths\"],\n"
-                        + "  \"errors_encountered\": [{\"error\": \"...\", \"file\": \"...\", \"resolved\": true/false}],\n"
+                        + "  \"errors_encountered\": [{\"error\": \"...\", \"file\": \"...\","
+                        + " \"resolved\": true/false}],\n"
                         + "  \"decisions\": [\"key decisions and why\"],\n"
                         + "  \"pending\": [\"started but incomplete tasks\"],\n"
                         + "  \"user_feedback\": [\"explicit instructions, vetoes, corrections\"]\n"
@@ -958,16 +969,15 @@ public class AgentRunner {
             for (ToolCall call : calls) {
                 if (declinedCallSignatures.contains(toolCallSignature(call))) {
                     appendTurn(TurnRecord.toolCall(++turnNumber, call));
-                    appendTurn(
-                            TurnRecord.toolResponse(
-                                    ++turnNumber,
-                                    call.callId(),
-                                    refusedObservation(
-                                            "this identical tool call was already declined by the"
-                                                    + " user in the current task; it was not"
-                                                    + " offered again and was not executed. Do not"
-                                                    + " retry it unchanged"),
-                                    false));
+                    appendToolResponse(
+                            call.toolName(),
+                            call.callId(),
+                            refusedObservation(
+                                    "this identical tool call was already declined by the"
+                                            + " user in the current task; it was not"
+                                            + " offered again and was not executed. Do not"
+                                            + " retry it unchanged"),
+                            false);
                 } else {
                     callsNeedingDecision.add(call);
                 }
@@ -988,7 +998,7 @@ public class AgentRunner {
                     decisions.add(ApprovalDecision.AUTO_APPROVE);
                     executionPermits.add(ToolExecutionPermit.empty());
                 } else {
-                    var result = gateway.screen(call, def, activeUserTask, thought);
+                    var result = screenToolCall(call, def, thought);
                     executionPermits.add(result.executionPermit());
                     ApprovalDecision decision = hitlRegistry.decide(agentId, call, def, result);
                     decisions.add(decision);
@@ -1059,7 +1069,7 @@ public class AgentRunner {
                                 continue;
                             }
                             ToolCall edited = new ToolCall(call.toolName(), editedArgs, callId);
-                            var r2 = gateway.screen(edited, def, activeUserTask, thought);
+                            var r2 = screenToolCall(edited, def, thought);
                             if (r2 instanceof GatewayResult.Screened sc
                                     && sc.screening().danger() == Danger.CRITICAL) {
                                 appendObservation(
@@ -1085,12 +1095,11 @@ public class AgentRunner {
                     // Synthesize ToolResponse(status=REFUSED) for all calls, no execution, go IDLE
                     for (ToolCall call : calls) {
                         appendTurn(TurnRecord.toolCall(++turnNumber, call));
-                        appendTurn(
-                                TurnRecord.toolResponse(
-                                        ++turnNumber,
-                                        call.callId(),
-                                        refusedObservation(refusalDetail),
-                                        false));
+                        appendToolResponse(
+                                call.toolName(),
+                                call.callId(),
+                                refusedObservation(refusalDetail),
+                                false);
                     }
                     this.state = AgentState.IDLE;
                     throw new VetoRefusedException();
@@ -1105,16 +1114,14 @@ public class AgentRunner {
                 ToolCall call = calls.get(i);
                 if (skippedCalls.contains(call)) {
                     appendTurn(TurnRecord.toolCall(++turnNumber, call));
-                    appendTurn(
-                            TurnRecord.toolResponse(
-                                    ++turnNumber,
-                                    call.callId(),
-                                    refusedObservation(
-                                                    "declined by the user (DECLINE_AND_CONTINUE)")
-                                            + " Continue without this call: do not retry it"
-                                            + " unchanged - pick a different approach, or explain"
-                                            + " the blockage and stop.",
-                                    false));
+                    appendToolResponse(
+                            call.toolName(),
+                            call.callId(),
+                            refusedObservation("declined by the user (DECLINE_AND_CONTINUE)")
+                                    + " Continue without this call: do not retry it"
+                                    + " unchanged - pick a different approach, or explain"
+                                    + " the blockage and stop.",
+                            false);
                 } else {
                     executeOneConfirmedCall(call, executionPermits.get(i));
                 }
@@ -1149,7 +1156,7 @@ public class AgentRunner {
         } catch (SecurityException e) {
             String observation =
                     "Filesystem target changed after screening; submit a fresh tool call";
-            appendTurn(TurnRecord.toolResponse(++turnNumber, call.callId(), observation, false));
+            appendToolResponse(call.toolName(), call.callId(), observation, false);
             return new ToolResult(call.toolName(), call.callId(), false, observation);
         }
 
@@ -1188,7 +1195,7 @@ public class AgentRunner {
             }
 
             ToolResult observed = transformed.withContent(observation);
-            appendTurn(TurnRecord.toolResponse(++turnNumber, observed));
+            appendToolResponse(observed);
 
             // Drain any turn directives the tool requested during execution (e.g. a REWIND seeded
             // by create_group to re-inject the authored brief). Each is appended with a
@@ -1231,7 +1238,7 @@ public class AgentRunner {
         ApprovalDecision decision = ApprovalDecision.AUTO_APPROVE;
         ToolExecutionPermit executionPermit = ToolExecutionPermit.empty();
         if (!(def instanceof AgentToolDefinition)) {
-            var result = gateway.screen(call, def, activeUserTask, null);
+            var result = screenToolCall(call, def, null);
             executionPermit = result.executionPermit();
             decision = hitlRegistry.decide(agentId, call, def, result);
             if (decision instanceof ApprovalDecision.AutoBlock ab) {
@@ -1247,14 +1254,12 @@ public class AgentRunner {
                 InterceptResolution res = hitlRegistry.await(agentId, callId);
 
                 appendTurn(TurnRecord.toolCall(++turnNumber, call));
-                appendTurn(
-                        TurnRecord.toolResponse(
-                                ++turnNumber,
-                                call.callId(),
-                                refusedObservation(
-                                        "refused by the security policy (CRITICAL - no approval"
-                                                + " path)"),
-                                false));
+                appendToolResponse(
+                        call.toolName(),
+                        call.callId(),
+                        refusedObservation(
+                                "refused by the security policy (CRITICAL - no approval path)"),
+                        false);
                 this.state = AgentState.IDLE;
                 return new ToolResult(
                         call.toolName(),
@@ -1338,45 +1343,106 @@ public class AgentRunner {
         transitionTo(AgentState.WAITING);
         if (resolution.isRefusal()) {
             appendTurn(TurnRecord.toolCall(++turnNumber, call));
-            appendTurn(
-                    TurnRecord.toolResponse(
-                            ++turnNumber,
-                            call.callId(),
-                            refusedObservation(
-                                    "declined by the user (" + resolution.option().name() + ")"),
-                            false));
+            appendToolResponse(
+                    call.toolName(),
+                    call.callId(),
+                    refusedObservation("declined by the user (" + resolution.option().name() + ")"),
+                    false);
             return null;
         }
         var editedArgs = resolution.editedArgs();
         if (resolution.option() == VetoOption.EDIT && editedArgs != null) {
             ToolCall edited = new ToolCall(call.toolName(), editedArgs, callId);
             // re-screen the edited call.
-            var r2 = gateway.screen(edited, def, activeUserTask, null);
+            var r2 = screenToolCall(edited, def, null);
             if (r2 instanceof GatewayResult.Screened sc
                     && sc.screening().danger() == Danger.CRITICAL) {
                 appendTurn(TurnRecord.toolCall(++turnNumber, call));
-                appendTurn(
-                        TurnRecord.toolResponse(
-                                ++turnNumber,
-                                call.callId(),
-                                refusedObservation("the edited call re-screened as CRITICAL"),
-                                false));
+                appendToolResponse(
+                        call.toolName(),
+                        call.callId(),
+                        refusedObservation("the edited call re-screened as CRITICAL"),
+                        false);
                 return null;
             }
             if (r2 instanceof GatewayResult.DriftResult) {
                 appendTurn(TurnRecord.toolCall(++turnNumber, call));
-                appendTurn(
-                        TurnRecord.toolResponse(
-                                ++turnNumber,
-                                call.callId(),
-                                refusedObservation("the edited call re-screened as drifted"),
-                                false));
+                appendToolResponse(
+                        call.toolName(),
+                        call.callId(),
+                        refusedObservation("the edited call re-screened as drifted"),
+                        false);
                 return null;
             }
             return new ResolvedCall(edited, r2.executionPermit());
         }
         return new ResolvedCall(call, executionPermit);
     }
+
+    private @NonNull GatewayResult screenToolCall(
+            @NonNull ToolCall call, @NonNull ToolDefinition definition, String thought) {
+        ProcessInputTarget processInput = processInputTarget(call, definition);
+        GatewayResult result =
+                gateway.screen(
+                        call,
+                        definition,
+                        activeUserTask,
+                        thought,
+                        processInput == null ? null : processInput.screeningContext());
+        if (processInput == null) {
+            return result;
+        }
+        ToolExecutionPermit permit =
+                result.executionPermit().withTaskBinding(processInput.binding());
+        return switch (result) {
+            case GatewayResult.Screened screened ->
+                    new GatewayResult.Screened(screened.screening(), permit);
+            case GatewayResult.DriftResult drift ->
+                    new GatewayResult.DriftResult(drift.path(), drift.diff(), permit);
+            case GatewayResult.NotScreened ignored -> result;
+        };
+    }
+
+    private ProcessInputTarget processInputTarget(
+            @NonNull ToolCall call, @NonNull ToolDefinition definition) {
+        if (!(definition instanceof NativeToolDefinition nativeDefinition)
+                || !nativeDefinition.paramHints().containsValue(ParamCategory.PROCESS_INPUT)
+                || backgroundTaskManager == null) {
+            return null;
+        }
+        Object rawTaskId = call.args().get("taskId");
+        if (!(rawTaskId instanceof String taskId) || taskId.isBlank()) {
+            return null;
+        }
+        BackgroundTaskManager.InputTaskSnapshot snapshot =
+                backgroundTaskManager.inputTaskSnapshot(agentId, sessionId, taskId).orElse(null);
+        if (snapshot == null) {
+            return new ProcessInputTarget(
+                    new ToolExecutionPermit.TaskBinding(taskId, agentId, sessionId, new UUID(0, 0)),
+                    "No background task with this id exists in the calling agent and session.");
+        }
+        return new ProcessInputTarget(
+                new ToolExecutionPermit.TaskBinding(
+                        snapshot.taskId(),
+                        snapshot.agentId(),
+                        snapshot.sessionId(),
+                        snapshot.taskInstanceId()),
+                "Target background process: executable="
+                        + snapshot.command().executable()
+                        + ", argv="
+                        + snapshot.command().args()
+                        + ", cwd="
+                        + snapshot.cwd()
+                        + ", networkAllowed="
+                        + snapshot.networkAllowed()
+                        + ", alive="
+                        + snapshot.alive()
+                        + ", stdinAvailable="
+                        + snapshot.stdinAvailable());
+    }
+
+    private record ProcessInputTarget(
+            @NonNull TaskBinding binding, @NonNull String screeningContext) {}
 
     private void emitVetoRequired(
             @NonNull ToolCall call,
@@ -1545,7 +1611,20 @@ public class AgentRunner {
     }
 
     private void appendObservation(@NonNull String toolName, @NonNull String content) {
-        appendTurn(TurnRecord.toolResponse(++turnNumber, null, content, false));
+        appendToolResponse(toolName, null, content, false);
+    }
+
+    private void appendToolResponse(
+            @NonNull String toolName, String callId, @NonNull String content, boolean success) {
+        appendToolResponse(new ToolResult(toolName, callId, success, content));
+    }
+
+    /** Persists exactly the representation that this session presents to the model. */
+    private void appendToolResponse(@NonNull ToolResult result) {
+        String presented = toolResultPresenter.present(result, toolResultPresentation);
+        appendTurn(
+                TurnRecord.presentedToolResponse(
+                        ++turnNumber, result, presented, toolResultPresentation));
     }
 
     private void appendTurn(@NonNull TurnRecord turn) {
@@ -2183,7 +2262,6 @@ public class AgentRunner {
     }
 
     /** Signals a breaker trip (caught at the action boundary → IDLE + notice). */
-    @SuppressWarnings("serial")
     private static final class BreakerTripException extends RuntimeException {}
 
     /**
@@ -2191,6 +2269,5 @@ public class AgentRunner {
      * completeFailure). Carries no message; the failure seam maps the type to the keyed, localized
      * "veto refused" message.
      */
-    @SuppressWarnings("serial")
     private static final class VetoRefusedException extends RuntimeException {}
 }

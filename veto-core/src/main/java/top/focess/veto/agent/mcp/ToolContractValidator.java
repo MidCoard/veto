@@ -3,7 +3,7 @@ package top.focess.veto.agent.mcp;
 import org.jspecify.annotations.NonNull;
 
 /**
- * Validates that tool flavour, capability, risk, and parameter hints describe one coherent tool.
+ * Validates that tool flavour, capability, danger, and parameter hints describe one coherent tool.
  */
 public final class ToolContractValidator {
 
@@ -17,16 +17,8 @@ public final class ToolContractValidator {
         switch (definition) {
             case NativeToolDefinition nativeDefinition -> validateNative(nativeDefinition);
             case AgentToolDefinition agentDefinition -> validateAgent(agentDefinition);
-            case RemoteToolDefinition remoteDefinition -> {
-                if (remoteDefinition.capability() != ToolCapability.REMOTE_UNKNOWN) {
-                    throw invalid(
-                            remoteDefinition, "remote MCP tools must default to REMOTE_UNKNOWN");
-                }
-                if (remoteDefinition.risk() != RiskCategory.NETWORK) {
-                    throw invalid(
-                            remoteDefinition,
-                            "unclassified remote MCP tools must use NETWORK screening risk");
-                }
+            case RemoteToolDefinition ignored -> {
+                // Remote definitions hard-code REMOTE_UNKNOWN and ELEVATED.
             }
         }
     }
@@ -78,28 +70,26 @@ public final class ToolContractValidator {
             case WORKSPACE_READ ->
                     require(
                             definition,
-                            definition.risk() == RiskCategory.READ_ONLY && hasPath,
-                            "WORKSPACE_READ requires READ_ONLY risk and a FILESYSTEM_PATH parameter");
+                            hasPath,
+                            "WORKSPACE_READ requires a FILESYSTEM_PATH parameter");
             case WORKSPACE_WRITE ->
                     require(
                             definition,
-                            definition.risk() == RiskCategory.FILE_WRITE && hasPath,
-                            "WORKSPACE_WRITE requires FILE_WRITE risk and a FILESYSTEM_PATH parameter");
+                            hasPath,
+                            "WORKSPACE_WRITE requires a FILESYSTEM_PATH parameter");
             case PROCESS_EXECUTION ->
                     require(
                             definition,
-                            definition.risk() == RiskCategory.SHELL_EXEC && !hasPath && hasCommand,
-                            "PROCESS_EXECUTION requires SHELL_EXEC risk and SHELL_COMMAND parameters; its working directory comes from the session permit, not a FILESYSTEM_PATH argument");
+                            !hasPath && hasCommand,
+                            "PROCESS_EXECUTION requires SHELL_COMMAND parameters; its working directory comes from the session permit, not a FILESYSTEM_PATH argument");
             case TASK_CONTROL ->
                     require(
                             definition,
-                            definition.risk() == RiskCategory.AGENT && !hasPath && !hasCommand,
-                            "TASK_CONTROL must be agent-scoped and must not accept host path/command arguments");
-            case NETWORK_EGRESS ->
-                    require(
-                            definition,
-                            definition.risk() == RiskCategory.NETWORK,
-                            "NETWORK_EGRESS requires NETWORK risk");
+                            !hasPath && !hasCommand,
+                            "TASK_CONTROL must not accept host path/command arguments");
+            case NETWORK_EGRESS -> {
+                // URL arguments are optional because some network tools use deployer-fixed hosts.
+            }
             case SKILL_READ,
                     MEMORY_READ,
                     MEMORY_WRITE,
@@ -117,9 +107,6 @@ public final class ToolContractValidator {
     }
 
     private static void validateAgent(@NonNull AgentToolDefinition definition) {
-        if (definition.risk() != RiskCategory.AGENT) {
-            throw invalid(definition, "agent tools must carry AGENT risk");
-        }
         boolean namesExternalResource =
                 definition.paramHints().values().stream()
                         .anyMatch(

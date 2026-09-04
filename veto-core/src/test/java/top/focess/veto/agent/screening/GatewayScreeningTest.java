@@ -15,7 +15,7 @@ import top.focess.veto.agent.intercept.GatewayResult;
 import top.focess.veto.agent.mcp.AgentToolDefinition;
 import top.focess.veto.agent.mcp.NativeToolDefinition;
 import top.focess.veto.agent.mcp.ParamCategory;
-import top.focess.veto.agent.mcp.RiskCategory;
+import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
@@ -51,7 +51,8 @@ class GatewayScreeningTest {
         return new NativeToolDefinition(
                 "view_file",
                 "read",
-                RiskCategory.READ_ONLY,
+                ToolCapability.WORKSPACE_READ,
+                Danger.SAFE,
                 false,
                 ToolDocs.nonNullClass(String.class),
                 Map.of("path", ParamCategory.FILESYSTEM_PATH));
@@ -61,7 +62,8 @@ class GatewayScreeningTest {
         return new NativeToolDefinition(
                 "write_to_file",
                 "write",
-                RiskCategory.FILE_WRITE,
+                ToolCapability.WORKSPACE_WRITE,
+                Danger.ELEVATED,
                 false,
                 ToolDocs.nonNullClass(String.class),
                 Map.of("path", ParamCategory.FILESYSTEM_PATH));
@@ -71,7 +73,12 @@ class GatewayScreeningTest {
     void agentToolEarlyRoutesToNotScreened() {
         AgentToolDefinition atd =
                 new AgentToolDefinition(
-                        "load_skill", "load", ToolDocs.nonNullClass(String.class), Map.of());
+                        "load_skill",
+                        "load",
+                        ToolCapability.SKILL_READ,
+                        Danger.SAFE,
+                        ToolDocs.nonNullClass(String.class),
+                        Map.of());
         GatewayResult r =
                 gateway().screen(new ToolCall("load_skill", Map.of("skillName", "x")), atd);
         assertInstanceOf(ToolDocs.nonNullClass(GatewayResult.NotScreened.class), r);
@@ -94,7 +101,7 @@ class GatewayScreeningTest {
     void advisoryModelCanRaiseButNeverLowerDeterministicDanger() throws Exception {
         Workspace ws = Workspace.single(root, PathMode.REAL);
         SlmScreeningProvider raisesDanger =
-                (call, def, activeTask, thought) ->
+                (call, def, activeTask, thought, executionContext) ->
                         java.util.Optional.of(
                                 new SlmScreening(
                                         Relevance.LOW,
@@ -118,7 +125,7 @@ class GatewayScreeningTest {
         assertTrue(raised.slmEvaluated());
 
         SlmScreeningProvider claimsSafe =
-                (call, def, activeTask, thought) ->
+                (call, def, activeTask, thought, executionContext) ->
                         java.util.Optional.of(
                                 new SlmScreening(Relevance.HIGH, Danger.SAFE, "model claims safe"));
         Gateway deterministicFloor =

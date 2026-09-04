@@ -1,6 +1,5 @@
 package top.focess.veto.bus;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -23,8 +22,6 @@ import org.springframework.stereotype.Component;
 @Component
 public class DeltaBroker {
 
-    private final @NonNull ObjectMapper mapper;
-
     /** Per-session listeners. */
     private final @NonNull ConcurrentMap<UUID, List<Consumer<DeltaFrame>>> listeners =
             new ConcurrentHashMap<>();
@@ -35,10 +32,6 @@ public class DeltaBroker {
 
     /** Per-session monotonic sequence. */
     private final @NonNull ConcurrentMap<UUID, AtomicLong> sequences = new ConcurrentHashMap<>();
-
-    public DeltaBroker(@NonNull ObjectMapper mapper) {
-        this.mapper = mapper;
-    }
 
     /** Subscribe to a session's frame stream. Returns a handle that unsubscribes on close. */
     public @NonNull AutoCloseable subscribe(
@@ -107,15 +100,6 @@ public class DeltaBroker {
                                 e);
             }
         }
-    }
-
-    /** Convenience: publish + serialize to JSON. */
-    public void publishJson(@NonNull DeltaFrame frame) {
-        publish(frame);
-        // Touch mapper so it stays referenced (the publish above fans out the structured frame;
-        // JSON serialization happens at the transport).
-        @SuppressWarnings("unused")
-        ObjectMapper m = mapper;
     }
 
     /** Test-only: list of subscriber counts per session. */

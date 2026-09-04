@@ -1,6 +1,7 @@
 package top.focess.veto.agent.mcp;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -46,6 +47,36 @@ class ToolContractIntegrityTest {
         }
     }
 
+    @Test
+    void everyWorkspaceReadToolUsesTheTypedCapabilityBoundary() {
+        for (NativeTool<?> tool : nativeTools) {
+            ToolSecurity security =
+                    tool.getClass().getAnnotation(ToolDocs.nonNullClass(ToolSecurity.class));
+            if (security != null && security.capability() == ToolCapability.WORKSPACE_READ) {
+                assertTrue(
+                        tool instanceof WorkspaceReadTool<?>,
+                        () ->
+                                tool.getName()
+                                        + " declares WORKSPACE_READ without WorkspaceReadTool");
+            }
+        }
+    }
+
+    @Test
+    void everyWorkspaceWriteToolUsesTheTypedCapabilityBoundary() {
+        for (NativeTool<?> tool : nativeTools) {
+            ToolSecurity security =
+                    tool.getClass().getAnnotation(ToolDocs.nonNullClass(ToolSecurity.class));
+            if (security != null && security.capability() == ToolCapability.WORKSPACE_WRITE) {
+                assertTrue(
+                        tool instanceof WorkspaceWriteTool<?>,
+                        () ->
+                                tool.getName()
+                                        + " declares WORKSPACE_WRITE without WorkspaceWriteTool");
+            }
+        }
+    }
+
     private void validateExamples(@NonNull String toolName, @NonNull Class<?> argsClass) {
         for (String example : ToolDocs.examplesOf(argsClass)) {
             assertDoesNotThrow(
@@ -73,10 +104,9 @@ class ToolContractIntegrityTest {
             JsonNode missingParent = missing.at(required.parentPointer());
             assertTrue(missingParent instanceof ObjectNode);
             ((ObjectNode) missingParent).remove(required.name());
-            NativeToolArgumentValidator.InvalidArgumentsException missingFailure =
+            ToolExecutionException missingFailure =
                     assertThrows(
-                            ToolDocs.nonNullClass(
-                                    NativeToolArgumentValidator.InvalidArgumentsException.class),
+                            ToolDocs.nonNullClass(ToolExecutionException.class),
                             () ->
                                     NativeToolArgumentValidator.validate(
                                             toolName, missing, argsClass),
@@ -89,15 +119,15 @@ class ToolContractIntegrityTest {
                     String.valueOf(missingFailure.getMessage())
                             .contains(
                                     "missing required parameter '" + required.displayPath() + "'"));
+            assertEquals("INVALID_ARGUMENTS", missingFailure.errorCode());
 
             ObjectNode explicitNull = complete.deepCopy();
             JsonNode nullParent = explicitNull.at(required.parentPointer());
             assertTrue(nullParent instanceof ObjectNode);
             ((ObjectNode) nullParent).putNull(required.name());
-            NativeToolArgumentValidator.InvalidArgumentsException nullFailure =
+            ToolExecutionException nullFailure =
                     assertThrows(
-                            ToolDocs.nonNullClass(
-                                    NativeToolArgumentValidator.InvalidArgumentsException.class),
+                            ToolDocs.nonNullClass(ToolExecutionException.class),
                             () ->
                                     NativeToolArgumentValidator.validate(
                                             toolName, explicitNull, argsClass),
@@ -110,6 +140,7 @@ class ToolContractIntegrityTest {
                     String.valueOf(nullFailure.getMessage())
                             .contains(
                                     "missing required parameter '" + required.displayPath() + "'"));
+            assertEquals("INVALID_ARGUMENTS", nullFailure.errorCode());
         }
     }
 

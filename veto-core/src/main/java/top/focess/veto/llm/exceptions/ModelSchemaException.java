@@ -8,7 +8,6 @@ import org.jspecify.annotations.NonNull;
  * {@code calls}+{@code actions} present. The loop catches it and re-prompts with a formatting retry
  * (up to N retries; then the turn fails and is surfaced to the user).
  */
-@SuppressWarnings("serial")
 public class ModelSchemaException extends RuntimeException {
     public ModelSchemaException(@NonNull String message) {
         super(message);

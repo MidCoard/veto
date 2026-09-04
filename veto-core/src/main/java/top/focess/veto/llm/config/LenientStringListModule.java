@@ -35,7 +35,6 @@ import org.jspecify.annotations.NonNull;
  * on {@link top.focess.veto.llm.core.VetoResponse}) keep Jackson's default collection deserializer,
  * so response parsing is untouched. Real JSON arrays pass through unchanged.
  */
-@SuppressWarnings("serial")
 public final class LenientStringListModule extends SimpleModule {
 
     public LenientStringListModule() {

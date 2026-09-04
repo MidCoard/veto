@@ -21,7 +21,10 @@ final class NativeToolArgumentValidator {
         validateConditionalRequirements(arguments, argsClass, "", issues);
         if (!issues.isEmpty()) {
             List<String> expected = fieldNames(schema.path("properties"));
-            throw new InvalidArgumentsException(
+            throw new ToolExecutionException(
+                    ToolResultStatus.FAILURE,
+                    ToolResultFormat.PLAINTEXT,
+                    "INVALID_ARGUMENTS",
                     "Invalid arguments for "
                             + toolName
                             + ": "
@@ -183,12 +186,5 @@ final class NativeToolArgumentValidator {
 
     private static @NonNull String displayPath(@NonNull String path) {
         return path.isEmpty() ? "arguments" : path;
-    }
-
-    @SuppressWarnings("serial")
-    static final class InvalidArgumentsException extends IllegalArgumentException {
-        InvalidArgumentsException(@NonNull String message) {
-            super(message);
-        }
     }
 }

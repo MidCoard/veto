@@ -11,7 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.mcp.AgentToolDefinition;
-import top.focess.veto.agent.mcp.RiskCategory;
+import top.focess.veto.agent.mcp.ToolCapability;
 import top.focess.veto.agent.mcp.ToolDefinition;
 import top.focess.veto.agent.screening.Danger;
 import top.focess.veto.agent.screening.DangerComputation;
@@ -100,6 +100,15 @@ public class Gateway {
             @NonNull ToolDefinition def,
             String activeTask,
             String thought) {
+        return screen(call, def, activeTask, thought, null);
+    }
+
+    public @NonNull GatewayResult screen(
+            @NonNull ToolCall call,
+            @NonNull ToolDefinition def,
+            String activeTask,
+            String thought,
+            String executionContext) {
         if (def instanceof AgentToolDefinition) {
             return new GatewayResult.NotScreened();
         }
@@ -107,7 +116,7 @@ public class Gateway {
                 ToolExecutionPermit.capture(call, def, workspace, policy, protectedSet);
         List<@NonNull String> paths = executionPermit.requestedPaths();
         // drift is a correctness check on writes — checked before danger.
-        if (def.risk() == RiskCategory.FILE_WRITE) {
+        if (def.capability() == ToolCapability.WORKSPACE_WRITE) {
             GatewayResult.DriftResult drift = checkWriteDrift(paths, executionPermit);
             if (drift != null) {
                 return drift;
@@ -117,7 +126,7 @@ public class Gateway {
                 dangerComputation.compute(
                         def, call, workspace, policy, protectedSet, executionPermit);
         Optional<SlmScreening> advisory =
-                slmScreeningProvider.screen(call, def, activeTask, thought);
+                slmScreeningProvider.screen(call, def, activeTask, thought, executionContext);
         Danger danger =
                 advisory.map(screening -> maxDanger(deterministicDanger, screening.danger()))
                         .orElse(deterministicDanger);
@@ -147,6 +156,9 @@ public class Gateway {
         }
         ToolExecutionPermit current =
                 ToolExecutionPermit.capture(call, definition, workspace, policy, protectedSet);
+        if (screenedPermit.taskBinding() != null) {
+            current = current.withTaskBinding(screenedPermit.taskBinding());
+        }
         if (!screenedPermit.sameTargets(current)) {
             throw new SecurityException(
                     "Filesystem target changed after screening; submit a fresh tool call");
@@ -162,13 +174,23 @@ public class Gateway {
         if (danger == Danger.CRITICAL)
             return VetoScenario
                     .EXEC_DETERMINISTIC; // E1-style; the registry offers options per scenario
-        return switch (def.risk()) {
-            case READ_ONLY -> VetoScenario.READ;
-            case FILE_WRITE ->
+        return switch (def.capability()) {
+            case WORKSPACE_READ -> VetoScenario.READ;
+            case WORKSPACE_WRITE ->
                     VetoScenario
                             .GENERIC; // non-drift write — generic (no WRITE_DRIFT scenario here)
-            case SHELL_EXEC, NETWORK -> VetoScenario.EXEC_FIRST_TIME; // E3 first-time pattern
-            case AGENT -> VetoScenario.GENERIC;
+            case PROCESS_EXECUTION, NETWORK_EGRESS, REMOTE_UNKNOWN ->
+                    VetoScenario.EXEC_FIRST_TIME; // E3 first-time pattern
+            case TASK_CONTROL,
+                    SKILL_READ,
+                    MEMORY_READ,
+                    MEMORY_WRITE,
+                    LOOP_CONTROL,
+                    DELEGATION,
+                    GROUP_CONTROL,
+                    USER_INTERACTION,
+                    AGENT_CONTROL ->
+                    VetoScenario.GENERIC;
         };
     }
 
@@ -180,7 +202,9 @@ public class Gateway {
         String slm =
                 advisory.map(value -> value.danger() + " (" + value.reason() + ")")
                         .orElse("unavailable");
-        return def.risk()
+        return def.capability()
+                + " default="
+                + def.defaultDanger()
                 + " -> deterministic="
                 + deterministicDanger
                 + ", slm="
