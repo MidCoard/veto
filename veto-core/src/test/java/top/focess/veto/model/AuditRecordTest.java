@@ -4,7 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.EnumSet;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.agent.mcp.ToolDocs;
+import top.focess.veto.agent.tool.ToolDocs;
 
 class AuditRecordTest {
 

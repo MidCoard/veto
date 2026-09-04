@@ -4,7 +4,7 @@ import org.jspecify.annotations.NonNull;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.scheduling.annotation.EnableScheduling;
-import top.focess.veto.agent.mcp.ToolDocs;
+import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.sandbox.SandboxBootstrap;
 
 /**

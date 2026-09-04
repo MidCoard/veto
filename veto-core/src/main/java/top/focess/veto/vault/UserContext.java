@@ -1,7 +1,8 @@
 package top.focess.veto.vault;
 
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
+import java.util.Collections;
+import java.util.Map;
+import java.util.WeakHashMap;
 import org.jspecify.annotations.NonNull;
 
 /**
@@ -11,8 +12,8 @@ import org.jspecify.annotations.NonNull;
  */
 public final class UserContext {
 
-    private static final @NonNull ConcurrentMap<Thread, String> CURRENT_USERS =
-            new ConcurrentHashMap<>();
+    private static final @NonNull Map<@NonNull Thread, @NonNull String> CURRENT_USERS =
+            Collections.synchronizedMap(new WeakHashMap<>());
 
     private UserContext() {}
 

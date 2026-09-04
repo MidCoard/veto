@@ -5,16 +5,13 @@ import org.jspecify.annotations.NonNull;
 
 /**
  * The user's resolution of a veto pause, delivered via the veto endpoint and used to complete the
- * parked {@link java.util.concurrent.CompletableFuture}. For {@link VetoOption#EDIT} the user
- * rewrites the call's args; the loop re-screens the edited call before executing.
+ * parked {@link java.util.concurrent.CompletableFuture}.
  *
  * <p>For {@code _LIKE_THIS} variants the {@code editedArgs} carry the call's args (used to
- * construct the grant's match key, with value positions wildcarded appropriately). For the legacy
- * {@code ACCEPT_AS_SESSION_RULE} / {@code ACCEPT_ONCE} aliases this is also non-null.
+ * construct the grant's match key, with value positions wildcarded appropriately).
  *
  * @param option the chosen resolution option
- * @param editedArgs the user-overridden args (non-null for {@link VetoOption#EDIT} and the {@code
- *     _LIKE_THIS} grant-creating variants)
+ * @param editedArgs the approved call args for {@code _LIKE_THIS} grant-creating variants
  * @param maskObservation whether the engine should apply {@code accept_and_mask} to the observation
  *     before it enters context. Defaults to {@code true} for approvals when the user did not
  *     explicitly choose otherwise.

@@ -19,18 +19,18 @@ import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
-import top.focess.veto.agent.mcp.Doc;
-import top.focess.veto.agent.mcp.NativeTool;
-import top.focess.veto.agent.mcp.ParamCategory;
-import top.focess.veto.agent.mcp.SecurityHint;
-import top.focess.veto.agent.mcp.ToolCapability;
-import top.focess.veto.agent.mcp.ToolDoc;
-import top.focess.veto.agent.mcp.ToolDocs;
-import top.focess.veto.agent.mcp.ToolErrors;
-import top.focess.veto.agent.mcp.ToolExecutionException;
-import top.focess.veto.agent.mcp.ToolResultFormat;
-import top.focess.veto.agent.mcp.ToolSecurity;
 import top.focess.veto.agent.screening.Danger;
+import top.focess.veto.agent.tool.Doc;
+import top.focess.veto.agent.tool.NativeTool;
+import top.focess.veto.agent.tool.ParamCategory;
+import top.focess.veto.agent.tool.SecurityHint;
+import top.focess.veto.agent.tool.ToolCapability;
+import top.focess.veto.agent.tool.ToolDoc;
+import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.ToolErrors;
+import top.focess.veto.agent.tool.ToolExecutionException;
+import top.focess.veto.agent.tool.ToolResultFormat;
+import top.focess.veto.agent.tool.ToolSecurity;
 
 /**
  * {@code web_fetch} - fetch a URL and return its readable content. Key-free: a direct HTTP GET, so

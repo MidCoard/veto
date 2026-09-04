@@ -21,8 +21,8 @@ import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.Role;
 import top.focess.veto.agent.identity.RoleToolFilter;
 import top.focess.veto.agent.identity.SystemPromptResolver;
-import top.focess.veto.agent.mcp.ToolCapability;
-import top.focess.veto.agent.mcp.ToolEngine;
+import top.focess.veto.agent.tool.ToolCapability;
+import top.focess.veto.agent.tool.ToolEngine;
 import top.focess.veto.agent.translation.CapabilityTranslator;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.ToolDefinition;
@@ -334,7 +334,7 @@ class SystemPromptDumpTest {
     }
 
     private @NonNull AgentPersona personaFor(@NonNull Role role) {
-        Set<top.focess.veto.agent.mcp.ToolDefinition> tools = roleToolFilter.resolve(role);
+        Set<top.focess.veto.agent.tool.ToolDefinition> tools = roleToolFilter.resolve(role);
         return switch (role) {
             case STANDALONE ->
                     new AgentPersona(

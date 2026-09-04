@@ -68,9 +68,6 @@ public class GroupOrchestrator {
      */
     private final @NonNull ConcurrentMap<UUID, ReentrantLock> tickLocks = new ConcurrentHashMap<>();
 
-    /** A simple Mate-execution simulator (real Mates are agent loops; this is the harness). */
-    private final @NonNull MateExecutor mateExecutor = new MateExecutor();
-
     public GroupOrchestrator() {
         this(new GroupRegistry(), new Blackboard(), new HeuristicLeader(), null);
     }
@@ -575,79 +572,8 @@ public class GroupOrchestrator {
         return group.withState(Group.GroupState.COMPLETED, Instant.now());
     }
 
-    /**
-     * The Mate-execution simulator. Real Mates are agent loops; this testable stand-in turns a
-     * TASK_DISPATCH into a synthetic ACCEPT after a configurable work cost. The Leader's tools can
-     * override this by posting messages directly to the Blackboard.
-     */
-    public static class MateExecutor {
-        /**
-         * Simulate a Mate executing a task: return a synthetic Blackboard ACCEPT message. Real
-         * Mates are agent loops; this is the harness fallback for tests + the "fire-and-forget"
-         * stub path.
-         */
-        public @NonNull BlackboardMessage accept(
-                @NonNull UUID groupId,
-                @NonNull String mateId,
-                @NonNull String nodeId,
-                String artifactPath) {
-            String summary =
-                    artifactPath == null ? "Synthetic Mate completion." : artifactPath.strip();
-            String payload =
-                    nodeId
-                            + ":accept-base64:"
-                            + Base64.getEncoder()
-                                    .encodeToString(summary.getBytes(StandardCharsets.UTF_8));
-            return new BlackboardMessage(
-                    UUID.randomUUID().toString(),
-                    groupId,
-                    mateId,
-                    "LEADER",
-                    BlackboardMessage.MessageType.ACCEPT,
-                    payload,
-                    0);
-        }
-    }
-
-    public @NonNull MateExecutor getMateExecutor() {
-        return mateExecutor;
-    }
-
-    /**
-     * Build a one-shot synthetic ACCEPT for a node (testing + bootstrap). Posts the ACCEPT to the
-     * Blackboard; the next {@link #tick} will VERIFY the node.
-     */
-    public void simulateAccept(
-            @NonNull UUID groupId, @NonNull String mateId, @NonNull String nodeId) {
-        BlackboardMessage m = mateExecutor.accept(groupId, mateId, nodeId, null);
-        blackboard.post(m);
-    }
-
-    /** Build a one-shot synthetic FEEDBACK for a node (testing + bootstrap). */
-    public void simulateFeedback(
-            @NonNull UUID groupId,
-            @NonNull String mateId,
-            @NonNull String nodeId,
-            @NonNull String feedback) {
-        BlackboardMessage m =
-                new BlackboardMessage(
-                        UUID.randomUUID().toString(),
-                        groupId,
-                        mateId,
-                        "LEADER",
-                        BlackboardMessage.MessageType.FEEDBACK,
-                        nodeId + ":feedback:" + feedback,
-                        0);
-        blackboard.post(m);
-    }
-
-    /**
-     * Callback when a group is disbanded. This hook is called by {@link GroupSpawner} when a
-     * group's lifecycle ends, either naturally or through explicit disbanding. The current hook
-     * records the event but does not perform resource cleanup, persistence, or notifications.
-     */
+    /** Records completion of an explicitly disbanded group. */
     public void onGroupDisbanded(@NonNull UUID groupId) {
         log.info("GroupOrchestrator: group {} disbanded", groupId);
-        // The registry already holds the final state; no additional cleanup is required.
     }
 }

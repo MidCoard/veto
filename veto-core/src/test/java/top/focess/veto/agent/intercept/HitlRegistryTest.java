@@ -15,7 +15,7 @@ import top.focess.veto.llm.core.ToolCall;
  * Tests for {@link HitlRegistry}'s park/resolve path after the structural stash fix: {@code
  * register} stashes the call/def/offered-options so the transport resolves a veto by option name
  * alone, and {@code resolveOption}/{@code declineOption} build the {@link InterceptResolution} from
- * the stash (the transport cannot reach a {@link top.focess.veto.agent.mcp.ToolDefinition}).
+ * the stash (the transport cannot reach a {@link top.focess.veto.agent.tool.ToolDefinition}).
  */
 class HitlRegistryTest {
 

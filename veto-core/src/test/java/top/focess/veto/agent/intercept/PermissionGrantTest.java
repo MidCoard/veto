@@ -11,12 +11,12 @@ import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import top.focess.veto.agent.mcp.AgentToolDefinition;
-import top.focess.veto.agent.mcp.NativeToolDefinition;
-import top.focess.veto.agent.mcp.ParamCategory;
-import top.focess.veto.agent.mcp.ToolCapability;
-import top.focess.veto.agent.mcp.ToolDocs;
 import top.focess.veto.agent.screening.Danger;
+import top.focess.veto.agent.tool.AgentToolDefinition;
+import top.focess.veto.agent.tool.NativeToolDefinition;
+import top.focess.veto.agent.tool.ParamCategory;
+import top.focess.veto.agent.tool.ToolCapability;
+import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.ToolCall;
@@ -252,7 +252,6 @@ class PermissionGrantTest {
         assertTrue(VetoOption.ACCEPT_AND_MASK_READ_LIKE_THIS.createsGrant());
         assertTrue(VetoOption.ACCEPT_WRITE_LIKE_THIS.createsGrant());
         assertTrue(VetoOption.ACCEPT_COMMAND_LIKE_THIS.createsGrant());
-        assertTrue(VetoOption.ACCEPT_AND_MASK_COMMAND_LIKE_THIS.createsGrant());
         assertTrue(VetoOption.ACCEPT_COMMAND_AS_SESSION_RULE.createsGrant());
         assertTrue(VetoOption.ACCEPT_GENERIC_LIKE_THIS.createsGrant());
     }
@@ -264,14 +263,11 @@ class PermissionGrantTest {
         assertFalse(VetoOption.ACCEPT_WRITE.createsGrant());
         assertFalse(VetoOption.READ_DECLINE.createsGrant());
         assertFalse(VetoOption.ACCEPT_GENERIC.createsGrant());
-        assertFalse(VetoOption.ACCEPT_AND_MASK_COMMAND.createsGrant());
     }
 
     @Test
     void vetoOptionImpliesMaskingForAcceptAndMaskVariants() {
         assertTrue(VetoOption.ACCEPT_AND_MASK_READ.impliesMasking());
-        assertTrue(VetoOption.ACCEPT_AND_MASK_WRITE.impliesMasking());
-        assertTrue(VetoOption.ACCEPT_AND_MASK_COMMAND.impliesMasking());
         assertTrue(VetoOption.ACCEPT_AND_MASK_READ_LIKE_THIS.impliesMasking());
     }
 

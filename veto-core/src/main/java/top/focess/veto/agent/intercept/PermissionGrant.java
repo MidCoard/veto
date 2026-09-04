@@ -36,7 +36,7 @@ public sealed interface PermissionGrant
         permits PermissionGrant.ReadGrant,
                 PermissionGrant.WriteGrant,
                 PermissionGrant.CommandGrant,
-                PermissionGrant.LegacySessionRule {
+                PermissionGrant.ExactToolGrant {
 
     /** Tool family this grant covers. */
     @NonNull String toolFamily();
@@ -198,21 +198,8 @@ public sealed interface PermissionGrant
         }
     }
 
-    /**
-     * @deprecated the read grant scopes by exact tool name since 1.0.72 (like-this = same tool +
-     *     directory subtree); the family set is unused and only kept for source compatibility.
-     */
-    @Deprecated
-    java.util.@NonNull Set<@NonNull String> READ_TOOL_FAMILY =
-            java.util.Set.of("view_file", "list_dir", "grep_search");
-
-    /**
-     * Legacy session rule (back-compat): identical-match on {@code (toolName, args)} for callers
-     * that still use the old {@code ACCEPT_AS_SESSION_RULE} flow with a non-{@code run_command}
-     * tool. Distinct from {@link ReadGrant}/{@link WriteGrant}/{@link CommandGrant} (no per-tool
-     * shape) — kept so the old code path still works until callers migrate.
-     */
-    record LegacySessionRule(
+    /** Exact-match grant for a remote or otherwise unclassified tool call. */
+    record ExactToolGrant(
             @NonNull String toolName, java.util.@NonNull Map<@NonNull String, Object> args)
             implements PermissionGrant {
 

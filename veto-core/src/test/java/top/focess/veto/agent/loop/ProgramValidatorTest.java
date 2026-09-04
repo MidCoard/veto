@@ -6,7 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.agent.mcp.ToolDocs;
+import top.focess.veto.agent.tool.ToolDocs;
 
 class ProgramValidatorTest {
 

@@ -8,11 +8,11 @@ import java.net.http.HttpTimeoutException;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.agent.mcp.ToolDocs;
-import top.focess.veto.agent.mcp.ToolErrors;
-import top.focess.veto.agent.mcp.ToolExecutionException;
-import top.focess.veto.agent.mcp.ToolSecurity;
 import top.focess.veto.agent.screening.Danger;
+import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.ToolErrors;
+import top.focess.veto.agent.tool.ToolExecutionException;
+import top.focess.veto.agent.tool.ToolSecurity;
 
 class WebSearchToolTest {
 

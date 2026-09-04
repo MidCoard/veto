@@ -66,7 +66,7 @@ class GroupOrchestratorTest {
         registry.put(g);
         orchestrator.tick(g.groupId());
         // Simulate Mate-A accepting n1.
-        orchestrator.simulateAccept(g.groupId(), "Mate-A", "n1");
+        GroupTestMessages.accept(blackboard, g.groupId(), "Mate-A", "n1");
         Group ticked = requireGroup(orchestrator.tick(g.groupId()));
         assertEquals(DagNode.NodeState.VERIFIED, findNode(ticked, "n1").state());
     }
@@ -76,7 +76,7 @@ class GroupOrchestratorTest {
         Group g = setupGroup();
         registry.put(g);
         orchestrator.tick(g.groupId());
-        orchestrator.simulateFeedback(g.groupId(), "Mate-A", "n1", "test failure");
+        GroupTestMessages.feedback(blackboard, g.groupId(), "Mate-A", "n1", "test failure");
         Group ticked = requireGroup(orchestrator.tick(g.groupId()));
         assertEquals(DagNode.NodeState.FAILED, findNode(ticked, "n1").state());
     }
@@ -91,7 +91,7 @@ class GroupOrchestratorTest {
         assertEquals(DagNode.NodeState.RUNNING, findNode(t1, "n1").state());
 
         // Step 2: Mate-A accepts n1.
-        orchestrator.simulateAccept(g.groupId(), "Mate-A", "n1");
+        GroupTestMessages.accept(blackboard, g.groupId(), "Mate-A", "n1");
         Group t2 = requireGroup(orchestrator.tick(g.groupId()));
         assertEquals(DagNode.NodeState.VERIFIED, findNode(t2, "n1").state());
         // Now n2 has its deps (n1) VERIFIED, so n2 is dispatched in the same tick.
@@ -101,7 +101,7 @@ class GroupOrchestratorTest {
         // group because the dispatch of n2 happens in the same tick as the ingest of n2's
         // ACCEPT — but the group-completion check sees the just-dispatched n2 as RUNNING.
         // Run two more ticks to drain.
-        orchestrator.simulateAccept(g.groupId(), "Mate-B", "n2");
+        GroupTestMessages.accept(blackboard, g.groupId(), "Mate-B", "n2");
         Group t3a = requireGroup(orchestrator.tick(g.groupId()));
         assertEquals(DagNode.NodeState.VERIFIED, findNode(t3a, "n2").state());
         Group t3 = requireGroup(orchestrator.tick(g.groupId()));
@@ -115,7 +115,7 @@ class GroupOrchestratorTest {
         Group g = setupGroup();
         registry.put(g);
         orchestrator.tick(g.groupId());
-        orchestrator.simulateFeedback(g.groupId(), "Mate-A", "n1", "needs another pass");
+        GroupTestMessages.feedback(blackboard, g.groupId(), "Mate-A", "n1", "needs another pass");
         Group ticked = requireGroup(orchestrator.tick(g.groupId()));
         assertEquals(DagNode.NodeState.FAILED, findNode(ticked, "n1").state());
 
@@ -194,7 +194,7 @@ class GroupOrchestratorTest {
         g = g.withDag(dag);
         registry.put(g);
         // A late ACCEPT for the stale node must not flip it.
-        orchestrator.simulateAccept(g.groupId(), "Mate-A", "n1");
+        GroupTestMessages.accept(blackboard, g.groupId(), "Mate-A", "n1");
         Group ticked = requireGroup(orchestrator.tick(g.groupId()));
         assertEquals(DagNode.NodeState.STALE, findNode(ticked, "n1").state());
     }
@@ -205,7 +205,7 @@ class GroupOrchestratorTest {
         registry.put(g);
         orchestrator.tick(g.groupId());
 
-        orchestrator.simulateAccept(g.groupId(), "Mate-B", "n1");
+        GroupTestMessages.accept(blackboard, g.groupId(), "Mate-B", "n1");
         Group ticked = requireGroup(orchestrator.tick(g.groupId()));
 
         assertEquals(DagNode.NodeState.RUNNING, findNode(ticked, "n1").state());

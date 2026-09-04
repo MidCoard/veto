@@ -12,7 +12,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.agent.mcp.ToolDocs;
+import top.focess.veto.agent.tool.ToolDocs;
 
 /** Trusted pre-target bootstrap for the Windows and Linux OS sandbox backends. */
 public final class SandboxBootstrap {

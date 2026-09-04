@@ -41,7 +41,7 @@ public class LeaderBinding {
      * The Leader's model binding (provider / model / credential / options / system-prompt base),
      * resolved from the owner's active model-tier profile for this binding's tier. The owner is the
      * session username (read from the calling agent's {@link
-     * top.focess.veto.agent.mcp.ToolCallContext} at {@code create_group} time).
+     * top.focess.veto.agent.tool.ToolCallContext} at {@code create_group} time).
      */
     public AgentRunner.@NonNull LlmBinding binding(@NonNull String owner) {
         ModelBinding resolved = tierRegistry.resolve(owner, tier);

@@ -3,9 +3,9 @@ package top.focess.veto.llm.core;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.agent.mcp.ToolCapability;
-import top.focess.veto.agent.mcp.ToolDocumentation;
-import top.focess.veto.agent.mcp.ToolResultFormat;
+import top.focess.veto.agent.tool.ToolCapability;
+import top.focess.veto.agent.tool.ToolDocumentation;
+import top.focess.veto.agent.tool.ToolResultFormat;
 
 /**
  * Represents a tool definition with its schema.

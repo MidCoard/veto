@@ -5,9 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
-import top.focess.veto.agent.mcp.ToolResult;
-import top.focess.veto.agent.mcp.ToolResultFormat;
-import top.focess.veto.agent.mcp.ToolResultStatus;
+import top.focess.veto.agent.tool.ToolResult;
+import top.focess.veto.agent.tool.ToolResultFormat;
+import top.focess.veto.agent.tool.ToolResultStatus;
 
 /** Converts a canonical result to the provider message content selected by its session. */
 @Component

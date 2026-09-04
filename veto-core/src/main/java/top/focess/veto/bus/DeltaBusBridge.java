@@ -8,10 +8,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * The Part-8 bridge between the {@link DeltaBroker} and the multi-client WebSocket transport
- * ({@link VetoWebSocketHandler}). Subscribes to <em>every</em> session's frame stream on startup
- * and forwards each structured {@link DeltaFrame} only to authenticated clients that own its
- * session.
+ * Bridges the {@link DeltaBroker} and the multi-client WebSocket transport ({@link
+ * VetoWebSocketHandler}). Subscribes to <em>every</em> session's frame stream on startup and
+ * forwards each structured {@link DeltaFrame} only to authenticated clients that own its session.
  *
  * <p>This closes the loop: {@code AgentRunner.emitMessage → DeltaBroker.publish → DeltaBusBridge →
  * VetoWebSocketHandler → connected clients}. The broker fans out per-session to its direct

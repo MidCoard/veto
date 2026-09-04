@@ -23,9 +23,9 @@ import top.focess.veto.memory.embedder.Embedder;
  * pgvector. Deployments that need persistence and scalable similarity search can select the
  * pgvector-backed store.
  *
- * <p>The embed(String) method is a deterministic stub — it hashes the text to produce a
- * fixed-length vector so similarity is meaningful (identical texts → 1.0; very different texts →
- * ~0). Deployments can instead supply an {@link Embedder} backed by a local embedding model.
+ * <p>The embed(String) method is deterministic — it hashes the text to produce a fixed-length
+ * vector so similarity is meaningful (identical texts → 1.0; very different texts → ~0).
+ * Deployments can instead supply an {@link Embedder} backed by a local embedding model.
  */
 @Component
 @ConditionalOnProperty(name = "veto.memory.store", havingValue = "memory", matchIfMissing = true)

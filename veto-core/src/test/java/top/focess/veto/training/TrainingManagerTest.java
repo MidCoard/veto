@@ -112,4 +112,78 @@ class TrainingManagerTest {
         // No data file exists, should return null
         assertNull(manager.runStandaloneQualityCheck());
     }
+
+    @Test
+    void resolvesConvertedModelFromConverterOutputDirectory() throws IOException {
+        Path outputDir = Files.createDirectories(tempDir.resolve("output"));
+        Path trainingDir = Files.createDirectories(tempDir.resolve("training"));
+        Path converted =
+                Files.write(
+                        Files.createDirectories(outputDir.resolve("gguf"))
+                                .resolve("veto-slm-q4_k_m.gguf"),
+                        new byte[] {1});
+
+        assertEquals(converted, TrainingManager.resolveGgufModelPath(outputDir));
+    }
+
+    @Test
+    void missingConversionDoesNotFallBackToAnOldModel() throws IOException {
+        Path outputDir = Files.createDirectories(tempDir.resolve("output"));
+        Files.write(outputDir.resolve("veto-slm.gguf"), new byte[] {9});
+        assertThrows(IOException.class, () -> TrainingManager.resolveGgufModelPath(outputDir));
+        manager.completeTraining(outputDir.resolve("gguf/missing.gguf"));
+        assertEquals(TrainingProgress.Status.FAILED, manager.getProgress().getStatus());
+    }
+
+    @Test
+    void completionDeploysTheNewConversionOverAnOldCustomModel() throws IOException {
+        Path output = Files.createDirectories(tempDir.resolve("custom models"));
+        config.setModelOutputDir(output.toString());
+        Path target = Files.write(output.resolve(config.getDefaultGgufName()), new byte[] {9});
+        Path converted =
+                Files.write(
+                        Files.createDirectories(output.resolve("gguf"))
+                                .resolve("veto-slm-q4_k_m.gguf"),
+                        new byte[] {1, 2, 3});
+        java.util.List<String> deployments = new java.util.ArrayList<>();
+        manager.setDeployCallback(deployments::add);
+        manager.completeTraining(TrainingManager.resolveGgufModelPath(output));
+        assertArrayEquals(new byte[] {1, 2, 3}, Files.readAllBytes(target));
+        assertEquals(java.util.List.of(target.toString()), deployments);
+        assertEquals(
+                converted.toAbsolutePath().toString(), manager.getProgress().getTrainedModelPath());
+        assertEquals(TrainingProgress.Status.COMPLETED, manager.getProgress().getStatus());
+    }
+
+    @Test
+    void disabledAutoDeployPreservesTheCurrentModel() throws IOException {
+        Path output = Files.createDirectories(tempDir.resolve("custom"));
+        config.setModelOutputDir(output.toString());
+        config.setAutoDeployOnCompletion(false);
+        Path target = Files.write(output.resolve(config.getDefaultGgufName()), new byte[] {9});
+        Path converted =
+                Files.write(
+                        Files.createDirectories(output.resolve("gguf"))
+                                .resolve("veto-slm-q4_k_m.gguf"),
+                        new byte[] {1});
+        manager.completeTraining(converted);
+        assertArrayEquals(new byte[] {9}, Files.readAllBytes(target));
+        assertEquals(
+                converted.toAbsolutePath().toString(), manager.getProgress().getTrainedModelPath());
+    }
+
+    @Test
+    void deploymentFailureDoesNotReportCompletion() throws IOException {
+        Path output = Files.createDirectories(tempDir.resolve("custom"));
+        config.setModelOutputDir(output.toString());
+        Path target = Files.createDirectories(output.resolve(config.getDefaultGgufName()));
+        Files.writeString(target.resolve("keep"), "occupied");
+        Path converted =
+                Files.write(
+                        Files.createDirectories(output.resolve("gguf"))
+                                .resolve("veto-slm-q4_k_m.gguf"),
+                        new byte[] {1});
+        manager.completeTraining(converted);
+        assertEquals(TrainingProgress.Status.FAILED, manager.getProgress().getStatus());
+    }
 }

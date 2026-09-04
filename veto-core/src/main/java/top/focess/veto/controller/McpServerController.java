@@ -10,11 +10,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
-import top.focess.veto.agent.mcp.McpTransport;
-import top.focess.veto.agent.mcp.RemoteToolDefinition;
-import top.focess.veto.agent.mcp.ToolEngineImpl;
-import top.focess.veto.vault.KeysteadVault;
-import top.focess.veto.vault.UserRegistry;
+import top.focess.veto.agent.mcp.transport.McpTransport;
+import top.focess.veto.agent.tool.RemoteToolDefinition;
+import top.focess.veto.agent.tool.ToolEngineImpl;
 
 /** Admin-only registration of external MCP servers and their discovered tool schemas. */
 @RestController
@@ -22,22 +20,18 @@ import top.focess.veto.vault.UserRegistry;
 public class McpServerController {
 
     private final @NonNull ToolEngineImpl toolEngine;
-    private final @NonNull KeysteadVault vault;
-    private final @NonNull UserRegistry users;
+    private final @NonNull RequestAuthorization authorization;
 
     public McpServerController(
-            @NonNull ToolEngineImpl toolEngine,
-            @NonNull KeysteadVault vault,
-            @NonNull UserRegistry users) {
+            @NonNull ToolEngineImpl toolEngine, @NonNull RequestAuthorization authorization) {
         this.toolEngine = toolEngine;
-        this.vault = vault;
-        this.users = users;
+        this.authorization = authorization;
     }
 
     /** Discover and register the tools exposed by an HTTP/SSE MCP endpoint. */
     @PostMapping("/discover")
     public @NonNull Map<String, Object> discover(@RequestBody @NonNull DiscoverRequest request) {
-        requireAdmin();
+        authorization.requireAdmin();
         URI endpoint = validatedEndpoint(request.baseUrl());
         String authToken = request.authToken() == null ? "" : request.authToken();
         List<RemoteToolDefinition> tools =
@@ -50,16 +44,6 @@ public class McpServerController {
         return Map.of(
                 "server", endpoint.toString(),
                 "tools", tools.stream().map(McpServerController::toolView).toList());
-    }
-
-    private void requireAdmin() {
-        String username = vault.currentUser();
-        if (username == null) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authentication required");
-        }
-        if (!users.isAdmin(username)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Administrator role required");
-        }
     }
 
     private static @NonNull URI validatedEndpoint(String raw) {

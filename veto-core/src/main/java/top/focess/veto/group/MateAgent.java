@@ -21,9 +21,8 @@ import top.focess.veto.agent.AgentState;
 import top.focess.veto.agent.TurnRecord;
 
 /**
- * A real Mate — consumes {@code TASK_DISPATCH} messages from the Blackboard, runs the underlying
- * {@link Agent} (the ReAct loop), and posts results back to the Leader. Replaces the test stub
- * {@code GroupOrchestrator.simulateAccept(...)} with a working async Mate.
+ * Consumes {@code TASK_DISPATCH} messages from the Blackboard, runs the underlying {@link Agent},
+ * and posts results back to the Leader.
  *
  * <p>Per-mate lifecycle:
  *
@@ -287,12 +286,12 @@ public class MateAgent {
         return "self";
     }
 
-    /** The Mate's last agent state (for tests + diagnostics). */
+    /** The Mate's current agent state. */
     public @NonNull AgentState state() {
         return agent.state();
     }
 
-    /** Inspect the Mate's turn history (for tests + diagnostics). */
+    /** Returns the Mate's turn history. */
     public @NonNull List<TurnRecord> history() {
         return agent.history();
     }

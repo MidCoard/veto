@@ -8,9 +8,9 @@ import java.util.Objects;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.TurnRecord;
-import top.focess.veto.agent.mcp.ToolResult;
-import top.focess.veto.agent.mcp.ToolResultFormat;
-import top.focess.veto.agent.mcp.ToolResultStatus;
+import top.focess.veto.agent.tool.ToolResult;
+import top.focess.veto.agent.tool.ToolResultFormat;
+import top.focess.veto.agent.tool.ToolResultStatus;
 
 class ToolResultPresenterTest {
 

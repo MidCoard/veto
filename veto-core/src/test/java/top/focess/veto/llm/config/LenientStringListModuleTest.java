@@ -7,7 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.agent.mcp.ToolDocs;
+import top.focess.veto.agent.tool.ToolDocs;
 
 /**
  * Validates {@link LenientStringListModule}: a model that emits a string where a string array was

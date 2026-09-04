@@ -9,7 +9,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.agent.mcp.ToolDocs;
+import top.focess.veto.agent.tool.ToolDocs;
 
 /** Inner Linux stage that applies {@code no_new_privs} and seccomp before the target starts. */
 final class LinuxSandboxBootstrap {

@@ -148,7 +148,7 @@ veto:
     # + pgvector extension). Default jpa so the agent is not "totally new" each run; uses the
     # Postgres datasource above.
     store: jpa
-    # Hybrid embedder (see top.focess.veto.memory.embedder). Default: local HashEmbedder stub
+    # Hybrid embedder. Default: deterministic local embeddings; provider mode uses a configured API.
     # (deterministic 64-dim hash; weak semantic recall but no dependency). Activate a
     # ProviderEmbedder by setting VETO_MEMORY_EMBEDDER_PROVIDER (openai|gemini) plus model,
     # dimension, and a vault credential-key holding the API key. When store=pgvector the

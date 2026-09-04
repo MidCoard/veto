@@ -18,9 +18,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
-import top.focess.veto.agent.mcp.ToolCallContext;
-import top.focess.veto.agent.mcp.ToolCallContextHolder;
-import top.focess.veto.agent.mcp.ToolDocs;
+import top.focess.veto.agent.tool.ToolCallContext;
+import top.focess.veto.agent.tool.ToolCallContextHolder;
+import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
 import top.focess.veto.util.Nullness;
 

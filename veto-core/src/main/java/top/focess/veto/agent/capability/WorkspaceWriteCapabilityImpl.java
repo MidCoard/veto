@@ -23,8 +23,8 @@ import java.util.Objects;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.intercept.ToolExecutionPermit.FileIdentity;
-import top.focess.veto.agent.mcp.ToolErrors;
-import top.focess.veto.agent.mcp.ToolJson;
+import top.focess.veto.agent.tool.ToolErrors;
+import top.focess.veto.agent.tool.ToolJson;
 
 /** The only low-level filesystem implementation behind {@link WorkspaceWriteCapability}. */
 final class WorkspaceWriteCapabilityImpl implements WorkspaceWriteCapability {

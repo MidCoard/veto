@@ -17,9 +17,8 @@ import top.focess.veto.llm.credential.CredentialResolver;
  * <ul>
  *   <li>When {@code veto.memory.embedder.provider} is set, a {@link ProviderEmbedder} wins - it
  *       calls the configured provider's embeddings API.
- *   <li>Otherwise the {@link HashEmbedder} local stub is registered
- *       ({@code @ConditionalOnMissingBean} so it yields to any other Embedder, including a future
- *       local-ONNX embedder).
+ *   <li>Otherwise the local {@link HashEmbedder} is registered ({@code @ConditionalOnMissingBean}
+ *       so it yields to any other Embedder, including a future local-ONNX embedder).
  * </ul>
  *
  * <p>This mirrors the {@code @ConditionalOnMissingBean} default pattern used by {@link

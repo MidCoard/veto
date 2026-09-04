@@ -11,12 +11,12 @@ import org.jspecify.annotations.NonNull;
  * semantics are weak for semantic recall (a real embedding model wins there) but sufficient to
  * demonstrate the architecture and to run tests/offline without a provider dependency.
  *
- * <p>This is the stub previously duplicated verbatim across all four {@link
- * top.focess.veto.memory.MemoryStore} implementations, now extracted to a single place.
+ * <p>This deterministic implementation is shared by all {@link top.focess.veto.memory.MemoryStore}
+ * implementations, now extracted to a single place.
  */
 public final class HashEmbedder implements Embedder {
 
-    /** The fixed dimension this stub produces. */
+    /** The fixed embedding dimension. */
     public static final int DIMENSION = 64;
 
     @Override

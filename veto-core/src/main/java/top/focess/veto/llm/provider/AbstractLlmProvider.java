@@ -9,7 +9,7 @@ import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import top.focess.veto.agent.mcp.ToolDocs;
+import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.llm.client.LlmClient;
 import top.focess.veto.llm.core.ResolvedRequest;
 import top.focess.veto.llm.core.ToolDefinition;

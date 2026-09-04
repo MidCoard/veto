@@ -117,7 +117,7 @@ class GroupOrchestratorFixesTest {
 
         // First dispatch the node; only its assigned Mate may then post an outcome.
         orch.tick(groupId);
-        orch.simulateAccept(groupId, "Mate-A", "n1");
+        GroupTestMessages.accept(blackboard, groupId, "Mate-A", "n1");
 
         ExecutorService pool = Executors.newFixedThreadPool(2);
         CountDownLatch start = new CountDownLatch(1);

@@ -9,11 +9,11 @@ constraint enforcement.
 The pipeline is **bundled with the Java backend** — Java's `TrainingManager` launches Python
 subprocesses (same pattern as `LlamaCppBridge` → `llama-server`).
 
-### Features (Part 6: Local Training Framework)
+### Pipeline capabilities
 
-- **6.1 Factory-Trained Base** — Veto ships with pre-specialized SLMs for Gateway screening
-- **6.2 Local Fine-Tuning Pipeline** — Optional post-deployment personalization via LoRA/QLoRA
-- **6.3 Quality Filter** — Automated quality gate validates training data before fine-tuning
+- **Local fine-tuning** — Optional post-deployment personalization via LoRA/QLoRA
+- **Quality filtering** — Automated validation of training data before fine-tuning
+- **Evaluation and deployment** — GGUF conversion, evaluation, and controlled model activation
 
 ## Prerequisites
 
@@ -29,9 +29,9 @@ subprocesses (same pattern as `LlamaCppBridge` → `llama-server`).
 
 ### 1. Generate & Validate Training Data
 
-```bash
-cd D:\ideaProjects\Veto\training\python
+Run these commands from `veto-core/training/python`:
 
+```text
 # Generate data and run quality filter (default)
 python prepare_data.py
 
@@ -40,13 +40,13 @@ python prepare_data.py --skip-quality-check
 ```
 
 Creates:
-- `training/data/veto_training_data.jsonl` — 400+ training examples
-- `training/data/veto_eval_data.jsonl` — 100+ evaluation examples
-- `training/data/quality_report.json` — Quality filter report (Feature 6.3)
+- `../data/veto_training_data.jsonl` — training examples
+- `../data/veto_eval_data.jsonl` — evaluation examples
+- `../data/quality_report.json` — quality-filter report
 
-### 2. Run Quality Filter Standalone (Feature 6.3)
+### 2. Run the quality filter separately
 
-```bash
+```text
 # Validate existing training data
 python quality_filter.py --data ../data/veto_training_data.jsonl
 
@@ -64,18 +64,18 @@ The quality filter checks:
 
 ### 3. Install Python Dependencies
 
-```bash
+```text
 # Option A: Global install
 pip install -r requirements.txt
 
-# Option B: Virtual environment (recommended)
+# Option B: Virtual environment (recommended; Windows invocation shown)
 python -m venv ../.venv
 ../.venv\Scripts\pip install -r requirements.txt
 ```
 
 ### 4. Fine-Tune (QLoRA)
 
-```bash
+```text
 # Standard training
 python train.py --base-model Qwen/Qwen2.5-1.5B-Instruct \
     --data-path ../data/veto_training_data.jsonl \
@@ -110,25 +110,27 @@ for the Java `TrainingManager` to parse:
 
 ### 5. Convert to GGUF
 
-```bash
+```text
 # With llama.cpp installed:
 python convert_to_gguf.py --model-dir ../models/fine-tuned/merged \
     --quantize-type q4_k_m
 
 # Or set LLAMA_CPP_DIR:
-set LLAMA_CPP_DIR=D:\projects\llama.cpp
+set LLAMA_CPP_DIR=<path-to-llama.cpp>
 python convert_to_gguf.py --model-dir ../models/fine-tuned/merged
 ```
 
 Outputs:
-- `training/models/veto-slm-q4_k_m.gguf`
-- `training/models/veto-slm.gguf` (copied to project model path)
+- `../models/fine-tuned/gguf/veto-slm-q4_k_m.gguf`
+- `../../models/veto-slm.gguf` (the backend's default model location)
+
+Pass `--copy-to <path>` when the converted model should also be copied to another location.
 
 ### 6. Evaluate
 
-```bash
+```text
 python evaluate.py \
-    --model ../models/veto-slm-q4_k_m.gguf \
+    --model ../models/fine-tuned/gguf/veto-slm-q4_k_m.gguf \
     --data ../data/veto_eval_data.jsonl \
     --json-output
 ```
@@ -152,7 +154,7 @@ The `--json-output` flag produces a machine-readable report that maps directly t
 
 ### 7. Deploy via Java API
 
-```bash
+```text
 # Start training with custom parameters:
 curl -X POST http://localhost:8443/api/v1/training/start \
     -H "Content-Type: application/json" \
@@ -176,7 +178,7 @@ curl http://localhost:8443/api/v1/training/evaluation
 # Deploy a specific model:
 curl -X POST http://localhost:8443/api/v1/training/deploy \
     -H "Content-Type: application/json" \
-    -d '{"modelPath": "./training/models/veto-slm-q4_k_m.gguf"}'
+    -d '{"modelPath": "./training/models/fine-tuned/gguf/veto-slm-q4_k_m.gguf"}'
 
 # Get training system status:
 curl http://localhost:8443/api/v1/training/status
@@ -217,7 +219,7 @@ Java TrainingManager           Python Scripts
 │                 │           │  (+ quality check)│
 │                 │           └────────┬─────────┘
 │                 │           ┌────────▼─────────┐
-│                 │──subproc──▶ quality_filter.py │ (Feature 6.3)
+│                 │──subproc──▶ quality_filter.py │
 │                 │           └────────┬─────────┘
 │                 │           ┌────────▼─────────┐
 │                 │──subproc──▶ train.py          │
@@ -252,7 +254,7 @@ veto:
     auto-deploy-on-completion: true
     venv-path: ./training/.venv
     restart-bridge-on-deploy: true
-    quality-filter-enabled: true       # Feature 6.3 quality gate
+    quality-filter-enabled: true
 ```
 
 ## Troubleshooting
@@ -260,7 +262,7 @@ veto:
 | Problem | Solution |
 |---|---|
 | CUDA out of memory | Reduce batch size, use 0.5B model, or enable gradient checkpointing |
-| llama-server not starting | Ensure the GGUF model is at the configured path; check `VETO_LLAMA_MODEL_PATH` |
+| llama-server not starting | Ensure the GGUF model is at `veto.slm.model-path` and `llama-server` is resolvable from `PATH` |
 | GBNF grammar not found | Copy `training/grammars/veto-output.gbnf` to `./grammars/veto-output.gbnf` |
 | Python module not found | Activate the venv: `training/.venv/Scripts/activate` |
 | GGUF conversion fails | Set `LLAMA_CPP_DIR` to your llama.cpp checkout path |

@@ -14,15 +14,14 @@ import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.loop.PromptCompiler;
-import top.focess.veto.agent.mcp.DefaultToolEngine;
-import top.focess.veto.agent.mcp.NativeToolDefinition;
-import top.focess.veto.agent.mcp.ParamCategory;
-import top.focess.veto.agent.mcp.ToolCapability;
-import top.focess.veto.agent.mcp.ToolDefinition;
-import top.focess.veto.agent.mcp.ToolDocs;
-import top.focess.veto.agent.mcp.ToolEngine;
-import top.focess.veto.agent.mcp.ToolResult;
 import top.focess.veto.agent.screening.Danger;
+import top.focess.veto.agent.tool.NativeToolDefinition;
+import top.focess.veto.agent.tool.ParamCategory;
+import top.focess.veto.agent.tool.ToolCapability;
+import top.focess.veto.agent.tool.ToolDefinition;
+import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.ToolEngine;
+import top.focess.veto.agent.tool.ToolResult;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.llm.core.ProviderType;
@@ -130,7 +129,7 @@ class PersonaToolWhitelistTest {
 
     @Test
     void emptyEngineAdvertisesNoTools() {
-        // A no-op engine (DefaultToolEngine returns empty) → no tools advertised (no regression).
+        // An empty engine means no tools are advertised.
         List<VetoRequest> seen = new CopyOnWriteArrayList<>();
         UniformLLMCaller caller =
                 request -> {
@@ -138,7 +137,7 @@ class PersonaToolWhitelistTest {
                     return new VetoResponse(
                             "done", List.of(), "ok", new VetoResponse.Features(false), null);
                 };
-        AgentService service = serviceWith(new DefaultToolEngine(), caller);
+        AgentService service = serviceWith(new TestToolEngine(), caller);
         assertDoesNotThrow(() -> service.submit("empty-test", "hi", binding(), EPISODE_TIMEOUT));
         assertFalse(seen.isEmpty());
         assertTrue(seen.get(0).tools().isEmpty(), "an empty engine advertises no tools");

@@ -9,9 +9,9 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.agent.mcp.ToolDocs;
-import top.focess.veto.agent.mcp.ToolErrors;
-import top.focess.veto.agent.mcp.ToolExecutionException;
+import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.ToolErrors;
+import top.focess.veto.agent.tool.ToolExecutionException;
 
 class WebFetchToolTest {
 

@@ -7,12 +7,12 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.drift.ReadHistory;
-import top.focess.veto.agent.mcp.AgentToolDefinition;
-import top.focess.veto.agent.mcp.NativeToolDefinition;
-import top.focess.veto.agent.mcp.ParamCategory;
-import top.focess.veto.agent.mcp.RemoteToolDefinition;
-import top.focess.veto.agent.mcp.ToolCapability;
-import top.focess.veto.agent.mcp.ToolDefinition;
+import top.focess.veto.agent.tool.AgentToolDefinition;
+import top.focess.veto.agent.tool.NativeToolDefinition;
+import top.focess.veto.agent.tool.ParamCategory;
+import top.focess.veto.agent.tool.RemoteToolDefinition;
+import top.focess.veto.agent.tool.ToolCapability;
+import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.llm.core.ToolCall;
 
 /**
@@ -69,7 +69,7 @@ public class IngressDefense {
     public @NonNull String maskAndFrame(
             @NonNull ToolCall call,
             @NonNull ToolDefinition def,
-            top.focess.veto.agent.mcp.@NonNull ToolResult result,
+            top.focess.veto.agent.tool.@NonNull ToolResult result,
             boolean maskObservation,
             @NonNull ReadHistory readHistory) {
         String body = result.content();
@@ -135,7 +135,7 @@ public class IngressDefense {
     public @NonNull String maskAndFrame(
             @NonNull ToolCall call,
             @NonNull ToolDefinition def,
-            top.focess.veto.agent.mcp.@NonNull ToolResult result,
+            top.focess.veto.agent.tool.@NonNull ToolResult result,
             @NonNull ApprovalDecision decision,
             @NonNull ReadHistory readHistory) {
         boolean mask = true;

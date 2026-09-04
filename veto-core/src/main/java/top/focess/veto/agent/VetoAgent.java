@@ -9,7 +9,7 @@ import java.util.function.Consumer;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.identity.AgentPersona;
-import top.focess.veto.agent.mcp.ToolDefinition;
+import top.focess.veto.agent.tool.ToolDefinition;
 
 /**
  * The {@link Agent} implementation. Owns its {@link AgentRunner} internally on a virtual thread;

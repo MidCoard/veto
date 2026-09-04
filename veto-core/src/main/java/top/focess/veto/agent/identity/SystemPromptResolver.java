@@ -51,14 +51,14 @@ public class SystemPromptResolver {
             String text = new String(in.readAllBytes(), StandardCharsets.UTF_8).strip();
             if (text.isBlank()) {
                 log.warn(
-                        "Bundled default system prompt ({}) is blank - using minimal stub",
+                        "Bundled default system prompt ({}) is blank - using fallback prompt",
                         RESOURCE);
                 return minimalStub();
             }
             return text;
         } catch (IOException e) {
             log.warn(
-                    "Could not load bundled default system prompt ({}) - using minimal stub",
+                    "Could not load bundled default system prompt ({}) - using fallback prompt",
                     RESOURCE,
                     e);
             return minimalStub();

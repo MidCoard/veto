@@ -83,7 +83,8 @@ Important `veto-core` packages:
 | `agent.loop` | Prompt compilation, guided actions, context management, and response enforcement |
 | `agent.intercept` | Gateway results, HITL decisions, permission grants, drift, and ingress handling |
 | `agent.screening` | Deterministic and SLM-assisted relevance/danger computation |
-| `agent.mcp` | Current unified tool runtime, schemas, native/agent tool SPI, and MCP client transport |
+| `agent.tool` | Unified tool contracts, schemas, engine, validation, and built-in tools |
+| `agent.mcp` | External MCP protocol and transport adapters |
 | `agent.workspace` | Workspace roots, path resolution, and workspace policy inputs |
 | `sandbox` | Process execution, background-task lifecycle, file operations, and kernel-wall adapters |
 | `session` | Session creation, activation, ownership, and history loading |
@@ -96,15 +97,6 @@ Important `veto-core` packages:
 | `terminal` | Backend side of the ZeroMQ terminal protocol |
 | `bus` | WebSocket/gRPC event and routing infrastructure |
 | `observability` | Audit chain and runtime events |
-
-### Known package-structure debt
-
-`agent.mcp` is currently overloaded. Most classes in it describe Veto's generic tool runtime and
-built-in tools, while only `McpJsonRpcClient`, `McpTransport`, and remote tool discovery are
-specifically MCP. A future package refactor should separate the generic tool API/engine, built-in
-tools, schema compilation, agent-control tools, and the external MCP adapter. Until that migration
-is performed atomically, the table above describes the code as it exists rather than implying that
-every native tool is itself an MCP implementation.
 
 ## Requirements
 
@@ -197,7 +189,7 @@ Run this in a second terminal. Pass the workspace explicitly so the backend does
 terminal process directory:
 
 ```powershell
-.\gradlew.bat :veto-terminal:run --args="--workspace D:\path\to\project"
+.\gradlew.bat :veto-terminal:run --args="--workspace <workspace-root>"
 ```
 
 Additional terminal options:
@@ -216,12 +208,12 @@ repository.
 
 ## Local SLM screening
 
-The default model location is `veto-core/models/veto-slm.gguf` relative to the core working
-directory. Override it with `VETO_LLAMA_MODEL_PATH`:
+The default model location is `./models/veto-slm.gguf`, resolved from the backend process working
+directory. Set `veto.slm.model-path` in an external Spring configuration file or pass it as a
+command-line property when the model is stored elsewhere:
 
 ```powershell
-$env:VETO_LLAMA_MODEL_PATH = "D:\models\veto-slm.gguf"
-.\gradlew.bat :veto-core:bootRun
+.\gradlew.bat :veto-core:bootRun --args="--veto.slm.model-path=<model-file>"
 ```
 
 `llama-server` must be resolvable from `PATH`. At startup, verify the log contains both the selected
@@ -235,18 +227,19 @@ must not assume that its relevance judgment is infallible.
 
 ## Main configuration
 
-Defaults are defined in `veto-core/src/main/resources/application.yml`.
+Defaults are defined by `veto-core/src/main/resources/application.yml` and the corresponding Spring
+configuration classes.
 
-| Property or environment variable | Default | Meaning |
+| Property | Default | Meaning |
 | --- | --- | --- |
 | `server.port` | `8443` | REST server port |
 | `veto.terminal.bind-address` | `tcp://127.0.0.1:5555` | terminal IPC bind address |
-| `VETO_DEPLOYER_POLICY` | `FULL_ACCESS` | `FULL_ACCESS`, `PROTECTED`, `SANDBOXED`, or `TENANT` |
-| `veto.security.screening-mode` | `STRICT` | `STRICT`, `BALANCED`, or `BYPASS_ALL` |
-| `VETO_SIGNUP_MODE` | `invite` | `solo`, `public`, or `invite` |
-| `VETO_MEMORY_STORE` | `jpa` | `memory`, `jpa`, `vector`, or `pgvector` |
-| `VETO_VAULT_HOME` | `~/.veto` | vault and per-user state root |
-| `VETO_LLAMA_MODEL_PATH` | `./models/veto-slm.gguf` | local gateway model |
+| `veto.security.deployer-policy` | `FULL_ACCESS` | `FULL_ACCESS`, `PROTECTED`, `SANDBOXED`, or `TENANT` |
+| `veto.security.screening-mode` | `STRICT` | `STRICT`, `BALANCED`, or `PERMISSIVE` |
+| `veto.security.signup.mode` | `invite` | `solo`, `public`, or `invite` |
+| `veto.memory.store` | `jpa` | `memory`, `jpa`, `vector`, or `pgvector` |
+| `veto.vault.vault-home` | `~/.veto` | vault and per-user state root |
+| `veto.slm.model-path` | `./models/veto-slm.gguf` | local gateway model |
 | `veto.workspace.roots` | empty | deployer-authorized roots and the fallback Workspace |
 | `veto.workspace.path-mode` | `REAL` | `REAL` or `VIRTUAL` path presentation |
 | `veto.bus.websocket.allowed-origin-patterns` | local origins | allowed WebSocket UI origins |
@@ -273,10 +266,10 @@ The backend currently exposes these primary REST groups:
 - `/api/patterns` — agent patterns;
 - `/api/modeltiers` — model-tier profiles and bindings;
 - `/api/vault` — encrypted note and credential storage;
-- `/api/mcp/servers` — external MCP server discovery;
+- `/api/mcp/servers` — administrator-only external MCP server discovery;
 - `/api/fs` — filesystem browsing used by the UI;
 - `/api/veto` — gateway status and payload checks;
-- `/api/v1/training` — local training, quality, progress, evaluation, and deployment.
+- `/api/v1/training` — administrator-only local training, quality, progress, evaluation, and deployment.
 
 These are application APIs under active development, not a frozen public compatibility contract.
 
@@ -330,8 +323,8 @@ automatic lifetime cap, so session cleanup remains important.
 
 External MCP servers are discovered through `/api/mcp/servers/discover` and translated into the
 same `ToolDefinition` abstraction used by built-in tools. The Gateway screens remote calls before
-dispatch. The current Java package name `agent.mcp` should not be read as proof that every built-in
-tool is transported over MCP; see [Known package-structure debt](#known-package-structure-debt).
+dispatch. Only external tools cross an MCP transport; native and agent-control tools execute
+through the in-process tool engine and their declared capability boundary.
 
 ## AgentDojo evaluation
 

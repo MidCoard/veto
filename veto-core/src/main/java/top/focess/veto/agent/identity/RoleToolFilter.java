@@ -3,9 +3,9 @@ package top.focess.veto.agent.identity;
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
-import top.focess.veto.agent.mcp.ToolCapability;
-import top.focess.veto.agent.mcp.ToolDefinition;
-import top.focess.veto.agent.mcp.ToolEngine;
+import top.focess.veto.agent.tool.ToolCapability;
+import top.focess.veto.agent.tool.ToolDefinition;
+import top.focess.veto.agent.tool.ToolEngine;
 
 /**
  * Resolves the role-scoped tool manifest for an {@link AgentPersona}. The raw {@link
@@ -68,10 +68,10 @@ public class RoleToolFilter {
                     ToolCapability.USER_INTERACTION,
                     ToolCapability.GROUP_CONTROL);
 
-    private final @NonNull ToolEngine mcpEngine;
+    private final @NonNull ToolEngine toolEngine;
 
-    public RoleToolFilter(@NonNull ToolEngine mcpEngine) {
-        this.mcpEngine = mcpEngine;
+    public RoleToolFilter(@NonNull ToolEngine toolEngine) {
+        this.toolEngine = toolEngine;
     }
 
     /** Resolves the role-scoped, unmodifiable tool set for the given role. */
@@ -87,7 +87,7 @@ public class RoleToolFilter {
     public @NonNull Set<@NonNull ToolDefinition> resolve(
             @NonNull Role role, @NonNull Set<@NonNull ToolCapability> selectedCapabilities) {
         Set<@NonNull ToolCapability> allowed = capabilitiesFor(role);
-        return mcpEngine.getActiveTools(null).stream()
+        return toolEngine.getActiveTools(null).stream()
                 .filter(tool -> allowed.contains(tool.capability()))
                 .filter(tool -> selectedCapabilities.contains(tool.capability()))
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());

@@ -7,15 +7,15 @@ import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.agent.mcp.AgentToolDefinition;
-import top.focess.veto.agent.mcp.NativeToolDefinition;
-import top.focess.veto.agent.mcp.ParamCategory;
-import top.focess.veto.agent.mcp.ToolCapability;
-import top.focess.veto.agent.mcp.ToolDocs;
-import top.focess.veto.agent.mcp.ToolDocumentation;
-import top.focess.veto.agent.mcp.ToolResultFormat;
-import top.focess.veto.agent.mcp.tools.LoadSkillTool;
 import top.focess.veto.agent.screening.Danger;
+import top.focess.veto.agent.tool.AgentToolDefinition;
+import top.focess.veto.agent.tool.NativeToolDefinition;
+import top.focess.veto.agent.tool.ParamCategory;
+import top.focess.veto.agent.tool.ToolCapability;
+import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.ToolDocumentation;
+import top.focess.veto.agent.tool.ToolResultFormat;
+import top.focess.veto.agent.tool.builtin.LoadSkillTool;
 
 /**
  * Validates {@link VetoCapabilityTranslator} against the per-turn veto_pulse variant matrix and the

@@ -68,9 +68,10 @@ public record Group(
     /**
      * Creates a Group carrying the session {@code owner} (the username whose active model-tier
      * profile resolves every Mate / Leader tier in this group). The owner is stamped at {@code
-     * create_group} time from the calling agent's {@link top.focess.veto.agent.mcp.ToolCallContext}
-     * and read back when the {@link GroupTickScheduler} lazily provisions Mates on its own thread -
-     * where no tool-call scope, and therefore no thread-local owner, exists.
+     * create_group} time from the calling agent's {@link
+     * top.focess.veto.agent.tool.ToolCallContext} and read back when the {@link GroupTickScheduler}
+     * lazily provisions Mates on its own thread - where no tool-call scope, and therefore no
+     * thread-local owner, exists.
      */
     public static @NonNull Group create(
             @NonNull String leaderId,

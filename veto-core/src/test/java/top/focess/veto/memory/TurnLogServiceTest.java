@@ -19,7 +19,7 @@ class TurnLogServiceTest {
     @Test
     void logWritesRawTurnLog() {
         @NonNull TurnRecordRepository repo =
-                mock(top.focess.veto.agent.mcp.ToolDocs.nonNullClass(TurnRecordRepository.class));
+                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(TurnRecordRepository.class));
         @NonNull TurnLogService service = new TurnLogService(repo, new ObjectMapper());
 
         @NonNull UUID session = UUID.randomUUID();
@@ -28,13 +28,16 @@ class TurnLogServiceTest {
         service.log(TurnRecord.userPrompt(1, "hello world"), session, user, agent);
 
         verify(repo, times(1))
-                .save(any(top.focess.veto.agent.mcp.ToolDocs.nonNullClass(TurnRecordEntity.class)));
+                .save(
+                        any(
+                                top.focess.veto.agent.tool.ToolDocs.nonNullClass(
+                                        TurnRecordEntity.class)));
     }
 
     @Test
     void rawTurnLogCarriesTenantAndPayload() {
         @NonNull TurnRecordRepository repo =
-                mock(top.focess.veto.agent.mcp.ToolDocs.nonNullClass(TurnRecordRepository.class));
+                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(TurnRecordRepository.class));
         @NonNull TurnLogService service = new TurnLogService(repo, new ObjectMapper());
 
         @NonNull UUID session = UUID.randomUUID();
@@ -44,7 +47,7 @@ class TurnLogServiceTest {
 
         org.mockito.@NonNull ArgumentCaptor<TurnRecordEntity> captor =
                 org.mockito.ArgumentCaptor.forClass(
-                        top.focess.veto.agent.mcp.ToolDocs.nonNullClass(TurnRecordEntity.class));
+                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(TurnRecordEntity.class));
         verify(repo).save(captor.capture());
         @NonNull TurnRecordEntity saved = requireValue(captor.getValue(), "captured turn required");
         assertEquals(user.toString(), saved.getUserId());
@@ -58,7 +61,7 @@ class TurnLogServiceTest {
     @Test
     void toolCallIsLoggedForCoherentReplay() {
         @NonNull TurnRecordRepository repo =
-                mock(top.focess.veto.agent.mcp.ToolDocs.nonNullClass(TurnRecordRepository.class));
+                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(TurnRecordRepository.class));
         @NonNull TurnLogService service = new TurnLogService(repo, new ObjectMapper());
 
         @NonNull UUID session = UUID.randomUUID();
@@ -75,7 +78,10 @@ class TurnLogServiceTest {
                 UUID.randomUUID().toString());
 
         verify(repo, times(1))
-                .save(any(top.focess.veto.agent.mcp.ToolDocs.nonNullClass(TurnRecordEntity.class)));
+                .save(
+                        any(
+                                top.focess.veto.agent.tool.ToolDocs.nonNullClass(
+                                        TurnRecordEntity.class)));
     }
 
     @Test

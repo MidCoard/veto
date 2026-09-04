@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Project Veto — Training Data Quality Filter (Feature 6.3)
+Project Veto — Training Data Quality Filter
 ==========================================================
 Validates training data JSONL before it enters the fine-tuning pipeline.
 

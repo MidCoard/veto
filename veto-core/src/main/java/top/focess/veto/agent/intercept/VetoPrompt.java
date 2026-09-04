@@ -18,8 +18,7 @@ import top.focess.veto.agent.screening.Danger;
  * @param callId the tool-call id the veto is parked under
  * @param tool the tool name being approved/refused
  * @param scenario the {@link VetoScenario} (drives display + grouping)
- * @param options the offered options (EDIT filtered out for v1 - a raw-string reply can't carry
- *     edited args); the user's reply must be one of these
+ * @param options the offered options; the user's reply must be one of these
  * @param args the call's arguments (display-only - the user approves the actual call)
  * @param danger the screening danger level (null when no screening produced it); transports warn
  *     the user prominently when it is DANGEROUS/CRITICAL

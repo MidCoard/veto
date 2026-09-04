@@ -6,7 +6,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.agent.mcp.ToolResult;
+import top.focess.veto.agent.tool.ToolResult;
 import top.focess.veto.llm.core.VetoResponse;
 
 /**

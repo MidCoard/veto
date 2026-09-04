@@ -1,0 +1,333 @@
+package top.focess.veto.agent.mcp.transport;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import org.jspecify.annotations.NonNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import top.focess.veto.agent.tool.RemoteToolDefinition;
+
+/**
+ * A minimal JSON-RPC 2.0 client for talking to remote MCP servers. Supports the {@code tools/list}
+ * discovery and {@code tools/call} invocation over both stdio (subprocess stdin/stdout JSON lines)
+ * and SSE (HTTP POST + Server-Sent-Events) transports.
+ *
+ * <p>The client intentionally implements only the MCP methods Veto needs ({@code tools/list} and
+ * {@code tools/call}); it does not implement notifications, sampling, roots, or other optional MCP
+ * capabilities.
+ */
+public final class McpJsonRpcClient {
+
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.agent.mcp.transport.McpJsonRpcClient");
+
+    private final @NonNull ObjectMapper mapper;
+    private final long discoveryTimeoutMs;
+    private final long callTimeoutMs;
+
+    public McpJsonRpcClient() {
+        this(new ObjectMapper());
+    }
+
+    public McpJsonRpcClient(@NonNull ObjectMapper mapper) {
+        this(mapper, Duration.ofSeconds(30), Duration.ofSeconds(60));
+    }
+
+    public McpJsonRpcClient(
+            @NonNull ObjectMapper mapper,
+            @NonNull Duration discoveryTimeout,
+            @NonNull Duration callTimeout) {
+        this.mapper = mapper;
+        this.discoveryTimeoutMs = discoveryTimeout.toMillis();
+        this.callTimeoutMs = callTimeout.toMillis();
+        if (discoveryTimeoutMs < 1 || callTimeoutMs < 1) {
+            throw new IllegalArgumentException("MCP timeouts must be at least one millisecond");
+        }
+    }
+
+    /** Discovers the list of tools from the server. */
+    public @NonNull List<RemoteToolDefinition> discoverTools(@NonNull McpTransport transport)
+            throws IOException {
+        JsonNode response = invoke(transport, "tools/list", null, discoveryTimeoutMs);
+        JsonNode tools = response.get("tools");
+        if (tools == null || !tools.isArray()) {
+            return List.of();
+        }
+        List<RemoteToolDefinition> out = new ArrayList<>();
+        for (JsonNode t : tools) {
+            String name = t.path("name").asText();
+            String description = t.path("description").asText("");
+            // The schema is the raw JSON Schema; RemoteToolDefinition stores it as JsonNode.
+            JsonNode inputSchema = t.path("inputSchema");
+            String serverName = serverNameFor(transport);
+            // Unclassified external tools stay REMOTE_UNKNOWN with an ELEVATED danger floor. A
+            // server description cannot downgrade this contract.
+            out.add(new RemoteToolDefinition(name, description, serverName, inputSchema));
+        }
+        return out;
+    }
+
+    /** Calls a tool on the server and returns the raw JSON result. */
+    public @NonNull JsonNode callTool(
+            @NonNull McpTransport transport,
+            @NonNull String toolName,
+            @NonNull Map<String, Object> args)
+            throws IOException {
+        Map<String, Object> params = Map.of("name", toolName, "arguments", args);
+        return invoke(transport, "tools/call", params, callTimeoutMs);
+    }
+
+    private @NonNull JsonNode invoke(
+            @NonNull McpTransport transport, @NonNull String method, Object params, long timeoutMs)
+            throws IOException {
+        return switch (transport) {
+            case McpTransport.StdioMcpTransport stdio ->
+                    invokeStdio(stdio, method, params, timeoutMs);
+            case McpTransport.SseMcpTransport sse -> invokeSse(sse, method, params, timeoutMs);
+            case McpTransport.SocketMcpTransport socket ->
+                    invokeSocket(socket, method, params, timeoutMs);
+            case McpTransport.ClientDelegatedMcpTransport delegated ->
+                    throw new IOException(
+                            "Client-delegated transport is a UI-channel transport, not a JSON-RPC transport: "
+                                    + delegated);
+        };
+    }
+
+    /**
+     * JSON-RPC over a Unix domain socket. The transport writes one request line (newline-delimited
+     * JSON) to the socket and reads one response line. Container-sandbox sockets (Linux/macOS) use
+     * the {@code java.net.UnixDomainSocketAddress} path; Windows hosts don't have unix sockets and
+     * the transport returns an {@code IOException}.
+     *
+     * <p>Unix-domain socket types are part of the supported Java baseline. Platforms without Unix
+     * sockets fail with a descriptive {@link IOException}.
+     */
+    private @NonNull JsonNode invokeSocket(
+            McpTransport.@NonNull SocketMcpTransport transport,
+            @NonNull String method,
+            Object params,
+            long timeoutMs)
+            throws IOException {
+        if (!java.nio.file.Files.exists(transport.socketPath())) {
+            throw new IOException("Socket MCP server not found at " + transport.socketPath());
+        }
+        try (java.nio.channels.SocketChannel ch =
+                java.nio.channels.SocketChannel.open(java.net.StandardProtocolFamily.UNIX)) {
+            return withDeadline(
+                    () -> {
+                        java.net.UnixDomainSocketAddress address =
+                                java.net.UnixDomainSocketAddress.of(transport.socketPath());
+                        ch.connect(address);
+                        Map<String, Object> request =
+                                Map.of(
+                                        "jsonrpc",
+                                        "2.0",
+                                        "id",
+                                        1,
+                                        "method",
+                                        method,
+                                        "params",
+                                        params == null ? Map.of() : params);
+                        byte[] body = (mapper.writeValueAsString(request) + "\n").getBytes();
+                        java.nio.ByteBuffer out = java.nio.ByteBuffer.wrap(body);
+                        while (out.hasRemaining()) {
+                            ch.write(out);
+                        }
+                        StringBuilder in = new StringBuilder();
+                        java.nio.ByteBuffer buf = java.nio.ByteBuffer.allocate(8192);
+                        while (true) {
+                            buf.clear();
+                            int n = ch.read(buf);
+                            if (n < 0) {
+                                break;
+                            }
+                            if (n > 0) {
+                                buf.flip();
+                                byte[] bytes = new byte[buf.remaining()];
+                                buf.get(bytes);
+                                String chunk = new String(bytes);
+                                in.append(chunk);
+                                int newline = in.indexOf("\n");
+                                if (newline >= 0) {
+                                    return parseResponse(in.substring(0, newline));
+                                }
+                            }
+                        }
+                        throw new IOException("Socket MCP server returned no complete response");
+                    },
+                    timeoutMs);
+        } catch (UnsupportedOperationException e) {
+            throw new IOException("Unix domain sockets are not supported on this platform", e);
+        }
+    }
+
+    private @NonNull JsonNode invokeStdio(
+            McpTransport.@NonNull StdioMcpTransport transport,
+            @NonNull String method,
+            Object params,
+            long timeoutMs)
+            throws IOException {
+        Process p;
+        try {
+            p = transport.processBuilder().start();
+        } catch (IOException e) {
+            throw new IOException("Failed to start stdio MCP server", e);
+        }
+        try {
+            return withDeadline(
+                    () -> {
+                        Map<String, Object> request =
+                                Map.of(
+                                        "jsonrpc",
+                                        "2.0",
+                                        "id",
+                                        1,
+                                        "method",
+                                        method,
+                                        "params",
+                                        params == null ? Map.of() : params);
+                        String line = mapper.writeValueAsString(request);
+                        p.getOutputStream().write((line + "\n").getBytes());
+                        p.getOutputStream().flush();
+                        // Read one response line (simplified — the server may emit notifications on
+                        // the same
+                        // stream; a production client would demultiplex).
+                        String responseLine;
+                        try (var reader =
+                                new java.io.BufferedReader(
+                                        new java.io.InputStreamReader(p.getInputStream()))) {
+                            while ((responseLine = reader.readLine()) != null) {
+                                if (responseLine.startsWith("{")) {
+                                    break;
+                                }
+                            }
+                        }
+                        if (responseLine == null) {
+                            throw new IOException("stdio MCP server returned no response");
+                        }
+                        return parseResponse(responseLine);
+                    },
+                    timeoutMs);
+        } finally {
+            p.destroy();
+        }
+    }
+
+    private static @NonNull JsonNode withDeadline(
+            @NonNull Callable<@NonNull JsonNode> operation, long timeoutMs) throws IOException {
+        FutureTask<@NonNull JsonNode> task = new FutureTask<>(operation);
+        Thread.ofVirtual().name("veto-mcp-io").start(task);
+        try {
+            return task.get(timeoutMs, TimeUnit.MILLISECONDS);
+        } catch (TimeoutException e) {
+            throw new IOException("MCP server timed out", e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("MCP request interrupted", e);
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof IOException io) {
+                throw io;
+            }
+            throw new IOException("MCP transport failed", cause);
+        } finally {
+            task.cancel(true);
+        }
+    }
+
+    private @NonNull JsonNode invokeSse(
+            McpTransport.@NonNull SseMcpTransport transport,
+            @NonNull String method,
+            Object params,
+            long timeoutMs)
+            throws IOException {
+        try (HttpClient client =
+                HttpClient.newBuilder().connectTimeout(Duration.ofMillis(timeoutMs)).build()) {
+            Map<String, Object> request =
+                    Map.of(
+                            "jsonrpc",
+                            "2.0",
+                            "id",
+                            1,
+                            "method",
+                            method,
+                            "params",
+                            params == null ? Map.of() : params);
+            String body = mapper.writeValueAsString(request);
+            HttpRequest.Builder requestBuilder =
+                    HttpRequest.newBuilder()
+                            .uri(URI.create(transport.baseUrl()))
+                            .timeout(Duration.ofMillis(timeoutMs))
+                            .header("Content-Type", "application/json")
+                            .header("Accept", "text/event-stream");
+            String authToken = transport.authToken();
+            if (!authToken.isBlank()) {
+                requestBuilder.header("Authorization", "Bearer " + authToken);
+            }
+            HttpRequest httpRequest =
+                    requestBuilder.POST(HttpRequest.BodyPublishers.ofString(body)).build();
+            HttpResponse<String> response =
+                    client.send(httpRequest, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() != 200) {
+                throw new IOException(
+                        "SSE MCP server returned "
+                                + response.statusCode()
+                                + ": "
+                                + response.body());
+            }
+            // SSE response: each event is a "data: <json>\n\n" block. Read the first data line.
+            StringBuilder data = new StringBuilder();
+            for (String line : response.body().split("\n")) {
+                if (line.startsWith("data:")) {
+                    if (!data.isEmpty()) {
+                        data.append("\n");
+                    }
+                    data.append(line.substring("data:".length()).strip());
+                }
+            }
+            if (data.isEmpty()) {
+                throw new IOException("SSE MCP server returned no data");
+            }
+            return parseResponse(data.toString());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("SSE MCP request interrupted", e);
+        }
+    }
+
+    private @NonNull JsonNode parseResponse(@NonNull String line) throws IOException {
+        JsonNode node = mapper.readTree(line);
+        JsonNode error = node.get("error");
+        if (error != null) {
+            throw new IOException("MCP server error: " + error);
+        }
+        JsonNode result = node.get("result");
+        if (result == null) {
+            throw new IOException("MCP server response missing 'result'");
+        }
+        return result;
+    }
+
+    private static @NonNull String serverNameFor(@NonNull McpTransport transport) {
+        return switch (transport) {
+            case McpTransport.StdioMcpTransport s -> "stdio:" + s.processBuilder().command();
+            case McpTransport.SseMcpTransport s -> "sse:" + s.baseUrl();
+            case McpTransport.SocketMcpTransport s -> "socket:" + s.socketPath();
+            case McpTransport.ClientDelegatedMcpTransport s -> "client:" + s.channel();
+        };
+    }
+}

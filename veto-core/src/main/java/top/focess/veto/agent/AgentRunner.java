@@ -49,15 +49,14 @@ import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.loop.ResponseEnforcer;
 import top.focess.veto.agent.loop.Scope;
 import top.focess.veto.agent.loop.StopAction;
-import top.focess.veto.agent.mcp.AgentToolDefinition;
-import top.focess.veto.agent.mcp.NativeToolDefinition;
-import top.focess.veto.agent.mcp.ParamCategory;
-import top.focess.veto.agent.mcp.ToolCallContext;
-import top.focess.veto.agent.mcp.ToolCallContextHolder;
-import top.focess.veto.agent.mcp.ToolDefinition;
-import top.focess.veto.agent.mcp.ToolEngine;
-import top.focess.veto.agent.mcp.ToolResult;
-import top.focess.veto.agent.screening.Danger;
+import top.focess.veto.agent.tool.AgentToolDefinition;
+import top.focess.veto.agent.tool.NativeToolDefinition;
+import top.focess.veto.agent.tool.ParamCategory;
+import top.focess.veto.agent.tool.ToolCallContext;
+import top.focess.veto.agent.tool.ToolCallContextHolder;
+import top.focess.veto.agent.tool.ToolDefinition;
+import top.focess.veto.agent.tool.ToolEngine;
+import top.focess.veto.agent.tool.ToolResult;
 import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.bus.DeltaFrame;
 import top.focess.veto.i18n.Msg;
@@ -104,7 +103,7 @@ public class AgentRunner {
     // for inspection from other threads.
     private volatile @NonNull AgentPersona persona;
     private volatile @NonNull Set<String> whitelistedTools;
-    private final @NonNull ToolEngine mcpEngine;
+    private final @NonNull ToolEngine toolEngine;
     private final @NonNull Gateway gateway;
     private final @NonNull HitlRegistry hitlRegistry;
     private final @NonNull IngressDefense ingressDefense;
@@ -117,26 +116,21 @@ public class AgentRunner {
     private final @NonNull ToolResultPresenter toolResultPresenter;
     private final @NonNull LoopBreaker breaker;
     private final @NonNull ReadHistory readHistory;
-    // The Part-8 Delta-broker seam: when present, each loop emission is published as a DeltaFrame
-    // (per-session, broker-assigned sequence) so transports (WebSocket) can stream it. Nullable so
-    // non-Spring callers (tests) keep working without a broker.
+    // When configured, loop emissions are published as per-session DeltaFrames for streaming.
     private final DeltaBroker deltaBroker;
     // The session this agent's turns belong to. Defaults to the agent's own id (a UUID) at
     // construction; the DB-backed create path overrides it with the real session id so the
     // turn_records.session_id column groups a session's 1+N agent streams correctly. Volatile: set
     // once at creation before the loop processes any turn.
     private volatile @NonNull UUID sessionId;
-    // The raw-turn write-through log. Nullable — when null (tests / no durability configured),
-    // appendTurn only updates the in-memory history; when present, each turn is also persisted to
-    // the raw-turn audit/replay log.
+    // When configured, every in-memory turn is also persisted for audit and replay.
     private final top.focess.veto.memory.TurnLogService turnLogService;
     private final @NonNull UUID userId;
     private final BackgroundTaskManager backgroundTaskManager;
     // The session owner (username) whose model-tier profile resolves this agent's tier. Threaded
     // into each tool's ToolCallContext so group-spawned Mates / Leaders resolve against the user's
-    // active profile (per-user model-tier configuration). Nullable in legacy/test paths that bypass
-    // session activation (those tests stub the registry). Volatile: set once at creation before the
-    // loop processes any tool call.
+    // active profile (per-user model-tier configuration). It remains unset until session
+    // activation. Volatile: set once before the loop processes any tool call.
     private volatile String owner;
     // The session's message locale for user-facing strings emitted on the agent's virtual thread
     // (breaker notices, compaction summaries, failure reasons). Stamped by AgentService.submit
@@ -178,8 +172,6 @@ public class AgentRunner {
     // Captured in callModel via ReasoningContentHolder, stored in the ASSISTANT_THOUGHT turn by
     // appendThought, and echoed back on the next request's assistant message by PromptCompiler.
     private String lastReasoningContent = null;
-    // True once the ordered record stream contains an AGENT_INIT system-prompt insertion. Resume
-    // replays that record verbatim; it never generates a replacement from the current templates.
     private boolean agentInitPresent = false;
     // The episode's first request is compiled against a prospective history containing the new
     // user turn. That exact immutable payload is dispatched after AGENT_INIT → USER_PROMPT are
@@ -231,7 +223,7 @@ public class AgentRunner {
     public AgentRunner(
             @NonNull String agentId,
             @NonNull AgentPersona persona,
-            @NonNull ToolEngine mcpEngine,
+            @NonNull ToolEngine toolEngine,
             @NonNull Gateway gateway,
             @NonNull HitlRegistry hitlRegistry,
             @NonNull IngressDefense ingressDefense,
@@ -251,7 +243,7 @@ public class AgentRunner {
                 persona.whitelistedTools().stream()
                         .map(ToolDefinition::name)
                         .collect(java.util.stream.Collectors.toUnmodifiableSet());
-        this.mcpEngine = mcpEngine;
+        this.toolEngine = toolEngine;
         this.gateway = gateway;
         this.hitlRegistry = hitlRegistry;
         this.ingressDefense = ingressDefense;
@@ -269,9 +261,7 @@ public class AgentRunner {
         // per-session frame key once. Fail-fast if a non-UUID id ever reaches here.
         this.sessionId = UUID.fromString(agentId);
         this.userId = userId;
-        // Nullable: non-Spring callers (tests) pass null so turns are not logged.
         this.turnLogService = turnLogService;
-        // Nullable: non-Spring callers (tests) pass null; the run_task path injects exit notices.
         this.backgroundTaskManager = backgroundTaskManager;
     }
 
@@ -436,7 +426,7 @@ public class AgentRunner {
      * Drains background-task exit notices queued for this agent and appends each as a user-role
      * observation, so the model is actively told which of its tasks ended while it was idle (and
      * their exit codes) rather than having to remember to poll {@code view_task}. No-op when no
-     * task manager is wired (tests) or nothing exited.
+     * task manager is configured or nothing exited.
      */
     private void injectPendingTaskExitNotices() {
         if (backgroundTaskManager == null) {
@@ -502,9 +492,6 @@ public class AgentRunner {
 
         String finalSummary = computeCompactionSummary(workTurns);
 
-        // AGENT_INIT defines the agent but is not a ChatMessage. Clear every compiled work
-        // message, then re-inject only the summary; the system message is assembled separately
-        // from the current persona on every provider request.
         appendTurn(TurnRecord.rewind(++turnNumber, 0));
         appendTurn(TurnRecord.compactionSummary(++turnNumber, finalSummary));
         emitMessage(Msg.get(locale, "error.agent.compactDone", workTurns.size()));
@@ -993,7 +980,7 @@ public class AgentRunner {
             boolean hasVeto = false;
             boolean hasRefused = false;
             for (ToolCall call : calls) {
-                ToolDefinition def = mcpEngine.resolveDefinition(call.toolName());
+                ToolDefinition def = toolEngine.resolveDefinition(call.toolName());
                 if (def == null || def instanceof AgentToolDefinition) {
                     decisions.add(ApprovalDecision.AUTO_APPROVE);
                     executionPermits.add(ToolExecutionPermit.empty());
@@ -1018,13 +1005,11 @@ public class AgentRunner {
                 // the model (next prompt) and the audit reader can tell user-decline apart from
                 // policy-refusal. A bare "REFUSED" string carries no information.
                 String refusalDetail = "declined";
-                List<ToolCall> resolvedCalls = new ArrayList<>(calls);
-
                 for (int i = 0; i < calls.size(); i++) {
                     ToolCall call = calls.get(i);
                     String callId = call.requireCallId();
                     ApprovalDecision decision = decisions.get(i);
-                    ToolDefinition def = mcpEngine.resolveDefinition(call.toolName());
+                    ToolDefinition def = toolEngine.resolveDefinition(call.toolName());
 
                     if (declinedCallSignatures.contains(toolCallSignature(call))) {
                         skippedCalls.add(call);
@@ -1041,10 +1026,8 @@ public class AgentRunner {
                         transitionTo(AgentState.INTERCEPTED);
                         // Register the await target BEFORE advertising the prompt: the veto
                         // listener sends the Prompt synchronously, and the user's reply could
-                        // otherwise race register and resolve against a not-yet-registered future
-                        // (a hang). EDIT is filtered from the offered set in v1 (a raw-string
-                        // reply can't carry edited args).
-                        List<VetoOption> offered = VetoOption.withoutEdit(p.options());
+                        // otherwise race register and resolve against a not-yet-registered future.
+                        List<VetoOption> offered = p.options();
                         if (def == null) {
                             throw new IllegalStateException(
                                     "Prompt decision without a tool definition for "
@@ -1063,30 +1046,6 @@ public class AgentRunner {
                                     "declined by the user (" + resolution.option().name() + ")";
                             batchApproved = false;
                             break;
-                        } else if (resolution.option() == VetoOption.EDIT) {
-                            var editedArgs = resolution.editedArgs();
-                            if (editedArgs == null) {
-                                continue;
-                            }
-                            ToolCall edited = new ToolCall(call.toolName(), editedArgs, callId);
-                            var r2 = screenToolCall(edited, def, thought);
-                            if (r2 instanceof GatewayResult.Screened sc
-                                    && sc.screening().danger() == Danger.CRITICAL) {
-                                appendObservation(
-                                        call.toolName(),
-                                        "Edited call is CRITICAL: " + sc.screening().reason());
-                                refusalDetail = "the edited call re-screened as CRITICAL";
-                                batchApproved = false;
-                                break;
-                            }
-                            if (r2 instanceof GatewayResult.DriftResult) {
-                                appendObservation(call.toolName(), "Edited call drifts.");
-                                refusalDetail = "the edited call re-screened as drifted";
-                                batchApproved = false;
-                                break;
-                            }
-                            resolvedCalls.set(i, edited);
-                            executionPermits.set(i, r2.executionPermit());
                         }
                     }
                 }
@@ -1104,9 +1063,6 @@ public class AgentRunner {
                     this.state = AgentState.IDLE;
                     throw new VetoRefusedException();
                 }
-
-                // Batch approved! Replace calls with resolvedCalls
-                calls = resolvedCalls;
             }
 
             // 3. Execute phase (all confirmed / skipped)
@@ -1136,7 +1092,7 @@ public class AgentRunner {
 
     private @NonNull ToolResult executeOneConfirmedCall(
             @NonNull ToolCall call, @NonNull ToolExecutionPermit executionPermit) {
-        ToolDefinition def = mcpEngine.resolveDefinition(call.toolName());
+        ToolDefinition def = toolEngine.resolveDefinition(call.toolName());
         if (def == null) {
             return toolNotFound(call);
         }
@@ -1180,7 +1136,7 @@ public class AgentRunner {
                         executionPermit));
         try {
             // (e) plugin postAction chain
-            ToolResult transformed = mcpEngine.execute(call, def);
+            ToolResult transformed = toolEngine.execute(call, def);
             for (LoopInterceptor plugin : interceptors) {
                 transformed = plugin.postAction(agentId, call, transformed);
             }
@@ -1229,7 +1185,7 @@ public class AgentRunner {
 
     private @NonNull ToolResult executeOneCall(@NonNull ToolCall call) {
         String callId = call.requireCallId();
-        ToolDefinition def = mcpEngine.resolveDefinition(call.toolName());
+        ToolDefinition def = toolEngine.resolveDefinition(call.toolName());
         if (def == null) {
             return toolNotFound(call);
         }
@@ -1333,9 +1289,8 @@ public class AgentRunner {
             ApprovalDecision.@NonNull Prompt p,
             @NonNull ToolExecutionPermit executionPermit) {
         transitionTo(AgentState.INTERCEPTED);
-        // Register the await target BEFORE advertising the prompt (see executeToolCalls for the
-        // race rationale). EDIT is filtered from the offered set in v1.
-        List<VetoOption> offered = VetoOption.withoutEdit(p.options());
+        // Register before advertising the prompt so a fast reply cannot beat registration.
+        List<VetoOption> offered = p.options();
         String callId = call.requireCallId();
         hitlRegistry.register(agentId, callId, call, def, offered, p.danger(), p.relevance());
         emitVetoRequired(call, p, offered);
@@ -1349,32 +1304,6 @@ public class AgentRunner {
                     refusedObservation("declined by the user (" + resolution.option().name() + ")"),
                     false);
             return null;
-        }
-        var editedArgs = resolution.editedArgs();
-        if (resolution.option() == VetoOption.EDIT && editedArgs != null) {
-            ToolCall edited = new ToolCall(call.toolName(), editedArgs, callId);
-            // re-screen the edited call.
-            var r2 = screenToolCall(edited, def, null);
-            if (r2 instanceof GatewayResult.Screened sc
-                    && sc.screening().danger() == Danger.CRITICAL) {
-                appendTurn(TurnRecord.toolCall(++turnNumber, call));
-                appendToolResponse(
-                        call.toolName(),
-                        call.callId(),
-                        refusedObservation("the edited call re-screened as CRITICAL"),
-                        false);
-                return null;
-            }
-            if (r2 instanceof GatewayResult.DriftResult) {
-                appendTurn(TurnRecord.toolCall(++turnNumber, call));
-                appendToolResponse(
-                        call.toolName(),
-                        call.callId(),
-                        refusedObservation("the edited call re-screened as drifted"),
-                        false);
-                return null;
-            }
-            return new ResolvedCall(edited, r2.executionPermit());
         }
         return new ResolvedCall(call, executionPermit);
     }
@@ -1535,8 +1464,7 @@ public class AgentRunner {
                 }
             }
         }
-        // Part-8 emission seam: publish a DeltaFrame to the broker so transports (the WebSocket
-        // bus via DeltaBusBridge) can stream each user-facing message. The broker assigns the
+        // Publish each user-facing message to the transport event stream. The broker assigns the
         // per-session sequence; the frame text is the message verbatim.
         publishFrame(
                 DeltaFrame.builder()
@@ -1576,9 +1504,8 @@ public class AgentRunner {
 
     /**
      * Best-effort publish of a {@link DeltaFrame} to the broker — the single emission point for
-     * every event kind. A null broker (tests / non-Spring callers) and a throwing broker are both
-     * swallowed: events are notifications for subscribers, not load-bearing control flow, so
-     * emitting one must never break the loop.
+     * every event kind. A missing or throwing broker is ignored: events are notifications for
+     * subscribers, not load-bearing control flow, so emitting one must never break the loop.
      */
     private void publishFrame(@NonNull DeltaFrame frame) {
         if (deltaBroker == null) {
@@ -2055,7 +1982,7 @@ public class AgentRunner {
      * Stamps the session owner (username) whose model-tier profile resolves this agent's tier.
      * Called by the DB-backed create path ({@link AgentService#createMate} / {@code createAgent})
      * before the loop starts, so group-spawned Mates / Leaders resolve their tier against the
-     * user's active profile via the {@link top.focess.veto.agent.mcp.ToolCallContext}.
+     * user's active profile via the {@link top.focess.veto.agent.tool.ToolCallContext}.
      */
     public void setOwner(String owner) {
         this.owner = owner;

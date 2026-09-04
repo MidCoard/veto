@@ -13,7 +13,6 @@ import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.loop.PromptCompiler;
-import top.focess.veto.agent.mcp.DefaultToolEngine;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.bus.DeltaFrame;
@@ -43,14 +42,14 @@ class DeltaBrokerWiringTest {
         ReflectionTestUtils.setField(compiler, "maxInputTokens", 32000);
         ReflectionTestUtils.setField(compiler, "contextFillRatio", 0.9);
         return new AgentService(
-                new DefaultToolEngine(),
+                new TestToolEngine(),
                 new HitlRegistry(),
                 new IngressDefense(),
                 compiler,
                 caller,
                 mapper,
                 List.of(),
-                new top.focess.veto.agent.identity.RoleToolFilter(new DefaultToolEngine()),
+                new top.focess.veto.agent.identity.RoleToolFilter(new TestToolEngine()),
                 "REAL",
                 50L,
                 "FULL_ACCESS",

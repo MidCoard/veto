@@ -4,9 +4,9 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.agent.mcp.ToolResult;
-import top.focess.veto.agent.mcp.ToolResultFormat;
-import top.focess.veto.agent.mcp.ToolResultStatus;
+import top.focess.veto.agent.tool.ToolResult;
+import top.focess.veto.agent.tool.ToolResultFormat;
+import top.focess.veto.agent.tool.ToolResultStatus;
 import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
 

@@ -4,8 +4,8 @@ import org.jspecify.annotations.NonNull;
 
 /**
  * Text -> vector embedding for the memory subsystem, decoupled from {@link
- * top.focess.veto.memory.MemoryStore} so the embedding model can evolve (local stub vs. provider
- * API) without touching storage.
+ * top.focess.veto.memory.MemoryStore} so the embedding model can evolve (local implementation vs.
+ * provider API) without touching storage.
  *
  * <p>The active bean is selected by {@link EmbedderConfiguration}: a {@link HashEmbedder} is the
  * local default ({@code @ConditionalOnMissingBean}); when {@code veto.memory.embedder.provider} is

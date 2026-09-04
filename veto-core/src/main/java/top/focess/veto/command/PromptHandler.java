@@ -102,7 +102,7 @@ public class PromptHandler {
      */
     public IpcFrame.@NonNull TerminalResponse handle(
             @NonNull String prompt, @NonNull String terminalId, @NonNull VetoCommandSender sender) {
-        String user = vault.currentUser();
+        String user = vault.currentUserOrOnlyUnlocked();
         if (user == null) {
             return IpcFrame.Error.ofError("Not logged in. Use /login.");
         }

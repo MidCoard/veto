@@ -2,15 +2,18 @@ package top.focess.veto.controller;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 import top.focess.veto.bus.RoutingBusService;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.model.DAGPayload;
@@ -27,11 +30,18 @@ public class TaskController {
             LoggerFactory.getLogger("top.focess.veto.controller.TaskController");
 
     private final @NonNull RoutingBusService routingBusService;
-    private final @NonNull ConcurrentHashMap<String, DAGPayload> taskStore =
+    private final @NonNull RequestAuthorization authorization;
+
+    private record OwnedTask(@NonNull String owner, @NonNull DAGPayload payload) {}
+
+    private final @NonNull ConcurrentHashMap<String, OwnedTask> taskStore =
             new ConcurrentHashMap<>();
 
-    public TaskController(@NonNull RoutingBusService routingBusService) {
+    public TaskController(
+            @NonNull RoutingBusService routingBusService,
+            @NonNull RequestAuthorization authorization) {
         this.routingBusService = routingBusService;
+        this.authorization = authorization;
     }
 
     /** POST /api/tasks - Create and submit a new DAG task. */
@@ -40,6 +50,7 @@ public class TaskController {
             produces = MediaType.APPLICATION_JSON_VALUE)
     public @NonNull ResponseEntity<Map<String, Object>> createTask(
             @RequestBody @NonNull Map<String, Object> request) {
+        String owner = authorization.requireUser();
         String taskType = (String) request.get("taskType");
         if (taskType == null || taskType.isEmpty()) {
             return ResponseEntity.badRequest()
@@ -63,7 +74,9 @@ public class TaskController {
                         .targetComponent(targetComponent)
                         .build();
 
-        taskStore.put(payload.getId(), payload);
+        if (taskStore.putIfAbsent(payload.getId(), new OwnedTask(owner, payload)) != null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Task id already exists");
+        }
         log.info("REST: Created task id={}, type={}", payload.getId(), payload.getTaskType());
 
         if (routingBusService.isConnected()) {
@@ -107,7 +120,7 @@ public class TaskController {
     @SuppressWarnings("JvmTaintAnalysis")
     public @NonNull ResponseEntity<Map<String, @NonNull Object>> getTask(
             @PathVariable @NonNull String id) {
-        DAGPayload payload = taskStore.get(id);
+        DAGPayload payload = ownedPayload(id, authorization.requireUser());
         if (payload == null) {
             return ResponseEntity.status(404)
                     .body(Map.of("status", "error", "message", Msg.get("error.task.notFound", id)));
@@ -133,14 +146,20 @@ public class TaskController {
     /** GET /api/tasks - List all tasks. */
     @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
     public @NonNull ResponseEntity<Map<String, Object>> listTasks() {
+        String owner = authorization.requireUser();
+        List<DAGPayload> owned =
+                taskStore.values().stream()
+                        .filter(task -> owner.equals(task.owner()))
+                        .map(OwnedTask::payload)
+                        .toList();
         return ResponseEntity.ok(
                 Map.of(
                         "status",
                         "ok",
                         "total",
-                        taskStore.size(),
+                        owned.size(),
                         "tasks",
-                        taskStore.values().stream()
+                        owned.stream()
                                 .map(
                                         p ->
                                                 Map.of(
@@ -165,14 +184,15 @@ public class TaskController {
     @SuppressWarnings("JvmTaintAnalysis")
     public @NonNull ResponseEntity<Map<String, @NonNull Object>> cancelTask(
             @PathVariable @NonNull String id) {
-        DAGPayload existing = taskStore.get(id);
+        String owner = authorization.requireUser();
+        DAGPayload existing = ownedPayload(id, owner);
         if (existing == null) {
             return ResponseEntity.status(404)
                     .body(Map.of("status", "error", "message", Msg.get("error.task.notFound", id)));
         }
 
         DAGPayload cancelled = existing.withStatus(DAGPayload.DAGPayloadStatus.CANCELLED);
-        taskStore.put(id, cancelled);
+        taskStore.put(id, new OwnedTask(owner, cancelled));
 
         return ResponseEntity.ok(
                 Map.of(
@@ -184,5 +204,10 @@ public class TaskController {
                         DAGPayload.DAGPayloadStatus.CANCELLED.name(),
                         "timestamp",
                         Instant.now().toString()));
+    }
+
+    private DAGPayload ownedPayload(@NonNull String id, @NonNull String owner) {
+        OwnedTask task = taskStore.get(id);
+        return task != null && owner.equals(task.owner()) ? task.payload() : null;
     }
 }

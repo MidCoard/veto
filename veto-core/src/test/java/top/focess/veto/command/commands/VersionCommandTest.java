@@ -12,7 +12,7 @@ import top.focess.command.CommandPermission;
 import top.focess.command.CommandResult;
 import top.focess.command.ExecutionResult;
 import top.focess.veto.VetoVersion;
-import top.focess.veto.agent.mcp.ToolDocs;
+import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.command.VetoCommandSender;
 import top.focess.veto.contract.Version;
 

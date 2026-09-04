@@ -23,7 +23,7 @@ class MemoryStoreProfileTest {
     @Test
     void vectorProfileResolvesSingleVectorBackedStore() {
         assertInstanceOf(
-                top.focess.veto.agent.mcp.ToolDocs.nonNullClass(VectorIndexMemoryStore.class),
+                top.focess.veto.agent.tool.ToolDocs.nonNullClass(VectorIndexMemoryStore.class),
                 memoryStore,
                 "veto.memory.store=vector must resolve the vector-backed store with no bean conflict");
     }

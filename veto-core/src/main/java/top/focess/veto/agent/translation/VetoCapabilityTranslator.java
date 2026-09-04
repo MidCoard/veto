@@ -10,9 +10,9 @@ import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Service;
-import top.focess.veto.agent.mcp.ParameterSchema;
-import top.focess.veto.agent.mcp.ToolDefinition;
-import top.focess.veto.agent.mcp.ToolSchemaCompiler;
+import top.focess.veto.agent.tool.ParameterSchema;
+import top.focess.veto.agent.tool.ToolDefinition;
+import top.focess.veto.agent.tool.ToolSchemaCompiler;
 import top.focess.veto.llm.core.VetoResponse;
 
 /**

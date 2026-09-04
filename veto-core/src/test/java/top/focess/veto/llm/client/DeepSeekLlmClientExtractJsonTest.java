@@ -27,7 +27,7 @@ class DeepSeekLlmClientExtractJsonTest {
                     "DeepSeek",
                     mapper,
                     mock(
-                            top.focess.veto.agent.mcp.ToolDocs.nonNullClass(
+                            top.focess.veto.agent.tool.ToolDocs.nonNullClass(
                                     CapabilityTranslator.class)));
 
     @Test

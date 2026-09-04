@@ -2,8 +2,8 @@ package top.focess.veto.agent.capability;
 
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
-import top.focess.veto.agent.mcp.ToolCallContext;
-import top.focess.veto.agent.mcp.ToolCallContextHolder;
+import top.focess.veto.agent.tool.ToolCallContext;
+import top.focess.veto.agent.tool.ToolCallContextHolder;
 
 /** Resolves an unforgeable call-scoped capability from the current screened tool context. */
 public final class CapabilityResolver {

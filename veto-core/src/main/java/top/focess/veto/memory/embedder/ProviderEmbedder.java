@@ -17,7 +17,7 @@ import top.focess.veto.llm.credential.CredentialResolver;
 
 /**
  * Provider-backed {@link Embedder} - calls a remote embeddings REST API (OpenAI-compatible or
- * Gemini) instead of the local {@link HashEmbedder} stub. Activated only when {@code
+ * Gemini) instead of the local {@link HashEmbedder}. Activated only when {@code
  * veto.memory.embedder.provider} is configured; otherwise {@link HashEmbedder} is used.
  *
  * <p>Uses JDK {@code HttpClient} (no extra dependency) and the provider's stable REST surface,
@@ -26,7 +26,7 @@ import top.focess.veto.llm.credential.CredentialResolver;
  * or the instance. Failures throw {@link IllegalStateException} (best-effort memory is non-fatal to
  * the agent loop - callers swallow and continue, same as capture today).
  *
- * <p>Phase 1 supports {@code openai} (any OpenAI-compatible {@code /v1/embeddings} endpoint, incl.
+ * <p>Supports {@code openai} (any OpenAI-compatible {@code /v1/embeddings} endpoint, incl.
  * OpenRouter/local) and {@code gemini}. A local ONNX embedder is the fast-follow.
  */
 public final class ProviderEmbedder implements Embedder {

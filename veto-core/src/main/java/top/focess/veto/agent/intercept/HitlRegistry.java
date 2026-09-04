@@ -12,16 +12,16 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.AgentService;
-import top.focess.veto.agent.mcp.AgentToolDefinition;
-import top.focess.veto.agent.mcp.NativeToolDefinition;
-import top.focess.veto.agent.mcp.ParamCategory;
-import top.focess.veto.agent.mcp.ToolCapability;
-import top.focess.veto.agent.mcp.ToolDefinition;
 import top.focess.veto.agent.screening.Danger;
 import top.focess.veto.agent.screening.Relevance;
 import top.focess.veto.agent.screening.Screening;
 import top.focess.veto.agent.screening.ScreeningMode;
 import top.focess.veto.agent.screening.ScreeningOutcome;
+import top.focess.veto.agent.tool.AgentToolDefinition;
+import top.focess.veto.agent.tool.NativeToolDefinition;
+import top.focess.veto.agent.tool.ParamCategory;
+import top.focess.veto.agent.tool.ToolCapability;
+import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.llm.core.ToolCall;
@@ -269,17 +269,10 @@ public class HitlRegistry {
                     VetoOption.ACCEPT_WRITE_LIKE_THIS,
                     VetoOption.EXEC_DECLINE);
     static final @NonNull List<@NonNull VetoOption> DRIFT_OPTIONS =
-            List.of(
-                    VetoOption.ABORT_WRITE,
-                    VetoOption.REREAD,
-                    VetoOption.FORCE_OVERWRITE,
-                    VetoOption.EDIT);
+            List.of(VetoOption.ABORT_WRITE, VetoOption.REREAD, VetoOption.FORCE_OVERWRITE);
     static final @NonNull List<@NonNull VetoOption> E1_OPTIONS =
             List.of(VetoOption.BLOCK, VetoOption.OVERRIDE);
-    // Exec offers no mask variants (1.0.72): per the user's HITL principle, the explicit
-    // accept_and_mask choice belongs to READ only; an exec observation's masking is the
-    // IngressDefense default-on behavior, not a per-veto user choice. The ACCEPT_AND_MASK_COMMAND*
-    // enum constants are retained for backward compatibility.
+    // Exec observations use the ingress mask policy rather than a per-veto masking option.
     static final @NonNull List<@NonNull VetoOption> E2_OPTIONS =
             List.of(
                     VetoOption.ACCEPT_COMMAND,
@@ -489,17 +482,15 @@ public class HitlRegistry {
         if (def == null) {
             return null;
         }
-        // Generic grant (no per-tool match key): ACCEPT_GENERIC_LIKE_THIS / ACCEPT_AS_SESSION_RULE
-        // legacy alias.
+        // Generic tools have no capability-specific match key.
         if (opt.isGenericGrant()) {
             // Synthesize a generic command-equivalent grant from the call's args if run_command.
             if ("run_command".equals(call.toolName())) {
                 return buildCommandGrant(agentId, call);
             }
-            // Fall back to a per-tool record grant (legacy "session rule" semantics).
             var editedArgs = resolution.editedArgs();
             var args = editedArgs != null ? editedArgs : call.args();
-            return new PermissionGrant.LegacySessionRule(call.toolName(), args);
+            return new PermissionGrant.ExactToolGrant(call.toolName(), args);
         }
         // Per-tool shape: read / write / command.
         if (def.capability() == ToolCapability.WORKSPACE_READ) {
@@ -577,7 +568,7 @@ public class HitlRegistry {
         }
         Map<String, Object> args = call.args();
         for (var entry : hints.entrySet()) {
-            if (entry.getValue() != top.focess.veto.agent.mcp.ParamCategory.FILESYSTEM_PATH) {
+            if (entry.getValue() != top.focess.veto.agent.tool.ParamCategory.FILESYSTEM_PATH) {
                 continue;
             }
             Object v = args.get(entry.getKey());

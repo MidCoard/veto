@@ -13,9 +13,9 @@ import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.TurnType;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.SystemPromptResolver;
-import top.focess.veto.agent.mcp.ToolResultFormat;
-import top.focess.veto.agent.mcp.ToolResultStatus;
 import top.focess.veto.agent.screening.DeployerPolicy;
+import top.focess.veto.agent.tool.ToolResultFormat;
+import top.focess.veto.agent.tool.ToolResultStatus;
 import top.focess.veto.agent.translation.CapabilityTranslator;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.ChatMessage;
@@ -168,11 +168,7 @@ public class PromptCompiler {
                 systemMessage, messages, flatTools, responseSchema, trimmed, estimate);
     }
 
-    /**
-     * Links the current runtime definition for a brand-new AGENT_INIT. Resume compilation must not
-     * call this to replace a recorded prompt; {@link #compile} takes the active system prompt from
-     * the ordered AGENT_INIT records whenever one exists.
-     */
+    /** Builds the system prompt stored in a newly created AGENT_INIT record. */
     public @NonNull String linkSystemMessage(
             @NonNull AgentPersona persona,
             @NonNull Workspace sessionWorkspace,
@@ -187,8 +183,8 @@ public class PromptCompiler {
     }
 
     /** Removes conditional capabilities that cannot succeed for this persona. */
-    static @NonNull List<top.focess.veto.agent.mcp.@NonNull ToolDefinition> availableTools(
-            java.util.@NonNull Collection<top.focess.veto.agent.mcp.@NonNull ToolDefinition> tools,
+    static @NonNull List<top.focess.veto.agent.tool.@NonNull ToolDefinition> availableTools(
+            java.util.@NonNull Collection<top.focess.veto.agent.tool.@NonNull ToolDefinition> tools,
             boolean skillsEmpty) {
         return tools.stream()
                 .filter(tool -> !skillsEmpty || !"load_skill".equals(tool.name()))
@@ -247,10 +243,6 @@ public class PromptCompiler {
         String pendingReasoning = null;
         for (TurnRecord turn : history) {
             if (turn.type() == TurnType.AGENT_INIT) {
-                // AGENT_INIT is an ordered system-prompt insertion event. Do not synthesize,
-                // reorder, or replace it with the current runtime template on resume. Provider
-                // APIs expose one system/instructions slot, so the last insertion encountered in
-                // durable record order is the active system prompt for this request.
                 if (pendingThought != null && !pendingThought.isBlank()) {
                     compiled.add(ChatMessage.assistant(pendingThought));
                 }

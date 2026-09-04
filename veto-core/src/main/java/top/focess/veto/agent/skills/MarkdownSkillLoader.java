@@ -14,7 +14,7 @@ import java.util.stream.Stream;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import top.focess.veto.agent.mcp.ToolDocs;
+import top.focess.veto.agent.tool.ToolDocs;
 
 /**
  * Scans the filesystem for {@code SKILL.md} files, parses the YAML frontmatter boundary, reads the

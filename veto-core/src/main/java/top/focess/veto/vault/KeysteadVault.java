@@ -204,10 +204,19 @@ public class KeysteadVault {
         throw new VaultLockedException("Vault is locked - authenticate first");
     }
 
-    /** The currently authenticated username, or {@code null} if none/unlocked. */
+    /** The request-scoped authenticated username, or {@code null} when the request is anonymous. */
     public String currentUser() {
         String user = UserContext.get();
         if (user != null && handles.containsKey(user)) {
+            return user;
+        }
+        return null;
+    }
+
+    /** The current request user, or the sole unlocked user for local terminal command handling. */
+    public String currentUserOrOnlyUnlocked() {
+        String user = currentUser();
+        if (user != null) {
             return user;
         }
         if (handles.size() == 1) {

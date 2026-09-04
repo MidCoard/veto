@@ -5,9 +5,9 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import com.tngtech.archunit.junit.AnalyzeClasses;
 import com.tngtech.archunit.junit.ArchTest;
 import com.tngtech.archunit.lang.ArchRule;
-import top.focess.veto.agent.mcp.ToolDocs;
-import top.focess.veto.agent.mcp.WorkspaceReadTool;
-import top.focess.veto.agent.mcp.WorkspaceWriteTool;
+import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.WorkspaceReadTool;
+import top.focess.veto.agent.tool.WorkspaceWriteTool;
 
 /** Build-time enforcement for capability-bound native tools. */
 @AnalyzeClasses(packages = "top.focess.veto")
@@ -17,7 +17,7 @@ class CapabilityBoundaryTest {
     static final ArchRule bundledToolPackageCannotHideFilesystemAccessInHelpers =
             noClasses()
                     .that()
-                    .resideInAPackage("top.focess.veto.agent.mcp.tools..")
+                    .resideInAPackage("top.focess.veto.agent.tool.builtin..")
                     .and()
                     .haveSimpleNameNotEndingWith("Test")
                     .should()

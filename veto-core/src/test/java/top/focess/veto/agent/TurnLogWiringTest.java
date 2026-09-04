@@ -14,8 +14,7 @@ import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.loop.PromptCompiler;
-import top.focess.veto.agent.mcp.DefaultToolEngine;
-import top.focess.veto.agent.mcp.ToolDocs;
+import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.llm.core.ProviderType;
@@ -49,14 +48,14 @@ class TurnLogWiringTest {
         ReflectionTestUtils.setField(compiler, "contextFillRatio", 0.9);
         AgentService service =
                 new AgentService(
-                        new DefaultToolEngine(),
+                        new TestToolEngine(),
                         new HitlRegistry(),
                         new IngressDefense(),
                         compiler,
                         callerFinishingImmediately(),
                         mapper,
                         List.of(),
-                        new top.focess.veto.agent.identity.RoleToolFilter(new DefaultToolEngine()),
+                        new top.focess.veto.agent.identity.RoleToolFilter(new TestToolEngine()),
                         "REAL",
                         50L,
                         "FULL_ACCESS",

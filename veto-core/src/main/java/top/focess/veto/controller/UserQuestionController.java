@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
-import top.focess.veto.agent.mcp.tools.UserQuestionRegistry;
+import top.focess.veto.agent.tool.builtin.UserQuestionRegistry;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.vault.KeysteadVault;
 

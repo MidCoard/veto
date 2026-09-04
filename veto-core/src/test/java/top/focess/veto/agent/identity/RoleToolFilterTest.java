@@ -10,12 +10,12 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.agent.mcp.AgentToolDefinition;
-import top.focess.veto.agent.mcp.ToolCapability;
-import top.focess.veto.agent.mcp.ToolDefinition;
-import top.focess.veto.agent.mcp.ToolEngine;
-import top.focess.veto.agent.mcp.ToolResult;
 import top.focess.veto.agent.screening.Danger;
+import top.focess.veto.agent.tool.AgentToolDefinition;
+import top.focess.veto.agent.tool.ToolCapability;
+import top.focess.veto.agent.tool.ToolDefinition;
+import top.focess.veto.agent.tool.ToolEngine;
+import top.focess.veto.agent.tool.ToolResult;
 import top.focess.veto.llm.core.ToolCall;
 
 class RoleToolFilterTest {
@@ -38,7 +38,7 @@ class RoleToolFilterTest {
         assertEquals(Set.of("read", "think", "post_message"), names(filter.resolve(Role.LEADER)));
         for (Role role :
                 java.util.EnumSet.allOf(
-                        top.focess.veto.agent.mcp.ToolDocs.nonNullClass(Role.class))) {
+                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(Role.class))) {
             assertFalse(names(filter.resolve(role)).contains("unclassified"));
         }
     }

@@ -10,9 +10,6 @@ import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.agent.drift.ReadHistory;
-import top.focess.veto.agent.mcp.AgentToolDefinition;
-import top.focess.veto.agent.mcp.ToolCapability;
-import top.focess.veto.agent.mcp.ToolDefinition;
 import top.focess.veto.agent.screening.Danger;
 import top.focess.veto.agent.screening.DangerComputation;
 import top.focess.veto.agent.screening.DeployerPolicy;
@@ -21,6 +18,9 @@ import top.focess.veto.agent.screening.Relevance;
 import top.focess.veto.agent.screening.Screening;
 import top.focess.veto.agent.screening.SlmScreening;
 import top.focess.veto.agent.screening.SlmScreeningProvider;
+import top.focess.veto.agent.tool.AgentToolDefinition;
+import top.focess.veto.agent.tool.ToolCapability;
+import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.ToolCall;
 
@@ -130,7 +130,7 @@ public class Gateway {
         Danger danger =
                 advisory.map(screening -> maxDanger(deterministicDanger, screening.danger()))
                         .orElse(deterministicDanger);
-        if (def instanceof top.focess.veto.agent.mcp.NativeToolDefinition nativeDefinition
+        if (def instanceof top.focess.veto.agent.tool.NativeToolDefinition nativeDefinition
                 && nativeDefinition.requiresSemanticScreening()
                 && advisory.isEmpty()) {
             danger = maxDanger(danger, Danger.DANGEROUS);

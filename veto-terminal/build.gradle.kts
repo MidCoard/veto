@@ -54,7 +54,7 @@ dependencies {
     implementation("org.slf4j:jul-to-slf4j:$slf4jVersion")
 }
 
-// 鈹€鈹€ Build-time version source 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// Build-time version source
 // Generates top.focess.veto.terminal.VetoVersion (COMPONENT + VERSION) from project.version so the
 // runtime can report its build version (sent to the backend in the IPC Hello handshake). Spotless
 // targets src/** only, so generated sources under build/ are exempt from formatting.

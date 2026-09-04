@@ -123,7 +123,7 @@ protobuf {
     }
 }
 
-// 鈹€鈹€ Build-time version source 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// Build-time version source
 // Generates top.focess.veto.VetoVersion (COMPONENT + VERSION) from project.version so the runtime
 // can report its build version (e.g. in /version and the IPC handshake). Spotless targets src/**
 // only, so generated sources under build/ are exempt from formatting.

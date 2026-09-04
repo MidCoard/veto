@@ -30,8 +30,6 @@ import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.intercept.LoopInterceptor;
 import top.focess.veto.agent.intercept.VetoPrompt;
 import top.focess.veto.agent.loop.PromptCompiler;
-import top.focess.veto.agent.mcp.ToolDefinition;
-import top.focess.veto.agent.mcp.ToolEngine;
 import top.focess.veto.agent.screening.DangerComputation;
 import top.focess.veto.agent.screening.DeployerPolicy;
 import top.focess.veto.agent.screening.DeployerPolicyConfiguration;
@@ -39,6 +37,8 @@ import top.focess.veto.agent.screening.ProtectedSet;
 import top.focess.veto.agent.screening.ProtectedSetResolver;
 import top.focess.veto.agent.screening.ScreeningMode;
 import top.focess.veto.agent.screening.SlmScreeningProvider;
+import top.focess.veto.agent.tool.ToolDefinition;
+import top.focess.veto.agent.tool.ToolEngine;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.i18n.Msg;
@@ -64,7 +64,7 @@ public class AgentService {
             LoggerFactory.getLogger("top.focess.veto.agent.AgentService");
     private static final @NonNull Duration DEFAULT_AWAIT = Duration.ofMinutes(5);
 
-    private final @NonNull ToolEngine mcpEngine;
+    private final @NonNull ToolEngine toolEngine;
     private final @NonNull HitlRegistry hitlRegistry;
     private final @NonNull IngressDefense ingressDefense;
     private final @NonNull PromptCompiler promptCompiler;
@@ -76,11 +76,9 @@ public class AgentService {
     private final @NonNull RoleToolFilter roleToolFilter;
     private final long maxCallsPerEpisode;
     private final @NonNull DeployerPolicy deployerPolicy;
-    // The Part-8 Delta-broker — optional (nullable in tests); when present, threaded into each
-    // AgentRunner so loop emissions publish per-session DeltaFrames for transports to stream.
+    // Optional event-stream sink shared by created AgentRunners.
     private final DeltaBroker deltaBroker;
-    // The raw-turn write-through log — optional (nullable in tests); when present, threaded into
-    // each AgentRunner so appendTurn persists to the raw-turn audit/replay log.
+    // Optional durable turn log shared by created AgentRunners.
     private final top.focess.veto.memory.TurnLogService turnLogService;
     private final top.focess.veto.sandbox.@NonNull BackgroundTaskManager backgroundTaskManager;
     private final @NonNull ProtectedSetResolver protectedSetResolver;
@@ -100,7 +98,7 @@ public class AgentService {
 
     @Autowired
     public AgentService(
-            @NonNull ToolEngine mcpEngine,
+            @NonNull ToolEngine toolEngine,
             @NonNull HitlRegistry hitlRegistry,
             @NonNull IngressDefense ingressDefense,
             @NonNull PromptCompiler promptCompiler,
@@ -117,7 +115,7 @@ public class AgentService {
             top.focess.veto.sandbox.@NonNull BackgroundTaskManager backgroundTaskManager,
             @NonNull ProtectedSetResolver protectedSetResolver,
             @NonNull SlmScreeningProvider slmScreeningProvider) {
-        this.mcpEngine = mcpEngine;
+        this.toolEngine = toolEngine;
         this.hitlRegistry = hitlRegistry;
         this.ingressDefense = ingressDefense;
         this.promptCompiler = promptCompiler;
@@ -147,9 +145,9 @@ public class AgentService {
         this.slmScreeningProvider = slmScreeningProvider;
     }
 
-    /** Constructor retained for focused unit tests that do not start the Spring container. */
+    /** Creates a service without optional event-stream and durable-history integrations. */
     AgentService(
-            @NonNull ToolEngine mcpEngine,
+            @NonNull ToolEngine toolEngine,
             @NonNull HitlRegistry hitlRegistry,
             @NonNull IngressDefense ingressDefense,
             @NonNull PromptCompiler promptCompiler,
@@ -165,7 +163,7 @@ public class AgentService {
             top.focess.veto.memory.TurnLogService turnLogService,
             top.focess.veto.sandbox.@NonNull BackgroundTaskManager backgroundTaskManager) {
         this(
-                mcpEngine,
+                toolEngine,
                 hitlRegistry,
                 ingressDefense,
                 promptCompiler,
@@ -434,7 +432,7 @@ public class AgentService {
      * behavior (mint a fresh persona UUID, session id = persona id) is preserved.
      *
      * @param owner the session owner (username) whose model-tier profile resolves the agent's tier;
-     *     threaded onto the runner's {@link top.focess.veto.agent.mcp.ToolCallContext} so group
+     *     threaded onto the runner's {@link top.focess.veto.agent.tool.ToolCallContext} so group
      *     spawns resolve per-user. Null in legacy/test paths.
      */
     public @NonNull Agent getOrCreateAgent(
@@ -629,7 +627,7 @@ public class AgentService {
                 new AgentRunner(
                         persona.id(),
                         persona,
-                        mcpEngine,
+                        toolEngine,
                         gateway,
                         hitlRegistry,
                         ingressDefense,
@@ -706,7 +704,7 @@ public class AgentService {
      * inherits the Leader's userId (memory tenant) and owner (whose model-tier profile resolves the
      * Mate's tier). This is the overload the production group factory ({@link
      * top.focess.veto.group.GroupAgentFactory}) uses - it reads both from the calling agent's
-     * {@link top.focess.veto.agent.mcp.ToolCallContext} so the Mate resolves its model against the
+     * {@link top.focess.veto.agent.tool.ToolCallContext} so the Mate resolves its model against the
      * same user's active profile as the Leader.
      */
     public @NonNull Agent createMate(
@@ -746,7 +744,7 @@ public class AgentService {
                 new AgentRunner(
                         scoped.id(),
                         scoped,
-                        mcpEngine,
+                        toolEngine,
                         gateway,
                         hitlRegistry,
                         ingressDefense,
@@ -767,14 +765,7 @@ public class AgentService {
         return new VetoAgent(scoped, runner);
     }
 
-    /**
-     * Builds the agent persona. Resolves the tool set from the {@link ToolEngine}'s active native +
-     * remote + agent tools. Engine control/meta tools are role-scoped here; the prompt compiler
-     * additionally removes {@code load_skill} when the persona has no registered skills, so the
-     * model-facing manifest contains only capabilities that can succeed. Full {@code ~/.veto/}
-     * persona resolution (skills, per-agent tool grants) is not yet wired — the default grants all
-     * other registered tools.
-     */
+    /** Builds the standalone persona from the active, role-scoped tool catalog. */
     private @NonNull AgentPersona buildPersona(
             @NonNull String agentKey, AgentRunner.@NonNull LlmBinding binding) {
         return buildPersona(agentKey, null, binding);
@@ -800,10 +791,7 @@ public class AgentService {
                 List.of());
     }
 
-    /**
-     * The fallback workspace agents resolve paths against when no session workspace is set (for
-     * tests).
-     */
+    /** The fallback workspace used when no session workspace is set. */
     public @NonNull Workspace workspace() {
         return defaultWorkspace;
     }
@@ -812,10 +800,8 @@ public class AgentService {
      * Derives the stable memory-tenant userId for a session owner. Users are keyed by username (no
      * UUID column on {@code UserEntity}), so a name-based UUID ({@link UUID#nameUUIDFromBytes})
      * gives each owner a distinct, deterministic tenant id. Memories and turn logs then attribute
-     * to the real user across sessions and restarts, replacing the {@code DEFAULT_USER_ID}
-     * placeholder on the activate path. Used by the session-activate path and by Mate provisioning
-     * when no tool-call scope is available (the {@link top.focess.veto.group.GroupAgentFactory}
-     * fallback).
+     * to the real user across sessions and restarts. Used by session activation and by Mate
+     * provisioning when no tool-call scope is available.
      */
     public @NonNull UUID userIdForOwner(@NonNull String owner) {
         return UUID.nameUUIDFromBytes(owner.getBytes(StandardCharsets.UTF_8));
@@ -825,7 +811,7 @@ public class AgentService {
      * The workspace registered for the agent (by persona id), or the fallback default. Used by the
      * group engine to inherit the calling session's workspace when spawning Mates / a one-shot
      * Leader (the calling agent's persona id is read from the {@link
-     * top.focess.veto.agent.mcp.ToolCallContextHolder}).
+     * top.focess.veto.agent.tool.ToolCallContextHolder}).
      */
     public @NonNull Workspace workspaceOf(@NonNull String agentId) {
         return hitlRegistry.workspace(agentId);

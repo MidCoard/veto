@@ -3,7 +3,7 @@ package top.focess.veto.agent.translation;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.agent.mcp.ToolDefinition;
+import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.llm.core.VetoResponse;
 
 /**
@@ -18,14 +18,6 @@ import top.focess.veto.llm.core.VetoResponse;
  *       constrains the model to emit a {@link VetoResponse}. The variant is governed by the guided
  *       state (autonomous vs guided-switch). {@code thought} is always optional.
  * </ol>
- *
- * <p><b>Note:</b> the spec names this {@code ProviderSchemaTranslator<T>} with a single {@code T
- * translate(ToolDefinition)} method and a stale {@code McpToolDefinition} import (a typo for {@link
- * ToolDefinition}). The {@code PromptCompiler} calls it {@code CapabilityTranslator}. The
- * two-method shape here consolidates the tools + response-schema responsibilities per the
- * coordinator's decision (translator owns both), superseding the old single-{@code call}-shape
- * {@code SchemaNormalizerService}. This interface is shared/read-only: do not modify without
- * coordinator approval; if insufficient, stop and report.
  */
 public interface CapabilityTranslator {
 
@@ -49,7 +41,6 @@ public interface CapabilityTranslator {
     /**
      * Builds the response schema with the exact role-scoped tool catalog for this turn. Autonomous
      * schemas use these names to constrain {@code calls[].tool_name}; guided schemas have no calls.
-     * The default preserves compatibility for translators that do not yet add the enum.
      */
     default @NonNull JsonNode vetoResponseSchema(
             boolean guidedSwitch, @NonNull List<top.focess.veto.llm.core.ToolDefinition> tools) {

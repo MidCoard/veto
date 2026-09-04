@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Objects;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.agent.mcp.ToolDefinition;
+import top.focess.veto.agent.tool.ToolDefinition;
 
 /**
  * Fallback {@link CapabilityTranslator} used when the Spring context has no richer translator bean.

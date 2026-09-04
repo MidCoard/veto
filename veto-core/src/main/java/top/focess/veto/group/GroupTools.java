@@ -7,17 +7,17 @@ import org.springframework.stereotype.Component;
 import top.focess.veto.agent.identity.Role;
 import top.focess.veto.agent.identity.RoleToolFilter;
 import top.focess.veto.agent.intercept.HitlRegistry;
-import top.focess.veto.agent.mcp.AgentTool;
-import top.focess.veto.agent.mcp.Doc;
-import top.focess.veto.agent.mcp.ParamCategory;
-import top.focess.veto.agent.mcp.SecurityHint;
-import top.focess.veto.agent.mcp.ToolCallContext;
-import top.focess.veto.agent.mcp.ToolCallContextHolder;
-import top.focess.veto.agent.mcp.ToolCapability;
-import top.focess.veto.agent.mcp.ToolDoc;
-import top.focess.veto.agent.mcp.ToolDocs;
-import top.focess.veto.agent.mcp.ToolErrors;
-import top.focess.veto.agent.mcp.ToolResultFormat;
+import top.focess.veto.agent.tool.AgentTool;
+import top.focess.veto.agent.tool.Doc;
+import top.focess.veto.agent.tool.ParamCategory;
+import top.focess.veto.agent.tool.SecurityHint;
+import top.focess.veto.agent.tool.ToolCallContext;
+import top.focess.veto.agent.tool.ToolCallContextHolder;
+import top.focess.veto.agent.tool.ToolCapability;
+import top.focess.veto.agent.tool.ToolDoc;
+import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.ToolErrors;
+import top.focess.veto.agent.tool.ToolResultFormat;
 
 /**
  * Agent-facing group management tools. The caller of {@code create_group} <em>transforms</em> into
@@ -509,7 +509,6 @@ public final class GroupTools {
         }
     }
 
-    /** Legacy implementation retained for compatibility; no production role exports this tool. */
     @ToolDoc(
             resultFormats = {ToolResultFormat.PLAINTEXT},
             description =

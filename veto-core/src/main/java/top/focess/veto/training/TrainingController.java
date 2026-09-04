@@ -9,9 +9,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import top.focess.veto.controller.RequestAuthorization;
 
 /**
- * REST API for managing the Veto SLM model training pipeline.
+ * Administrator-only REST API for managing the Veto SLM model training pipeline.
  *
  * <p>Endpoints:
  *
@@ -22,7 +23,7 @@ import org.springframework.web.bind.annotation.*;
  *   <li>GET /api/v1/training/progress - Get training progress
  *   <li>POST /api/v1/training/deploy - Deploy a trained model to the gateway
  *   <li>GET /api/v1/training/status - Get overall training system status
- *   <li>POST /api/v1/training/quality-check - Run quality filter on training data (Feature 6.3)
+ *   <li>POST /api/v1/training/quality-check - Run quality filter on training data
  *   <li>GET /api/v1/training/evaluation - Get the latest evaluation report
  */
 @RestController
@@ -34,11 +35,15 @@ public class TrainingController {
 
     private final @NonNull TrainingManager trainingManager;
     private final @NonNull TrainingConfiguration config;
+    private final @NonNull RequestAuthorization authorization;
 
     public TrainingController(
-            @NonNull TrainingManager trainingManager, @NonNull TrainingConfiguration config) {
+            @NonNull TrainingManager trainingManager,
+            @NonNull TrainingConfiguration config,
+            @NonNull RequestAuthorization authorization) {
         this.trainingManager = trainingManager;
         this.config = config;
+        this.authorization = authorization;
     }
 
     /**
@@ -52,6 +57,7 @@ public class TrainingController {
     @PostMapping("/start")
     public @NonNull ResponseEntity<Map<String, Object>> startTraining(
             @RequestBody(required = false) TrainingRequest request) {
+        authorization.requireAdmin();
         if (trainingManager.isRunning()) {
             return ResponseEntity.status(409)
                     .body(
@@ -93,6 +99,7 @@ public class TrainingController {
     /** Cancel the current training run. */
     @PostMapping("/cancel")
     public @NonNull ResponseEntity<Map<String, Object>> cancelTraining() {
+        authorization.requireAdmin();
         if (!trainingManager.isRunning()) {
             return ResponseEntity.ok(
                     Map.of(
@@ -119,6 +126,7 @@ public class TrainingController {
     /** Get current training progress. */
     @GetMapping("/progress")
     public @NonNull ResponseEntity<Map<String, Object>> getProgress() {
+        authorization.requireAdmin();
         TrainingProgress p = trainingManager.getProgress();
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("status", p.getStatus().name());
@@ -148,10 +156,14 @@ public class TrainingController {
             produces = MediaType.APPLICATION_JSON_VALUE)
     public @NonNull ResponseEntity<Map<String, Object>> deployModel(
             @RequestBody @NonNull Map<String, String> request) {
+        authorization.requireAdmin();
         String modelPath = request.get("modelPath");
         if (modelPath == null || modelPath.isEmpty()) {
-            // Default to the most recent trained model
-            modelPath = config.getModelOutputDir() + "/" + config.getDefaultGgufName();
+            String latestModel = trainingManager.getProgress().getTrainedModelPath();
+            modelPath =
+                    latestModel.isBlank()
+                            ? config.getModelOutputDir() + "/" + config.getDefaultGgufName()
+                            : latestModel;
         }
 
         boolean deployed = trainingManager.deployModel(modelPath);
@@ -179,6 +191,7 @@ public class TrainingController {
     /** Get overall training system status (configuration info). */
     @GetMapping("/status")
     public @NonNull ResponseEntity<Map<String, Object>> getStatus() {
+        authorization.requireAdmin();
         return ResponseEntity.ok(
                 Map.of(
                         "running", trainingManager.isRunning(),
@@ -193,11 +206,12 @@ public class TrainingController {
     }
 
     /**
-     * Run the quality filter (Feature 6.3) on existing training data without starting a training
-     * run. Returns the filter report.
+     * Run the quality filter on existing training data without starting a training run. Returns the
+     * filter report.
      */
     @PostMapping("/quality-check")
     public @NonNull ResponseEntity<Map<String, Object>> runQualityCheck() {
+        authorization.requireAdmin();
         Map<String, Object> report = trainingManager.runStandaloneQualityCheck();
         if (report != null) {
             return ResponseEntity.ok(
@@ -222,6 +236,7 @@ public class TrainingController {
     /** Get the latest evaluation report from the most recent training run. */
     @GetMapping("/evaluation")
     public @NonNull ResponseEntity<Map<String, Object>> getEvaluation() {
+        authorization.requireAdmin();
         TrainingProgress.EvaluationReport eval = trainingManager.getProgress().getEvaluation();
         if (eval != null) {
             return ResponseEntity.ok(Map.of("success", true, "evaluation", eval));

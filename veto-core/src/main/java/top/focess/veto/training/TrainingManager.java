@@ -25,7 +25,7 @@ import top.focess.veto.security.HostPathInput;
  * models.
  *
  * <p>Supports structured JSON progress output from train.py (Feature 6.2) and the quality filter
- * gate (Feature 6.3).
+ * gate.
  */
 @Service
 @SuppressWarnings(
@@ -118,8 +118,9 @@ public class TrainingManager {
         }
 
         // Resolve effective parameters (request overrides config)
+        String requestedBaseModel = request.baseModel();
         String effectiveBaseModel =
-                request.baseModel() != null ? request.baseModel() : config.getBaseModel();
+                requestedBaseModel != null ? requestedBaseModel : config.getBaseModel();
         Integer requestedEpochs = request.epochs();
         Double requestedLearningRate = request.learningRate();
         Integer requestedBatchSize = request.batchSize();
@@ -173,13 +174,14 @@ public class TrainingManager {
                     try {
                         // Step 1: Generate training data
                         progress.updatePhase("preparing_data", 0.05, "Generating training data...");
-                        if (!runPythonScript(pythonDir, "prepare_data.py --skip-quality-check")) {
+                        if (!runPythonScript(
+                                pythonDir, "prepare_data.py", "--skip-quality-check")) {
                             progress.fail("Data preparation failed");
                             running.set(false);
                             return;
                         }
 
-                        // Step 2: Quality filter (Feature 6.3)
+                        // Step 2: Quality filter
                         if (config.isQualityFilterEnabled() && !skipQualityFilter) {
                             progress.updatePhase(
                                     "quality_filter",
@@ -204,19 +206,24 @@ public class TrainingManager {
                         outputDir = outputDir.toAbsolutePath();
                         Files.createDirectories(outputDir);
 
-                        String trainArgs =
-                                String.format(
-                                        "train.py --base-model %s --data-path %s --output-dir %s "
-                                                + "--epochs %d --lr %s --batch-size %d --lora-r %d"
-                                                + " --structured-output",
-                                        baseModel,
-                                        dataPath.toAbsolutePath(),
-                                        outputDir,
-                                        epochs,
-                                        lr,
-                                        batchSize,
-                                        loraRank);
-                        if (!runPythonScript(pythonDir, trainArgs)) {
+                        if (!runPythonScript(
+                                pythonDir,
+                                "train.py",
+                                "--base-model",
+                                baseModel,
+                                "--data-path",
+                                dataPath.toAbsolutePath().toString(),
+                                "--output-dir",
+                                outputDir.toString(),
+                                "--epochs",
+                                Integer.toString(epochs),
+                                "--lr",
+                                Double.toString(lr),
+                                "--batch-size",
+                                Integer.toString(batchSize),
+                                "--lora-r",
+                                Integer.toString(loraRank),
+                                "--structured-output")) {
                             progress.fail("Training failed");
                             running.set(false);
                             return;
@@ -225,11 +232,19 @@ public class TrainingManager {
                         // Step 4: Convert to GGUF
                         progress.updatePhase("converting", 0.8, "Converting to GGUF Q4_K_M...");
                         Path mergedDir = outputDir.resolve("merged");
-                        String convertArgs =
-                                String.format(
-                                        "convert_to_gguf.py --model-dir %s --quantize-type q4_k_m --model-name veto-slm",
-                                        mergedDir.toAbsolutePath());
-                        if (!runPythonScript(pythonDir, convertArgs)) {
+                        Path conversionRun = Files.createTempDirectory(outputDir, "conversion-");
+                        if (!runPythonScript(
+                                pythonDir,
+                                "convert_to_gguf.py",
+                                "--model-dir",
+                                mergedDir.toAbsolutePath().toString(),
+                                "--quantize-type",
+                                "q4_k_m",
+                                "--model-name",
+                                "veto-slm",
+                                "--output-dir",
+                                conversionRun.resolve("gguf").toString(),
+                                "--no-default-copy")) {
                             progress.fail("GGUF conversion failed");
                             running.set(false);
                             return;
@@ -239,44 +254,27 @@ public class TrainingManager {
                         progress.updatePhase("evaluating", 0.9, "Evaluating trained model...");
                         Path evalDataPath =
                                 trainingDir.resolve("data").resolve("veto_eval_data.jsonl");
-                        Path ggufModelPath = resolveGgufModelPath(outputDir, trainingDir);
+                        Path ggufModelPath = resolveGgufModelPath(conversionRun);
 
                         if (Files.exists(evalDataPath) && Files.exists(ggufModelPath)) {
                             Path evalReportPath =
                                     outputDir.resolve("eval_report_java.json").toAbsolutePath();
-                            String evalArgs =
-                                    String.format(
-                                            "evaluate.py --model %s --data %s --output %s --json-output",
-                                            ggufModelPath.toAbsolutePath(),
-                                            evalDataPath.toAbsolutePath(),
-                                            evalReportPath);
-                            runPythonScript(pythonDir, evalArgs);
+                            runPythonScript(
+                                    pythonDir,
+                                    "evaluate.py",
+                                    "--model",
+                                    ggufModelPath.toAbsolutePath().toString(),
+                                    "--data",
+                                    evalDataPath.toAbsolutePath().toString(),
+                                    "--output",
+                                    evalReportPath.toString(),
+                                    "--json-output");
 
                             // Parse evaluation report into TrainingProgress.EvaluationReport
                             parseEvaluationReport(evalReportPath);
                         }
 
-                        // Determine final model path
-                        Path finalGguf =
-                                Path.of(config.getModelOutputDir())
-                                        .resolve(config.getDefaultGgufName())
-                                        .toAbsolutePath();
-                        if (!Files.exists(finalGguf)) {
-                            Path q4Gguf =
-                                    Path.of(config.getModelOutputDir())
-                                            .resolve("veto-slm-q4_k_m.gguf")
-                                            .toAbsolutePath();
-                            if (Files.exists(q4Gguf)) {
-                                Files.copy(q4Gguf, finalGguf, StandardCopyOption.REPLACE_EXISTING);
-                            }
-                        }
-
-                        progress.complete(finalGguf.toString());
-
-                        // Auto-deploy if configured
-                        if (config.isAutoDeployOnCompletion() && Files.exists(finalGguf)) {
-                            deployModel(finalGguf.toString());
-                        }
+                        completeTraining(ggufModelPath);
 
                     } catch (Exception e) {
                         log.error("Training pipeline failed", e);
@@ -592,36 +590,43 @@ public class TrainingManager {
         return trainingDir.resolve("data").resolve("veto_training_data.jsonl");
     }
 
-    private @NonNull Path resolveGgufModelPath(@NonNull Path outputDir, @NonNull Path trainingDir) {
-        // Try the output dir first
-        Path candidate = outputDir.resolve("veto-slm-q4_k_m.gguf");
-        if (Files.exists(candidate)) {
-            return candidate;
+    static @NonNull Path resolveGgufModelPath(@NonNull Path outputDir) throws IOException {
+        Path candidate = outputDir.resolve("gguf").resolve("veto-slm-q4_k_m.gguf");
+        if (!Files.isRegularFile(candidate)) {
+            throw new IOException(
+                    "Conversion did not produce the expected GGUF model: " + candidate);
         }
-        // Fallback: training/models/
-        return trainingDir.resolve("models").resolve("veto-slm-q4_k_m.gguf");
+        return candidate;
+    }
+
+    void completeTraining(@NonNull Path convertedModel) {
+        if (!Files.isRegularFile(convertedModel)) {
+            progress.fail("Converted GGUF model is missing: " + convertedModel);
+            return;
+        }
+        if (config.isAutoDeployOnCompletion() && !deployModel(convertedModel.toString())) {
+            progress.fail("Failed to deploy converted GGUF model: " + convertedModel);
+            return;
+        }
+        progress.complete(convertedModel.toAbsolutePath().toString());
     }
 
     /**
      * Run a Python script located in the training/python directory.
      *
      * @param workingDir the python/ directory
-     * @param command the command to run (e.g. "prepare_data.py" or "train.py --epochs 3")
+     * @param arguments the script name followed by individual arguments
      * @return true if the script exited with code 0
      */
-    private boolean runPythonScript(@NonNull Path workingDir, @NonNull String command) {
+    private boolean runPythonScript(
+            @NonNull Path workingDir, @NonNull String @NonNull ... arguments) {
         // Resolve Python interpreter (prefer venv)
         String python = resolvePythonPath();
 
         // Build the command
-        String[] cmd;
-        if (command.contains(" ")) {
-            // Split script name and args
-            String[] parts = command.split(" ", 2);
-            cmd = new String[] {python, parts[0], parts[1]};
-        } else {
-            cmd = new String[] {python, command};
-        }
+        java.util.List<String> cmd = new java.util.ArrayList<>();
+        cmd.add(python);
+        cmd.addAll(java.util.List.of(arguments));
 
         ProcessBuilder pb = new ProcessBuilder(cmd);
         pb.directory(workingDir.toFile());
@@ -634,7 +639,7 @@ public class TrainingManager {
             env.put("VETO_BASE_MODEL", config.getBaseModel());
         }
 
-        log.info("Running: {} {} (cwd={})", cmd[0], cmd[1], workingDir);
+        log.info("Running: {} {} (cwd={})", cmd.getFirst(), cmd.get(1), workingDir);
 
         try {
             Process process = pb.start();

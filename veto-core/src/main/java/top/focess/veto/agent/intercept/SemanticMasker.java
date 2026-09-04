@@ -10,7 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
-import top.focess.veto.agent.mcp.ToolDefinition;
+import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.veto.LlamaCppBridge;
 

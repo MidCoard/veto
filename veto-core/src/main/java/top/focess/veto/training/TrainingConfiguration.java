@@ -39,7 +39,7 @@ public class TrainingConfiguration {
     /** Whether to automatically restart the LlamaCppBridge after deploy. */
     private boolean restartBridgeOnDeploy = true;
 
-    /** Whether to run the quality filter (Feature 6.3) before training. */
+    /** Whether to run the quality filter before training. */
     private boolean qualityFilterEnabled = true;
 
     // ── Getters & Setters ──

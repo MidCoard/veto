@@ -13,15 +13,15 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.identity.Role;
 import top.focess.veto.agent.identity.SystemPromptResolver;
-import top.focess.veto.agent.mcp.AgentToolDefinition;
-import top.focess.veto.agent.mcp.ToolCapability;
-import top.focess.veto.agent.mcp.ToolDocs;
-import top.focess.veto.agent.mcp.ToolDocumentation;
-import top.focess.veto.agent.mcp.ToolResultFormat;
-import top.focess.veto.agent.mcp.ToolSchemaCompiler;
-import top.focess.veto.agent.mcp.tools.GrepSearchTool;
-import top.focess.veto.agent.mcp.tools.RunCommandTool;
 import top.focess.veto.agent.screening.DeployerPolicy;
+import top.focess.veto.agent.tool.AgentToolDefinition;
+import top.focess.veto.agent.tool.ToolCapability;
+import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.ToolDocumentation;
+import top.focess.veto.agent.tool.ToolResultFormat;
+import top.focess.veto.agent.tool.ToolSchemaCompiler;
+import top.focess.veto.agent.tool.builtin.GrepSearchTool;
+import top.focess.veto.agent.tool.builtin.RunCommandTool;
 import top.focess.veto.agent.translation.VetoCapabilityTranslator;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
@@ -412,7 +412,7 @@ class PromptCompileRenderTest {
     void forgetResultContractUsesOneNonDisclosingFailure() {
         var manifest =
                 AgentToolDefinition.from(
-                        "forget",
+                        "forget_memory",
                         ToolDocs.nonNullClass(MemoryTools.ForgetMemory.Args.class),
                         ToolCapability.MEMORY_WRITE);
         List<ToolDefinition> flat =

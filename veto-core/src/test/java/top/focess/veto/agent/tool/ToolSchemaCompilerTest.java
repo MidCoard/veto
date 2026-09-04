@@ -1,0 +1,238 @@
+package top.focess.veto.agent.tool;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.Test;
+import top.focess.veto.agent.screening.Danger;
+import top.focess.veto.agent.tool.builtin.DeletePathTool;
+import top.focess.veto.agent.tool.builtin.FindFilesTool;
+import top.focess.veto.agent.tool.builtin.RunCommandTool;
+import top.focess.veto.agent.tool.builtin.RunTaskTool;
+import top.focess.veto.agent.tool.builtin.ViewTaskTool;
+import top.focess.veto.memory.MemoryTools;
+
+/**
+ * Validates {@link ToolSchemaCompiler#compileFromRecord}, in particular that nested record
+ * components are reflected into the schema instead of being flattened to {@code items: string}.
+ */
+class ToolSchemaCompilerTest {
+
+    private record ExplicitPrimitive(@Required int count) {}
+
+    private record ImplicitPrimitive(int count) {}
+
+    private record RequiredReference(@Required String value) {}
+
+    private enum ConditionalMode {
+        WRITE,
+        PROMOTE
+    }
+
+    private record ConditionalArgs(
+            @NonNull ConditionalMode mode,
+            @RequiredWhen(field = "mode", values = "WRITE", rejectBlank = true) String content) {}
+
+    @Test
+    void nestedRecordCollectionGetsObjectItemsSchema() {
+        JsonNode schema =
+                ToolSchemaCompiler.compileFromRecord(
+                        ToolDocs.nonNullClass(RunCommandTool.Args.class));
+
+        JsonNode commands = schema.path("properties").path("commands");
+        assertEquals("array", commands.path("type").asText(), "commands is an array");
+
+        // The element type is the CommandInput record - its full object schema must be advertised,
+        // not the old "items: [{type: string}]" lie that left the model guessing at the shape.
+        JsonNode items = commands.path("items");
+        assertTrue(items.isObject(), "items is a single schema object, not a tuple array");
+        assertEquals("object", items.path("type").asText(), "commands holds objects");
+
+        JsonNode args = items.path("properties").path("args");
+        assertEquals("array", args.path("type").asText(), "CommandInput.args is an array");
+        assertEquals(
+                "string",
+                args.path("items").path("type").asText(),
+                "CommandInput.args items are strings");
+
+        JsonNode executable = items.path("properties").path("executable");
+        assertEquals(
+                "string", executable.path("type").asText(), "CommandInput.executable is a string");
+
+        // Both nested components are non-nullable, so they must be required inside the item schema.
+        assertTrue(
+                contains(items.path("required"), "executable"),
+                "executable required in item schema");
+        assertTrue(contains(items.path("required"), "args"), "args required in item schema");
+
+        JsonNode network = schema.path("properties").path("network");
+        assertEquals(
+                "boolean",
+                network.path("type").asText(),
+                "network is a boolean capability request");
+        assertFalse(contains(schema.path("required"), "network"), "network defaults to denied");
+        assertFalse(schema.path("properties").has("cwd"), "cwd is supplied by the session");
+    }
+
+    @Test
+    void processToolSchemasDoNotExposeWorkingDirectory() {
+        JsonNode runCommand =
+                ToolSchemaCompiler.compileFromRecord(
+                        ToolDocs.nonNullClass(RunCommandTool.Args.class));
+        JsonNode runTask =
+                ToolSchemaCompiler.compileFromRecord(ToolDocs.nonNullClass(RunTaskTool.Args.class));
+
+        assertFalse(runCommand.path("properties").has("cwd"));
+        assertFalse(runTask.path("properties").has("cwd"));
+    }
+
+    @Test
+    void toolManagedLimitsAreNotExposedAsCallArguments() {
+        JsonNode findFiles =
+                ToolSchemaCompiler.compileFromRecord(
+                        ToolDocs.nonNullClass(FindFilesTool.Args.class));
+        JsonNode viewTask =
+                ToolSchemaCompiler.compileFromRecord(
+                        ToolDocs.nonNullClass(ViewTaskTool.Args.class));
+        JsonNode recallMemory =
+                ToolSchemaCompiler.compileFromRecord(
+                        ToolDocs.nonNullClass(MemoryTools.RecallMemory.Args.class));
+
+        assertFalse(findFiles.path("properties").has("maxResults"));
+        assertFalse(viewTask.path("properties").has("lines"));
+        assertFalse(recallMemory.path("properties").has("topK"));
+        assertFalse(recallMemory.path("properties").has("scoreFloor"));
+    }
+
+    @Test
+    void destructiveToolDeclaresItsDangerFloorDirectly() {
+        ToolSecurity security =
+                ToolDocs.nonNullClass(DeletePathTool.class)
+                        .getAnnotation(ToolDocs.nonNullClass(ToolSecurity.class));
+        if (security == null) {
+            throw new AssertionError("delete_path must declare @ToolSecurity");
+        }
+
+        assertEquals(ToolCapability.WORKSPACE_WRITE, security.capability());
+        assertEquals(Danger.DANGEROUS, security.defaultDanger());
+        assertTrue(security.requiresSemanticScreening());
+    }
+
+    private static boolean contains(@NonNull JsonNode array, @NonNull String value) {
+        if (!array.isArray()) return false;
+        for (JsonNode n : array) {
+            if (value.equals(n.asText())) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Sanity check the rendered schema is valid JSON (the compiler uses a private mapper; the
+     * output must still be consumable by the shared LLM mapper that builds the manifest).
+     */
+    @Test
+    void schemaRoundTripsThroughObjectMapper() throws Exception {
+        JsonNode schema =
+                ToolSchemaCompiler.compileFromRecord(
+                        ToolDocs.nonNullClass(RunCommandTool.Args.class));
+        String json = new ObjectMapper().writeValueAsString(schema);
+        assertTrue(json.contains("\"commands\""), "serialized schema keeps commands");
+        assertTrue(json.contains("\"executable\""), "serialized schema keeps nested executable");
+    }
+
+    @Test
+    void forgetMemoryIdIsRequired() {
+        JsonNode schema =
+                ToolSchemaCompiler.compileFromRecord(
+                        ToolDocs.nonNullClass(MemoryTools.ForgetMemory.Args.class));
+
+        assertTrue(
+                contains(schema.path("required"), "memoryId"),
+                "forget must reject a missing memoryId before its handler runs");
+    }
+
+    @Test
+    void enumArgumentIsRenderedAsAStringEnum() {
+        JsonNode schema =
+                ToolSchemaCompiler.compileFromRecord(
+                        ToolDocs.nonNullClass(MemoryTools.WriteMemory.Args.class));
+
+        JsonNode mode = schema.path("properties").path("mode");
+        assertEquals("string", mode.path("type").asText());
+        assertTrue(contains(mode.path("enum"), "WRITE"));
+        assertTrue(contains(mode.path("enum"), "PROMOTE"));
+        assertTrue(contains(schema.path("required"), "mode"));
+    }
+
+    @Test
+    void primitiveRequirementMustBeExplicit() {
+        JsonNode schema =
+                ToolSchemaCompiler.compileFromRecord(
+                        ToolDocs.nonNullClass(ExplicitPrimitive.class));
+
+        assertTrue(contains(schema.path("required"), "count"));
+        IllegalArgumentException failure =
+                assertThrows(
+                        ToolDocs.nonNullClass(IllegalArgumentException.class),
+                        () ->
+                                ToolSchemaCompiler.compileFromRecord(
+                                        ToolDocs.nonNullClass(ImplicitPrimitive.class)));
+        assertEquals(
+                "Primitive tool parameter 'count' must declare @Required or use a boxed optional type",
+                failure.getMessage());
+    }
+
+    @Test
+    void referencesUseNonNullRatherThanRequired() {
+        IllegalArgumentException failure =
+                assertThrows(
+                        ToolDocs.nonNullClass(IllegalArgumentException.class),
+                        () ->
+                                ToolSchemaCompiler.compileFromRecord(
+                                        ToolDocs.nonNullClass(RequiredReference.class)));
+
+        assertEquals(
+                "Reference tool parameter 'value' must use @NonNull instead of @Required",
+                failure.getMessage());
+    }
+
+    @Test
+    void conditionalRequirementIsValidatedBeforeDispatch() throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+
+        ToolExecutionException missing =
+                assertThrows(
+                        ToolDocs.nonNullClass(ToolExecutionException.class),
+                        () ->
+                                NativeToolArgumentValidator.validate(
+                                        "conditional",
+                                        mapper.readTree("{\"mode\":\"WRITE\"}"),
+                                        ToolDocs.nonNullClass(ConditionalArgs.class)));
+        assertTrue(
+                String.valueOf(missing.getMessage())
+                        .contains("missing required parameter 'content' when 'mode' is 'WRITE'"));
+        assertEquals("INVALID_ARGUMENTS", missing.errorCode());
+
+        ToolExecutionException blank =
+                assertThrows(
+                        ToolDocs.nonNullClass(ToolExecutionException.class),
+                        () ->
+                                NativeToolArgumentValidator.validate(
+                                        "conditional",
+                                        mapper.readTree("{\"mode\":\"WRITE\",\"content\":\"  \"}"),
+                                        ToolDocs.nonNullClass(ConditionalArgs.class)));
+        assertTrue(
+                String.valueOf(blank.getMessage())
+                        .contains("parameter 'content' must not be blank"));
+        assertEquals("INVALID_ARGUMENTS", blank.errorCode());
+
+        assertDoesNotThrow(
+                () ->
+                        NativeToolArgumentValidator.validate(
+                                "conditional",
+                                mapper.readTree("{\"mode\":\"PROMOTE\"}"),
+                                ToolDocs.nonNullClass(ConditionalArgs.class)));
+    }
+}

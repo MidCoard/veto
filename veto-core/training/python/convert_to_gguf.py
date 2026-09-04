@@ -37,6 +37,8 @@ def parse_args():
                         help="Output model filename (without extension)")
     parser.add_argument("--copy-to", type=str, default=None,
                         help="Additional copy destination (e.g., ../../models/veto-slm.gguf)")
+    parser.add_argument("--no-default-copy", action="store_true",
+                        help="Leave deployment to the caller; do not copy to project models/")
     parser.add_argument("--log-file", type=str, default="conversion_log.jsonl")
     return parser.parse_args()
 
@@ -199,7 +201,9 @@ def main():
 
     # ── Default copy to project models/ ──
     default_project_model = Path(__file__).parent.parent.parent / "models" / "veto-slm.gguf"
-    if not args.copy_to or not paths_refer_to_same_file(args.copy_to, default_project_model):
+    if not args.no_default_copy and (
+        not args.copy_to or not paths_refer_to_same_file(args.copy_to, default_project_model)
+    ):
         default_project_model.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(final_path, str(default_project_model))
         print(f"[OK] Also copied to {default_project_model} (default LlamaCppBridge path)")

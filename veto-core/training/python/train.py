@@ -220,7 +220,7 @@ def train(args):
     """Main training loop."""
     out_dir = setup_environment(args)
 
-    # ── Quality Filter (Feature 6.3) ──
+    # ── Quality Filter ──
     if args.quality_filter:
         emit_progress("phase", phase="quality_filter", message="Running quality filter on training data...")
         if not run_quality_filter(args.data_path):

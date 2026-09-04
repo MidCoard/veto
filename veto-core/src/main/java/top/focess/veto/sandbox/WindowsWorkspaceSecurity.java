@@ -27,7 +27,7 @@ import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import top.focess.veto.agent.mcp.ToolDocs;
+import top.focess.veto.agent.tool.ToolDocs;
 
 /** Windows AppContainer identity and inheritable workspace ACL provisioner. */
 final class WindowsWorkspaceSecurity {

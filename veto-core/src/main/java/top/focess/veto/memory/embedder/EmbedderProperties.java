@@ -5,7 +5,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 /**
  * Configuration for the hybrid embedder. When {@code veto.memory.embedder.provider} is set, a
  * {@link ProviderEmbedder} calls the provider's embeddings REST API; otherwise the {@link
- * HashEmbedder} local stub is used.
+ * HashEmbedder} implementation is used.
  *
  * <pre>
  * veto:
@@ -23,7 +23,7 @@ public class EmbedderProperties {
 
     /**
      * Provider: {@code openai} (OpenAI-compatible REST) or {@code gemini}. Null/blank -> local
-     * stub.
+     * implementation.
      */
     private String provider;
 

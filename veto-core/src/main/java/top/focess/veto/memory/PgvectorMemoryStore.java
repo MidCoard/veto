@@ -34,9 +34,9 @@ import top.focess.veto.memory.embedder.Embedder;
  * exercised by the H2 test suite</b>, consistent with {@link JpaMemoryStore} (also untested); it is
  * verified against a real Postgres+pgvector in deployment.
  *
- * <p>Embedding is delegated to the injected {@link Embedder} (the local hash stub by default, a
- * provider embedder when configured); the {@code vector(N)} column dimension tracks {@link
- * Embedder#dimension()}.
+ * <p>Embedding is delegated to the injected {@link Embedder} (the local hash implementation by
+ * default, a provider embedder when configured); the {@code vector(N)} column dimension tracks
+ * {@link Embedder#dimension()}.
  */
 @Component
 @ConditionalOnProperty(name = "veto.memory.store", havingValue = "pgvector")

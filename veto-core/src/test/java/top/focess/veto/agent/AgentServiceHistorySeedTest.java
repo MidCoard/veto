@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
@@ -13,8 +14,7 @@ import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.loop.PromptCompiler;
-import top.focess.veto.agent.mcp.DefaultToolEngine;
-import top.focess.veto.agent.mcp.ToolDocs;
+import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.llm.core.ProviderType;
@@ -106,7 +106,7 @@ class AgentServiceHistorySeedTest {
     }
 
     @Test
-    void restartedAgentReplaysSystemSnapshotWithoutDuplicatingIt() throws Exception {
+    void restartedAgentUsesLastOrderedSystemSnapshotWithoutAddingAnother() throws Exception {
         UUID sessionId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
         AgentRunner.LlmBinding binding = binding();
@@ -120,11 +120,14 @@ class AgentServiceHistorySeedTest {
                 beforeRestart.getOrCreateAgent(sessionId.toString(), binding, List.of(), userId);
         first.submit("first request");
         assertTrue(first.await(TIMEOUT).success());
-        List<TurnRecord> replayed = first.history();
+        List<TurnRecord> replayed = new ArrayList<>(first.history());
         assertEquals(TurnType.AGENT_INIT, replayed.get(0).type());
-        assertEquals(1, count(replayed, TurnType.AGENT_INIT));
-        String recordedSystemPrompt =
-                (String) requireField(replayed.get(0).payload().get("system_prompt"));
+        String transformedSystemPrompt = "system prompt recorded by a later role transition";
+        int nextTurn = replayed.stream().mapToInt(TurnRecord::turnNumber).max().orElseThrow() + 1;
+        replayed.add(
+                TurnRecord.agentInit(
+                        nextTurn, "LEADER", transformedSystemPrompt, "DEEPSEEK", "stub"));
+        assertEquals(2, count(replayed, TurnType.AGENT_INIT));
         first.terminate();
 
         AtomicReference<VetoRequest> resumedRequest = new AtomicReference<>();
@@ -146,15 +149,15 @@ class AgentServiceHistorySeedTest {
         resumed.submit("second request");
         assertTrue(resumed.await(TIMEOUT).success());
 
-        assertEquals(1, count(resumed.history(), TurnType.AGENT_INIT));
+        assertEquals(2, count(resumed.history(), TurnType.AGENT_INIT));
         assertEquals(2, count(resumed.history(), TurnType.USER_PROMPT));
         VetoRequest request =
                 assertInstanceOf(ToolDocs.nonNullClass(VetoRequest.class), resumedRequest.get());
         assertEquals("system", request.messages().get(0).role());
         assertEquals(
-                recordedSystemPrompt,
+                transformedSystemPrompt,
                 request.messages().get(0).content(),
-                "resume must use the recorded AGENT_INIT system prompt exactly");
+                "resume must use the last AGENT_INIT in durable record order");
         assertFalse(
                 request.messages().get(0).content().contains("updated after restart"),
                 "a changed runtime template must not replace the durable system insertion");
@@ -179,14 +182,14 @@ class AgentServiceHistorySeedTest {
         org.springframework.test.util.ReflectionTestUtils.setField(
                 compiler, "contextFillRatio", 0.9);
         return new AgentService(
-                new DefaultToolEngine(),
+                new TestToolEngine(),
                 new HitlRegistry(),
                 new IngressDefense(),
                 compiler,
                 caller,
                 mapper,
                 List.of(),
-                new top.focess.veto.agent.identity.RoleToolFilter(new DefaultToolEngine()),
+                new top.focess.veto.agent.identity.RoleToolFilter(new TestToolEngine()),
                 "REAL",
                 50L,
                 "FULL_ACCESS",

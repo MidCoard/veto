@@ -11,14 +11,14 @@ import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.identity.RoleToolFilter;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
-import top.focess.veto.agent.mcp.ToolCallContext;
-import top.focess.veto.agent.mcp.ToolCallContextHolder;
-import top.focess.veto.agent.mcp.ToolDefinition;
-import top.focess.veto.agent.mcp.ToolDocs;
-import top.focess.veto.agent.mcp.ToolEngine;
-import top.focess.veto.agent.mcp.ToolErrors;
-import top.focess.veto.agent.mcp.ToolExecutionException;
-import top.focess.veto.agent.mcp.ToolResult;
+import top.focess.veto.agent.tool.ToolCallContext;
+import top.focess.veto.agent.tool.ToolCallContextHolder;
+import top.focess.veto.agent.tool.ToolDefinition;
+import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.ToolEngine;
+import top.focess.veto.agent.tool.ToolErrors;
+import top.focess.veto.agent.tool.ToolExecutionException;
+import top.focess.veto.agent.tool.ToolResult;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.group.GroupTools.CreateGroup;
@@ -112,7 +112,7 @@ class GroupToolsWiringTest {
             ToolCallContextHolder.TransformRequest request = ToolCallContextHolder.drainTransform();
             ToolCallContextHolder.TransformDirective directive =
                     assertInstanceOf(
-                                    top.focess.veto.agent.mcp.ToolDocs.nonNullClass(
+                                    top.focess.veto.agent.tool.ToolDocs.nonNullClass(
                                             ToolCallContextHolder.TransformRequest.ToLeader.class),
                                     requireTransform(request))
                             .directive();
@@ -185,7 +185,7 @@ class GroupToolsWiringTest {
             ToolCallContextHolder.TransformRequest request = ToolCallContextHolder.drainTransform();
             String brief =
                     assertInstanceOf(
-                                    top.focess.veto.agent.mcp.ToolDocs.nonNullClass(
+                                    top.focess.veto.agent.tool.ToolDocs.nonNullClass(
                                             ToolCallContextHolder.TransformRequest.ToStandalone
                                                     .class),
                                     requireTransform(request))

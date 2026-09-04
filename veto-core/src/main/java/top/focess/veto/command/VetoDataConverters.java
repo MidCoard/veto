@@ -3,7 +3,7 @@ package top.focess.veto.command;
 import org.jspecify.annotations.NonNull;
 import top.focess.command.DataCollection;
 import top.focess.command.DataConverter;
-import top.focess.veto.agent.mcp.ToolDocs;
+import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.command.data.ObjectBuffer;
 import top.focess.veto.model.tier.ModelTier;
 

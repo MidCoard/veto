@@ -535,7 +535,7 @@ def main():
     print(f"  Tasks: {task_counts}")
     print(f"  Written to {OUT_DIR}")
 
-    # ── Quality Filter (Feature 6.3) ──
+    # ── Quality Filter ──
     if run_quality_check:
         print("\nRunning quality filter on generated data...")
         import subprocess

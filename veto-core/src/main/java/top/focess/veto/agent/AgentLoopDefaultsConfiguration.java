@@ -8,23 +8,12 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import top.focess.veto.agent.loop.PromptCompiler;
-import top.focess.veto.agent.mcp.DefaultToolEngine;
-import top.focess.veto.agent.mcp.ToolEngine;
 import top.focess.veto.agent.translation.CapabilityTranslator;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.config.LlmJacksonConfig;
 
-/**
- * Registers the default (replaceable) beans the loop depends on: a {@link CapabilityTranslator}
- * (the deterministic {@code veto_pulse} schema + flat-tool builder) and a {@link ToolEngine} (no-op
- * scaffold). Both are {@code @ConditionalOnMissingBean} — richer implementations override them when
- * present.
- *
- * <p>These defaults are required so the Spring context starts and the live terminal path runs
- * end-to-end; they do not implement the richer logic (native-tool reflection, server registration,
- * transport dispatch).
- */
+/** Registers replaceable loop infrastructure that can be supplied by an embedding application. */
 @Configuration
 public class AgentLoopDefaultsConfiguration {
 
@@ -33,12 +22,6 @@ public class AgentLoopDefaultsConfiguration {
     public @NonNull CapabilityTranslator defaultCapabilityTranslator(
             @Qualifier(LlmJacksonConfig.LLM_OBJECT_MAPPER) @NonNull ObjectMapper objectMapper) {
         return new DefaultCapabilityTranslator(objectMapper);
-    }
-
-    @Bean
-    @ConditionalOnMissingBean(ToolEngine.class)
-    public @NonNull ToolEngine defaultToolEngine() {
-        return new DefaultToolEngine();
     }
 
     /**

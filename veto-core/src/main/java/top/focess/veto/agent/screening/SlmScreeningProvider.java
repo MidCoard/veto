@@ -2,7 +2,7 @@ package top.focess.veto.agent.screening;
 
 import java.util.Optional;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.agent.mcp.ToolDefinition;
+import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.llm.core.ToolCall;
 
 /**

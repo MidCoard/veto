@@ -20,9 +20,9 @@ import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.*;
 import org.springframework.web.client.RestTemplate;
 import top.focess.veto.VetoApplication;
-import top.focess.veto.agent.mcp.ToolDocs;
-import top.focess.veto.agent.mcp.ToolEngine;
-import top.focess.veto.agent.mcp.ToolEngineImpl;
+import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.ToolEngine;
+import top.focess.veto.agent.tool.ToolEngineImpl;
 import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.observability.AuditLogger;
@@ -98,7 +98,7 @@ class VetoApplicationTests {
         assertInstanceOf(
                 ToolDocs.nonNullClass(ToolEngineImpl.class),
                 engine,
-                "ToolEngineImpl should win over DefaultToolEngine");
+                "The application must use the production tool engine");
     }
 
     @Test
@@ -299,6 +299,27 @@ class VetoApplicationTests {
         String createUrl = "http://localhost:" + port + "/api/tasks";
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
+        var sessions =
+                context.getBean(ToolDocs.nonNullClass(top.focess.veto.vault.SessionManager.class));
+        headers.set("X-Veto-Session-Token", sessions.createSession("task-owner"));
+        HttpEntity<Void> authenticated = new HttpEntity<>(headers);
+        for (HttpMethod method : java.util.List.of(HttpMethod.GET, HttpMethod.POST)) {
+            HttpHeaders anonymousHeaders = new HttpHeaders();
+            anonymousHeaders.setContentType(MediaType.APPLICATION_JSON);
+            var anonymous = new HttpEntity<>(Map.of("taskType", "anonymous"), anonymousHeaders);
+            assertEquals(
+                    HttpStatus.UNAUTHORIZED,
+                    restTemplate
+                            .exchange(createUrl, method, anonymous, MAP_RESPONSE)
+                            .getStatusCode());
+        }
+        for (HttpMethod method : java.util.List.of(HttpMethod.GET, HttpMethod.DELETE)) {
+            assertEquals(
+                    HttpStatus.UNAUTHORIZED,
+                    restTemplate
+                            .exchange(createUrl + "/missing", method, null, MAP_RESPONSE)
+                            .getStatusCode());
+        }
 
         HttpEntity<Map<String, Object>> createRequest =
                 new HttpEntity<>(
@@ -317,24 +338,55 @@ class VetoApplicationTests {
 
         String getUrl = "http://localhost:" + port + "/api/tasks/" + taskId;
         @NonNull ResponseEntity<Map<String, Object>> getResponse =
-                restTemplate.exchange(getUrl, HttpMethod.GET, null, MAP_RESPONSE);
+                restTemplate.exchange(getUrl, HttpMethod.GET, authenticated, MAP_RESPONSE);
         assertEquals(HttpStatus.OK, getResponse.getStatusCode());
         @NonNull Map<String, Object> getBody = requireBody(getResponse);
         assertEquals(taskId, requireMapValue(getBody, "id"));
 
         @NonNull ResponseEntity<Map<String, Object>> listResponse =
-                restTemplate.exchange(createUrl, HttpMethod.GET, null, MAP_RESPONSE);
+                restTemplate.exchange(createUrl, HttpMethod.GET, authenticated, MAP_RESPONSE);
         assertEquals(HttpStatus.OK, listResponse.getStatusCode());
 
+        HttpHeaders otherHeaders = new HttpHeaders();
+        otherHeaders.setContentType(MediaType.APPLICATION_JSON);
+        otherHeaders.set("X-Veto-Session-Token", sessions.createSession("other-task-owner"));
+        HttpEntity<Void> other = new HttpEntity<>(otherHeaders);
+        for (HttpMethod method : java.util.List.of(HttpMethod.GET, HttpMethod.DELETE)) {
+            assertEquals(
+                    HttpStatus.NOT_FOUND,
+                    restTemplate.exchange(getUrl, method, other, MAP_RESPONSE).getStatusCode());
+        }
+        assertEquals(
+                0,
+                requireMapValue(
+                        requireBody(
+                                restTemplate.exchange(
+                                        createUrl, HttpMethod.GET, other, MAP_RESPONSE)),
+                        "total"));
+        HttpEntity<Map<String, Object>> collision =
+                new HttpEntity<>(Map.of("id", taskId, "taskType", "replacement"), otherHeaders);
+        assertEquals(
+                HttpStatus.CONFLICT,
+                restTemplate
+                        .exchange(createUrl, HttpMethod.POST, collision, MAP_RESPONSE)
+                        .getStatusCode());
+        assertEquals(
+                "integration_test",
+                requireMapValue(
+                        requireBody(
+                                restTemplate.exchange(
+                                        getUrl, HttpMethod.GET, authenticated, MAP_RESPONSE)),
+                        "taskType"));
+
         @NonNull ResponseEntity<Map<String, Object>> deleteResponse =
-                restTemplate.exchange(getUrl, HttpMethod.DELETE, null, MAP_RESPONSE);
+                restTemplate.exchange(getUrl, HttpMethod.DELETE, authenticated, MAP_RESPONSE);
         assertEquals(HttpStatus.OK, deleteResponse.getStatusCode());
 
         @NonNull ResponseEntity<Map<String, Object>> notFoundResponse =
                 restTemplate.exchange(
                         "http://localhost:" + port + "/api/tasks/nonexistent",
                         HttpMethod.GET,
-                        null,
+                        authenticated,
                         MAP_RESPONSE);
         assertEquals(HttpStatus.NOT_FOUND, notFoundResponse.getStatusCode());
     }

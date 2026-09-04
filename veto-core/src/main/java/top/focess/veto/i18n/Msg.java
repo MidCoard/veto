@@ -3,6 +3,7 @@ package top.focess.veto.i18n;
 import java.util.Locale;
 import org.jspecify.annotations.NonNull;
 import org.springframework.context.MessageSource;
+import org.springframework.context.i18n.LocaleContext;
 import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.context.support.ResourceBundleMessageSource;
 
@@ -32,7 +33,11 @@ public final class Msg {
      * itself is returned rather than throwing).
      */
     public static @NonNull String get(@NonNull String code, Object... args) {
-        Locale locale = LocaleContextHolder.getLocale();
+        LocaleContext localeContext = LocaleContextHolder.getLocaleContext();
+        Locale locale = localeContext == null ? Locale.ENGLISH : localeContext.getLocale();
+        if (locale == null) {
+            locale = Locale.ENGLISH;
+        }
         return MESSAGES.getMessage(code, args, locale);
     }
 

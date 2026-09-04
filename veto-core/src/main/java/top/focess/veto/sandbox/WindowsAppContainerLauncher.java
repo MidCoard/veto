@@ -17,7 +17,7 @@ import com.sun.jna.win32.StdCallLibrary;
 import java.util.ArrayList;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.agent.mcp.ToolDocs;
+import top.focess.veto.agent.tool.ToolDocs;
 
 /** Starts one target in an AppContainer on a private desktop with permit-scoped capabilities. */
 final class WindowsAppContainerLauncher {
