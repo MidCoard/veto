@@ -9,6 +9,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import top.focess.veto.controller.dto.CheckVetoRequest;
+import top.focess.veto.controller.dto.ProcessVetoRequest;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.veto.VetoGateway;
 
@@ -37,9 +39,9 @@ public class VetoController {
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
     public @NonNull ResponseEntity<Map<String, Object>> processPayload(
-            @RequestBody @NonNull Map<String, Object> request) {
-        String payload = (String) request.getOrDefault("payload", "");
-        if (payload.isEmpty()) {
+            @RequestBody @NonNull ProcessVetoRequest request) {
+        String payload = request.payload();
+        if (payload == null || payload.isEmpty()) {
             return ResponseEntity.badRequest()
                     .body(
                             Map.of(
@@ -50,9 +52,13 @@ public class VetoController {
         }
 
         String dagPayloadId =
-                (String) request.getOrDefault("dagPayloadId", UUID.randomUUID().toString());
-        String requestId = (String) request.getOrDefault("requestId", UUID.randomUUID().toString());
-        String componentSource = (String) request.getOrDefault("componentSource", "gateway");
+                request.dagPayloadId() == null
+                        ? UUID.randomUUID().toString()
+                        : request.dagPayloadId();
+        String requestId =
+                request.requestId() == null ? UUID.randomUUID().toString() : request.requestId();
+        String componentSource =
+                request.componentSource() == null ? "gateway" : request.componentSource();
 
         log.info(
                 "REST: /api/veto/process - payload={} bytes, source={}",
@@ -92,9 +98,9 @@ public class VetoController {
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
     public @NonNull ResponseEntity<Map<String, Object>> checkPayload(
-            @RequestBody @NonNull Map<String, Object> request) {
-        String payload = (String) request.getOrDefault("payload", "");
-        if (payload.isEmpty()) {
+            @RequestBody @NonNull CheckVetoRequest request) {
+        String payload = request.payload();
+        if (payload == null || payload.isEmpty()) {
             return ResponseEntity.badRequest()
                     .body(
                             Map.of(

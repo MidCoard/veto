@@ -5,12 +5,15 @@ import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -116,7 +119,6 @@ class McpJsonRpcClientTest {
 
     @Test
     void parseToolsListFromJsonRpcResponse() throws Exception {
-        // Simulate a server response by parsing JSON.
         String response =
                 """
                 {
@@ -136,10 +138,90 @@ class McpJsonRpcClientTest {
                   }
                 }
                 """;
-        JsonNode result = new ObjectMapper().readTree(response).get("result");
-        JsonNode tools = result.get("tools");
+        // Stdio frames each JSON-RPC message on a single line.
+        var tools = new McpJsonRpcClient().discoverTools(stdio(response.replace("\n", "")));
         assertEquals(1, tools.size());
-        assertEquals("remote_search", tools.get(0).get("name").asText());
+        assertEquals("remote_search", tools.getFirst().name());
+        assertEquals("Search the web", tools.getFirst().description());
+    }
+
+    @Test
+    void skipsNotificationsAndPreservesUnicodeArgumentsAndResults() throws Exception {
+        var output = new ByteArrayOutputStream();
+        Process process = mock(ToolDocs.nonNullClass(Process.class));
+        ProcessBuilder builder = mock(ToolDocs.nonNullClass(ProcessBuilder.class));
+        when(builder.start()).thenReturn(process);
+        when(process.getOutputStream()).thenReturn(output);
+        when(process.getInputStream())
+                .thenReturn(
+                        new ByteArrayInputStream(
+                                ("{\"jsonrpc\":\"2.0\",\"method\":\"notifications/message\",\"params\":{}}\n"
+                                                + "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"text\":\"你好\"}}\n")
+                                        .getBytes(StandardCharsets.UTF_8)));
+        JsonNode result =
+                new McpJsonRpcClient()
+                        .callTool(
+                                new McpTransport.StdioMcpTransport(builder),
+                                "echo",
+                                Map.of("text", "你好"));
+        assertEquals("你好", result.path("text").asText());
+        JsonNode request = new ObjectMapper().readTree(output.toString(StandardCharsets.UTF_8));
+        assertEquals("tools/call", request.path("method").asText());
+        assertEquals("你好", request.path("params").path("arguments").path("text").asText());
+        verify(process).destroy();
+    }
+
+    @ParameterizedTest
+    @ValueSource(
+            strings = {
+                "null",
+                "[]",
+                "{}",
+                "{\"jsonrpc\":\"1.0\",\"id\":1,\"result\":{}}",
+                "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{}}",
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{},\"error\":{}}"
+            })
+    void rejectsInvalidResponseEnvelopes(@NonNull String response) throws Exception {
+        var transport = stdio(response);
+        IOException failure =
+                assertThrows(
+                        IOException.class, () -> new McpJsonRpcClient().discoverTools(transport));
+        assertEquals("Invalid MCP JSON-RPC response envelope", failure.getMessage());
+    }
+
+    @ParameterizedTest
+    @ValueSource(
+            strings = {
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}} {}",
+                "{\"jsonrpc\":\"2.0\",\"id\":2,\"id\":1,\"result\":{}}",
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[],\"tools\":[]}}"
+            })
+    void rejectsTrailingJsonAndDuplicateKeys(@NonNull String response) throws Exception {
+        var transport = stdio(response);
+        assertThrows(IOException.class, () -> new McpJsonRpcClient().discoverTools(transport));
+    }
+
+    @Test
+    void doesNotExposeRemoteErrorPayload() throws Exception {
+        var transport =
+                stdio("{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"message\":\"secret-token\"}}");
+        IOException failure =
+                assertThrows(
+                        IOException.class, () -> new McpJsonRpcClient().discoverTools(transport));
+        assertEquals("MCP server returned a JSON-RPC error", failure.getMessage());
+    }
+
+    private static McpTransport.@NonNull StdioMcpTransport stdio(@NonNull String response)
+            throws IOException {
+        Process process = mock(ToolDocs.nonNullClass(Process.class));
+        ProcessBuilder builder = mock(ToolDocs.nonNullClass(ProcessBuilder.class));
+        when(builder.start()).thenReturn(process);
+        when(process.getOutputStream()).thenReturn(new ByteArrayOutputStream());
+        when(process.getInputStream())
+                .thenReturn(
+                        new ByteArrayInputStream(
+                                (response + "\n").getBytes(StandardCharsets.UTF_8)));
+        return new McpTransport.StdioMcpTransport(builder);
     }
 
     @Test
@@ -157,7 +239,7 @@ class McpJsonRpcClientTest {
     }
 
     @Test
-    void socketTransportExecutionNotYetImplemented() {
+    void missingSocketFailsWithIOException() {
         McpJsonRpcClient rpc = new McpJsonRpcClient();
         McpTransport socket =
                 new McpTransport.SocketMcpTransport(java.nio.file.Path.of("/tmp/sock"));

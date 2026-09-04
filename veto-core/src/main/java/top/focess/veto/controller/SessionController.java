@@ -10,6 +10,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 import top.focess.veto.agent.TurnRecord;
+import top.focess.veto.controller.dto.CreateSessionRequest;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.session.SessionHistoryLoader;
@@ -155,12 +156,4 @@ public class SessionController {
                                         HttpStatus.NOT_FOUND,
                                         Msg.get("error.session.notFoundGeneric")));
     }
-
-    /** Request body for {@link #create}. */
-    public record CreateSessionRequest(
-            String pattern,
-            String name,
-            String workspaceRoots,
-            Integer currentWorkspaceRootIndex,
-            top.focess.veto.llm.core.ToolResultPresentationMode toolResultPresentation) {}
 }

@@ -8,7 +8,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -32,7 +31,7 @@ class TrainingControllerAuthorizationTest {
         assertUnauthorized(() -> controller.startTraining(null));
         assertUnauthorized(controller::cancelTraining);
         assertUnauthorized(controller::getProgress);
-        assertUnauthorized(() -> controller.deployModel(Map.of()));
+        assertUnauthorized(() -> controller.deployModel(new DeployModelRequest(null)));
         assertUnauthorized(controller::getStatus);
         assertUnauthorized(controller::runQualityCheck);
         assertUnauthorized(controller::getEvaluation);
@@ -46,7 +45,7 @@ class TrainingControllerAuthorizationTest {
         assertForbidden(() -> controller.startTraining(null));
         assertForbidden(controller::cancelTraining);
         assertForbidden(controller::getProgress);
-        assertForbidden(() -> controller.deployModel(Map.of()));
+        assertForbidden(() -> controller.deployModel(new DeployModelRequest(null)));
         assertForbidden(controller::getStatus);
         assertForbidden(controller::runQualityCheck);
         assertForbidden(controller::getEvaluation);
@@ -79,7 +78,9 @@ class TrainingControllerAuthorizationTest {
         manager.completeTraining(converted);
         TrainingController controller =
                 new TrainingController(manager, config, new RequestAuthorization(name -> true));
-        assertEquals(HttpStatus.OK, controller.deployModel(Map.of()).getStatusCode());
+        assertEquals(
+                HttpStatus.OK,
+                controller.deployModel(new DeployModelRequest(null)).getStatusCode());
         assertArrayEquals(new byte[] {1, 2}, Files.readAllBytes(target));
     }
 

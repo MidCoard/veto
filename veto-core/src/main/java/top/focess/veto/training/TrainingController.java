@@ -155,9 +155,9 @@ public class TrainingController {
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
     public @NonNull ResponseEntity<Map<String, Object>> deployModel(
-            @RequestBody @NonNull Map<String, String> request) {
+            @RequestBody @NonNull DeployModelRequest request) {
         authorization.requireAdmin();
-        String modelPath = request.get("modelPath");
+        String modelPath = request.modelPath();
         if (modelPath == null || modelPath.isEmpty()) {
             String latestModel = trainingManager.getProgress().getTrainedModelPath();
             modelPath =

@@ -267,6 +267,87 @@ class VetoApplicationTests {
     }
 
     @Test
+    void restAcceptsNullOptionalVetoFields() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        HttpEntity<String> request =
+                new HttpEntity<>(
+                        "{\"payload\":\"hello\",\"dagPayloadId\":null,\"requestId\":null,\"componentSource\":null}",
+                        headers);
+        assertEquals(
+                HttpStatus.OK,
+                restTemplate
+                        .exchange(
+                                "http://localhost:" + port + "/api/veto/process",
+                                HttpMethod.POST,
+                                request,
+                                MAP_RESPONSE)
+                        .getStatusCode());
+    }
+
+    @Test
+    void restRejectsMalformedJsonAtTheBoundary() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        var sessions =
+                context.getBean(ToolDocs.nonNullClass(top.focess.veto.vault.SessionManager.class));
+        headers.set("X-Veto-Session-Token", sessions.createSession("json-boundary-owner"));
+        for (String path : java.util.List.of("/api/auth/setup", "/api/auth/login")) {
+            HttpEntity<String> request =
+                    new HttpEntity<>("{\"username\":42,\"password\":\"password123\"}", headers);
+            assertEquals(
+                    HttpStatus.BAD_REQUEST,
+                    restTemplate
+                            .exchange(
+                                    "http://localhost:" + port + path,
+                                    HttpMethod.POST,
+                                    request,
+                                    MAP_RESPONSE)
+                            .getStatusCode());
+        }
+        for (String path : java.util.List.of("/api/veto/process", "/api/veto/check")) {
+            for (String body :
+                    java.util.List.of(
+                            "{}",
+                            "{\"payload\":null}",
+                            "{\"payload\":42}",
+                            "{\"payload\":true}",
+                            "{\"payload\":{}}",
+                            "{\"payload\":\"first\",\"payload\":\"second\"}",
+                            "{\"payload\":\"first\"} {}")) {
+                HttpEntity<String> request = new HttpEntity<>(body, headers);
+                assertEquals(
+                        HttpStatus.BAD_REQUEST,
+                        restTemplate
+                                .exchange(
+                                        "http://localhost:" + port + path,
+                                        HttpMethod.POST,
+                                        request,
+                                        MAP_RESPONSE)
+                                .getStatusCode(),
+                        body);
+            }
+        }
+        for (String body :
+                java.util.List.of(
+                        "{\"taskType\":42}",
+                        "{\"taskType\":\"test\",\"parameters\":[]}",
+                        "{\"taskType\":\"test\",\"id\":{}}")) {
+            HttpEntity<String> request = new HttpEntity<>(body, headers);
+            assertEquals(
+                    HttpStatus.BAD_REQUEST,
+                    restTemplate
+                            .exchange(
+                                    "http://localhost:" + port + "/api/tasks",
+                                    HttpMethod.POST,
+                                    request,
+                                    MAP_RESPONSE)
+                            .getStatusCode(),
+                    body);
+        }
+    }
+
+    @Test
     void corsAllowsLocalUiToCallTheConfiguredBackendPort()
             throws java.io.IOException, InterruptedException {
         String origin = "http://localhost:5173";

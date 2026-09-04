@@ -24,9 +24,6 @@ public interface AgentTool<T> {
     /** The unique name of the tool (e.g. {@code "think"}). */
     @NonNull String getName();
 
-    /** The one-liner description — what the tool is. */
-    @NonNull String getDescription();
-
     /**
      * The class of the arguments container used for schema compilation and JSON deserialization.
      */

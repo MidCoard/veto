@@ -1,6 +1,7 @@
 package top.focess.veto.model.tier;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.jspecify.annotations.NonNull;
 
@@ -45,6 +46,13 @@ public interface ModelTierProfileService {
             @NonNull ModelTier tier,
             @NonNull ModelTierField field,
             @NonNull String value);
+
+    /** Updates a binding atomically: an invalid field leaves all fields unchanged. */
+    void setFields(
+            @NonNull String username,
+            @NonNull String profileName,
+            @NonNull ModelTier tier,
+            @NonNull Map<@NonNull ModelTierField, @NonNull String> fields);
 
     /**
      * Activate a profile (deactivate the user's other profiles). The active profile is the one

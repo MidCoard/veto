@@ -1,6 +1,7 @@
 package top.focess.veto.model.tier;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Service;
@@ -114,18 +115,42 @@ public class DefaultModelTierService implements ModelTierRegistry, ModelTierProf
             @NonNull ModelTier tier,
             @NonNull ModelTierField field,
             @NonNull String value) {
+        setFields(username, profileName, tier, Map.of(field, value));
+    }
+
+    @Override
+    @Transactional
+    public void setFields(
+            @NonNull String username,
+            @NonNull String profileName,
+            @NonNull ModelTier tier,
+            @NonNull Map<@NonNull ModelTierField, @NonNull String> fields) {
         ModelTierProfileEntity profile = requireProfile(username, profileName);
         ModelTierBindingEntity binding =
                 bindingRepo
                         .findByProfileIdAndTier(profile.getId(), tier)
                         .orElseGet(() -> new ModelTierBindingEntity(profile.getId(), tier));
-        if (field == ModelTierField.CREDENTIAL_KEY) {
-            String credKey = value.trim();
-            if (!credentialChecker.exists(username, credKey)) {
-                throw new IllegalArgumentException(Msg.get("error.vault.credKeyMissing", credKey));
+        for (var entry : fields.entrySet()) {
+            ModelTierField field = entry.getKey();
+            String value = entry.getValue();
+            try {
+                if (field == ModelTierField.CREDENTIAL_KEY) {
+                    String credKey = value.trim();
+                    if (!credentialChecker.exists(username, credKey)) {
+                        throw new IllegalArgumentException(
+                                Msg.get("error.vault.credKeyMissing", credKey));
+                    }
+                }
+                applyField(binding, field, value);
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException(
+                        Msg.get(
+                                "error.tier.fieldInvalid",
+                                field.field(),
+                                String.valueOf(e.getMessage())),
+                        e);
             }
         }
-        applyField(binding, field, value);
         bindingRepo.save(binding);
     }
 

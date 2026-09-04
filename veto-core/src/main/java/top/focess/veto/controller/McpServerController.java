@@ -13,6 +13,7 @@ import org.springframework.web.server.ResponseStatusException;
 import top.focess.veto.agent.mcp.transport.McpTransport;
 import top.focess.veto.agent.tool.RemoteToolDefinition;
 import top.focess.veto.agent.tool.ToolEngineImpl;
+import top.focess.veto.controller.dto.DiscoverMcpServerRequest;
 
 /** Admin-only registration of external MCP servers and their discovered tool schemas. */
 @RestController
@@ -30,7 +31,8 @@ public class McpServerController {
 
     /** Discover and register the tools exposed by an HTTP/SSE MCP endpoint. */
     @PostMapping("/discover")
-    public @NonNull Map<String, Object> discover(@RequestBody @NonNull DiscoverRequest request) {
+    public @NonNull Map<String, Object> discover(
+            @RequestBody @NonNull DiscoverMcpServerRequest request) {
         authorization.requireAdmin();
         URI endpoint = validatedEndpoint(request.baseUrl());
         String authToken = request.authToken() == null ? "" : request.authToken();
@@ -73,6 +75,4 @@ public class McpServerController {
                 "defaultDanger", tool.defaultDanger().name(),
                 "inputSchema", tool.inputSchema());
     }
-
-    public record DiscoverRequest(String baseUrl, String authToken) {}
 }

@@ -10,6 +10,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import top.focess.veto.controller.dto.AuthCredentials;
+import top.focess.veto.controller.dto.CreateUserRequest;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.vault.*;
 
@@ -22,8 +24,6 @@ import top.focess.veto.vault.*;
  */
 @RestController
 @RequestMapping("/api/auth")
-@SuppressWarnings(
-        "DuplicatedCode") // Setup and admin creation deliberately share validation responses.
 public class AuthController {
 
     private static final @NonNull Logger log =
@@ -55,40 +55,20 @@ public class AuthController {
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
     public @NonNull ResponseEntity<Map<String, @NonNull Object>> setup(
-            @RequestBody @NonNull Map<String, String> request) {
-        String username = request.get("username");
-        String password = request.get("password");
+            @RequestBody @NonNull AuthCredentials request) {
+        String username = request.username();
+        String password = request.password();
 
         if (username == null || username.isEmpty() || password == null || password.isEmpty()) {
             return ResponseEntity.badRequest()
-                    .body(
-                            Map.of(
-                                    "status",
-                                    "error",
-                                    "message",
-                                    Msg.get("error.auth.credentialsRequired")));
+                    .body(error(Msg.get("error.auth.credentialsRequired")));
         }
-        if (!UserRegistry.isValidUsername(username)) {
-            return ResponseEntity.badRequest()
-                    .body(
-                            Map.of(
-                                    "status",
-                                    "error",
-                                    "message",
-                                    Msg.get("error.auth.invalidUsername")));
-        }
-        if (password.length() < 8) {
-            return ResponseEntity.badRequest()
-                    .body(
-                            Map.of(
-                                    "status",
-                                    "error",
-                                    "message",
-                                    Msg.get("error.auth.passwordTooShort")));
+        String registrationError = registrationError(username, password);
+        if (registrationError != null) {
+            return ResponseEntity.badRequest().body(error(registrationError));
         }
         if (userRegistry.anyUserExists()) {
-            return ResponseEntity.status(409)
-                    .body(Map.of("status", "error", "message", Msg.get("error.auth.alreadySetup")));
+            return ResponseEntity.status(409).body(error(Msg.get("error.auth.alreadySetup")));
         }
 
         try {
@@ -112,7 +92,7 @@ public class AuthController {
         } catch (Exception e) {
             log.error("Setup failed", e);
             return ResponseEntity.internalServerError()
-                    .body(Map.of("status", "error", "message", Msg.get("error.auth.setupFailed")));
+                    .body(error(Msg.get("error.auth.setupFailed")));
         }
     }
 
@@ -124,29 +104,18 @@ public class AuthController {
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
     public @NonNull ResponseEntity<Map<String, @NonNull Object>> login(
-            @RequestBody @NonNull Map<String, String> request) {
-        String username = request.get("username");
-        String password = request.get("password");
+            @RequestBody @NonNull AuthCredentials request) {
+        String username = request.username();
+        String password = request.password();
 
         if (username == null || username.isEmpty() || password == null || password.isEmpty()) {
             return ResponseEntity.badRequest()
-                    .body(
-                            Map.of(
-                                    "status",
-                                    "error",
-                                    "message",
-                                    Msg.get("error.auth.credentialsRequired")));
+                    .body(error(Msg.get("error.auth.credentialsRequired")));
         }
 
         var user = userRegistry.authenticate(username, password);
         if (user.isEmpty()) {
-            return ResponseEntity.status(401)
-                    .body(
-                            Map.of(
-                                    "status",
-                                    "error",
-                                    "message",
-                                    Msg.get("error.auth.invalidCredentials")));
+            return ResponseEntity.status(401).body(error(Msg.get("error.auth.invalidCredentials")));
         }
 
         try {
@@ -167,7 +136,7 @@ public class AuthController {
         } catch (Exception e) {
             log.error("Login failed for user '{}'", username, e);
             return ResponseEntity.internalServerError()
-                    .body(Map.of("status", "error", "message", Msg.get("error.auth.loginFailed")));
+                    .body(error(Msg.get("error.auth.loginFailed")));
         }
     }
 
@@ -179,13 +148,7 @@ public class AuthController {
             @RequestHeader(TOKEN_HEADER) @NonNull String token) {
         var session = sessionManager.validate(token);
         if (session.isEmpty()) {
-            return ResponseEntity.status(401)
-                    .body(
-                            Map.of(
-                                    "status",
-                                    "error",
-                                    "message",
-                                    Msg.get("error.auth.invalidSession")));
+            return ResponseEntity.status(401).body(error(Msg.get("error.auth.invalidSession")));
         }
 
         sessionManager.invalidate(token);
@@ -245,34 +208,22 @@ public class AuthController {
     @SuppressWarnings("JvmTaintAnalysis")
     public @NonNull ResponseEntity<Map<String, Object>> addUser(
             @RequestHeader(TOKEN_HEADER) @NonNull String token,
-            @RequestBody @NonNull Map<String, String> request) {
+            @RequestBody @NonNull CreateUserRequest request) {
 
         var session = sessionManager.validate(token);
         if (session.isEmpty()) {
-            return ResponseEntity.status(401)
-                    .body(
-                            Map.of(
-                                    "status",
-                                    "error",
-                                    "message",
-                                    Msg.get("error.auth.invalidSession")));
+            return ResponseEntity.status(401).body(error(Msg.get("error.auth.invalidSession")));
         }
 
         // Verify admin role
         var adminEntry = userRegistry.findByUsername(session.get().username());
         if (adminEntry.isEmpty() || !"ADMIN".equals(adminEntry.get().getRole())) {
-            return ResponseEntity.status(403)
-                    .body(
-                            Map.of(
-                                    "status",
-                                    "error",
-                                    "message",
-                                    Msg.get("error.auth.adminRequired")));
+            return ResponseEntity.status(403).body(error(Msg.get("error.auth.adminRequired")));
         }
 
-        String username = request.get("username");
-        String password = request.get("password");
-        String requestedRole = request.get("role");
+        String username = request.username();
+        String password = request.password();
+        String requestedRole = request.role();
         String role =
                 requestedRole == null
                         ? UserRegistry.Role.USER
@@ -280,34 +231,14 @@ public class AuthController {
 
         if (username == null || username.isEmpty() || password == null || password.isEmpty()) {
             return ResponseEntity.badRequest()
-                    .body(
-                            Map.of(
-                                    "status",
-                                    "error",
-                                    "message",
-                                    Msg.get("error.auth.credentialsRequired")));
+                    .body(error(Msg.get("error.auth.credentialsRequired")));
         }
-        if (!UserRegistry.isValidUsername(username)) {
-            return ResponseEntity.badRequest()
-                    .body(
-                            Map.of(
-                                    "status",
-                                    "error",
-                                    "message",
-                                    Msg.get("error.auth.invalidUsername")));
-        }
-        if (password.length() < 8) {
-            return ResponseEntity.badRequest()
-                    .body(
-                            Map.of(
-                                    "status",
-                                    "error",
-                                    "message",
-                                    Msg.get("error.auth.passwordTooShort")));
+        String registrationError = registrationError(username, password);
+        if (registrationError != null) {
+            return ResponseEntity.badRequest().body(error(registrationError));
         }
         if (!UserRegistry.isValidRole(role)) {
-            return ResponseEntity.badRequest()
-                    .body(Map.of("status", "error", "message", Msg.get("error.auth.invalidRole")));
+            return ResponseEntity.badRequest().body(error(Msg.get("error.auth.invalidRole")));
         }
 
         try {
@@ -333,21 +264,21 @@ public class AuthController {
         } catch (IllegalArgumentException e) {
             // Duplicate username (UserRegistry.create rejects an existing id).
             return ResponseEntity.status(409)
-                    .body(
-                            Map.of(
-                                    "status",
-                                    "error",
-                                    "message",
-                                    Msg.get("error.auth.userExists", username)));
+                    .body(error(Msg.get("error.auth.userExists", username)));
         } catch (Exception e) {
             log.error("Failed to create user '{}'", username, e);
             return ResponseEntity.internalServerError()
-                    .body(
-                            Map.of(
-                                    "status",
-                                    "error",
-                                    "message",
-                                    Msg.get("error.auth.createUserFailed")));
+                    .body(error(Msg.get("error.auth.createUserFailed")));
         }
+    }
+
+    private static String registrationError(@NonNull String username, @NonNull String password) {
+        if (!UserRegistry.isValidUsername(username)) return Msg.get("error.auth.invalidUsername");
+        if (password.length() < 8) return Msg.get("error.auth.passwordTooShort");
+        return null;
+    }
+
+    private static @NonNull Map<String, @NonNull Object> error(@NonNull String message) {
+        return Map.of("status", "error", "message", message);
     }
 }

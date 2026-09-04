@@ -7,6 +7,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
+import top.focess.veto.controller.dto.PutVaultNoteRequest;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.vault.KeysteadVault;
 
@@ -59,10 +60,10 @@ public class VaultController {
      * Create or overwrite a credential note ({@code title} = the credKey, {@code value} = the key).
      */
     @PutMapping("/notes")
-    public @NonNull ResponseEntity<Void> put(@RequestBody @NonNull Map<String, String> body) {
+    public @NonNull ResponseEntity<Void> put(@RequestBody @NonNull PutVaultNoteRequest body) {
         requireUser();
-        String title = body.get("title");
-        String value = body.get("value");
+        String title = body.title();
+        String value = body.value();
         if (title == null || title.isBlank() || value == null || value.isEmpty()) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST, Msg.get("error.vault.missingFields"));

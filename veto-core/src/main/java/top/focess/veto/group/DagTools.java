@@ -133,14 +133,6 @@ public final class DagTools {
         }
 
         @Override
-        public @NonNull String getDescription() {
-            ToolDoc doc =
-                    ToolDocs.nonNullClass(Args.class)
-                            .getAnnotation(ToolDocs.nonNullClass(ToolDoc.class));
-            return (doc != null && !doc.description().isEmpty()) ? doc.description() : "";
-        }
-
-        @Override
         public @NonNull Class<Args> getArgsClass() {
             return ToolDocs.nonNullClass(Args.class);
         }
@@ -246,14 +238,6 @@ public final class DagTools {
         @Override
         public @NonNull String getName() {
             return "remove_node";
-        }
-
-        @Override
-        public @NonNull String getDescription() {
-            ToolDoc doc =
-                    ToolDocs.nonNullClass(Args.class)
-                            .getAnnotation(ToolDocs.nonNullClass(ToolDoc.class));
-            return (doc != null && !doc.description().isEmpty()) ? doc.description() : "";
         }
 
         @Override

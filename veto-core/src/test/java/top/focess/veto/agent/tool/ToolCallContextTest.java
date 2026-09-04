@@ -3,6 +3,8 @@ package top.focess.veto.agent.tool;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.UUID;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
@@ -12,6 +14,50 @@ import top.focess.veto.llm.core.ToolResultPresentationMode;
  * GroupTools to record the caller's identity instead of placeholders.
  */
 class ToolCallContextTest {
+
+    @Test
+    void callStateIsIsolatedAcrossPlatformAndVirtualThreads() throws Exception {
+        for (boolean virtual : new boolean[] {false, true}) {
+            ToolCallContextHolder.setCurrentCallId("parent-call");
+            ToolCallContextHolder.requestRewind(1, "parent-rewind");
+            ToolCallContextHolder.requestReverseTransform("parent-transform");
+            try {
+                FutureTask<Void> child =
+                        new FutureTask<>(
+                                () -> {
+                                    assertNull(ToolCallContextHolder.get());
+                                    assertNull(ToolCallContextHolder.currentCallId());
+                                    assertTrue(ToolCallContextHolder.drainPendingTurns().isEmpty());
+                                    assertNull(ToolCallContextHolder.drainTransform());
+                                    try {
+                                        ToolCallContextHolder.setCurrentCallId("child-call");
+                                        ToolCallContextHolder.requestRewind(1, "child-rewind");
+                                        ToolCallContextHolder.requestReverseTransform(
+                                                "child-transform");
+                                    } finally {
+                                        ToolCallContextHolder.clear();
+                                    }
+                                    assertNull(ToolCallContextHolder.currentCallId());
+                                    assertTrue(ToolCallContextHolder.drainPendingTurns().isEmpty());
+                                    assertNull(ToolCallContextHolder.drainTransform());
+                                    return null;
+                                });
+                if (virtual) {
+                    Thread.startVirtualThread(child);
+                } else {
+                    new Thread(child).start();
+                }
+                child.get(5, TimeUnit.SECONDS);
+                assertEquals("parent-call", ToolCallContextHolder.currentCallId());
+                assertEquals(1, ToolCallContextHolder.drainPendingTurns().size());
+                assertEquals(
+                        new ToolCallContextHolder.TransformRequest.ToStandalone("parent-transform"),
+                        ToolCallContextHolder.drainTransform());
+            } finally {
+                ToolCallContextHolder.clear();
+            }
+        }
+    }
 
     @Test
     void contextCapturesAgentIdAndUserId() {

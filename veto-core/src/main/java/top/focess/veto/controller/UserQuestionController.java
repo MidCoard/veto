@@ -1,6 +1,5 @@
 package top.focess.veto.controller;
 
-import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -12,6 +11,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 import top.focess.veto.agent.tool.builtin.UserQuestionRegistry;
+import top.focess.veto.controller.dto.AnswerQuestionsRequest;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.vault.KeysteadVault;
 
@@ -42,7 +42,7 @@ public final class UserQuestionController {
     public @NonNull ResponseEntity<?> answer(
             @PathVariable @NonNull String name,
             @PathVariable @NonNull String callId,
-            @RequestBody @NonNull AnswerRequest body) {
+            @RequestBody @NonNull AnswerQuestionsRequest body) {
         if (!registry.answer(requireAgentId(name), callId, body.answers())) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST, "Question batch or answers are invalid");
@@ -66,6 +66,4 @@ public final class UserQuestionController {
                 .primaryAgentIdFor(name, user)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
     }
-
-    public record AnswerRequest(@NonNull Map<@NonNull String, @NonNull String> answers) {}
 }

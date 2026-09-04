@@ -1,5 +1,6 @@
 package top.focess.veto.controller;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
@@ -7,6 +8,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
+import top.focess.veto.controller.dto.CreateModelTierProfileRequest;
+import top.focess.veto.controller.dto.ModelTierBindingResponse;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierBindingEntity;
@@ -43,9 +46,10 @@ public class ModelTierController {
     }
 
     @PostMapping
-    public @NonNull Map<String, Object> create(@RequestBody @NonNull Map<String, String> body) {
+    public @NonNull Map<String, Object> create(
+            @RequestBody @NonNull CreateModelTierProfileRequest body) {
         String user = requireUser();
-        String name = body.get("name");
+        String name = body.name();
         if (name == null || name.isBlank()) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST, Msg.get("error.tier.nameRequired"));
@@ -86,7 +90,7 @@ public class ModelTierController {
     }
 
     @GetMapping("/{name}/bindings")
-    public @NonNull List<Map<String, Object>> bindings(@PathVariable @NonNull String name) {
+    public @NonNull List<ModelTierBindingResponse> bindings(@PathVariable @NonNull String name) {
         String user = requireUser();
         if (profiles.profile(user, name).isEmpty()) {
             throw new ResponseStatusException(
@@ -127,22 +131,28 @@ public class ModelTierController {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST, Msg.get("error.tier.noFields"));
         }
+        Map<@NonNull ModelTierField, @NonNull String> fields = new LinkedHashMap<>();
         for (Map.Entry<String, String> entry : body.entrySet()) {
             ModelTierField field = ModelTierField.fromField(entry.getKey());
             if (field == null) {
                 throw new ResponseStatusException(
                         HttpStatus.BAD_REQUEST, Msg.get("error.tier.unknownField", entry.getKey()));
             }
-            try {
-                profiles.setField(user, name, parsedTier, field, entry.getValue());
-            } catch (IllegalArgumentException e) {
+            String value = entry.getValue();
+            if (value == null) {
                 throw new ResponseStatusException(
                         HttpStatus.BAD_REQUEST,
                         Msg.get(
                                 "error.tier.fieldInvalid",
                                 field.field(),
-                                String.valueOf(e.getMessage())));
+                                "Value must not be null"));
             }
+            fields.put(field, value);
+        }
+        try {
+            profiles.setFields(user, name, parsedTier, fields);
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
         }
         return ResponseEntity.noContent().build();
     }
@@ -154,23 +164,17 @@ public class ModelTierController {
                 "createdAt", p.getCreatedAt().toString());
     }
 
-    private static @NonNull Map<String, Object> bindingView(@NonNull ModelTierBindingEntity b) {
-        // A hand-built map (not Map.of) because binding fields are nullable mid-configuration.
-        java.util.Map<String, Object> view = new java.util.LinkedHashMap<>();
-        view.put("tier", b.getTier().name());
-        var provider = b.getProvider();
-        if (provider != null) view.put("provider", provider.name());
-        putIfPresent(view, "baseUrl", b.getBaseUrl());
-        putIfPresent(view, "model", b.getModel());
-        putIfPresent(view, "credKey", b.getCredentialKey());
-        putIfPresent(view, "temp", b.getTemperature());
-        putIfPresent(view, "max", b.getMaxOutputTokens());
-        return view;
-    }
-
-    private static void putIfPresent(
-            @NonNull Map<String, Object> target, @NonNull String key, Object value) {
-        if (value != null) target.put(key, value);
+    private static @NonNull ModelTierBindingResponse bindingView(
+            @NonNull ModelTierBindingEntity binding) {
+        var provider = binding.getProvider();
+        return new ModelTierBindingResponse(
+                binding.getTier().name(),
+                provider == null ? null : provider.name(),
+                binding.getBaseUrl(),
+                binding.getModel(),
+                binding.getCredentialKey(),
+                binding.getTemperature(),
+                binding.getMaxOutputTokens());
     }
 
     private @NonNull String requireUser() {

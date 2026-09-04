@@ -22,6 +22,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.context.ApplicationContext;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.mcp.transport.McpTransport;
@@ -63,6 +65,73 @@ class ToolEngineImplTest {
             returnExamples = {"ok"})
     private record FailingAgentArgs(@NonNull String reason) {}
 
+    @ToolDoc(
+            description = "Returns JSON for boundary tests.",
+            resultFormats = {ToolResultFormat.JSON},
+            behavior = "Returns the supplied output.",
+            whenToUse = "Use in JSON boundary tests.",
+            whenNotToUse = "Do not use outside tests.",
+            resultContract = "One JSON value.",
+            errorsAndEdgeCases = "Malformed output is rejected by the engine.",
+            security = "Test-only agent tool.",
+            examples = {"{\"output\":\"{}\"}"},
+            returnExamples = {"{}"})
+    private record JsonAgentArgs(@NonNull String output) {}
+
+    private static final class JsonAgentTool implements AgentTool<JsonAgentArgs> {
+        @Override
+        public @NonNull String getName() {
+            return "json_agent";
+        }
+
+        @Override
+        public @NonNull Class<JsonAgentArgs> getArgsClass() {
+            return ToolDocs.nonNullClass(JsonAgentArgs.class);
+        }
+
+        @Override
+        public @NonNull String execute(@NonNull JsonAgentArgs args) {
+            return args.output();
+        }
+    }
+
+    private @NonNull ToolResult executeJsonOutput(@NonNull String output) throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        ApplicationContext appCtx = mock(ToolDocs.nonNullClass(ApplicationContext.class));
+        when(appCtx.getBeansOfType(AgentTool.class))
+                .thenReturn(Map.of("jsonAgentTool", new JsonAgentTool()));
+        ToolEngineImpl engine =
+                new ToolEngineImpl(
+                        mapper,
+                        List.of(),
+                        new SandboxManager(TestSandboxFactory.uncontainedSubprocesses()),
+                        appCtx);
+        engine.init();
+        ToolResult result =
+                engine.execute(
+                        new ToolCall("json_agent", Map.of("output", output), "cid-json"),
+                        definition(engine, "json_agent"));
+        // Strict result validation must not change the shared LLM mapper's tolerance.
+        assertEquals(2, mapper.readTree("{\"x\":1,\"x\":2} trailing").path("x").asInt());
+        return result;
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"{} {}", "{} trailing", "{\"x\":1,\"x\":2}", " "})
+    void rejectsAmbiguousOrMissingDeclaredJsonOutput(@NonNull String output) throws Exception {
+        ToolResult result = executeJsonOutput(output);
+        assertFalse(result.success());
+        assertTrue(result.content().contains("declared json"), result.content());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"{}", "[]", "null", "true", "42", "\"text\"", " {} \n"})
+    void preservesEveryKindOfValidDeclaredJsonOutput(@NonNull String output) throws Exception {
+        ToolResult result = executeJsonOutput(output);
+        assertTrue(result.success(), result.content());
+        assertEquals(output, result.content());
+    }
+
     private static final class FailingAgentTool implements AgentTool<FailingAgentArgs> {
 
         private boolean executed;
@@ -70,11 +139,6 @@ class ToolEngineImplTest {
         @Override
         public @NonNull String getName() {
             return "failing_agent";
-        }
-
-        @Override
-        public @NonNull String getDescription() {
-            return "Fails for protocol testing.";
         }
 
         @Override

@@ -4,9 +4,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import top.focess.veto.agent.AgentRunner;
 import top.focess.veto.agent.TurnRecord;
 
@@ -35,8 +34,7 @@ import top.focess.veto.agent.TurnRecord;
  */
 public final class ToolCallContextHolder {
 
-    private static final @NonNull ConcurrentMap<Thread, ThreadState> STATES =
-            new ConcurrentHashMap<>();
+    private static final @NonNull ThreadLocal<@Nullable ThreadState> STATE = new ThreadLocal<>();
 
     /**
      * A transform-to-Leader directive requested by {@code create_group} during its execution. The
@@ -79,7 +77,7 @@ public final class ToolCallContextHolder {
      *     execute scope)
      */
     public static ToolCallContext get() {
-        ThreadState state = currentState();
+        ThreadState state = STATE.get();
         return state == null ? null : state.context;
     }
 
@@ -88,7 +86,7 @@ public final class ToolCallContextHolder {
     }
 
     public static String currentCallId() {
-        ThreadState state = currentState();
+        ThreadState state = STATE.get();
         return state == null ? null : state.currentCallId;
     }
 
@@ -131,7 +129,7 @@ public final class ToolCallContextHolder {
      * @return the request, or {@code null} if the tool requested no transform
      */
     public static TransformRequest drainTransform() {
-        ThreadState state = currentState();
+        ThreadState state = STATE.get();
         TransformRequest request = state == null ? null : state.transform;
         if (state != null) state.transform = null;
         return request;
@@ -145,7 +143,7 @@ public final class ToolCallContextHolder {
      * @return the pending directives (empty if none); never null
      */
     public static @NonNull List<@NonNull TurnRecord> drainPendingTurns() {
-        ThreadState state = currentState();
+        ThreadState state = STATE.get();
         if (state == null || state.pendingTurns.isEmpty()) {
             return List.of();
         }
@@ -155,16 +153,17 @@ public final class ToolCallContextHolder {
     }
 
     private static @NonNull ThreadState state() {
-        return STATES.computeIfAbsent(Thread.currentThread(), ignored -> new ThreadState());
-    }
-
-    private static ThreadState currentState() {
-        return STATES.get(Thread.currentThread());
+        ThreadState state = STATE.get();
+        if (state == null) {
+            state = new ThreadState();
+            STATE.set(state);
+        }
+        return state;
     }
 
     /** Clears the tool call context (and any pending turn directives) for the current thread. */
     public static void clear() {
-        STATES.remove(Thread.currentThread());
+        STATE.remove();
     }
 
     private static final class ThreadState {

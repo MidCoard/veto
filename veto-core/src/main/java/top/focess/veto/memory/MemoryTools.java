@@ -111,12 +111,6 @@ public final class MemoryTools {
         }
 
         @Override
-        public @NonNull String getDescription() {
-            return "Search the current session's captured memory and the user's cross-session "
-                    + "insights together.";
-        }
-
-        @Override
         public @NonNull Class<Args> getArgsClass() {
             return ToolDocs.nonNullClass(Args.class);
         }
@@ -267,12 +261,6 @@ public final class MemoryTools {
         }
 
         @Override
-        public @NonNull String getDescription() {
-            return "Write durable cross-session memory, or promote a Session-LTM memory to "
-                    + "cross-session visibility.";
-        }
-
-        @Override
         public @NonNull Class<Args> getArgsClass() {
             return ToolDocs.nonNullClass(Args.class);
         }
@@ -390,11 +378,6 @@ public final class MemoryTools {
         @Override
         public @NonNull String getName() {
             return "forget_memory";
-        }
-
-        @Override
-        public @NonNull String getDescription() {
-            return "Explicitly drop a memory from the agent's long-term store.";
         }
 
         @Override

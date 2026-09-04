@@ -1,5 +1,7 @@
 package top.focess.veto.agent.tool;
 
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -64,6 +66,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
             LoggerFactory.getLogger("top.focess.veto.agent.tool.ToolEngineImpl");
 
     private final @NonNull ObjectMapper mapper;
+    private final @NonNull McpJsonRpcClient remoteClient;
     private final @NonNull List<NativeTool<?>> nativeToolBeans;
     private final @NonNull SandboxManager sandboxManager;
     private final @NonNull ApplicationContext applicationContext;
@@ -81,6 +84,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
             @NonNull SandboxManager sandboxManager,
             @NonNull ApplicationContext applicationContext) {
         this.mapper = mapper;
+        this.remoteClient = new McpJsonRpcClient(mapper);
         this.nativeToolBeans = nativeToolBeans;
         this.sandboxManager = sandboxManager;
         this.applicationContext = applicationContext;
@@ -128,8 +132,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
     public java.util.@NonNull List<RemoteToolDefinition> discoverAndRegister(
             @NonNull McpTransport transport) {
         try {
-            java.util.List<RemoteToolDefinition> tools =
-                    new McpJsonRpcClient(mapper).discoverTools(transport);
+            List<RemoteToolDefinition> tools = remoteClient.discoverTools(transport);
             Set<String> discoveredNames = new HashSet<>();
             for (RemoteToolDefinition t : tools) {
                 ToolContractValidator.validate(t);
@@ -271,7 +274,6 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
                     "No bean for native tool: " + def.name());
         }
         String result = bean.executeFromJson(jsonArgs, mapper);
-        validateSuccessfulResult(def, result);
         return successfulResult(call, def, result);
     }
 
@@ -367,7 +369,6 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
         }
         ToolExecutionPermit permit = context.executionPermit();
         Path workspaceRoot = permit.requireExecutionRoot();
-        Path cwd = workspaceRoot;
         SandboxProfile profile =
                 SandboxProfile.forExecution(
                         workspaceRoot,
@@ -379,7 +380,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
             CommandResult result =
                     sandboxManager
                             .substrate()
-                            .runCommands(handle, commands, cwd, connect, timeoutDur);
+                            .runCommands(handle, commands, workspaceRoot, connect, timeoutDur);
             String content = commandOutput(result);
             return new ToolResult(
                     call.toolName(),
@@ -395,9 +396,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
 
     private static @NonNull String commandOutput(@NonNull CommandResult result) {
         String stderr = result.stderr();
-        String content =
-                (result.stdout().isEmpty() ? "" : result.stdout())
-                        + (stderr.isEmpty() ? "" : "\n[stderr]\n" + stderr);
+        String content = result.stdout() + (stderr.isEmpty() ? "" : "\n[stderr]\n" + stderr);
         // The exit code rides in the content as well as the result status so every provider gives
         // the model the exact process outcome.
         return result.exitCode() == 0
@@ -416,7 +415,6 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
             JsonNode jsonArgs = mapper.valueToTree(call.args());
             NativeToolArgumentValidator.validate(def.name(), jsonArgs, def.argsClass());
             String result = bean.executeFromJson(jsonArgs, mapper);
-            validateSuccessfulResult(def, result);
             return successfulResult(call, def, result);
         } catch (ToolExecutionException e) {
             throw e;
@@ -445,7 +443,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
                     false,
                     "No transport registered for server: " + def.serverName());
         }
-        JsonNode result = new McpJsonRpcClient(mapper).callTool(transport, def.name(), call.args());
+        JsonNode result = remoteClient.callTool(transport, def.name(), call.args());
         boolean success = !result.path("isError").asBoolean(false);
         String content = remoteContent(result);
         return new ToolResult(
@@ -497,8 +495,12 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
             return;
         }
         try {
-            JsonNode parsed = mapper.readTree(result);
-            if (parsed == null) {
+            JsonNode parsed =
+                    mapper.reader()
+                            .with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+                            .with(JsonParser.Feature.STRICT_DUPLICATE_DETECTION)
+                            .readTree(result);
+            if (parsed == null || parsed.isMissingNode()) {
                 ToolErrors.failure(
                         "Tool '"
                                 + definition.name()
@@ -513,8 +515,9 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
         }
     }
 
-    private static @NonNull ToolResult successfulResult(
+    private @NonNull ToolResult successfulResult(
             @NonNull ToolCall call, @NonNull ToolDefinition definition, @NonNull String content) {
+        validateSuccessfulResult(definition, content);
         return new ToolResult(
                 call.toolName(),
                 call.callId(),

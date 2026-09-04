@@ -7,6 +7,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
+import top.focess.veto.controller.dto.CreatePatternRequest;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.model.AgentPatternEntity;
 import top.focess.veto.model.AgentPatternRepository;
@@ -40,11 +41,11 @@ public class PatternController {
     }
 
     @PostMapping
-    public @NonNull AgentPatternEntity create(@RequestBody @NonNull Map<String, String> body) {
+    public @NonNull AgentPatternEntity create(@RequestBody @NonNull CreatePatternRequest body) {
         String user = vault.currentUser();
         if (user == null) throw new IllegalStateException(Msg.get("error.auth.notLoggedIn"));
-        String name = body.get("name");
-        String tierValue = body.get("tier");
+        String name = body.name();
+        String tierValue = body.tier();
         if (name == null || name.isBlank() || tierValue == null || tierValue.isBlank()) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST, Msg.get("error.pattern.missingFields"));

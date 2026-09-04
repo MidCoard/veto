@@ -125,12 +125,6 @@ public final class GroupTools {
         }
 
         @Override
-        public @NonNull String getDescription() {
-            return "Spawn a delegation group for a task; you transform into its Leader "
-                    + "and plan the work.";
-        }
-
-        @Override
         public @NonNull Class<Args> getArgsClass() {
             return ToolDocs.nonNullClass(Args.class);
         }
@@ -240,11 +234,6 @@ public final class GroupTools {
         @Override
         public @NonNull String getName() {
             return "disband_group";
-        }
-
-        @Override
-        public @NonNull String getDescription() {
-            return "Tear down your active group and return to single-agent autonomous mode.";
         }
 
         @Override
@@ -380,11 +369,6 @@ public final class GroupTools {
         @Override
         public @NonNull String getName() {
             return "inspect_group";
-        }
-
-        @Override
-        public @NonNull String getDescription() {
-            return "Inspect your active group's DAG state and Mate reports.";
         }
 
         @Override
@@ -585,11 +569,6 @@ public final class GroupTools {
         @Override
         public @NonNull String getName() {
             return "post_message";
-        }
-
-        @Override
-        public @NonNull String getDescription() {
-            return "Post a typed message to your group's Blackboard (Leader -> Mate, or a self-note).";
         }
 
         @Override

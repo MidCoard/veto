@@ -1,7 +1,6 @@
 package top.focess.veto.controller;
 
 import java.time.Instant;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -15,6 +14,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 import top.focess.veto.bus.RoutingBusService;
+import top.focess.veto.controller.dto.CreateTaskRequest;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.model.DAGPayload;
 
@@ -49,20 +49,21 @@ public class TaskController {
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
     public @NonNull ResponseEntity<Map<String, Object>> createTask(
-            @RequestBody @NonNull Map<String, Object> request) {
+            @RequestBody @NonNull CreateTaskRequest request) {
         String owner = authorization.requireUser();
-        String taskType = (String) request.get("taskType");
+        String taskType = request.taskType();
         if (taskType == null || taskType.isEmpty()) {
             return ResponseEntity.badRequest()
                     .body(Map.of("status", "error", "message", Msg.get("error.task.typeRequired")));
         }
 
-        Map<String, Object> parameters = parametersOf(request.get("parameters"));
-        String sourceComponent = (String) request.get("sourceComponent");
+        Map<String, Object> parameters =
+                request.parameters() == null ? Map.of() : request.parameters();
+        String sourceComponent = request.sourceComponent();
         if (sourceComponent == null) sourceComponent = "REST-API";
-        String targetComponent = (String) request.get("targetComponent");
+        String targetComponent = request.targetComponent();
         if (targetComponent == null) targetComponent = "bus";
-        String requestedId = (String) request.get("id");
+        String requestedId = request.id();
         String taskId = requestedId == null ? UUID.randomUUID().toString() : requestedId;
 
         DAGPayload payload =
@@ -92,26 +93,6 @@ public class TaskController {
                         "taskType", payload.getTaskType(),
                         "dagStatus", payload.getStatus().name(),
                         "timestamp", Instant.now().toString()));
-    }
-
-    private static @NonNull Map<String, Object> parametersOf(Object value) {
-        if (value == null) {
-            return Map.of();
-        }
-        if (!(value instanceof Map<?, ?> rawParameters)) {
-            throw new IllegalArgumentException("parameters must be a JSON object");
-        }
-        Map<String, Object> parameters = new LinkedHashMap<>();
-        for (Map.Entry<?, ?> entry : rawParameters.entrySet()) {
-            if (!(entry.getKey() instanceof String key)) {
-                throw new IllegalArgumentException("parameter names must be strings");
-            }
-            Object parameterValue = entry.getValue();
-            if (parameterValue != null) {
-                parameters.put(key, parameterValue);
-            }
-        }
-        return parameters;
     }
 
     /** GET /api/tasks/{id} - Get DAG task status and details. */

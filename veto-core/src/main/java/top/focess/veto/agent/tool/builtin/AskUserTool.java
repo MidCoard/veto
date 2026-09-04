@@ -95,11 +95,6 @@ public final class AskUserTool implements AgentTool<AskUserTool.Args> {
     }
 
     @Override
-    public @NonNull String getDescription() {
-        return "Ask the user one to three short questions and wait for their answers.";
-    }
-
-    @Override
     public @NonNull Class<Args> getArgsClass() {
         return ToolDocs.nonNullClass(Args.class);
     }

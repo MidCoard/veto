@@ -1,7 +1,15 @@
 package top.focess.veto.controller;
 
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.cfg.CoercionAction;
+import com.fasterxml.jackson.databind.cfg.CoercionInputShape;
+import com.fasterxml.jackson.databind.type.LogicalType;
+import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.converter.HttpMessageConverter;
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
@@ -16,6 +24,23 @@ public class WebConfig implements WebMvcConfigurer {
 
     public WebConfig(@NonNull SecurityContextInterceptor interceptor) {
         this.interceptor = interceptor;
+    }
+
+    @Override
+    public void extendMessageConverters(@NonNull List<HttpMessageConverter<?>> converters) {
+        for (HttpMessageConverter<?> converter : converters) {
+            if (converter instanceof MappingJackson2HttpMessageConverter json) {
+                // Keep strict HTTP input rules separate from the tolerant LLM mapper.
+                var mapper = json.getObjectMapper().copy();
+                mapper.enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION);
+                mapper.enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
+                mapper.coercionConfigFor(LogicalType.Textual)
+                        .setCoercion(CoercionInputShape.Integer, CoercionAction.Fail)
+                        .setCoercion(CoercionInputShape.Float, CoercionAction.Fail)
+                        .setCoercion(CoercionInputShape.Boolean, CoercionAction.Fail);
+                json.setObjectMapper(mapper);
+            }
+        }
     }
 
     @Override

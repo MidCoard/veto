@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import top.focess.veto.agent.AgentRunner;
+import top.focess.veto.controller.dto.SubmitPromptRequest;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.session.SessionService;
@@ -59,7 +60,7 @@ public class PromptController {
     // Responses are Jackson-serialized JSON, never an HTML rendering context.
     @SuppressWarnings("JvmTaintAnalysis")
     public ResponseEntity<?> prompt(
-            @PathVariable @NonNull String name, @RequestBody @NonNull PromptRequest body) {
+            @PathVariable @NonNull String name, @RequestBody @NonNull SubmitPromptRequest body) {
         String user = vault.currentUser();
         if (user == null) {
             return ResponseEntity.status(401)
@@ -99,7 +100,4 @@ public class PromptController {
                     .body(Map.of("error", Msg.get("error.prompt.failed")));
         }
     }
-
-    /** Request body for {@link #prompt}. */
-    public record PromptRequest(String prompt) {}
 }

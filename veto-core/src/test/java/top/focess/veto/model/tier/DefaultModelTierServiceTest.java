@@ -4,7 +4,9 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -12,6 +14,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.llm.core.ProviderType;
 
@@ -30,6 +34,32 @@ class DefaultModelTierServiceTest {
     @Autowired @NonNull ModelTierBindingRepository bindingRepo;
 
     @MockitoBean @NonNull CredentialExistenceChecker credentialChecker;
+
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    void failedBatchRollsBackEarlierFieldsAndValidBatchPersistsTogether() {
+        String owner = "atomic-binding-test";
+        service.createProfile(owner, "default");
+        try {
+            service.setField(owner, "default", ModelTier.TOP, ModelTierField.MODEL, "original");
+            Map<@NonNull ModelTierField, @NonNull String> fields = new LinkedHashMap<>();
+            fields.put(ModelTierField.MODEL, "replacement");
+            fields.put(ModelTierField.TEMPERATURE, "invalid");
+            IllegalArgumentException failure =
+                    assertThrows(
+                            ToolDocs.nonNullClass(IllegalArgumentException.class),
+                            () -> service.setFields(owner, "default", ModelTier.TOP, fields));
+            assertTrue(String.valueOf(failure.getMessage()).contains("temp"));
+            assertEquals("original", service.bindings(owner, "default").getFirst().getModel());
+            fields.put(ModelTierField.TEMPERATURE, "0.5");
+            service.setFields(owner, "default", ModelTier.TOP, fields);
+            ModelTierBindingEntity binding = service.bindings(owner, "default").getFirst();
+            assertEquals("replacement", binding.getModel());
+            assertEquals(Double.valueOf(0.5), (Object) binding.getTemperature());
+        } finally {
+            service.deleteProfile(owner, "default");
+        }
+    }
 
     @BeforeEach
     void assumeCredentialsExist() {
