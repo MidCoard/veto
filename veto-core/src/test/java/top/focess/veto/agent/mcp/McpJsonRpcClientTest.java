@@ -139,7 +139,13 @@ class McpJsonRpcClientTest {
                 }
                 """;
         // Stdio frames each JSON-RPC message on a single line.
-        var tools = new McpJsonRpcClient().discoverTools(stdio(response.replace("\n", "")));
+        var transport = stdio(response.replace("\n", ""));
+        when(transport.processBuilder().command())
+                .thenReturn(java.util.List.of("server", "secret-password"));
+        var tools = new McpJsonRpcClient().discoverTools(transport);
+        assertTrue(tools.getFirst().serverName().startsWith("mcp-"));
+        assertFalse(tools.getFirst().serverName().contains("secret-password"));
+        verify(transport.processBuilder(), never()).command();
         assertEquals(1, tools.size());
         assertEquals("remote_search", tools.getFirst().name());
         assertEquals("Search the web", tools.getFirst().description());
@@ -198,6 +204,21 @@ class McpJsonRpcClientTest {
             })
     void rejectsTrailingJsonAndDuplicateKeys(@NonNull String response) throws Exception {
         var transport = stdio(response);
+        assertThrows(IOException.class, () -> new McpJsonRpcClient().discoverTools(transport));
+    }
+
+    @ParameterizedTest
+    @ValueSource(
+            strings = {
+                "{}",
+                "{\"tools\":{}}",
+                "{\"tools\":[{}]}",
+                "{\"tools\":[{\"name\":42,\"inputSchema\":{\"type\":\"object\"}}]}",
+                "{\"tools\":[{\"name\":\"x\",\"inputSchema\":[]}]}",
+                "{\"tools\":[{\"name\":\"x\",\"inputSchema\":{\"type\":\"string\"}}]}"
+            })
+    void rejectsMalformedDiscoveredTools(@NonNull String result) throws Exception {
+        var transport = stdio("{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":" + result + "}");
         assertThrows(IOException.class, () -> new McpJsonRpcClient().discoverTools(transport));
     }
 

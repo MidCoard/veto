@@ -113,7 +113,7 @@ public final class RunTaskTool implements NativeTool<RunTaskTool.Args> {
     public record Args(
             @SecurityHint(ParamCategory.SHELL_COMMAND)
                     @Doc("Exactly one command: {executable, args}. Background mode does not chain.")
-                    @NonNull List<RunCommandTool.CommandInput> commands,
+                    @NonNull List<RunCommandTool.@NonNull CommandInput> commands,
             @Doc(
                             "Request network access for this task. Defaults to false; true is separately Gateway-screened.")
                     Boolean network,
@@ -129,13 +129,6 @@ public final class RunTaskTool implements NativeTool<RunTaskTool.Args> {
     }
 
     @Override
-    public @NonNull String getDescription() {
-        return "Launch a long-running command as a detached background task (non-blocking). Uses"
-                + " the same {executable,args} entry shape as run_command; returns a taskId. Use for servers/watchers"
-                + " (npm run dev). Manage with view_task / stop_task.";
-    }
-
-    @Override
     public @NonNull Class<Args> getArgsClass() {
         return ToolDocs.nonNullClass(Args.class);
     }
@@ -144,10 +137,10 @@ public final class RunTaskTool implements NativeTool<RunTaskTool.Args> {
     public @NonNull String execute(@NonNull Args args) {
         int timeout = args.timeout();
         if (timeout < 0) {
-            return error("run_task timeout must be zero or positive.");
+            return ToolErrors.failure("run_task timeout must be zero or positive.");
         }
         if (args.commands().size() != 1) {
-            return error(
+            return ToolErrors.failure(
                     "run_task requires exactly one command (background mode does not chain); got "
                             + args.commands().size());
         }
@@ -187,15 +180,11 @@ public final class RunTaskTool implements NativeTool<RunTaskTool.Args> {
             return mapper.writeValueAsString(envelope);
         } catch (Exception e) {
             taskManager.stop(agentId, info.taskId(), BackgroundTaskManager.ExitCause.AGENT_STOP);
-            return error(
+            return ToolErrors.failure(
                     "Task response encoding failed; the started task was stopped (taskId="
                             + info.taskId()
                             + "): "
                             + e.getMessage());
         }
-    }
-
-    private static @NonNull String error(@NonNull String message) {
-        return ToolErrors.failure(message);
     }
 }

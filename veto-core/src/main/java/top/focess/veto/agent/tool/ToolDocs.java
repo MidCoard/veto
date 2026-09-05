@@ -19,6 +19,13 @@ public final class ToolDocs {
 
     private ToolDocs() {}
 
+    static @NonNull String descriptionOf(@NonNull Class<?> argsClass) {
+        ToolDoc doc = toolDocOf(argsClass);
+        return doc != null && !doc.description().isEmpty()
+                ? doc.description()
+                : firstSentenceOf(doc == null ? "" : doc.behavior());
+    }
+
     /**
      * Normalizes javac class-literal nullness for Checker Framework. A class literal cannot be
      * null, but a nullable-by-default package otherwise gives the expression a nullable outer
@@ -35,12 +42,9 @@ public final class ToolDocs {
      * Resolves the {@link ToolDoc} for a tool from its args class. The annotation is read directly
      * off the args class; if absent there, off the args class's enclosing tool class - so a tool
      * may declare {@code @ToolDoc} on either its args record or its enclosing bean class. Returns
-     * null when neither carries the annotation (or when {@code argsClass} is null).
+     * null when neither carries the annotation.
      */
-    static ToolDoc toolDocOf(Class<?> argsClass) {
-        if (argsClass == null) {
-            return null;
-        }
+    static ToolDoc toolDocOf(@NonNull Class<?> argsClass) {
         ToolDoc doc = argsClass.getAnnotation(nonNullClass(ToolDoc.class));
         if (doc != null) {
             return doc;
@@ -49,31 +53,29 @@ public final class ToolDocs {
         return enclosing != null ? enclosing.getAnnotation(nonNullClass(ToolDoc.class)) : null;
     }
 
-    public static @NonNull List<String> examplesOf(Class<?> argsClass) {
+    public static @NonNull List<String> examplesOf(@NonNull Class<?> argsClass) {
         ToolDoc doc = toolDocOf(argsClass);
-        String[] examples = doc == null ? null : doc.examples();
-        return examples == null ? List.of() : List.of(examples);
+        return doc == null ? List.of() : List.of(doc.examples());
     }
 
     /**
      * Returns the {@link ToolDoc#returnExamples()} for the given args class, or an empty list when
-     * the class is null or has no {@code @ToolDoc}.
+     * the class has no {@code @ToolDoc}.
      */
-    public static @NonNull List<String> returnExamplesOf(Class<?> argsClass) {
+    public static @NonNull List<String> returnExamplesOf(@NonNull Class<?> argsClass) {
         ToolDoc doc = toolDocOf(argsClass);
-        String[] examples = doc == null ? null : doc.returnExamples();
-        return examples == null ? List.of() : List.of(examples);
+        return doc == null ? List.of() : List.of(doc.returnExamples());
     }
 
     /** Returns the explicitly declared wire result formats for a documented Veto tool. */
-    public static @NonNull List<@NonNull ToolResultFormat> resultFormatsOf(Class<?> argsClass) {
+    public static @NonNull List<@NonNull ToolResultFormat> resultFormatsOf(
+            @NonNull Class<?> argsClass) {
         ToolDoc doc = toolDocOf(argsClass);
-        ToolResultFormat[] formats = doc == null ? null : doc.resultFormats();
-        return formats == null ? List.of() : List.of(formats);
+        return doc == null ? List.of() : List.of(doc.resultFormats());
     }
 
     /** Returns the typed documentation sections for a tool. */
-    public static @NonNull ToolDocumentation documentationOf(Class<?> argsClass) {
+    public static @NonNull ToolDocumentation documentationOf(@NonNull Class<?> argsClass) {
         ToolDoc doc = toolDocOf(argsClass);
         return doc == null
                 ? ToolDocumentation.empty()

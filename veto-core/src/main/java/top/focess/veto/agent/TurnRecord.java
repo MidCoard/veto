@@ -98,7 +98,7 @@ public record TurnRecord(
     /** A tool call the agent issued ({@code payload.call_id/tool_name/args}). */
     public static @NonNull TurnRecord toolCall(int turnNumber, @NonNull ToolCall call) {
         Map<String, Object> p = new LinkedHashMap<>();
-        p.put("call_id", call.requireCallId());
+        p.put("call_id", call.callId());
         p.put("tool_name", call.toolName());
         p.put("args", call.args());
         return new TurnRecord(turnNumber, TurnType.TOOL_CALL, p, null);

@@ -108,12 +108,6 @@ public final class ViewTaskTool implements NativeTool<ViewTaskTool.Args> {
     }
 
     @Override
-    public @NonNull String getDescription() {
-        return "Inspect a background task (status + recent output), or list your tasks when taskId"
-                + " is omitted.";
-    }
-
-    @Override
     public @NonNull Class<Args> getArgsClass() {
         return ToolDocs.nonNullClass(Args.class);
     }
@@ -147,7 +141,7 @@ public final class ViewTaskTool implements NativeTool<ViewTaskTool.Args> {
             }
             Optional<BackgroundTaskManager.TaskInfo> info = taskManager.status(agentId, taskId);
             if (info.isEmpty()) {
-                return error("task not found: " + taskId);
+                return ToolErrors.failure("task not found: " + taskId);
             }
             Optional<String> out = taskManager.output(agentId, taskId, RECENT_OUTPUT_LINES);
             Map<String, Object> envelope = new LinkedHashMap<>();
@@ -168,16 +162,12 @@ public final class ViewTaskTool implements NativeTool<ViewTaskTool.Args> {
         } catch (ToolExecutionException e) {
             throw e;
         } catch (Exception e) {
-            return error("view_task failed: " + e.getMessage());
+            return ToolErrors.failure("view_task failed: " + e.getMessage());
         }
     }
 
     private static @NonNull String currentAgentId() {
         var ctx = ToolCallContextHolder.get();
         return ctx != null ? ctx.agentId() : "standalone";
-    }
-
-    private static @NonNull String error(@NonNull String message) {
-        return ToolErrors.failure(message);
     }
 }

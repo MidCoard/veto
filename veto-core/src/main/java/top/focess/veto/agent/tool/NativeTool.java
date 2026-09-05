@@ -1,9 +1,6 @@
 package top.focess.veto.agent.tool;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.util.Nullness;
 
 /**
  * Contract for a native in-process tool. The implementing class (a Java record carrying the tool's
@@ -19,29 +16,10 @@ import top.focess.veto.util.Nullness;
  *
  * @param <T> the Java record representing the tool's structured parameters
  */
-public interface NativeTool<T> {
-
-    /** The unique name of the tool (e.g. {@code "view_file"}). */
-    @NonNull String getName();
+public interface NativeTool<T> extends LocalTool<T> {
 
     /** The description explaining when and how the LLM should invoke the tool. */
-    @NonNull String getDescription();
-
-    /**
-     * The class of the arguments container used for schema compilation and JSON deserialization.
-     */
-    @NonNull Class<T> getArgsClass();
-
-    /** Executes the tool logic with strongly-typed arguments. */
-    @NonNull String execute(@NonNull T args) throws Exception;
-
-    /**
-     * Bridge method to parse raw JSON node parameters and execute the tool. Inherited automatically
-     * by implementations.
-     */
-    default @NonNull String executeFromJson(
-            @NonNull JsonNode jsonArgs, @NonNull ObjectMapper mapper) throws Exception {
-        T typedArgs = mapper.treeToValue(jsonArgs, getArgsClass());
-        return execute(Nullness.requireNonNull(typedArgs, "Tool arguments deserialized to null"));
+    default @NonNull String getDescription() {
+        return ToolDocs.descriptionOf(getArgsClass());
     }
 }

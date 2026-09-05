@@ -15,7 +15,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.sandbox.BackgroundTaskManager;
 import top.focess.veto.session.SessionService;
@@ -52,7 +51,7 @@ public class SessionTasksController {
     @GetMapping("/{name}/tasks")
     public @NonNull ResponseEntity<Map<String, @NonNull Object>> list(
             @PathVariable @NonNull String name) {
-        String agentId = requireAgentId(name);
+        String agentId = RequestAuthorization.requireAgentId(name, sessionService, vault);
         List<BackgroundTaskManager.TaskInfo> tasks = taskManager.list(agentId);
         List<Map<String, Object>> rows = new ArrayList<>(tasks.size());
         for (BackgroundTaskManager.TaskInfo task : tasks) {
@@ -81,7 +80,7 @@ public class SessionTasksController {
     @SuppressWarnings("JvmTaintAnalysis")
     public @NonNull ResponseEntity<Map<String, @NonNull Object>> stopOrRemove(
             @PathVariable @NonNull String name, @PathVariable @NonNull String taskId) {
-        String agentId = requireAgentId(name);
+        String agentId = RequestAuthorization.requireAgentId(name, sessionService, vault);
         boolean alive =
                 taskManager
                         .status(agentId, taskId)
@@ -148,20 +147,5 @@ public class SessionTasksController {
         if (finishedAt != null) row.put("finishedAt", finishedAt.toString());
         row.put("uptimeSeconds", Math.max(0, uptimeSeconds));
         return row;
-    }
-
-    /** Resolves the session's primary agent id, enforcing authentication + existence. */
-    private @NonNull String requireAgentId(@NonNull String name) {
-        String user = vault.currentUser();
-        if (user == null) {
-            throw new ResponseStatusException(
-                    HttpStatus.UNAUTHORIZED, Msg.get("error.auth.notAuthenticated"));
-        }
-        String agentId = sessionService.primaryAgentIdFor(name, user).orElse(null);
-        if (agentId == null) {
-            throw new ResponseStatusException(
-                    HttpStatus.NOT_FOUND, Msg.get("error.session.notFound", name));
-        }
-        return agentId;
     }
 }

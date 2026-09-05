@@ -71,11 +71,6 @@ public final class FindFilesTool implements WorkspaceReadTool<FindFilesTool.Args
     }
 
     @Override
-    public @NonNull String getDescription() {
-        return "Find regular files below a directory using a portable glob.";
-    }
-
-    @Override
     public @NonNull Class<Args> getArgsClass() {
         return ToolDocs.nonNullClass(Args.class);
     }

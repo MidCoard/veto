@@ -63,8 +63,8 @@ public final class WriteToFileTool implements WorkspaceWriteTool<WriteToFileTool
                     - Parent creation, temporary-file, disk, or move failures produce a failed tool result and \
                     do not count as success.
                     - `codeContent` is written byte-for-byte; an empty string creates an empty file.
-                    - Replacing a target may replace its filesystem metadata and replaces a symbolic-link entry \
-                    rather than writing through to the link target.
+                    - Replacing a target may replace its filesystem metadata. Symbolic-link and Windows \
+                    reparse-point targets are rejected; the tool does not write through them or replace them.
                     """,
             security =
                     """
@@ -97,11 +97,6 @@ public final class WriteToFileTool implements WorkspaceWriteTool<WriteToFileTool
     @Override
     public @NonNull String getName() {
         return "write_to_file";
-    }
-
-    @Override
-    public @NonNull String getDescription() {
-        return "Create a new file or completely overwrite an existing file.";
     }
 
     @Override

@@ -74,12 +74,13 @@ public class SessionController {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST, Msg.get("error.session.missingFields"));
         }
+        Integer rootIndex = body.currentWorkspaceRootIndex();
         return service.createSession(
                 user,
                 pattern,
                 body.name(),
                 roots,
-                body.currentWorkspaceRootIndex() == null ? 0 : body.currentWorkspaceRootIndex(),
+                rootIndex == null ? 0 : rootIndex,
                 top.focess.veto.llm.core.ToolResultPresentationMode.canonicalize(
                         body.toolResultPresentation()));
     }

@@ -673,7 +673,7 @@ public class AgentRunner {
             }
             List<ToolCall> responseCalls = response.calls();
             if (responseCalls != null && !responseCalls.isEmpty()) {
-                executeToolCalls(assignCallIds(responseCalls), response.thought());
+                executeToolCalls(responseCalls, response.thought());
             } else {
                 // No tool calls: the agent has emitted its answer with nothing further to act
                 // on. Termination routes on call presence - calls absent means stop. The agent
@@ -706,8 +706,7 @@ public class AgentRunner {
 
             switch (action) {
                 case top.focess.veto.agent.loop.ToolAction tool -> {
-                    ToolCall call =
-                            new ToolCall(tool.tool(), tool.resolveInputs(scope), nextCallId());
+                    ToolCall call = new ToolCall(tool.tool(), tool.resolveInputs(scope));
                     ToolResult result = executeOneCall(call);
                     scope.bindTool(tool.outputs(), result);
                     programCounter++;
@@ -1007,7 +1006,7 @@ public class AgentRunner {
                 String refusalDetail = "declined";
                 for (int i = 0; i < calls.size(); i++) {
                     ToolCall call = calls.get(i);
-                    String callId = call.requireCallId();
+                    String callId = call.callId();
                     ApprovalDecision decision = decisions.get(i);
                     ToolDefinition def = toolEngine.resolveDefinition(call.toolName());
 
@@ -1184,7 +1183,7 @@ public class AgentRunner {
     }
 
     private @NonNull ToolResult executeOneCall(@NonNull ToolCall call) {
-        String callId = call.requireCallId();
+        String callId = call.callId();
         ToolDefinition def = toolEngine.resolveDefinition(call.toolName());
         if (def == null) {
             return toolNotFound(call);
@@ -1291,7 +1290,7 @@ public class AgentRunner {
         transitionTo(AgentState.INTERCEPTED);
         // Register before advertising the prompt so a fast reply cannot beat registration.
         List<VetoOption> offered = p.options();
-        String callId = call.requireCallId();
+        String callId = call.callId();
         hitlRegistry.register(agentId, callId, call, def, offered, p.danger(), p.relevance());
         emitVetoRequired(call, p, offered);
         top.focess.veto.agent.intercept.InterceptResolution resolution = awaitResolution(callId);
@@ -1377,7 +1376,7 @@ public class AgentRunner {
             @NonNull ToolCall call,
             ApprovalDecision.@NonNull Prompt p,
             @NonNull List<VetoOption> offered) {
-        String callId = call.requireCallId();
+        String callId = call.callId();
         log.info(
                 "VETO_REQUIRED agent={} callId={} tool={} scenario={} options={}",
                 agentId,
@@ -2145,22 +2144,6 @@ public class AgentRunner {
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────
-
-    private @NonNull List<@NonNull ToolCall> assignCallIds(@NonNull List<@NonNull ToolCall> calls) {
-        List<@NonNull ToolCall> withIds = new ArrayList<>();
-        for (ToolCall c : calls) {
-            if (c.callId() == null) {
-                withIds.add(new ToolCall(c.toolName(), c.args(), nextCallId()));
-            } else {
-                withIds.add(c);
-            }
-        }
-        return withIds;
-    }
-
-    private @NonNull String nextCallId() {
-        return "call_" + UUID.randomUUID().toString().substring(0, 8);
-    }
 
     /**
      * A model binding: provider/model/credential/options + the Layer-1 system-prompt base. The

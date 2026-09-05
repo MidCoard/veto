@@ -1,9 +1,6 @@
 package top.focess.veto.agent.tool;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.util.Nullness;
 
 /**
  * Contract for an agent-internal control/meta tool. The implementing class (a Java record carrying
@@ -19,31 +16,10 @@ import top.focess.veto.util.Nullness;
  *
  * @param <T> the Java record representing the tool's structured parameters
  */
-public interface AgentTool<T> {
-
-    /** The unique name of the tool (e.g. {@code "think"}). */
-    @NonNull String getName();
-
-    /**
-     * The class of the arguments container used for schema compilation and JSON deserialization.
-     */
-    @NonNull Class<T> getArgsClass();
+public interface AgentTool<T> extends LocalTool<T> {
 
     /** The effect boundary owned by this agent-runtime tool. */
     default @NonNull ToolCapability getCapability() {
         return ToolCapability.AGENT_CONTROL;
-    }
-
-    /** Executes the tool logic with strongly-typed arguments. */
-    @NonNull String execute(@NonNull T args) throws Exception;
-
-    /**
-     * Bridge method to parse raw JSON node parameters and execute the tool. Inherited automatically
-     * by implementations.
-     */
-    default @NonNull String executeFromJson(
-            @NonNull JsonNode jsonArgs, @NonNull ObjectMapper mapper) throws Exception {
-        T typedArgs = mapper.treeToValue(jsonArgs, getArgsClass());
-        return execute(Nullness.requireNonNull(typedArgs, "Tool arguments deserialized to null"));
     }
 }

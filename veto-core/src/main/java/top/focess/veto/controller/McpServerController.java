@@ -35,7 +35,8 @@ public class McpServerController {
             @RequestBody @NonNull DiscoverMcpServerRequest request) {
         authorization.requireAdmin();
         URI endpoint = validatedEndpoint(request.baseUrl());
-        String authToken = request.authToken() == null ? "" : request.authToken();
+        String authToken = request.authToken();
+        if (authToken == null) authToken = "";
         List<RemoteToolDefinition> tools =
                 toolEngine.discoverAndRegister(
                         new McpTransport.SseMcpTransport(endpoint.toString(), authToken));

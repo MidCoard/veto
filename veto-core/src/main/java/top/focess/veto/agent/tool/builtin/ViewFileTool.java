@@ -106,11 +106,6 @@ public final class ViewFileTool implements WorkspaceReadTool<ViewFileTool.Args> 
     }
 
     @Override
-    public @NonNull String getDescription() {
-        return "Read lines of a text file from the local filesystem.";
-    }
-
-    @Override
     public @NonNull Class<Args> getArgsClass() {
         return ToolDocs.nonNullClass(Args.class);
     }

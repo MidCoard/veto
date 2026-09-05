@@ -25,9 +25,4 @@ public record RemoteToolDefinition(
     public @NonNull Danger defaultDanger() {
         return Danger.ELEVATED;
     }
-
-    @Override
-    public @NonNull ParameterSchema parameters() {
-        return new ParameterSchema.Raw(inputSchema);
-    }
 }

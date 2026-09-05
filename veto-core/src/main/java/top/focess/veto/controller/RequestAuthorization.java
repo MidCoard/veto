@@ -6,6 +6,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
+import top.focess.veto.i18n.Msg;
+import top.focess.veto.session.SessionService;
+import top.focess.veto.vault.KeysteadVault;
 import top.focess.veto.vault.UserContext;
 import top.focess.veto.vault.UserRegistry;
 
@@ -37,5 +40,20 @@ public class RequestAuthorization {
         if (!administrator.test(username)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Administrator role required");
         }
+    }
+
+    public static @NonNull String requireAgentId(
+            @NonNull String name, @NonNull SessionService sessions, @NonNull KeysteadVault vault) {
+        String user = vault.currentUser();
+        if (user == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.UNAUTHORIZED, Msg.get("error.auth.notAuthenticated"));
+        }
+        return sessions.primaryAgentIdFor(name, user)
+                .orElseThrow(
+                        () ->
+                                new ResponseStatusException(
+                                        HttpStatus.NOT_FOUND,
+                                        Msg.get("error.session.notFound", name)));
     }
 }

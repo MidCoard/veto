@@ -10,13 +10,10 @@ import java.lang.reflect.Type;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
 
 /**
- * Compiles the two human-friendly input-schema formats into canonical {@link ToolDefinition}
- * instances and Draft-7 JSON Schema.
+ * Compiles annotated Java parameter records into tool definitions and JSON Schema.
  *
  * <p>This is the home of the {@code ToolDefinition.of(NativeTool)} factory logic: the static {@code
  * of} convenience factories are intentionally absent from the shared {@link ToolDefinition}
@@ -26,9 +23,6 @@ import org.jspecify.annotations.NonNull;
 public final class ToolSchemaCompiler {
 
     private static final @NonNull ObjectMapper MAPPER = new ObjectMapper();
-
-    private static final @NonNull Pattern DSL_PATTERN =
-            Pattern.compile("^([a-zA-Z]+)([!?]?)\\s*(.*)$");
 
     private ToolSchemaCompiler() {}
 
@@ -63,11 +57,14 @@ public final class ToolSchemaCompiler {
     /**
      * Reflects {@link SecurityHint} annotations off an args record's components into a map of
      * parameter name to {@link ParamCategory}. Extracted from {@link #compileNative}'s inline loop
-     * so it can be reused by {@link AgentToolDefinition#from(Class)}.
+     * so it can be reused by {@link AgentToolDefinition#from(String, Class, ToolCapability)}.
      */
     public static @NonNull Map<@NonNull String, @NonNull ParamCategory> hintsOf(
             @NonNull Class<?> argsClass) {
         Map<@NonNull String, @NonNull ParamCategory> hints = new LinkedHashMap<>();
+        if (!argsClass.isRecord()) {
+            throw new IllegalArgumentException("Tool arguments must be a Java Record");
+        }
         for (RecordComponent c : argsClass.getRecordComponents()) {
             SecurityHint h = c.getAnnotation(ToolDocs.nonNullClass(SecurityHint.class));
             hints.put(c.getName(), h != null ? h.value() : ParamCategory.GENERIC);
@@ -185,53 +182,6 @@ public final class ToolSchemaCompiler {
                         + "'");
     }
 
-    /**
-     * Compiles a key-value String DSL map ({@code "<name>": "<type><modifier> <description>"}) into
-     * a Draft-7 JSON Schema. {@code !} = required, {@code ?}/omitted = optional.
-     */
-    public static @NonNull JsonNode compileFromStringDsl(@NonNull Map<String, String> dslMap) {
-        ObjectNode schema = MAPPER.createObjectNode();
-        schema.put("type", "object");
-        ObjectNode properties = MAPPER.createObjectNode();
-        ArrayNode required = MAPPER.createArrayNode();
-
-        for (Map.Entry<String, String> entry : dslMap.entrySet()) {
-            String paramName = entry.getKey();
-            String dslValue = entry.getValue().trim();
-            Matcher matcher = DSL_PATTERN.matcher(dslValue);
-
-            ObjectNode paramNode = MAPPER.createObjectNode();
-            if (matcher.matches()) {
-                String typeGroup = matcher.group(1);
-                String modifier = matcher.group(2);
-                String descriptionGroup = matcher.group(3);
-                if (typeGroup == null || descriptionGroup == null) {
-                    throw new IllegalArgumentException("Malformed tool parameter DSL: " + dslValue);
-                }
-                String type = typeGroup.toLowerCase();
-                String description = descriptionGroup.trim();
-                paramNode.put("type", type);
-                if (!description.isEmpty()) {
-                    paramNode.put("description", description);
-                }
-                if ("!".equals(modifier)) {
-                    required.add(paramName);
-                }
-            } else {
-                paramNode.put("type", "string");
-                paramNode.put("description", dslValue);
-            }
-            properties.set(paramName, paramNode);
-        }
-
-        schema.set("properties", properties);
-        if (!required.isEmpty()) {
-            schema.set("required", required);
-        }
-        schema.put("additionalProperties", false);
-        return schema;
-    }
-
     private static @NonNull String mapJavaTypeToSchemaType(@NonNull Class<?> type) {
         if (type == String.class) return "string";
         if (type.isEnum()) return "string";
@@ -252,20 +202,34 @@ public final class ToolSchemaCompiler {
      * List<NestedRecord>} is advertised as {@code items: {type: string}} and the model has to guess
      * the nested shape from the prose description (observed live: a model then formatted an inner
      * {@code List<String>} field as a bracketed string, which Jackson could not deserialize). For
-     * scalar elements the proper JSON-Schema type is used; raw (unparameterized) collections fall
-     * back to {@code string} items.
+     * scalar elements the proper JSON-Schema type is used; nested collections retain their element
+     * schemas and raw collections leave the element type unrestricted.
      */
     private static @NonNull JsonNode itemsSchemaOf(@NonNull RecordComponent component) {
-        Class<?> elementType = elementClassOf(component);
-        if (elementType != null && elementType.isRecord()) {
-            return compileFromRecord(elementType);
+        Type type = component.getGenericType();
+        if (type instanceof Class<?> array && array.isArray()) {
+            return schemaOf(array.getComponentType());
         }
-        if (elementType != null && elementType.isEnum()) {
-            return enumSchema(elementType);
+        if (type instanceof ParameterizedType collection) {
+            return schemaOf(collection.getActualTypeArguments()[0]);
         }
-        ObjectNode items = MAPPER.createObjectNode();
-        items.put("type", elementType != null ? mapJavaTypeToSchemaType(elementType) : "string");
-        return items;
+        return MAPPER.createObjectNode();
+    }
+
+    private static @NonNull JsonNode schemaOf(Type type) {
+        ObjectNode schema = MAPPER.createObjectNode();
+        if (type instanceof ParameterizedType parameterized
+                && parameterized.getRawType() instanceof Class<?> raw
+                && Collection.class.isAssignableFrom(raw)) {
+            schema.put("type", "array");
+            schema.set("items", schemaOf(parameterized.getActualTypeArguments()[0]));
+        } else if (type instanceof Class<?> concrete) {
+            if (concrete.isRecord()) return compileFromRecord(concrete);
+            if (concrete.isEnum()) return enumSchema(concrete);
+            schema.put("type", mapJavaTypeToSchemaType(concrete));
+            if (concrete.isArray()) schema.set("items", schemaOf(concrete.getComponentType()));
+        }
+        return schema;
     }
 
     private static @NonNull ObjectNode enumSchema(@NonNull Class<?> enumType) {
@@ -281,33 +245,11 @@ public final class ToolSchemaCompiler {
         return schema;
     }
 
-    /**
-     * Resolves the element class of an array or collection component, or {@code null} for a raw
-     * (unparameterized) collection whose element type is unknown at compile time.
-     */
-    private static Class<?> elementClassOf(@NonNull RecordComponent component) {
-        Class<?> type = component.getType();
-        if (type.isArray()) {
-            return type.getComponentType();
-        }
-        if (Collection.class.isAssignableFrom(type)) {
-            Type generic = component.getGenericType();
-            if (generic instanceof ParameterizedType pt) {
-                Type[] args = pt.getActualTypeArguments();
-                if (args.length > 0) {
-                    Type arg = args[0];
-                    if (arg instanceof Class<?> c) {
-                        return c;
-                    }
-                    // e.g. List<List<String>> - take the raw outer class of the nested
-                    // parameterized type.
-                    if (arg instanceof ParameterizedType nested
-                            && nested.getRawType() instanceof Class<?> c) {
-                        return c;
-                    }
-                }
-            }
-        }
-        return null;
+    static @NonNull ObjectNode emptyObjectSchema() {
+        ObjectNode schema = MAPPER.createObjectNode();
+        schema.put("type", "object");
+        schema.set("properties", MAPPER.createObjectNode());
+        schema.put("additionalProperties", false);
+        return schema;
     }
 }

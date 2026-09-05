@@ -1,6 +1,9 @@
 package top.focess.veto.agent.tool;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import java.lang.reflect.AnnotatedArrayType;
+import java.lang.reflect.AnnotatedParameterizedType;
+import java.lang.reflect.AnnotatedType;
 import java.lang.reflect.RecordComponent;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -43,6 +46,14 @@ final class NativeToolArgumentValidator {
             return;
         }
         for (RecordComponent component : argsClass.getRecordComponents()) {
+            JsonNode nestedValue = arguments.get(component.getName());
+            if (nestedValue != null) {
+                validateAnnotatedValue(
+                        nestedValue,
+                        component.getAnnotatedType(),
+                        childPath(path, component.getName()),
+                        issues);
+            }
             RequiredWhen requiredWhen =
                     component.getAnnotation(ToolDocs.nonNullClass(RequiredWhen.class));
             if (requiredWhen == null) {
@@ -70,6 +81,34 @@ final class NativeToolArgumentValidator {
         }
     }
 
+    private static void validateAnnotatedValue(
+            @NonNull JsonNode value,
+            @NonNull AnnotatedType type,
+            @NonNull String path,
+            @NonNull List<String> issues) {
+        if (value.isNull()) {
+            if (type.isAnnotationPresent(ToolDocs.nonNullClass(NonNull.class))) {
+                issues.add("parameter '" + path + "' must not be null");
+            }
+            return;
+        }
+        if (type.getType() instanceof Class<?> recordClass && recordClass.isRecord()) {
+            validateConditionalRequirements(value, recordClass, path, issues);
+        } else if (value.isArray()) {
+            AnnotatedType elementType = null;
+            if (type instanceof AnnotatedArrayType array) {
+                elementType = array.getAnnotatedGenericComponentType();
+            } else if (type instanceof AnnotatedParameterizedType collection) {
+                elementType = collection.getAnnotatedActualTypeArguments()[0];
+            }
+            if (elementType != null) {
+                for (int i = 0; i < value.size(); i++) {
+                    validateAnnotatedValue(value.get(i), elementType, path + "[" + i + "]", issues);
+                }
+            }
+        }
+    }
+
     private static boolean matchesAny(JsonNode actual, String @NonNull [] expectedValues) {
         if (actual == null || actual.isNull() || !actual.isValueNode()) {
             return false;
@@ -89,7 +128,7 @@ final class NativeToolArgumentValidator {
             @NonNull String path,
             @NonNull List<String> issues) {
         String expectedType = schema.path("type").asText();
-        if (!matchesType(value, expectedType)) {
+        if ((path.isEmpty() && !value.isObject()) || !matchesType(value, expectedType)) {
             issues.add(
                     "parameter '"
                             + displayPath(path)
@@ -97,6 +136,10 @@ final class NativeToolArgumentValidator {
                             + expectedType
                             + ", got "
                             + actualType(value));
+            return;
+        }
+        if (value.isNull()) {
+            // Nullability is checked from the annotated Java type, including collection elements.
             return;
         }
         JsonNode allowed = schema.path("enum");

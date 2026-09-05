@@ -1,34 +1,47 @@
 package top.focess.veto.agent.tool.builtin;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
+import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.screening.Danger;
 import top.focess.veto.agent.tool.Doc;
 import top.focess.veto.agent.tool.NativeTool;
 import top.focess.veto.agent.tool.ParamCategory;
 import top.focess.veto.agent.tool.SecurityHint;
+import top.focess.veto.agent.tool.ToolCallContext;
+import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDoc;
 import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolResultFormat;
 import top.focess.veto.agent.tool.ToolSecurity;
+import top.focess.veto.llm.config.LlmJacksonConfig;
 import top.focess.veto.sandbox.ChainMode;
-import top.focess.veto.sandbox.SandboxSubstrate;
+import top.focess.veto.sandbox.Command;
+import top.focess.veto.sandbox.CommandResult;
+import top.focess.veto.sandbox.SandboxManager;
+import top.focess.veto.sandbox.SandboxProfile;
 
-/**
- * {@code run_command} — the special tool that executes arbitrary external processes.
- *
- * <p>This tool is registered as a {@link NativeTool} so its schema is advertised in the manifest,
- * but its execution does <b>not</b> run a process in the host JVM: {@link
- * top.focess.veto.agent.tool.ToolEngine#execute} special-cases {@code run_command} and routes it
- * through the session's {@link SandboxSubstrate} (no shell, argv[] direct exec, cwd locked,
- * Veto-controlled chaining). Consequently {@link #execute} is never invoked by the engine and
- * throws to make the special-casing explicit.
- */
+/** Executes screened commands through the sandbox using the standard native-tool path. */
 @Component
 @ToolSecurity(capability = ToolCapability.PROCESS_EXECUTION, defaultDanger = Danger.ELEVATED)
 public final class RunCommandTool implements NativeTool<RunCommandTool.Args> {
+
+    private final @NonNull SandboxManager sandboxManager;
+    private final @NonNull ObjectMapper mapper;
+
+    public RunCommandTool(
+            @NonNull SandboxManager sandboxManager,
+            @Qualifier(LlmJacksonConfig.LLM_OBJECT_MAPPER) @NonNull ObjectMapper mapper) {
+        this.sandboxManager = sandboxManager;
+        this.mapper = mapper;
+    }
 
     /** A single discrete command in the chain. */
     public record CommandInput(
@@ -37,7 +50,7 @@ public final class RunCommandTool implements NativeTool<RunCommandTool.Args> {
                     @NonNull String executable,
             @Doc(
                             "Literal argv array. Veto and the process launcher do not expand globs or environment variables.")
-                    @NonNull List<String> args) {}
+                    @NonNull List<@NonNull String> args) {}
 
     @ToolDoc(
             resultFormats = {ToolResultFormat.PLAINTEXT},
@@ -113,7 +126,7 @@ public final class RunCommandTool implements NativeTool<RunCommandTool.Args> {
             @SecurityHint(ParamCategory.SHELL_COMMAND)
                     @Doc(
                             "Discrete commands; Veto connects them per `connect`. No shell, no chaining operators in input.")
-                    @NonNull List<CommandInput> commands,
+                    @NonNull List<@NonNull CommandInput> commands,
             @Doc("How Veto connects the commands: STOP_ON_FAILURE (default), RUN_ALL, or PIPE.")
                     ChainMode connect,
             @Doc(
@@ -127,7 +140,9 @@ public final class RunCommandTool implements NativeTool<RunCommandTool.Args> {
 
         /** Compatibility constructor for callers that accept the default deny-network posture. */
         public Args(
-                @NonNull List<CommandInput> commands, ChainMode connect, @NonNull Integer timeout) {
+                @NonNull List<@NonNull CommandInput> commands,
+                ChainMode connect,
+                @NonNull Integer timeout) {
             this(commands, connect, false, timeout);
         }
     }
@@ -138,20 +153,55 @@ public final class RunCommandTool implements NativeTool<RunCommandTool.Args> {
     }
 
     @Override
-    public @NonNull String getDescription() {
-        return "Run one or more commands inside the sandbox. The model lists discrete commands; "
-                + "Veto connects them per `connect`.";
-    }
-
-    @Override
     public @NonNull Class<Args> getArgsClass() {
         return ToolDocs.nonNullClass(Args.class);
     }
 
     @Override
     public @NonNull String execute(@NonNull Args args) {
-        throw new UnsupportedOperationException(
-                "run_command execution is routed through the Sandbox substrate by ToolEngine.execute, "
-                        + "not through NativeTool.execute.");
+        if (args.timeout() < 0) return ToolErrors.failure("timeout must be zero or positive");
+        if (args.commands().isEmpty())
+            return ToolErrors.failure("commands must contain at least one command");
+        ToolCallContext context = ToolCallContextHolder.get();
+        String callId = ToolCallContextHolder.currentCallId();
+        if (context == null || callId == null || callId.isEmpty()) {
+            throw new SecurityException("run_command requires its screened execution permit");
+        }
+        ToolExecutionPermit permit = context.executionPermit();
+        Args screened = mapper.convertValue(permit.screenedArguments(), getArgsClass());
+        if (!getName().equals(permit.toolName()) || !args.equals(screened)) {
+            throw new SecurityException(
+                    "run_command arguments do not match the screened execution permit");
+        }
+        Path workspaceRoot = permit.requireExecutionRoot();
+        SandboxProfile profile =
+                SandboxProfile.forExecution(
+                        workspaceRoot,
+                        permit.protectedPaths(),
+                        Boolean.TRUE.equals(args.network()));
+        List<Command> commands =
+                args.commands().stream()
+                        .map(command -> new Command(command.executable(), command.args()))
+                        .toList();
+        ChainMode connect = args.connect();
+        if (connect == null) connect = ChainMode.STOP_ON_FAILURE;
+        Duration timeout = args.timeout() == 0 ? Duration.ZERO : Duration.ofSeconds(args.timeout());
+        String sandboxId = "runcmd-" + callId;
+        var handle = sandboxManager.provision(sandboxId, profile);
+        try {
+            CommandResult result =
+                    sandboxManager
+                            .substrate()
+                            .runCommands(handle, commands, workspaceRoot, connect, timeout);
+            String stderr = result.stderr();
+            String content = result.stdout() + (stderr.isEmpty() ? "" : "\n[stderr]\n" + stderr);
+            if (!result.success()) {
+                return ToolErrors.failure(
+                        "COMMAND_FAILED", content + "\n(exit code: " + result.exitCode() + ")");
+            }
+            return content;
+        } finally {
+            sandboxManager.deprovision(sandboxId);
+        }
     }
 }

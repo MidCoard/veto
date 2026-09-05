@@ -7,6 +7,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.tool.ToolDocs;
@@ -14,6 +17,45 @@ import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolExecutionException;
 
 class WebFetchToolTest {
+
+    @Test
+    void timesOutWhenServerSendsHeadersButStallsTheBody() throws Exception {
+        CountDownLatch releaseBody = new CountDownLatch(1);
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext(
+                "/slow",
+                exchange -> {
+                    exchange.sendResponseHeaders(200, 100);
+                    exchange.getResponseBody().write('x');
+                    exchange.getResponseBody().flush();
+                    try {
+                        releaseBody.await(10, TimeUnit.SECONDS);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    } finally {
+                        exchange.close();
+                    }
+                });
+        server.start();
+        try {
+            WebFetchTool tool = new WebFetchTool(1, 1000);
+            long started = System.nanoTime();
+            ToolExecutionException error =
+                    assertThrows(
+                            ToolDocs.nonNullClass(ToolExecutionException.class),
+                            () ->
+                                    tool.execute(
+                                            new WebFetchTool.Args(
+                                                    "http://127.0.0.1:"
+                                                            + server.getAddress().getPort()
+                                                            + "/slow")));
+            assertTrue(ToolErrors.normalize(error.getMessage()).contains("timed out"));
+            assertTrue(Duration.ofNanos(System.nanoTime() - started).toSeconds() < 5);
+        } finally {
+            releaseBody.countDown();
+            server.stop(0);
+        }
+    }
 
     @Test
     void productionPolicyRejectsPrivateDestinations() {

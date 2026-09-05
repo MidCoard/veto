@@ -75,8 +75,8 @@ public final class ReplaceFileContentTool
                     - `targetContent` and `replacementContent` are exact (whitespace, indentation, newlines all \
                     matter). A mismatched indent means "not found".
                     - `startLine`/`endLine` must form a valid inclusive range and restrict the search.
-                    - Replacing the directory entry can replace filesystem metadata or a symbolic-link entry; \
-                    it does not write through a symbolic link to its target.
+                    - Replacing the directory entry can replace filesystem metadata. Symbolic-link and \
+                    Windows reparse-point targets are rejected rather than followed or replaced.
                     """,
             security =
                     """
@@ -111,11 +111,6 @@ public final class ReplaceFileContentTool
     @Override
     public @NonNull String getName() {
         return "replace_file_content";
-    }
-
-    @Override
-    public @NonNull String getDescription() {
-        return "Replace a single contiguous block of code in an existing file.";
     }
 
     @Override

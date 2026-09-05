@@ -1,5 +1,6 @@
 package top.focess.veto.agent.tool;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.screening.Danger;
@@ -19,8 +20,7 @@ import top.focess.veto.agent.screening.Danger;
  *       agent loop or workflows ({@code create_group}, {@code load_skill}).
  * </ul>
  */
-public sealed interface ToolDefinition
-        permits NativeToolDefinition, RemoteToolDefinition, AgentToolDefinition {
+public sealed interface ToolDefinition permits LocalToolDefinition, RemoteToolDefinition {
 
     @NonNull String name();
 
@@ -32,7 +32,7 @@ public sealed interface ToolDefinition
     /** The deterministic danger assigned before argument-, policy-, and model-aware escalation. */
     @NonNull Danger defaultDanger();
 
-    @NonNull ParameterSchema parameters();
+    @NonNull JsonNode inputSchema();
 
     /** Successful result content encodings. Failure status is carried separately. */
     default @NonNull List<@NonNull ToolResultFormat> resultFormats() {

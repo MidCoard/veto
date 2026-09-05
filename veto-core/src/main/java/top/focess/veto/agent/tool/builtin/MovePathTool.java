@@ -67,11 +67,6 @@ public final class MovePathTool implements WorkspaceWriteTool<MovePathTool.Args>
     }
 
     @Override
-    public @NonNull String getDescription() {
-        return "Move or rename one file, link, or directory without overwriting.";
-    }
-
-    @Override
     public @NonNull Class<Args> getArgsClass() {
         return ToolDocs.nonNullClass(Args.class);
     }

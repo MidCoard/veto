@@ -124,12 +124,6 @@ public final class WebSearchTool implements NativeTool<WebSearchTool.Args> {
     }
 
     @Override
-    public @NonNull String getDescription() {
-        return "Search the web and return results with titles, URLs, and snippets. No API key"
-                + " needed by default.";
-    }
-
-    @Override
     public @NonNull Class<Args> getArgsClass() {
         return ToolDocs.nonNullClass(Args.class);
     }

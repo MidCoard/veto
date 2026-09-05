@@ -29,8 +29,6 @@ import top.focess.veto.vault.KeysteadVault;
  */
 @RestController
 @RequestMapping("/api/sessions")
-@SuppressWarnings(
-        "DuplicatedCode") // Session-scoped controllers repeat the same auth/not-found guard.
 public class HitlController {
 
     private final @NonNull SessionService sessionService;
@@ -56,7 +54,7 @@ public class HitlController {
      */
     @GetMapping("/{name}/vetoes")
     public @NonNull ResponseEntity<?> pending(@PathVariable @NonNull String name) {
-        String agentId = requireAgentId(name);
+        String agentId = RequestAuthorization.requireAgentId(name, sessionService, vault);
         return ResponseEntity.ok(hitlRegistry.pendingFor(agentId));
     }
 
@@ -70,12 +68,13 @@ public class HitlController {
             @PathVariable @NonNull String name,
             @PathVariable @NonNull String callId,
             @RequestBody @NonNull ResolveVetoRequest body) {
-        String agentId = requireAgentId(name);
-        if (body.option() == null || body.option().isBlank()) {
+        String agentId = RequestAuthorization.requireAgentId(name, sessionService, vault);
+        String option = body.option();
+        if (option == null || option.isBlank()) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST, Msg.get("error.hitl.optionRequired"));
         }
-        if (!agentService.resolveVeto(agentId, callId, body.option())) {
+        if (!agentService.resolveVeto(agentId, callId, option)) {
             throw new ResponseStatusException(
                     HttpStatus.NOT_FOUND, Msg.get("error.hitl.noPendingVeto", callId));
         }
@@ -92,25 +91,8 @@ public class HitlController {
      */
     @PostMapping("/{name}/cancel")
     public @NonNull ResponseEntity<?> cancel(@PathVariable @NonNull String name) {
-        String agentId = requireAgentId(name);
+        String agentId = RequestAuthorization.requireAgentId(name, sessionService, vault);
         int declined = agentService.declineAllVetoes(agentId);
         return ResponseEntity.ok(Map.of("status", "ok", "declined", declined));
-    }
-
-    /** Resolves the session's primary agent id, enforcing authentication + existence. */
-    private @NonNull String requireAgentId(@NonNull String name) {
-        String user = vault.currentUser();
-        if (user == null) {
-            throw new ResponseStatusException(
-                    HttpStatus.UNAUTHORIZED, Msg.get("error.auth.notAuthenticated"));
-        }
-        // A session without a primary agent cannot have parked vetoes - report an empty id space
-        // as "session not found" only when the session itself is missing.
-        String agentId = sessionService.primaryAgentIdFor(name, user).orElse(null);
-        if (agentId == null) {
-            throw new ResponseStatusException(
-                    HttpStatus.NOT_FOUND, Msg.get("error.session.notFound", name));
-        }
-        return agentId;
     }
 }

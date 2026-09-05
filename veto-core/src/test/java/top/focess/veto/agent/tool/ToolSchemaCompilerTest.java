@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.HashMap;
+import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.screening.Danger;
@@ -34,6 +36,108 @@ class ToolSchemaCompilerTest {
     private record ConditionalArgs(
             @NonNull ConditionalMode mode,
             @RequiredWhen(field = "mode", values = "WRITE", rejectBlank = true) String content) {}
+
+    private record NestedCollections(@NonNull List<List<Integer>> matrix) {}
+
+    private record NestedContracts(@NonNull List<@NonNull ConditionalArgs> entries) {}
+
+    @Test
+    void definitionSecurityHintsCannotChangeAfterConstruction() {
+        var hints = new HashMap<@NonNull String, @NonNull ParamCategory>();
+        hints.put("path", ParamCategory.FILESYSTEM_PATH);
+        var nativeDefinition =
+                new NativeToolDefinition(
+                        "read",
+                        "read",
+                        ToolCapability.WORKSPACE_READ,
+                        Danger.SAFE,
+                        false,
+                        ToolDocs.nonNullClass(NestedContracts.class),
+                        hints);
+        var agentDefinition =
+                new AgentToolDefinition(
+                        "think",
+                        "think",
+                        ToolCapability.LOOP_CONTROL,
+                        Danger.SAFE,
+                        ToolDocs.nonNullClass(NestedContracts.class),
+                        hints);
+        hints.clear();
+        assertEquals(ParamCategory.FILESYSTEM_PATH, nativeDefinition.paramHints().get("path"));
+        assertEquals(ParamCategory.FILESYSTEM_PATH, agentDefinition.paramHints().get("path"));
+        assertThrows(
+                ToolDocs.nonNullClass(UnsupportedOperationException.class),
+                () -> nativeDefinition.paramHints().clear());
+        assertThrows(
+                ToolDocs.nonNullClass(UnsupportedOperationException.class),
+                () -> agentDefinition.paramHints().clear());
+    }
+
+    @Test
+    void nestedCollectionsKeepTheirElementSchema() throws Exception {
+        JsonNode schema =
+                ToolSchemaCompiler.compileFromRecord(
+                        ToolDocs.nonNullClass(NestedCollections.class));
+        assertEquals(
+                "integer",
+                schema.path("properties")
+                        .path("matrix")
+                        .path("items")
+                        .path("items")
+                        .path("type")
+                        .asText());
+        assertThrows(
+                ToolDocs.nonNullClass(ToolExecutionException.class),
+                () ->
+                        NativeToolArgumentValidator.validate(
+                                "matrix",
+                                new ObjectMapper().readTree("{\"matrix\":[[\"wrong\"]]}"),
+                                ToolDocs.nonNullClass(NestedCollections.class)));
+    }
+
+    @Test
+    void nestedContractsRejectNullElementsAndMissingConditionalFields() throws Exception {
+        for (String json :
+                List.of("{\"entries\":[null]}", "{\"entries\":[{\"mode\":\"WRITE\"}]}")) {
+            ToolExecutionException failure =
+                    assertThrows(
+                            ToolDocs.nonNullClass(ToolExecutionException.class),
+                            () ->
+                                    NativeToolArgumentValidator.validate(
+                                            "nested",
+                                            new ObjectMapper().readTree(json),
+                                            ToolDocs.nonNullClass(NestedContracts.class)));
+            assertTrue(String.valueOf(failure.getMessage()).contains("entries[0]"));
+        }
+        assertDoesNotThrow(
+                () ->
+                        NativeToolArgumentValidator.validate(
+                                "nested",
+                                new ObjectMapper()
+                                        .readTree("{\"entries\":[{\"mode\":\"PROMOTE\"}]}"),
+                                ToolDocs.nonNullClass(NestedContracts.class)));
+    }
+
+    @Test
+    void nullableCollectionElementsRemainAllowed() throws Exception {
+        assertDoesNotThrow(
+                () ->
+                        NativeToolArgumentValidator.validate(
+                                "matrix",
+                                new ObjectMapper().readTree("{\"matrix\":[[null]]}"),
+                                ToolDocs.nonNullClass(NestedCollections.class)));
+    }
+
+    @Test
+    void nullArgumentsAreRejectedAtTheBoundary() {
+        assertThrows(
+                ToolDocs.nonNullClass(ToolExecutionException.class),
+                () ->
+                        NativeToolArgumentValidator.validate(
+                                "matrix",
+                                new ObjectMapper().nullNode(),
+                                ToolDocs.nonNullClass(NestedCollections.class)));
+    }
 
     @Test
     void nestedRecordCollectionGetsObjectItemsSchema() {

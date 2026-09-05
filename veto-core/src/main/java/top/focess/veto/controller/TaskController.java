@@ -57,8 +57,8 @@ public class TaskController {
                     .body(Map.of("status", "error", "message", Msg.get("error.task.typeRequired")));
         }
 
-        Map<String, Object> parameters =
-                request.parameters() == null ? Map.of() : request.parameters();
+        Map<String, Object> parameters = request.parameters();
+        if (parameters == null) parameters = Map.of();
         String sourceComponent = request.sourceComponent();
         if (sourceComponent == null) sourceComponent = "REST-API";
         String targetComponent = request.targetComponent();

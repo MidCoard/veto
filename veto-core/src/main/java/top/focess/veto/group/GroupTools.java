@@ -2,7 +2,6 @@ package top.focess.veto.group;
 
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.identity.Role;
 import top.focess.veto.agent.identity.RoleToolFilter;
@@ -88,9 +87,8 @@ public final class GroupTools {
         private final @NonNull GroupSpawner spawner;
         private final @NonNull LeaderBinding leaderBinding;
         private final @NonNull RoleToolFilter roleToolFilter;
-        private final HitlRegistry hitlRegistry;
+        private final @NonNull HitlRegistry hitlRegistry;
 
-        @Autowired
         public CreateGroup(
                 @NonNull GroupSpawner spawner,
                 @NonNull LeaderBinding leaderBinding,
@@ -100,17 +98,6 @@ public final class GroupTools {
             this.leaderBinding = leaderBinding;
             this.roleToolFilter = roleToolFilter;
             this.hitlRegistry = hitlRegistry;
-        }
-
-        /** Test compatibility constructor; production always supplies the workspace registry. */
-        public CreateGroup(
-                @NonNull GroupSpawner spawner,
-                @NonNull LeaderBinding leaderBinding,
-                @NonNull RoleToolFilter roleToolFilter) {
-            this.spawner = spawner;
-            this.leaderBinding = leaderBinding;
-            this.roleToolFilter = roleToolFilter;
-            this.hitlRegistry = null;
         }
 
         public record Args(
@@ -164,7 +151,7 @@ public final class GroupTools {
                             userId,
                             owner,
                             task,
-                            hitlRegistry == null ? null : hitlRegistry.workspace(leaderId),
+                            hitlRegistry.workspace(leaderId),
                             ctx.toolResultPresentation());
 
             // Request the delegation transform: the runner rewinds, re-seeds the Leader persona +
@@ -557,7 +544,7 @@ public final class GroupTools {
                 @SecurityHint(ParamCategory.GENERIC)
                         @Doc(
                                 "Message type: TASK_DISPATCH, ARTIFACT_REF, LOG_REF, FEEDBACK, STATUS, ACCEPT.")
-                        @NonNull String type,
+                        BlackboardMessage.@NonNull MessageType type,
                 @SecurityHint(ParamCategory.GENERIC)
                         @Doc("Receiver id (a Mate id, or 'LEADER' for a self-note).")
                         String receiver,
@@ -592,20 +579,11 @@ public final class GroupTools {
             }
             // The Blackboard identifies the Leader by the literal "LEADER" (its hub-and-spoke guard
             // + the orchestrator's ingest both key on it), so the Leader posts as "LEADER".
-            BlackboardMessage.MessageType type;
-            String typeName = args.type();
-            if (typeName.isBlank()) {
-                return ToolErrors.failure("Not posted: message type must not be blank.");
-            }
-            try {
-                type =
-                        top.focess.veto.util.Nullness.requireNonNull(
-                                BlackboardMessage.MessageType.valueOf(typeName));
-            } catch (IllegalArgumentException e) {
-                return ToolErrors.failure("Not posted: unknown message type '" + typeName + "'.");
-            }
             String receiver = args.receiver() == null ? "LEADER" : args.receiver();
             Group group = groupRegistry.get(groupId);
+            if (group != null && !group.isActive()) {
+                return ToolErrors.failure("Not posted: group is no longer active.");
+            }
             if (group == null
                     || (!"LEADER".equals(receiver) && !group.mates().containsKey(receiver))) {
                 return ToolErrors.failure("Not posted: unknown receiver '" + receiver + "'.");
@@ -623,7 +601,7 @@ public final class GroupTools {
                             groupId,
                             "LEADER",
                             receiver,
-                            type,
+                            args.type(),
                             payload,
                             0));
             return "posted";

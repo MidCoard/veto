@@ -95,17 +95,21 @@ class ToolEngineImplTest {
         }
     }
 
+    @Test
+    void oversizedJsonDoesNotBecomeSuccessfulMalformedJson() throws Exception {
+        ToolResult result = executeJsonOutput("{\"data\":\"" + "x".repeat(1_000_000) + "\"}");
+        assertFalse(result.success());
+        assertEquals(ToolResultFormat.PLAINTEXT, result.format());
+        assertEquals("TOOL_RESULT_TOO_LARGE", result.errorCode());
+        assertTrue(result.content().length() < 1_000);
+    }
+
     private @NonNull ToolResult executeJsonOutput(@NonNull String output) throws Exception {
         ObjectMapper mapper = new ObjectMapper();
         ApplicationContext appCtx = mock(ToolDocs.nonNullClass(ApplicationContext.class));
         when(appCtx.getBeansOfType(AgentTool.class))
                 .thenReturn(Map.of("jsonAgentTool", new JsonAgentTool()));
-        ToolEngineImpl engine =
-                new ToolEngineImpl(
-                        mapper,
-                        List.of(),
-                        new SandboxManager(TestSandboxFactory.uncontainedSubprocesses()),
-                        appCtx);
+        ToolEngineImpl engine = new ToolEngineImpl(mapper, List.of(), appCtx);
         engine.init();
         ToolResult result =
                 engine.execute(
@@ -168,16 +172,13 @@ class ToolEngineImplTest {
                         new WriteToFileTool(),
                         new ReplaceFileContentTool(),
                         new GrepSearchTool(),
-                        new RunCommandTool());
+                        new RunCommandTool(
+                                new SandboxManager(TestSandboxFactory.uncontainedSubprocesses()),
+                                mapper));
         // Minimal ApplicationContext mock that returns no AgentTool beans
         ApplicationContext appCtx = mock(ToolDocs.nonNullClass(ApplicationContext.class));
         when(appCtx.getBeansOfType(AgentTool.class)).thenReturn(Map.of());
-        ToolEngineImpl engine =
-                new ToolEngineImpl(
-                        mapper,
-                        tools,
-                        new SandboxManager(TestSandboxFactory.uncontainedSubprocesses()),
-                        appCtx);
+        ToolEngineImpl engine = new ToolEngineImpl(mapper, tools, appCtx);
         engine.init();
         return engine;
     }
@@ -191,13 +192,13 @@ class ToolEngineImplTest {
         BackgroundTaskManager backgroundTasks = new BackgroundTaskManager(sandboxes);
         List<NativeTool<?>> tools =
                 List.of(
-                        new RunCommandTool(),
+                        new RunCommandTool(sandboxes, mapper),
                         new RunTaskTool(backgroundTasks, mapper),
                         new ViewTaskTool(backgroundTasks, mapper),
                         new StopTaskTool(backgroundTasks, mapper));
         ApplicationContext appCtx = mock(ToolDocs.nonNullClass(ApplicationContext.class));
         when(appCtx.getBeansOfType(AgentTool.class)).thenReturn(Map.of());
-        ToolEngineImpl engine = new ToolEngineImpl(mapper, tools, sandboxes, appCtx);
+        ToolEngineImpl engine = new ToolEngineImpl(mapper, tools, appCtx);
         engine.init();
         return new WindowsSandboxFixture(engine, backgroundTasks, mapper);
     }
@@ -247,6 +248,43 @@ class ToolEngineImplTest {
     }
 
     @Test
+    void refusesAnotherRegisteredToolDefinition(@TempDir @NonNull Path tempDir) {
+        ToolEngineImpl engine = newEngine();
+        ToolCall call =
+                new ToolCall(
+                        "view_file",
+                        Map.of("absolutePath", tempDir.toString()),
+                        "mismatched-definition");
+        ToolResult result =
+                executeAuthorized(engine, call, definition(engine, "list_dir"), tempDir);
+        assertFalse(result.success(), "a view_file call must not execute list_dir");
+    }
+
+    @Test
+    void refusesUnregisteredDefinitionEvenWhenItsNameMatches(@TempDir @NonNull Path tempDir)
+            throws Exception {
+        ToolEngineImpl engine = newEngine();
+        Path file = tempDir.resolve("sample.txt");
+        Files.writeString(file, "content that should not be read");
+        NativeToolDefinition registered = (NativeToolDefinition) definition(engine, "view_file");
+        NativeToolDefinition forged =
+                new NativeToolDefinition(
+                        registered.name(),
+                        registered.description(),
+                        registered.capability(),
+                        registered.defaultDanger(),
+                        registered.requiresSemanticScreening(),
+                        registered.argsClass(),
+                        registered.paramHints());
+        ToolCall call =
+                new ToolCall(
+                        "view_file", Map.of("absolutePath", file.toString()), "forged-definition");
+        ToolResult result = executeAuthorized(engine, call, forged, tempDir);
+        assertFalse(result.success(), "execution must use the actual registered definition");
+        assertFalse(result.content().contains("content that should not be read"));
+    }
+
+    @Test
     void agentFailureUsesPlainDiagnosticAndSuccessFalse() {
         ObjectMapper mapper =
                 new ObjectMapper()
@@ -254,12 +292,7 @@ class ToolEngineImplTest {
         ApplicationContext appCtx = mock(ToolDocs.nonNullClass(ApplicationContext.class));
         when(appCtx.getBeansOfType(AgentTool.class))
                 .thenReturn(Map.of("failingAgentTool", new FailingAgentTool()));
-        ToolEngineImpl engine =
-                new ToolEngineImpl(
-                        mapper,
-                        List.of(),
-                        new SandboxManager(TestSandboxFactory.uncontainedSubprocesses()),
-                        appCtx);
+        ToolEngineImpl engine = new ToolEngineImpl(mapper, List.of(), appCtx);
         engine.init();
 
         ToolResult result =
@@ -281,12 +314,7 @@ class ToolEngineImplTest {
         FailingAgentTool tool = new FailingAgentTool();
         ApplicationContext appCtx = mock(ToolDocs.nonNullClass(ApplicationContext.class));
         when(appCtx.getBeansOfType(AgentTool.class)).thenReturn(Map.of("failingAgentTool", tool));
-        ToolEngineImpl engine =
-                new ToolEngineImpl(
-                        mapper,
-                        List.of(),
-                        new SandboxManager(TestSandboxFactory.uncontainedSubprocesses()),
-                        appCtx);
+        ToolEngineImpl engine = new ToolEngineImpl(mapper, List.of(), appCtx);
         engine.init();
 
         ToolResult result =
@@ -906,6 +934,53 @@ class ToolEngineImplTest {
             ToolResult result = engine.execute(changed, definition);
             assertFalse(result.success(), result.content());
             assertTrue(result.content().contains("do not match the screened"), result.content());
+        } finally {
+            ToolCallContextHolder.clear();
+        }
+    }
+
+    @Test
+    void directRunCommandRejectsArgumentsOutsideItsPermitBeforeProvisioning(
+            @TempDir @NonNull Path tempDir) {
+        SandboxManager sandbox = mock(ToolDocs.nonNullClass(SandboxManager.class));
+        RunCommandTool tool = new RunCommandTool(sandbox, new ObjectMapper());
+        ToolCall screened =
+                new ToolCall(
+                        "run_command",
+                        Map.of(
+                                "commands",
+                                List.of(Map.of("executable", "java", "args", List.of("-version"))),
+                                "timeout",
+                                30),
+                        "direct-screened");
+        ToolExecutionPermit permit =
+                ToolExecutionPermit.capture(
+                        screened,
+                        ToolSchemaCompiler.compileNative(tool),
+                        Workspace.single(tempDir, PathMode.REAL));
+        ToolCallContextHolder.set(
+                new ToolCallContext(
+                        "test-agent",
+                        UUID.randomUUID(),
+                        null,
+                        null,
+                        null,
+                        ToolResultPresentationMode.BASIC,
+                        permit));
+        ToolCallContextHolder.setCurrentCallId(screened.callId());
+        try {
+            var changed =
+                    new RunCommandTool.Args(
+                            List.of(new RunCommandTool.CommandInput("java", List.of("-help"))),
+                            null,
+                            null,
+                            30);
+            SecurityException failure =
+                    assertThrows(
+                            ToolDocs.nonNullClass(SecurityException.class),
+                            () -> tool.execute(changed));
+            assertTrue(String.valueOf(failure.getMessage()).contains("do not match the screened"));
+            verifyNoInteractions(sandbox);
         } finally {
             ToolCallContextHolder.clear();
         }

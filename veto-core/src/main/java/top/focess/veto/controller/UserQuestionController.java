@@ -35,7 +35,9 @@ public final class UserQuestionController {
 
     @GetMapping("/{name}/questions")
     public @NonNull ResponseEntity<?> pending(@PathVariable @NonNull String name) {
-        return ResponseEntity.ok(registry.pendingFor(requireAgentId(name)));
+        return ResponseEntity.ok(
+                registry.pendingFor(
+                        RequestAuthorization.requireAgentId(name, sessionService, vault)));
     }
 
     @PostMapping("/{name}/questions/{callId}")
@@ -43,7 +45,10 @@ public final class UserQuestionController {
             @PathVariable @NonNull String name,
             @PathVariable @NonNull String callId,
             @RequestBody @NonNull AnswerQuestionsRequest body) {
-        if (!registry.answer(requireAgentId(name), callId, body.answers())) {
+        if (!registry.answer(
+                RequestAuthorization.requireAgentId(name, sessionService, vault),
+                callId,
+                body.answers())) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST, "Question batch or answers are invalid");
         }
@@ -53,17 +58,10 @@ public final class UserQuestionController {
     @PostMapping("/{name}/questions/{callId}/cancel")
     public @NonNull ResponseEntity<?> cancel(
             @PathVariable @NonNull String name, @PathVariable @NonNull String callId) {
-        if (!registry.cancel(requireAgentId(name), callId)) {
+        if (!registry.cancel(
+                RequestAuthorization.requireAgentId(name, sessionService, vault), callId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No pending question batch");
         }
         return ResponseEntity.noContent().build();
-    }
-
-    private @NonNull String requireAgentId(@NonNull String name) {
-        String user = vault.currentUser();
-        if (user == null) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
-        return sessionService
-                .primaryAgentIdFor(name, user)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
     }
 }

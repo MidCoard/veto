@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -15,6 +16,7 @@ import java.util.Set;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
@@ -72,6 +74,38 @@ class PathToolsTest {
         assertEquals(1, result.get("matches").size());
         assertEquals("visible.txt", result.get("matches").get(0).asText());
         assertTrue(result.get("skippedEntries").asInt() >= 1);
+    }
+
+    @Test
+    void movePathMovesDanglingLinkWithoutResolvingItsTarget(@TempDir @NonNull Path root)
+            throws Exception {
+        Path missingTarget = root.resolve("does-not-exist.txt");
+        Path source = root.resolve("source-link");
+        Path destination = root.resolve("destination-link");
+        try {
+            Files.createSymbolicLink(source, missingTarget);
+        } catch (UnsupportedOperationException | java.io.IOException | SecurityException e) {
+            Assumptions.abort("Symbolic links unavailable: " + e.getMessage());
+        }
+        permit(
+                "move_path",
+                root,
+                Map.of(
+                        "sourceAbsolutePath", source.toString(),
+                        "destinationAbsolutePath", destination.toString()));
+
+        JsonNode moved =
+                mapper.readTree(
+                        new MovePathTool()
+                                .execute(
+                                        new MovePathTool.Args(
+                                                source.toString(), destination.toString())));
+
+        assertEquals("moved", moved.get("status").asText());
+        assertEquals("symbolic_link", moved.get("kind").asText());
+        assertFalse(Files.exists(source, LinkOption.NOFOLLOW_LINKS));
+        assertEquals(missingTarget, Files.readSymbolicLink(destination));
+        assertFalse(Files.exists(missingTarget));
     }
 
     @Test

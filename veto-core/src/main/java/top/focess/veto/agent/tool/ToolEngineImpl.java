@@ -7,7 +7,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -25,14 +24,8 @@ import org.springframework.stereotype.Service;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.mcp.transport.McpJsonRpcClient;
 import top.focess.veto.agent.mcp.transport.McpTransport;
-import top.focess.veto.agent.tool.builtin.RunCommandTool;
 import top.focess.veto.llm.config.LlmJacksonConfig;
 import top.focess.veto.llm.core.ToolCall;
-import top.focess.veto.sandbox.ChainMode;
-import top.focess.veto.sandbox.Command;
-import top.focess.veto.sandbox.CommandResult;
-import top.focess.veto.sandbox.SandboxManager;
-import top.focess.veto.sandbox.SandboxProfile;
 import top.focess.veto.sandbox.SandboxSubstrate;
 
 /**
@@ -51,11 +44,8 @@ import top.focess.veto.sandbox.SandboxSubstrate;
  *   <li><b>External</b> — forwarded over the registered {@link McpTransport}.
  * </ul>
  *
- * <p>{@code registerServer} + {@code McpTransport} are implementation details, intentionally absent
- * from the shared {@link ToolEngine} interface. Remote tool <i>discovery</i> (JSON-RPC {@code
- * tools/list} over a transport) is beyond the schema representation and is implemented by {@link
- * #discoverAndRegister(McpTransport)}; callers may also register a definition explicitly via {@link
- * #registerRemoteTool}.
+ * <p>Remote tools and their transports are registered together through {@link
+ * #discoverAndRegister(McpTransport)}.
  */
 @Service
 public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
@@ -68,7 +58,6 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
     private final @NonNull ObjectMapper mapper;
     private final @NonNull McpJsonRpcClient remoteClient;
     private final @NonNull List<NativeTool<?>> nativeToolBeans;
-    private final @NonNull SandboxManager sandboxManager;
     private final @NonNull ApplicationContext applicationContext;
 
     private final @NonNull Map<String, NativeToolDefinition> nativeDefs = new ConcurrentHashMap<>();
@@ -81,12 +70,10 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
     public ToolEngineImpl(
             @Qualifier(LlmJacksonConfig.LLM_OBJECT_MAPPER) @NonNull ObjectMapper mapper,
             @NonNull List<NativeTool<?>> nativeToolBeans,
-            @NonNull SandboxManager sandboxManager,
             @NonNull ApplicationContext applicationContext) {
         this.mapper = mapper;
         this.remoteClient = new McpJsonRpcClient(mapper);
         this.nativeToolBeans = nativeToolBeans;
-        this.sandboxManager = sandboxManager;
         this.applicationContext = applicationContext;
     }
 
@@ -129,7 +116,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
     }
 
     /** Discover tools from a remote MCP server via JSON-RPC tools/list and register them. */
-    public java.util.@NonNull List<RemoteToolDefinition> discoverAndRegister(
+    public synchronized java.util.@NonNull List<RemoteToolDefinition> discoverAndRegister(
             @NonNull McpTransport transport) {
         try {
             List<RemoteToolDefinition> tools = remoteClient.discoverTools(transport);
@@ -143,8 +130,8 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
                 ensureUniqueName(t.name());
             }
             for (RemoteToolDefinition t : tools) {
-                remoteDefs.put(t.name(), t);
                 transports.put(t.serverName(), transport);
+                remoteDefs.put(t.name(), t);
             }
             log.info("ToolEngine: discovered {} remote tool(s).", tools.size());
             return tools;
@@ -183,9 +170,13 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
 
     @Override
     public @NonNull ToolResult execute(@NonNull ToolCall call, @NonNull ToolDefinition def) {
-        String callId = call.requireCallId();
+        String callId = call.callId();
         ToolCallContextHolder.setCurrentCallId(callId);
         try {
+            if (def != resolveDefinition(call.toolName())) {
+                throw new SecurityException(
+                        "Tool definition does not match the registered tool: " + call.toolName());
+            }
             ToolResult result =
                     switch (def) {
                         case NativeToolDefinition nativeDef -> executeNative(call, nativeDef);
@@ -212,6 +203,15 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
         if (result.content().length() <= MAX_TOOL_RESULT_CHARS) {
             return result;
         }
+        if (result.format() == ToolResultFormat.JSON) {
+            return new ToolResult(
+                    result.toolName(),
+                    result.callId(),
+                    ToolResultStatus.FAILURE,
+                    ToolResultFormat.PLAINTEXT,
+                    "Tool completed but its JSON result exceeds the output limit; result omitted.",
+                    "TOOL_RESULT_TOO_LARGE");
+        }
         String bounded =
                 result.content().substring(0, MAX_TOOL_RESULT_CHARS)
                         + "\n[tool output truncated at "
@@ -221,31 +221,6 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
     }
 
     // ── Implementation-detail API (not on the shared interface) ──────────────
-
-    /** Registers a new MCP server transport. Stores it keyed by {@code serverName}. */
-    public void registerServer(@NonNull String serverName, @NonNull McpTransport transport) {
-        transports.put(serverName, transport);
-        log.info("ToolEngine: registered server transport '{}'.", serverName);
-    }
-
-    /**
-     * Registers an external tool discovered from a registered MCP server. Names are prefixed {@code
-     * {serverName}__{originalToolName}}.
-     */
-    public @NonNull RemoteToolDefinition registerRemoteTool(
-            @NonNull String serverName,
-            @NonNull String originalName,
-            @NonNull String description,
-            @NonNull JsonNode inputSchema) {
-        String prefixed = serverName + "__" + originalName;
-        RemoteToolDefinition def =
-                new RemoteToolDefinition(prefixed, description, serverName, inputSchema);
-        ToolContractValidator.validate(def);
-        ensureUniqueName(def.name());
-        remoteDefs.put(prefixed, def);
-        log.info("ToolEngine: registered remote tool '{}'.", prefixed);
-        return def;
-    }
 
     private void ensureUniqueName(@NonNull String name) {
         if (nativeDefs.containsKey(name)
@@ -262,9 +237,6 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
         JsonNode jsonArgs = mapper.valueToTree(call.args());
         NativeToolArgumentValidator.validate(def.name(), jsonArgs, def.argsClass());
         jsonArgs = authorizedArguments(call, jsonArgs, def);
-        if ("run_command".equals(def.name())) {
-            return executeRunCommand(call, jsonArgs);
-        }
         NativeTool<?> bean = nativeByName.get(def.name());
         if (bean == null) {
             return new ToolResult(
@@ -329,79 +301,6 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
             authorized.put(entry.getKey(), hostPath.toString());
         }
         return authorized;
-    }
-
-    /**
-     * {@code run_command} — routes through the Sandbox substrate (no shell, argv[] direct exec).
-     */
-    private @NonNull ToolResult executeRunCommand(
-            @NonNull ToolCall call, @NonNull JsonNode authorizedArguments) {
-        RunCommandTool.Args args =
-                mapper.convertValue(
-                        authorizedArguments, ToolDocs.nonNullClass(RunCommandTool.Args.class));
-        if (args == null) {
-            return new ToolResult(
-                    call.toolName(),
-                    call.callId(),
-                    false,
-                    "run_command arguments must be a JSON object");
-        }
-        int timeout = args.timeout();
-        if (timeout < 0) {
-            return new ToolResult(
-                    call.toolName(), call.callId(), false, "timeout must be zero or positive");
-        }
-        if (args.commands().isEmpty()) {
-            return new ToolResult(
-                    call.toolName(),
-                    call.callId(),
-                    false,
-                    "commands must contain at least one command");
-        }
-        Duration timeoutDur = timeout == 0 ? Duration.ZERO : Duration.ofSeconds(timeout);
-        List<Command> commands =
-                args.commands().stream().map(c -> new Command(c.executable(), c.args())).toList();
-        ChainMode requestedConnect = args.connect();
-        ChainMode connect = requestedConnect != null ? requestedConnect : ChainMode.STOP_ON_FAILURE;
-        ToolCallContext context = ToolCallContextHolder.get();
-        if (context == null || !context.executionPermit().matchesCall(call)) {
-            throw new SecurityException("run_command requires its screened execution permit");
-        }
-        ToolExecutionPermit permit = context.executionPermit();
-        Path workspaceRoot = permit.requireExecutionRoot();
-        SandboxProfile profile =
-                SandboxProfile.forExecution(
-                        workspaceRoot,
-                        permit.protectedPaths(),
-                        Boolean.TRUE.equals(args.network()));
-        String sandboxId = "runcmd-" + call.callId();
-        var handle = sandboxManager.provision(sandboxId, profile);
-        try {
-            CommandResult result =
-                    sandboxManager
-                            .substrate()
-                            .runCommands(handle, commands, workspaceRoot, connect, timeoutDur);
-            String content = commandOutput(result);
-            return new ToolResult(
-                    call.toolName(),
-                    call.callId(),
-                    result.success() ? ToolResultStatus.SUCCESS : ToolResultStatus.FAILURE,
-                    ToolResultFormat.PLAINTEXT,
-                    content,
-                    result.success() ? null : "COMMAND_FAILED");
-        } finally {
-            sandboxManager.deprovision(sandboxId);
-        }
-    }
-
-    private static @NonNull String commandOutput(@NonNull CommandResult result) {
-        String stderr = result.stderr();
-        String content = result.stdout() + (stderr.isEmpty() ? "" : "\n[stderr]\n" + stderr);
-        // The exit code rides in the content as well as the result status so every provider gives
-        // the model the exact process outcome.
-        return result.exitCode() == 0
-                ? content
-                : content + "\n(exit code: " + result.exitCode() + ")";
     }
 
     private @NonNull ToolResult executeAgent(

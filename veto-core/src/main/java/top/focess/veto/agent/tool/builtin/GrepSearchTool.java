@@ -94,11 +94,6 @@ public final class GrepSearchTool implements WorkspaceReadTool<GrepSearchTool.Ar
     }
 
     @Override
-    public @NonNull String getDescription() {
-        return "Search for exact pattern matches inside files.";
-    }
-
-    @Override
     public @NonNull Class<Args> getArgsClass() {
         return ToolDocs.nonNullClass(Args.class);
     }

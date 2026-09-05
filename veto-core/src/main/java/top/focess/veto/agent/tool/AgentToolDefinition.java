@@ -1,6 +1,5 @@
 package top.focess.veto.agent.tool;
 
-import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.screening.Danger;
@@ -27,41 +26,16 @@ public record AgentToolDefinition(
         @NonNull Danger defaultDanger,
         @NonNull Class<?> argsClass,
         @NonNull Map<@NonNull String, @NonNull ParamCategory> paramHints)
-        implements ToolDefinition {
+        implements LocalToolDefinition {
 
-    @Override
-    public @NonNull ParameterSchema parameters() {
-        return new ParameterSchema.Structured(argsClass, paramHints);
-    }
-
-    @Override
-    public @NonNull List<@NonNull String> examples() {
-        return ToolDocs.examplesOf(argsClass);
-    }
-
-    @Override
-    public @NonNull List<@NonNull String> returnExamples() {
-        return ToolDocs.returnExamplesOf(argsClass);
-    }
-
-    @Override
-    public @NonNull List<@NonNull ToolResultFormat> resultFormats() {
-        return ToolDocs.resultFormatsOf(argsClass);
-    }
-
-    @Override
-    public @NonNull ToolDocumentation documentation() {
-        return ToolDocs.documentationOf(argsClass);
+    public AgentToolDefinition {
+        paramHints = Map.copyOf(paramHints);
     }
 
     /** Factory with an explicit name and effect capability supplied by the handler bean. */
     public static @NonNull AgentToolDefinition from(
             @NonNull String name, @NonNull Class<?> argsClass, @NonNull ToolCapability capability) {
-        ToolDoc doc = ToolDocs.toolDocOf(argsClass);
-        String description =
-                (doc != null && !doc.description().isEmpty())
-                        ? doc.description()
-                        : ToolDocs.firstSentenceOf(doc != null ? doc.behavior() : "");
+        String description = ToolDocs.descriptionOf(argsClass);
         Map<@NonNull String, @NonNull ParamCategory> hints = ToolSchemaCompiler.hintsOf(argsClass);
         return new AgentToolDefinition(
                 name, description, capability, Danger.SAFE, argsClass, hints);

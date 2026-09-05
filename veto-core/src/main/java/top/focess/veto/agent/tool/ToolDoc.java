@@ -61,13 +61,13 @@ public @interface ToolDoc {
      * ToolResultFormat#PLAINTEXT}, or both. Failure is not a content format; it is carried by the
      * tool result's separate success flag and normally contains a plain diagnostic body.
      */
-    @NonNull ToolResultFormat[] resultFormats();
+    @NonNull ToolResultFormat @NonNull [] resultFormats();
 
     /**
      * Concrete usage examples (args-object strings). REQUIRED: one or more concrete {@code args}
      * objects the model would place in a {@code calls[]} entry.
      */
-    @NonNull String[] examples();
+    @NonNull String @NonNull [] examples();
 
     /**
      * One or two representative successful return-value shapes, not positionally aligned with
@@ -76,5 +76,5 @@ public @interface ToolDoc {
      * belong in this example array. Rendered as explicitly illustrative fenced blocks after the
      * {@link #resultContract()}. REQUIRED.
      */
-    @NonNull String[] returnExamples();
+    @NonNull String @NonNull [] returnExamples();
 }

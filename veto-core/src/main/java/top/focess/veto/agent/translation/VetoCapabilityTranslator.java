@@ -10,9 +10,7 @@ import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Service;
-import top.focess.veto.agent.tool.ParameterSchema;
 import top.focess.veto.agent.tool.ToolDefinition;
-import top.focess.veto.agent.tool.ToolSchemaCompiler;
 import top.focess.veto.llm.core.VetoResponse;
 
 /**
@@ -367,25 +365,8 @@ public class VetoCapabilityTranslator implements CapabilityTranslator {
 
     /** Resolves a manifest tool's inputSchema to a flat {@code Map} for the provider tool list. */
     private @NonNull Map<String, Object> inputSchemaOf(@NonNull ToolDefinition def) {
-        ParameterSchema params = def.parameters();
-        JsonNode schema =
-                switch (params) {
-                    case ParameterSchema.Structured s ->
-                            s.argsClass().isRecord()
-                                    ? ToolSchemaCompiler.compileFromRecord(s.argsClass())
-                                    : emptyObjectSchema();
-                    case ParameterSchema.Raw r -> r.jsonSchema();
-                };
-        // AgentToolDefinition has no inputSchema field; derive from its Structured argsClass above.
+        JsonNode schema = def.inputSchema();
         return MAPPER.convertValue(schema, new TypeReference<Map<String, Object>>() {});
-    }
-
-    private static @NonNull ObjectNode emptyObjectSchema() {
-        ObjectNode schema = MAPPER.createObjectNode();
-        schema.put("type", "object");
-        schema.set("properties", MAPPER.createObjectNode());
-        schema.put("additionalProperties", false);
-        return schema;
     }
 
     private static @NonNull ObjectNode stringNode(@NonNull String description) {

@@ -138,7 +138,8 @@ class GroupToolsWiringTest {
 
     @Test
     void createGroupRefusesBlankBrief() {
-        CreateGroup create = new CreateGroup(spawner, leaderBinding, roleToolFilter);
+        CreateGroup create =
+                new CreateGroup(spawner, leaderBinding, roleToolFilter, new HitlRegistry());
         ToolCallContextHolder.set(
                 new ToolCallContext(
                         "agent-blank",
@@ -247,7 +248,10 @@ class GroupToolsWiringTest {
                         ToolResultPresentationMode.BASIC,
                         ToolExecutionPermit.empty()));
         try {
-            String result = post.execute(new PostMessage.Args("FEEDBACK", "mate-1", "oops"));
+            String result =
+                    post.execute(
+                            new PostMessage.Args(
+                                    BlackboardMessage.MessageType.FEEDBACK, "mate-1", "oops"));
             assertEquals("posted", result);
 
             List<BlackboardMessage> forMate = blackboard.readFor(g.groupId(), "mate-1");
@@ -280,10 +284,46 @@ class GroupToolsWiringTest {
             ToolExecutionException error =
                     assertThrows(
                             ToolDocs.nonNullClass(ToolExecutionException.class),
-                            () -> post.execute(new PostMessage.Args("STATUS", "LEADER", "note")));
+                            () ->
+                                    post.execute(
+                                            new PostMessage.Args(
+                                                    BlackboardMessage.MessageType.STATUS,
+                                                    "LEADER",
+                                                    "note")));
             assertTrue(
                     ToolErrors.normalize(error.getMessage()).startsWith("Not posted:"),
                     "no active group is refused");
+        } finally {
+            ToolCallContextHolder.clear();
+        }
+    }
+
+    @Test
+    void postMessageRefusesDisbandedGroup() {
+        Group group = spawner.registerEmptyGroup("leader", "default", null, "brief");
+        spawner.disband(group.groupId());
+        PostMessage post = new PostMessage(blackboard, registry);
+        ToolCallContextHolder.set(
+                new ToolCallContext(
+                        "leader",
+                        UUID.randomUUID(),
+                        group.groupId(),
+                        null,
+                        null,
+                        ToolResultPresentationMode.BASIC,
+                        ToolExecutionPermit.empty()));
+        try {
+            ToolExecutionException error =
+                    assertThrows(
+                            ToolDocs.nonNullClass(ToolExecutionException.class),
+                            () ->
+                                    post.execute(
+                                            new PostMessage.Args(
+                                                    BlackboardMessage.MessageType.STATUS,
+                                                    "LEADER",
+                                                    "note")));
+            assertTrue(ToolErrors.normalize(error.getMessage()).contains("no longer active"));
+            assertTrue(blackboard.readFor(group.groupId(), "LEADER").isEmpty());
         } finally {
             ToolCallContextHolder.clear();
         }

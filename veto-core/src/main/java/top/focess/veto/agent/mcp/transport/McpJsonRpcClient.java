@@ -18,6 +18,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
@@ -72,15 +73,26 @@ public final class McpJsonRpcClient {
         JsonNode response = invoke(transport, "tools/list", null, discoveryTimeoutMs);
         JsonNode tools = response.get("tools");
         if (tools == null || !tools.isArray()) {
-            return List.of();
+            throw new IOException("MCP tools/list result must contain a tools array");
         }
         List<RemoteToolDefinition> out = new ArrayList<>();
+        String serverName = "mcp-" + UUID.randomUUID();
         for (JsonNode t : tools) {
-            String name = t.path("name").asText();
-            String description = t.path("description").asText("");
-            // The schema is the raw JSON Schema; RemoteToolDefinition stores it as JsonNode.
-            JsonNode inputSchema = t.path("inputSchema");
-            String serverName = serverNameFor(transport);
+            JsonNode nameNode = t.get("name");
+            JsonNode descriptionNode = t.get("description");
+            JsonNode inputSchema = t.get("inputSchema");
+            if (nameNode == null
+                    || !nameNode.isTextual()
+                    || nameNode.asText().isBlank()
+                    || inputSchema == null
+                    || !inputSchema.isObject()
+                    || !"object".equals(inputSchema.path("type").asText())
+                    || (descriptionNode != null && !descriptionNode.isTextual())) {
+                throw new IOException(
+                        "Invalid MCP tool declaration: name and object inputSchema are required");
+            }
+            String name = nameNode.asText();
+            String description = descriptionNode == null ? "" : descriptionNode.asText();
             // Unclassified external tools stay REMOTE_UNKNOWN with an ELEVATED danger floor. A
             // server description cannot downgrade this contract.
             out.add(new RemoteToolDefinition(name, description, serverName, inputSchema));
@@ -284,14 +296,5 @@ public final class McpJsonRpcClient {
             throw new IOException("MCP server response missing 'result'");
         }
         return result;
-    }
-
-    private static @NonNull String serverNameFor(@NonNull McpTransport transport) {
-        return switch (transport) {
-            case McpTransport.StdioMcpTransport s -> "stdio:" + s.processBuilder().command();
-            case McpTransport.SseMcpTransport s -> "sse:" + s.baseUrl();
-            case McpTransport.SocketMcpTransport s -> "socket:" + s.socketPath();
-            case McpTransport.ClientDelegatedMcpTransport s -> "client:" + s.channel();
-        };
     }
 }

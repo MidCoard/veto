@@ -94,13 +94,6 @@ public final class StopTaskTool implements NativeTool<StopTaskTool.Args> {
     }
 
     @Override
-    public @NonNull String getDescription() {
-        return "Force-stop a background task launched by run_task. This is the ONLY sanctioned way"
-                + " to stop a background task - never use OS kill commands (taskkill/kill) for it."
-                + " Idempotent: stopping an already-exited task reports its final status.";
-    }
-
-    @Override
     public @NonNull Class<Args> getArgsClass() {
         return ToolDocs.nonNullClass(Args.class);
     }
@@ -111,14 +104,14 @@ public final class StopTaskTool implements NativeTool<StopTaskTool.Args> {
         Optional<BackgroundTaskManager.TaskInfo> before =
                 taskManager.status(agentId, args.taskId());
         if (before.isEmpty()) {
-            return error("task not found: " + args.taskId());
+            return ToolErrors.failure("task not found: " + args.taskId());
         }
         boolean wasAlive = before.get().alive();
         Optional<BackgroundTaskManager.TaskInfo> info =
                 taskManager.stop(
                         agentId, args.taskId(), BackgroundTaskManager.ExitCause.AGENT_STOP);
         if (info.isEmpty()) {
-            return error("task not found: " + args.taskId());
+            return ToolErrors.failure("task not found: " + args.taskId());
         }
         try {
             Map<String, Object> envelope = new LinkedHashMap<>();
@@ -135,16 +128,12 @@ public final class StopTaskTool implements NativeTool<StopTaskTool.Args> {
             }
             return mapper.writeValueAsString(envelope);
         } catch (Exception e) {
-            return error("stop_task failed: " + e.getMessage());
+            return ToolErrors.failure("stop_task failed: " + e.getMessage());
         }
     }
 
     private static @NonNull String currentAgentId() {
         var ctx = ToolCallContextHolder.get();
         return ctx != null ? ctx.agentId() : "standalone";
-    }
-
-    private static @NonNull String error(@NonNull String message) {
-        return ToolErrors.failure(message);
     }
 }

@@ -16,6 +16,24 @@ class VetoResponseDeserializationTest {
     private final @NonNull ObjectMapper mapper = new ObjectMapper();
 
     @Test
+    void toolCallsHaveStableIdsFromConstructionAndDeserialization() throws Exception {
+        ToolCall created = new ToolCall("think", java.util.Map.of());
+        assertTrue(created.callId().startsWith("call_"));
+        assertNotEquals(created.callId(), new ToolCall("think", java.util.Map.of()).callId());
+        for (String idField : List.of("", ",\"call_id\":null")) {
+            ToolCall parsed =
+                    mapper.readValue(
+                            "{\"tool_name\":\"think\",\"args\":{}" + idField + "}",
+                            ToolDocs.nonNullClass(ToolCall.class));
+            assertTrue(parsed.callId().startsWith("call_"));
+        }
+        ToolCall restored =
+                mapper.readValue(
+                        mapper.writeValueAsString(created), ToolDocs.nonNullClass(ToolCall.class));
+        assertEquals(created.callId(), restored.callId());
+    }
+
+    @Test
     void bindsAutonomousCall() throws Exception {
         String json =
                 "{\"thought\":\"t\",\"calls\":[{\"tool_name\":\"list_files\",\"args\":{\"path\":\"/x\"}}],"

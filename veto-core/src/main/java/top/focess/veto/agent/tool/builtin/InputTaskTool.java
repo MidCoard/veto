@@ -92,11 +92,6 @@ public final class InputTaskTool implements NativeTool<InputTaskTool.Args> {
     }
 
     @Override
-    public @NonNull String getDescription() {
-        return "Queue text to the standard input of a running background task.";
-    }
-
-    @Override
     public @NonNull Class<Args> getArgsClass() {
         return ToolDocs.nonNullClass(Args.class);
     }

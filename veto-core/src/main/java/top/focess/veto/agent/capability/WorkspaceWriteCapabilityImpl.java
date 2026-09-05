@@ -188,14 +188,23 @@ final class WorkspaceWriteCapabilityImpl implements WorkspaceWriteCapability {
                 destination,
                 "Move destination parent changed after screening.");
         try {
-            FileStore sourceStore = Files.getFileStore(source);
+            String kind = kind(source);
+            Path sourceStorePath = source;
+            if ("symbolic_link".equals(kind)) {
+                Path sourceParent = source.getParent();
+                if (sourceParent == null) {
+                    throw new IOException("Link source has no parent directory");
+                }
+                // Moving a link moves its directory entry, not the target's filesystem object.
+                sourceStorePath = sourceParent;
+            }
+            FileStore sourceStore = Files.getFileStore(sourceStorePath);
             FileStore destinationStore = Files.getFileStore(parent);
             if (!sourceStore.equals(destinationStore)) {
                 return ToolErrors.failure(
                         "CROSS_FILESYSTEM_MOVE",
                         "Source and destination are on different filesystems.");
             }
-            String kind = kind(source);
             Files.move(source, destination);
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("status", "moved");

@@ -77,11 +77,6 @@ public final class DeletePathTool implements WorkspaceWriteTool<DeletePathTool.A
     }
 
     @Override
-    public @NonNull String getDescription() {
-        return "Delete one file, link, or directory with explicit recursive intent.";
-    }
-
-    @Override
     public @NonNull Class<Args> getArgsClass() {
         return ToolDocs.nonNullClass(Args.class);
     }

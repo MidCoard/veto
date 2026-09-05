@@ -624,7 +624,7 @@ public class HitlRegistry {
                         return;
                     }
                     Map<@NonNull String, Object> view = new LinkedHashMap<>();
-                    view.put("callId", call.requireCallId());
+                    view.put("callId", call.callId());
                     view.put("toolName", call.toolName());
                     view.put("args", call.args());
                     view.put("options", transportOptions(p.options()));

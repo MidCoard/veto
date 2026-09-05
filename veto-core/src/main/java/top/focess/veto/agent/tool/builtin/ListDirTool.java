@@ -27,7 +27,8 @@ public final class ListDirTool implements WorkspaceReadTool<ListDirTool.Args> {
                     Lists the direct children of `absolutePath` (files and subdirectories, one level deep). \
                     Entries are sorted lexicographically. Subdirectory names are suffixed with `/` so you can \
                     distinguish folders from files at a glance. Hidden files (dotfiles) are included. The \
-                    listing is not recursive.
+                    listing is not recursive. Protected entries, symbolic links, and Windows reparse \
+                    points are omitted, so an empty result means no visible entries.
                     """,
             whenToUse =
                     """
@@ -50,7 +51,7 @@ public final class ListDirTool implements WorkspaceReadTool<ListDirTool.Args> {
             resultContract =
                     """
                     - Success: one sorted entry per line. Directory \
-                    entries end with `/`; file entries do not. An empty directory yields no lines.
+                    entries end with `/`; file entries do not. A directory with no visible entries yields no lines.
                     - Supplied `absolutePath` does not exist or is not a directory (failure): \
                     `Not a directory: <absolutePath>`.
                     - Directory cannot be opened or enumerated (failure): \
@@ -92,11 +93,6 @@ public final class ListDirTool implements WorkspaceReadTool<ListDirTool.Args> {
     @Override
     public @NonNull String getName() {
         return "list_dir";
-    }
-
-    @Override
-    public @NonNull String getDescription() {
-        return "List contents of a directory (files and child subdirectories).";
     }
 
     @Override
