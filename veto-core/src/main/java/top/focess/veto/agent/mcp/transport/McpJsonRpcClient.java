@@ -5,24 +5,20 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectReader;
-import java.io.BufferedReader;
+import java.io.BufferedInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.net.StandardProtocolFamily;
 import java.net.URI;
-import java.net.UnixDomainSocketAddress;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.ByteBuffer;
-import java.nio.channels.Channels;
-import java.nio.channels.SocketChannel;
+import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.Callable;
@@ -30,19 +26,25 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import top.focess.veto.agent.tool.RemoteToolDefinition;
 
 /**
  * A minimal JSON-RPC 2.0 client for talking to remote MCP servers. Supports the {@code tools/list}
- * discovery and {@code tools/call} invocation over both stdio (subprocess stdin/stdout JSON lines)
- * and SSE (HTTP requestBuilder.POST + Server-Sent-Events) transports.
+ * discovery and {@code tools/call} invocation over a fixed HTTP endpoint with JSON or SSE
+ * responses. Local process and socket transports are refused until their restricted execution is
+ * integrated.
  *
  * <p>The client intentionally implements only the MCP methods Veto needs ({@code tools/list} and
  * {@code tools/call}); it does not implement notifications, sampling, roots, or other optional MCP
  * capabilities.
  */
 public final class McpJsonRpcClient {
+
+    private static final int MAX_RESPONSE_BYTES = 4 * 1024 * 1024;
+    private static final int MAX_NOTIFICATION_EVENTS = 128;
 
     private final @NonNull ObjectMapper mapper;
     private final @NonNull ObjectReader responseReader;
@@ -131,71 +133,18 @@ public final class McpJsonRpcClient {
                                 "params",
                                 params == null ? Map.of() : params));
         return switch (transport) {
-            case McpTransport.StdioMcpTransport stdio -> invokeStdio(stdio, body, timeoutMs);
+            case McpTransport.StdioMcpTransport ignored ->
+                    throw new IOException(
+                            "MCP stdio transport is unavailable until sandboxed process execution is integrated");
             case McpTransport.SseMcpTransport sse -> invokeSse(sse, body, timeoutMs);
-            case McpTransport.SocketMcpTransport socket -> invokeSocket(socket, body, timeoutMs);
+            case McpTransport.SocketMcpTransport ignored ->
+                    throw new IOException(
+                            "MCP socket transport is unavailable until restricted socket access is integrated");
             case McpTransport.ClientDelegatedMcpTransport delegated ->
                     throw new IOException(
                             "Client-delegated transport is a UI-channel transport, not a JSON-RPC transport: "
                                     + delegated);
         };
-    }
-
-    /**
-     * JSON-RPC over a Unix domain socket. The transport writes one request line (newline-delimited
-     * JSON) to the socket and reads one response line. Container-sandbox sockets (Linux/macOS) use
-     * the {@code UnixDomainSocketAddress} path.
-     *
-     * <p>Unix-domain socket types are part of the supported Java baseline. Platforms without Unix
-     * sockets fail with a descriptive {@link IOException}.
-     */
-    private @NonNull JsonNode invokeSocket(
-            McpTransport.@NonNull SocketMcpTransport transport,
-            @NonNull String body,
-            long timeoutMs)
-            throws IOException {
-        if (!Files.exists(transport.socketPath())) {
-            throw new IOException("Socket MCP server not found at " + transport.socketPath());
-        }
-        try (SocketChannel ch = SocketChannel.open(StandardProtocolFamily.UNIX)) {
-            return withDeadline(
-                    () -> {
-                        UnixDomainSocketAddress address =
-                                UnixDomainSocketAddress.of(transport.socketPath());
-                        ch.connect(address);
-                        byte[] bytes = (body + "\n").getBytes(StandardCharsets.UTF_8);
-                        ByteBuffer out = ByteBuffer.wrap(bytes);
-                        while (out.hasRemaining()) {
-                            ch.write(out);
-                        }
-                        return readResponse(Channels.newInputStream(ch));
-                    },
-                    timeoutMs);
-        } catch (UnsupportedOperationException e) {
-            throw new IOException("Unix domain sockets are not supported on this platform", e);
-        }
-    }
-
-    private @NonNull JsonNode invokeStdio(
-            McpTransport.@NonNull StdioMcpTransport transport, @NonNull String body, long timeoutMs)
-            throws IOException {
-        Process p;
-        try {
-            p = transport.processBuilder().start();
-        } catch (IOException e) {
-            throw new IOException("Failed to start stdio MCP server", e);
-        }
-        try {
-            return withDeadline(
-                    () -> {
-                        p.getOutputStream().write((body + "\n").getBytes(StandardCharsets.UTF_8));
-                        p.getOutputStream().flush();
-                        return readResponse(p.getInputStream());
-                    },
-                    timeoutMs);
-        } finally {
-            p.destroy();
-        }
     }
 
     private static @NonNull JsonNode withDeadline(
@@ -211,6 +160,8 @@ public final class McpJsonRpcClient {
             throw new IOException("MCP request interrupted", e);
         } catch (ExecutionException e) {
             Throwable cause = e.getCause();
+            if (cause instanceof HttpTimeoutException)
+                throw new IOException("MCP server timed out", cause);
             if (cause instanceof IOException io) {
                 throw io;
             }
@@ -223,62 +174,108 @@ public final class McpJsonRpcClient {
     private @NonNull JsonNode invokeSse(
             McpTransport.@NonNull SseMcpTransport transport, @NonNull String body, long timeoutMs)
             throws IOException {
-        try (HttpClient client =
-                HttpClient.newBuilder().connectTimeout(Duration.ofMillis(timeoutMs)).build()) {
+        URI endpoint;
+        try {
+            endpoint = URI.create(transport.baseUrl());
+        } catch (IllegalArgumentException e) {
+            throw new IOException("MCP endpoint must be an absolute HTTP or HTTPS URL");
+        }
+        if (!("http".equalsIgnoreCase(endpoint.getScheme())
+                        || "https".equalsIgnoreCase(endpoint.getScheme()))
+                || endpoint.getHost() == null
+                || endpoint.getUserInfo() != null
+                || endpoint.getFragment() != null) {
+            throw new IOException(
+                    "MCP endpoint must be an absolute HTTP or HTTPS URL without user information or a fragment");
+        }
+        HttpClient client =
+                HttpClient.newBuilder()
+                        .connectTimeout(Duration.ofMillis(timeoutMs))
+                        .followRedirects(HttpClient.Redirect.NEVER)
+                        .build();
+        AtomicReference<@Nullable InputStream> activeBody = new AtomicReference<>();
+        try {
             HttpRequest.Builder requestBuilder =
-                    HttpRequest.newBuilder()
-                            .uri(URI.create(transport.baseUrl()))
+                    HttpRequest.newBuilder(endpoint)
                             .timeout(Duration.ofMillis(timeoutMs))
                             .header("Content-Type", "application/json")
-                            .header("Accept", "text/event-stream");
+                            .header("Accept", "text/event-stream, application/json");
             String authToken = transport.authToken();
-            if (!authToken.isBlank()) {
-                requestBuilder.header("Authorization", "Bearer " + authToken);
-            }
-            HttpRequest httpRequest =
+            if (!authToken.isBlank()) requestBuilder.header("Authorization", "Bearer " + authToken);
+            HttpRequest request =
                     requestBuilder.POST(HttpRequest.BodyPublishers.ofString(body)).build();
-            HttpResponse<String> response =
-                    client.send(httpRequest, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() != 200) {
-                throw new IOException("SSE MCP server returned " + response.statusCode());
-            }
-            // SSE response: each event is a "data: <json>\n\n" block. Read the first data line.
-            StringBuilder data = new StringBuilder();
-            for (String line : response.body().split("\n")) {
-                if (line.startsWith("data:")) {
-                    if (!data.isEmpty()) {
-                        data.append("\n");
-                    }
-                    data.append(line.substring("data:".length()).strip());
+            return withDeadline(
+                    () -> {
+                        HttpResponse<InputStream> response =
+                                client.send(request, HttpResponse.BodyHandlers.ofInputStream());
+                        try (InputStream stream = new BufferedInputStream(response.body())) {
+                            activeBody.set(stream);
+                            if (response.statusCode() != 200)
+                                throw new IOException(
+                                        "HTTP MCP server returned " + response.statusCode());
+                            String contentType =
+                                    response.headers().firstValue("Content-Type").orElse("");
+                            if (contentType.toLowerCase(Locale.ROOT).contains("application/json")) {
+                                byte[] bytes = stream.readNBytes(MAX_RESPONSE_BYTES + 1);
+                                if (bytes.length > MAX_RESPONSE_BYTES)
+                                    throw new IOException("MCP response exceeds 4 MiB");
+                                return parseResponse(
+                                        responseReader.readTree(
+                                                new String(bytes, StandardCharsets.UTF_8)));
+                            }
+                            return readEvents(stream);
+                        } finally {
+                            activeBody.set(null);
+                        }
+                    },
+                    timeoutMs);
+        } finally {
+            InputStream stream = activeBody.getAndSet(null);
+            if (stream != null) {
+                try {
+                    stream.close();
+                } catch (IOException ignored) {
                 }
             }
-            if (data.isEmpty()) {
-                throw new IOException("SSE MCP server returned no data");
-            }
-            return parseResponse(responseReader.readTree(data.toString()));
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IOException("SSE MCP request interrupted", e);
+            client.shutdownNow();
         }
     }
 
-    private @NonNull JsonNode readResponse(@NonNull InputStream stream) throws IOException {
-        try (var reader =
-                new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (line.isBlank()) continue;
-                JsonNode node = responseReader.readTree(line);
-                // Notifications can precede the response on the same stream.
-                if (node != null
-                        && node.isObject()
-                        && !node.has("id")
-                        && node.path("method").isTextual()
-                        && "2.0".equals(node.path("jsonrpc").asText())) continue;
-                return parseResponse(node);
+    private @NonNull JsonNode readEvents(@NonNull InputStream stream) throws IOException {
+        StringBuilder data = new StringBuilder();
+        ByteArrayOutputStream lineBytes = new ByteArrayOutputStream();
+        int notifications = 0;
+        int consumed = 0;
+        while (true) {
+            int next = stream.read();
+            if (next >= 0 && ++consumed > MAX_RESPONSE_BYTES)
+                throw new IOException("MCP response exceeds 4 MiB");
+            if (next >= 0 && next != '\n') {
+                lineBytes.write(next);
+                continue;
             }
+            String line = lineBytes.toString(StandardCharsets.UTF_8).stripTrailing();
+            lineBytes.reset();
+            if (line.startsWith("data:")) {
+                if (!data.isEmpty()) data.append('\n');
+                data.append(line.substring(5).strip());
+            }
+            if ((line.isBlank() || next < 0) && !data.isEmpty()) {
+                JsonNode event = responseReader.readTree(data.toString());
+                data.setLength(0);
+                if (event != null
+                        && event.isObject()
+                        && !event.has("id")
+                        && event.path("method").isTextual()
+                        && "2.0".equals(event.path("jsonrpc").asText())) {
+                    if (++notifications > MAX_NOTIFICATION_EVENTS)
+                        throw new IOException("MCP notification limit exceeded");
+                } else {
+                    return parseResponse(event);
+                }
+            }
+            if (next < 0) throw new IOException("MCP server returned no response");
         }
-        throw new IOException("MCP server returned no response");
     }
 
     private @NonNull JsonNode parseResponse(JsonNode node) throws IOException {

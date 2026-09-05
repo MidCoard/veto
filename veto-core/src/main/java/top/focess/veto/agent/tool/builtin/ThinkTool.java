@@ -2,15 +2,21 @@ package top.focess.veto.agent.tool.builtin;
 
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
-import top.focess.veto.agent.tool.AgentTool;
-import top.focess.veto.agent.tool.ToolCapability;
+import top.focess.veto.agent.capability.LoopControlCapability;
+import top.focess.veto.agent.tool.LoopControlTool;
 import top.focess.veto.agent.tool.ToolDoc;
 import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.tool.ToolResultFormat;
 
 /** {@code think} — a no-op call that keeps the agent loop alive for another turn. */
 @Component
-public final class ThinkTool implements AgentTool<ThinkTool.Args> {
+public final class ThinkTool implements LoopControlTool<ThinkTool.Args> {
+
+    private final @NonNull LoopControlCapability capability;
+
+    public ThinkTool(@NonNull LoopControlCapability capability) {
+        this.capability = capability;
+    }
 
     @Override
     public @NonNull String getName() {
@@ -23,13 +29,14 @@ public final class ThinkTool implements AgentTool<ThinkTool.Args> {
     }
 
     @Override
-    public @NonNull ToolCapability getCapability() {
-        return ToolCapability.LOOP_CONTROL;
+    public @NonNull LoopControlCapability loopControlCapability() {
+        return capability;
     }
 
     @Override
-    public @NonNull String execute(@NonNull Args args) {
-        return "";
+    public @NonNull String execute(@NonNull Args args, @NonNull LoopControlCapability capability)
+            throws Exception {
+        return capability.continueLoop(args);
     }
 
     @ToolDoc(

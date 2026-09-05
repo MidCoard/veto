@@ -33,12 +33,7 @@ public final class ToolSchemaCompiler {
      * reflects over the class to derive the schema + security hints.
      */
     public static @NonNull NativeToolDefinition compileNative(@NonNull NativeTool<?> toolBean) {
-        Class<?> toolClass = ToolDocs.nonNullClass(toolBean.getClass());
-        ToolSecurity security = toolClass.getAnnotation(ToolDocs.nonNullClass(ToolSecurity.class));
-        if (security == null) {
-            throw new IllegalArgumentException(
-                    toolClass.getName() + " must be annotated with @ToolSecurity");
-        }
+        ToolSecurity security = securityOf(toolBean.getClass());
 
         Class<?> argsClass = toolBean.getArgsClass();
 
@@ -47,11 +42,20 @@ public final class ToolSchemaCompiler {
         return new NativeToolDefinition(
                 toolBean.getName(),
                 toolBean.getDescription(),
-                security.capability(),
+                toolBean.getCapability(),
                 security.defaultDanger(),
                 security.requiresSemanticScreening(),
                 argsClass,
                 hints);
+    }
+
+    static @NonNull ToolSecurity securityOf(@NonNull Class<?> toolClass) {
+        ToolSecurity security = toolClass.getAnnotation(ToolDocs.nonNullClass(ToolSecurity.class));
+        if (security == null) {
+            throw new IllegalArgumentException(
+                    toolClass.getName() + " must be annotated with @ToolSecurity");
+        }
+        return security;
     }
 
     /**

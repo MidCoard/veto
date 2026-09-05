@@ -98,9 +98,6 @@ public final class GrepSearchTool implements WorkspaceReadTool<GrepSearchTool.Ar
     public @NonNull String execute(
             @NonNull Args args, @NonNull WorkspaceReadCapability capability) {
         return capability.grep(
-                "absolutePath",
-                args.query(),
-                Boolean.TRUE.equals(args.caseInsensitive()),
-                args.includes());
+                "absolutePath", args.query(), args.caseInsensitive(), args.includes());
     }
 }

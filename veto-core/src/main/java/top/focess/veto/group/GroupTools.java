@@ -1,23 +1,17 @@
 package top.focess.veto.group;
 
-import java.util.List;
-import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
-import top.focess.veto.agent.identity.Role;
-import top.focess.veto.agent.identity.RoleToolFilter;
-import top.focess.veto.agent.intercept.HitlRegistry;
-import top.focess.veto.agent.tool.AgentTool;
+import top.focess.veto.agent.capability.DelegationCapability;
+import top.focess.veto.agent.capability.GroupControlCapability;
+import top.focess.veto.agent.tool.DelegationTool;
 import top.focess.veto.agent.tool.Doc;
+import top.focess.veto.agent.tool.GroupControlTool;
 import top.focess.veto.agent.tool.ParamCategory;
 import top.focess.veto.agent.tool.SecurityHint;
 import top.focess.veto.agent.tool.ToolCallContext;
-import top.focess.veto.agent.tool.ToolCallContextHolder;
-import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDoc;
 import top.focess.veto.agent.tool.ToolDocs;
-import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolResultFormat;
 
 /**
@@ -56,22 +50,12 @@ public final class GroupTools {
                 "{\"task\": \"Review the persistence implementation and its callers, and verify the affected modules\"}"
             },
             returnExamples = {""})
-    public static final class CreateGroup implements AgentTool<CreateGroup.Args> {
+    public static final class CreateGroup implements DelegationTool<CreateGroup.Args> {
 
-        private final @NonNull GroupSpawner spawner;
-        private final @NonNull LeaderBinding leaderBinding;
-        private final @NonNull RoleToolFilter roleToolFilter;
-        private final @NonNull HitlRegistry hitlRegistry;
+        private final @NonNull DelegationCapability capability;
 
-        public CreateGroup(
-                @NonNull GroupSpawner spawner,
-                @NonNull LeaderBinding leaderBinding,
-                @NonNull RoleToolFilter roleToolFilter,
-                @NonNull HitlRegistry hitlRegistry) {
-            this.spawner = spawner;
-            this.leaderBinding = leaderBinding;
-            this.roleToolFilter = roleToolFilter;
-            this.hitlRegistry = hitlRegistry;
+        public CreateGroup(@NonNull DelegationCapability capability) {
+            this.capability = capability;
         }
 
         public record Args(
@@ -90,55 +74,14 @@ public final class GroupTools {
         }
 
         @Override
-        public @NonNull ToolCapability getCapability() {
-            return ToolCapability.DELEGATION;
+        public @NonNull DelegationCapability delegationCapability() {
+            return capability;
         }
 
         @Override
-        public @NonNull String execute(@NonNull Args args) {
-            String task = args.task().strip();
-            if (task.isBlank()) {
-                return ToolErrors.failure(
-                        "Group not created: blank brief. Pass a real description of the work.");
-            }
-            // Resolve the calling STANDALONE's identity (the group owner / future Leader).
-            ToolCallContext ctx = ToolCallContextHolder.get();
-            if (ctx == null) {
-                return ToolErrors.failure(
-                        "Group not created: no authenticated session owner is available.");
-            }
-            String owner = ctx.owner();
-            if (owner == null || owner.isBlank()) {
-                return ToolErrors.failure(
-                        "Group not created: no authenticated session owner is available.");
-            }
-            String leaderId = ctx.agentId();
-            String userId = ctx.userId().toString();
-
-            // Register an empty group - no DAG yet, no Mates. The Leader (the transformed caller)
-            // authors the DAG node by node via create_node; the engine provisions Mates lazily on
-            // dispatch.
-            Group g =
-                    spawner.registerEmptyGroup(
-                            leaderId,
-                            userId,
-                            owner,
-                            task,
-                            hitlRegistry.workspace(leaderId),
-                            ctx.toolResultPresentation(),
-                            ctx.guidedEnabled());
-
-            // Request the delegation transform: the runner rewinds, re-seeds the Leader persona +
-            // tool set + top-tier binding, stamps the group, and re-injects the brief. This call's
-            // result string is discarded with the rewind; only a failure keeps the caller in the
-            // single-agent loop with the reason.
-            ToolCallContextHolder.requestTransform(
-                    new ToolCallContextHolder.TransformDirective(
-                            task,
-                            g.groupId(),
-                            leaderBinding.binding(owner),
-                            roleToolFilter.resolve(Role.LEADER)));
-            return "";
+        public @NonNull String execute(
+                @NonNull Args args, @NonNull DelegationCapability capability) {
+            return capability.createGroup(args);
         }
     }
 
@@ -180,14 +123,12 @@ public final class GroupTools {
                     """,
             examples = {"{}"},
             returnExamples = {""})
-    public static final class DisbandGroup implements AgentTool<DisbandGroup.Args> {
+    public static final class DisbandGroup implements GroupControlTool<DisbandGroup.Args> {
 
-        private final @NonNull GroupSpawner spawner;
-        private final @NonNull GroupRegistry registry;
+        private final @NonNull GroupControlCapability capability;
 
-        public DisbandGroup(@NonNull GroupSpawner spawner, @NonNull GroupRegistry registry) {
-            this.spawner = spawner;
-            this.registry = registry;
+        public DisbandGroup(@NonNull GroupControlCapability capability) {
+            this.capability = capability;
         }
 
         public record Args() {}
@@ -203,65 +144,14 @@ public final class GroupTools {
         }
 
         @Override
-        public @NonNull ToolCapability getCapability() {
-            return ToolCapability.GROUP_CONTROL;
+        public @NonNull GroupControlCapability groupControlCapability() {
+            return capability;
         }
 
         @Override
-        public @NonNull String execute(@NonNull Args args) {
-            ToolCallContext ctx = ToolCallContextHolder.get();
-            UUID groupId = ctx != null ? ctx.groupId() : null;
-            if (groupId == null) {
-                return ToolErrors.failure(
-                        "Group not disbanded: no active group in your context. disband_group is "
-                                + "a Leader tool inside a group.");
-            }
-            // Summarize the group's outcome for the reverse-transform brief (verified nodes' \
-            // results), then tear the group down.
-            String brief = buildDisbandBrief(registry.get(groupId));
-            spawner.disband(groupId);
-            // Request the reverse transform: the runner rewinds, restores the STANDALONE persona +
-            // binding, and re-injects the outcome brief so the agent continues autonomously.
-            ToolCallContextHolder.requestReverseTransform(brief);
-            return "";
-        }
-
-        /**
-         * Builds the outcome brief seeded into the now-STANDALONE agent's context after disband.
-         */
-        private static @NonNull String buildDisbandBrief(Group g) {
-            StringBuilder sb = new StringBuilder();
-            sb.append("Delegation complete. You led a group to the following outcome.\n");
-            if (g == null) {
-                sb.append("(group record no longer available)\n");
-                return sb.toString();
-            }
-            sb.append("Group id: ").append(g.groupId()).append('\n');
-            sb.append("Original brief: ")
-                    .append(g.contextBrief().isBlank() ? "(unspecified)" : g.contextBrief())
-                    .append('\n');
-            sb.append("Node outcomes:\n");
-            for (DagNode n : g.dag().nodes()) {
-                sb.append("  - ").append(n.nodeId()).append(" (").append(n.state());
-                if (n.assignedMateId() != null) {
-                    sb.append(", mate: ").append(n.assignedMateId());
-                }
-                sb.append("): ").append(n.description()).append('\n');
-                if (n.result() instanceof DagNode.ResultArtifact artifact) {
-                    sb.append("    Artifact: ").append(artifact.artifactPath()).append('\n');
-                } else if (n.result() instanceof DagNode.ResultSuccess success) {
-                    sb.append("    Mate report: ").append(success.summary()).append('\n');
-                } else if (n.result() instanceof DagNode.ResultFailure failure) {
-                    sb.append("    Failure: ").append(failure.feedback()).append('\n');
-                    if (!failure.logRefs().isEmpty()) {
-                        sb.append("    Logs: ")
-                                .append(String.join(", ", failure.logRefs()))
-                                .append('\n');
-                    }
-                }
-            }
-            sb.append("You are back in single-agent autonomous mode. Continue from here.");
-            return sb.toString();
+        public @NonNull String execute(
+                @NonNull Args args, @NonNull GroupControlCapability capability) {
+            return capability.disband(args);
         }
     }
 
@@ -308,14 +198,12 @@ public final class GroupTools {
             returnExamples = {
                 "Group state: ACTIVE\nNodes:\n- node-1 [RUNNING] mate=mate-1 skillset=coding\nNew Mate messages:\n- seq=5 sender=mate-1 type=FEEDBACK payload=node-1:feedback:test failed\nnextSinceSeq: 5"
             })
-    public static final class InspectGroup implements AgentTool<InspectGroup.Args> {
+    public static final class InspectGroup implements GroupControlTool<InspectGroup.Args> {
 
-        private final @NonNull GroupRegistry registry;
-        private final @NonNull Blackboard blackboard;
+        private final @NonNull GroupControlCapability capability;
 
-        public InspectGroup(@NonNull GroupRegistry registry, @NonNull Blackboard blackboard) {
-            this.registry = registry;
-            this.blackboard = blackboard;
+        public InspectGroup(@NonNull GroupControlCapability capability) {
+            this.capability = capability;
         }
 
         public record Args(
@@ -337,118 +225,14 @@ public final class GroupTools {
         }
 
         @Override
-        public @NonNull ToolCapability getCapability() {
-            return ToolCapability.GROUP_CONTROL;
+        public @NonNull GroupControlCapability groupControlCapability() {
+            return capability;
         }
 
         @Override
-        public @NonNull String execute(@NonNull Args args) {
-            ToolCallContext ctx = ToolCallContextHolder.get();
-            UUID groupId = ctx != null ? ctx.groupId() : null;
-            if (groupId == null) {
-                return ToolErrors.failure(
-                        "Group not inspected: no active group in your context. inspect_group is a "
-                                + "Leader tool inside a group.");
-            }
-            long since = args.sinceSeq() == null ? 0 : args.sinceSeq();
-            if (since < 0) {
-                return ToolErrors.failure("Group not inspected: sinceSeq must be non-negative.");
-            }
-            int waitSeconds = args.waitSeconds() == null ? 0 : args.waitSeconds();
-            waitSeconds = Math.max(0, Math.min(30, waitSeconds));
-            Group initial = registry.get(groupId);
-            if (initial == null) {
-                return ToolErrors.failure("Group not inspected: group record not found.");
-            }
-            Group group = initial;
-            List<BlackboardMessage> messages = newMessages(groupId, since);
-            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(waitSeconds);
-            while (messages.isEmpty()
-                    && group.state() == initial.state()
-                    && System.nanoTime() < deadline) {
-                try {
-                    Thread.sleep(100);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    return ToolErrors.failure("Group not inspected: wait interrupted.");
-                }
-                Group refreshed = registry.get(groupId);
-                if (refreshed == null) {
-                    return ToolErrors.failure("Group not inspected: group record disappeared.");
-                }
-                group = refreshed;
-                messages = newMessages(groupId, since);
-            }
-            return render(group, messages, since);
-        }
-
-        private @NonNull List<@NonNull BlackboardMessage> newMessages(
-                @NonNull UUID groupId, long since) {
-            Group group = registry.get(groupId);
-            if (group == null) {
-                return List.of();
-            }
-            return blackboard.readFor(groupId, "LEADER").stream()
-                    .filter(message -> message.turnSeq() > since)
-                    .filter(
-                            message ->
-                                    group.mates().containsKey(message.senderId())
-                                            || "LEADER".equals(message.senderId()))
-                    .toList();
-        }
-
-        private static @NonNull String render(
-                @NonNull Group group,
-                @NonNull List<@NonNull BlackboardMessage> messages,
-                long since) {
-            StringBuilder result = new StringBuilder();
-            result.append("Group state: ").append(group.state()).append('\n');
-            result.append("Nodes:\n");
-            if (group.dag().nodes().isEmpty()) {
-                result.append("- (none)\n");
-            }
-            for (DagNode node : group.dag().nodes()) {
-                result.append("- ")
-                        .append(node.nodeId())
-                        .append(" [")
-                        .append(node.state())
-                        .append("] mate=")
-                        .append(
-                                node.assignedMateId() == null
-                                        ? "(unassigned)"
-                                        : node.assignedMateId())
-                        .append(" skillset=")
-                        .append(node.requiredSkillset())
-                        .append('\n');
-                if (node.result() instanceof DagNode.ResultSuccess success) {
-                    result.append("  report: ").append(oneLine(success.summary())).append('\n');
-                } else if (node.result() instanceof DagNode.ResultFailure failure) {
-                    result.append("  failure: ").append(oneLine(failure.feedback())).append('\n');
-                }
-            }
-            result.append("New Mate messages:\n");
-            if (messages.isEmpty()) {
-                result.append("- (none)\n");
-            }
-            long next = since;
-            for (BlackboardMessage message : messages) {
-                next = Math.max(next, message.turnSeq());
-                result.append("- seq=")
-                        .append(message.turnSeq())
-                        .append(" sender=")
-                        .append(message.senderId())
-                        .append(" type=")
-                        .append(message.type())
-                        .append(" payload=")
-                        .append(oneLine(message.payload()))
-                        .append('\n');
-            }
-            result.append("nextSinceSeq: ").append(next);
-            return result.toString();
-        }
-
-        private static @NonNull String oneLine(@NonNull String value) {
-            return value.replace("\r", "\\r").replace("\n", "\\n");
+        public @NonNull String execute(
+                @NonNull Args args, @NonNull GroupControlCapability capability) {
+            return capability.inspect(args);
         }
     }
 
@@ -500,16 +284,12 @@ public final class GroupTools {
             },
             returnExamples = {"posted"})
     @Component
-    public static final class PostMessage implements AgentTool<PostMessage.Args> {
+    public static final class PostMessage implements GroupControlTool<PostMessage.Args> {
 
-        private static final int MAX_PAYLOAD_CHARS = 4096;
+        private final @NonNull GroupControlCapability capability;
 
-        private final @NonNull Blackboard blackboard;
-        private final @NonNull GroupRegistry groupRegistry;
-
-        public PostMessage(@NonNull Blackboard blackboard, @NonNull GroupRegistry groupRegistry) {
-            this.blackboard = blackboard;
-            this.groupRegistry = groupRegistry;
+        public PostMessage(@NonNull GroupControlCapability capability) {
+            this.capability = capability;
         }
 
         public record Args(
@@ -536,47 +316,14 @@ public final class GroupTools {
         }
 
         @Override
-        public @NonNull ToolCapability getCapability() {
-            return ToolCapability.GROUP_CONTROL;
+        public @NonNull GroupControlCapability groupControlCapability() {
+            return capability;
         }
 
         @Override
-        public @NonNull String execute(@NonNull Args args) {
-            ToolCallContext ctx = ToolCallContextHolder.get();
-            UUID groupId = ctx != null ? ctx.groupId() : null;
-            if (groupId == null) {
-                return ToolErrors.failure(
-                        "Not posted: no active group in your context. post_message is a Leader "
-                                + "tool inside a group.");
-            }
-            // The Blackboard identifies the Leader by the literal "LEADER" (its hub-and-spoke guard
-            // + the orchestrator's ingest both key on it), so the Leader posts as "LEADER".
-            String receiver = args.receiver() == null ? "LEADER" : args.receiver();
-            Group group = groupRegistry.get(groupId);
-            if (group != null && !group.isActive()) {
-                return ToolErrors.failure("Not posted: group is no longer active.");
-            }
-            if (group == null
-                    || (!"LEADER".equals(receiver) && !group.mates().containsKey(receiver))) {
-                return ToolErrors.failure("Not posted: unknown receiver '" + receiver + "'.");
-            }
-            String payload = args.payload();
-            if (payload.isBlank()) {
-                return ToolErrors.failure("Not posted: payload must not be blank.");
-            }
-            if (payload.length() > MAX_PAYLOAD_CHARS) {
-                return ToolErrors.failure("Not posted: payload exceeds 4096 characters.");
-            }
-            blackboard.post(
-                    new BlackboardMessage(
-                            UUID.randomUUID().toString(),
-                            groupId,
-                            "LEADER",
-                            receiver,
-                            args.type(),
-                            payload,
-                            0));
-            return "posted";
+        public @NonNull String execute(
+                @NonNull Args args, @NonNull GroupControlCapability capability) {
+            return capability.post(args);
         }
     }
 }

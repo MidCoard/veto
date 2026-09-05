@@ -2,12 +2,14 @@ package top.focess.veto.memory;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.time.Instant;
@@ -17,22 +19,37 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import top.focess.veto.agent.capability.MemoryReadCapabilityImpl;
+import top.focess.veto.agent.capability.MemoryWriteCapabilityImpl;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
+import top.focess.veto.agent.tool.CapabilityTestCalls;
 import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
+import top.focess.veto.memory.embedder.Embedder;
 import top.focess.veto.util.Nullness;
 
 class MemoryToolsTest {
 
+    @Test
+    void directReadCapabilityCannotReachStoreWithoutAuthorization() {
+        MemoryStore store = mock(ToolDocs.nonNullClass(MemoryStore.class));
+        MemoryReadCapabilityImpl capability = new MemoryReadCapabilityImpl(store);
+        ToolCallContextHolder.clear();
+        assertThrows(
+                ToolDocs.nonNullClass(SecurityException.class),
+                () -> capability.recall(new MemoryTools.RecallMemory.Args("private memory")));
+        verifyNoInteractions(store);
+    }
+
     @AfterEach
-    void clearToolContext() {
+    void clearToolContext() throws Exception {
         ToolCallContextHolder.clear();
     }
 
     @Test
-    void forgetSuccessRepeatsCanonicalMemoryId() {
+    void forgetSuccessRepeatsCanonicalMemoryId() throws Exception {
         UUID userId = UUID.randomUUID();
         MemoryId memoryId = new MemoryId(UUID.randomUUID());
         MemoryStore store = mock(ToolDocs.nonNullClass(MemoryStore.class));
@@ -48,16 +65,20 @@ class MemoryToolsTest {
                         false,
                         ToolExecutionPermit.empty()));
 
-        MemoryTools.ForgetMemory tool = new MemoryTools.ForgetMemory(store);
+        MemoryTools.ForgetMemory tool =
+                new MemoryTools.ForgetMemory(
+                        new MemoryWriteCapabilityImpl(
+                                store, mock(ToolDocs.nonNullClass(Embedder.class))));
         @NonNull String result =
-                tool.execute(new MemoryTools.ForgetMemory.Args(memoryId.value().toString()));
+                CapabilityTestCalls.execute(
+                        tool, new MemoryTools.ForgetMemory.Args(memoryId.value().toString()));
 
         assertEquals("forget_memory", tool.getName());
         assertEquals("forgotten: " + memoryId.value(), result);
     }
 
     @Test
-    void recallMemorySearchesBothTiersAndRanksTheirCombinedResults() {
+    void recallMemorySearchesBothTiersAndRanksTheirCombinedResults() throws Exception {
         UUID userId = UUID.randomUUID();
         UUID sessionId = UUID.randomUUID();
         MemoryStore store = mock(ToolDocs.nonNullClass(MemoryStore.class));
@@ -105,8 +126,11 @@ class MemoryToolsTest {
                         false,
                         ToolExecutionPermit.empty()));
 
-        MemoryTools.RecallMemory tool = new MemoryTools.RecallMemory(store);
-        String result = tool.execute(new MemoryTools.RecallMemory.Args("authentication"));
+        MemoryTools.RecallMemory tool =
+                new MemoryTools.RecallMemory(new MemoryReadCapabilityImpl(store));
+        String result =
+                CapabilityTestCalls.execute(
+                        tool, new MemoryTools.RecallMemory.Args("authentication"));
 
         assertEquals("recall_memory", tool.getName());
         assertTrue(result.indexOf("cross-session result") < result.indexOf("session result"));

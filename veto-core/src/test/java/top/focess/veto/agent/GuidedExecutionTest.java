@@ -13,6 +13,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.context.ApplicationContext;
 import org.springframework.test.util.ReflectionTestUtils;
+import top.focess.veto.agent.capability.LoopControlCapabilityImpl;
+import top.focess.veto.agent.capability.ProcessExecutionCapabilityImpl;
 import top.focess.veto.agent.identity.*;
 import top.focess.veto.agent.intercept.*;
 import top.focess.veto.agent.loop.PromptCompiler;
@@ -25,6 +27,7 @@ import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.sandbox.*;
+import top.focess.veto.sandbox.BackgroundTaskManager;
 
 class GuidedExecutionTest {
     private static AgentRunner.@NonNull LlmBinding binding() {
@@ -36,12 +39,19 @@ class GuidedExecutionTest {
             @NonNull UniformLLMCaller caller, @NonNull HitlRegistry hitl, @NonNull Path root) {
         ObjectMapper mapper = new ObjectMapper();
         var context = mock(ToolDocs.nonNullClass(ApplicationContext.class));
-        when(context.getBeansOfType(AgentTool.class)).thenReturn(Map.of("think", new ThinkTool()));
+        when(context.getBeansOfType(AgentTool.class))
+                .thenReturn(Map.of("think", new ThinkTool(new LoopControlCapabilityImpl())));
         SandboxManager sandbox = new SandboxManager(TestSandboxFactory.uncontainedSubprocesses());
         ToolEngineImpl engine =
                 new ToolEngineImpl(
                         mapper,
-                        List.of(new ViewFileTool(), new RunCommandTool(sandbox, mapper)),
+                        List.of(
+                                new ViewFileTool(),
+                                new RunCommandTool(
+                                        new ProcessExecutionCapabilityImpl(
+                                                sandbox,
+                                                new BackgroundTaskManager(sandbox),
+                                                mapper))),
                         context);
         ReflectionTestUtils.invokeMethod(engine, "init");
         PromptCompiler compiler =

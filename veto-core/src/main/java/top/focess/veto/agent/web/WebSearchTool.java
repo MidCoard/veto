@@ -1,21 +1,17 @@
 package top.focess.veto.agent.web;
 
-import java.net.URI;
-import java.net.http.HttpTimeoutException;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
+import top.focess.veto.agent.capability.NetworkEgressCapability;
 import top.focess.veto.agent.screening.Danger;
 import top.focess.veto.agent.tool.Doc;
-import top.focess.veto.agent.tool.NativeTool;
+import top.focess.veto.agent.tool.NetworkEgressTool;
 import top.focess.veto.agent.tool.ParamCategory;
 import top.focess.veto.agent.tool.SecurityHint;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDoc;
 import top.focess.veto.agent.tool.ToolDocs;
-import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolResultFormat;
 import top.focess.veto.agent.tool.ToolSecurity;
 
@@ -26,15 +22,11 @@ import top.focess.veto.agent.tool.ToolSecurity;
  */
 @Component
 @ToolSecurity(capability = ToolCapability.NETWORK_EGRESS, defaultDanger = Danger.ELEVATED)
-public final class WebSearchTool implements NativeTool<WebSearchTool.Args> {
+public final class WebSearchTool implements NetworkEgressTool<WebSearchTool.Args> {
+    private final @NonNull NetworkEgressCapability capability;
 
-    private static final int DEFAULT_MAX_RESULTS = 10;
-    private static final int MAX_OUTPUT_CHARS = 64_000;
-
-    private final @NonNull SearchProvider provider;
-
-    public WebSearchTool(@NonNull SearchProvider provider) {
-        this.provider = provider;
+    public WebSearchTool(@NonNull NetworkEgressCapability capability) {
+        this.capability = capability;
     }
 
     @ToolDoc(
@@ -126,118 +118,13 @@ public final class WebSearchTool implements NativeTool<WebSearchTool.Args> {
     }
 
     @Override
-    public @NonNull String execute(@NonNull Args args) {
-        String query = args.query();
-        if (query.isBlank() || query.strip().length() < 2) {
-            return error("web_search query must be at least 2 characters");
-        }
-        SearchOptions options =
-                new SearchOptions(
-                        args.allowed_domains(), args.blocked_domains(), DEFAULT_MAX_RESULTS);
-        try {
-            List<SearchResult> results =
-                    applyDomainFilters(provider.search(query, options), options);
-            if (results.isEmpty()) {
-                return "(no results)";
-            }
-            List<SearchResult> bounded =
-                    results.size() <= DEFAULT_MAX_RESULTS
-                            ? results
-                            : results.subList(0, DEFAULT_MAX_RESULTS);
-            return format(bounded);
-        } catch (IllegalArgumentException e) {
-            return error(e.getMessage());
-        } catch (HttpTimeoutException e) {
-            return error(
-                    "web_search timed out ("
-                            + provider.name()
-                            + "); retry later or rephrase the query");
-        } catch (Exception e) {
-            String diagnostic = e.getMessage();
-            return error(
-                    diagnostic == null || diagnostic.isBlank()
-                            ? "web_search failed"
-                            : "search failed (" + provider.name() + "): " + diagnostic);
-        }
+    public @NonNull NetworkEgressCapability networkEgressCapability() {
+        return capability;
     }
 
-    private @NonNull String format(@NonNull List<SearchResult> results) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("Found ").append(results.size()).append(" results:\n\n");
-        for (int i = 0; i < results.size(); i++) {
-            SearchResult r = results.get(i);
-            sb.append(i + 1).append(". ").append(r.title()).append('\n');
-            sb.append("   ").append(r.url()).append('\n');
-            if (!r.snippet().isBlank()) {
-                sb.append("   ").append(r.snippet()).append('\n');
-            }
-            sb.append('\n');
-        }
-        sb.append("Sources:\n");
-        for (SearchResult r : results) {
-            sb.append("- ").append(r.url()).append('\n');
-        }
-        if (sb.length() > MAX_OUTPUT_CHARS) {
-            return sb.substring(0, MAX_OUTPUT_CHARS)
-                    + "\n[web_search output truncated at "
-                    + MAX_OUTPUT_CHARS
-                    + " chars]";
-        }
-        return sb.toString();
-    }
-
-    private static @NonNull String error(String message) {
-        return ToolErrors.failure(
-                message == null || message.isBlank() ? "web_search failed" : message);
-    }
-
-    private static @NonNull List<SearchResult> applyDomainFilters(
-            @NonNull List<SearchResult> results, @NonNull SearchOptions options) {
-        List<String> allowed = options.allowedDomains();
-        List<String> blocked = options.blockedDomains();
-        if ((allowed == null || allowed.isEmpty()) && (blocked == null || blocked.isEmpty())) {
-            return results;
-        }
-        List<SearchResult> filtered = new ArrayList<>();
-        for (SearchResult result : results) {
-            String host = hostOf(result.url());
-            if (host == null || (blocked != null && matchesAny(host, blocked))) {
-                continue;
-            }
-            if (allowed != null && !allowed.isEmpty() && !matchesAny(host, allowed)) {
-                continue;
-            }
-            filtered.add(result);
-        }
-        return List.copyOf(filtered);
-    }
-
-    private static boolean matchesAny(@NonNull String host, @NonNull List<String> domains) {
-        for (String candidate : domains) {
-            if (candidate == null) {
-                continue;
-            }
-            String domain = candidate.strip().toLowerCase(Locale.ROOT);
-            if (domain.startsWith("www.")) {
-                domain = domain.substring(4);
-            }
-            if (!domain.isEmpty() && (host.equals(domain) || host.endsWith("." + domain))) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static String hostOf(@NonNull String url) {
-        try {
-            String host = URI.create(url).getHost();
-            if (host == null) {
-                return null;
-            }
-            String normalized = host.toLowerCase(Locale.ROOT);
-            return normalized.startsWith("www.") ? normalized.substring(4) : normalized;
-        } catch (IllegalArgumentException e) {
-            return null;
-        }
+    @Override
+    public @NonNull String execute(
+            @NonNull Args args, @NonNull NetworkEgressCapability capability) {
+        return capability.search(args);
     }
 }

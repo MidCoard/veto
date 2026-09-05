@@ -3,6 +3,7 @@ package top.focess.veto.agent.web;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
 
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
@@ -12,6 +13,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
+import top.focess.veto.agent.capability.NetworkEgressCapabilityImpl;
+import top.focess.veto.agent.tool.CapabilityTestCalls;
 import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolExecutionException;
@@ -38,13 +41,20 @@ class WebFetchToolTest {
                 });
         server.start();
         try {
-            WebFetchTool tool = new WebFetchTool(1, 1000);
+            WebFetchTool tool =
+                    new WebFetchTool(
+                            new NetworkEgressCapabilityImpl(
+                                    mock(ToolDocs.nonNullClass(SearchProvider.class)),
+                                    1,
+                                    1000,
+                                    true));
             long started = System.nanoTime();
             ToolExecutionException error =
                     assertThrows(
                             ToolDocs.nonNullClass(ToolExecutionException.class),
                             () ->
-                                    tool.execute(
+                                    CapabilityTestCalls.execute(
+                                            tool,
                                             new WebFetchTool.Args(
                                                     "http://127.0.0.1:"
                                                             + server.getAddress().getPort()
@@ -59,12 +69,17 @@ class WebFetchToolTest {
 
     @Test
     void productionPolicyRejectsPrivateDestinations() {
-        WebFetchTool tool = new WebFetchTool(5, 1000, false);
+        WebFetchTool tool =
+                new WebFetchTool(
+                        new NetworkEgressCapabilityImpl(
+                                mock(ToolDocs.nonNullClass(SearchProvider.class)), 5, 1000, false));
 
         ToolExecutionException error =
                 assertThrows(
                         ToolDocs.nonNullClass(ToolExecutionException.class),
-                        () -> tool.execute(new WebFetchTool.Args("http://127.0.0.1/admin")));
+                        () ->
+                                CapabilityTestCalls.execute(
+                                        tool, new WebFetchTool.Args("http://127.0.0.1/admin")));
 
         assertTrue(
                 ToolErrors.normalize(error.getMessage()).contains("private, loopback, link-local"));
@@ -91,9 +106,16 @@ class WebFetchToolTest {
                 });
         server.start();
         try {
-            WebFetchTool tool = new WebFetchTool(5, 10);
+            WebFetchTool tool =
+                    new WebFetchTool(
+                            new NetworkEgressCapabilityImpl(
+                                    mock(ToolDocs.nonNullClass(SearchProvider.class)),
+                                    5,
+                                    10,
+                                    true));
             String result =
-                    tool.execute(
+                    CapabilityTestCalls.execute(
+                            tool,
                             new WebFetchTool.Args(
                                     "http://127.0.0.1:"
                                             + server.getAddress().getPort()
@@ -132,12 +154,19 @@ class WebFetchToolTest {
                 });
         origin.start();
         try {
-            WebFetchTool tool = new WebFetchTool(5, 1000);
+            WebFetchTool tool =
+                    new WebFetchTool(
+                            new NetworkEgressCapabilityImpl(
+                                    mock(ToolDocs.nonNullClass(SearchProvider.class)),
+                                    5,
+                                    1000,
+                                    true));
             ToolExecutionException error =
                     assertThrows(
                             ToolDocs.nonNullClass(ToolExecutionException.class),
                             () ->
-                                    tool.execute(
+                                    CapabilityTestCalls.execute(
+                                            tool,
                                             new WebFetchTool.Args(
                                                     "http://127.0.0.1:"
                                                             + origin.getAddress().getPort()

@@ -1,29 +1,20 @@
 package top.focess.veto.agent.tool.builtin;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.UUID;
 import org.jspecify.annotations.NonNull;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
+import top.focess.veto.agent.capability.ProcessExecutionCapability;
 import top.focess.veto.agent.screening.Danger;
 import top.focess.veto.agent.tool.Doc;
-import top.focess.veto.agent.tool.NativeTool;
 import top.focess.veto.agent.tool.ParamCategory;
+import top.focess.veto.agent.tool.ProcessExecutionTool;
 import top.focess.veto.agent.tool.SecurityHint;
-import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDoc;
 import top.focess.veto.agent.tool.ToolDocs;
-import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolResultFormat;
 import top.focess.veto.agent.tool.ToolSecurity;
-import top.focess.veto.llm.config.LlmJacksonConfig;
 import top.focess.veto.sandbox.BackgroundTaskManager;
-import top.focess.veto.sandbox.Command;
-import top.focess.veto.sandbox.SandboxProfile;
 
 /**
  * {@code run_task} - launch a long-running command as a detached background task. Takes the same
@@ -40,16 +31,11 @@ import top.focess.veto.sandbox.SandboxProfile;
  */
 @Component
 @ToolSecurity(capability = ToolCapability.PROCESS_EXECUTION, defaultDanger = Danger.ELEVATED)
-public final class RunTaskTool implements NativeTool<RunTaskTool.Args> {
+public final class RunTaskTool implements ProcessExecutionTool<RunTaskTool.Args> {
+    private final @NonNull ProcessExecutionCapability capability;
 
-    private final @NonNull BackgroundTaskManager taskManager;
-    private final @NonNull ObjectMapper mapper;
-
-    public RunTaskTool(
-            @NonNull BackgroundTaskManager taskManager,
-            @Qualifier(LlmJacksonConfig.LLM_OBJECT_MAPPER) @NonNull ObjectMapper mapper) {
-        this.taskManager = taskManager;
-        this.mapper = mapper;
+    public RunTaskTool(@NonNull ProcessExecutionCapability capability) {
+        this.capability = capability;
     }
 
     @ToolDoc(
@@ -131,57 +117,13 @@ public final class RunTaskTool implements NativeTool<RunTaskTool.Args> {
     }
 
     @Override
-    public @NonNull String execute(@NonNull Args args) {
-        int timeout = args.timeout();
-        if (timeout < 0) {
-            return ToolErrors.failure("run_task timeout must be zero or positive.");
-        }
-        if (args.commands().size() != 1) {
-            return ToolErrors.failure(
-                    "run_task requires exactly one command (background mode does not chain); got "
-                            + args.commands().size());
-        }
-        RunCommandTool.CommandInput input = args.commands().get(0);
-        var ctx = ToolCallContextHolder.get();
-        if (ctx == null) {
-            throw new SecurityException("run_task requires its screened execution permit");
-        }
-        String agentId = ctx.agentId();
-        UUID sessionId = ctx.sessionId();
-        var cwd = ctx.executionPermit().requireExecutionRoot();
-        SandboxProfile profile =
-                SandboxProfile.forExecution(
-                        cwd,
-                        ctx.executionPermit().protectedPaths(),
-                        Boolean.TRUE.equals(args.network()));
-        BackgroundTaskManager.TaskInfo info =
-                taskManager.start(
-                        agentId,
-                        new Command(input.executable(), input.args()),
-                        cwd,
-                        timeout,
-                        sessionId,
-                        profile);
-        try {
-            Map<String, Object> envelope = new LinkedHashMap<>();
-            envelope.put("status", "started");
-            envelope.put("taskId", info.taskId());
-            envelope.put("pid", info.pid());
-            envelope.put("command", info.command());
-            envelope.put("cwd", info.cwd());
-            long profileTimeoutSeconds = profile.maxWallClock().toSeconds();
-            long effectiveTimeoutSeconds =
-                    timeout <= 0 ? profileTimeoutSeconds : Math.min(timeout, profileTimeoutSeconds);
-            envelope.put("requestedTimeoutSeconds", timeout);
-            envelope.put("effectiveTimeoutSeconds", effectiveTimeoutSeconds);
-            return mapper.writeValueAsString(envelope);
-        } catch (Exception e) {
-            taskManager.stop(agentId, info.taskId(), BackgroundTaskManager.ExitCause.AGENT_STOP);
-            return ToolErrors.failure(
-                    "Task response encoding failed; the started task was stopped (taskId="
-                            + info.taskId()
-                            + "): "
-                            + e.getMessage());
-        }
+    public @NonNull ProcessExecutionCapability processExecutionCapability() {
+        return capability;
+    }
+
+    @Override
+    public @NonNull String execute(
+            @NonNull Args args, @NonNull ProcessExecutionCapability capability) {
+        return capability.runTask(args);
     }
 }

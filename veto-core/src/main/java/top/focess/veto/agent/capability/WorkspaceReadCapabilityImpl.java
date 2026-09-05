@@ -30,8 +30,13 @@ import java.util.Set;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
+import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolJson;
+import top.focess.veto.agent.tool.builtin.FindFilesTool;
+import top.focess.veto.agent.tool.builtin.GrepSearchTool;
+import top.focess.veto.agent.tool.builtin.ListDirTool;
+import top.focess.veto.agent.tool.builtin.ViewFileTool;
 
 /** The only low-level filesystem implementation behind {@link WorkspaceReadCapability}. */
 final class WorkspaceReadCapabilityImpl implements WorkspaceReadCapability {
@@ -56,7 +61,11 @@ final class WorkspaceReadCapabilityImpl implements WorkspaceReadCapability {
 
     @Override
     public @NonNull String listDirectory(@NonNull String pathArgument) {
-        ToolExecutionPermit.AuthorizedPath authorized = authorizedPath(pathArgument);
+        ToolExecutionPermit.AuthorizedPath authorized = authorizedPath("list_dir", pathArgument);
+        CapabilityAccess.require(
+                ToolCapability.WORKSPACE_READ,
+                "list_dir",
+                new ListDirTool.Args(authorized.requestedPath()));
         Path directory = requiredHostPath(authorized);
         if (!Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS)) {
             return ToolErrors.failure(
@@ -102,7 +111,11 @@ final class WorkspaceReadCapabilityImpl implements WorkspaceReadCapability {
     @Override
     public @NonNull String readText(
             @NonNull String pathArgument, Integer startLine, Integer endLine) {
-        ToolExecutionPermit.AuthorizedPath authorized = authorizedPath(pathArgument);
+        ToolExecutionPermit.AuthorizedPath authorized = authorizedPath("view_file", pathArgument);
+        CapabilityAccess.require(
+                ToolCapability.WORKSPACE_READ,
+                "view_file",
+                new ViewFileTool.Args(authorized.requestedPath(), startLine, endLine));
         Path file = requiredHostPath(authorized);
         refuseProtectedRoot(file, authorized.requestedPath());
         if (Files.isSymbolicLink(file) || isReparsePoint(file)) {
@@ -177,7 +190,11 @@ final class WorkspaceReadCapabilityImpl implements WorkspaceReadCapability {
 
     @Override
     public @NonNull String findFiles(@NonNull String pathArgument, @NonNull String pattern) {
-        ToolExecutionPermit.AuthorizedPath authorized = authorizedPath(pathArgument);
+        ToolExecutionPermit.AuthorizedPath authorized = authorizedPath("find_files", pathArgument);
+        CapabilityAccess.require(
+                ToolCapability.WORKSPACE_READ,
+                "find_files",
+                new FindFilesTool.Args(authorized.requestedPath(), pattern));
         Path base = requiredHostPath(authorized);
         if (!Files.isDirectory(base, LinkOption.NOFOLLOW_LINKS)) {
             return ToolErrors.failure(
@@ -233,12 +250,17 @@ final class WorkspaceReadCapabilityImpl implements WorkspaceReadCapability {
     public @NonNull String grep(
             @NonNull String pathArgument,
             @NonNull String query,
-            boolean caseInsensitive,
+            Boolean caseInsensitive,
             List<String> includes) {
         if (query.isEmpty()) {
             return ToolErrors.failure("INVALID_QUERY", "query must not be empty");
         }
-        ToolExecutionPermit.AuthorizedPath authorized = authorizedPath(pathArgument);
+        ToolExecutionPermit.AuthorizedPath authorized = authorizedPath("grep_search", pathArgument);
+        CapabilityAccess.require(
+                ToolCapability.WORKSPACE_READ,
+                "grep_search",
+                new GrepSearchTool.Args(
+                        authorized.requestedPath(), query, caseInsensitive, includes));
         Path root = requiredHostPath(authorized);
         if (!Files.exists(root, LinkOption.NOFOLLOW_LINKS)) {
             return ToolErrors.failure(
@@ -255,7 +277,7 @@ final class WorkspaceReadCapabilityImpl implements WorkspaceReadCapability {
         } catch (IllegalArgumentException e) {
             return ToolErrors.failure("INVALID_PATTERN", "Invalid includes glob");
         }
-        GrepState state = new GrepState(caseInsensitive, query);
+        GrepState state = new GrepState(Boolean.TRUE.equals(caseInsensitive), query);
         GrepVisitor visitor =
                 new GrepVisitor(root, authorized.requestedPath(), includeMatchers, state);
         try {
@@ -275,7 +297,11 @@ final class WorkspaceReadCapabilityImpl implements WorkspaceReadCapability {
     }
 
     private ToolExecutionPermit.@NonNull AuthorizedPath authorizedPath(
-            @NonNull String argumentName) {
+            @NonNull String toolName, @NonNull String argumentName) {
+        var context = CapabilityAccess.require(ToolCapability.WORKSPACE_READ);
+        if (context.executionPermit() != permit || !permit.toolName().equals(toolName)) {
+            throw new SecurityException("Capability does not belong to this tool call");
+        }
         ToolExecutionPermit.AuthorizedPath authorized = permit.path(argumentName);
         if (authorized == null || authorized.hostPath() == null) {
             throw new SecurityException(

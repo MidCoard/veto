@@ -36,6 +36,7 @@ public record ToolExecutionPermit(
         @NonNull String toolName,
         @NonNull String callId,
         @NonNull ToolCapability capability,
+        String remoteServerName,
         CallerBinding caller,
         @NonNull Map<@NonNull String, Object> screenedArguments,
         @NonNull Map<@NonNull String, @NonNull AuthorizedPath> filesystemPaths,
@@ -50,6 +51,7 @@ public record ToolExecutionPermit(
                     "",
                     "",
                     ToolCapability.AGENT_CONTROL,
+                    null,
                     null,
                     Map.of(),
                     Map.of(),
@@ -91,6 +93,8 @@ public record ToolExecutionPermit(
             @NonNull Workspace workspace,
             @NonNull DeployerPolicy deployerPolicy,
             @NonNull ProtectedSet protectedSet) {
+        String serverName =
+                definition instanceof RemoteToolDefinition remote ? remote.serverName() : null;
         Map<@NonNull String, @NonNull ParamCategory> hints = parameterHints(definition);
         List<Path> roots = workspace.hostRoots();
         Path executionRoot = workspace.currentHostRoot();
@@ -101,6 +105,7 @@ public record ToolExecutionPermit(
                     call.toolName(),
                     call.callId(),
                     definition.capability(),
+                    serverName,
                     null,
                     call.args(),
                     Map.of(),
@@ -144,6 +149,7 @@ public record ToolExecutionPermit(
                 call.toolName(),
                 call.callId(),
                 definition.capability(),
+                serverName,
                 null,
                 call.args(),
                 paths,
@@ -160,6 +166,7 @@ public record ToolExecutionPermit(
                 toolName,
                 callId,
                 capability,
+                remoteServerName,
                 caller,
                 screenedArguments,
                 filesystemPaths,
@@ -181,6 +188,7 @@ public record ToolExecutionPermit(
                 toolName,
                 callId,
                 capability,
+                remoteServerName,
                 new CallerBinding(agentId, userId, groupId, owner, sessionId),
                 screenedArguments,
                 filesystemPaths,
@@ -197,7 +205,17 @@ public record ToolExecutionPermit(
             @NonNull ToolCallContext context) {
         return matchesCall(call)
                 && capability == definition.capability()
-                && caller != null
+                && Objects.equals(
+                        remoteServerName,
+                        definition instanceof RemoteToolDefinition remote
+                                ? remote.serverName()
+                                : null)
+                && authorizesCaller(context);
+    }
+
+    /** Whether authorization belongs to this exact runtime identity. */
+    public boolean authorizesCaller(@NonNull ToolCallContext context) {
+        return caller != null
                 && caller.agentId().equals(context.agentId())
                 && caller.userId().equals(context.userId())
                 && Objects.equals(caller.groupId(), context.groupId())
@@ -223,6 +241,7 @@ public record ToolExecutionPermit(
     public boolean sameTargets(@NonNull ToolExecutionPermit current) {
         if (!callId.equals(current.callId)
                 || capability != current.capability
+                || !Objects.equals(remoteServerName, current.remoteServerName)
                 || !toolName.equals(current.toolName)
                 || !screenedArguments.equals(current.screenedArguments)) {
             return false;

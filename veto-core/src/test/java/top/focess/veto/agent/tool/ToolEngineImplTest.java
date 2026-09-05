@@ -25,6 +25,10 @@ import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.context.ApplicationContext;
+import top.focess.veto.agent.capability.LoopControlCapability;
+import top.focess.veto.agent.capability.LoopControlCapabilityImpl;
+import top.focess.veto.agent.capability.ProcessExecutionCapabilityImpl;
+import top.focess.veto.agent.capability.TaskControlCapabilityImpl;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.mcp.transport.McpTransport;
 import top.focess.veto.agent.tool.builtin.GrepSearchTool;
@@ -79,20 +83,10 @@ class ToolEngineImplTest {
             returnExamples = {"{}"})
     private record JsonAgentArgs(@NonNull String output) {}
 
-    private static final class JsonAgentTool implements AgentTool<JsonAgentArgs> {
-        private final @NonNull ToolCapability capability;
-
-        JsonAgentTool() {
-            this(ToolCapability.LOOP_CONTROL);
-        }
-
-        JsonAgentTool(@NonNull ToolCapability capability) {
-            this.capability = capability;
-        }
-
+    private static class JsonAgentTool implements LoopControlTool<JsonAgentArgs> {
         @Override
-        public @NonNull ToolCapability getCapability() {
-            return capability;
+        public @NonNull LoopControlCapability loopControlCapability() {
+            return new LoopControlCapabilityImpl();
         }
 
         @Override
@@ -106,9 +100,69 @@ class ToolEngineImplTest {
         }
 
         @Override
-        public @NonNull String execute(@NonNull JsonAgentArgs args) {
+        public @NonNull String execute(
+                @NonNull JsonAgentArgs args, @NonNull LoopControlCapability capability) {
             return args.output();
         }
+    }
+
+    private static final class UndeclaredAgentTool extends JsonAgentTool {
+        @Override
+        public @NonNull ToolCapability getCapability() {
+            return ToolCapability.AGENT_CONTROL;
+        }
+    }
+
+    private static final class WrongBoundaryAgentTool extends JsonAgentTool {
+        @Override
+        public @NonNull ToolCapability getCapability() {
+            return ToolCapability.MEMORY_READ;
+        }
+    }
+
+    private static final class RawDependencyAgentTool extends JsonAgentTool {
+        private final @NonNull ObjectMapper rawService = new ObjectMapper();
+    }
+
+    @Test
+    void registrationRejectsUndeclaredCapability() {
+        var failure = registrationFailure(new UndeclaredAgentTool());
+        assertTrue(String.valueOf(failure.getMessage()).contains("AGENT_CONTROL"));
+    }
+
+    @Test
+    void registrationRejectsWrongCapabilityIntermediate() {
+        var failure = registrationFailure(new WrongBoundaryAgentTool());
+        assertTrue(String.valueOf(failure.getMessage()).contains("capability boundary"));
+    }
+
+    @Test
+    void handlerCapabilityMustMatchItsRegisteredDefinition() {
+        var tool = new JsonAgentTool();
+        var wrongDefinition =
+                AgentToolDefinition.from(
+                        tool.getName(), tool.getArgsClass(), ToolCapability.MEMORY_READ);
+        var failure =
+                assertThrows(
+                        ToolDocs.nonNullClass(IllegalArgumentException.class),
+                        () -> ToolContractValidator.validateHandler(tool, wrongDefinition));
+        assertTrue(
+                String.valueOf(failure.getMessage()).contains("handler capability does not match"));
+    }
+
+    @Test
+    void registrationRejectsRawServiceFields() {
+        var failure = registrationFailure(new RawDependencyAgentTool());
+        assertTrue(
+                String.valueOf(failure.getMessage()).contains("unrestricted instance dependency"));
+    }
+
+    private static @NonNull IllegalArgumentException registrationFailure(
+            @NonNull AgentTool<?> tool) {
+        var context = mock(ToolDocs.nonNullClass(ApplicationContext.class));
+        when(context.getBeansOfType(AgentTool.class)).thenReturn(Map.of("invalid", tool));
+        var engine = new ToolEngineImpl(new ObjectMapper(), List.of(), context);
+        return assertThrows(ToolDocs.nonNullClass(IllegalArgumentException.class), engine::init);
     }
 
     @ParameterizedTest
@@ -122,20 +176,13 @@ class ToolEngineImplTest {
                 "user",
                 "group",
                 "owner",
-                "session",
-                "undeclared"
+                "session"
             })
     void agentExecutionRejectsUnboundOrMismatchedAuthorization(@NonNull String mismatch)
             throws Exception {
         ApplicationContext appCtx = mock(ToolDocs.nonNullClass(ApplicationContext.class));
         when(appCtx.getBeansOfType(AgentTool.class))
-                .thenReturn(
-                        Map.of(
-                                "jsonAgentTool",
-                                new JsonAgentTool(
-                                        mismatch.equals("undeclared")
-                                                ? ToolCapability.AGENT_CONTROL
-                                                : ToolCapability.LOOP_CONTROL)));
+                .thenReturn(Map.of("jsonAgentTool", new JsonAgentTool()));
         ToolEngineImpl engine = new ToolEngineImpl(new ObjectMapper(), List.of(), appCtx);
         engine.init();
         ToolDefinition definition = definition(engine, "json_agent");
@@ -224,13 +271,16 @@ class ToolEngineImplTest {
         assertEquals(output, result.content());
     }
 
-    private static final class FailingAgentTool implements AgentTool<FailingAgentArgs> {
+    private static final class FailingAgentTool implements LoopControlTool<FailingAgentArgs> {
+        @Override
+        public @NonNull LoopControlCapability loopControlCapability() {
+            return new LoopControlCapabilityImpl();
+        }
+
         @Override
         public @NonNull ToolCapability getCapability() {
             return ToolCapability.LOOP_CONTROL;
         }
-
-        private boolean executed;
 
         @Override
         public @NonNull String getName() {
@@ -243,13 +293,9 @@ class ToolEngineImplTest {
         }
 
         @Override
-        public @NonNull String execute(@NonNull FailingAgentArgs args) {
-            executed = true;
+        public @NonNull String execute(
+                @NonNull FailingAgentArgs args, @NonNull LoopControlCapability capability) {
             return ToolErrors.failure(args.reason());
-        }
-
-        boolean executed() {
-            return executed;
         }
     }
 
@@ -257,6 +303,10 @@ class ToolEngineImplTest {
         ObjectMapper mapper =
                 new ObjectMapper()
                         .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+        SandboxManager sandbox = new SandboxManager(TestSandboxFactory.uncontainedSubprocesses());
+        var processes =
+                new ProcessExecutionCapabilityImpl(
+                        sandbox, new BackgroundTaskManager(sandbox), mapper);
         List<NativeTool<?>> tools =
                 List.of(
                         new ViewFileTool(),
@@ -264,9 +314,7 @@ class ToolEngineImplTest {
                         new WriteToFileTool(),
                         new ReplaceFileContentTool(),
                         new GrepSearchTool(),
-                        new RunCommandTool(
-                                new SandboxManager(TestSandboxFactory.uncontainedSubprocesses()),
-                                mapper));
+                        new RunCommandTool(processes));
         // Minimal ApplicationContext mock that returns no AgentTool beans
         ApplicationContext appCtx = mock(ToolDocs.nonNullClass(ApplicationContext.class));
         when(appCtx.getBeansOfType(AgentTool.class)).thenReturn(Map.of());
@@ -282,12 +330,14 @@ class ToolEngineImplTest {
                         .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
         SandboxManager sandboxes = new SandboxManager(TestSandboxFactory.platformSandbox());
         BackgroundTaskManager backgroundTasks = new BackgroundTaskManager(sandboxes);
+        var processes = new ProcessExecutionCapabilityImpl(sandboxes, backgroundTasks, mapper);
+        var tasks = new TaskControlCapabilityImpl(backgroundTasks, mapper);
         List<NativeTool<?>> tools =
                 List.of(
-                        new RunCommandTool(sandboxes, mapper),
-                        new RunTaskTool(backgroundTasks, mapper),
-                        new ViewTaskTool(backgroundTasks, mapper),
-                        new StopTaskTool(backgroundTasks, mapper));
+                        new RunCommandTool(processes),
+                        new RunTaskTool(processes),
+                        new ViewTaskTool(tasks),
+                        new StopTaskTool(tasks));
         ApplicationContext appCtx = mock(ToolDocs.nonNullClass(ApplicationContext.class));
         when(appCtx.getBeansOfType(AgentTool.class)).thenReturn(Map.of());
         ToolEngineImpl engine = new ToolEngineImpl(mapper, tools, appCtx);
@@ -402,11 +452,11 @@ class ToolEngineImplTest {
     }
 
     @Test
-    void missingRequiredAgentArgumentIsRejectedBeforeHandlerExecution() {
+    void missingRequiredAgentArgumentIsRejectedBeforeHandlerExecution() throws Exception {
         ObjectMapper mapper =
                 new ObjectMapper()
                         .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-        FailingAgentTool tool = new FailingAgentTool();
+        FailingAgentTool tool = spy(new FailingAgentTool());
         ApplicationContext appCtx = mock(ToolDocs.nonNullClass(ApplicationContext.class));
         when(appCtx.getBeansOfType(AgentTool.class)).thenReturn(Map.of("failingAgentTool", tool));
         ToolEngineImpl engine = new ToolEngineImpl(mapper, List.of(), appCtx);
@@ -420,7 +470,10 @@ class ToolEngineImplTest {
         assertFalse(result.success());
         assertTrue(
                 result.content().contains("missing required parameter 'reason'"), result.content());
-        assertFalse(tool.executed(), "agent handler must not run for invalid arguments");
+        verify(tool, never())
+                .execute(
+                        any(ToolDocs.nonNullClass(FailingAgentArgs.class)),
+                        any(ToolDocs.nonNullClass(LoopControlCapability.class)));
     }
 
     @Test
@@ -1047,7 +1100,10 @@ class ToolEngineImplTest {
     void directRunCommandRejectsArgumentsOutsideItsPermitBeforeProvisioning(
             @TempDir @NonNull Path tempDir) {
         SandboxManager sandbox = mock(ToolDocs.nonNullClass(SandboxManager.class));
-        RunCommandTool tool = new RunCommandTool(sandbox, new ObjectMapper());
+        RunCommandTool tool =
+                new RunCommandTool(
+                        new ProcessExecutionCapabilityImpl(
+                                sandbox, new BackgroundTaskManager(sandbox), new ObjectMapper()));
         ToolCall screened =
                 new ToolCall(
                         "run_command",

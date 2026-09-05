@@ -1,7 +1,10 @@
 package top.focess.veto.agent.tool;
 
+import java.lang.reflect.Modifier;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
+import org.springframework.aop.support.AopUtils;
+import top.focess.veto.agent.capability.*;
 
 /**
  * Validates that tool flavour, capability, danger, and parameter hints describe one coherent tool.
@@ -20,6 +23,76 @@ public final class ToolContractValidator {
             case AgentToolDefinition agentDefinition -> validateAgent(agentDefinition);
             case RemoteToolDefinition ignored -> {
                 // Remote definitions hard-code REMOTE_UNKNOWN and ELEVATED.
+            }
+        }
+    }
+
+    /**
+     * Rejects handlers that bypass their declared effect boundary before they enter the registry.
+     */
+    public static void validateHandler(
+            @NonNull CapabilityTool<?> tool, @NonNull ToolDefinition definition) {
+        validate(definition);
+        require(
+                definition,
+                tool.getName().equals(definition.name()),
+                "handler name does not match definition");
+        require(
+                definition,
+                tool.getCapability() == definition.capability(),
+                "handler capability does not match definition");
+        boolean correctBoundary =
+                switch (definition.capability()) {
+                    case WORKSPACE_READ -> tool instanceof WorkspaceReadTool<?>;
+                    case WORKSPACE_WRITE -> tool instanceof WorkspaceWriteTool<?>;
+                    case PROCESS_EXECUTION -> tool instanceof ProcessExecutionTool<?>;
+                    case TASK_CONTROL -> tool instanceof TaskControlTool<?>;
+                    case NETWORK_EGRESS -> tool instanceof NetworkEgressTool<?>;
+                    case MEMORY_READ -> tool instanceof MemoryReadTool<?>;
+                    case MEMORY_WRITE -> tool instanceof MemoryWriteTool<?>;
+                    case DELEGATION -> tool instanceof DelegationTool<?>;
+                    case GROUP_CONTROL -> tool instanceof GroupControlTool<?>;
+                    case LOOP_CONTROL -> tool instanceof LoopControlTool<?>;
+                    case SKILL_READ -> tool instanceof SkillReadTool<?>;
+                    case USER_INTERACTION -> tool instanceof UserInteractionTool<?>;
+                    default -> false;
+                };
+        require(
+                definition,
+                correctBoundary,
+                "handler does not implement the declared capability boundary");
+        Class<?> capability =
+                switch (definition.capability()) {
+                    case WORKSPACE_READ -> ToolDocs.nonNullClass(WorkspaceReadCapability.class);
+                    case WORKSPACE_WRITE -> ToolDocs.nonNullClass(WorkspaceWriteCapability.class);
+                    case PROCESS_EXECUTION ->
+                            ToolDocs.nonNullClass(ProcessExecutionCapability.class);
+                    case TASK_CONTROL -> ToolDocs.nonNullClass(TaskControlCapability.class);
+                    case NETWORK_EGRESS -> ToolDocs.nonNullClass(NetworkEgressCapability.class);
+                    case MEMORY_READ -> ToolDocs.nonNullClass(MemoryReadCapability.class);
+                    case MEMORY_WRITE -> ToolDocs.nonNullClass(MemoryWriteCapability.class);
+                    case DELEGATION -> ToolDocs.nonNullClass(DelegationCapability.class);
+                    case GROUP_CONTROL -> ToolDocs.nonNullClass(GroupControlCapability.class);
+                    case LOOP_CONTROL -> ToolDocs.nonNullClass(LoopControlCapability.class);
+                    case SKILL_READ -> ToolDocs.nonNullClass(SkillReadCapability.class);
+                    case USER_INTERACTION -> ToolDocs.nonNullClass(UserInteractionCapability.class);
+                    default -> throw invalid(definition, "handler has no restricted capability");
+                };
+        Class<?> type = AopUtils.getTargetClass(tool);
+        for (Class<?> current = type;
+                current != null && current != Object.class;
+                current = current.getSuperclass()) {
+            for (var field : current.getDeclaredFields()) {
+                if (Modifier.isStatic(field.getModifiers())) continue;
+                require(
+                        definition,
+                        field.getType().isInterface()
+                                && capability.isAssignableFrom(field.getType()),
+                        "handler holds unrestricted instance dependency '"
+                                + field.getName()
+                                + "' ("
+                                + field.getType().getName()
+                                + ")");
             }
         }
     }
@@ -127,10 +200,12 @@ public final class ToolContractValidator {
                     LOOP_CONTROL,
                     DELEGATION,
                     GROUP_CONTROL,
-                    USER_INTERACTION,
-                    AGENT_CONTROL -> {
+                    USER_INTERACTION -> {
                 // These capabilities execute through typed, caller-scoped runtime services.
             }
+            case AGENT_CONTROL ->
+                    throw invalid(
+                            definition, "AGENT_CONTROL does not declare a restricted capability");
             case WORKSPACE_READ,
                     WORKSPACE_WRITE,
                     PROCESS_EXECUTION,

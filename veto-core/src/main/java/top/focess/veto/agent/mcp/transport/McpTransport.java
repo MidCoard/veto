@@ -2,9 +2,11 @@ package top.focess.veto.agent.mcp.transport;
 
 import java.nio.file.Path;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.agent.tool.ToolEngine;
 
 /**
- * The transport a registered MCP server speaks. Four modes, selected at server registration time..
+ * Transport descriptions for MCP endpoints. Only HTTP endpoints currently have an enforced
+ * execution boundary; other modes are rejected before resource access.
  *
  * <p>Only <b>external</b> tools cross a real {@code McpTransport}. Native and agent tools are
  * dispatched directly in-process by the {@link ToolEngine} — there is no self-referential local MCP
@@ -12,7 +14,7 @@ import org.jspecify.annotations.NonNull;
  */
 public sealed interface McpTransport {
 
-    /** Local sandboxed MCP servers launched as child processes (stdin/stdout pipes). */
+    /** Legacy stdio description. Rejected until sandboxed process execution is integrated. */
     record StdioMcpTransport(@NonNull ProcessBuilder processBuilder) implements McpTransport {}
 
     /** Remote or sidecar MCP servers exposing an HTTP endpoint with Server-Sent Events. */
@@ -24,7 +26,7 @@ public sealed interface McpTransport {
         }
     }
 
-    /** Containerized sandbox runtimes over a socket. */
+    /** Legacy socket description. Rejected until restricted socket access is integrated. */
     record SocketMcpTransport(@NonNull Path socketPath) implements McpTransport {}
 
     /** Remote Endpoint Mode : the tool runs on the user's local workstation. */

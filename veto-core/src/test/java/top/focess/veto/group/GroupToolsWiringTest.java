@@ -8,9 +8,12 @@ import java.util.Set;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+import top.focess.veto.agent.capability.DelegationCapabilityImpl;
+import top.focess.veto.agent.capability.GroupControlCapabilityImpl;
 import top.focess.veto.agent.identity.RoleToolFilter;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
+import top.focess.veto.agent.tool.CapabilityTestCalls;
 import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolDefinition;
@@ -90,11 +93,43 @@ class GroupToolsWiringTest {
     }
 
     @Test
-    void createGroupRegistersEmptyGroupAndRequestsTransform() {
+    void validCallerPermitCannotDisbandAnotherAgentsGroup() throws Exception {
+        Group group = spawner.registerEmptyGroup("leader", "default", null, "brief");
+        DisbandGroup tool =
+                new DisbandGroup(
+                        new GroupControlCapabilityImpl(
+                                spawner, registry, blackboard, orchestrator));
+        ToolCallContextHolder.set(
+                new ToolCallContext(
+                        "other-agent",
+                        UUID.randomUUID(),
+                        group.groupId(),
+                        null,
+                        null,
+                        ToolResultPresentationMode.BASIC,
+                        false,
+                        ToolExecutionPermit.empty()));
+        try {
+            assertThrows(
+                    ToolDocs.nonNullClass(SecurityException.class),
+                    () -> CapabilityTestCalls.execute(tool, new DisbandGroup.Args()));
+            assertTrue(requireGroup(registry.get(group.groupId())).isActive());
+            assertNull(ToolCallContextHolder.drainTransform());
+        } finally {
+            ToolCallContextHolder.clear();
+            spawner.disband(group.groupId());
+        }
+    }
+
+    @Test
+    void createGroupRegistersEmptyGroupAndRequestsTransform() throws Exception {
         HitlRegistry hitlRegistry = new HitlRegistry();
         Workspace workspace = Workspace.single(Path.of("group-workspace"), PathMode.REAL);
         hitlRegistry.setWorkspace("agent-1", workspace);
-        CreateGroup create = new CreateGroup(spawner, leaderBinding, roleToolFilter, hitlRegistry);
+        CreateGroup create =
+                new CreateGroup(
+                        new DelegationCapabilityImpl(
+                                spawner, leaderBinding, roleToolFilter, hitlRegistry));
 
         ToolCallContextHolder.set(
                 new ToolCallContext(
@@ -107,7 +142,8 @@ class GroupToolsWiringTest {
                         true,
                         ToolExecutionPermit.empty()));
         try {
-            String result = create.execute(new CreateGroup.Args("do the thing"));
+            String result =
+                    CapabilityTestCalls.execute(create, new CreateGroup.Args("do the thing"));
             assertEquals("", result, "create_group returns an empty result on success");
 
             // A forward transform (STANDALONE -> Leader) is requested - not a recall.
@@ -147,9 +183,11 @@ class GroupToolsWiringTest {
     }
 
     @Test
-    void createGroupRefusesBlankBrief() {
+    void createGroupRefusesBlankBrief() throws Exception {
         CreateGroup create =
-                new CreateGroup(spawner, leaderBinding, roleToolFilter, new HitlRegistry());
+                new CreateGroup(
+                        new DelegationCapabilityImpl(
+                                spawner, leaderBinding, roleToolFilter, new HitlRegistry()));
         ToolCallContextHolder.set(
                 new ToolCallContext(
                         "agent-blank",
@@ -164,7 +202,7 @@ class GroupToolsWiringTest {
             ToolExecutionException error =
                     assertThrows(
                             ToolDocs.nonNullClass(ToolExecutionException.class),
-                            () -> create.execute(new CreateGroup.Args("   ")));
+                            () -> CapabilityTestCalls.execute(create, new CreateGroup.Args("   ")));
             assertTrue(
                     ToolErrors.normalize(error.getMessage()).startsWith("Group not created:"),
                     "blank brief is refused");
@@ -176,10 +214,13 @@ class GroupToolsWiringTest {
     }
 
     @Test
-    void disbandGroupTearsDownGroupAndRequestsReverseTransform() {
+    void disbandGroupTearsDownGroupAndRequestsReverseTransform() throws Exception {
         Group g = spawner.registerEmptyGroup("leader", "default", null, "brief");
 
-        DisbandGroup disband = new DisbandGroup(spawner, registry);
+        DisbandGroup disband =
+                new DisbandGroup(
+                        new GroupControlCapabilityImpl(
+                                spawner, registry, blackboard, orchestrator));
         ToolCallContextHolder.set(
                 new ToolCallContext(
                         "leader",
@@ -191,7 +232,7 @@ class GroupToolsWiringTest {
                         false,
                         ToolExecutionPermit.empty()));
         try {
-            String result = disband.execute(new DisbandGroup.Args());
+            String result = CapabilityTestCalls.execute(disband, new DisbandGroup.Args());
             assertEquals("", result, "disband_group returns an empty result on success");
 
             // A reverse transform (Leader -> STANDALONE) is requested.
@@ -217,8 +258,11 @@ class GroupToolsWiringTest {
     }
 
     @Test
-    void disbandGroupRefusesWithoutActiveGroup() {
-        DisbandGroup disband = new DisbandGroup(spawner, registry);
+    void disbandGroupRefusesWithoutActiveGroup() throws Exception {
+        DisbandGroup disband =
+                new DisbandGroup(
+                        new GroupControlCapabilityImpl(
+                                spawner, registry, blackboard, orchestrator));
         ToolCallContextHolder.set(
                 new ToolCallContext(
                         "leader",
@@ -233,7 +277,7 @@ class GroupToolsWiringTest {
             ToolExecutionException error =
                     assertThrows(
                             ToolDocs.nonNullClass(ToolExecutionException.class),
-                            () -> disband.execute(new DisbandGroup.Args()));
+                            () -> CapabilityTestCalls.execute(disband, new DisbandGroup.Args()));
             assertTrue(
                     ToolErrors.normalize(error.getMessage()).startsWith("Group not disbanded:"),
                     "no active group is refused");
@@ -246,11 +290,14 @@ class GroupToolsWiringTest {
     }
 
     @Test
-    void postMessagePostsToBlackboardForReceiver() {
+    void postMessagePostsToBlackboardForReceiver() throws Exception {
         Group g = spawner.registerEmptyGroup("leader", "default", null, "brief");
         registry.put(g.withMate("mate-1", "coding"));
 
-        PostMessage post = new PostMessage(blackboard, registry);
+        PostMessage post =
+                new PostMessage(
+                        new GroupControlCapabilityImpl(
+                                spawner, registry, blackboard, orchestrator));
         ToolCallContextHolder.set(
                 new ToolCallContext(
                         "leader",
@@ -263,7 +310,8 @@ class GroupToolsWiringTest {
                         ToolExecutionPermit.empty()));
         try {
             String result =
-                    post.execute(
+                    CapabilityTestCalls.execute(
+                            post,
                             new PostMessage.Args(
                                     BlackboardMessage.MessageType.FEEDBACK, "mate-1", "oops"));
             assertEquals("posted", result);
@@ -283,8 +331,11 @@ class GroupToolsWiringTest {
     }
 
     @Test
-    void postMessageRefusesWithoutActiveGroup() {
-        PostMessage post = new PostMessage(blackboard, registry);
+    void postMessageRefusesWithoutActiveGroup() throws Exception {
+        PostMessage post =
+                new PostMessage(
+                        new GroupControlCapabilityImpl(
+                                spawner, registry, blackboard, orchestrator));
         ToolCallContextHolder.set(
                 new ToolCallContext(
                         "leader",
@@ -300,7 +351,8 @@ class GroupToolsWiringTest {
                     assertThrows(
                             ToolDocs.nonNullClass(ToolExecutionException.class),
                             () ->
-                                    post.execute(
+                                    CapabilityTestCalls.execute(
+                                            post,
                                             new PostMessage.Args(
                                                     BlackboardMessage.MessageType.STATUS,
                                                     "LEADER",
@@ -314,10 +366,13 @@ class GroupToolsWiringTest {
     }
 
     @Test
-    void postMessageRefusesDisbandedGroup() {
+    void postMessageRefusesDisbandedGroup() throws Exception {
         Group group = spawner.registerEmptyGroup("leader", "default", null, "brief");
         spawner.disband(group.groupId());
-        PostMessage post = new PostMessage(blackboard, registry);
+        PostMessage post =
+                new PostMessage(
+                        new GroupControlCapabilityImpl(
+                                spawner, registry, blackboard, orchestrator));
         ToolCallContextHolder.set(
                 new ToolCallContext(
                         "leader",
@@ -333,7 +388,8 @@ class GroupToolsWiringTest {
                     assertThrows(
                             ToolDocs.nonNullClass(ToolExecutionException.class),
                             () ->
-                                    post.execute(
+                                    CapabilityTestCalls.execute(
+                                            post,
                                             new PostMessage.Args(
                                                     BlackboardMessage.MessageType.STATUS,
                                                     "LEADER",
@@ -346,7 +402,7 @@ class GroupToolsWiringTest {
     }
 
     @Test
-    void inspectGroupReturnsOnlyNewMateReportsAndCursor() {
+    void inspectGroupReturnsOnlyNewMateReportsAndCursor() throws Exception {
         Group g = spawner.registerEmptyGroup("leader", "default", null, "brief");
         registry.put(g.withMate("mate-1", "coding"));
         blackboard.post(
@@ -359,7 +415,10 @@ class GroupToolsWiringTest {
                         "node-1:feedback:test failed",
                         0));
 
-        InspectGroup inspect = new InspectGroup(registry, blackboard);
+        InspectGroup inspect =
+                new InspectGroup(
+                        new GroupControlCapabilityImpl(
+                                spawner, registry, blackboard, orchestrator));
         ToolCallContextHolder.set(
                 new ToolCallContext(
                         "leader",
@@ -371,11 +430,11 @@ class GroupToolsWiringTest {
                         false,
                         ToolExecutionPermit.empty()));
         try {
-            String first = inspect.execute(new InspectGroup.Args(0L, 0));
+            String first = CapabilityTestCalls.execute(inspect, new InspectGroup.Args(0L, 0));
             assertTrue(first.contains("sender=mate-1 type=FEEDBACK"));
             assertTrue(first.contains("nextSinceSeq: 1"));
 
-            String second = inspect.execute(new InspectGroup.Args(1L, 0));
+            String second = CapabilityTestCalls.execute(inspect, new InspectGroup.Args(1L, 0));
             assertTrue(second.contains("New Mate messages:\n- (none)"));
         } finally {
             ToolCallContextHolder.clear();

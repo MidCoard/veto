@@ -1,27 +1,19 @@
 package top.focess.veto.agent.tool.builtin;
 
-import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
+import top.focess.veto.agent.capability.TaskControlCapability;
 import top.focess.veto.agent.screening.Danger;
 import top.focess.veto.agent.tool.Doc;
-import top.focess.veto.agent.tool.NativeTool;
 import top.focess.veto.agent.tool.ParamCategory;
 import top.focess.veto.agent.tool.Required;
 import top.focess.veto.agent.tool.SecurityHint;
-import top.focess.veto.agent.tool.ToolCallContextHolder;
+import top.focess.veto.agent.tool.TaskControlTool;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDoc;
 import top.focess.veto.agent.tool.ToolDocs;
-import top.focess.veto.agent.tool.ToolErrors;
-import top.focess.veto.agent.tool.ToolJson;
 import top.focess.veto.agent.tool.ToolResultFormat;
 import top.focess.veto.agent.tool.ToolSecurity;
-import top.focess.veto.sandbox.BackgroundTaskManager;
 
 /** Queues standard-input bytes to a background task owned by the calling agent. */
 @Component
@@ -29,12 +21,11 @@ import top.focess.veto.sandbox.BackgroundTaskManager;
         capability = ToolCapability.TASK_CONTROL,
         defaultDanger = Danger.SAFE,
         requiresSemanticScreening = true)
-public final class InputTaskTool implements NativeTool<InputTaskTool.Args> {
+public final class InputTaskTool implements TaskControlTool<InputTaskTool.Args> {
+    private final @NonNull TaskControlCapability capability;
 
-    private final @NonNull BackgroundTaskManager taskManager;
-
-    public InputTaskTool(@NonNull BackgroundTaskManager taskManager) {
-        this.taskManager = taskManager;
+    public InputTaskTool(@NonNull TaskControlCapability capability) {
+        this.capability = capability;
     }
 
     @ToolDoc(
@@ -95,61 +86,12 @@ public final class InputTaskTool implements NativeTool<InputTaskTool.Args> {
     }
 
     @Override
-    public @NonNull String execute(@NonNull Args args) {
-        if (args.content().isEmpty() && !args.appendNewline() && !args.closeStdin()) {
-            return ToolErrors.failure(
-                    "EMPTY_INPUT", "No input, newline, or stdin close was requested.");
-        }
-        byte[] content = args.content().getBytes(StandardCharsets.UTF_8);
-        byte[] bytes;
-        if (args.appendNewline()) {
-            bytes = Arrays.copyOf(content, content.length + 1);
-            bytes[content.length] = (byte) '\n';
-        } else {
-            bytes = content;
-        }
-        var context = ToolCallContextHolder.get();
-        if (context == null) {
-            throw new SecurityException("input_task requires an agent execution context");
-        }
-        UUID sessionId = context.sessionId();
-        var binding = context.executionPermit().taskBinding();
-        if (binding == null
-                || sessionId == null
-                || !binding.taskId().equals(args.taskId())
-                || !binding.agentId().equals(context.agentId())
-                || !binding.sessionId().equals(sessionId)) {
-            throw new SecurityException(
-                    "input_task requires the exact task instance screened by the Gateway");
-        }
-        BackgroundTaskManager.InputResult queued =
-                taskManager.queueInput(
-                        context.agentId(),
-                        sessionId,
-                        args.taskId(),
-                        binding.taskInstanceId(),
-                        bytes,
-                        args.closeStdin());
-        if (!queued.queued()) {
-            String code = queued.status().name();
-            String message =
-                    switch (queued.status()) {
-                        case TASK_NOT_FOUND -> "Task not found: " + args.taskId();
-                        case TASK_NOT_RUNNING -> "Task is not running: " + args.taskId();
-                        case STDIN_CLOSED -> "Task stdin is already closed: " + args.taskId();
-                        case INPUT_TOO_LARGE -> "Input exceeds 65536 bytes.";
-                        case INPUT_QUEUE_FULL -> "Task input queue exceeds 262144 bytes.";
-                        case QUEUED ->
-                                throw new IllegalStateException("queued result handled above");
-                    };
-            return ToolErrors.failure(code, message);
-        }
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("status", "queued");
-        result.put("taskId", args.taskId());
-        result.put("bytes", queued.bytes());
-        result.put("newline", args.appendNewline());
-        result.put("closeQueued", queued.closeQueued());
-        return ToolJson.object(result);
+    public @NonNull TaskControlCapability taskControlCapability() {
+        return capability;
+    }
+
+    @Override
+    public @NonNull String execute(@NonNull Args args, @NonNull TaskControlCapability capability) {
+        return capability.inputTask(args);
     }
 }

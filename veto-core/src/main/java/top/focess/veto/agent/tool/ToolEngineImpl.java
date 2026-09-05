@@ -21,6 +21,8 @@ import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Service;
+import top.focess.veto.agent.capability.RemoteCallCapability;
+import top.focess.veto.agent.capability.RemoteCallCapabilityImpl;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.mcp.transport.McpJsonRpcClient;
 import top.focess.veto.agent.mcp.transport.McpTransport;
@@ -65,7 +67,8 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
     private final @NonNull Map<String, AgentToolDefinition> agentDefs = new ConcurrentHashMap<>();
     private final @NonNull Map<String, AgentTool<?>> agentBeans = new LinkedHashMap<>();
     private final @NonNull Map<String, RemoteToolDefinition> remoteDefs = new ConcurrentHashMap<>();
-    private final @NonNull Map<String, McpTransport> transports = new ConcurrentHashMap<>();
+    private final @NonNull Map<String, RemoteCallCapability> remoteCapabilities =
+            new ConcurrentHashMap<>();
 
     public ToolEngineImpl(
             @Qualifier(LlmJacksonConfig.LLM_OBJECT_MAPPER) @NonNull ObjectMapper mapper,
@@ -90,7 +93,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
         // Register native tools
         for (NativeTool<?> bean : nativeToolBeans) {
             NativeToolDefinition def = ToolSchemaCompiler.compileNative(bean);
-            ToolContractValidator.validate(def);
+            ToolContractValidator.validateHandler(bean, def);
             ensureUniqueName(def.name());
             nativeDefs.put(def.name(), def);
             nativeByName.put(def.name(), bean);
@@ -100,12 +103,12 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
         // Discover and register agent tools via Spring
         for (AgentTool<?> bean : applicationContext.getBeansOfType(AgentTool.class).values()) {
             String toolName = bean.getName();
-            agentBeans.put(toolName, bean);
             AgentToolDefinition def =
                     AgentToolDefinition.from(toolName, bean.getArgsClass(), bean.getCapability());
-            ToolContractValidator.validate(def);
+            ToolContractValidator.validateHandler(bean, def);
             ensureUniqueName(def.name());
             agentDefs.put(def.name(), def);
+            agentBeans.put(toolName, bean);
             log.info("ToolEngine: registered agent tool '{}'.", def.name());
         }
 
@@ -118,6 +121,10 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
     /** Discover tools from a remote MCP server via JSON-RPC tools/list and register them. */
     public synchronized @NonNull List<RemoteToolDefinition> discoverAndRegister(
             @NonNull McpTransport transport) {
+        if (!(transport instanceof McpTransport.SseMcpTransport remote)) {
+            throw new IllegalArgumentException(
+                    "This MCP transport has no enforced execution boundary and cannot be registered.");
+        }
         try {
             List<RemoteToolDefinition> tools = remoteClient.discoverTools(transport);
             Set<String> discoveredNames = new HashSet<>();
@@ -130,7 +137,8 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
                 ensureUniqueName(t.name());
             }
             for (RemoteToolDefinition t : tools) {
-                transports.put(t.serverName(), transport);
+                remoteCapabilities.put(
+                        t.name(), new RemoteCallCapabilityImpl(t, remote, remoteClient));
                 remoteDefs.put(t.name(), t);
             }
             log.info("ToolEngine: discovered {} remote tool(s).", tools.size());
@@ -262,8 +270,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
         ToolExecutionPermit permit = context.executionPermit();
         boolean needsFilesystemPermit =
                 definition.capability() == ToolCapability.WORKSPACE_READ
-                        || definition.capability() == ToolCapability.WORKSPACE_WRITE
-                        || definition.capability() == ToolCapability.PROCESS_EXECUTION;
+                        || definition.capability() == ToolCapability.WORKSPACE_WRITE;
         if (!needsFilesystemPermit) {
             return jsonArgs;
         }
@@ -322,15 +329,12 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
     private @NonNull ToolResult executeRemote(
             @NonNull ToolCall call, @NonNull RemoteToolDefinition def) throws IOException {
         requirePermit(call, def);
-        McpTransport transport = transports.get(def.serverName());
-        if (transport == null) {
-            return new ToolResult(
-                    call.toolName(),
-                    call.callId(),
-                    false,
-                    "No transport registered for server: " + def.serverName());
+        RemoteCallCapability capability = remoteCapabilities.get(def.name());
+        if (capability == null) {
+            throw new SecurityException(
+                    "No restricted execution capability is registered for this remote tool.");
         }
-        JsonNode result = remoteClient.callTool(transport, def.name(), call.args());
+        JsonNode result = capability.call(call);
         boolean success = !result.path("isError").asBoolean(false);
         String content = remoteContent(result);
         return new ToolResult(

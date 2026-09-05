@@ -4,16 +4,14 @@ import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.AgentRunner;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
-import top.focess.veto.group.GroupTools;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
 
 /**
  * The call context for a tool execution: the calling agent's id, the user id, the group id when the
  * caller belongs to a group, and the session owner (username). Threaded from {@link AgentRunner}
- * through {@code ToolEngineImpl} to {@link NativeTool} and {@link AgentTool} implementations so
- * tools like {@link GroupTools} can record the caller's identity, and so group-spawned Mates /
- * Leaders resolve their model tier against the <em>session owner's</em> active profile (per-user
- * model-tier configuration).
+ * through {@code ToolEngineImpl} to the restricted capability implementations so group operations
+ * can record the caller's identity, and so group-spawned Mates / Leaders resolve their model tier
+ * against the <em>session owner's</em> active profile (per-user model-tier configuration).
  *
  * @param agentId the id of the agent making the call (e.g., the Leader's persona id); always
  *     non-null

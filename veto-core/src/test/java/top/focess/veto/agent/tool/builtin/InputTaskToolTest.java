@@ -16,7 +16,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
+import top.focess.veto.agent.capability.TaskControlCapabilityImpl;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
+import top.focess.veto.agent.tool.CapabilityTestCalls;
 import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
@@ -96,8 +98,10 @@ class InputTaskToolTest {
                                                 task.taskInstanceId()))));
 
         String response =
-                new InputTaskTool(manager)
-                        .execute(new InputTaskTool.Args(task.taskId(), "hello", true, true));
+                CapabilityTestCalls.execute(
+                        new InputTaskTool(
+                                new TaskControlCapabilityImpl(manager, new ObjectMapper())),
+                        new InputTaskTool.Args(task.taskId(), "hello", true, true));
         JsonNode result = new ObjectMapper().readTree(response);
         assertEquals("queued", result.get("status").asText());
         assertEquals(6, result.get("bytes").asInt());

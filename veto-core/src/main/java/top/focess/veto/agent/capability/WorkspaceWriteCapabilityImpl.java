@@ -24,8 +24,13 @@ import java.util.Objects;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.intercept.ToolExecutionPermit.FileIdentity;
+import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolJson;
+import top.focess.veto.agent.tool.builtin.DeletePathTool;
+import top.focess.veto.agent.tool.builtin.MovePathTool;
+import top.focess.veto.agent.tool.builtin.ReplaceFileContentTool;
+import top.focess.veto.agent.tool.builtin.WriteToFileTool;
 
 /** The only low-level filesystem implementation behind {@link WorkspaceWriteCapability}. */
 final class WorkspaceWriteCapabilityImpl implements WorkspaceWriteCapability {
@@ -44,7 +49,12 @@ final class WorkspaceWriteCapabilityImpl implements WorkspaceWriteCapability {
     @Override
     public @NonNull String writeText(
             @NonNull String pathArgument, @NonNull String content, boolean overwrite) {
-        ToolExecutionPermit.AuthorizedPath authorized = authorizedPath(pathArgument);
+        ToolExecutionPermit.AuthorizedPath authorized =
+                authorizedPath("write_to_file", pathArgument);
+        CapabilityAccess.require(
+                ToolCapability.WORKSPACE_WRITE,
+                "write_to_file",
+                new WriteToFileTool.Args(authorized.requestedPath(), content, overwrite));
         Path target = requiredHostPath(authorized);
         refuseProtectedTarget(target);
         byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
@@ -78,7 +88,17 @@ final class WorkspaceWriteCapabilityImpl implements WorkspaceWriteCapability {
             int endLine,
             @NonNull String targetContent,
             @NonNull String replacementContent) {
-        ToolExecutionPermit.AuthorizedPath authorized = authorizedPath(pathArgument);
+        ToolExecutionPermit.AuthorizedPath authorized =
+                authorizedPath("replace_file_content", pathArgument);
+        CapabilityAccess.require(
+                ToolCapability.WORKSPACE_WRITE,
+                "replace_file_content",
+                new ReplaceFileContentTool.Args(
+                        authorized.requestedPath(),
+                        startLine,
+                        endLine,
+                        targetContent,
+                        replacementContent));
         Path path = requiredHostPath(authorized);
         refuseProtectedTarget(path);
         refuseLinkTarget(path, authorized.requestedPath());
@@ -144,9 +164,16 @@ final class WorkspaceWriteCapabilityImpl implements WorkspaceWriteCapability {
     @Override
     public @NonNull String movePath(
             @NonNull String sourceArgument, @NonNull String destinationArgument) {
-        ToolExecutionPermit.AuthorizedPath sourceAuthorization = authorizedPath(sourceArgument);
+        ToolExecutionPermit.AuthorizedPath sourceAuthorization =
+                authorizedPath("move_path", sourceArgument);
         ToolExecutionPermit.AuthorizedPath destinationAuthorization =
-                authorizedPath(destinationArgument);
+                authorizedPath("move_path", destinationArgument);
+        CapabilityAccess.require(
+                ToolCapability.WORKSPACE_WRITE,
+                "move_path",
+                new MovePathTool.Args(
+                        sourceAuthorization.requestedPath(),
+                        destinationAuthorization.requestedPath()));
         Path source = requiredHostPath(sourceAuthorization);
         Path destination = requiredHostPath(destinationAuthorization);
         refuseProtectedTree(source);
@@ -225,7 +252,11 @@ final class WorkspaceWriteCapabilityImpl implements WorkspaceWriteCapability {
 
     @Override
     public @NonNull String deletePath(@NonNull String pathArgument, boolean recursive) {
-        ToolExecutionPermit.AuthorizedPath authorized = authorizedPath(pathArgument);
+        ToolExecutionPermit.AuthorizedPath authorized = authorizedPath("delete_path", pathArgument);
+        CapabilityAccess.require(
+                ToolCapability.WORKSPACE_WRITE,
+                "delete_path",
+                new DeletePathTool.Args(authorized.requestedPath(), recursive));
         Path path = requiredHostPath(authorized);
         refuseProtectedTree(path);
         if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
@@ -359,7 +390,11 @@ final class WorkspaceWriteCapabilityImpl implements WorkspaceWriteCapability {
     }
 
     private ToolExecutionPermit.@NonNull AuthorizedPath authorizedPath(
-            @NonNull String argumentName) {
+            @NonNull String toolName, @NonNull String argumentName) {
+        var context = CapabilityAccess.require(ToolCapability.WORKSPACE_WRITE);
+        if (context.executionPermit() != permit || !permit.toolName().equals(toolName)) {
+            throw new SecurityException("Capability does not belong to this tool call");
+        }
         ToolExecutionPermit.AuthorizedPath authorized = permit.path(argumentName);
         if (authorized == null || authorized.hostPath() == null) {
             throw new SecurityException(

@@ -10,27 +10,10 @@ import top.focess.veto.agent.AgentRunner;
 import top.focess.veto.agent.TurnRecord;
 
 /**
- * Thread-local holder for {@link ToolCallContext}. {@link AgentRunner} sets the context before
- * calling {@link ToolEngine#execute}, and {@link NativeTool} / {@link AgentTool} implementations
- * read it during execution. This avoids changing the tool interface contracts.
- *
- * <p><b>Usage in AgentRunner:</b>
- *
- * <pre>{@code
- * ToolCallContextHolder.set(context);
- * try {
- *     ToolResult result = toolEngine.execute(call, def);
- * } finally {
- *     ToolCallContextHolder.clear();
- * }
- * }</pre>
- *
- * <p><b>Usage in a tool:</b>
- *
- * <pre>{@code
- * ToolCallContext ctx = ToolCallContextHolder.get();
- * String callerId = ctx != null ? ctx.agentId() : "unknown";
- * }</pre>
+ * Thread-local execution context installed by {@link AgentRunner} and consumed by restricted
+ * capability implementations. Concrete tools receive only their capability interface; they do not
+ * choose caller identities or access runtime services through this holder. The runner clears this
+ * state when the tool call ends.
  */
 public final class ToolCallContextHolder {
 

@@ -1,24 +1,16 @@
 package top.focess.veto.agent.tool.builtin;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.Optional;
 import org.jspecify.annotations.NonNull;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
+import top.focess.veto.agent.capability.TaskControlCapability;
 import top.focess.veto.agent.screening.Danger;
 import top.focess.veto.agent.tool.Doc;
-import top.focess.veto.agent.tool.NativeTool;
-import top.focess.veto.agent.tool.ToolCallContextHolder;
+import top.focess.veto.agent.tool.TaskControlTool;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDoc;
 import top.focess.veto.agent.tool.ToolDocs;
-import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolResultFormat;
 import top.focess.veto.agent.tool.ToolSecurity;
-import top.focess.veto.llm.config.LlmJacksonConfig;
-import top.focess.veto.sandbox.BackgroundTaskManager;
 
 /**
  * {@code stop_task} - force-stop a background task launched by {@code run_task}. Idempotent:
@@ -26,16 +18,11 @@ import top.focess.veto.sandbox.BackgroundTaskManager;
  */
 @Component
 @ToolSecurity(capability = ToolCapability.TASK_CONTROL, defaultDanger = Danger.SAFE)
-public final class StopTaskTool implements NativeTool<StopTaskTool.Args> {
+public final class StopTaskTool implements TaskControlTool<StopTaskTool.Args> {
+    private final @NonNull TaskControlCapability capability;
 
-    private final @NonNull BackgroundTaskManager taskManager;
-    private final @NonNull ObjectMapper mapper;
-
-    public StopTaskTool(
-            @NonNull BackgroundTaskManager taskManager,
-            @Qualifier(LlmJacksonConfig.LLM_OBJECT_MAPPER) @NonNull ObjectMapper mapper) {
-        this.taskManager = taskManager;
-        this.mapper = mapper;
+    public StopTaskTool(@NonNull TaskControlCapability capability) {
+        this.capability = capability;
     }
 
     @ToolDoc(
@@ -96,41 +83,12 @@ public final class StopTaskTool implements NativeTool<StopTaskTool.Args> {
     }
 
     @Override
-    public @NonNull String execute(@NonNull Args args) {
-        String agentId = currentAgentId();
-        Optional<BackgroundTaskManager.TaskInfo> before =
-                taskManager.status(agentId, args.taskId());
-        if (before.isEmpty()) {
-            return ToolErrors.failure("task not found: " + args.taskId());
-        }
-        boolean wasAlive = before.get().alive();
-        Optional<BackgroundTaskManager.TaskInfo> info =
-                taskManager.stop(
-                        agentId, args.taskId(), BackgroundTaskManager.ExitCause.AGENT_STOP);
-        if (info.isEmpty()) {
-            return ToolErrors.failure("task not found: " + args.taskId());
-        }
-        try {
-            Map<String, Object> envelope = new LinkedHashMap<>();
-            String status =
-                    info.get().alive()
-                            ? "stop_requested"
-                            : (wasAlive ? "stopped" : "already_exited");
-            envelope.put("status", status);
-            envelope.put("taskId", info.get().taskId());
-            envelope.put("alive", info.get().alive());
-            Integer exitCode = info.get().exitCode();
-            if (exitCode != null) {
-                envelope.put("exitCode", exitCode);
-            }
-            return mapper.writeValueAsString(envelope);
-        } catch (Exception e) {
-            return ToolErrors.failure("stop_task failed: " + e.getMessage());
-        }
+    public @NonNull TaskControlCapability taskControlCapability() {
+        return capability;
     }
 
-    private static @NonNull String currentAgentId() {
-        var ctx = ToolCallContextHolder.get();
-        return ctx != null ? ctx.agentId() : "standalone";
+    @Override
+    public @NonNull String execute(@NonNull Args args, @NonNull TaskControlCapability capability) {
+        return capability.stopTask(args);
     }
 }

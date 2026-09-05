@@ -1,23 +1,17 @@
 package top.focess.veto.group;
 
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
-import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
-import top.focess.veto.agent.tool.AgentTool;
+import top.focess.veto.agent.capability.GroupControlCapability;
 import top.focess.veto.agent.tool.Doc;
+import top.focess.veto.agent.tool.GroupControlTool;
 import top.focess.veto.agent.tool.ParamCategory;
 import top.focess.veto.agent.tool.SecurityHint;
 import top.focess.veto.agent.tool.ToolCallContext;
-import top.focess.veto.agent.tool.ToolCallContextHolder;
-import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDoc;
 import top.focess.veto.agent.tool.ToolDocs;
-import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolResultFormat;
-import top.focess.veto.group.GroupOrchestrator.NodeEdit;
 
 /**
  * The Leader's node-authoring tools ({@code create_node} / {@code remove_node}). The Leader builds
@@ -33,12 +27,6 @@ import top.focess.veto.group.GroupOrchestrator.NodeEdit;
 public final class DagTools {
 
     private DagTools() {}
-
-    /** Resolve the caller's group id from the tool call context, or null when not in a group. */
-    private static UUID contextGroupId() {
-        ToolCallContext ctx = ToolCallContextHolder.get();
-        return ctx != null ? ctx.groupId() : null;
-    }
 
     /** {@code create_node} — add a node to the group's execution plan. */
     @Component
@@ -96,12 +84,12 @@ public final class DagTools {
                 "Node created: node-1 (skillset: coding). It is eligible for dispatch.",
                 "Node created: node-2 (skillset: testing, depends on: node-1). It becomes eligible after its dependencies verify."
             })
-    public static final class CreateNode implements AgentTool<CreateNode.Args> {
+    public static final class CreateNode implements GroupControlTool<CreateNode.Args> {
 
-        private final @NonNull GroupOrchestrator orchestrator;
+        private final @NonNull GroupControlCapability capability;
 
-        public CreateNode(@NonNull GroupOrchestrator orchestrator) {
-            this.orchestrator = orchestrator;
+        public CreateNode(@NonNull GroupControlCapability capability) {
+            this.capability = capability;
         }
 
         public record Args(
@@ -133,41 +121,14 @@ public final class DagTools {
         }
 
         @Override
-        public @NonNull ToolCapability getCapability() {
-            return ToolCapability.GROUP_CONTROL;
+        public @NonNull GroupControlCapability groupControlCapability() {
+            return capability;
         }
 
         @Override
-        public @NonNull String execute(@NonNull Args args) {
-            UUID groupId = contextGroupId();
-            if (groupId == null) {
-                return ToolErrors.failure(
-                        "Node not created: no active group in your context. create_node is "
-                                + "a Leader tool inside a group.");
-            }
-            String nodeId = args.nodeId().strip();
-            String description = args.description().strip();
-            String skillset = args.skillset().strip();
-            Set<String> deps =
-                    args.dependsOn() == null ? Set.of() : new LinkedHashSet<>(args.dependsOn());
-            NodeEdit edit = orchestrator.addNode(groupId, nodeId, description, skillset, deps);
-            if (edit instanceof NodeEdit.Rejected r) {
-                return ToolErrors.failure("Node not created: " + r.reason());
-            }
-            if (deps.isEmpty()) {
-                return "Node created: "
-                        + nodeId
-                        + " (skillset: "
-                        + skillset
-                        + "). It is eligible for dispatch.";
-            }
-            return "Node created: "
-                    + nodeId
-                    + " (skillset: "
-                    + skillset
-                    + ", depends on: "
-                    + String.join(", ", deps)
-                    + "). It becomes eligible after its dependencies verify.";
+        public @NonNull String execute(
+                @NonNull Args args, @NonNull GroupControlCapability capability) {
+            return capability.createNode(args);
         }
     }
 
@@ -214,12 +175,12 @@ public final class DagTools {
             security = "Only the group coordinator can remove task nodes.",
             examples = {"{\"nodeId\": \"node-2\"}", "{\"nodeId\": \"node-1\"}"},
             returnExamples = {"Node removed: node-2 (marked stale)."})
-    public static final class RemoveNode implements AgentTool<RemoveNode.Args> {
+    public static final class RemoveNode implements GroupControlTool<RemoveNode.Args> {
 
-        private final @NonNull GroupOrchestrator orchestrator;
+        private final @NonNull GroupControlCapability capability;
 
-        public RemoveNode(@NonNull GroupOrchestrator orchestrator) {
-            this.orchestrator = orchestrator;
+        public RemoveNode(@NonNull GroupControlCapability capability) {
+            this.capability = capability;
         }
 
         public record Args(
@@ -237,24 +198,14 @@ public final class DagTools {
         }
 
         @Override
-        public @NonNull ToolCapability getCapability() {
-            return ToolCapability.GROUP_CONTROL;
+        public @NonNull GroupControlCapability groupControlCapability() {
+            return capability;
         }
 
         @Override
-        public @NonNull String execute(@NonNull Args args) {
-            UUID groupId = contextGroupId();
-            if (groupId == null) {
-                return ToolErrors.failure(
-                        "Node not removed: no active group in your context. remove_node is "
-                                + "a Leader tool inside a group.");
-            }
-            String nodeId = args.nodeId().strip();
-            NodeEdit edit = orchestrator.removeNode(groupId, nodeId);
-            if (edit instanceof NodeEdit.Rejected r) {
-                return ToolErrors.failure("Node not removed: " + r.reason());
-            }
-            return "Node removed: " + nodeId + " (marked stale).";
+        public @NonNull String execute(
+                @NonNull Args args, @NonNull GroupControlCapability capability) {
+            return capability.removeNode(args);
         }
     }
 }

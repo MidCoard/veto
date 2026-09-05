@@ -1,4 +1,17 @@
 package top.focess.veto.agent.capability;
 
-/** A call-scoped authority issued from the Gateway-approved execution permit. */
-public sealed interface Capability permits WorkspaceReadCapability, WorkspaceWriteCapability {}
+/** Restricted operations authorized for the current tool call. */
+public sealed interface Capability
+        permits WorkspaceReadCapability,
+                WorkspaceWriteCapability,
+                ProcessExecutionCapability,
+                TaskControlCapability,
+                NetworkEgressCapability,
+                MemoryReadCapability,
+                MemoryWriteCapability,
+                DelegationCapability,
+                GroupControlCapability,
+                LoopControlCapability,
+                SkillReadCapability,
+                UserInteractionCapability,
+                RemoteCallCapability {}

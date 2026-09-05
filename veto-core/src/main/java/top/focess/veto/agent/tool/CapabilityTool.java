@@ -1,20 +1,24 @@
 package top.focess.veto.agent.tool;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.agent.capability.Capability;
-import top.focess.veto.agent.capability.CapabilityResolver;
+import top.focess.veto.util.Nullness;
 
-/** A native tool whose effects are available only through one typed, call-scoped capability. */
-public interface CapabilityTool<T, C extends Capability> extends NativeTool<T> {
+/** Common execution and effect contract for every in-process tool. */
+public interface CapabilityTool<T> {
+    /** The effect boundary required to authorize this tool. */
+    @NonNull ToolCapability getCapability();
 
-    /** The exact capability type required by this tool. */
-    @NonNull Class<C> getCapabilityClass();
+    @NonNull String getName();
 
-    /** Executes using the capability issued for the current screened call. */
-    @NonNull String execute(@NonNull T args, @NonNull C capability) throws Exception;
+    @NonNull Class<T> getArgsClass();
 
-    @Override
-    default @NonNull String execute(@NonNull T args) throws Exception {
-        return execute(args, CapabilityResolver.require(getCapabilityClass()));
+    @NonNull String execute(@NonNull T args) throws Exception;
+
+    default @NonNull String executeFromJson(
+            @NonNull JsonNode jsonArgs, @NonNull ObjectMapper mapper) throws Exception {
+        T typedArgs = mapper.treeToValue(jsonArgs, getArgsClass());
+        return execute(Nullness.requireNonNull(typedArgs, "Tool arguments deserialized to null"));
     }
 }

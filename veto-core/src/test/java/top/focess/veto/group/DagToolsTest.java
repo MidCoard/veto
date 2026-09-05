@@ -1,6 +1,7 @@
 package top.focess.veto.group;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.mock;
 
 import java.util.List;
 import java.util.Set;
@@ -9,7 +10,9 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import top.focess.veto.agent.capability.GroupControlCapabilityImpl;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
+import top.focess.veto.agent.tool.CapabilityTestCalls;
 import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolDocs;
@@ -29,20 +32,32 @@ class DagToolsTest {
     private DagTools.@NonNull RemoveNode removeNode;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws Exception {
         blackboard = new Blackboard();
         registry = new GroupRegistry();
         orchestrator = new GroupOrchestrator(registry, blackboard);
-        createNode = new DagTools.CreateNode(orchestrator);
-        removeNode = new DagTools.RemoveNode(orchestrator);
+        createNode =
+                new DagTools.CreateNode(
+                        new GroupControlCapabilityImpl(
+                                mock(ToolDocs.nonNullClass(GroupSpawner.class)),
+                                registry,
+                                blackboard,
+                                orchestrator));
+        removeNode =
+                new DagTools.RemoveNode(
+                        new GroupControlCapabilityImpl(
+                                mock(ToolDocs.nonNullClass(GroupSpawner.class)),
+                                registry,
+                                blackboard,
+                                orchestrator));
     }
 
     @AfterEach
-    void tearDown() {
+    void tearDown() throws Exception {
         ToolCallContextHolder.clear();
     }
 
-    private static void setContext(@NonNull String agentId, UUID groupId) {
+    private static void setContext(@NonNull String agentId, UUID groupId) throws Exception {
         ToolCallContextHolder.set(
                 new ToolCallContext(
                         agentId,
@@ -59,7 +74,7 @@ class DagToolsTest {
     private @NonNull UUID activeGroup() {
         Group g =
                 Group.create(
-                        "Leader-1",
+                        "leader-1",
                         "user-1",
                         "build",
                         blackboard,
@@ -78,7 +93,7 @@ class DagToolsTest {
     // --- engine ops ---
 
     @Test
-    void addNodeAppendsPendingNode() {
+    void addNodeAppendsPendingNode() throws Exception {
         UUID groupId = activeGroup();
         NodeEdit edit =
                 orchestrator.addNode(groupId, "node-1", "Implement login", "coding", Set.of());
@@ -89,7 +104,7 @@ class DagToolsTest {
     }
 
     @Test
-    void addNodeRejectsDuplicateId() {
+    void addNodeRejectsDuplicateId() throws Exception {
         UUID groupId = activeGroup();
         orchestrator.addNode(groupId, "node-1", "a", "coding", Set.of());
         NodeEdit edit = orchestrator.addNode(groupId, "node-1", "b", "testing", Set.of());
@@ -99,7 +114,7 @@ class DagToolsTest {
     }
 
     @Test
-    void addNodeRejectsUnknownDependency() {
+    void addNodeRejectsUnknownDependency() throws Exception {
         UUID groupId = activeGroup();
         NodeEdit edit = orchestrator.addNode(groupId, "node-1", "a", "coding", Set.of("node-9"));
         NodeEdit.Rejected r =
@@ -108,7 +123,7 @@ class DagToolsTest {
     }
 
     @Test
-    void addNodeRejectsStaleDependency() {
+    void addNodeRejectsStaleDependency() throws Exception {
         UUID groupId = activeGroup();
         orchestrator.addNode(groupId, "node-1", "a", "coding", Set.of());
         orchestrator.removeNode(groupId, "node-1");
@@ -119,13 +134,13 @@ class DagToolsTest {
     }
 
     @Test
-    void addNodeRejectsUnknownGroup() {
+    void addNodeRejectsUnknownGroup() throws Exception {
         NodeEdit edit = orchestrator.addNode(UUID.randomUUID(), "node-1", "a", "coding", Set.of());
         assertInstanceOf(ToolDocs.nonNullClass(NodeEdit.Rejected.class), edit);
     }
 
     @Test
-    void removeNodeMarksStale() {
+    void removeNodeMarksStale() throws Exception {
         UUID groupId = activeGroup();
         orchestrator.addNode(groupId, "node-1", "a", "coding", Set.of());
         NodeEdit edit = orchestrator.removeNode(groupId, "node-1");
@@ -136,7 +151,7 @@ class DagToolsTest {
     }
 
     @Test
-    void removeNodeRefusesLiveDependents() {
+    void removeNodeRefusesLiveDependents() throws Exception {
         UUID groupId = activeGroup();
         orchestrator.addNode(groupId, "node-1", "a", "coding", Set.of());
         orchestrator.addNode(groupId, "node-2", "b", "testing", Set.of("node-1"));
@@ -151,7 +166,7 @@ class DagToolsTest {
     }
 
     @Test
-    void removeNodeRefusesVerifiedNode() {
+    void removeNodeRefusesVerifiedNode() throws Exception {
         UUID groupId = activeGroup();
         orchestrator.addNode(groupId, "node-1", "a", "coding", Set.of());
         Group g = requireGroup(registry.get(groupId));
@@ -175,22 +190,25 @@ class DagToolsTest {
     // --- tool surface ---
 
     @Test
-    void createNodeReturnsProseOnSuccess() {
+    void createNodeReturnsProseOnSuccess() throws Exception {
         UUID groupId = activeGroup();
         setContext("leader-1", groupId);
         String out =
-                createNode.execute(
+                CapabilityTestCalls.execute(
+                        createNode,
                         new DagTools.CreateNode.Args("node-1", "Implement login", "coding", null));
         assertEquals("Node created: node-1 (skillset: coding). It is eligible for dispatch.", out);
     }
 
     @Test
-    void createNodeMentionsDependenciesOnSuccess() {
+    void createNodeMentionsDependenciesOnSuccess() throws Exception {
         UUID groupId = activeGroup();
         setContext("leader-1", groupId);
-        createNode.execute(new DagTools.CreateNode.Args("node-1", "a", "coding", null));
+        CapabilityTestCalls.execute(
+                createNode, new DagTools.CreateNode.Args("node-1", "a", "coding", null));
         String out =
-                createNode.execute(
+                CapabilityTestCalls.execute(
+                        createNode,
                         new DagTools.CreateNode.Args(
                                 "node-2", "Test login", "testing", List.of("node-1")));
         assertEquals(
@@ -199,14 +217,15 @@ class DagToolsTest {
     }
 
     @Test
-    void createNodeMapsRejectionToInstructiveString() {
+    void createNodeMapsRejectionToInstructiveString() throws Exception {
         UUID groupId = activeGroup();
         setContext("leader-1", groupId);
         ToolExecutionException error =
                 assertThrows(
                         ToolDocs.nonNullClass(ToolExecutionException.class),
                         () ->
-                                createNode.execute(
+                                CapabilityTestCalls.execute(
+                                        createNode,
                                         new DagTools.CreateNode.Args(
                                                 "node-1", "a", "coding", List.of("node-9"))));
         assertEquals(
@@ -215,13 +234,14 @@ class DagToolsTest {
     }
 
     @Test
-    void createNodeRequiresGroupContext() {
+    void createNodeRequiresGroupContext() throws Exception {
         setContext("agent-1", null);
         ToolExecutionException error =
                 assertThrows(
                         ToolDocs.nonNullClass(ToolExecutionException.class),
                         () ->
-                                createNode.execute(
+                                CapabilityTestCalls.execute(
+                                        createNode,
                                         new DagTools.CreateNode.Args(
                                                 "node-1", "a", "coding", null)));
         String message = ToolErrors.normalize(error.getMessage());
@@ -229,32 +249,38 @@ class DagToolsTest {
     }
 
     @Test
-    void removeNodeReturnsProseOnSuccess() {
+    void removeNodeReturnsProseOnSuccess() throws Exception {
         UUID groupId = activeGroup();
         setContext("leader-1", groupId);
-        createNode.execute(new DagTools.CreateNode.Args("node-2", "a", "coding", null));
-        String out = removeNode.execute(new DagTools.RemoveNode.Args("node-2"));
+        CapabilityTestCalls.execute(
+                createNode, new DagTools.CreateNode.Args("node-2", "a", "coding", null));
+        String out =
+                CapabilityTestCalls.execute(removeNode, new DagTools.RemoveNode.Args("node-2"));
         assertEquals("Node removed: node-2 (marked stale).", out);
     }
 
     @Test
-    void removeNodeMapsDependentRefusalToInstructiveString() {
+    void removeNodeMapsDependentRefusalToInstructiveString() throws Exception {
         UUID groupId = activeGroup();
         setContext("leader-1", groupId);
-        createNode.execute(new DagTools.CreateNode.Args("node-1", "a", "coding", null));
-        createNode.execute(
+        CapabilityTestCalls.execute(
+                createNode, new DagTools.CreateNode.Args("node-1", "a", "coding", null));
+        CapabilityTestCalls.execute(
+                createNode,
                 new DagTools.CreateNode.Args("node-3", "b", "testing", List.of("node-1")));
         ToolExecutionException error =
                 assertThrows(
                         ToolDocs.nonNullClass(ToolExecutionException.class),
-                        () -> removeNode.execute(new DagTools.RemoveNode.Args("node-1")));
+                        () ->
+                                CapabilityTestCalls.execute(
+                                        removeNode, new DagTools.RemoveNode.Args("node-1")));
         assertEquals(
                 "Node not removed: node-3 depends on node-1. Remove or re-plan it first.",
                 ToolErrors.normalize(error.getMessage()));
     }
 
     @Test
-    void toolNamesAreSnakeCase() {
+    void toolNamesAreSnakeCase() throws Exception {
         assertEquals("create_node", createNode.getName());
         assertEquals("remove_node", removeNode.getName());
     }

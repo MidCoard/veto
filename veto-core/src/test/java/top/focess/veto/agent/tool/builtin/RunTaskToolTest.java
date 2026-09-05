@@ -15,8 +15,11 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import top.focess.veto.agent.capability.ProcessExecutionCapabilityImpl;
+import top.focess.veto.agent.capability.TaskControlCapabilityImpl;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.screening.DeployerPolicy;
+import top.focess.veto.agent.tool.CapabilityTestCalls;
 import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolCapability;
@@ -48,9 +51,14 @@ class RunTaskToolTest {
         manager =
                 new BackgroundTaskManager(
                         new SandboxManager(TestSandboxFactory.uncontainedSubprocesses()));
-        runTask = new RunTaskTool(manager, mapper);
-        status = new ViewTaskTool(manager, mapper);
-        stop = new StopTaskTool(manager, mapper);
+        runTask =
+                new RunTaskTool(
+                        new ProcessExecutionCapabilityImpl(
+                                new SandboxManager(TestSandboxFactory.uncontainedSubprocesses()),
+                                manager,
+                                mapper));
+        status = new ViewTaskTool(new TaskControlCapabilityImpl(manager, mapper));
+        stop = new StopTaskTool(new TaskControlCapabilityImpl(manager, mapper));
         ToolCallContextHolder.set(
                 new ToolCallContext(
                         "agent-x",
@@ -77,6 +85,7 @@ class RunTaskToolTest {
                         "run_task",
                         "test-call",
                         ToolCapability.PROCESS_EXECUTION,
+                        null,
                         null,
                         Map.of(),
                         Map.of(),
@@ -105,7 +114,7 @@ class RunTaskToolTest {
                         false,
                         0);
 
-        String startedJson = runTask.execute(args);
+        String startedJson = CapabilityTestCalls.execute(runTask, args);
         JsonNode started = mapper.readTree(startedJson);
         assertEquals("started", started.get("status").asText());
         String taskId = started.get("taskId").asText();
@@ -114,7 +123,9 @@ class RunTaskToolTest {
         // Wait for the quick-exit task to finish, polling view_task.
         JsonNode statusNode = null;
         for (int i = 0; i < 200; i++) {
-            statusNode = mapper.readTree(status.execute(new ViewTaskTool.Args(taskId)));
+            statusNode =
+                    mapper.readTree(
+                            CapabilityTestCalls.execute(status, new ViewTaskTool.Args(taskId)));
             if (!statusNode.get("alive").asBoolean()) break;
             Thread.sleep(50);
         }
@@ -124,7 +135,8 @@ class RunTaskToolTest {
         assertFalse(statusNode.get("recentOutput").asText().isBlank(), "output captured");
 
         // stop_task is idempotent on an already-exited task.
-        JsonNode stopped = mapper.readTree(stop.execute(new StopTaskTool.Args(taskId)));
+        JsonNode stopped =
+                mapper.readTree(CapabilityTestCalls.execute(stop, new StopTaskTool.Args(taskId)));
         assertEquals("already_exited", stopped.get("status").asText());
     }
 
@@ -140,7 +152,7 @@ class RunTaskToolTest {
         ToolExecutionException error =
                 assertThrows(
                         ToolDocs.nonNullClass(ToolExecutionException.class),
-                        () -> runTask.execute(args));
+                        () -> CapabilityTestCalls.execute(runTask, args));
         assertTrue(
                 ToolErrors.normalize(error.getMessage()).contains("exactly one command"),
                 "multi-command background must be rejected");

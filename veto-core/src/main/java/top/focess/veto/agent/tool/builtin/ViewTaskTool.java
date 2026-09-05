@@ -1,26 +1,16 @@
 package top.focess.veto.agent.tool.builtin;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
 import org.jspecify.annotations.NonNull;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
+import top.focess.veto.agent.capability.TaskControlCapability;
 import top.focess.veto.agent.screening.Danger;
 import top.focess.veto.agent.tool.Doc;
-import top.focess.veto.agent.tool.NativeTool;
-import top.focess.veto.agent.tool.ToolCallContextHolder;
+import top.focess.veto.agent.tool.TaskControlTool;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDoc;
 import top.focess.veto.agent.tool.ToolDocs;
-import top.focess.veto.agent.tool.ToolErrors;
-import top.focess.veto.agent.tool.ToolExecutionException;
 import top.focess.veto.agent.tool.ToolResultFormat;
 import top.focess.veto.agent.tool.ToolSecurity;
-import top.focess.veto.llm.config.LlmJacksonConfig;
-import top.focess.veto.sandbox.BackgroundTaskManager;
 
 /**
  * {@code view_task} - inspect background tasks launched by {@code run_task}. With a {@code taskId}
@@ -29,18 +19,11 @@ import top.focess.veto.sandbox.BackgroundTaskManager;
  */
 @Component
 @ToolSecurity(capability = ToolCapability.TASK_CONTROL, defaultDanger = Danger.SAFE)
-public final class ViewTaskTool implements NativeTool<ViewTaskTool.Args> {
+public final class ViewTaskTool implements TaskControlTool<ViewTaskTool.Args> {
+    private final @NonNull TaskControlCapability capability;
 
-    private static final int RECENT_OUTPUT_LINES = 50;
-
-    private final @NonNull BackgroundTaskManager taskManager;
-    private final @NonNull ObjectMapper mapper;
-
-    public ViewTaskTool(
-            @NonNull BackgroundTaskManager taskManager,
-            @Qualifier(LlmJacksonConfig.LLM_OBJECT_MAPPER) @NonNull ObjectMapper mapper) {
-        this.taskManager = taskManager;
-        this.mapper = mapper;
+    public ViewTaskTool(@NonNull TaskControlCapability capability) {
+        this.capability = capability;
     }
 
     @ToolDoc(
@@ -109,61 +92,12 @@ public final class ViewTaskTool implements NativeTool<ViewTaskTool.Args> {
     }
 
     @Override
-    public @NonNull String execute(@NonNull Args args) {
-        String agentId = currentAgentId();
-        try {
-            String taskId = args.taskId();
-            if (taskId == null || taskId.isBlank()) {
-                List<BackgroundTaskManager.TaskInfo> all = taskManager.list(agentId);
-                Map<String, Object> envelope = new LinkedHashMap<>();
-                envelope.put("count", all.size());
-                List<Map<String, Object>> tasks =
-                        all.stream()
-                                .map(
-                                        task -> {
-                                            Map<String, Object> item = new LinkedHashMap<>();
-                                            item.put("taskId", task.taskId());
-                                            item.put("command", task.command());
-                                            item.put("alive", task.alive());
-                                            Integer exitCode = task.exitCode();
-                                            if (exitCode != null) {
-                                                item.put("exitCode", exitCode);
-                                            }
-                                            return item;
-                                        })
-                                .toList();
-                envelope.put("tasks", tasks);
-                return mapper.writeValueAsString(envelope);
-            }
-            Optional<BackgroundTaskManager.TaskInfo> info = taskManager.status(agentId, taskId);
-            if (info.isEmpty()) {
-                return ToolErrors.failure("task not found: " + taskId);
-            }
-            Optional<String> out = taskManager.output(agentId, taskId, RECENT_OUTPUT_LINES);
-            Map<String, Object> envelope = new LinkedHashMap<>();
-            envelope.put("taskId", info.get().taskId());
-            envelope.put("alive", info.get().alive());
-            Integer exitCode = info.get().exitCode();
-            if (exitCode != null) {
-                envelope.put("exitCode", exitCode);
-            }
-            envelope.put("pid", info.get().pid());
-            envelope.put("startedAt", info.get().startedAt());
-            envelope.put("uptimeSeconds", info.get().uptimeSeconds());
-            envelope.put("command", info.get().command());
-            envelope.put("cwd", info.get().cwd());
-            envelope.put("recentOutput", out.orElse(""));
-            envelope.put("inputFailures", taskManager.inputFailures(agentId, taskId));
-            return mapper.writeValueAsString(envelope);
-        } catch (ToolExecutionException e) {
-            throw e;
-        } catch (Exception e) {
-            return ToolErrors.failure("view_task failed: " + e.getMessage());
-        }
+    public @NonNull TaskControlCapability taskControlCapability() {
+        return capability;
     }
 
-    private static @NonNull String currentAgentId() {
-        var ctx = ToolCallContextHolder.get();
-        return ctx != null ? ctx.agentId() : "standalone";
+    @Override
+    public @NonNull String execute(@NonNull Args args, @NonNull TaskControlCapability capability) {
+        return capability.viewTask(args);
     }
 }

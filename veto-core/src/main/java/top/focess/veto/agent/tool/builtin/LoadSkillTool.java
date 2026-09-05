@@ -2,13 +2,11 @@ package top.focess.veto.agent.tool.builtin;
 
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
-import top.focess.veto.agent.skills.SkillRegistry;
-import top.focess.veto.agent.tool.AgentTool;
+import top.focess.veto.agent.capability.SkillReadCapability;
 import top.focess.veto.agent.tool.Doc;
-import top.focess.veto.agent.tool.ToolCapability;
+import top.focess.veto.agent.tool.SkillReadTool;
 import top.focess.veto.agent.tool.ToolDoc;
 import top.focess.veto.agent.tool.ToolDocs;
-import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolResultFormat;
 
 /**
@@ -19,12 +17,12 @@ import top.focess.veto.agent.tool.ToolResultFormat;
  * NotScreened}.
  */
 @Component
-public final class LoadSkillTool implements AgentTool<LoadSkillTool.Args> {
+public final class LoadSkillTool implements SkillReadTool<LoadSkillTool.Args> {
 
-    private final @NonNull SkillRegistry skillRegistry;
+    private final @NonNull SkillReadCapability capability;
 
-    public LoadSkillTool(@NonNull SkillRegistry skillRegistry) {
-        this.skillRegistry = skillRegistry;
+    public LoadSkillTool(@NonNull SkillReadCapability capability) {
+        this.capability = capability;
     }
 
     @Override
@@ -38,20 +36,14 @@ public final class LoadSkillTool implements AgentTool<LoadSkillTool.Args> {
     }
 
     @Override
-    public @NonNull ToolCapability getCapability() {
-        return ToolCapability.SKILL_READ;
+    public @NonNull SkillReadCapability skillReadCapability() {
+        return capability;
     }
 
     @Override
-    public @NonNull String execute(@NonNull Args args) throws Exception {
-        var skill = skillRegistry.loadVerified(args.skillName());
-        if (skill.isEmpty()) {
-            return ToolErrors.failure("Skill '" + args.skillName() + "' not found or tampered.");
-        }
-        String instructions = skill.get().promptInstructions();
-        return instructions == null
-                ? ToolErrors.failure("Skill body is not loaded.")
-                : instructions;
+    public @NonNull String execute(@NonNull Args args, @NonNull SkillReadCapability capability)
+            throws Exception {
+        return capability.load(args);
     }
 
     @ToolDoc(

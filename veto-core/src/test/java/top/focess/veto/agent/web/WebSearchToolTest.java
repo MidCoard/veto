@@ -8,7 +8,9 @@ import java.net.http.HttpTimeoutException;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+import top.focess.veto.agent.capability.NetworkEgressCapabilityImpl;
 import top.focess.veto.agent.screening.Danger;
+import top.focess.veto.agent.tool.CapabilityTestCalls;
 import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolExecutionException;
@@ -30,13 +32,16 @@ class WebSearchToolTest {
 
     @Test
     void timeoutReturnsCanonicalUnsuccessfulObservation() throws Exception {
-        WebSearchTool tool = new WebSearchTool(new TimeoutProvider());
+        WebSearchTool tool =
+                new WebSearchTool(
+                        new NetworkEgressCapabilityImpl(new TimeoutProvider(), 5, 1000, false));
 
         ToolExecutionException error =
                 assertThrows(
                         ToolDocs.nonNullClass(ToolExecutionException.class),
                         () ->
-                                tool.execute(
+                                CapabilityTestCalls.execute(
+                                        tool,
                                         new WebSearchTool.Args(
                                                 "current Java release", null, null)));
 
@@ -60,12 +65,15 @@ class WebSearchToolTest {
                         return "broken-test";
                     }
                 };
-        WebSearchTool tool = new WebSearchTool(provider);
+        WebSearchTool tool =
+                new WebSearchTool(new NetworkEgressCapabilityImpl(provider, 5, 1000, false));
 
         ToolExecutionException error =
                 assertThrows(
                         ToolDocs.nonNullClass(ToolExecutionException.class),
-                        () -> tool.execute(new WebSearchTool.Args("search query", null, null)));
+                        () ->
+                                CapabilityTestCalls.execute(
+                                        tool, new WebSearchTool.Args("search query", null, null)));
 
         assertTrue(ToolErrors.normalize(error.getMessage()).contains("bad \"response\"\\payload"));
     }

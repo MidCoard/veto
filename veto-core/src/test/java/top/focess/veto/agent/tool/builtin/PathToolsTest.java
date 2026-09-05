@@ -21,8 +21,10 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.screening.DeployerPolicy;
+import top.focess.veto.agent.tool.CapabilityTestCalls;
 import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolCapability;
@@ -49,8 +51,9 @@ class PathToolsTest {
 
         JsonNode result =
                 mapper.readTree(
-                        new FindFilesTool()
-                                .execute(new FindFilesTool.Args(root.toString(), "**/*.java")));
+                        CapabilityTestCalls.execute(
+                                new FindFilesTool(),
+                                new FindFilesTool.Args(root.toString(), "**/*.java")));
 
         assertEquals(2, result.get("matches").size());
         assertEquals("Root.java", result.get("matches").get(0).asText());
@@ -71,8 +74,9 @@ class PathToolsTest {
 
         JsonNode result =
                 mapper.readTree(
-                        new FindFilesTool()
-                                .execute(new FindFilesTool.Args(root.toString(), "**/*.txt")));
+                        CapabilityTestCalls.execute(
+                                new FindFilesTool(),
+                                new FindFilesTool.Args(root.toString(), "**/*.txt")));
 
         assertEquals(1, result.get("matches").size());
         assertEquals("visible.txt", result.get("matches").get(0).asText());
@@ -99,10 +103,9 @@ class PathToolsTest {
 
         JsonNode moved =
                 mapper.readTree(
-                        new MovePathTool()
-                                .execute(
-                                        new MovePathTool.Args(
-                                                source.toString(), destination.toString())));
+                        CapabilityTestCalls.execute(
+                                new MovePathTool(),
+                                new MovePathTool.Args(source.toString(), destination.toString())));
 
         assertEquals("moved", moved.get("status").asText());
         assertEquals("symbolic_link", moved.get("kind").asText());
@@ -126,11 +129,10 @@ class PathToolsTest {
                 assertThrows(
                         ToolDocs.nonNullClass(ToolExecutionException.class),
                         () ->
-                                new MovePathTool()
-                                        .execute(
-                                                new MovePathTool.Args(
-                                                        source.toString(),
-                                                        destination.toString())));
+                                CapabilityTestCalls.execute(
+                                        new MovePathTool(),
+                                        new MovePathTool.Args(
+                                                source.toString(), destination.toString())));
 
         assertEquals("DESTINATION_EXISTS", error.errorCode());
         assertTrue(Files.exists(source));
@@ -144,10 +146,10 @@ class PathToolsTest {
 
         JsonNode written =
                 mapper.readTree(
-                        new WriteToFileTool()
-                                .execute(
-                                        new WriteToFileTool.Args(
-                                                file.toString(), "first\nsecond\n", false)));
+                        CapabilityTestCalls.execute(
+                                new WriteToFileTool(),
+                                new WriteToFileTool.Args(
+                                        file.toString(), "first\nsecond\n", false)));
 
         assertEquals("ok", written.get("status").asText());
         assertEquals("first\nsecond\n", Files.readString(file));
@@ -155,10 +157,10 @@ class PathToolsTest {
         permit("replace_file_content", root, Map.of("absolutePath", file.toString()));
         JsonNode replaced =
                 mapper.readTree(
-                        new ReplaceFileContentTool()
-                                .execute(
-                                        new ReplaceFileContentTool.Args(
-                                                file.toString(), 2, 2, "second", "updated")));
+                        CapabilityTestCalls.execute(
+                                new ReplaceFileContentTool(),
+                                new ReplaceFileContentTool.Args(
+                                        file.toString(), 2, 2, "second", "updated")));
 
         assertEquals("ok", replaced.get("status").asText());
         assertEquals("first\nupdated\n", Files.readString(file));
@@ -178,10 +180,10 @@ class PathToolsTest {
                 assertThrows(
                         ToolDocs.nonNullClass(ToolExecutionException.class),
                         () ->
-                                new WriteToFileTool()
-                                        .execute(
-                                                new WriteToFileTool.Args(
-                                                        file.toString(), "secret", false)));
+                                CapabilityTestCalls.execute(
+                                        new WriteToFileTool(),
+                                        new WriteToFileTool.Args(
+                                                file.toString(), "secret", false)));
 
         assertEquals("PATH_PROTECTED", error.errorCode());
         assertFalse(Files.exists(file));
@@ -211,16 +213,16 @@ class PathToolsTest {
                 assertThrows(
                         ToolDocs.nonNullClass(ToolExecutionException.class),
                         () ->
-                                new DeletePathTool()
-                                        .execute(
-                                                new DeletePathTool.Args(
-                                                        directory.toString(), false)));
+                                CapabilityTestCalls.execute(
+                                        new DeletePathTool(),
+                                        new DeletePathTool.Args(directory.toString(), false)));
         assertEquals("DIRECTORY_NOT_EMPTY", error.errorCode());
 
         JsonNode deleted =
                 mapper.readTree(
-                        new DeletePathTool()
-                                .execute(new DeletePathTool.Args(directory.toString(), true)));
+                        CapabilityTestCalls.execute(
+                                new DeletePathTool(),
+                                new DeletePathTool.Args(directory.toString(), true)));
         assertEquals(2, deleted.get("entriesDeleted").asInt());
         assertFalse(Files.exists(directory));
     }
@@ -259,6 +261,7 @@ class PathToolsTest {
                                 ? ToolCapability.WORKSPACE_READ
                                 : ToolCapability.WORKSPACE_WRITE,
                         null,
+                        null,
                         Map.copyOf(paths),
                         authorized,
                         List.of(root),
@@ -266,15 +269,19 @@ class PathToolsTest {
                         DeployerPolicy.FULL_ACCESS,
                         protectedPaths,
                         null);
+        UUID userId = UUID.randomUUID();
+        UUID sessionId = UUID.randomUUID();
         ToolCallContextHolder.set(
                 new ToolCallContext(
                         "agent",
-                        UUID.randomUUID(),
+                        userId,
                         null,
                         null,
-                        UUID.randomUUID(),
+                        sessionId,
                         ToolResultPresentationMode.BASIC,
                         false,
-                        permit));
+                        permit.withCaller("agent", userId, null, null, sessionId)));
+        ReflectionTestUtils.invokeMethod(
+                ToolCallContextHolder.class, "setCurrentCallId", permit.callId());
     }
 }

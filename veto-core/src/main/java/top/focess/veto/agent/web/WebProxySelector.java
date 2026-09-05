@@ -13,7 +13,7 @@ import java.util.Map;
 import org.jspecify.annotations.NonNull;
 
 /** Applies the standard HTTP proxy environment variables to Java's HTTP client. */
-final class WebProxySelector extends ProxySelector {
+public final class WebProxySelector extends ProxySelector {
 
     private final Proxy httpProxy;
     private final Proxy httpsProxy;
@@ -32,7 +32,7 @@ final class WebProxySelector extends ProxySelector {
     }
 
     /** Returns the environment selector, or null when no proxy variable is configured. */
-    static ProxySelector fromEnvironment() {
+    public static ProxySelector fromEnvironment() {
         return fromEnvironment(System.getenv());
     }
 

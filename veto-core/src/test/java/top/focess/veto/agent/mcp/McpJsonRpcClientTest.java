@@ -5,23 +5,23 @@ import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
+import com.sun.net.httpserver.HttpHandler;
+import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
-import java.io.PipedInputStream;
-import java.io.PipedOutputStream;
+import java.net.InetSocketAddress;
 import java.net.StandardProtocolFamily;
 import java.net.UnixDomainSocketAddress;
-import java.nio.ByteBuffer;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -30,9 +30,16 @@ import org.junit.jupiter.params.provider.ValueSource;
 import top.focess.veto.agent.mcp.transport.McpJsonRpcClient;
 import top.focess.veto.agent.mcp.transport.McpTransport;
 import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.util.Nullness;
 
 /** Tests for remote MCP tool discovery and invocation over JSON-RPC transports. */
 class McpJsonRpcClientTest {
+    private final @NonNull List<HttpServer> servers = new ArrayList<>();
+
+    @AfterEach
+    void closeServers() {
+        servers.forEach(server -> server.stop(0));
+    }
 
     @Test
     void httpTransportDoesNotRenderCredentials() {
@@ -43,83 +50,41 @@ class McpJsonRpcClientTest {
         assertEquals("secret-bearer-token", transport.authToken());
     }
 
-    @ParameterizedTest
-    @ValueSource(booleans = {false, true})
-    void stdioTimeoutClosesSilentOrPartialResponses(boolean partial) throws Exception {
-        PipedOutputStream server = new PipedOutputStream();
-        try (PipedInputStream response = new PipedInputStream(server)) {
-            Process process = mock(ToolDocs.nonNullClass(Process.class));
-            ProcessBuilder builder = mock(ToolDocs.nonNullClass(ProcessBuilder.class));
-            when(builder.start()).thenReturn(process);
-            when(process.getInputStream()).thenReturn(response);
-            when(process.getOutputStream()).thenReturn(new ByteArrayOutputStream());
-            doAnswer(
-                            invocation -> {
-                                server.close();
-                                return null;
-                            })
-                    .when(process)
-                    .destroy();
-            if (partial) server.write('{');
-            var rpc =
-                    new McpJsonRpcClient(
-                            new ObjectMapper(), Duration.ofMillis(100), Duration.ofMillis(100));
-            IOException failure =
-                    assertTimeoutPreemptively(
-                            Duration.ofSeconds(3),
-                            () ->
-                                    assertThrows(
-                                            IOException.class,
-                                            () ->
-                                                    rpc.discoverTools(
-                                                            new McpTransport.StdioMcpTransport(
-                                                                    builder))));
-            assertEquals("MCP server timed out", failure.getMessage());
-            verify(process).destroy();
-        } finally {
-            server.close();
-        }
+    @Test
+    void unsupportedStdioNeverStartsTheProcess() throws Exception {
+        ProcessBuilder builder = mock(ToolDocs.nonNullClass(ProcessBuilder.class));
+        IOException error =
+                assertThrows(
+                        IOException.class,
+                        () ->
+                                new McpJsonRpcClient()
+                                        .discoverTools(
+                                                new McpTransport.StdioMcpTransport(builder)));
+        assertTrue(
+                Nullness.requireNonNull(error.getMessage())
+                        .contains("until sandboxed process execution is integrated"));
+        verifyNoInteractions(builder);
     }
 
     @Test
-    void socketTimeoutClosesAnUnresponsiveConnection(@TempDir @NonNull Path root) throws Exception {
-        ServerSocketChannel listener;
-        try {
-            listener = ServerSocketChannel.open(StandardProtocolFamily.UNIX);
+    void unsupportedSocketNeverConnects(@TempDir @NonNull Path root) throws Exception {
+        try (ServerSocketChannel server = ServerSocketChannel.open(StandardProtocolFamily.UNIX)) {
+            Path socket = root.resolve("rpc.sock");
+            server.bind(UnixDomainSocketAddress.of(socket));
+            server.configureBlocking(false);
+            IOException error =
+                    assertThrows(
+                            IOException.class,
+                            () ->
+                                    new McpJsonRpcClient()
+                                            .discoverTools(
+                                                    new McpTransport.SocketMcpTransport(socket)));
+            assertTrue(
+                    Nullness.requireNonNull(error.getMessage())
+                            .contains("until restricted socket access is integrated"));
+            assertNull(server.accept());
         } catch (UnsupportedOperationException e) {
             Assumptions.abort("Unix domain sockets are unavailable");
-            return;
-        }
-        try (var server = listener) {
-            var address = root.resolve("rpc.sock");
-            server.bind(UnixDomainSocketAddress.of(address));
-            var closed = new CompletableFuture<Boolean>();
-            Thread.ofVirtual()
-                    .start(
-                            () -> {
-                                try (var peer = server.accept()) {
-                                    var buffer = ByteBuffer.allocate(4096);
-                                    while (peer.read(buffer) >= 0) buffer.clear();
-                                    closed.complete(true);
-                                } catch (IOException e) {
-                                    closed.completeExceptionally(e);
-                                }
-                            });
-            var rpc =
-                    new McpJsonRpcClient(
-                            new ObjectMapper(), Duration.ofMillis(200), Duration.ofMillis(200));
-            IOException failure =
-                    assertTimeoutPreemptively(
-                            Duration.ofSeconds(3),
-                            () ->
-                                    assertThrows(
-                                            IOException.class,
-                                            () ->
-                                                    rpc.discoverTools(
-                                                            new McpTransport.SocketMcpTransport(
-                                                                    address))));
-            assertEquals("MCP server timed out", failure.getMessage());
-            assertTrue(closed.get(2, TimeUnit.SECONDS));
         }
     }
 
@@ -145,12 +110,10 @@ class McpJsonRpcClientTest {
                 }
                 """;
         // Stdio frames each JSON-RPC message on a single line.
-        var transport = stdio(response.replace("\n", ""));
-        when(transport.processBuilder().command()).thenReturn(List.of("server", "secret-password"));
+        var transport = sse(response.replace("\n", ""));
         var tools = new McpJsonRpcClient().discoverTools(transport);
         assertTrue(tools.getFirst().serverName().startsWith("mcp-"));
         assertFalse(tools.getFirst().serverName().contains("secret-password"));
-        verify(transport.processBuilder(), never()).command();
         assertEquals(1, tools.size());
         assertEquals("remote_search", tools.getFirst().name());
         assertEquals("Search the web", tools.getFirst().description());
@@ -158,28 +121,29 @@ class McpJsonRpcClientTest {
 
     @Test
     void skipsNotificationsAndPreservesUnicodeArgumentsAndResults() throws Exception {
-        var output = new ByteArrayOutputStream();
-        Process process = mock(ToolDocs.nonNullClass(Process.class));
-        ProcessBuilder builder = mock(ToolDocs.nonNullClass(ProcessBuilder.class));
-        when(builder.start()).thenReturn(process);
-        when(process.getOutputStream()).thenReturn(output);
-        when(process.getInputStream())
-                .thenReturn(
-                        new ByteArrayInputStream(
-                                ("{\"jsonrpc\":\"2.0\",\"method\":\"notifications/message\",\"params\":{}}\n"
-                                                + "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"text\":\"你好\"}}\n")
-                                        .getBytes(StandardCharsets.UTF_8)));
-        JsonNode result =
-                new McpJsonRpcClient()
-                        .callTool(
-                                new McpTransport.StdioMcpTransport(builder),
-                                "echo",
-                                Map.of("text", "你好"));
+        AtomicReference<String> requestBody = new AtomicReference<>("");
+        var transport =
+                server(
+                        exchange -> {
+                            requestBody.set(
+                                    new String(
+                                            exchange.getRequestBody().readAllBytes(),
+                                            StandardCharsets.UTF_8));
+                            byte[] bytes =
+                                    ("data: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/message\"}\n\n"
+                                                    + "data: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"text\":\"你好\"}}\n\n")
+                                            .getBytes(StandardCharsets.UTF_8);
+                            exchange.getResponseHeaders().set("Content-Type", "text/event-stream");
+                            exchange.sendResponseHeaders(200, bytes.length);
+                            try (var out = exchange.getResponseBody()) {
+                                out.write(bytes);
+                            }
+                        });
+        JsonNode result = new McpJsonRpcClient().callTool(transport, "echo", Map.of("text", "你好"));
         assertEquals("你好", result.path("text").asText());
-        JsonNode request = new ObjectMapper().readTree(output.toString(StandardCharsets.UTF_8));
+        JsonNode request = new ObjectMapper().readTree(requestBody.get());
         assertEquals("tools/call", request.path("method").asText());
         assertEquals("你好", request.path("params").path("arguments").path("text").asText());
-        verify(process).destroy();
     }
 
     @ParameterizedTest
@@ -193,7 +157,7 @@ class McpJsonRpcClientTest {
                 "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{},\"error\":{}}"
             })
     void rejectsInvalidResponseEnvelopes(@NonNull String response) throws Exception {
-        var transport = stdio(response);
+        var transport = sse(response);
         IOException failure =
                 assertThrows(
                         IOException.class, () -> new McpJsonRpcClient().discoverTools(transport));
@@ -208,7 +172,7 @@ class McpJsonRpcClientTest {
                 "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[],\"tools\":[]}}"
             })
     void rejectsTrailingJsonAndDuplicateKeys(@NonNull String response) throws Exception {
-        var transport = stdio(response);
+        var transport = sse(response);
         assertThrows(IOException.class, () -> new McpJsonRpcClient().discoverTools(transport));
     }
 
@@ -223,31 +187,138 @@ class McpJsonRpcClientTest {
                 "{\"tools\":[{\"name\":\"x\",\"inputSchema\":{\"type\":\"string\"}}]}"
             })
     void rejectsMalformedDiscoveredTools(@NonNull String result) throws Exception {
-        var transport = stdio("{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":" + result + "}");
+        var transport = sse("{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":" + result + "}");
         assertThrows(IOException.class, () -> new McpJsonRpcClient().discoverTools(transport));
     }
 
     @Test
     void doesNotExposeRemoteErrorPayload() throws Exception {
         var transport =
-                stdio("{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"message\":\"secret-token\"}}");
+                sse("{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"message\":\"secret-token\"}}");
         IOException failure =
                 assertThrows(
                         IOException.class, () -> new McpJsonRpcClient().discoverTools(transport));
         assertEquals("MCP server returned a JSON-RPC error", failure.getMessage());
     }
 
-    private static McpTransport.@NonNull StdioMcpTransport stdio(@NonNull String response)
+    private McpTransport.@NonNull SseMcpTransport sse(@NonNull String response) throws IOException {
+        return server(
+                exchange -> {
+                    byte[] bytes = ("data: " + response + "\n\n").getBytes(StandardCharsets.UTF_8);
+                    exchange.getResponseHeaders().set("Content-Type", "text/event-stream");
+                    exchange.sendResponseHeaders(200, bytes.length);
+                    try (var out = exchange.getResponseBody()) {
+                        out.write(bytes);
+                    }
+                });
+    }
+
+    private McpTransport.@NonNull SseMcpTransport server(@NonNull HttpHandler handler)
             throws IOException {
-        Process process = mock(ToolDocs.nonNullClass(Process.class));
-        ProcessBuilder builder = mock(ToolDocs.nonNullClass(ProcessBuilder.class));
-        when(builder.start()).thenReturn(process);
-        when(process.getOutputStream()).thenReturn(new ByteArrayOutputStream());
-        when(process.getInputStream())
-                .thenReturn(
-                        new ByteArrayInputStream(
-                                (response + "\n").getBytes(StandardCharsets.UTF_8)));
-        return new McpTransport.StdioMcpTransport(builder);
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/mcp", handler);
+        server.setExecutor(command -> Thread.ofVirtual().start(command));
+        server.start();
+        servers.add(server);
+        return new McpTransport.SseMcpTransport(
+                "http://127.0.0.1:" + server.getAddress().getPort() + "/mcp", "");
+    }
+
+    @ParameterizedTest
+    @ValueSource(
+            strings = {
+                "file:///tmp/mcp",
+                "/mcp",
+                "https://user:secret@example.com/mcp",
+                "https://example.com/mcp#token"
+            })
+    void rejectsInvalidEndpoints(@NonNull String url) {
+        IOException error =
+                assertThrows(
+                        IOException.class,
+                        () ->
+                                new McpJsonRpcClient()
+                                        .discoverTools(new McpTransport.SseMcpTransport(url, "")));
+        assertTrue(Nullness.requireNonNull(error.getMessage()).contains("absolute HTTP or HTTPS"));
+        assertFalse(Nullness.requireNonNull(error.getMessage()).contains("secret"));
+    }
+
+    @Test
+    void redirectsAreNeverFollowed() throws Exception {
+        AtomicInteger targetCalls = new AtomicInteger();
+        var target =
+                server(
+                        exchange -> {
+                            targetCalls.incrementAndGet();
+                            exchange.sendResponseHeaders(200, -1);
+                            exchange.close();
+                        });
+        var source =
+                server(
+                        exchange -> {
+                            exchange.getResponseHeaders().set("Location", target.baseUrl());
+                            exchange.sendResponseHeaders(302, -1);
+                            exchange.close();
+                        });
+        IOException error =
+                assertThrows(IOException.class, () -> new McpJsonRpcClient().discoverTools(source));
+        assertTrue(Nullness.requireNonNull(error.getMessage()).contains("302"));
+        assertEquals(0, targetCalls.get());
+    }
+
+    @Test
+    void boundsResponseBytesBeforeJsonParsing() throws Exception {
+        var transport = sse("x".repeat(4 * 1024 * 1024 + 1));
+        IOException error =
+                assertThrows(
+                        IOException.class, () -> new McpJsonRpcClient().discoverTools(transport));
+        assertTrue(Nullness.requireNonNull(error.getMessage()).contains("exceeds 4 MiB"));
+    }
+
+    @Test
+    void boundsNotificationFloods() throws Exception {
+        var transport =
+                server(
+                        exchange -> {
+                            byte[] bytes =
+                                    "data: {\"jsonrpc\":\"2.0\",\"method\":\"notice\"}\n\n"
+                                            .repeat(129)
+                                            .getBytes(StandardCharsets.UTF_8);
+                            exchange.sendResponseHeaders(200, bytes.length);
+                            try (var out = exchange.getResponseBody()) {
+                                out.write(bytes);
+                            }
+                        });
+        IOException error =
+                assertThrows(
+                        IOException.class, () -> new McpJsonRpcClient().discoverTools(transport));
+        assertTrue(Nullness.requireNonNull(error.getMessage()).contains("notification limit"));
+    }
+
+    @Test
+    void deadlineIncludesPartialResponseBody() throws Exception {
+        var transport =
+                server(
+                        exchange -> {
+                            exchange.sendResponseHeaders(200, 0);
+                            try (var out = exchange.getResponseBody()) {
+                                out.write("data: {".getBytes(StandardCharsets.UTF_8));
+                                out.flush();
+                                try {
+                                    Thread.sleep(2000);
+                                } catch (InterruptedException e) {
+                                    Thread.currentThread().interrupt();
+                                }
+                            }
+                        });
+        var rpc =
+                new McpJsonRpcClient(
+                        new ObjectMapper(), Duration.ofMillis(100), Duration.ofMillis(100));
+        IOException error =
+                assertTimeoutPreemptively(
+                        Duration.ofSeconds(3),
+                        () -> assertThrows(IOException.class, () -> rpc.discoverTools(transport)));
+        assertEquals("MCP server timed out", error.getMessage());
     }
 
     @Test

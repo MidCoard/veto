@@ -20,6 +20,6 @@ public sealed interface WorkspaceReadCapability extends Capability
     @NonNull String grep(
             @NonNull String pathArgument,
             @NonNull String query,
-            boolean caseInsensitive,
+            Boolean caseInsensitive,
             List<String> includes);
 }

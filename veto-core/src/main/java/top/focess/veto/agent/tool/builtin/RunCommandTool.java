@@ -1,46 +1,29 @@
 package top.focess.veto.agent.tool.builtin;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import java.nio.file.Path;
-import java.time.Duration;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
-import top.focess.veto.agent.intercept.ToolExecutionPermit;
+import top.focess.veto.agent.capability.ProcessExecutionCapability;
 import top.focess.veto.agent.screening.Danger;
 import top.focess.veto.agent.tool.Doc;
-import top.focess.veto.agent.tool.NativeTool;
 import top.focess.veto.agent.tool.ParamCategory;
+import top.focess.veto.agent.tool.ProcessExecutionTool;
 import top.focess.veto.agent.tool.SecurityHint;
-import top.focess.veto.agent.tool.ToolCallContext;
-import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDoc;
 import top.focess.veto.agent.tool.ToolDocs;
-import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolResultFormat;
 import top.focess.veto.agent.tool.ToolSecurity;
-import top.focess.veto.llm.config.LlmJacksonConfig;
 import top.focess.veto.sandbox.ChainMode;
-import top.focess.veto.sandbox.Command;
-import top.focess.veto.sandbox.CommandResult;
-import top.focess.veto.sandbox.SandboxManager;
-import top.focess.veto.sandbox.SandboxProfile;
 
 /** Executes screened commands through the sandbox using the standard native-tool path. */
 @Component
 @ToolSecurity(capability = ToolCapability.PROCESS_EXECUTION, defaultDanger = Danger.ELEVATED)
-public final class RunCommandTool implements NativeTool<RunCommandTool.Args> {
+public final class RunCommandTool implements ProcessExecutionTool<RunCommandTool.Args> {
+    private final @NonNull ProcessExecutionCapability capability;
 
-    private final @NonNull SandboxManager sandboxManager;
-    private final @NonNull ObjectMapper mapper;
-
-    public RunCommandTool(
-            @NonNull SandboxManager sandboxManager,
-            @Qualifier(LlmJacksonConfig.LLM_OBJECT_MAPPER) @NonNull ObjectMapper mapper) {
-        this.sandboxManager = sandboxManager;
-        this.mapper = mapper;
+    public RunCommandTool(@NonNull ProcessExecutionCapability capability) {
+        this.capability = capability;
     }
 
     /** A single discrete command in the chain. */
@@ -154,51 +137,13 @@ public final class RunCommandTool implements NativeTool<RunCommandTool.Args> {
     }
 
     @Override
-    public @NonNull String execute(@NonNull Args args) {
-        if (args.timeout() < 0) return ToolErrors.failure("timeout must be zero or positive");
-        if (args.commands().isEmpty())
-            return ToolErrors.failure("commands must contain at least one command");
-        ToolCallContext context = ToolCallContextHolder.get();
-        String callId = ToolCallContextHolder.currentCallId();
-        if (context == null || callId == null || callId.isEmpty()) {
-            throw new SecurityException(
-                    "This tool call is not authorized for the current session; submit a fresh call.");
-        }
-        ToolExecutionPermit permit = context.executionPermit();
-        Args screened = mapper.convertValue(permit.screenedArguments(), getArgsClass());
-        if (!getName().equals(permit.toolName()) || !args.equals(screened)) {
-            throw new SecurityException(
-                    "This tool call is not authorized for the current session; submit a fresh call.");
-        }
-        Path workspaceRoot = permit.requireExecutionRoot();
-        SandboxProfile profile =
-                SandboxProfile.forExecution(
-                        workspaceRoot,
-                        permit.protectedPaths(),
-                        Boolean.TRUE.equals(args.network()));
-        List<Command> commands =
-                args.commands().stream()
-                        .map(command -> new Command(command.executable(), command.args()))
-                        .toList();
-        ChainMode connect = args.connect();
-        if (connect == null) connect = ChainMode.STOP_ON_FAILURE;
-        Duration timeout = args.timeout() == 0 ? Duration.ZERO : Duration.ofSeconds(args.timeout());
-        String sandboxId = "runcmd-" + callId;
-        var handle = sandboxManager.provision(sandboxId, profile);
-        try {
-            CommandResult result =
-                    sandboxManager
-                            .substrate()
-                            .runCommands(handle, commands, workspaceRoot, connect, timeout);
-            String stderr = result.stderr();
-            String content = result.stdout() + (stderr.isEmpty() ? "" : "\n[stderr]\n" + stderr);
-            if (!result.success()) {
-                return ToolErrors.failure(
-                        "COMMAND_FAILED", content + "\n(exit code: " + result.exitCode() + ")");
-            }
-            return content;
-        } finally {
-            sandboxManager.deprovision(sandboxId);
-        }
+    public @NonNull ProcessExecutionCapability processExecutionCapability() {
+        return capability;
+    }
+
+    @Override
+    public @NonNull String execute(
+            @NonNull Args args, @NonNull ProcessExecutionCapability capability) {
+        return capability.runCommand(args);
     }
 }

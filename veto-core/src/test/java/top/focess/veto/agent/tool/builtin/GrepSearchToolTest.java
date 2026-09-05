@@ -17,8 +17,10 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.screening.DeployerPolicy;
+import top.focess.veto.agent.tool.CapabilityTestCalls;
 import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolCapability;
@@ -43,7 +45,8 @@ class GrepSearchToolTest {
                 assertThrows(
                         ToolDocs.nonNullClass(ToolExecutionException.class),
                         () ->
-                                tool.execute(
+                                CapabilityTestCalls.execute(
+                                        tool,
                                         new GrepSearchTool.Args(
                                                 tempDir.toString(), "", null, null)));
 
@@ -60,7 +63,8 @@ class GrepSearchToolTest {
                 assertThrows(
                         ToolDocs.nonNullClass(ToolExecutionException.class),
                         () ->
-                                tool.execute(
+                                CapabilityTestCalls.execute(
+                                        tool,
                                         new GrepSearchTool.Args(
                                                 missing.toString(), "needle", null, null)));
 
@@ -76,7 +80,8 @@ class GrepSearchToolTest {
         permit(tempDir, Set.of(protectedDirectory));
 
         String result =
-                tool.execute(new GrepSearchTool.Args(tempDir.toString(), "needle", null, null));
+                CapabilityTestCalls.execute(
+                        tool, new GrepSearchTool.Args(tempDir.toString(), "needle", null, null));
 
         assertTrue(result.contains("visible.txt"));
         assertFalse(result.contains("secret.txt"));
@@ -97,7 +102,8 @@ class GrepSearchToolTest {
         permit(searchRoot, Set.of());
 
         String result =
-                tool.execute(new GrepSearchTool.Args(searchRoot.toString(), "needle", null, null));
+                CapabilityTestCalls.execute(
+                        tool, new GrepSearchTool.Args(searchRoot.toString(), "needle", null, null));
 
         assertEquals("(no matches)", result);
     }
@@ -121,6 +127,7 @@ class GrepSearchToolTest {
                         "test-call",
                         ToolCapability.WORKSPACE_READ,
                         null,
+                        null,
                         Map.of("absolutePath", supplied),
                         Map.of("absolutePath", authorized),
                         List.of(parent == null ? requestedPath : parent),
@@ -128,15 +135,19 @@ class GrepSearchToolTest {
                         DeployerPolicy.PROTECTED,
                         protectedPaths,
                         null);
+        UUID userId = UUID.randomUUID();
+        UUID sessionId = UUID.randomUUID();
         ToolCallContextHolder.set(
                 new ToolCallContext(
                         "agent",
-                        UUID.randomUUID(),
+                        userId,
                         null,
                         null,
-                        UUID.randomUUID(),
+                        sessionId,
                         ToolResultPresentationMode.BASIC,
                         false,
-                        executionPermit));
+                        executionPermit.withCaller("agent", userId, null, null, sessionId)));
+        ReflectionTestUtils.invokeMethod(
+                ToolCallContextHolder.class, "setCurrentCallId", executionPermit.callId());
     }
 }

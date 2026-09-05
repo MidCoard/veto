@@ -16,6 +16,15 @@ public record RemoteToolDefinition(
         @NonNull JsonNode inputSchema)
         implements ToolDefinition {
 
+    public RemoteToolDefinition {
+        inputSchema = inputSchema.deepCopy();
+    }
+
+    @Override
+    public @NonNull JsonNode inputSchema() {
+        return inputSchema.deepCopy();
+    }
+
     @Override
     public @NonNull ToolCapability capability() {
         return ToolCapability.REMOTE_UNKNOWN;
