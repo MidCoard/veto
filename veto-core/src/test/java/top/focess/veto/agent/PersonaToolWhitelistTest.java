@@ -117,8 +117,7 @@ class PersonaToolWhitelistTest {
         UniformLLMCaller caller =
                 request -> {
                     seen.add(request);
-                    return new VetoResponse(
-                            "done", List.of(), "ok", new VetoResponse.Features(false), null);
+                    return new VetoResponse("done", null, "ok", null);
                 };
         AgentService service = serviceWith(engineWithReadFile(), caller);
         service.submit("whitelist-test", "hi", binding(), EPISODE_TIMEOUT);
@@ -139,8 +138,7 @@ class PersonaToolWhitelistTest {
         UniformLLMCaller caller =
                 request -> {
                     seen.add(request);
-                    return new VetoResponse(
-                            "done", List.of(), "ok", new VetoResponse.Features(false), null);
+                    return new VetoResponse("done", null, "ok", null);
                 };
         AgentService service = serviceWith(new TestToolEngine(), caller);
         assertDoesNotThrow(() -> service.submit("empty-test", "hi", binding(), EPISODE_TIMEOUT));

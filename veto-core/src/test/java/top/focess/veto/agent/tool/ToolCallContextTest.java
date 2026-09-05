@@ -72,6 +72,7 @@ class ToolCallContextTest {
                         null,
                         null,
                         ToolResultPresentationMode.BASIC,
+                        false,
                         ToolExecutionPermit.empty());
 
         assertEquals(agentId, ctx.agentId(), "agentId should be captured");
@@ -92,6 +93,7 @@ class ToolCallContextTest {
                         null,
                         null,
                         ToolResultPresentationMode.BASIC,
+                        false,
                         ToolExecutionPermit.empty()));
 
         // Read from same thread

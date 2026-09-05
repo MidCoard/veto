@@ -106,6 +106,11 @@ final class DeepSeekLlmClient extends LlmClient {
                 body.put("max_output_tokens", maxTokens);
             }
 
+            Double temperature = options.temperature();
+            if (temperature != null) {
+                body.put("temperature", temperature);
+            }
+
             String json = objectMapper.writeValueAsString(body);
             LoggerFactory.getLogger("top.focess.veto.llm.client.DeepSeekLlmClient")
                     .debug(
@@ -268,7 +273,6 @@ final class DeepSeekLlmClient extends LlmClient {
             } else {
                 root.put("message", msg.content());
             }
-            root.put("features", Map.of("guided", false));
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("role", "assistant");
             m.put("content", objectMapper.writeValueAsString(root));

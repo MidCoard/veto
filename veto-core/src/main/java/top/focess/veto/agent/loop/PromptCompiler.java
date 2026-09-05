@@ -114,21 +114,21 @@ public class PromptCompiler {
      *     veto.group.mate.system-prompt-base}); it never replaces persona identity or skillset
      *     context. Role/tools/boundaries are persona-driven.
      * @param history the raw, append-only turn history (oldest->newest)
-     * @param guidedSwitch whether this is the guided-switch turn (emits {@code actions})
+     * @param guidedEnabled whether the session permits guided programs
      */
     public @NonNull CompiledPrompt compile(
             @NonNull AgentPersona persona,
             @NonNull Workspace sessionWorkspace,
             String systemPromptBase,
             List<TurnRecord> history,
-            boolean guidedSwitch,
+            boolean guidedEnabled,
             double correctionFactor) {
         return compile(
                 persona,
                 sessionWorkspace,
                 systemPromptBase,
                 history,
-                guidedSwitch,
+                guidedEnabled,
                 correctionFactor,
                 ToolResultPresentationMode.BASIC);
     }
@@ -138,7 +138,7 @@ public class PromptCompiler {
             @NonNull Workspace sessionWorkspace,
             String systemPromptBase,
             List<TurnRecord> history,
-            boolean guidedSwitch,
+            boolean guidedEnabled,
             double correctionFactor,
             @NonNull ToolResultPresentationMode toolResultPresentation) {
 
@@ -152,15 +152,14 @@ public class PromptCompiler {
                         sessionWorkspace,
                         systemPromptBase,
                         flatTools,
-                        toolResultPresentation);
-        ResolvedHistory resolved =
-                resolveRewinds(history, linkedSystemMessage, toolResultPresentation);
-        String systemMessage = resolved.systemMessage();
-        List<ChatMessage> conversation = resolved.messages();
+                        toolResultPresentation,
+                        guidedEnabled);
+        String systemMessage = linkedSystemMessage;
+        List<ChatMessage> conversation = resolveRewinds(history, toolResultPresentation);
         List<ChatMessage> budgeted = fitBudget(systemMessage, conversation, correctionFactor);
         List<ChatMessage> messages = wellFormed(conversation, budgeted);
 
-        var responseSchema = translator.vetoResponseSchema(guidedSwitch, flatTools);
+        var responseSchema = translator.vetoResponseSchema(guidedEnabled, flatTools);
 
         int trimmed = conversation.size() - budgeted.size();
         long estimate = Math.round(ceilChars(systemMessage.length()) * correctionFactor);
@@ -177,12 +176,27 @@ public class PromptCompiler {
             @NonNull Workspace sessionWorkspace,
             String systemPromptBase,
             @NonNull ToolResultPresentationMode toolResultPresentation) {
+        return linkSystemMessage(
+                persona, sessionWorkspace, systemPromptBase, toolResultPresentation, false);
+    }
+
+    public @NonNull String linkSystemMessage(
+            @NonNull AgentPersona persona,
+            @NonNull Workspace sessionWorkspace,
+            String systemPromptBase,
+            @NonNull ToolResultPresentationMode toolResultPresentation,
+            boolean guidedEnabled) {
         List<ToolDefinition> flatTools =
                 translator.translateTools(
                         availableTools(
                                 persona.whitelistedTools(), persona.registeredSkills().isEmpty()));
         return buildSystemMessage(
-                persona, sessionWorkspace, systemPromptBase, flatTools, toolResultPresentation);
+                persona,
+                sessionWorkspace,
+                systemPromptBase,
+                flatTools,
+                toolResultPresentation,
+                guidedEnabled);
     }
 
     /** Removes conditional capabilities that cannot succeed for this persona. */
@@ -201,7 +215,8 @@ public class PromptCompiler {
             @NonNull Workspace sessionWorkspace,
             String base,
             @NonNull List<ToolDefinition> flatTools,
-            @NonNull ToolResultPresentationMode toolResultPresentation) {
+            @NonNull ToolResultPresentationMode toolResultPresentation,
+            boolean guidedEnabled) {
         String law = sessionWorkspace.vetoMdResolver().resolve();
         // Persona identity is always retained. A deployer-supplied role base is additional trusted
         // guidance, not an identity replacement; otherwise Mate id/skillset context disappears.
@@ -213,12 +228,18 @@ public class PromptCompiler {
         blocks.put("LAW", PromptBlocks.law(law));
         blocks.put("IDENTITY", identity);
         blocks.put("ROLE", PromptBlocks.role(persona.role()));
+        blocks.put(
+                "DELEGATION_RULES",
+                flatTools.stream().anyMatch(tool -> "create_group".equals(tool.name()))
+                        ? systemPromptResolver.delegationPrompt()
+                        : "");
         blocks.put("WORKSPACE", PromptBlocks.workspace(sessionWorkspace));
         blocks.put("ENVIRONMENT", PromptBlocks.environment());
         blocks.put(
                 "RESULT_CONVENTIONS",
                 flatTools.isEmpty() ? "" : PromptBlocks.resultConventions(toolResultPresentation));
         blocks.put("TOOLS", PromptBlocks.tools(flatTools));
+        blocks.put("GUIDED_PROTOCOL", guidedEnabled ? systemPromptResolver.guidedPrompt() : "");
         blocks.put(
                 "BOUNDARIES", PromptBlocks.boundaries(deployerPolicy, sessionWorkspace.pathMode()));
         blocks.put("SKILLS", PromptBlocks.skills(persona.registeredSkills()));
@@ -230,14 +251,11 @@ public class PromptCompiler {
     /**
      * Walks history ascending, applying REWIND suffix-drops; returns the effective compiled list.
      */
-    private @NonNull ResolvedHistory resolveRewinds(
-            List<TurnRecord> history,
-            @NonNull String fallbackSystemMessage,
-            @NonNull ToolResultPresentationMode toolResultPresentation) {
+    private @NonNull List<ChatMessage> resolveRewinds(
+            List<TurnRecord> history, @NonNull ToolResultPresentationMode toolResultPresentation) {
         List<ChatMessage> compiled = new ArrayList<>();
-        String activeSystemMessage = fallbackSystemMessage;
         if (history == null) {
-            return new ResolvedHistory(activeSystemMessage, compiled);
+            return compiled;
         }
         // Pending thought from an ASSISTANT_THOUGHT turn - merged into the next TOOL_CALL's
         // assistant message (as content + reasoningContent) so the model sees its thought and
@@ -251,7 +269,6 @@ public class PromptCompiler {
                 }
                 pendingThought = null;
                 pendingReasoning = null;
-                activeSystemMessage = str(turn.payload(), "system_prompt");
                 continue;
             }
             if (turn.type() == TurnType.REWIND) {
@@ -288,11 +305,8 @@ public class PromptCompiler {
         if (pendingThought != null && !pendingThought.isBlank()) {
             compiled.add(ChatMessage.assistant(pendingThought));
         }
-        return new ResolvedHistory(activeSystemMessage, compiled);
+        return compiled;
     }
-
-    private record ResolvedHistory(
-            @NonNull String systemMessage, @NonNull List<@NonNull ChatMessage> messages) {}
 
     private static void truncate(@NonNull List<ChatMessage> compiled, int fromIndex) {
         if (fromIndex < 0) {

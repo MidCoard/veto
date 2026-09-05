@@ -37,7 +37,8 @@ public record Group(
         Instant disbandedAt,
         String owner,
         Workspace workspace,
-        @NonNull ToolResultPresentationMode toolResultPresentation) {
+        @NonNull ToolResultPresentationMode toolResultPresentation,
+        boolean guidedEnabled) {
 
     public Group {
         mates = Map.copyOf(mates);
@@ -119,6 +120,28 @@ public record Group(
             String owner,
             Workspace workspace,
             @NonNull ToolResultPresentationMode toolResultPresentation) {
+        return create(
+                leaderId,
+                userId,
+                contextBrief,
+                blackboard,
+                dag,
+                owner,
+                workspace,
+                toolResultPresentation,
+                false);
+    }
+
+    public static @NonNull Group create(
+            @NonNull String leaderId,
+            @NonNull String userId,
+            String contextBrief,
+            @NonNull Blackboard blackboard,
+            @NonNull ExecutionDag dag,
+            String owner,
+            Workspace workspace,
+            @NonNull ToolResultPresentationMode toolResultPresentation,
+            boolean guidedEnabled) {
         UUID id = UUID.randomUUID();
         return new Group(
                 id,
@@ -133,7 +156,8 @@ public record Group(
                 null,
                 owner,
                 workspace,
-                toolResultPresentation);
+                toolResultPresentation,
+                guidedEnabled);
     }
 
     public @NonNull Group withDag(@NonNull ExecutionDag newDag) {
@@ -150,7 +174,8 @@ public record Group(
                 disbandedAt,
                 owner,
                 workspace,
-                toolResultPresentation);
+                toolResultPresentation,
+                guidedEnabled);
     }
 
     public @NonNull Group withState(@NonNull GroupState newState, @NonNull Instant when) {
@@ -167,7 +192,8 @@ public record Group(
                 newState == GroupState.DISBANDED ? when : disbandedAt,
                 owner,
                 workspace,
-                toolResultPresentation);
+                toolResultPresentation,
+                guidedEnabled);
     }
 
     public @NonNull Group withMate(@NonNull String mateId, @NonNull String skillset) {
@@ -186,7 +212,8 @@ public record Group(
                 disbandedAt,
                 owner,
                 workspace,
-                toolResultPresentation);
+                toolResultPresentation,
+                guidedEnabled);
     }
 
     public @NonNull Group withoutMate(@NonNull String mateId) {
@@ -208,7 +235,8 @@ public record Group(
                 disbandedAt,
                 owner,
                 workspace,
-                toolResultPresentation);
+                toolResultPresentation,
+                guidedEnabled);
     }
 
     public boolean isActive() {

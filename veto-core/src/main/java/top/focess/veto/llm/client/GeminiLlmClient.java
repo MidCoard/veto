@@ -123,7 +123,6 @@ final class GeminiLlmClient extends LlmClient {
         } else {
             response.put("message", message.content());
         }
-        response.put("features", Map.of("guided", false));
         try {
             return objectMapper.writeValueAsString(response);
         } catch (Exception e) {

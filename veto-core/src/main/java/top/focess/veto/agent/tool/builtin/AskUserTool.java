@@ -57,8 +57,7 @@ public final class AskUserTool implements AgentTool<AskUserTool.Args> {
                             + " must end with `(Recommended)`. Labels are case-insensitively unique;"
                             + " `Other` is reserved for the UI.",
             security =
-                    "Agent-runtime user interaction. It does not bypass or replace Gateway human"
-                            + " approval.",
+                    "A user answer does not replace any separate approval required to perform an operation.",
             examples = {
                 "{\"questions\":[{\"header\":\"Format\",\"id\":\"format\",\"question\":\"Which"
                         + " output format should I use?\",\"options\":[{\"label\":\"Markdown"

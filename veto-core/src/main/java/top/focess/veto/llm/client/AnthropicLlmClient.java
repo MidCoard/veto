@@ -14,6 +14,7 @@ import com.anthropic.models.messages.ToolResultBlockParam;
 import com.anthropic.models.messages.ToolUseBlock;
 import com.anthropic.models.messages.ToolUseBlockParam;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.List;
@@ -28,6 +29,7 @@ import top.focess.veto.llm.core.ResolvedRequest;
 import top.focess.veto.llm.core.ToolDefinition;
 import top.focess.veto.llm.core.VetoRequest;
 import top.focess.veto.llm.exceptions.ModelCapabilityException;
+import top.focess.veto.llm.exceptions.ModelSchemaException;
 
 /**
  * Adapter wrapping an {@link AnthropicClient} — <b>native tool calling</b>, the way Claude Code
@@ -35,7 +37,8 @@ import top.focess.veto.llm.exceptions.ModelCapabilityException;
  * provider schema-checks every call), the compiled history maps to native assistant {@code
  * tool_use} / user {@code tool_result} blocks, and the response's tool_use blocks translate back
  * into a veto_pulse payload ({@code calls} from the blocks, text becoming {@code thought} or {@code
- * message}, {@code features.guided=false} synthesized - guided mode has no native expression).
+ * message}). Guided programs use the JSON response envelope; the exact response schema is supplied
+ * with the system prompt, and JSON text is preserved for runtime validation.
  *
  * <p>This supersedes the original forced-single-{@code veto_pulse}-tool design: that required the
  * endpoint to honor {@code tool_choice: forced}, which Anthropic-compatible third parties (MiniMax
@@ -65,7 +68,11 @@ final class AnthropicLlmClient extends LlmClient {
                 MessageCreateParams.builder()
                         .model(Model.of(request.modelName()))
                         .maxTokens(request.options().maxTokensOrDefault())
-                        .system(request.systemPrompt());
+                        .system(responsePrompt(request));
+        Double temperature = request.options().temperature();
+        if (temperature != null) {
+            builder.putAdditionalBodyProperty("temperature", JsonValue.from(temperature));
+        }
         // The manifest as native tools; no forced tool_choice (the clones ignore it anyway).
         for (ToolDefinition t : request.tools()) {
             builder.addTool(
@@ -107,6 +114,11 @@ final class AnthropicLlmClient extends LlmClient {
 
         String rawInput;
         if (!toolUses.isEmpty()) {
+            String candidate = extractJson(objectMapper, text);
+            if (hasGuide(candidate)) {
+                throw new ModelSchemaException(
+                        "Anthropic response mixed native tool calls with a guided program");
+            }
             var pulse = objectMapper.createObjectNode();
             var calls = pulse.putArray("calls");
             for (ToolUseBlock tu : toolUses) {
@@ -117,7 +129,6 @@ final class AnthropicLlmClient extends LlmClient {
             if (!text.isEmpty()) {
                 pulse.put("thought", text);
             }
-            pulse.putObject("features").put("guided", false);
             rawInput = pulse.toString();
         } else {
             if (text.isEmpty()) {
@@ -125,21 +136,51 @@ final class AnthropicLlmClient extends LlmClient {
                         "Anthropic response contained neither text nor tool calls");
             }
             // Text-only answer. A model following the system prompt's veto_pulse instructions may
-            // still emit the pulse JSON as text - honor it when it parses as a pulse object;
-            // otherwise the prose IS the final message.
+            // emit the response JSON as text. Preserve JSON-shaped output even if malformed,
+            // so central validation retries it instead of presenting it as a final answer.
             String candidate = extractJson(objectMapper, text);
-            if (isPulseJson(candidate)) {
+            if (candidate.stripLeading().startsWith("{")
+                    || candidate.stripLeading().startsWith("[")) {
                 rawInput = candidate;
             } else {
                 var pulse = objectMapper.createObjectNode();
                 pulse.put("message", text);
-                pulse.putObject("features").put("guided", false);
                 rawInput = pulse.toString();
             }
         }
 
         String summary = "model=" + request.modelName() + ", tools=" + request.tools().size();
         return new RawCompletion(summary, rawInput);
+    }
+
+    private @NonNull String responsePrompt(@NonNull VetoRequest request) {
+        JsonNode schema = request.responseSchema();
+        if (schema == null) {
+            return request.systemPrompt();
+        }
+        String prompt =
+                request.systemPrompt()
+                        + "\n\nResponse schema for this turn:\n"
+                        + schema
+                        + "\nEmit one JSON object matching this schema.";
+        if (!request.tools().isEmpty()) {
+            prompt += " Direct tool execution may instead use native tool calls.";
+        }
+        if (schema.path("properties").has("guide")) {
+            prompt +=
+                    " A guided program must be emitted as JSON text in the guide field."
+                            + " Never combine a guided program with native tool calls in the same response.";
+        }
+        return prompt;
+    }
+
+    private boolean hasGuide(@NonNull String candidate) {
+        try {
+            JsonNode node = objectMapper.readTree(candidate);
+            return node.isObject() && node.hasNonNull("guide");
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private static Tool.InputSchema.@NonNull Properties toolProperties(
@@ -320,21 +361,6 @@ final class AnthropicLlmClient extends LlmClient {
         } catch (Exception e) {
             throw new ModelCapabilityException(
                     "Anthropic tool input was not a JSON object: " + e.getMessage());
-        }
-    }
-
-    /** True when the text parses as a JSON object carrying any veto_pulse field. */
-    private boolean isPulseJson(@NonNull String candidate) {
-        try {
-            var node = objectMapper.readTree(candidate);
-            return node.isObject()
-                    && (node.has("calls")
-                            || node.has("message")
-                            || node.has("thought")
-                            || node.has("features")
-                            || node.has("is_finished"));
-        } catch (Exception e) {
-            return false;
         }
     }
 

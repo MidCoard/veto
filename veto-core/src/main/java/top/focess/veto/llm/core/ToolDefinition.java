@@ -3,7 +3,6 @@ package top.focess.veto.llm.core;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDocumentation;
 import top.focess.veto.agent.tool.ToolResultFormat;
 
@@ -12,11 +11,10 @@ import top.focess.veto.agent.tool.ToolResultFormat;
  *
  * @param name the name of the tool
  * @param description a short, one-line description of what the tool does
- * @param capability the manifest capability used to group the model-visible tool catalog
  * @param inputSchema the JSON schema for the tool's input arguments
  * @param examples concrete args-object usage examples rendered in the prompt catalog. Prompt-side
- *     metadata only; never sent to a provider (the veto manifest is described in the system prompt,
- *     not as native function-calling tools).
+ *     metadata only; native provider tool declarations contain only name, description and input
+ *     schema.
  * @param documentation typed LLM-facing documentation sections. Prompt-side metadata only; never
  *     sent to a provider.
  * @param returnExamples illustrative result shapes rendered after the tool's own result contract;
@@ -28,7 +26,6 @@ import top.focess.veto.agent.tool.ToolResultFormat;
 public record ToolDefinition(
         @NonNull String name,
         @NonNull String description,
-        @NonNull ToolCapability capability,
         @NonNull Map<String, Object> inputSchema,
         @NonNull List<String> examples,
         @NonNull ToolDocumentation documentation,

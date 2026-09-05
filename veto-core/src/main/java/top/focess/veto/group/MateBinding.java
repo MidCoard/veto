@@ -30,4 +30,5 @@ public record MateBinding(
         String systemPromptBase,
         String owner,
         Workspace workspace,
-        @NonNull ToolResultPresentationMode toolResultPresentation) {}
+        @NonNull ToolResultPresentationMode toolResultPresentation,
+        boolean guidedEnabled) {}

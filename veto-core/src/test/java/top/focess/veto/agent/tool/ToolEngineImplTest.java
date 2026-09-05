@@ -51,6 +51,7 @@ import top.focess.veto.sandbox.TestSandboxFactory;
  * {@code run_command} routing through the no-shell substrate, and agent-tool dispatch.
  */
 class ToolEngineImplTest {
+    private static final @NonNull UUID TEST_USER = UUID.randomUUID();
 
     @ToolDoc(
             description = "Fails for protocol testing.",
@@ -79,6 +80,21 @@ class ToolEngineImplTest {
     private record JsonAgentArgs(@NonNull String output) {}
 
     private static final class JsonAgentTool implements AgentTool<JsonAgentArgs> {
+        private final @NonNull ToolCapability capability;
+
+        JsonAgentTool() {
+            this(ToolCapability.LOOP_CONTROL);
+        }
+
+        JsonAgentTool(@NonNull ToolCapability capability) {
+            this.capability = capability;
+        }
+
+        @Override
+        public @NonNull ToolCapability getCapability() {
+            return capability;
+        }
+
         @Override
         public @NonNull String getName() {
             return "json_agent";
@@ -92,6 +108,76 @@ class ToolEngineImplTest {
         @Override
         public @NonNull String execute(@NonNull JsonAgentArgs args) {
             return args.output();
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(
+            strings = {
+                "context",
+                "empty",
+                "callId",
+                "capability",
+                "agent",
+                "user",
+                "group",
+                "owner",
+                "session",
+                "undeclared"
+            })
+    void agentExecutionRejectsUnboundOrMismatchedAuthorization(@NonNull String mismatch)
+            throws Exception {
+        ApplicationContext appCtx = mock(ToolDocs.nonNullClass(ApplicationContext.class));
+        when(appCtx.getBeansOfType(AgentTool.class))
+                .thenReturn(
+                        Map.of(
+                                "jsonAgentTool",
+                                new JsonAgentTool(
+                                        mismatch.equals("undeclared")
+                                                ? ToolCapability.AGENT_CONTROL
+                                                : ToolCapability.LOOP_CONTROL)));
+        ToolEngineImpl engine = new ToolEngineImpl(new ObjectMapper(), List.of(), appCtx);
+        engine.init();
+        ToolDefinition definition = definition(engine, "json_agent");
+        ToolCall screened = new ToolCall("json_agent", Map.of("output", "{}"), "screened-call");
+        ToolDefinition screenedDefinition =
+                mismatch.equals("capability")
+                        ? AgentToolDefinition.from(
+                                "json_agent",
+                                ToolDocs.nonNullClass(JsonAgentArgs.class),
+                                ToolCapability.MEMORY_READ)
+                        : definition;
+        ToolExecutionPermit permit =
+                ToolExecutionPermit.capture(
+                                screened,
+                                screenedDefinition,
+                                Workspace.single(Path.of("."), PathMode.REAL))
+                        .withCaller("test-agent", TEST_USER, null, null, null);
+        if (!mismatch.equals("context")) {
+            ToolCallContextHolder.set(
+                    new ToolCallContext(
+                            mismatch.equals("agent") ? "other-agent" : "test-agent",
+                            mismatch.equals("user") ? UUID.randomUUID() : TEST_USER,
+                            mismatch.equals("group") ? UUID.randomUUID() : null,
+                            mismatch.equals("owner") ? "other-owner" : null,
+                            mismatch.equals("session") ? UUID.randomUUID() : null,
+                            ToolResultPresentationMode.BASIC,
+                            false,
+                            mismatch.equals("empty") ? ToolExecutionPermit.empty() : permit));
+        }
+        try {
+            ToolCall dispatched =
+                    mismatch.equals("callId")
+                            ? new ToolCall("json_agent", screened.args(), "replayed-call")
+                            : screened;
+            ToolResult result = engine.execute(dispatched, definition);
+            assertFalse(result.success(), result.content());
+            assertTrue(
+                    result.content().contains("not authorized for the current session")
+                            || result.content().contains("tool is unavailable"),
+                    result.content());
+        } finally {
+            ToolCallContextHolder.clear();
         }
     }
 
@@ -112,9 +198,11 @@ class ToolEngineImplTest {
         ToolEngineImpl engine = new ToolEngineImpl(mapper, List.of(), appCtx);
         engine.init();
         ToolResult result =
-                engine.execute(
+                executeAuthorized(
+                        engine,
                         new ToolCall("json_agent", Map.of("output", output), "cid-json"),
-                        definition(engine, "json_agent"));
+                        definition(engine, "json_agent"),
+                        Path.of("."));
         // Strict result validation must not change the shared LLM mapper's tolerance.
         assertEquals(2, mapper.readTree("{\"x\":1,\"x\":2} trailing").path("x").asInt());
         return result;
@@ -137,6 +225,10 @@ class ToolEngineImplTest {
     }
 
     private static final class FailingAgentTool implements AgentTool<FailingAgentArgs> {
+        @Override
+        public @NonNull ToolCapability getCapability() {
+            return ToolCapability.LOOP_CONTROL;
+        }
 
         private boolean executed;
 
@@ -226,12 +318,13 @@ class ToolEngineImplTest {
         ToolCallContextHolder.set(
                 new ToolCallContext(
                         "test-agent",
-                        UUID.randomUUID(),
+                        TEST_USER,
                         null,
                         null,
                         null,
                         ToolResultPresentationMode.BASIC,
-                        permit));
+                        false,
+                        permit.withCaller("test-agent", TEST_USER, null, null, null)));
         try {
             return engine.execute(call, definition);
         } finally {
@@ -296,10 +389,12 @@ class ToolEngineImplTest {
         engine.init();
 
         ToolResult result =
-                engine.execute(
+                executeAuthorized(
+                        engine,
                         new ToolCall(
                                 "failing_agent", Map.of("reason", "bad input"), "cid-agent-error"),
-                        definition(engine, "failing_agent"));
+                        definition(engine, "failing_agent"),
+                        Path.of("."));
 
         assertFalse(result.success());
         assertEquals("bad input", result.content());
@@ -374,7 +469,9 @@ class ToolEngineImplTest {
                         definition(engine, "view_file"));
 
         assertFalse(result.success(), result.content());
-        assertTrue(result.content().contains("authorized execution context"), result.content());
+        assertTrue(
+                result.content().contains("not authorized for the current session"),
+                result.content());
         assertFalse(result.content().contains("must not be read"), result.content());
     }
 
@@ -396,12 +493,13 @@ class ToolEngineImplTest {
         ToolCallContextHolder.set(
                 new ToolCallContext(
                         "test-agent",
-                        UUID.randomUUID(),
+                        TEST_USER,
                         null,
                         null,
                         null,
                         ToolResultPresentationMode.BASIC,
-                        permit));
+                        false,
+                        permit.withCaller("test-agent", TEST_USER, null, null, null)));
         try {
             ToolResult result =
                     engine.execute(
@@ -411,7 +509,9 @@ class ToolEngineImplTest {
                                     "cid-changed"),
                             definition);
             assertFalse(result.success(), result.content());
-            assertTrue(result.content().contains("do not match the screened"), result.content());
+            assertTrue(
+                    result.content().contains("not authorized for the current session"),
+                    result.content());
             assertFalse(result.content().contains("changed content"), result.content());
         } finally {
             ToolCallContextHolder.clear();
@@ -743,12 +843,13 @@ class ToolEngineImplTest {
         ToolCallContextHolder.set(
                 new ToolCallContext(
                         "test-agent",
-                        UUID.randomUUID(),
+                        TEST_USER,
                         null,
                         null,
                         null,
                         ToolResultPresentationMode.BASIC,
-                        permit));
+                        false,
+                        permit.withCaller("test-agent", TEST_USER, null, null, null)));
         try {
             ToolResult result = engine.execute(call, definition);
             assertTrue(result.success(), result.content());
@@ -910,12 +1011,13 @@ class ToolEngineImplTest {
         ToolCallContextHolder.set(
                 new ToolCallContext(
                         "test-agent",
-                        UUID.randomUUID(),
+                        TEST_USER,
                         null,
                         null,
                         null,
                         ToolResultPresentationMode.BASIC,
-                        permit));
+                        false,
+                        permit.withCaller("test-agent", TEST_USER, null, null, null)));
         try {
             ToolCall changed =
                     new ToolCall(
@@ -933,7 +1035,9 @@ class ToolEngineImplTest {
                             "cid-changed-command");
             ToolResult result = engine.execute(changed, definition);
             assertFalse(result.success(), result.content());
-            assertTrue(result.content().contains("do not match the screened"), result.content());
+            assertTrue(
+                    result.content().contains("not authorized for the current session"),
+                    result.content());
         } finally {
             ToolCallContextHolder.clear();
         }
@@ -961,12 +1065,13 @@ class ToolEngineImplTest {
         ToolCallContextHolder.set(
                 new ToolCallContext(
                         "test-agent",
-                        UUID.randomUUID(),
+                        TEST_USER,
                         null,
                         null,
                         null,
                         ToolResultPresentationMode.BASIC,
-                        permit));
+                        false,
+                        permit.withCaller("test-agent", TEST_USER, null, null, null)));
         ToolCallContextHolder.setCurrentCallId(screened.callId());
         try {
             var changed =
@@ -979,7 +1084,9 @@ class ToolEngineImplTest {
                     assertThrows(
                             ToolDocs.nonNullClass(SecurityException.class),
                             () -> tool.execute(changed));
-            assertTrue(String.valueOf(failure.getMessage()).contains("do not match the screened"));
+            assertTrue(
+                    String.valueOf(failure.getMessage())
+                            .contains("not authorized for the current session"));
             verifyNoInteractions(sandbox);
         } finally {
             ToolCallContextHolder.clear();

@@ -168,9 +168,14 @@ public class AgentRunner {
     private volatile @NonNull AgentState state = AgentState.IDLE;
     private final @NonNull List<TurnRecord> history = new ArrayList<>();
     private int turnNumber = 0;
-    private boolean guided = false;
+    private boolean guided;
+    private boolean guidedEnabled;
     private int maxGuidedSteps;
     private ModelTierRegistry guidedTierRegistry;
+
+    void setGuidedEnabled(boolean guidedEnabled) {
+        this.guidedEnabled = guidedEnabled;
+    }
 
     void configureGuided(ModelTierRegistry registry, int maxSteps) {
         if (maxSteps < 1) throw new IllegalArgumentException("guided max-steps must be positive");
@@ -405,7 +410,7 @@ public class AgentRunner {
             prospectiveHistory = new ArrayList<>(history);
         }
         prospectiveHistory.add(prospectiveUserTurn);
-        preparedFirstPrompt = compilePrompt(prospectiveHistory, false);
+        preparedFirstPrompt = compilePrompt(prospectiveHistory, guidedEnabled);
         appendTurn(
                 resumeContext != null
                         ? TurnRecord.breakerContinuation(++turnNumber, prompt, resumeContext)
@@ -655,22 +660,11 @@ public class AgentRunner {
                 tripBreaker();
                 throw new BreakerTripException();
             }
-            // A prior autonomous response requests guided mode by setting features.guided=true
-            // while issuing its final call (often `think`). The following iteration uses the
-            // action-authoring schema: actions required, calls forbidden.
-            boolean guidedSwitch = this.guided;
-            VetoResponse response = callModel(guidedSwitch);
-            breaker.recordModelCall();
-
-            // Read NEXT-status features (the mode the NEXT iteration enters).
-            var features = response.features();
-            if (features != null) {
-                this.guided = features.guided();
-            }
-
-            // Agent requested guided mode for the next iteration → load + validate program.
-            var actions = response.actions();
-            if (this.guided && actions != null) {
+            VetoResponse response = callModel(guidedEnabled);
+            var guide = response.guide();
+            if (guide != null) {
+                this.guided = true;
+                var actions = guide.actions();
                 if (loadProgram(actions)) {
                     appendThought(response);
                     String message = response.message();
@@ -866,15 +860,15 @@ public class AgentRunner {
 
     // ── The model call (compile + dispatch + enforce, with schema retry) ────
 
-    private @NonNull VetoResponse callModel(boolean guidedSwitch) {
-        return callModel(guidedSwitch, null);
+    private @NonNull VetoResponse callModel(boolean allowGuided) {
+        return callModel(allowGuided, null);
     }
 
-    private @NonNull VetoResponse callModel(boolean guidedSwitch, GenerateAction generation) {
+    private @NonNull VetoResponse callModel(boolean allowGuided, GenerateAction generation) {
         CompiledPrompt compiled = preparedFirstPrompt;
         preparedFirstPrompt = null;
         if (compiled == null) {
-            compiled = compilePrompt(List.copyOf(history), guidedSwitch);
+            compiled = compilePrompt(List.copyOf(history), allowGuided);
         }
         long estimatedTokens = compiled.estimatedTokens();
         VetoRequest request = buildRequest(compiled);
@@ -882,13 +876,11 @@ public class AgentRunner {
         for (int attempt = 0; ; attempt++) {
             VetoResponse response;
             try {
-                if (generation != null) {
-                    if (breaker.shouldTrip()) {
-                        tripBreaker();
-                        throw new BreakerTripException();
-                    }
-                    breaker.recordModelCall();
+                if (breaker.shouldTrip()) {
+                    tripBreaker();
+                    throw new BreakerTripException();
                 }
+                breaker.recordModelCall();
                 response = caller.call(request);
                 // Capture the provider's reasoning content (DeepSeek thinking mode) so it can be
                 // stored in the ASSISTANT_THOUGHT turn and echoed back on the next request's
@@ -899,28 +891,14 @@ public class AgentRunner {
                     double ratio = (double) usage.promptTokens() / estimatedTokens;
                     this.correctionFactor = this.correctionFactor * 0.9 + ratio * 0.1;
                 }
-            } catch (LlmException e) {
-                // LLM failure → record error, break the loop ( table: LLM Error → IDLE).
-                appendObservation(
-                        "llm_error",
-                        e.getMessage() == null
-                                ? "LLM call failed without a message"
-                                : e.getMessage());
-                this.state = AgentState.IDLE;
-                throw e;
-            }
-            try {
                 VetoResponse checked =
-                        ResponseEnforcer.enforce(response, guidedSwitch, whitelistedTools);
+                        ResponseEnforcer.enforce(response, allowGuided, whitelistedTools);
                 var generatedCalls = checked.calls();
-                var generatedFeatures = checked.features();
                 if (generation != null
                         && ((generatedCalls != null && !generatedCalls.isEmpty())
-                                || checked.actions() != null
-                                || generatedFeatures == null
-                                || generatedFeatures.guided()))
+                                || checked.guide() != null))
                     throw new ModelSchemaException(
-                            "generate requires message output, features.guided=false, and no calls or actions");
+                            "generate requires message output and no calls or guide");
                 return checked;
             } catch (ModelSchemaException e) {
                 log.warn(
@@ -933,6 +911,15 @@ public class AgentRunner {
                 }
                 // Inject an ephemeral rejection message so the model knows what to fix on retry.
                 request = injectSchemaRejection(request, e);
+            } catch (LlmException e) {
+                // LLM failure → record error, break the loop ( table: LLM Error → IDLE).
+                appendObservation(
+                        "llm_error",
+                        e.getMessage() == null
+                                ? "LLM call failed without a message"
+                                : e.getMessage());
+                this.state = AgentState.IDLE;
+                throw e;
             }
         }
     }
@@ -976,18 +963,7 @@ public class AgentRunner {
         var properties = schema.putObject("properties");
         properties.putObject("message").put("type", "string").put("minLength", 1);
         properties.putObject("thought").put("type", "string");
-        var features =
-                properties
-                        .putObject("features")
-                        .put("type", "object")
-                        .put("additionalProperties", false);
-        features.putObject("properties")
-                .putObject("guided")
-                .put("type", "boolean")
-                .putArray("enum")
-                .add(false);
-        features.putArray("required").add("guided");
-        schema.putArray("required").add("message").add("features");
+        schema.putArray("required").add("message");
         List<ChatMessage> messages = new ArrayList<>(original.messages());
         String prompt =
                 "Guided generation step (model-authored, not a new instruction from the user). "
@@ -1009,20 +985,24 @@ public class AgentRunner {
     }
 
     private @NonNull CompiledPrompt compilePrompt(
-            @NonNull List<TurnRecord> sourceHistory, boolean guidedSwitch) {
+            @NonNull List<TurnRecord> sourceHistory, boolean allowGuided) {
         return promptCompiler.compile(
                 persona,
                 gateway.workspace(),
                 binding.systemPromptBase(),
                 sourceHistory,
-                guidedSwitch,
+                allowGuided,
                 this.correctionFactor,
                 toolResultPresentation);
     }
 
     private @NonNull String linkCurrentSystemMessage() {
         return promptCompiler.linkSystemMessage(
-                persona, gateway.workspace(), binding.systemPromptBase(), toolResultPresentation);
+                persona,
+                gateway.workspace(),
+                binding.systemPromptBase(),
+                toolResultPresentation,
+                guidedEnabled);
     }
 
     private void appendAgentInit(@NonNull String systemPrompt) {
@@ -1096,16 +1076,10 @@ public class AgentRunner {
             return "valid JSON matching the supplied response schema";
         }
         if (msg.contains("message required")) {
-            return "message field is required when stopping (no tool calls or actions)";
+            return "message field is required when stopping (no tool calls or guide)";
         }
         if (msg.contains("mutually exclusive")) {
-            return "either calls or actions, not both";
-        }
-        if (msg.contains("guided-switch")) {
-            return "actions field is required on a guided-switch turn";
-        }
-        if (msg.contains("features is required")) {
-            return "features field is always required";
+            return "either calls or guide, not both";
         }
         return "valid JSON matching the supplied response schema";
     }
@@ -1297,7 +1271,8 @@ public class AgentRunner {
                         owner,
                         sessionId,
                         toolResultPresentation,
-                        executionPermit));
+                        guidedEnabled,
+                        executionPermit.withCaller(agentId, userId, groupId, owner, sessionId)));
         try {
             // (e) plugin postAction chain
             ToolResult transformed = toolEngine.execute(call, def);
@@ -1582,12 +1557,17 @@ public class AgentRunner {
 
     private void appendThought(@NonNull VetoResponse response) {
         String thought = response.thought();
-        if (thought != null && !thought.isBlank()) {
+        if ((thought != null && !thought.isBlank()) || response.guide() != null) {
             // Store the thought text + the provider's reasoning_content (if any). The
             // reasoning_content is echoed back on the next request's assistant message so DeepSeek
             // thinking mode accepts the conversation history.
             Map<String, Object> payload = new HashMap<>();
-            payload.put("response", thought);
+            if (response.guide() != null) {
+                JsonNode responseJson = objectMapper.valueToTree(response);
+                payload.put("response", responseJson.toString());
+            } else if (thought != null) {
+                payload.put("response", thought);
+            }
             if (lastReasoningContent != null && !lastReasoningContent.isBlank()) {
                 payload.put("reasoning_content", lastReasoningContent);
             }
@@ -1596,7 +1576,7 @@ public class AgentRunner {
             // Stream the thought to transports now (after it is durably recorded). The terminal
             // renders it dimmed/muted ahead of the user-facing message that follows, so the user
             // can follow the reasoning without it competing with the answer.
-            emitThought(thought);
+            if (thought != null) emitThought(thought);
         }
     }
 

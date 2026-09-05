@@ -74,15 +74,7 @@ public final class ViewFileTool implements WorkspaceReadTool<ViewFileTool.Args> 
                     - Directories, device files, and sockets are rejected as "not a regular file".
                     """,
             security =
-                    """
-                    `absolutePath` is a FILESYSTEM_PATH parameter: the Gateway canonicalizes it and screens it \
-                    under the deployer policy before the read. Under FULL_ACCESS, workspace roots are working \
-                    context rather than a path boundary, so any absolute host path may be targeted; restrictive \
-                    policies may fence paths. The operation is read-only \
-                    (`WORKSPACE_READ`, default danger `SAFE`); the file is never modified. Returned content is subject to \
-                    ingress masking. If the Gateway actually refuses deployer-fenced material under a \
-                    restrictive policy, change approach instead.
-                    """,
+                    "Read-only. Follow the current Boundaries rules. If access is refused, change scope instead of retrying the same path.",
             examples = {
                 "{\"absolutePath\": \"/abs/src/Main.java\"}",
                 "{\"absolutePath\": \"/abs/src/Main.java\", \"startLine\": 10, \"endLine\": 20}",

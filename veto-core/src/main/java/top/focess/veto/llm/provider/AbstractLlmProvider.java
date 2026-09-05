@@ -2,6 +2,8 @@ package top.focess.veto.llm.provider;
 
 import static top.focess.veto.util.LogValues.safe;
 
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.SocketTimeoutException;
 import java.util.List;
@@ -20,6 +22,7 @@ import top.focess.veto.llm.exceptions.LlmException;
 import top.focess.veto.llm.exceptions.LlmRateLimitException;
 import top.focess.veto.llm.exceptions.LlmTimeoutException;
 import top.focess.veto.llm.exceptions.ModelCapabilityException;
+import top.focess.veto.llm.exceptions.ModelSchemaException;
 import top.focess.veto.llm.exceptions.PlainTextResponseException;
 import top.focess.veto.observability.AuditLogger;
 
@@ -108,7 +111,6 @@ public abstract class AbstractLlmProvider implements LLMProviderStrategy {
             var calls = response.calls();
             String message = response.message();
             String thought = response.thought();
-            var features = response.features();
             // Parsed-field summary only (no raw payloads / no secrets). The calls count is the
             // loop signature: calls=0 means the turn stops (the runAutonomous no-calls
             // termination). is_finished was removed - termination routes on call presence.
@@ -120,8 +122,10 @@ public abstract class AbstractLlmProvider implements LLMProviderStrategy {
                     calls == null ? 0 : calls.size(),
                     message != null ? message.length() : 0,
                     thought != null ? thought.length() : 0,
-                    safe(features != null ? features.guided() : null));
+                    response.guide() != null);
             return response;
+        } catch (ModelSchemaException e) {
+            throw e;
         } catch (LlmException e) {
             // WARN, not DEBUG: a failed provider call is the actionable line when an episode
             // fails - it must survive any log-level sweep without digging through request dumps.
@@ -158,8 +162,19 @@ public abstract class AbstractLlmProvider implements LLMProviderStrategy {
 
     private @NonNull VetoResponse parse(@NonNull String rawResponse) {
         try {
-            return objectMapper.readValue(rawResponse, ToolDocs.nonNullClass(VetoResponse.class));
+            return objectMapper
+                    .readerFor(ToolDocs.nonNullClass(VetoResponse.class))
+                    .with(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+                    .with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+                    .with(JsonParser.Feature.STRICT_DUPLICATE_DETECTION)
+                    .readValue(rawResponse);
         } catch (Exception e) {
+            if (rawResponse.stripLeading().startsWith("{")
+                    || rawResponse.stripLeading().startsWith("[")) {
+                throw new ModelSchemaException(
+                        "Response JSON does not match the current response contract: "
+                                + e.getMessage());
+            }
             // Not JSON: signal a retryable failure so DefaultUniformLLMCaller's retry loop
             // re-prompts (the schema enforcement is probabilistic - a retry usually recovers).
             // The orchestrator converts this back to a plain-text message once its attempts are

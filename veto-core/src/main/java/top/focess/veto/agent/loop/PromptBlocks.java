@@ -12,7 +12,6 @@ import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.identity.Role;
 import top.focess.veto.agent.screening.DeployerPolicy;
 import top.focess.veto.agent.skills.Skill;
-import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.agent.workspace.WorkspaceRoot;
@@ -75,12 +74,7 @@ public final class PromptBlocks {
                             + CRAFT
                             + " Explain your decisions concisely in the final response."
                             + " Act autonomously: gather information with tools, make changes, and verify them"
-                            + " - only stop to ask the user when you genuinely cannot proceed. "
-                            + "\n\n## Delegation Rules\n"
-                            + "Call `create_group` only when the requested task can be split into distinct"
-                            + " subtasks with clear outputs and delegation is likely to reduce completion"
-                            + " time or provide needed expertise. Do not call it for a small, tightly"
-                            + " coupled, or sequential task that you can complete directly.";
+                            + " - only stop to ask the user when you genuinely cannot proceed.";
             case LEADER ->
                     "## Your Role\n"
                             + "Role: LEADER. You author the execution DAG node by"
@@ -177,45 +171,23 @@ public final class PromptBlocks {
         StringBuilder sb = new StringBuilder();
         sb.append("## Your Tools\n");
         sb.append(
-                "These are the tools available to YOU (a role-scoped subset of the full manifest)."
+                "These are the tools available to YOU."
                         + " Call them by populating the `calls` array with an entry whose `tool_name`"
                         + " is the tool and whose `args` matches the schema below."
-                        + " Tools are grouped by capability; a capability heading describes the"
-                        + " shared authority boundary, not permission, danger, or execution order."
                         + " Schematic examples use `<workspace-root>`; replace it with an exact root"
                         + " from the Workspace block.\n");
         List<ToolDefinition> sorted =
                 flatTools.stream()
                         .sorted(
-                                (@NonNull ToolDefinition left, @NonNull ToolDefinition right) -> {
-                                    int byCapability =
-                                            Integer.compare(
-                                                    left.capability().ordinal(),
-                                                    right.capability().ordinal());
-                                    return byCapability != 0
-                                            ? byCapability
-                                            : String.CASE_INSENSITIVE_ORDER.compare(
-                                                    left.name(), right.name());
-                                })
+                                (@NonNull ToolDefinition left, @NonNull ToolDefinition right) ->
+                                        String.CASE_INSENSITIVE_ORDER.compare(
+                                                left.name(), right.name()))
                         .toList();
-        ToolCapability currentCapability = null;
-        for (int toolIndex = 0; toolIndex < sorted.size(); toolIndex++) {
-            ToolDefinition t = sorted.get(toolIndex);
-            if (t.capability() != currentCapability) {
-                if (toolIndex > 0) {
-                    sb.append('\n');
-                }
-                currentCapability = t.capability();
-                sb.append("### Tool capability: ")
-                        .append(currentCapability.displayName())
-                        .append('\n');
-            } else {
-                sb.append("---\n");
-            }
-            sb.append("#### Tool name: `").append(t.name()).append("`\n");
+        for (ToolDefinition t : sorted) {
+            sb.append("### `").append(t.name()).append("`\n");
             sb.append(t.description()).append('\n');
             List<String> args = argDetails(t.inputSchema());
-            sb.append("##### Args\n");
+            sb.append("#### Args\n");
             if (args.isEmpty()) {
                 sb.append("Pass an empty JSON object: `{}`.\n");
             } else {
@@ -223,7 +195,7 @@ public final class PromptBlocks {
                     sb.append("- ").append(a).append('\n');
                 }
             }
-            sb.append("##### Result formats\n");
+            sb.append("#### Result formats\n");
             t.resultFormats()
                     .forEach(
                             format ->
@@ -238,7 +210,7 @@ public final class PromptBlocks {
             appendSectionIfPresent(sb, "When not to use", documentation.whenNotToUse());
             List<String> examples = t.examples();
             if (!examples.isEmpty()) {
-                sb.append("##### Call examples\n");
+                sb.append("#### Call examples\n");
                 sb.append("```json\n")
                         .append(schematicExample(examples.getFirst()))
                         .append("\n```\n");
@@ -246,7 +218,7 @@ public final class PromptBlocks {
             appendSectionIfPresent(sb, "Result contract", documentation.resultContract());
             List<String> returnExamples = t.returnExamples();
             if (!returnExamples.isEmpty()) {
-                sb.append("##### Result examples\n");
+                sb.append("#### Result examples\n");
                 String result = schematicResult(returnExamples.getFirst());
                 sb.append("```")
                         .append(resultFenceLanguage(result))
@@ -269,7 +241,7 @@ public final class PromptBlocks {
 
     private static void appendSection(
             @NonNull StringBuilder sb, @NonNull String heading, @NonNull String body) {
-        sb.append("##### ").append(heading).append('\n');
+        sb.append("#### ").append(heading).append('\n');
         if (!body.isBlank()) {
             sb.append(body.strip()).append('\n');
         }
@@ -355,67 +327,25 @@ public final class PromptBlocks {
         if (policy == null) {
             return "";
         }
-        if (pathMode == PathMode.VIRTUAL) {
-            return switch (policy) {
-                case FULL_ACCESS ->
-                        "## Boundaries\n"
-                                + "Native file tools can address only the mounted workspace roots. Every"
-                                + " call still passes Gateway screening, jailbreak defenses, auditing, and"
-                                + " human-approval checks; high-risk actions require user authorization and"
-                                + " prohibited actions remain refused.\n";
-                case PROTECTED ->
-                        "## Boundaries\n"
-                                + "Native file tools can address only mounted roots, and protected targets"
-                                + " remain a hard"
-                                + " deny-list. Other calls still pass Gateway screening and human-approval"
-                                + " checks.\n";
-                case SANDBOXED ->
-                        "## Boundaries\n"
-                                + "Mounted session roots"
-                                + " are the hard filesystem boundary; canonical escapes and protected targets"
-                                + " are refused. Other calls still pass Gateway screening and human-approval"
-                                + " checks.\n";
-                case TENANT ->
-                        "## Boundaries\n"
-                                + "This user's mounted roots"
-                                + " are the hard filesystem boundary; cross-user access requires an"
-                                + " owner-issued share. Other calls still pass Gateway screening and"
-                                + " human-approval checks.\n";
-            };
-        }
-        return switch (policy) {
-            case FULL_ACCESS ->
-                    "## Boundaries\n"
-                            + "Filesystem access is not limited to the listed workspace roots. They are the"
-                            + " default working context, not an access boundary. You may use any absolute"
-                            + " host path required by the task; do not claim that an outside path is blocked"
-                            + " merely because it is outside these roots. Every call still passes Gateway relevance"
-                            + " and risk screening, jailbreak defenses, auditing, and human-approval checks;"
-                            + " high-risk actions require user authorization and prohibited actions remain"
-                            + " refused.\n";
-            case PROTECTED ->
-                    "## Boundaries\n"
-                            + "Host paths are generally reachable, but the protected set is a hard deny-list."
-                            + " A protected target cannot be approved; do not retry it. Absolute host paths outside"
-                            + " workspace roots remain addressable unless protected. Non-protected calls still"
-                            + " pass relevance and risk screening, jailbreak defenses, auditing, and"
-                            + " human-approval checks; high-risk actions require user authorization.\n";
-            case SANDBOXED ->
-                    "## Boundaries\n"
-                            + "The session workspace roots are hard path"
-                            + " boundaries. Canonical paths outside the session roots and protected-set"
-                            + " targets are refused. Calls inside the boundary still pass relevance and risk"
-                            + " screening, jailbreak defenses, auditing, and human-approval checks; high-risk"
-                            + " actions require user authorization.\n";
-            case TENANT ->
-                    "## Boundaries\n"
-                            + "This authenticated user's admitted workspace roots are hard path boundaries."
-                            + " Outside-zone paths and another user's unshared workspace are refused; only"
-                            + " owner-issued sharing can authorize cross-user access. Calls"
-                            + " within the tenant boundary still pass relevance and risk screening, jailbreak"
-                            + " defenses, auditing, and human-approval checks; high-risk actions require user"
-                            + " authorization.\n";
-        };
+        String access =
+                switch (policy) {
+                    case FULL_ACCESS ->
+                            pathMode == PathMode.VIRTUAL
+                                    ? "File tools can address only the mounted workspace roots."
+                                    : "Filesystem access is not limited to the listed workspace roots. They are the default working context, not an access boundary. You may use any absolute host path required by the task; do not claim that an outside path is blocked merely because it is outside these roots.";
+                    case PROTECTED ->
+                            (pathMode == PathMode.VIRTUAL
+                                            ? "File tools can address only mounted roots."
+                                            : "Absolute host paths outside workspace roots remain addressable unless protected.")
+                                    + " Protected targets cannot be accessed or approved; do not retry them.";
+                    case SANDBOXED ->
+                            "The session workspace roots are hard path boundaries. Paths resolving outside these roots and protected targets are refused.";
+                    case TENANT ->
+                            "Work only within this user's listed workspace roots. Paths outside those roots are refused.";
+                };
+        return "## Boundaries\n"
+                + access
+                + " High-risk actions require user authorization. Prohibited actions remain refused.\n";
     }
 
     /** The "## Available Skills" catalog (name + description only). */

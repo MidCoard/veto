@@ -83,7 +83,8 @@ public class SessionController {
                 body.name(),
                 roots,
                 rootIndex == null ? 0 : rootIndex,
-                ToolResultPresentationMode.canonicalize(body.toolResultPresentation()));
+                ToolResultPresentationMode.canonicalize(body.toolResultPresentation()),
+                Boolean.TRUE.equals(body.guidedEnabled()));
     }
 
     @DeleteMapping("/{name}")
@@ -142,7 +143,8 @@ public class SessionController {
     public @NonNull ResponseEntity<?> records(@PathVariable @NonNull String name) {
         SessionConfig cfg = requireOwnedSession(name);
         return ResponseEntity.ok(
-                recordService.load(cfg.sessionId(), name, cfg.toolResultPresentation()));
+                recordService.load(
+                        cfg.sessionId(), name, cfg.toolResultPresentation(), cfg.guidedEnabled()));
     }
 
     private @NonNull SessionConfig requireOwnedSession(@NonNull String name) {

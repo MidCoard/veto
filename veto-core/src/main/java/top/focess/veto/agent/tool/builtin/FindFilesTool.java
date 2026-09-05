@@ -46,10 +46,7 @@ public final class FindFilesTool implements WorkspaceReadTool<FindFilesTool.Args
                             + " traversed. `**/*.java` also matches a Java file directly below the"
                             + " base.",
             security =
-                    "Workspace read tool. The Gateway resolves and authorizes `absolutePath`; the"
-                            + " tool receives only a call-scoped WorkspaceRead capability. Every"
-                            + " descendant is checked before it is returned, and protected paths,"
-                            + " symbolic links, and reparse points are skipped.",
+                    "Read-only. Protected paths, symbolic links, and reparse points are skipped. Follow the current Boundaries rules.",
             examples = {
                 "{\"absolutePath\":\"<workspace-root>\",\"pattern\":\"**/*.java\"}",
                 "{\"absolutePath\":\"<workspace-root>\",\"pattern\":\"*.md\"}"

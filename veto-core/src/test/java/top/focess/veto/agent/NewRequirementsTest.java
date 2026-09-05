@@ -122,8 +122,7 @@ class NewRequirementsTest {
 
     private static @NonNull VetoResponse thoughtOnWithCall(
             String thought, String message, @NonNull ToolCall call) {
-        return new VetoResponse(
-                thought, List.of(call), message, new VetoResponse.Features(false), null);
+        return new VetoResponse(thought, List.of(call), message, null);
     }
 
     @Test

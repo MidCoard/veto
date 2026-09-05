@@ -67,16 +67,7 @@ public final class WriteToFileTool implements WorkspaceWriteTool<WriteToFileTool
                     reparse-point targets are rejected; the tool does not write through them or replace them.
                     """,
             security =
-                    """
-                    `absolutePath` is a FILESYSTEM_PATH and `codeContent` is CODE_CONTENT: the Gateway canonicalizes \
-                    the path, screens it under the deployer policy, and applies semantic screening to the content \
-                    before the write. Under FULL_ACCESS, workspace roots are working context rather than a path \
-                    boundary, so any absolute host path may be targeted; restrictive policies may fence paths. \
-                    The Gateway exposes the screened target through a call-scoped `WORKSPACE_WRITE` capability. \
-                    The operation has default danger `ELEVATED`; it is audited and may require approval. If the \
-                    Gateway actually refuses a path, change approach instead. Do not embed high-value secrets \
-                    in written files.
-                    """,
+                    "Follow the current Boundaries rules. Writing may require approval. If access is refused, change approach. Do not write secrets into files.",
             examples = {
                 "{\"absolutePath\": \"/abs/src/Main.java\", \"codeContent\": \"package x;\\n\", \"overwrite\": false}",
                 "{\"absolutePath\": \"/abs/src/Main.java\", \"codeContent\": \"package x;\\npublic class Main {}\\n\", \"overwrite\": true}",

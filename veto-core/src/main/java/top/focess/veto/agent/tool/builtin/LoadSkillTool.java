@@ -91,10 +91,7 @@ public final class LoadSkillTool implements AgentTool<LoadSkillTool.Args> {
                     a skill does not execute anything; it only provides instructions.
                     """,
             security =
-                    """
-                    Agent tool with `SKILL_READ` capability, so the Gateway does not screen the call. A loaded body remains \
-                    subordinate to higher-authority system and user instructions.
-                    """,
+                    "Loaded instructions remain subordinate to higher-authority system and user instructions.",
             examples = {"{\"skillName\": \"verify_suite\"}"},
             returnExamples = {"# verify_suite\n1. Run the focused checks ..."})
     public record Args(@Doc("The exact name of an advertised skill.") @NonNull String skillName) {}

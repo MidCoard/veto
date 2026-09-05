@@ -86,12 +86,7 @@ public final class DagTools {
                     the id; create dependencies first.
                     - Blank `nodeId`, `description`, or `skillset` -> rejected.
                     """,
-            security =
-                    """
-                    Agent tool with `GROUP_CONTROL` capability. The Gateway returns `NotScreened`; each \
-                    call is structurally validated by the engine before it takes effect. \
-                    Leader-only.
-                    """,
+            security = "Only the group coordinator can change the task plan.",
             examples = {
                 "{\"nodeId\": \"node-1\", \"description\": \"Implement JWT login in UserService\", \"skillset\": \"coding\"}",
                 "{\"nodeId\": \"node-2\", \"description\": \"Test the login flow\", \"skillset\": \"testing\", \"dependsOn\": [\"node-1\"]}",
@@ -216,11 +211,7 @@ public final class DagTools {
                     - Live dependents exist -> refused, naming the dependents.
                     - Already stale or VERIFIED -> not removed; verified work remains checkpointed.
                     """,
-            security =
-                    """
-                    Agent tool with `GROUP_CONTROL` capability. The Gateway returns `NotScreened`; the \
-                    engine validates the removal before it takes effect. Leader-only.
-                    """,
+            security = "Only the group coordinator can remove task nodes.",
             examples = {"{\"nodeId\": \"node-2\"}", "{\"nodeId\": \"node-1\"}"},
             returnExamples = {"Node removed: node-2 (marked stale)."})
     public static final class RemoveNode implements AgentTool<RemoveNode.Args> {

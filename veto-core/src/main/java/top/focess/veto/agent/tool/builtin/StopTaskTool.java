@@ -78,10 +78,7 @@ public final class StopTaskTool implements NativeTool<StopTaskTool.Args> {
                     be alive; inspect it with `view_task` before assuming termination completed.
                     """,
             security =
-                    """
-                    Native tool with `TASK_CONTROL` capability and default danger `SAFE`. Scoped to the calling agent - \
-                    you can only stop your own tasks. Prefer this over any OS-level kill.
-                    """,
+                    "You can stop only your own tasks. Prefer this tool over an operating-system kill command.",
             examples = {"{\"taskId\": \"bg-3\"}"},
             returnExamples = {
                 "{\"status\": \"stopped\", \"taskId\": \"bg-3\", \"alive\": false, \"exitCode\": 1}"

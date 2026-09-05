@@ -19,9 +19,8 @@ public sealed interface AgentAction
 
     /**
      * Submit a prompt for the agent to work on. A fresh {@code UserPromptAction} starts a new
-     * reasoning episode: prior-turn {@code features}/{@code guided} are reset (autonomous) and the
-     * effective thought flag is forced ON for the first model call ( ). Breaker trip resumption is
-     * just a {@code UserPromptAction("continue")}.
+     * reasoning episode with no active program. The session retains its configured capabilities.
+     * Breaker trip resumption uses a {@code UserPromptAction("continue")}.
      */
     record UserPromptAction(@NonNull String prompt) implements AgentAction {}
 

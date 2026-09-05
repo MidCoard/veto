@@ -21,14 +21,14 @@ public class DefaultCapabilityTranslator implements CapabilityTranslator {
     }
 
     @Override
-    public @NonNull JsonNode vetoResponseSchema(boolean guidedSwitch) {
-        return delegate.vetoResponseSchema(guidedSwitch);
+    public @NonNull JsonNode vetoResponseSchema(boolean guidedEnabled) {
+        return delegate.vetoResponseSchema(guidedEnabled);
     }
 
     @Override
     public @NonNull JsonNode vetoResponseSchema(
-            boolean guidedSwitch, @NonNull List<top.focess.veto.llm.core.ToolDefinition> tools) {
-        return delegate.vetoResponseSchema(guidedSwitch, tools);
+            boolean guidedEnabled, @NonNull List<top.focess.veto.llm.core.ToolDefinition> tools) {
+        return delegate.vetoResponseSchema(guidedEnabled, tools);
     }
 
     @Override

@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
+import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.Role;
 import top.focess.veto.agent.identity.RoleToolFilter;
@@ -115,12 +116,62 @@ class SystemPromptDumpTest {
             // Per-role tool inventory so the role-scoping is visible at a glance.
             write("03-tools-" + role + ".md", inventory(roleTools));
         }
+        var enabled =
+                promptCompiler.compile(
+                        personaFor(Role.STANDALONE), renderedWorkspace, null, List.of(), true, 1.0);
+        var disabled =
+                promptCompiler.compile(
+                        personaFor(Role.STANDALONE),
+                        renderedWorkspace,
+                        null,
+                        List.of(
+                                TurnRecord.agentInit(
+                                        0, "STANDALONE", enabled.systemMessage(), "test", "test")),
+                        false,
+                        1.0);
+        write("STANDALONE-guided-enabled.md", enabled.systemMessage());
+        write("STANDALONE-guided-disabled.md", disabled.systemMessage());
+        assertTrue(enabled.systemMessage().contains("conditional_goto"));
+        assertFalse(
+                disabled.systemMessage().contains("conditional_goto"),
+                "persisted enabled prompt must not restore a disabled capability");
+        var enabledSchema = enabled.responseSchema();
+        var disabledSchema = disabled.responseSchema();
+        if (enabledSchema == null || disabledSchema == null)
+            throw new AssertionError("schema missing");
+        assertTrue(enabledSchema.path("properties").has("guide"));
+        assertFalse(disabledSchema.path("properties").has("guide"));
         deleteLegacyRolePolicyDumps(roles);
         String standalone = Files.readString(DUMP_DIR.resolve("STANDALONE.md"));
         assertFalse(
                 Pattern.compile("(?i)\\b(leader|mates?)\\b").matcher(standalone).find(),
                 "Standalone instructions and its actual tool catalog must not describe other roles");
         assertTrue(standalone.contains("## Delegation Rules"));
+        assertEquals(1, count(standalone, "## Delegation Rules"));
+        assertTrue(standalone.contains("### Example: independent review areas"));
+        for (Role role : roles) {
+            String linked = Files.readString(DUMP_DIR.resolve(role + ".md"));
+            boolean canDelegate =
+                    roleToolFilter.resolve(role).stream()
+                            .anyMatch(tool -> "create_group".equals(tool.name()));
+            assertEquals(
+                    canDelegate,
+                    linked.contains("## Delegation Rules"),
+                    "delegation guidance requires an available create_group tool: " + role);
+            assertFalse(linked.contains("{{DELEGATION_RULES}}"));
+            for (String internal :
+                    List.of(
+                            "Gateway",
+                            "FILESYSTEM_PATH",
+                            "CODE_CONTENT",
+                            "WORKSPACE_WRITE",
+                            "ELEVATED",
+                            "NotScreened",
+                            "Tool capability")) {
+                assertFalse(linked.contains(internal), role + " prompt exposes " + internal);
+            }
+        }
+
         assertTrue(standalone.contains("## Operating Contract"));
         assertFalse(standalone.contains("system/runtime contract"));
         assertTrue(
@@ -128,7 +179,7 @@ class SystemPromptDumpTest {
                         .contains(
                                 "include the question in your final internal report to the Leader"));
 
-        int count = 6 + roles.length * 2;
+        int count = 8 + roles.length * 2;
         System.out.println(
                 "=== System-prompt dump written to "
                         + DUMP_DIR.toAbsolutePath()
@@ -238,10 +289,10 @@ class SystemPromptDumpTest {
                 Files.readString(DUMP_DIR.resolve("MATE.md")).contains("mate mate-sample"),
                 "the Mate identity must not repeat its name and role");
         assertTrue(
-                count(catalog, "\n#### Tool name: `") == flatTools.size(),
+                count(catalog, "\n### `") == flatTools.size(),
                 "every registered tool has one catalog entry");
         assertTrue(
-                count(catalog, "\n##### Args\n") == flatTools.size(),
+                count(catalog, "\n#### Args\n") == flatTools.size(),
                 "every registered tool exposes an Args section");
         assertFalse(
                 catalog.contains("error-special-plaintext"),
@@ -258,11 +309,23 @@ class SystemPromptDumpTest {
                         "AGENT_INIT",
                         "deployer's Leader-tier",
                         "FULL_ACCESS",
+                        "Gateway",
+                        "FILESYSTEM_PATH",
+                        "CODE_CONTENT",
+                        "WORKSPACE_WRITE",
+                        "ELEVATED",
+                        "NotScreened",
+                        "Tool capability",
                         "SANDBOXED",
                         "TENANT",
                         "Path mode:",
                         "Under PROTECTED",
                         "Policy: PROTECTED")) {
+            for (ToolDefinition tool : flatTools) {
+                assertFalse(
+                        tool.documentation().security().contains(internalName),
+                        tool.name() + " security guidance must not expose " + internalName);
+            }
             assertFalse(
                     catalog.contains(internalName),
                     "model-facing tool documentation must not expose " + internalName);
@@ -313,9 +376,9 @@ class SystemPromptDumpTest {
                 "the model-visible tool catalog must stay concise; actual chars="
                         + catalog.length());
         for (ToolDefinition tool : flatTools) {
-            String heading = "#### Tool name: `" + tool.name() + "`";
+            String heading = "### `" + tool.name() + "`";
             int start = catalog.indexOf(heading);
-            int end = catalog.indexOf("\n#### Tool name: `", start + heading.length());
+            int end = catalog.indexOf("\n### `", start + heading.length());
             String entry = end < 0 ? catalog.substring(start) : catalog.substring(start, end);
             assertEquals(
                     List.of(
@@ -425,8 +488,8 @@ class SystemPromptDumpTest {
 
     private static @NonNull List<@NonNull String> sectionHeadings(@NonNull String entry) {
         return entry.lines()
-                .filter(line -> line.startsWith("##### "))
-                .map(line -> line.substring("##### ".length()).strip())
+                .filter(line -> line.startsWith("#### "))
+                .map(line -> line.substring("#### ".length()).strip())
                 .toList();
     }
 

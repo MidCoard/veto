@@ -31,7 +31,7 @@ class DeepSeekLlmClientExtractJsonTest {
 
     @Test
     void cleanSingleObjectPassesThrough() throws Exception {
-        String json = "{\"message\":\"hi\",\"features\":{\"guided\":false}}";
+        String json = "{\"message\":\"hi\"}";
         JsonNode node = mapper.readTree(client.extractJson(json));
         assertEquals("hi", node.get("message").asText());
     }
@@ -53,9 +53,8 @@ class DeepSeekLlmClientExtractJsonTest {
         // The exact production shape from 2026-08-11: a message object, a blank line, then a
         // calls object. Jackson's readValue would parse the first and silently drop the calls.
         String content =
-                "{\"message\":\"Executing...\",\"features\":{\"guided\":false}}\n\n"
-                        + "{\"calls\":[{\"tool_name\":\"run_command\",\"args\":{}}],"
-                        + "\"features\":{\"guided\":false}}";
+                "{\"message\":\"Executing...\"}\n\n"
+                        + "{\"calls\":[{\"tool_name\":\"run_command\",\"args\":{}}]}";
         JsonNode node = mapper.readTree(client.extractJson(content));
         assertEquals("Executing...", node.get("message").asText());
         assertEquals(1, node.get("calls").size());

@@ -68,14 +68,7 @@ public final class ListDirTool implements WorkspaceReadTool<ListDirTool.Args> {
                     partial success.
                     """,
             security =
-                    """
-                    `absolutePath` is a FILESYSTEM_PATH parameter: the Gateway canonicalizes it and screens it \
-                    under the deployer policy before the listing. Under FULL_ACCESS, workspace roots are working \
-                    context rather than a path boundary, so any absolute host path may be targeted; restrictive \
-                    policies may fence paths. The operation is read-only \
-                    (`WORKSPACE_READ`, default danger `SAFE`); nothing is modified. Returned names are subject to ingress \
-                    masking. If the Gateway actually refuses a deployer-fenced path, change scope instead.
-                    """,
+                    "Read-only. Follow the current Boundaries rules. If access is refused, change scope instead of retrying the same path.",
             examples = {
                 "{\"absolutePath\": \"/abs/src\"}",
                 "{\"absolutePath\": \"/abs\"}",

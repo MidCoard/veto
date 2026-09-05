@@ -34,9 +34,13 @@ public class SystemPromptResolver {
             "General-purpose engineering assistant for workspace and code automation.";
 
     private final @NonNull String defaultPrompt;
+    private final @NonNull String guidedPrompt;
+    private final @NonNull String delegationPrompt;
 
     public SystemPromptResolver() {
         this.defaultPrompt = loadDefault();
+        this.guidedPrompt = loadRules("veto/guided-system-prompt.md");
+        this.delegationPrompt = loadRules("veto/delegation-system-prompt.md");
     }
 
     /**
@@ -44,6 +48,24 @@ public class SystemPromptResolver {
      */
     public @NonNull String defaultPrompt() {
         return defaultPrompt;
+    }
+
+    /** Rules and examples included only when the session enables guided execution. */
+    public @NonNull String guidedPrompt() {
+        return guidedPrompt;
+    }
+
+    /** Selection rules and examples included only when create_group is available. */
+    public @NonNull String delegationPrompt() {
+        return delegationPrompt;
+    }
+
+    private static @NonNull String loadRules(@NonNull String resource) {
+        try (InputStream in = new ClassPathResource(resource).getInputStream()) {
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8).strip();
+        } catch (IOException e) {
+            throw new IllegalStateException("Cannot load tool usage rules: " + resource, e);
+        }
     }
 
     private static @NonNull String loadDefault() {

@@ -20,6 +20,8 @@ import top.focess.veto.agent.tool.AgentToolDefinition;
 import top.focess.veto.agent.tool.NativeToolDefinition;
 import top.focess.veto.agent.tool.ParamCategory;
 import top.focess.veto.agent.tool.RemoteToolDefinition;
+import top.focess.veto.agent.tool.ToolCallContext;
+import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.agent.workspace.Resolution;
 import top.focess.veto.agent.workspace.Workspace;
@@ -32,6 +34,9 @@ import top.focess.veto.llm.core.ToolCall;
  */
 public record ToolExecutionPermit(
         @NonNull String toolName,
+        @NonNull String callId,
+        @NonNull ToolCapability capability,
+        CallerBinding caller,
         @NonNull Map<@NonNull String, Object> screenedArguments,
         @NonNull Map<@NonNull String, @NonNull AuthorizedPath> filesystemPaths,
         @NonNull List<@NonNull Path> workspaceRoots,
@@ -43,6 +48,9 @@ public record ToolExecutionPermit(
     private static final @NonNull ToolExecutionPermit EMPTY =
             new ToolExecutionPermit(
                     "",
+                    "",
+                    ToolCapability.AGENT_CONTROL,
+                    null,
                     Map.of(),
                     Map.of(),
                     List.of(),
@@ -91,6 +99,9 @@ public record ToolExecutionPermit(
         if (hints.isEmpty()) {
             return new ToolExecutionPermit(
                     call.toolName(),
+                    call.callId(),
+                    definition.capability(),
+                    null,
                     call.args(),
                     Map.of(),
                     roots,
@@ -131,6 +142,9 @@ public record ToolExecutionPermit(
         }
         return new ToolExecutionPermit(
                 call.toolName(),
+                call.callId(),
+                definition.capability(),
+                null,
                 call.args(),
                 paths,
                 roots,
@@ -144,6 +158,9 @@ public record ToolExecutionPermit(
     public @NonNull ToolExecutionPermit withTaskBinding(@NonNull TaskBinding binding) {
         return new ToolExecutionPermit(
                 toolName,
+                callId,
+                capability,
+                caller,
                 screenedArguments,
                 filesystemPaths,
                 workspaceRoots,
@@ -153,14 +170,60 @@ public record ToolExecutionPermit(
                 binding);
     }
 
+    /** Binds authorization to the runtime caller immediately before dispatch. */
+    public @NonNull ToolExecutionPermit withCaller(
+            @NonNull String agentId,
+            @NonNull UUID userId,
+            UUID groupId,
+            String owner,
+            UUID sessionId) {
+        return new ToolExecutionPermit(
+                toolName,
+                callId,
+                capability,
+                new CallerBinding(agentId, userId, groupId, owner, sessionId),
+                screenedArguments,
+                filesystemPaths,
+                workspaceRoots,
+                executionRoot,
+                deployerPolicy,
+                protectedPaths,
+                taskBinding);
+    }
+
+    public boolean authorizes(
+            @NonNull ToolCall call,
+            @NonNull ToolDefinition definition,
+            @NonNull ToolCallContext context) {
+        return matchesCall(call)
+                && capability == definition.capability()
+                && caller != null
+                && caller.agentId().equals(context.agentId())
+                && caller.userId().equals(context.userId())
+                && Objects.equals(caller.groupId(), context.groupId())
+                && Objects.equals(caller.owner(), context.owner())
+                && Objects.equals(caller.sessionId(), context.sessionId());
+    }
+
+    public record CallerBinding(
+            @NonNull String agentId,
+            @NonNull UUID userId,
+            UUID groupId,
+            String owner,
+            UUID sessionId) {}
+
     /** Whether this permit still binds the exact immutable tool call. */
     public boolean matchesCall(@NonNull ToolCall call) {
-        return toolName.equals(call.toolName()) && screenedArguments.equals(call.args());
+        return toolName.equals(call.toolName())
+                && callId.equals(call.callId())
+                && screenedArguments.equals(call.args());
     }
 
     /** Whether this permit and a fresh capture still bind the same call and resources. */
     public boolean sameTargets(@NonNull ToolExecutionPermit current) {
-        if (!toolName.equals(current.toolName)
+        if (!callId.equals(current.callId)
+                || capability != current.capability
+                || !toolName.equals(current.toolName)
                 || !screenedArguments.equals(current.screenedArguments)) {
             return false;
         }

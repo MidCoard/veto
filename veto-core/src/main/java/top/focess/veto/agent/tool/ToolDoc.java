@@ -53,7 +53,7 @@ public @interface ToolDoc {
     /** Non-duplicative limits, recovery guidance, and edge conditions. */
     @NonNull String errorsAndEdgeCases();
 
-    /** Internal security classification and enforcement notes. */
+    /** Agent-facing access restrictions and obligations. */
     @NonNull String security();
 
     /**

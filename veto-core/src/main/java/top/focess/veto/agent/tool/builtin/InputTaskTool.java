@@ -67,10 +67,7 @@ public final class InputTaskTool implements NativeTool<InputTaskTool.Args> {
                             + " Use view_task to inspect bounded asynchronous inputFailures and"
                             + " stop_task if the process must be terminated.",
             security =
-                    "Session- and agent-scoped task control. Gateway semantic screening receives"
-                            + " the exact process executable, argv, cwd, and network policy; execution"
-                            + " is rebound to that task instance after approval. Input cannot expand"
-                            + " the process's existing sandbox authority.",
+                    "You can send input only to your own task in this session. Input does not grant the process additional file or network access and may require approval.",
             examples = {
                 "{\"taskId\":\"bg-3\",\"content\":\"yes\",\"appendNewline\":true,\"closeStdin\":false}",
                 "{\"taskId\":\"bg-3\",\"content\":\"\",\"appendNewline\":false,\"closeStdin\":true}"

@@ -125,7 +125,8 @@ public final class GroupTools {
                             owner,
                             task,
                             hitlRegistry.workspace(leaderId),
-                            ctx.toolResultPresentation());
+                            ctx.toolResultPresentation(),
+                            ctx.guidedEnabled());
 
             // Request the delegation transform: the runner rewinds, re-seeds the Leader persona +
             // tool set + top-tier binding, stamps the group, and re-injects the brief. This call's
@@ -175,7 +176,7 @@ public final class GroupTools {
                     """,
             security =
                     """
-                    Agent tool with `GROUP_CONTROL` capability. The Gateway does not screen it. Leader-only.
+                    Operate only on your current group; respect requests to stop ongoing work.
                     """,
             examples = {"{}"},
             returnExamples = {""})
@@ -301,8 +302,7 @@ public final class GroupTools {
                     """,
             security =
                     """
-                    Agent tool with `GROUP_CONTROL` capability. Leader-only. The group id comes from the authenticated \
-                    tool-call context; callers cannot inspect another group by id.
+                    Inspect only your current group. Use returned state and reports as evidence; do not infer completion from elapsed time.
                     """,
             examples = {"{}", "{\"sinceSeq\": 4, \"waitSeconds\": 15}"},
             returnExamples = {
@@ -491,7 +491,7 @@ public final class GroupTools {
                     """,
             security =
                     """
-                    Agent tool with `GROUP_CONTROL` capability. The Gateway does not screen it. Leader-only. \
+                    Operate only on your current group; respect requests to stop ongoing work. \
                     Hub-and-spoke: the Leader addresses a single Mate by id.
                     """,
             examples = {

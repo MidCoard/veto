@@ -106,11 +106,7 @@ public final class RunCommandTool implements NativeTool<RunCommandTool.Args> {
                     an observed executable path rather than guessing repeatedly.
                     """,
             security =
-                    """
-                    The command and any requested network access are screened before execution. The working \
-                    directory remains bound to the session workspace root. Execution is audited and may require \
-                    human approval. Approval does not remove the sandbox or argument-separation constraints.
-                    """,
+                    "The working directory is the session workspace root. Execution and requested network access may require approval. Approval does not expand filesystem access or permit combining executable and arguments.",
             examples = {
                 "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"build\"]}], \"connect\": \"STOP_ON_FAILURE\", \"timeout\": 300}",
                 "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"test\"]}], \"timeout\": 300}",
@@ -130,7 +126,7 @@ public final class RunCommandTool implements NativeTool<RunCommandTool.Args> {
             @Doc("How Veto connects the commands: STOP_ON_FAILURE (default), RUN_ALL, or PIPE.")
                     ChainMode connect,
             @Doc(
-                            "Request network access for this execution. Defaults to false; true is separately Gateway-screened.")
+                            "Request network access for this execution. Defaults to false; true may require approval.")
                     Boolean network,
             @NonNull
                     @Doc(
@@ -165,13 +161,14 @@ public final class RunCommandTool implements NativeTool<RunCommandTool.Args> {
         ToolCallContext context = ToolCallContextHolder.get();
         String callId = ToolCallContextHolder.currentCallId();
         if (context == null || callId == null || callId.isEmpty()) {
-            throw new SecurityException("run_command requires its screened execution permit");
+            throw new SecurityException(
+                    "This tool call is not authorized for the current session; submit a fresh call.");
         }
         ToolExecutionPermit permit = context.executionPermit();
         Args screened = mapper.convertValue(permit.screenedArguments(), getArgsClass());
         if (!getName().equals(permit.toolName()) || !args.equals(screened)) {
             throw new SecurityException(
-                    "run_command arguments do not match the screened execution permit");
+                    "This tool call is not authorized for the current session; submit a fresh call.");
         }
         Path workspaceRoot = permit.requireExecutionRoot();
         SandboxProfile profile =

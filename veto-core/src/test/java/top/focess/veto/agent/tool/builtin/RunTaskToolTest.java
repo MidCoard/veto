@@ -19,6 +19,7 @@ import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.screening.DeployerPolicy;
 import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
+import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolExecutionException;
@@ -58,6 +59,7 @@ class RunTaskToolTest {
                         null,
                         null,
                         ToolResultPresentationMode.BASIC,
+                        false,
                         ToolExecutionPermit.empty()));
     }
 
@@ -73,6 +75,9 @@ class RunTaskToolTest {
         ToolExecutionPermit permit =
                 new ToolExecutionPermit(
                         "run_task",
+                        "test-call",
+                        ToolCapability.PROCESS_EXECUTION,
+                        null,
                         Map.of(),
                         Map.of(),
                         List.of(tempDir),
@@ -88,6 +93,7 @@ class RunTaskToolTest {
                         null,
                         null,
                         ToolResultPresentationMode.BASIC,
+                        false,
                         permit));
         boolean win = System.getProperty("os.name").toLowerCase().contains("win");
         String exe =

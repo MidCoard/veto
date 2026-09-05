@@ -38,21 +38,27 @@ class VetoCapabilityTranslatorTest {
         assertFalse(
                 contains(required, "message"),
                 "message not schema-required (enforcer handles stop)");
-        assertTrue(contains(required, "features"));
+        assertFalse(contains(required, "features"));
     }
 
     @Test
-    void guidedSwitchRequiresActionsForbidsCalls() {
+    void enabledGuideIsOptionalAndKeepsNormalCallsAvailable() {
         JsonNode schema = translator.vetoResponseSchema(true);
         JsonNode props = schema.get("properties");
         JsonNode required = schema.get("required");
-        assertFalse(props.has("calls"), "calls forbidden when guided");
-        assertTrue(props.has("actions"), "actions present when guided");
-        assertEquals("array", props.get("actions").get("type").asText(), "actions is a flat array");
-        assertTrue(contains(required, "actions"), "actions required when guided");
-        assertTrue(contains(required, "features"));
+        assertTrue(props.has("calls"));
+        assertTrue(props.has("guide"));
+        JsonNode guide = props.path("guide");
+        assertEquals(
+                "array",
+                guide.path("properties").path("actions").get("type").asText(),
+                "actions is a flat array");
+        assertFalse(contains(required, "guide"));
+        assertTrue(contains(guide.path("required"), "actions"));
+        assertFalse(contains(required, "features"));
         assertFalse(contains(required, "thought"), "thought never required");
-        JsonNode actionVariants = props.path("actions").path("items").path("anyOf");
+        JsonNode actionVariants =
+                guide.path("properties").path("actions").path("items").path("anyOf");
         assertEquals(4, actionVariants.size(), "four non-tool guided action kinds without tools");
         assertTrue(hasDiscriminator(actionVariants, "generate"));
         assertTrue(hasDiscriminator(actionVariants, "goto"));
@@ -61,14 +67,14 @@ class VetoCapabilityTranslatorTest {
     }
 
     @Test
-    void featuresAlwaysRequiredClosedAndGuidedOnly() {
-        for (boolean guided : new boolean[] {true, false}) {
-            JsonNode schema = translator.vetoResponseSchema(guided);
-            JsonNode features = schema.get("properties").get("features");
-            assertEquals(false, features.get("additionalProperties").asBoolean());
-            assertTrue(contains(features.get("required"), "guided"));
-            assertFalse(contains(features.get("required"), "thought"), "features.thought removed");
-            assertFalse(features.get("properties").has("thought"), "features.thought removed");
+    void featureBagIsAbsentAndGuideIsOnlyAdvertisedWhenEnabled() {
+        for (boolean enabled : new boolean[] {true, false}) {
+            JsonNode props = translator.vetoResponseSchema(enabled).path("properties");
+            assertFalse(props.has("features"));
+            assertFalse(props.has("actions"));
+            assertEquals(enabled, props.has("guide"));
+            assertTrue(props.has("calls"));
+            assertTrue(props.has("message"));
         }
     }
 
@@ -95,7 +101,6 @@ class VetoCapabilityTranslatorTest {
                         new ToolDefinition(
                                 "view_file",
                                 "Read a file.",
-                                ToolCapability.WORKSPACE_READ,
                                 viewArgs,
                                 List.of(),
                                 ToolDocumentation.empty(),
@@ -104,7 +109,6 @@ class VetoCapabilityTranslatorTest {
                         new ToolDefinition(
                                 "think",
                                 "Continue deliberately.",
-                                ToolCapability.LOOP_CONTROL,
                                 thinkArgs,
                                 List.of(),
                                 ToolDocumentation.empty(),
@@ -164,8 +168,6 @@ class VetoCapabilityTranslatorTest {
         assertEquals(2, flat.size());
         assertEquals("view_file", flat.get(0).name());
         assertEquals("Read a file.", flat.get(0).description());
-        assertEquals(ToolCapability.WORKSPACE_READ, flat.get(0).capability());
-        assertEquals(ToolCapability.SKILL_READ, flat.get(1).capability());
         assertNotNull(flat.get(0).inputSchema());
         assertEquals("object", flat.get(0).inputSchema().get("type"));
         assertFalse(
@@ -204,7 +206,6 @@ class VetoCapabilityTranslatorTest {
                 new ToolDefinition(
                         "view_file",
                         "Read a file.",
-                        ToolCapability.WORKSPACE_READ,
                         args,
                         List.of(),
                         ToolDocumentation.empty(),
@@ -214,6 +215,8 @@ class VetoCapabilityTranslatorTest {
         JsonNode variants =
                 translator
                         .vetoResponseSchema(true, List.of(tool))
+                        .path("properties")
+                        .path("guide")
                         .path("properties")
                         .path("actions")
                         .path("items")

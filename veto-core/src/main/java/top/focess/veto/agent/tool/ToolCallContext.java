@@ -33,4 +33,5 @@ public record ToolCallContext(
         String owner,
         UUID sessionId,
         @NonNull ToolResultPresentationMode toolResultPresentation,
+        boolean guidedEnabled,
         @NonNull ToolExecutionPermit executionPermit) {}

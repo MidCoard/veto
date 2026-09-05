@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.identity.Role;
@@ -61,7 +62,10 @@ class PromptCompileRenderTest {
     void renderStandaloneFullAccess() {
         String prompt = render(Role.STANDALONE, DeployerPolicy.FULL_ACCESS, null, sampleTools());
         System.out.println("===== STANDALONE / FULL_ACCESS =====\n" + prompt);
-        assertCompiled(prompt, "You operate directly on the user's workspace", "create_group");
+        assertCompiled(prompt, "You operate directly on the user's workspace", "### `run_command`");
+        assertFalse(
+                prompt.contains("create_group"), "unavailable delegation must not be advertised");
+        assertFalse(prompt.contains("## Delegation Rules"));
         assertTrue(
                 prompt.contains("## Your Tools"),
                 "standalone with tools should show the Tools block");
@@ -92,7 +96,7 @@ class PromptCompileRenderTest {
                 prompt.contains("## Your Tools\n"),
                 "leader with no tools should drop the Tools block");
         assertFalse(prompt.contains("PROTECTED"));
-        assertTrue(prompt.contains("protected set is a hard deny-list"));
+        assertTrue(prompt.contains("Protected targets cannot be accessed or approved"));
         assertTrue(prompt.contains("outside workspace roots remain addressable"));
         assertFalse(prompt.contains("another user's unshared workspace"));
     }
@@ -117,7 +121,7 @@ class PromptCompileRenderTest {
         assertTrue(prompt.contains("You are a Mate agent. Execute the assigned task."));
         assertFalse(prompt.contains("SANDBOXED"));
         assertTrue(prompt.contains("session workspace roots are hard path boundaries"));
-        assertFalse(prompt.contains("owner-issued sharing"));
+        assertFalse(prompt.contains("owner has shared it"));
     }
 
     @Test
@@ -128,9 +132,10 @@ class PromptCompileRenderTest {
         String tenant = render(Role.STANDALONE, DeployerPolicy.TENANT, null, List.of());
 
         assertTrue(full.contains("Filesystem access is not limited"));
-        assertTrue(protectedPrompt.contains("protected target cannot be approved"));
+        assertTrue(protectedPrompt.contains("Protected targets cannot be accessed or approved"));
         assertTrue(sandboxed.contains("session workspace roots are hard path boundaries"));
-        assertTrue(tenant.contains("owner-issued sharing"));
+        assertTrue(tenant.contains("listed workspace roots"));
+        assertFalse(tenant.contains("sharing"));
         assertFalse(full.equals(protectedPrompt));
         assertFalse(protectedPrompt.equals(sandboxed));
         assertFalse(sandboxed.equals(tenant));
@@ -149,7 +154,16 @@ class PromptCompileRenderTest {
                 assertCompiled(prompt, "Role: " + role + ".", "## Boundaries");
                 assertFalse(prompt.contains(policy.name()), prompt);
                 for (String internalName :
-                        List.of("FULL_ACCESS", "PROTECTED", "SANDBOXED", "TENANT", "Path mode:")) {
+                        List.of(
+                                "FULL_ACCESS",
+                                "PROTECTED",
+                                "SANDBOXED",
+                                "TENANT",
+                                "Path mode:",
+                                "Gateway",
+                                "screening",
+                                "jailbreak",
+                                "auditing")) {
                     assertFalse(prompt.contains(internalName), prompt);
                 }
                 assertFalse(prompt.contains("For a Mate"), prompt);
@@ -196,6 +210,12 @@ class PromptCompileRenderTest {
             String base,
             @NonNull List<@NonNull ToolDefinition> tools) {
         Map<String, String> blocks = new LinkedHashMap<>();
+        blocks.put("GUIDED_PROTOCOL", "");
+        blocks.put(
+                "DELEGATION_RULES",
+                tools.stream().anyMatch(tool -> "create_group".equals(tool.name()))
+                        ? resolver.delegationPrompt()
+                        : "");
         blocks.put("LAW", PromptBlocks.law(""));
         String identity =
                 PromptBlocks.identity(
@@ -234,7 +254,6 @@ class PromptCompileRenderTest {
                 new ToolDefinition(
                         "load_skill",
                         "Loads a skill.",
-                        ToolCapability.SKILL_READ,
                         schema,
                         List.of("{\"skillName\": \"git-rebase\"}", "{\"skillName\": \"deploy\"}"),
                         new ToolDocumentation(
@@ -247,24 +266,23 @@ class PromptCompileRenderTest {
                         List.of(),
                         List.of(ToolResultFormat.PLAINTEXT));
         String block = PromptBlocks.tools(List.of(tool));
-        assertTrue(
-                block.contains("#### Tool name: `load_skill`"), "tool heading rendered:\n" + block);
-        assertTrue(block.contains("##### Result formats"), "result formats rendered:\n" + block);
+        assertTrue(block.contains("### `load_skill`"), "tool heading rendered:\n" + block);
+        assertTrue(block.contains("#### Result formats"), "result formats rendered:\n" + block);
         assertFalse(block.contains("`json`"), "undeclared json format rendered:\n" + block);
         assertTrue(block.contains("`plaintext`"), "plaintext format rendered:\n" + block);
         assertFalse(block.contains("error-special-plaintext"), block);
-        assertTrue(block.contains("##### Args"), "args label rendered:\n" + block);
+        assertTrue(block.contains("#### Args"), "args label rendered:\n" + block);
         assertTrue(
                 block.contains("`skillName` (string, required)"),
                 "arg name + type + required rendered:\n" + block);
         assertTrue(
                 block.contains("The name of the skill to load."),
                 "arg description rendered:\n" + block);
-        assertTrue(block.contains("##### Call examples"), "examples label rendered:\n" + block);
+        assertTrue(block.contains("#### Call examples"), "examples label rendered:\n" + block);
         assertTrue(block.contains("git-rebase"), "example content rendered:\n" + block);
         assertFalse(block.contains("deploy"), "only one schematic example is needed:\n" + block);
         assertTrue(
-                block.contains("##### When to use"),
+                block.contains("#### When to use"),
                 "tool selection guidance must be model-visible:\n" + block);
     }
 
@@ -273,7 +291,10 @@ class PromptCompileRenderTest {
         String prompt = render(Role.STANDALONE, DeployerPolicy.FULL_ACCESS, null, sampleTools());
 
         assertTrue(
-                prompt.contains("{\"tool_name\": \"<catalog name>\", \"args\":"),
+                Pattern.compile(
+                                "\\{\\s*\"tool_name\"\\s*:\\s*\"<catalog name>\"\\s*,\\s*\"args\"\\s*:\\s*\\{")
+                        .matcher(prompt)
+                        .find(),
                 "the documented call envelope must use the schema's tool_name field:\n" + prompt);
         assertFalse(
                 prompt.contains("whose `name` is the tool"),
@@ -281,12 +302,10 @@ class PromptCompileRenderTest {
         assertTrue(
                 prompt.contains("authorized procedural guidance"),
                 "skill guidance must remain inside the task and authority boundaries:\n" + prompt);
-        assertTrue(
-                prompt.contains("Guided mode uses two iterations"),
-                "guided mode must document the actual schema handshake:\n" + prompt);
-        assertTrue(
-                prompt.contains("Do not emit `actions` yet"),
-                "the autonomous schema forbids same-turn actions:\n" + prompt);
+        assertFalse(prompt.contains("Guided mode uses two iterations"));
+        assertFalse(
+                prompt.contains("conditional_goto"),
+                "disabled prompt must not advertise guided programs");
         assertBefore(
                 prompt,
                 "\n## Tool Result Conventions\n",
@@ -315,7 +334,6 @@ class PromptCompileRenderTest {
                 new ToolDefinition(
                         "view_file",
                         "Reads a text file.",
-                        ToolCapability.WORKSPACE_READ,
                         schema,
                         List.of("{\"absolutePath\":\"/abs/project/Main.java\"}"),
                         new ToolDocumentation(
@@ -332,33 +350,33 @@ class PromptCompileRenderTest {
 
         assertBefore(
                 block,
-                "##### Args",
-                "##### Result formats",
+                "#### Args",
+                "#### Result formats",
                 "args are declared before result formats");
         assertBefore(
-                block, "##### Result formats", "##### Behavior", "result formats precede behavior");
+                block, "#### Result formats", "#### Behavior", "result formats precede behavior");
         assertBefore(
-                block, "##### Behavior", "##### When to use", "behavior precedes usage guidance");
-        assertBefore(block, "##### When to use", "##### When not to use", "usage order");
+                block, "#### Behavior", "#### When to use", "behavior precedes usage guidance");
+        assertBefore(block, "#### When to use", "#### When not to use", "usage order");
         assertBefore(
                 block,
-                "##### When not to use",
-                "##### Call examples",
+                "#### When not to use",
+                "#### Call examples",
                 "examples follow usage guidance");
         assertBefore(
                 block,
-                "##### Call examples",
-                "##### Result contract",
+                "#### Call examples",
+                "#### Result contract",
                 "result contract follows the call examples");
         assertBefore(
                 block,
-                "##### Result contract",
-                "##### Result examples",
+                "#### Result contract",
+                "#### Result examples",
                 "result examples follow their contract");
         assertBefore(
                 block,
-                "##### Result examples",
-                "##### Errors and edge cases",
+                "#### Result examples",
+                "#### Errors and edge cases",
                 "edge-case guidance follows success examples");
         assertFalse(block.contains("#### Security"), block);
         assertFalse(block.contains("Example output only; no tool call was made."));
@@ -374,7 +392,6 @@ class PromptCompileRenderTest {
                 new ToolDefinition(
                         "web_fetch",
                         "Fetches a page.",
-                        ToolCapability.NETWORK_EGRESS,
                         Map.of("type", "object", "properties", Map.of()),
                         List.of(),
                         ToolDocumentation.empty(),
@@ -388,24 +405,12 @@ class PromptCompileRenderTest {
     }
 
     @Test
-    void toolCatalogGroupsToolsByManifestCapability() {
+    void toolCatalogListsToolsByNameWithoutInternalCategories() {
         String block = PromptBlocks.tools(sampleTools());
-
-        assertBefore(
-                block,
-                "### Tool capability: Workspace Read",
-                "#### Tool name: `view_file`",
-                "workspace-read heading precedes its tool");
-        assertBefore(
-                block,
-                "#### Tool name: `view_file`",
-                "### Tool capability: Process Execution",
-                "capabilities follow manifest enum order");
-        assertBefore(
-                block,
-                "### Tool capability: Process Execution",
-                "#### Tool name: `run_command`",
-                "process-execution heading precedes its tool");
+        assertBefore(block, "### `run_command`", "### `view_file`", "tools are ordered by name");
+        assertFalse(block.contains("Tool capability"), block);
+        assertFalse(block.contains("Workspace Read"), block);
+        assertFalse(block.contains("Process Execution"), block);
     }
 
     @Test
@@ -418,8 +423,8 @@ class PromptCompileRenderTest {
         List<ToolDefinition> flat =
                 new VetoCapabilityTranslator().translateTools(List.of(manifest));
         String block = PromptBlocks.tools(flat);
-        int contractStart = block.indexOf("##### Result contract");
-        int examplesStart = block.indexOf("##### Result examples");
+        int contractStart = block.indexOf("#### Result contract");
+        int examplesStart = block.indexOf("#### Result examples");
         String contract = block.substring(contractStart, examplesStart);
 
         assertTrue(contract.contains("Success -> `forgotten: <memoryId>`"));
@@ -452,7 +457,6 @@ class PromptCompileRenderTest {
                 new ToolDefinition(
                         "grep_search",
                         "Search for exact pattern matches inside files.",
-                        ToolCapability.WORKSPACE_READ,
                         schema,
                         ToolDocs.examplesOf(ToolDocs.nonNullClass(GrepSearchTool.Args.class)),
                         ToolDocs.documentationOf(ToolDocs.nonNullClass(GrepSearchTool.Args.class)),
@@ -460,11 +464,9 @@ class PromptCompileRenderTest {
                         ToolDocs.resultFormatsOf(ToolDocs.nonNullClass(GrepSearchTool.Args.class)));
         String block = PromptBlocks.tools(List.of(tool));
         System.out.println("===== REAL grep_search catalog entry =====\n" + block);
-        assertTrue(
-                block.contains("#### Tool name: `grep_search`"),
-                "tool heading rendered:\n" + block);
-        assertTrue(block.contains("##### When to use"), "usage advice is rendered:\n" + block);
-        assertTrue(block.contains("##### Behavior"), "essential behavior rendered:\n" + block);
+        assertTrue(block.contains("### `grep_search`"), "tool heading rendered:\n" + block);
+        assertTrue(block.contains("#### When to use"), "usage advice is rendered:\n" + block);
+        assertTrue(block.contains("#### Behavior"), "essential behavior rendered:\n" + block);
         assertFalse(
                 block.contains("#### Security"), "Gateway security prose is omitted:\n" + block);
         assertTrue(
@@ -491,7 +493,6 @@ class PromptCompileRenderTest {
                 new ToolDefinition(
                         "run_command",
                         "runs discrete commands in the sandbox",
-                        ToolCapability.PROCESS_EXECUTION,
                         Map.of("type", "object", "properties", Map.of("commands", Map.of())),
                         List.of(),
                         ToolDocumentation.empty(),
@@ -500,7 +501,6 @@ class PromptCompileRenderTest {
                 new ToolDefinition(
                         "view_file",
                         "reads lines of a text file",
-                        ToolCapability.WORKSPACE_READ,
                         Map.of("type", "object", "properties", Map.of("absolutePath", Map.of())),
                         List.of(),
                         ToolDocumentation.empty(),

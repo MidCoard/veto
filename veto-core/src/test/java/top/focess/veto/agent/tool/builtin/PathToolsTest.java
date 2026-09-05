@@ -25,6 +25,7 @@ import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.screening.DeployerPolicy;
 import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
+import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.tool.ToolExecutionException;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
@@ -253,6 +254,11 @@ class PathToolsTest {
         ToolExecutionPermit permit =
                 new ToolExecutionPermit(
                         toolName,
+                        "test-call",
+                        "find_files".equals(toolName)
+                                ? ToolCapability.WORKSPACE_READ
+                                : ToolCapability.WORKSPACE_WRITE,
+                        null,
                         Map.copyOf(paths),
                         authorized,
                         List.of(root),
@@ -268,6 +274,7 @@ class PathToolsTest {
                         null,
                         UUID.randomUUID(),
                         ToolResultPresentationMode.BASIC,
+                        false,
                         permit));
     }
 }

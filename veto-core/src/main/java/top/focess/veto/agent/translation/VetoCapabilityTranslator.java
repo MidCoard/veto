@@ -52,7 +52,6 @@ public class VetoCapabilityTranslator implements CapabilityTranslator {
                     new top.focess.veto.llm.core.ToolDefinition(
                             def.name(),
                             def.description(),
-                            def.capability(),
                             inputSchema,
                             def.examples(),
                             def.documentation(),
@@ -63,13 +62,13 @@ public class VetoCapabilityTranslator implements CapabilityTranslator {
     }
 
     @Override
-    public @NonNull JsonNode vetoResponseSchema(boolean guidedSwitch) {
-        return vetoResponseSchema(guidedSwitch, List.of());
+    public @NonNull JsonNode vetoResponseSchema(boolean guidedEnabled) {
+        return vetoResponseSchema(guidedEnabled, List.of());
     }
 
     @Override
     public @NonNull JsonNode vetoResponseSchema(
-            boolean guidedSwitch, @NonNull List<top.focess.veto.llm.core.ToolDefinition> tools) {
+            boolean guidedEnabled, @NonNull List<top.focess.veto.llm.core.ToolDefinition> tools) {
         ObjectNode root = MAPPER.createObjectNode();
         root.put("type", "object");
         ObjectNode properties = MAPPER.createObjectNode();
@@ -80,52 +79,28 @@ public class VetoCapabilityTranslator implements CapabilityTranslator {
                 "thought",
                 stringNode("Optional internal reasoning before acting. Include when useful."));
 
-        if (!guidedSwitch) {
-            ObjectNode calls = MAPPER.createObjectNode();
-            calls.put("type", "array");
-            calls.set("items", callItemSchema(tools));
-            calls.put("minItems", 1);
-            calls.put(
-                    "description",
-                    "The ordered tool calls to execute. Mutually exclusive with actions.");
-            properties.set("calls", calls);
-        }
-        // guidedSwitch -> calls absent; additionalProperties:false forbids it.
-
+        ObjectNode calls = MAPPER.createObjectNode();
+        calls.put("type", "array");
+        calls.set("items", callItemSchema(tools));
+        calls.put("minItems", 1);
+        calls.put("description", "Ordered catalog tool calls. Mutually exclusive with guide.");
+        properties.set("calls", calls);
         properties.set(
-                "message",
-                stringNode(
-                        "Final response text. Required when stopping (no tool calls and no actions)."));
-
-        ObjectNode features = MAPPER.createObjectNode();
-        features.put("type", "object");
-        ObjectNode featureProps = MAPPER.createObjectNode();
-        featureProps.set(
-                "guided",
-                typedSchemaNode(
-                        "boolean",
-                        "Selects guided (true) vs autonomous (false) for the NEXT iteration."));
-        features.set("properties", featureProps);
-        ArrayNode featureRequired = MAPPER.createArrayNode();
-        featureRequired.add("guided");
-        features.set("required", featureRequired);
-        features.put("additionalProperties", false);
-        properties.set("features", features);
-        required.add("features");
-
-        if (guidedSwitch) {
-            ObjectNode actions = MAPPER.createObjectNode();
+                "message", stringNode("Final answer, or a progress message accompanying work."));
+        if (guidedEnabled) {
+            ObjectNode guide = MAPPER.createObjectNode();
+            guide.put("type", "object");
+            guide.put("additionalProperties", false);
+            ObjectNode actions = guide.putObject("properties").putObject("actions");
             actions.put("type", "array");
-            actions.set("items", actionItemSchema(tools));
             actions.put("minItems", 1);
-            actions.put(
+            actions.set("items", actionItemSchema(tools));
+            guide.putArray("required").add("actions");
+            guide.put(
                     "description",
-                    "The guided-mode IR: an ordered list of actions. Present only when"
-                            + " features.guided=true. Mutually exclusive with calls.");
-            properties.set("actions", actions);
-            required.add("actions");
+                    "Submit a complete program for immediate execution. Mutually exclusive with calls.");
+            properties.set("guide", guide);
         }
-
         root.set("properties", properties);
         root.set("required", required);
         root.put("additionalProperties", false);

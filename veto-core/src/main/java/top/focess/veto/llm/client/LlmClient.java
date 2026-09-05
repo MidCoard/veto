@@ -2,6 +2,7 @@ package top.focess.veto.llm.client;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
 import java.util.List;
@@ -83,16 +84,8 @@ public abstract class LlmClient {
                                     entry -> {
                                         JsonNode existing = merged.get(entry.getKey());
                                         if ("calls".equals(entry.getKey())
-                                                && existing
-                                                        instanceof
-                                                        com.fasterxml.jackson.databind.node
-                                                                        .ArrayNode
-                                                                a
-                                                && entry.getValue()
-                                                        instanceof
-                                                        com.fasterxml.jackson.databind.node
-                                                                        .ArrayNode
-                                                                b) {
+                                                && existing instanceof ArrayNode a
+                                                && entry.getValue() instanceof ArrayNode b) {
                                             a.addAll(b);
                                         } else if (existing == null || existing.isNull()) {
                                             merged.set(entry.getKey(), entry.getValue());

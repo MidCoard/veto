@@ -55,9 +55,7 @@ public final class DeletePathTool implements WorkspaceWriteTool<DeletePathTool.A
                             + " with the number already deleted in its message. Earlier deletions cannot"
                             + " be rolled back.",
             security =
-                    "Workspace write tool with a deterministic DANGEROUS floor, mandatory semantic"
-                            + " screening, human approval when required, and a call-scoped capability"
-                            + " issued by the Gateway.",
+                    "Deletion is destructive and may require approval. Verify the target and recursive flag before calling.",
             examples = {
                 "{\"absolutePath\":\"<workspace-root>/obsolete.txt\",\"recursive\":false}",
                 "{\"absolutePath\":\"<workspace-root>/generated\",\"recursive\":true}"

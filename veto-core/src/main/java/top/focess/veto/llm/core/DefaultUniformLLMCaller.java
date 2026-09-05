@@ -80,8 +80,7 @@ public class DefaultUniformLLMCaller implements UniformLLMCaller {
                                 null, // thought
                                 null, // calls
                                 plainText.text(), // message
-                                new VetoResponse.Features(false), // autonomous, stopping
-                                null); // actions
+                                null); // guide
                     }
                     throw e;
                 }

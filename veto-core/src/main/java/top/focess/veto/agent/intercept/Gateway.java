@@ -155,7 +155,7 @@ public class Gateway {
             @NonNull ToolDefinition definition,
             @NonNull ToolExecutionPermit screenedPermit) {
         if (definition instanceof AgentToolDefinition) {
-            return ToolExecutionPermit.empty();
+            return ToolExecutionPermit.capture(call, definition, workspace, policy, protectedSet);
         }
         ToolExecutionPermit current =
                 ToolExecutionPermit.capture(call, definition, workspace, policy, protectedSet);

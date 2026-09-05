@@ -2,6 +2,9 @@ package top.focess.veto.llm.core;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Map;
@@ -11,7 +14,7 @@ import top.focess.veto.agent.tool.ToolDocs;
 
 /**
  * Guards the snake_case binding of the universal {@link VetoResponse} ({@code veto_pulse}) schema —
- * the shared contract. Verifies {@code tool_name} / {@code features} populate the record correctly.
+ * the shared contract. Verifies {@code tool_name} / {@code guide} populate the record correctly.
  */
 class VetoResponseDeserializationTest {
     private final @NonNull ObjectMapper mapper = new ObjectMapper();
@@ -38,7 +41,7 @@ class VetoResponseDeserializationTest {
     void bindsAutonomousCall() throws Exception {
         String json =
                 "{\"thought\":\"t\",\"calls\":[{\"tool_name\":\"list_files\",\"args\":{\"path\":\"/x\"}}],"
-                        + "\"features\":{\"guided\":false}}";
+                        + "\"message\":null}";
         VetoResponse response = mapper.readValue(json, ToolDocs.nonNullClass(VetoResponse.class));
         assertEquals("t", response.thought());
         assertTrue(response.hasCalls());
@@ -46,17 +49,16 @@ class VetoResponseDeserializationTest {
         assertEquals(1, calls.size());
         assertEquals("list_files", calls.get(0).toolName());
         assertEquals("/x", calls.get(0).args().get("path"));
-        VetoResponse.@NonNull Features features = requireFeatures(response.features());
-        assertFalse(features.guided());
+        assertNull(response.guide());
     }
 
     @Test
     void bindsStopNoCalls() throws Exception {
-        String json = "{\"message\":\"done\",\"features\":{\"guided\":false}}";
+        String json = "{\"message\":\"done\"}";
         VetoResponse response = mapper.readValue(json, ToolDocs.nonNullClass(VetoResponse.class));
         assertFalse(response.hasCalls());
         assertEquals("done", response.message());
-        requireFeatures(response.features());
+        assertNull(response.guide());
     }
 
     private static @NonNull List<@NonNull ToolCall> requireCalls(List<@NonNull ToolCall> calls) {
@@ -66,10 +68,35 @@ class VetoResponseDeserializationTest {
         throw new AssertionError("calls should be present");
     }
 
-    private static VetoResponse.@NonNull Features requireFeatures(VetoResponse.Features features) {
-        if (features != null) {
-            return features;
+    @Test
+    void bindsDirectGuideWithoutHandshake() throws Exception {
+        VetoResponse response =
+                mapper.readValue(
+                        "{\"guide\":{\"actions\":[{\"id\":\"done\",\"label\":\"Finish\",\"type\":\"STOP\"}]}}",
+                        ToolDocs.nonNullClass(VetoResponse.class));
+        var guide = response.guide();
+        if (guide == null) throw new AssertionError("guide missing");
+        assertEquals("STOP", guide.actions().get(0).path("type").asText());
+        assertFalse(response.hasCalls());
+    }
+
+    @Test
+    void rejectsLegacyFeatureSwitchAndIncompleteGuideAtDeserialization() {
+        for (String json :
+                List.of(
+                        "{\"features\":{\"guided\":true}}",
+                        "{\"actions\":[]}",
+                        "{\"guide\":true}",
+                        "{\"guide\":{}}")) {
+            assertThrows(
+                    ToolDocs.nonNullClass(JsonProcessingException.class),
+                    () ->
+                            mapper.readerFor(ToolDocs.nonNullClass(VetoResponse.class))
+                                    .with(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+                                    .with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+                                    .with(JsonParser.Feature.STRICT_DUPLICATE_DETECTION)
+                                    .readValue(json),
+                    json);
         }
-        throw new AssertionError("features should be present");
     }
 }

@@ -97,12 +97,7 @@ class PerUserIdentityTest {
         UniformLLMCaller caller =
                 request -> {
                     seenRequests.add(request);
-                    return new VetoResponse(
-                            "Done.",
-                            List.of(),
-                            "Task complete.",
-                            new VetoResponse.Features(false),
-                            null);
+                    return new VetoResponse("Done.", null, "Task complete.", null);
                 };
 
         AgentService service = serviceWith(caller, turnLog);
@@ -138,13 +133,7 @@ class PerUserIdentityTest {
         TurnLogService turnLog = new TurnLogService(repo, new ObjectMapper());
 
         UniformLLMCaller caller =
-                request ->
-                        new VetoResponse(
-                                "Done.",
-                                List.of(),
-                                "Task complete.",
-                                new VetoResponse.Features(false),
-                                null);
+                request -> new VetoResponse("Done.", null, "Task complete.", null);
 
         AgentService service = serviceWith(caller, turnLog);
 
@@ -177,12 +166,7 @@ class PerUserIdentityTest {
                 request -> {
                     String currentUser = UserContext.get();
                     if (currentUser != null) seen.add(currentUser);
-                    return new VetoResponse(
-                            "Done.",
-                            List.of(),
-                            "Task complete.",
-                            new VetoResponse.Features(false),
-                            null);
+                    return new VetoResponse("Done.", null, "Task complete.", null);
                 };
 
         AgentService service = serviceWith(caller, turnLog);
@@ -222,12 +206,7 @@ class PerUserIdentityTest {
         UniformLLMCaller caller =
                 request -> {
                     sawNullContext.set(UserContext.get() == null);
-                    return new VetoResponse(
-                            "Done.",
-                            List.of(),
-                            "Task complete.",
-                            new VetoResponse.Features(false),
-                            null);
+                    return new VetoResponse("Done.", null, "Task complete.", null);
                 };
 
         AgentService service = serviceWith(caller, turnLog);

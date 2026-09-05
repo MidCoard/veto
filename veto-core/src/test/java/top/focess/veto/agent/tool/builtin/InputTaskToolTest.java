@@ -46,6 +46,7 @@ class InputTaskToolTest {
                         null,
                         sessionId,
                         ToolResultPresentationMode.BASIC,
+                        false,
                         ToolExecutionPermit.empty()));
     }
 
@@ -85,6 +86,7 @@ class InputTaskToolTest {
                         null,
                         sessionId,
                         ToolResultPresentationMode.BASIC,
+                        false,
                         ToolExecutionPermit.empty()
                                 .withTaskBinding(
                                         new ToolExecutionPermit.TaskBinding(

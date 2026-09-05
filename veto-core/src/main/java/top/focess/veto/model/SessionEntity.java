@@ -46,6 +46,10 @@ public class SessionEntity {
     @Column(name = "tool_result_presentation")
     private ToolResultPresentationMode toolResultPresentation;
 
+    /** Immutable session-start selection; null legacy rows mean disabled. */
+    @Column(name = "guided_enabled")
+    private Boolean guidedEnabled;
+
     @Column(name = "created_at", nullable = false)
     private @NonNull Instant createdAt = Instant.EPOCH;
 
@@ -82,12 +86,23 @@ public class SessionEntity {
             String workspaceRoots,
             int currentWorkspaceRootIndex,
             @NonNull ToolResultPresentationMode toolResultPresentation) {
+        this(owner, name, workspaceRoots, currentWorkspaceRootIndex, toolResultPresentation, false);
+    }
+
+    public SessionEntity(
+            @NonNull String owner,
+            @NonNull String name,
+            String workspaceRoots,
+            int currentWorkspaceRootIndex,
+            @NonNull ToolResultPresentationMode toolResultPresentation,
+            boolean guidedEnabled) {
         this.id = UUID.randomUUID().toString();
         this.owner = owner;
         this.name = name;
         this.workspaceRoots = workspaceRoots;
         this.currentWorkspaceRootIndex = currentWorkspaceRootIndex;
         this.toolResultPresentation = toolResultPresentation.canonical();
+        this.guidedEnabled = guidedEnabled;
         this.createdAt = Instant.now();
         this.lastActiveAt = this.createdAt;
     }
@@ -130,6 +145,10 @@ public class SessionEntity {
 
     public @NonNull ToolResultPresentationMode getToolResultPresentation() {
         return ToolResultPresentationMode.canonicalize(toolResultPresentation);
+    }
+
+    public boolean getGuidedEnabled() {
+        return Boolean.TRUE.equals(guidedEnabled);
     }
 
     public @NonNull Instant getCreatedAt() {

@@ -45,6 +45,7 @@ class MemoryToolsTest {
                         null,
                         null,
                         ToolResultPresentationMode.BASIC,
+                        false,
                         ToolExecutionPermit.empty()));
 
         MemoryTools.ForgetMemory tool = new MemoryTools.ForgetMemory(store);
@@ -101,6 +102,7 @@ class MemoryToolsTest {
                         null,
                         sessionId,
                         ToolResultPresentationMode.BASIC,
+                        false,
                         ToolExecutionPermit.empty()));
 
         MemoryTools.RecallMemory tool = new MemoryTools.RecallMemory(store);

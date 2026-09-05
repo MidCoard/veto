@@ -71,30 +71,37 @@ class GuidedExecutionTest {
                         null,
                         new BackgroundTaskManager(sandbox));
         service.setConfiguredDefaultWorkspace(Workspace.single(root, PathMode.REAL));
+        for (String id :
+                List.of(
+                        "read-guided",
+                        "command-guided",
+                        "bounded-guided",
+                        "failed-guided",
+                        "tier-guided",
+                        "recover-guided")) {
+            service.getOrCreateAgent(
+                    id,
+                    null,
+                    binding(),
+                    List.of(),
+                    UUID.randomUUID(),
+                    null,
+                    root.toString(),
+                    0,
+                    ToolResultPresentationMode.BASIC,
+                    true);
+        }
         return service;
     }
 
-    private static @NonNull VetoResponse switchMode() {
-        return new VetoResponse(
-                null,
-                List.of(new ToolCall("think", Map.of())),
-                null,
-                new VetoResponse.Features(true),
-                null);
-    }
-
     private static @NonNull VetoResponse message(@NonNull String value) {
-        return new VetoResponse(null, null, value, new VetoResponse.Features(false), null);
+        return new VetoResponse(null, null, value, null);
     }
 
     private static @NonNull VetoResponse actions(@NonNull String json) {
         try {
             return new VetoResponse(
-                    null,
-                    null,
-                    null,
-                    new VetoResponse.Features(true),
-                    new ObjectMapper().readTree(json));
+                    null, null, null, new VetoResponse.Guide(new ObjectMapper().readTree(json)));
         } catch (Exception e) {
             throw new AssertionError(e);
         }
@@ -118,11 +125,10 @@ class GuidedExecutionTest {
                 (UniformLLMCaller)
                         request -> {
                             int index = calls.getAndIncrement();
-                            if (index == 0) return switchMode();
-                            if (index == 1) return actions(program);
+                            if (index == 0) return actions(program);
                             assertTrue(request.userPrompt().contains("Migration guide"));
                             assertTrue(request.tools().isEmpty());
-                            if (index == 2) return message("true");
+                            if (index == 1) return message("true");
                             assertEquals((Object) 0.2, request.options().temperature());
                             assertFalse(request.userPrompt().contains("$document"));
                             return message("Migration summary");
@@ -132,7 +138,7 @@ class GuidedExecutionTest {
                         .submit("read-guided", "Read the notes", binding(), Duration.ofSeconds(15));
         assertTrue(result.success(), result.message());
         assertEquals("Migration summary", result.message());
-        assertEquals(4, calls.get());
+        assertEquals(3, calls.get());
     }
 
     @Test
@@ -153,7 +159,10 @@ class GuidedExecutionTest {
         AtomicInteger approvals = new AtomicInteger();
         var service =
                 service(
-                        request -> calls.getAndIncrement() == 0 ? switchMode() : actions(program),
+                        request -> {
+                            calls.incrementAndGet();
+                            return actions(program);
+                        },
                         hitl,
                         root);
         var result =
@@ -189,10 +198,17 @@ class GuidedExecutionTest {
         AtomicInteger calls = new AtomicInteger();
         var service =
                 service(
-                        request -> calls.getAndIncrement() == 0 ? switchMode() : actions(program),
+                        request -> {
+                            calls.incrementAndGet();
+                            return actions(program);
+                        },
                         new HitlRegistry(),
                         root);
-        ReflectionTestUtils.setField(service, "maxGuidedSteps", 5);
+        var bounded = service.agent("bounded-guided");
+        if (bounded == null) throw new AssertionError("agent missing");
+        Object boundedRunner = ReflectionTestUtils.getField(bounded, "runner");
+        if (boundedRunner == null) throw new AssertionError("runner missing");
+        ReflectionTestUtils.setField(boundedRunner, "maxGuidedSteps", 5);
         var result =
                 service.submit(
                         "bounded-guided",
@@ -200,7 +216,7 @@ class GuidedExecutionTest {
                         binding(),
                         Duration.ofSeconds(10));
         assertFalse(result.success());
-        assertEquals(2, calls.get());
+        assertEquals(1, calls.get());
     }
 
     @Test
@@ -215,10 +231,10 @@ class GuidedExecutionTest {
         AtomicInteger calls = new AtomicInteger();
         var result =
                 service(
-                                request ->
-                                        calls.getAndIncrement() == 0
-                                                ? switchMode()
-                                                : actions(program),
+                                request -> {
+                                    calls.incrementAndGet();
+                                    return actions(program);
+                                },
                                 new HitlRegistry(),
                                 root)
                         .submit(
@@ -243,20 +259,18 @@ class GuidedExecutionTest {
                         request -> {
                             int index = calls.getAndIncrement();
                             if (index == 0) return message("ready");
-                            if (index == 1) return switchMode();
-                            if (index == 2) return actions(program);
-                            if (index == 3 || index == 4) {
+                            if (index == 1) return actions(program);
+                            if (index == 2 || index == 3) {
                                 assertEquals("tier-model", request.modelName());
                                 assertEquals("tier-key", request.credentialKey());
                                 assertEquals("https://example.invalid", request.baseUrl());
                                 assertEquals((Object) 0.25, request.options().temperature());
                                 assertEquals((Object) 1234, request.options().maxTokens());
-                                if (index == 3)
+                                if (index == 2)
                                     return new VetoResponse(
                                             null,
                                             List.of(new ToolCall("think", Map.of())),
                                             null,
-                                            new VetoResponse.Features(false),
                                             null);
                                 return message("scoped output");
                             }
@@ -282,6 +296,7 @@ class GuidedExecutionTest {
         Object value = ReflectionTestUtils.getField(agent, "runner");
         if (!(value instanceof AgentRunner runner)) throw new AssertionError("runner missing");
         runner.setOwner("owner");
+        runner.configureGuided(tiers, 1000);
         var result = service.submit("tier-guided", "Summarize", binding(), Duration.ofSeconds(10));
         assertTrue(result.success(), result.message());
         assertEquals("scoped output", result.message());
@@ -292,7 +307,7 @@ class GuidedExecutionTest {
                                 binding(),
                                 Duration.ofSeconds(10))
                         .success());
-        assertEquals(6, calls.get());
+        assertEquals(5, calls.get());
     }
 
     @Test
@@ -311,8 +326,7 @@ class GuidedExecutionTest {
                 service(
                                 request -> {
                                     int index = calls.getAndIncrement();
-                                    if (index == 0) return switchMode();
-                                    if (index == 1) return actions(program);
+                                    if (index == 0) return actions(program);
                                     assertFalse(request.userPrompt().contains("$error"));
                                     return message(
                                             "The file is missing; provide an existing path.");
@@ -326,5 +340,179 @@ class GuidedExecutionTest {
                                 Duration.ofSeconds(10));
         assertTrue(result.success(), result.message());
         assertEquals("The file is missing; provide an existing path.", result.message());
+    }
+
+    @Test
+    void sameSequentialFileTaskUsesTwoGuidedCallsOrThreeOrdinaryCalls(@TempDir @NonNull Path root)
+            throws Exception {
+        Path index = root.resolve("release.txt");
+        Path file = root.resolve("version.txt");
+        Files.writeString(index, "release=stable");
+        Files.writeString(file, "version=42");
+        String indexPath = new ObjectMapper().writeValueAsString(index.toString());
+        String versionPath = new ObjectMapper().writeValueAsString(file.toString());
+        String program =
+                """
+                [{"id":"index","label":"Read release","type":"tool","tool":"view_file","inputs":{"absolutePath":PATH},"outputs":{"release":"content"}},
+                 {"id":"read","label":"Read version","type":"tool","tool":"view_file","inputs":{"absolutePath":VERSION_PATH},"outputs":{"version":"content"}},
+                 {"id":"summary","label":"Summarize version","type":"generate","prompt":"Report release $releaseName and version $text","inputs":{"text":"$version","releaseName":"$release"},"outputs":{"answer":"message"}},
+                 {"id":"finish","label":"Return version","type":"STOP","result_binding":"answer"}]
+                """
+                        .replace("VERSION_PATH", versionPath)
+                        .replace("PATH", indexPath);
+        List<VetoRequest> guidedRequests = new ArrayList<>();
+        var guided =
+                service(
+                        request -> {
+                            guidedRequests.add(request);
+                            if (guidedRequests.size() == 1) return actions(program);
+                            assertTrue(request.userPrompt().contains("release=stable"));
+                            assertTrue(request.userPrompt().contains("version=42"));
+                            return message("Stable release, version 42.");
+                        },
+                        new HitlRegistry(),
+                        root);
+        List<VetoRequest> ordinaryRequests = new ArrayList<>();
+        var ordinary =
+                service(
+                        request -> {
+                            ordinaryRequests.add(request);
+                            if (ordinaryRequests.size() == 1)
+                                return new VetoResponse(
+                                        null,
+                                        List.of(
+                                                new ToolCall(
+                                                        "view_file",
+                                                        Map.of("absolutePath", index.toString()))),
+                                        null,
+                                        null);
+                            if (ordinaryRequests.size() == 2) {
+                                assertTrue(
+                                        request.messages().stream()
+                                                .anyMatch(
+                                                        m ->
+                                                                m.content()
+                                                                        .contains(
+                                                                                "release=stable")));
+                                return new VetoResponse(
+                                        null,
+                                        List.of(
+                                                new ToolCall(
+                                                        "view_file",
+                                                        Map.of("absolutePath", file.toString()))),
+                                        null,
+                                        null);
+                            }
+                            assertTrue(
+                                    request.messages().stream()
+                                            .anyMatch(m -> m.content().contains("version=42")));
+                            return message("Stable release, version 42.");
+                        },
+                        new HitlRegistry(),
+                        root);
+        String task = "Read release.txt, then version.txt, and report the release and version.";
+        List<AgentRunner.ToolCallEvent> guidedTools = new ArrayList<>();
+        List<AgentRunner.ToolCallEvent> ordinaryTools = new ArrayList<>();
+        var guidedResult =
+                guided.submit(
+                        "read-guided",
+                        task,
+                        binding(),
+                        Duration.ofSeconds(10),
+                        null,
+                        null,
+                        null,
+                        guidedTools::add,
+                        null);
+        var ordinaryResult =
+                ordinary.submit(
+                        "ordinary-comparison",
+                        task,
+                        binding(),
+                        Duration.ofSeconds(10),
+                        null,
+                        null,
+                        null,
+                        ordinaryTools::add,
+                        null);
+        assertTrue(guidedResult.success(), guidedResult.message());
+        assertTrue(ordinaryResult.success(), ordinaryResult.message());
+        assertEquals("Stable release, version 42.", guidedResult.message());
+        assertEquals(guidedResult.message(), ordinaryResult.message());
+        assertEquals(2, guidedTools.size(), "guide must execute both real sequential file reads");
+        assertEquals(2, ordinaryTools.size());
+        assertEquals(2, guidedRequests.size(), "direct program plus one generation request");
+        assertEquals(
+                3,
+                ordinaryRequests.size(),
+                "two sequential observations plus final model response");
+        var enabledSchema = guidedRequests.get(0).responseSchema();
+        var disabledSchema = ordinaryRequests.get(0).responseSchema();
+        if (enabledSchema == null || disabledSchema == null)
+            throw new AssertionError("schema missing");
+        assertTrue(enabledSchema.path("properties").has("guide"));
+        assertFalse(disabledSchema.path("properties").has("guide"));
+        String enabledPrompt = guidedRequests.get(0).systemPrompt();
+        String disabledPrompt = ordinaryRequests.get(0).systemPrompt();
+        System.out.println(
+                "Guided comparison: enabled prompt chars="
+                        + enabledPrompt.length()
+                        + ", disabled prompt chars="
+                        + disabledPrompt.length()
+                        + ", model requests="
+                        + guidedRequests.size()
+                        + "/"
+                        + ordinaryRequests.size()
+                        + ", tool calls="
+                        + guidedTools.size()
+                        + "/"
+                        + ordinaryTools.size()
+                        + ", final answer="
+                        + guidedResult.message());
+        assertNotEquals(enabledPrompt, disabledPrompt);
+        assertTrue(enabledPrompt.contains("guide"));
+        assertFalse(disabledPrompt.contains("conditional_goto"));
+    }
+
+    @Test
+    void disabledSessionRejectsGuideBeforeExecutingItsTool(@TempDir @NonNull Path root)
+            throws Exception {
+        String path =
+                new ObjectMapper().writeValueAsString(root.resolve("must-not-read.txt").toString());
+        String program =
+                """
+                [{"id":"read","label":"Read","type":"tool","tool":"view_file","inputs":{"absolutePath":PATH},"outputs":{"answer":"content"}},
+                 {"id":"finish","label":"Finish","type":"STOP","result_binding":"answer"}]
+                """
+                        .replace("PATH", path);
+        AtomicInteger calls = new AtomicInteger();
+        List<AgentRunner.ToolCallEvent> toolCalls = new ArrayList<>();
+        var service =
+                service(
+                        request -> {
+                            if (calls.getAndIncrement() == 0) return actions(program);
+                            assertTrue(
+                                    request.messages()
+                                            .get(request.messages().size() - 1)
+                                            .content()
+                                            .contains("guide"));
+                            return message("Use ordinary tools instead.");
+                        },
+                        new HitlRegistry(),
+                        root);
+        var result =
+                service.submit(
+                        "disabled-guide",
+                        "Read the file",
+                        binding(),
+                        Duration.ofSeconds(10),
+                        null,
+                        null,
+                        null,
+                        toolCalls::add,
+                        null);
+        assertTrue(result.success(), result.message());
+        assertEquals(2, calls.get());
+        assertTrue(toolCalls.isEmpty(), "a disabled guide must never execute even its first tool");
     }
 }

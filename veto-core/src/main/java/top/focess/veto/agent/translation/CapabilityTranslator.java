@@ -16,7 +16,7 @@ import top.focess.veto.llm.core.VetoResponse;
  *       VetoRequest.tools} list the providers consume.
  *   <li>{@link #vetoResponseSchema} - the per-turn {@code veto_pulse} response schema variant that
  *       constrains the model to emit a {@link VetoResponse}. The variant is governed by the guided
- *       state (autonomous vs guided-switch). {@code thought} is always optional.
+ *       state (whether the session allows guided programs). {@code thought} is always optional.
  * </ol>
  */
 public interface CapabilityTranslator {
@@ -32,18 +32,17 @@ public interface CapabilityTranslator {
      * Builds the per-turn {@code veto_pulse} response schema that constrains the model to a {@link
      * VetoResponse}.
      *
-     * @param guidedSwitch whether this is the guided-switch turn (emits {@code actions} + {@code
-     *     features.guided=true}; {@code calls} forbidden) vs an autonomous turn ({@code calls}
-     *     allowed, {@code actions} forbidden). {@code thought} is always an optional property.
+     * @param guidedEnabled whether the session permits an optional guided program
      */
-    @NonNull JsonNode vetoResponseSchema(boolean guidedSwitch);
+    @NonNull JsonNode vetoResponseSchema(boolean guidedEnabled);
 
     /**
      * Builds the response schema with the exact role-scoped tool catalog for this turn. Autonomous
-     * schemas use these names to constrain {@code calls[].tool_name}; guided schemas have no calls.
+     * schemas use these names to constrain {@code calls[].tool_name}; enabled sessions may also
+     * submit a guide.
      */
     default @NonNull JsonNode vetoResponseSchema(
-            boolean guidedSwitch, @NonNull List<top.focess.veto.llm.core.ToolDefinition> tools) {
-        return vetoResponseSchema(guidedSwitch);
+            boolean guidedEnabled, @NonNull List<top.focess.veto.llm.core.ToolDefinition> tools) {
+        return vetoResponseSchema(guidedEnabled);
     }
 }

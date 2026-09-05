@@ -211,9 +211,9 @@ public record TurnRecord(
 
     /**
      * An ordered system-prompt insertion (session start or an actual role transformation). The
-     * prompt compiler treats the payload's {@code system_prompt} as authoritative: the last
-     * insertion encountered in durable record order supplies the provider's system/instructions
-     * slot. Resume must not synthesize a replacement insertion from the current runtime template.
+     * snapshot records the instructions used when this agent was initialized. Current requests link
+     * the current runtime template and session settings; a historical snapshot cannot override
+     * capability settings after a restart.
      */
     public static @NonNull TurnRecord agentInit(
             int turnNumber,

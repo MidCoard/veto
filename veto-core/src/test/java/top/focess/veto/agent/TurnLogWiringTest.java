@@ -107,7 +107,6 @@ class TurnLogWiringTest {
     }
 
     private static @NonNull UniformLLMCaller callerFinishingImmediately() {
-        return request ->
-                new VetoResponse("done", List.of(), "4", new VetoResponse.Features(false), null);
+        return request -> new VetoResponse("done", null, "4", null);
     }
 }

@@ -77,11 +77,7 @@ public final class MemoryTools {
                     Refine the query before retrying; never invent absent memories.
                     """,
             security =
-                    """
-                    Agent tool with `MEMORY_READ` capability. The Gateway does not screen it. Results \
-                    from the current session are restricted to this session, and all results are restricted to \
-                    the owning user. Safe to call any time.
-                    """,
+                    "Session results belong to the current session; all results belong to the current user.",
             examples = {
                 "{\"query\": \"UserService authentication\"}",
                 "{\"query\": \"build configuration\"}"
@@ -212,12 +208,7 @@ public final class MemoryTools {
                     promotion failure so tenant isolation leaks nothing. Never store secrets or verbatim file \
                     contents in durable memory.
                     """,
-            security =
-                    """
-                    Agent tool with `MEMORY_WRITE` capability. The Gateway does not screen it. Self-edit \
-                    operation. The supplied content is stored as given; this tool does not perform \
-                    Gateway redaction. Never supply secrets.
-                    """,
+            security = "Content is stored as supplied. Never include secrets.",
             examples = {
                 "{\"mode\": \"WRITE\", \"content\": \"This project uses Gradle 8.5 with Kotlin DSL\"}",
                 "{\"mode\": \"PROMOTE\", \"promoteMemoryId\": \"123e4567-e89b-12d3-a456-426614174000\"}",
@@ -357,10 +348,7 @@ public final class MemoryTools {
                     share the contract's failure body so tenant isolation reveals nothing.
                     """,
             security =
-                    """
-                    Agent tool with `MEMORY_WRITE` capability. The Gateway does not screen it. Permanent \
-                    deletion. Call it only for a memory you have verified should be removed.
-                    """,
+                    "Deletion is permanent. Remove only a memory you have verified should be removed.",
             examples = {"{\"memoryId\": \"123e4567-e89b-12d3-a456-426614174000\"}"},
             returnExamples = {"forgotten: 123e4567-e89b-12d3-a456-426614174000"})
     public static final class ForgetMemory implements AgentTool<ForgetMemory.Args> {

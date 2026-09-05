@@ -258,17 +258,8 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
             @NonNull ToolCall call,
             @NonNull JsonNode jsonArgs,
             @NonNull NativeToolDefinition definition) {
-        ToolCallContext context = ToolCallContextHolder.get();
-        if (context == null) {
-            throw new SecurityException(
-                    "Tool requires an authorized execution context: " + definition.name());
-        }
+        ToolCallContext context = requirePermit(call, definition);
         ToolExecutionPermit permit = context.executionPermit();
-        if (!permit.matchesCall(call)) {
-            throw new SecurityException(
-                    "Tool arguments do not match the screened execution permit: "
-                            + definition.name());
-        }
         boolean needsFilesystemPermit =
                 definition.capability() == ToolCapability.WORKSPACE_READ
                         || definition.capability() == ToolCapability.WORKSPACE_WRITE
@@ -313,6 +304,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
         try {
             JsonNode jsonArgs = mapper.valueToTree(call.args());
             NativeToolArgumentValidator.validate(def.name(), jsonArgs, def.argsClass());
+            requirePermit(call, def);
             String result = bean.executeFromJson(jsonArgs, mapper);
             return successfulResult(call, def, result);
         } catch (ToolExecutionException e) {
@@ -329,11 +321,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
     /** External tool execution over the transport recorded during MCP discovery. */
     private @NonNull ToolResult executeRemote(
             @NonNull ToolCall call, @NonNull RemoteToolDefinition def) throws IOException {
-        ToolCallContext context = ToolCallContextHolder.get();
-        if (context == null || !context.executionPermit().matchesCall(call)) {
-            throw new SecurityException(
-                    "Remote tool requires its screened execution permit: " + def.name());
-        }
+        requirePermit(call, def);
         McpTransport transport = transports.get(def.serverName());
         if (transport == null) {
             return new ToolResult(
@@ -352,6 +340,23 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
                 ToolResultFormat.UNKNOWN,
                 content,
                 success ? null : "REMOTE_TOOL_FAILED");
+    }
+
+    private static @NonNull ToolCallContext requirePermit(
+            @NonNull ToolCall call, @NonNull ToolDefinition definition) {
+        ToolCallContext context = ToolCallContextHolder.get();
+        if (context == null) {
+            throw new SecurityException(
+                    "This tool call is not authorized for the current session; submit a fresh call.");
+        }
+        if (!context.executionPermit().authorizes(call, definition, context)) {
+            throw new SecurityException(
+                    "This tool call is not authorized for the current session; submit a fresh call.");
+        }
+        if (definition.capability() == ToolCapability.AGENT_CONTROL) {
+            throw new SecurityException("This tool is unavailable; use another available tool.");
+        }
+        return context;
     }
 
     private static @NonNull ToolResultFormat declaredFormat(@NonNull ToolDefinition definition) {

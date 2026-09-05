@@ -42,7 +42,7 @@ class DefaultUniformLLMCallerTest {
         LLMProviderStrategy s2 = mock(ToolDocs.nonNullClass(LLMProviderStrategy.class));
         when(s1.supports(ProviderType.OPENAI)).thenReturn(false);
         when(s2.supports(ProviderType.OPENAI)).thenReturn(true);
-        VetoResponse expected = new VetoResponse("thought", null, null, null, null);
+        VetoResponse expected = new VetoResponse("thought", null, null, null);
         when(s2.execute(any(ToolDocs.nonNullClass(ResolvedRequest.class)))).thenReturn(expected);
         DefaultUniformLLMCaller caller =
                 new DefaultUniformLLMCaller(List.of(s1, s2), egressReturning("secret"));
@@ -66,7 +66,7 @@ class DefaultUniformLLMCallerTest {
     void retriesRetryableFailureThenSucceeds() {
         LLMProviderStrategy s = mock(ToolDocs.nonNullClass(LLMProviderStrategy.class));
         when(s.supports(ProviderType.OPENAI)).thenReturn(true);
-        VetoResponse expected = new VetoResponse("ok", null, null, null, null);
+        VetoResponse expected = new VetoResponse("ok", null, null, null);
         when(s.execute(any(ToolDocs.nonNullClass(ResolvedRequest.class))))
                 .thenThrow(new LlmRateLimitException("429", null))
                 .thenReturn(expected);

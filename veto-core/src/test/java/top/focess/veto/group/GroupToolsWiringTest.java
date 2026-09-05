@@ -104,6 +104,7 @@ class GroupToolsWiringTest {
                         "owner",
                         null,
                         ToolResultPresentationMode.BASIC,
+                        true,
                         ToolExecutionPermit.empty()));
         try {
             String result = create.execute(new CreateGroup.Args("do the thing"));
@@ -124,6 +125,14 @@ class GroupToolsWiringTest {
             assertEquals(1, registry.snapshot().size(), "one group registered");
             Group g = registry.snapshot().values().iterator().next();
             assertTrue(g.isActive());
+            assertTrue(g.guidedEnabled(), "the group inherits guided availability");
+            assertTrue(
+                    g.withMate("test-mate", "review")
+                            .withDag(g.dag())
+                            .withState(Group.GroupState.COMPLETED, g.createdAt())
+                            .withoutMate("test-mate")
+                            .guidedEnabled(),
+                    "group transitions retain guided availability");
             assertEquals(
                     directive.groupId(), g.groupId(), "the directive stamps the registered group");
             assertTrue(g.dag().nodes().isEmpty(), "the group starts with an empty DAG");
@@ -149,6 +158,7 @@ class GroupToolsWiringTest {
                         null,
                         null,
                         ToolResultPresentationMode.BASIC,
+                        false,
                         ToolExecutionPermit.empty()));
         try {
             ToolExecutionException error =
@@ -178,6 +188,7 @@ class GroupToolsWiringTest {
                         null,
                         null,
                         ToolResultPresentationMode.BASIC,
+                        false,
                         ToolExecutionPermit.empty()));
         try {
             String result = disband.execute(new DisbandGroup.Args());
@@ -216,6 +227,7 @@ class GroupToolsWiringTest {
                         null,
                         null,
                         ToolResultPresentationMode.BASIC,
+                        false,
                         ToolExecutionPermit.empty()));
         try {
             ToolExecutionException error =
@@ -247,6 +259,7 @@ class GroupToolsWiringTest {
                         null,
                         null,
                         ToolResultPresentationMode.BASIC,
+                        false,
                         ToolExecutionPermit.empty()));
         try {
             String result =
@@ -280,6 +293,7 @@ class GroupToolsWiringTest {
                         null,
                         null,
                         ToolResultPresentationMode.BASIC,
+                        false,
                         ToolExecutionPermit.empty()));
         try {
             ToolExecutionException error =
@@ -312,6 +326,7 @@ class GroupToolsWiringTest {
                         null,
                         null,
                         ToolResultPresentationMode.BASIC,
+                        false,
                         ToolExecutionPermit.empty()));
         try {
             ToolExecutionException error =
@@ -353,6 +368,7 @@ class GroupToolsWiringTest {
                         null,
                         null,
                         ToolResultPresentationMode.BASIC,
+                        false,
                         ToolExecutionPermit.empty()));
         try {
             String first = inspect.execute(new InspectGroup.Args(0L, 0));

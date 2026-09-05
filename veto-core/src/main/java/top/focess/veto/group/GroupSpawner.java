@@ -134,7 +134,8 @@ public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
                 base,
                 group != null ? group.owner() : null,
                 group != null ? group.workspace() : null,
-                group != null ? group.toolResultPresentation() : ToolResultPresentationMode.BASIC);
+                group != null ? group.toolResultPresentation() : ToolResultPresentationMode.BASIC,
+                group != null && group.guidedEnabled());
     }
 
     /**
@@ -244,6 +245,18 @@ public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
             @NonNull String contextBrief,
             Workspace workspace,
             @NonNull ToolResultPresentationMode toolResultPresentation) {
+        return registerEmptyGroup(
+                leaderId, userId, owner, contextBrief, workspace, toolResultPresentation, false);
+    }
+
+    public @NonNull Group registerEmptyGroup(
+            @NonNull String leaderId,
+            @NonNull String userId,
+            String owner,
+            @NonNull String contextBrief,
+            Workspace workspace,
+            @NonNull ToolResultPresentationMode toolResultPresentation,
+            boolean guidedEnabled) {
         Group g =
                 Group.create(
                         leaderId,
@@ -253,7 +266,8 @@ public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
                         new ExecutionDag(UUID.randomUUID(), List.of()),
                         owner,
                         workspace,
-                        toolResultPresentation);
+                        toolResultPresentation,
+                        guidedEnabled);
         registry.put(g);
         log.info(
                 "GroupSpawner: registered empty group {} (Leader will author the DAG)",

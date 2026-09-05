@@ -79,15 +79,7 @@ public final class ReplaceFileContentTool
                     Windows reparse-point targets are rejected rather than followed or replaced.
                     """,
             security =
-                    """
-                    `absolutePath` is a FILESYSTEM_PATH; `targetContent` and `replacementContent` are CODE_CONTENT. \
-                    The Gateway canonicalizes the path and applies deployer-policy and semantic screening before \
-                    the write. Under FULL_ACCESS, workspace roots are working context rather than a path boundary, \
-                    so any absolute host path may be targeted; restrictive policies may fence paths. The operation \
-                    is exposed through a call-scoped `WORKSPACE_WRITE` capability and has default danger \
-                    `ELEVATED`; it is audited and may require approval. If the Gateway \
-                    actually refuses a path, change approach instead; never smuggle disallowed content.
-                    """,
+                    "Follow the current Boundaries rules. Changes may require approval. If access is refused, change approach; never conceal disallowed content.",
             examples = {
                 "{\"absolutePath\": \"/abs/src/Main.java\", \"startLine\": 5, \"endLine\": 8, \"targetContent\": \"old\", \"replacementContent\": \"new\"}",
                 "{\"absolutePath\": \"/abs/src/Main.java\", \"startLine\": 12, \"endLine\": 12, \"targetContent\": \"int x = 1;\", \"replacementContent\": \"int x = 2;\"}",

@@ -46,9 +46,7 @@ public final class MovePathTool implements WorkspaceWriteTool<MovePathTool.Args>
                             + " changes after preflight, the move stops with TREE_CHANGED before"
                             + " mutation.",
             security =
-                    "Workspace write tool. Both paths are independently resolved, screened,"
-                            + " approved, rebound, and exposed through a call-scoped write capability"
-                            + " by the Gateway.",
+                    "Both source and destination must be allowed by the current Boundaries rules. Moving files may require approval.",
             examples = {
                 "{\"sourceAbsolutePath\":\"<workspace-root>/old.txt\",\"destinationAbsolutePath\":\"<workspace-root>/new.txt\"}"
             },

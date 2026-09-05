@@ -112,10 +112,7 @@ class AgentServiceHistorySeedTest {
         UUID sessionId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
         AgentRunner.LlmBinding binding = binding();
-        UniformLLMCaller finishingCaller =
-                request ->
-                        new VetoResponse(
-                                "done", List.of(), "done", new VetoResponse.Features(false), null);
+        UniformLLMCaller finishingCaller = request -> new VetoResponse("done", null, "done", null);
 
         AgentService beforeRestart = serviceWith(finishingCaller);
         Agent first =
@@ -137,12 +134,7 @@ class AgentServiceHistorySeedTest {
                 serviceWith(
                         request -> {
                             resumedRequest.set(request);
-                            return new VetoResponse(
-                                    "done",
-                                    List.of(),
-                                    "done",
-                                    new VetoResponse.Features(false),
-                                    null);
+                            return new VetoResponse("done", null, "done", null);
                         });
         AgentRunner.LlmBinding updatedPromptBinding = binding("updated after restart");
         Agent resumed =
@@ -156,13 +148,10 @@ class AgentServiceHistorySeedTest {
         VetoRequest request =
                 assertInstanceOf(ToolDocs.nonNullClass(VetoRequest.class), resumedRequest.get());
         assertEquals("system", request.messages().get(0).role());
-        assertEquals(
-                transformedSystemPrompt,
-                request.messages().get(0).content(),
-                "resume must use the last AGENT_INIT in durable record order");
-        assertFalse(
+        assertNotEquals(transformedSystemPrompt, request.messages().get(0).content());
+        assertTrue(
                 request.messages().get(0).content().contains("updated after restart"),
-                "a changed runtime template must not replace the durable system insertion");
+                "current runtime capabilities and template replace obsolete persisted instructions");
         assertTrue(
                 request.messages().stream()
                         .anyMatch(message -> "first request".equals(message.content())));

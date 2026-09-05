@@ -7,4 +7,5 @@ public record CreateSessionRequest(
         String name,
         String workspaceRoots,
         Integer currentWorkspaceRootIndex,
-        ToolResultPresentationMode toolResultPresentation) {}
+        ToolResultPresentationMode toolResultPresentation,
+        Boolean guidedEnabled) {}

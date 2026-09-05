@@ -118,8 +118,7 @@ class AgentEndToEndTest {
         ArrayDeque<VetoResponse> queue = new ArrayDeque<>(List.of(mainResponses));
         return request -> {
             if (request.systemPrompt().startsWith("Summarize the following conversation segment")) {
-                return new VetoResponse(
-                        null, List.of(), "{}", new VetoResponse.Features(false), null);
+                return new VetoResponse(null, null, "{}", null);
             }
             VetoResponse r = queue.poll();
             if (r == null) {
@@ -164,14 +163,12 @@ class AgentEndToEndTest {
     }
 
     private static @NonNull VetoResponse thoughtOn(String thought, String message) {
-        return new VetoResponse(
-                thought, List.of(), message, new VetoResponse.Features(false), null);
+        return new VetoResponse(thought, null, message, null);
     }
 
     private static @NonNull VetoResponse thoughtOnWithCall(
             String thought, String message, @NonNull ToolCall call) {
-        return new VetoResponse(
-                thought, List.of(call), message, new VetoResponse.Features(false), null);
+        return new VetoResponse(thought, List.of(call), message, null);
     }
 
     @Test

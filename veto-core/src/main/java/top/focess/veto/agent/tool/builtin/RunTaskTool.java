@@ -97,11 +97,7 @@ public final class RunTaskTool implements NativeTool<RunTaskTool.Args> {
                     - Only the latest 5000 output lines are retained; an unterminated line is capped at 65536 bytes.
                     """,
             security =
-                    """
-                    The command and any requested network access are screened before execution. The working \
-                    directory remains bound to the session workspace root. Execution is audited and may require \
-                    human approval. Background execution does not remove the sandbox constraints.
-                    """,
+                    "The working directory is the session workspace root. Execution and requested network access may require approval. Background execution does not grant additional file or network access.",
             examples = {
                 "{\"commands\": [{\"executable\": \"npm\", \"args\": [\"run\", \"dev\"]}], \"timeout\": 0}",
                 "{\"commands\": [{\"executable\": \"python\", \"args\": [\"-m\", \"http.server\", \"8000\"]}], \"timeout\": 3600}",
@@ -116,7 +112,7 @@ public final class RunTaskTool implements NativeTool<RunTaskTool.Args> {
                     @Doc("Exactly one command: {executable, args}. Background mode does not chain.")
                     @NonNull List<RunCommandTool.@NonNull CommandInput> commands,
             @Doc(
-                            "Request network access for this task. Defaults to false; true is separately Gateway-screened.")
+                            "Request network access for this task. Defaults to false; true may require approval.")
                     Boolean network,
             @NonNull
                     @Doc(

@@ -56,7 +56,13 @@ public class GroupAgentFactory implements GroupSpawner.AgentFactory {
         }
         UUID userId = agentService.userIdForOwner(owner);
         return agentService.createMate(
-                persona, binding, userId, owner, workspace, mateBinding.toolResultPresentation());
+                persona,
+                binding,
+                userId,
+                owner,
+                workspace,
+                mateBinding.toolResultPresentation(),
+                mateBinding.guidedEnabled());
     }
 
     private AgentRunner.@NonNull LlmBinding resolveBinding(

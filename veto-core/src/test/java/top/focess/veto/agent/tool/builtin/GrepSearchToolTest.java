@@ -21,6 +21,7 @@ import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.screening.DeployerPolicy;
 import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
+import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.tool.ToolExecutionException;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
@@ -117,6 +118,9 @@ class GrepSearchToolTest {
         ToolExecutionPermit executionPermit =
                 new ToolExecutionPermit(
                         "grep_search",
+                        "test-call",
+                        ToolCapability.WORKSPACE_READ,
+                        null,
                         Map.of("absolutePath", supplied),
                         Map.of("absolutePath", authorized),
                         List.of(parent == null ? requestedPath : parent),
@@ -132,6 +136,7 @@ class GrepSearchToolTest {
                         null,
                         UUID.randomUUID(),
                         ToolResultPresentationMode.BASIC,
+                        false,
                         executionPermit));
     }
 }

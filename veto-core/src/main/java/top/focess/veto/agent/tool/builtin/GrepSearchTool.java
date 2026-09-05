@@ -67,11 +67,7 @@ public final class GrepSearchTool implements WorkspaceReadTool<GrepSearchTool.Ar
                     - `caseInsensitive` and `includes` are optional; omit them for a case-sensitive search of all files.
                     """,
             security =
-                    """
-                    The Gateway screens `absolutePath`, then issues a call-scoped WorkspaceRead capability. The tool \
-                    cannot open raw filesystem paths itself. The capability enforces the authorized root, protected \
-                    paths, no-follow traversal, and resource bounds before file content is read.
-                    """,
+                    "Read-only. Searches do not follow symbolic links or open protected files. Follow the current Boundaries rules.",
             examples = {
                 "{\"absolutePath\": \"/abs/src\", \"query\": \"TODO\"}",
                 "{\"absolutePath\": \"/abs/src\", \"query\": \"todo\", \"caseInsensitive\": true}",

@@ -97,14 +97,15 @@ class GuidedBindingsTest {
 
     @Test
     void fewShotProgramsParseAndValidate() throws Exception {
-        String prompt = new SystemPromptResolver().defaultPrompt();
+        String prompt = new SystemPromptResolver().guidedPrompt();
         var matcher = Pattern.compile("```json\\s*([\\s\\S]*?)```").matcher(prompt);
         ObjectMapper mapper = new ObjectMapper();
         int count = 0;
         while (matcher.find()) {
             var json = mapper.readTree(Nullness.requireNonNull(matcher.group(1)));
-            if (json.has("actions")) {
-                ProgramValidator.validate(ActionsProgramParser.parse(json.path("actions")));
+            if (json.has("guide")) {
+                ProgramValidator.validate(
+                        ActionsProgramParser.parse(json.path("guide").path("actions")));
                 count++;
             }
         }

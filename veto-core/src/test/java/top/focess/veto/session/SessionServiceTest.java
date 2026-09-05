@@ -176,7 +176,16 @@ class SessionServiceTest {
         when(agents.findById(agent.getId())).thenReturn(Optional.of(agent));
         when(loader.load(session.getId(), agent.getId())).thenReturn(List.of());
         when(agentService.getOrCreateAgent(
-                        anyString(), any(), any(), anyList(), any(), any(), any(), anyInt(), any()))
+                        anyString(),
+                        any(),
+                        any(),
+                        anyList(),
+                        any(),
+                        any(),
+                        any(),
+                        anyInt(),
+                        any(),
+                        anyBoolean()))
                 .thenReturn(mock(ToolDocs.nonNullClass(Agent.class)));
 
         SessionService service =
@@ -216,7 +225,16 @@ class SessionServiceTest {
         when(agents.findById(agent.getId())).thenReturn(Optional.of(agent));
         when(loader.load(session.getId(), agent.getId())).thenReturn(List.of());
         when(agentService.getOrCreateAgent(
-                        anyString(), any(), any(), anyList(), any(), any(), any()))
+                        anyString(),
+                        any(),
+                        any(),
+                        anyList(),
+                        any(),
+                        any(),
+                        any(),
+                        anyInt(),
+                        any(),
+                        anyBoolean()))
                 .thenReturn(mock(ToolDocs.nonNullClass(Agent.class)));
 
         SessionService service =
@@ -253,7 +271,16 @@ class SessionServiceTest {
         when(agents.findById(agent.getId())).thenReturn(Optional.of(agent));
         when(loader.load(session.getId(), agent.getId())).thenReturn(List.of());
         when(agentService.getOrCreateAgent(
-                        anyString(), any(), any(), anyList(), any(), any(), any()))
+                        anyString(),
+                        any(),
+                        any(),
+                        anyList(),
+                        any(),
+                        any(),
+                        any(),
+                        anyInt(),
+                        any(),
+                        anyBoolean()))
                 .thenReturn(mock(ToolDocs.nonNullClass(Agent.class)));
 
         SessionService service =
@@ -294,7 +321,16 @@ class SessionServiceTest {
         when(agents.findById(agent.getId())).thenReturn(Optional.of(agent));
         when(loader.load(session.getId(), agent.getId())).thenReturn(List.of());
         when(agentService.getOrCreateAgent(
-                        anyString(), any(), any(), anyList(), any(), any(), any()))
+                        anyString(),
+                        any(),
+                        any(),
+                        anyList(),
+                        any(),
+                        any(),
+                        any(),
+                        anyInt(),
+                        any(),
+                        anyBoolean()))
                 .thenReturn(mock(ToolDocs.nonNullClass(Agent.class)));
 
         SessionService service =
@@ -364,7 +400,16 @@ class SessionServiceTest {
         when(agents.findById(agent.getId())).thenReturn(Optional.of(agent));
         when(loader.load(session.getId(), agent.getId())).thenReturn(List.of());
         when(agentService.getOrCreateAgent(
-                        anyString(), any(), any(), anyList(), any(), any(), any()))
+                        anyString(),
+                        any(),
+                        any(),
+                        anyList(),
+                        any(),
+                        any(),
+                        any(),
+                        anyInt(),
+                        any(),
+                        anyBoolean()))
                 .thenReturn(mock(ToolDocs.nonNullClass(Agent.class)));
 
         SessionService service =
@@ -412,7 +457,8 @@ class SessionServiceTest {
                         "coder",
                         CWD + "," + fakeDir("selected-root"),
                         1,
-                        ToolResultPresentationMode.BASIC);
+                        ToolResultPresentationMode.BASIC,
+                        true);
         AgentEntity agent =
                 new AgentEntity(
                         session.getId(),
@@ -435,7 +481,16 @@ class SessionServiceTest {
         when(agents.findById(agent.getId())).thenReturn(Optional.of(agent));
         when(loader.load(session.getId(), agent.getId())).thenReturn(history);
         when(agentService.getOrCreateAgent(
-                        anyString(), any(), any(), anyList(), any(), any(), any(), anyInt(), any()))
+                        anyString(),
+                        any(),
+                        any(),
+                        anyList(),
+                        any(),
+                        any(),
+                        any(),
+                        anyInt(),
+                        any(),
+                        anyBoolean()))
                 .thenReturn(mock(ToolDocs.nonNullClass(Agent.class)));
 
         SessionService service =
@@ -454,7 +509,8 @@ class SessionServiceTest {
                         eq("alice"),
                         any(),
                         eq(1),
-                        eq(ToolResultPresentationMode.BASIC));
+                        eq(ToolResultPresentationMode.BASIC),
+                        eq(true));
     }
 
     @Test
@@ -480,9 +536,16 @@ class SessionServiceTest {
 
         SessionEntity created =
                 service.createSession(
-                        "alice", "coder", "selected", roots, 1, ToolResultPresentationMode.BASIC);
+                        "alice",
+                        "coder",
+                        "selected",
+                        roots,
+                        1,
+                        ToolResultPresentationMode.BASIC,
+                        true);
 
         assertEquals(1, created.getCurrentWorkspaceRootIndex());
+        assertTrue(created.getGuidedEnabled());
     }
 
     @Test
@@ -663,7 +726,16 @@ class SessionServiceTest {
         when(agents.findById(agent.getId())).thenReturn(Optional.of(agent));
         when(loader.load(session.getId(), agent.getId())).thenReturn(List.of());
         when(agentService.getOrCreateAgent(
-                        anyString(), any(), any(), anyList(), any(), any(), any()))
+                        anyString(),
+                        any(),
+                        any(),
+                        anyList(),
+                        any(),
+                        any(),
+                        any(),
+                        anyInt(),
+                        any(),
+                        anyBoolean()))
                 .thenReturn(mock(ToolDocs.nonNullClass(Agent.class)));
 
         SessionService service =
@@ -752,7 +824,16 @@ class SessionServiceTest {
         when(agents.findById(agent.getId())).thenReturn(Optional.of(agent));
         when(loader.load(newer.getId(), agent.getId())).thenReturn(List.of());
         when(agentService.getOrCreateAgent(
-                        anyString(), any(), any(), anyList(), any(), any(), any()))
+                        anyString(),
+                        any(),
+                        any(),
+                        anyList(),
+                        any(),
+                        any(),
+                        any(),
+                        anyInt(),
+                        any(),
+                        anyBoolean()))
                 .thenReturn(mock(ToolDocs.nonNullClass(Agent.class)));
 
         SessionService service =
@@ -920,7 +1001,16 @@ class SessionServiceTest {
         when(agents.findById(agent.getId())).thenReturn(Optional.of(agent));
         when(loader.load(explicit.getId(), agent.getId())).thenReturn(List.of());
         when(agentService.getOrCreateAgent(
-                        anyString(), any(), any(), anyList(), any(), any(), any()))
+                        anyString(),
+                        any(),
+                        any(),
+                        anyList(),
+                        any(),
+                        any(),
+                        any(),
+                        anyInt(),
+                        any(),
+                        anyBoolean()))
                 .thenReturn(mock(ToolDocs.nonNullClass(Agent.class)));
 
         SessionService service =

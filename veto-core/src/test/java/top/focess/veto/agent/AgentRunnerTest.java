@@ -90,14 +90,12 @@ class AgentRunnerTest {
                                 "I need to inspect one more thing.",
                                 List.of(new ToolCall("missing_tool", Map.of(), "breaker-call")),
                                 null,
-                                new VetoResponse.Features(false),
                                 null);
                     }
                     return new VetoResponse(
                             "The prior task context is available.",
-                            List.of(),
+                            null,
                             "Finished after resuming.",
-                            new VetoResponse.Features(false),
                             null);
                 };
 
@@ -151,64 +149,39 @@ class AgentRunnerTest {
     }
 
     @Test
-    void guidedRequestSwitchesTheFollowingCallToTheActionsSchema() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        List<VetoRequest> seenRequests = new CopyOnWriteArrayList<>();
-        var guidedActions =
-                mapper.readTree(
-                        """
-                        [
-                          {
-                            "id": "finish",
-                            "label": "Return the result",
-                            "type": "STOP"
-                          }
-                        ]
-                        """);
+    void providerSchemaFailureUsesTheSameEphemeralRetryPath() throws Exception {
+        List<VetoRequest> requests = new CopyOnWriteArrayList<>();
         UniformLLMCaller caller =
                 request -> {
-                    seenRequests.add(request);
-                    if (seenRequests.size() == 1) {
-                        return new VetoResponse(
-                                "I will switch to a deterministic program after this call.",
-                                List.of(new ToolCall("missing_tool", Map.of(), "switch-call")),
-                                null,
-                                new VetoResponse.Features(true),
-                                null);
-                    }
-                    return new VetoResponse(
-                            null, List.of(), null, new VetoResponse.Features(true), guidedActions);
+                    requests.add(request);
+                    if (requests.size() == 1)
+                        throw new ModelSchemaException("Malformed guide JSON");
+                    assertTrue(
+                            request.messages()
+                                    .get(request.messages().size() - 1)
+                                    .content()
+                                    .contains("Malformed guide JSON"));
+                    return new VetoResponse(null, null, "Recovered", null);
                 };
-
-        AgentResult result =
-                serviceWith(caller)
-                        .submit(
-                                "guided-schema-switch",
-                                "Use a guided program.",
-                                binding("You are a helpful assistant."),
-                                EPISODE_TIMEOUT);
-
+        var service = serviceWith(caller);
+        var result =
+                service.submit(
+                        "provider-schema-retry", "Answer", binding("System"), EPISODE_TIMEOUT);
         assertTrue(result.success(), result.message());
-        assertEquals(2, seenRequests.size(), "guided authoring needs a second model iteration");
-        var autonomousSchema = seenRequests.get(0).responseSchema();
-        if (autonomousSchema == null) {
-            throw new AssertionError("autonomous response schema missing");
-        }
-        var autonomousProperties = autonomousSchema.get("properties");
-        assertTrue(autonomousProperties.has("calls"));
-        assertFalse(autonomousProperties.has("actions"));
-        var guidedSchema = seenRequests.get(1).responseSchema();
-        if (guidedSchema == null) {
-            throw new AssertionError("guided response schema missing");
-        }
-        var guidedProperties = guidedSchema.get("properties");
-        assertFalse(guidedProperties.has("calls"));
-        assertTrue(guidedProperties.has("actions"));
+        assertEquals("Recovered", result.message());
+        assertEquals(2, requests.size());
+        var agent = requireAgent(service.agent("provider-schema-retry"));
+        assertTrue(
+                agent.history().stream()
+                        .noneMatch(
+                                turn -> turn.payload().toString().contains("Malformed guide JSON")),
+                "provider formatting rejection must remain ephemeral");
     }
 
     @Test
     void schemaViolationInjectsEphemeralRejectionMessageThenRetries() throws Exception {
-        // A capturing caller: the first call returns a schema-violating response (features absent
+        // A capturing caller: the first call returns a schema-violating response (no message,
+        // calls, or guide
         // so ResponseEnforcer throws ModelSchemaException); the retry returns a valid stopping
         // response (no tool calls).
         List<VetoRequest> seenRequests = new CopyOnWriteArrayList<>();
@@ -216,14 +189,10 @@ class AgentRunnerTest {
                 request -> {
                     seenRequests.add(request);
                     if (seenRequests.size() == 1) {
-                        return new VetoResponse(null, List.of(), null, null, null);
+                        return new VetoResponse(null, null, null, null);
                     }
                     return new VetoResponse(
-                            "I'll answer directly.",
-                            List.of(),
-                            "The answer is 4.",
-                            new VetoResponse.Features(false),
-                            null);
+                            "I'll answer directly.", null, "The answer is 4.", null);
                 };
 
         AgentService service = serviceWith(caller);
@@ -248,7 +217,7 @@ class AgentRunnerTest {
         assertEquals("user", injected.role(), "the rejection is a user-role turn");
         String rejection = injected.content();
         assertTrue(rejection.contains("schema violation"), "states the violation");
-        assertTrue(rejection.contains("features is required"), "echoes the violation detail");
+        assertTrue(rejection.contains("message"), "echoes the violation detail");
         assertTrue(rejection.contains("Expected:"), "carries the expected-description guidance");
         assertTrue(rejection.contains("regenerate"), "asks the model to regenerate");
 
@@ -277,19 +246,10 @@ class AgentRunnerTest {
                     if (seenRequests.size() == 1) {
                         // thought present + stopping (no calls) + message missing → Rule 3 throws
                         // "message required (thought OFF or stopping)".
-                        return new VetoResponse(
-                                "thinking...",
-                                List.of(),
-                                null,
-                                new VetoResponse.Features(false),
-                                null);
+                        return new VetoResponse("thinking...", null, null, null);
                     }
                     return new VetoResponse(
-                            "I'll answer directly.",
-                            List.of(),
-                            "The answer is 4.",
-                            new VetoResponse.Features(false),
-                            null);
+                            "I'll answer directly.", null, "The answer is 4.", null);
                 };
 
         AgentService service = serviceWith(caller);
@@ -321,11 +281,7 @@ class AgentRunnerTest {
         UniformLLMCaller caller =
                 request ->
                         new VetoResponse(
-                                "I should answer directly.",
-                                List.of(),
-                                "The answer is 4.",
-                                new VetoResponse.Features(false),
-                                null);
+                                "I should answer directly.", null, "The answer is 4.", null);
 
         AgentService service = serviceWith(caller);
         List<String> thoughts = new CopyOnWriteArrayList<>();

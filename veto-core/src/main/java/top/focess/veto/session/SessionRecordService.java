@@ -36,6 +36,14 @@ public class SessionRecordService {
             @NonNull String sessionId,
             @NonNull String sessionName,
             @NonNull ToolResultPresentationMode toolResultPresentation) {
+        return load(sessionId, sessionName, toolResultPresentation, false);
+    }
+
+    public @NonNull SessionRecordsView load(
+            @NonNull String sessionId,
+            @NonNull String sessionName,
+            @NonNull ToolResultPresentationMode toolResultPresentation,
+            boolean guidedEnabled) {
         List<TurnRecordEntity> rows = repository.findBySessionIdOrderByTimestampAsc(sessionId);
         Map<String, List<SessionRecord>> byAgent = new LinkedHashMap<>();
         for (TurnRecordEntity row : rows) {
@@ -65,6 +73,7 @@ public class SessionRecordService {
                 visible,
                 rewound,
                 toolResultPresentation,
+                guidedEnabled,
                 ToolUsageProjector.project(records),
                 records);
     }
@@ -118,6 +127,7 @@ public class SessionRecordService {
             int visibleRecordCount,
             int rewoundRecordCount,
             @NonNull ToolResultPresentationMode toolResultPresentation,
+            boolean guidedEnabled,
             @NonNull ToolUsageSummary toolUsage,
             @NonNull List<@NonNull SessionRecord> records) {}
 }

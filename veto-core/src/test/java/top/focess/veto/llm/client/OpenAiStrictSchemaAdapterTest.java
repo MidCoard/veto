@@ -21,14 +21,14 @@ class OpenAiStrictSchemaAdapterTest {
                           "type": "object",
                           "properties": {
                             "message": {"type": "string"},
-                            "features": {
+                            "guide": {
                               "type": "object",
-                              "properties": {"guided": {"type": "boolean"}},
-                              "required": ["guided"],
+                              "properties": {"actions": {"type": "array", "items": {"type": "string"}}},
+                              "required": ["actions"],
                               "additionalProperties": false
                             }
                           },
-                          "required": ["features"],
+                          "required": ["guide"],
                           "additionalProperties": false
                         }
                         """);
@@ -37,14 +37,14 @@ class OpenAiStrictSchemaAdapterTest {
 
         assertTrue(adapted.strict());
         assertTrue(contains(adapted.schema().path("required"), "message"));
-        assertTrue(contains(adapted.schema().path("required"), "features"));
+        assertTrue(contains(adapted.schema().path("required"), "guide"));
         assertTrue(
                 containsType(
                         adapted.schema().path("properties").path("message").path("anyOf"), "null"));
         assertFalse(
                 adapted.schema()
                         .path("properties")
-                        .path("features")
+                        .path("guide")
                         .path("additionalProperties")
                         .asBoolean());
     }
