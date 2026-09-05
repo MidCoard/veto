@@ -1,11 +1,13 @@
 package top.focess.veto.agent.capability;
 
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.memory.MemoryTools.ForgetMemory;
-import top.focess.veto.memory.MemoryTools.WriteMemory;
+import top.focess.veto.memory.MemoryId;
 
 public sealed interface MemoryWriteCapability extends Capability permits MemoryWriteCapabilityImpl {
-    @NonNull String write(WriteMemory.@NonNull Args args);
+    @NonNull MemoryId add(@NonNull String content, UUID projectId);
 
-    @NonNull String forget(ForgetMemory.@NonNull Args args);
+    MemoryId promote(@NonNull MemoryId id);
+
+    boolean forget(@NonNull MemoryId id);
 }

@@ -1,21 +1,28 @@
 package top.focess.veto.agent.capability;
 
+import java.util.List;
+import java.util.Set;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.group.DagTools.CreateNode;
-import top.focess.veto.group.DagTools.RemoveNode;
-import top.focess.veto.group.GroupTools.DisbandGroup;
-import top.focess.veto.group.GroupTools.InspectGroup;
-import top.focess.veto.group.GroupTools.PostMessage;
+import top.focess.veto.group.BlackboardMessage;
+import top.focess.veto.group.BlackboardMessage.MessageType;
+import top.focess.veto.group.GroupOrchestrator.NodeEdit;
+import top.focess.veto.group.GroupSnapshot;
 
 public sealed interface GroupControlCapability extends Capability
         permits GroupControlCapabilityImpl {
-    @NonNull String disband(DisbandGroup.@NonNull Args args);
+    GroupSnapshot snapshot();
 
-    @NonNull String inspect(InspectGroup.@NonNull Args args);
+    @NonNull List<@NonNull BlackboardMessage> messages(long since);
 
-    @NonNull String post(PostMessage.@NonNull Args args);
+    void disband(@NonNull String brief);
 
-    @NonNull String createNode(CreateNode.@NonNull Args args);
+    void post(@NonNull String receiver, @NonNull MessageType type, @NonNull String payload);
 
-    @NonNull String removeNode(RemoveNode.@NonNull Args args);
+    @NonNull NodeEdit addNode(
+            @NonNull String id,
+            @NonNull String description,
+            @NonNull String skillset,
+            @NonNull Set<String> dependencies);
+
+    @NonNull NodeEdit removeNode(@NonNull String id);
 }

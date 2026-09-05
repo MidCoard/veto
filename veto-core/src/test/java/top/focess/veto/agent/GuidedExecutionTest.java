@@ -49,9 +49,7 @@ class GuidedExecutionTest {
                                 new ViewFileTool(),
                                 new RunCommandTool(
                                         new ProcessExecutionCapabilityImpl(
-                                                sandbox,
-                                                new BackgroundTaskManager(sandbox),
-                                                mapper))),
+                                                sandbox, new BackgroundTaskManager(sandbox)))),
                         context);
         ReflectionTestUtils.invokeMethod(engine, "init");
         PromptCompiler compiler =

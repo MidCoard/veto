@@ -1,6 +1,8 @@
 package top.focess.veto.group;
 
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.capability.GroupControlCapability;
@@ -11,7 +13,9 @@ import top.focess.veto.agent.tool.SecurityHint;
 import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolDoc;
 import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolResultFormat;
+import top.focess.veto.group.GroupOrchestrator.NodeEdit;
 
 /**
  * The Leader's node-authoring tools ({@code create_node} / {@code remove_node}). The Leader builds
@@ -128,7 +132,35 @@ public final class DagTools {
         @Override
         public @NonNull String execute(
                 @NonNull Args args, @NonNull GroupControlCapability capability) {
-            return capability.createNode(args);
+            if (capability.snapshot() == null)
+                return ToolErrors.failure(
+                        "Node not created: no active group in your context. create_node is a Leader tool inside a group.");
+            String nodeId = args.nodeId().strip();
+            String description = args.description().strip();
+            String skillset = args.skillset().strip();
+            var requestedDependencies = args.dependsOn();
+            Set<String> deps =
+                    requestedDependencies == null
+                            ? Set.of()
+                            : new LinkedHashSet<>(requestedDependencies);
+            NodeEdit edit = capability.addNode(nodeId, description, skillset, deps);
+            if (edit instanceof NodeEdit.Rejected r) {
+                return ToolErrors.failure("Node not created: " + r.reason());
+            }
+            if (deps.isEmpty()) {
+                return "Node created: "
+                        + nodeId
+                        + " (skillset: "
+                        + skillset
+                        + "). It is eligible for dispatch.";
+            }
+            return "Node created: "
+                    + nodeId
+                    + " (skillset: "
+                    + skillset
+                    + ", depends on: "
+                    + String.join(", ", deps)
+                    + "). It becomes eligible after its dependencies verify.";
         }
     }
 
@@ -205,7 +237,15 @@ public final class DagTools {
         @Override
         public @NonNull String execute(
                 @NonNull Args args, @NonNull GroupControlCapability capability) {
-            return capability.removeNode(args);
+            if (capability.snapshot() == null)
+                return ToolErrors.failure(
+                        "Node not removed: no active group in your context. remove_node is a Leader tool inside a group.");
+            String nodeId = args.nodeId().strip();
+            NodeEdit edit = capability.removeNode(nodeId);
+            if (edit instanceof NodeEdit.Rejected r) {
+                return ToolErrors.failure("Node not removed: " + r.reason());
+            }
+            return "Node removed: " + nodeId + " (marked stale).";
         }
     }
 }

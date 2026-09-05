@@ -1,5 +1,7 @@
 package top.focess.veto.agent.tool.builtin;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.capability.TaskControlCapability;
@@ -9,6 +11,8 @@ import top.focess.veto.agent.tool.TaskControlTool;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDoc;
 import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.ToolErrors;
+import top.focess.veto.agent.tool.ToolJson;
 import top.focess.veto.agent.tool.ToolResultFormat;
 import top.focess.veto.agent.tool.ToolSecurity;
 
@@ -89,6 +93,21 @@ public final class StopTaskTool implements TaskControlTool<StopTaskTool.Args> {
 
     @Override
     public @NonNull String execute(@NonNull Args args, @NonNull TaskControlCapability capability) {
-        return capability.stopTask(args);
+        var before = capability.status(args.taskId());
+        if (before.isEmpty()) return ToolErrors.failure("task not found: " + args.taskId());
+        var stopped = capability.stop(args.taskId());
+        if (stopped.isEmpty()) return ToolErrors.failure("task not found: " + args.taskId());
+        var info = stopped.get();
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put(
+                "status",
+                info.alive()
+                        ? "stop_requested"
+                        : before.get().alive() ? "stopped" : "already_exited");
+        result.put("taskId", info.taskId());
+        result.put("alive", info.alive());
+        Integer exitCode = info.exitCode();
+        if (exitCode != null) result.put("exitCode", exitCode);
+        return ToolJson.object(result);
     }
 }

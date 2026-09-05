@@ -1,9 +1,9 @@
 package top.focess.veto.agent.capability;
 
+import java.util.Optional;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.agent.tool.builtin.LoadSkillTool;
+import top.focess.veto.agent.skills.Skill;
 
-/** Operations restricted to the current authorized call and caller. */
 public sealed interface SkillReadCapability extends Capability permits SkillReadCapabilityImpl {
-    @NonNull String load(LoadSkillTool.@NonNull Args args) throws Exception;
+    @NonNull Optional<Skill> load(@NonNull String name);
 }

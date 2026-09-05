@@ -26,6 +26,7 @@ import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolExecutionException;
+import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
 import top.focess.veto.sandbox.BackgroundTaskManager;
 import top.focess.veto.sandbox.SandboxManager;
@@ -55,10 +56,9 @@ class RunTaskToolTest {
                 new RunTaskTool(
                         new ProcessExecutionCapabilityImpl(
                                 new SandboxManager(TestSandboxFactory.uncontainedSubprocesses()),
-                                manager,
-                                mapper));
-        status = new ViewTaskTool(new TaskControlCapabilityImpl(manager, mapper));
-        stop = new StopTaskTool(new TaskControlCapabilityImpl(manager, mapper));
+                                manager));
+        status = new ViewTaskTool(new TaskControlCapabilityImpl(manager));
+        stop = new StopTaskTool(new TaskControlCapabilityImpl(manager));
         ToolCallContextHolder.set(
                 new ToolCallContext(
                         "agent-x",
@@ -82,12 +82,10 @@ class RunTaskToolTest {
     void runTaskLaunchesAndStatusReportsExit(@TempDir @NonNull Path tempDir) throws Exception {
         ToolExecutionPermit permit =
                 new ToolExecutionPermit(
-                        "run_task",
-                        "test-call",
+                        new ToolCall("run_task", Map.of(), "test-call"),
                         ToolCapability.PROCESS_EXECUTION,
                         null,
                         null,
-                        Map.of(),
                         Map.of(),
                         List.of(tempDir),
                         tempDir,

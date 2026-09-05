@@ -1,5 +1,9 @@
 package top.focess.veto.agent.tool.builtin;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.FileAlreadyExistsException;
+import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.capability.WorkspaceWriteCapability;
@@ -11,6 +15,8 @@ import top.focess.veto.agent.tool.SecurityHint;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDoc;
 import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.ToolErrors;
+import top.focess.veto.agent.tool.ToolJson;
 import top.focess.veto.agent.tool.ToolResultFormat;
 import top.focess.veto.agent.tool.ToolSecurity;
 import top.focess.veto.agent.tool.WorkspaceWriteTool;
@@ -19,6 +25,7 @@ import top.focess.veto.agent.tool.WorkspaceWriteTool;
 @Component
 @ToolSecurity(capability = ToolCapability.WORKSPACE_WRITE, defaultDanger = Danger.ELEVATED)
 public final class WriteToFileTool implements WorkspaceWriteTool<WriteToFileTool.Args> {
+    private static final int MAX_TEXT_BYTES = 16 * 1024 * 1024;
 
     @ToolDoc(
             resultFormats = {ToolResultFormat.JSON},
@@ -97,7 +104,22 @@ public final class WriteToFileTool implements WorkspaceWriteTool<WriteToFileTool
 
     @Override
     public @NonNull String execute(
-            @NonNull Args args, @NonNull WorkspaceWriteCapability capability) {
-        return capability.writeText("absolutePath", args.codeContent(), args.overwrite());
+            @NonNull Args args, @NonNull WorkspaceWriteCapability workspace) {
+        byte[] bytes = args.codeContent().getBytes(StandardCharsets.UTF_8);
+        if (bytes.length > MAX_TEXT_BYTES) {
+            return ToolErrors.failure("Content exceeds 16 MiB (16,777,216 bytes)");
+        }
+        try {
+            var file = workspace.file(args.absolutePath());
+            try (var output = args.overwrite() ? file.openForReplace() : file.openForCreate()) {
+                output.write(bytes);
+            }
+            return ToolJson.object(
+                    Map.of("status", "ok", "file", args.absolutePath(), "bytes", bytes.length));
+        } catch (FileAlreadyExistsException e) {
+            return ToolErrors.failure("File exists and overwrite=false: " + args.absolutePath());
+        } catch (IOException e) {
+            return ToolErrors.failure("IO_ERROR", "Cannot write file: " + args.absolutePath());
+        }
     }
 }

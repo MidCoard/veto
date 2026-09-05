@@ -1,7 +1,14 @@
 package top.focess.veto.agent.tool.builtin;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.MalformedInputException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.NoSuchFileException;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
+import top.focess.veto.agent.capability.WorkspaceFile;
 import top.focess.veto.agent.capability.WorkspaceReadCapability;
 import top.focess.veto.agent.screening.Danger;
 import top.focess.veto.agent.tool.Doc;
@@ -10,6 +17,7 @@ import top.focess.veto.agent.tool.SecurityHint;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDoc;
 import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolResultFormat;
 import top.focess.veto.agent.tool.ToolSecurity;
 import top.focess.veto.agent.tool.WorkspaceReadTool;
@@ -29,9 +37,9 @@ public final class ViewFileTool implements WorkspaceReadTool<ViewFileTool.Args> 
                     and `endLine` are 1-indexed and inclusive. When `startLine` is omitted, reading starts at \
                     line 1; when `endLine` is omitted, it runs to the last line. Ranges are clamped: `startLine` \
                     is floored at 1, `endLine` is capped at the file's line count. Passing neither returns the \
-                    whole file. The complete file is read before the requested range is selected. \
+                    whole file. Lines are decoded sequentially until the requested range ends. \
                     Files larger than 16 MiB (16,777,216 bytes) are rejected before UTF-8 decoding because the \
-                    complete file is held in memory; requesting a line range therefore does not bypass this \
+                    input size is bounded; requesting a line range therefore does not bypass this \
                     per-call input limit. \
                     Output is capped at 5000 lines or 1000000 characters and then ends with \
                     `[truncated; request a narrower line range]`.
@@ -103,8 +111,52 @@ public final class ViewFileTool implements WorkspaceReadTool<ViewFileTool.Args> 
     }
 
     @Override
-    public @NonNull String execute(
-            @NonNull Args args, @NonNull WorkspaceReadCapability capability) {
-        return capability.readText("absolutePath", args.startLine(), args.endLine());
+    public @NonNull String execute(@NonNull Args args, @NonNull WorkspaceReadCapability workspace) {
+        try {
+            WorkspaceFile file = workspace.file(args.absolutePath());
+            if (!file.kind().equals("file")) {
+                return ToolErrors.failure(
+                        "NOT_A_FILE", "Not a regular file: " + args.absolutePath());
+            }
+            if (file.size() > 16L * 1024 * 1024) {
+                return ToolErrors.failure(
+                        "FILE_TOO_LARGE",
+                        "File exceeds 16 MiB (16,777,216 bytes); request a smaller artifact");
+            }
+            Integer start = args.startLine();
+            Integer end = args.endLine();
+            int from = start == null ? 1 : Math.max(1, start);
+            int until = end == null ? Integer.MAX_VALUE : end;
+            if (until < from) return "";
+            StringBuilder output = new StringBuilder();
+            int emitted = 0;
+            try (var reader =
+                    new BufferedReader(
+                            new InputStreamReader(
+                                    file.openRead(), StandardCharsets.UTF_8.newDecoder()))) {
+                String line;
+                int number = 0;
+                while ((line = reader.readLine()) != null) {
+                    number++;
+                    if (number < from) continue;
+                    if (number > until) break;
+                    String rendered = number + ": " + line + "\n";
+                    if (emitted >= 5000 || output.length() + rendered.length() > 1_000_000) {
+                        output.append("[truncated; request a narrower line range]\n");
+                        break;
+                    }
+                    output.append(rendered);
+                    emitted++;
+                }
+            }
+            return output.toString();
+        } catch (MalformedInputException e) {
+            return ToolErrors.failure(
+                    "INVALID_UTF8", "File is not valid UTF-8: " + args.absolutePath());
+        } catch (NoSuchFileException e) {
+            return ToolErrors.failure("NOT_A_FILE", "Not a regular file: " + args.absolutePath());
+        } catch (IOException e) {
+            return ToolErrors.failure("IO_ERROR", "Cannot read file: " + args.absolutePath());
+        }
     }
 }

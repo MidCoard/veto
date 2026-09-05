@@ -36,7 +36,8 @@ public final class ThinkTool implements LoopControlTool<ThinkTool.Args> {
     @Override
     public @NonNull String execute(@NonNull Args args, @NonNull LoopControlCapability capability)
             throws Exception {
-        return capability.continueLoop(args);
+        capability.continueLoop();
+        return "";
     }
 
     @ToolDoc(

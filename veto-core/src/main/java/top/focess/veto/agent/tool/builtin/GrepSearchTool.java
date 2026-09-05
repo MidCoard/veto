@@ -1,8 +1,19 @@
 package top.focess.veto.agent.tool.builtin;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.FileSystems;
+import java.nio.file.NoSuchFileException;
+import java.nio.file.Path;
+import java.nio.file.PathMatcher;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
+import top.focess.veto.agent.capability.WorkspaceFile;
 import top.focess.veto.agent.capability.WorkspaceReadCapability;
 import top.focess.veto.agent.screening.Danger;
 import top.focess.veto.agent.tool.Doc;
@@ -11,6 +22,7 @@ import top.focess.veto.agent.tool.SecurityHint;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDoc;
 import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolResultFormat;
 import top.focess.veto.agent.tool.ToolSecurity;
 import top.focess.veto.agent.tool.WorkspaceReadTool;
@@ -95,9 +107,109 @@ public final class GrepSearchTool implements WorkspaceReadTool<GrepSearchTool.Ar
     }
 
     @Override
-    public @NonNull String execute(
-            @NonNull Args args, @NonNull WorkspaceReadCapability capability) {
-        return capability.grep(
-                "absolutePath", args.query(), args.caseInsensitive(), args.includes());
+    public @NonNull String execute(@NonNull Args args, @NonNull WorkspaceReadCapability workspace) {
+        if (args.query().isEmpty()) {
+            return ToolErrors.failure("INVALID_QUERY", "query must not be empty");
+        }
+        List<PathMatcher> includes;
+        try {
+            includes = compileIncludes(args.includes());
+        } catch (IllegalArgumentException e) {
+            return ToolErrors.failure("INVALID_PATTERN", "Invalid includes glob");
+        }
+        boolean insensitive = Boolean.TRUE.equals(args.caseInsensitive());
+        String query = insensitive ? args.query().toLowerCase(Locale.ROOT) : args.query();
+        try {
+            WorkspaceFile root = workspace.file(args.absolutePath());
+            String kind = root.kind();
+            if (kind.equals("missing")) {
+                return ToolErrors.failure(
+                        "PATH_NOT_FOUND", "Search path does not exist: " + args.absolutePath());
+            }
+            if (kind.equals("symbolic_link")) {
+                return ToolErrors.failure(
+                        "UNSAFE_LINK", "Search path is a symbolic link or reparse point");
+            }
+            var traversal = new WorkspaceTraversal(root);
+            StringBuilder output = new StringBuilder();
+            int files = 0;
+            int matches = 0;
+            String reason = null;
+            WorkspaceFile file;
+            search:
+            while ((file = traversal.next()) != null) {
+                String relative = traversal.relativeName();
+                if (!includes.isEmpty()) {
+                    Path relativePath = Path.of(relative);
+                    Path basename = Path.of(WorkspaceTraversal.basename(file.name()));
+                    if (includes.stream()
+                            .noneMatch(m -> m.matches(relativePath) || m.matches(basename)))
+                        continue;
+                }
+                if (files++ >= 10_000) {
+                    reason = "file limit 10000";
+                    break;
+                }
+                String display =
+                        kind.equals("directory")
+                                ? args.absolutePath()
+                                        + (args.absolutePath().endsWith("/")
+                                                        || args.absolutePath().endsWith("\\")
+                                                ? ""
+                                                : "/")
+                                        + relative
+                                : args.absolutePath();
+                int previousLength = output.length();
+                int previousMatches = matches;
+                try (var reader =
+                        new BufferedReader(
+                                new InputStreamReader(
+                                        file.openRead(), StandardCharsets.UTF_8.newDecoder()))) {
+                    String line;
+                    int lineNumber = 0;
+                    while ((line = reader.readLine()) != null) {
+                        if (!traversal.withinTime()) break search;
+                        lineNumber++;
+                        String candidate = insensitive ? line.toLowerCase(Locale.ROOT) : line;
+                        if (!candidate.contains(query)) continue;
+                        String rendered = display + ":" + lineNumber + ": " + line + "\n";
+                        if (matches >= 2000 || output.length() + rendered.length() > 1_000_000) {
+                            reason =
+                                    matches >= 2000
+                                            ? "match limit 2000"
+                                            : "output limit 1000000 chars";
+                            break search;
+                        }
+                        output.append(rendered);
+                        matches++;
+                    }
+                } catch (IOException ignored) {
+                    // Discard incomplete reads, including a later UTF-8 decoding failure.
+                    output.setLength(previousLength);
+                    matches = previousMatches;
+                }
+            }
+            String boundaryReason = traversal.reason();
+            if (reason == null && boundaryReason != null)
+                reason = boundaryReason.toLowerCase(Locale.ROOT);
+            if (reason != null) output.append("[truncated: ").append(reason).append("]\n");
+            return output.isEmpty() ? "(no matches)" : output.toString();
+        } catch (NoSuchFileException e) {
+            return ToolErrors.failure(
+                    "PATH_NOT_FOUND", "Search path does not exist: " + args.absolutePath());
+        } catch (IOException e) {
+            return ToolErrors.failure("IO_ERROR", "Cannot search path: " + args.absolutePath());
+        }
+    }
+
+    private static @NonNull List<PathMatcher> compileIncludes(List<String> patterns) {
+        if (patterns == null || patterns.isEmpty()) return List.of();
+        List<PathMatcher> matchers = new ArrayList<>();
+        for (String pattern : patterns) {
+            if (pattern != null && !pattern.isBlank()) {
+                matchers.add(FileSystems.getDefault().getPathMatcher("glob:" + pattern));
+            }
+        }
+        return List.copyOf(matchers);
     }
 }

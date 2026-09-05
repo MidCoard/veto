@@ -30,6 +30,7 @@ import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.tool.ToolExecutionException;
+import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
 
 class PathToolsTest {
@@ -199,7 +200,7 @@ class PathToolsTest {
                         new WriteToFileTool()
                                 .execute(
                                         new WriteToFileTool.Args(
-                                                file.toString(), "blocked", false)));
+                                                "D:/unauthorized.txt", "x", false)));
         assertFalse(Files.exists(file));
     }
 
@@ -255,14 +256,12 @@ class PathToolsTest {
                                                 Path.of(path).getParent()))));
         ToolExecutionPermit permit =
                 new ToolExecutionPermit(
-                        toolName,
-                        "test-call",
+                        new ToolCall(toolName, Map.copyOf(paths), "test-call"),
                         "find_files".equals(toolName)
                                 ? ToolCapability.WORKSPACE_READ
                                 : ToolCapability.WORKSPACE_WRITE,
                         null,
                         null,
-                        Map.copyOf(paths),
                         authorized,
                         List.of(root),
                         root,

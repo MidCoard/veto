@@ -1,12 +1,25 @@
 package top.focess.veto.agent.capability;
 
+import java.time.Duration;
+import java.util.List;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.agent.tool.builtin.RunCommandTool;
-import top.focess.veto.agent.tool.builtin.RunTaskTool;
+import top.focess.veto.sandbox.BackgroundTaskManager;
+import top.focess.veto.sandbox.ChainMode;
+import top.focess.veto.sandbox.Command;
+import top.focess.veto.sandbox.CommandResult;
 
 public sealed interface ProcessExecutionCapability extends Capability
         permits ProcessExecutionCapabilityImpl {
-    @NonNull String runCommand(RunCommandTool.@NonNull Args args);
+    @NonNull CommandResult run(
+            @NonNull List<Command> commands,
+            @NonNull ChainMode mode,
+            @NonNull Duration timeout,
+            boolean network);
 
-    @NonNull String runTask(RunTaskTool.@NonNull Args args);
+    BackgroundTaskManager.@NonNull TaskInfo start(
+            @NonNull Command command, int timeoutSeconds, boolean network);
+
+    @NonNull Duration maxRuntime();
+
+    void cancel(@NonNull String taskId);
 }

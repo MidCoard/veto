@@ -1,5 +1,9 @@
 package top.focess.veto.agent.tool.builtin;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.NoSuchFileException;
+import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.capability.WorkspaceWriteCapability;
@@ -11,6 +15,8 @@ import top.focess.veto.agent.tool.SecurityHint;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDoc;
 import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.ToolErrors;
+import top.focess.veto.agent.tool.ToolJson;
 import top.focess.veto.agent.tool.ToolResultFormat;
 import top.focess.veto.agent.tool.ToolSecurity;
 import top.focess.veto.agent.tool.WorkspaceWriteTool;
@@ -20,6 +26,7 @@ import top.focess.veto.agent.tool.WorkspaceWriteTool;
 @ToolSecurity(capability = ToolCapability.WORKSPACE_WRITE, defaultDanger = Danger.ELEVATED)
 public final class ReplaceFileContentTool
         implements WorkspaceWriteTool<ReplaceFileContentTool.Args> {
+    private static final int MAX_TEXT_BYTES = 16 * 1024 * 1024;
 
     @ToolDoc(
             resultFormats = {ToolResultFormat.JSON},
@@ -112,12 +119,64 @@ public final class ReplaceFileContentTool
 
     @Override
     public @NonNull String execute(
-            @NonNull Args args, @NonNull WorkspaceWriteCapability capability) {
-        return capability.replaceText(
-                "absolutePath",
-                args.startLine(),
-                args.endLine(),
-                args.targetContent(),
-                args.replacementContent());
+            @NonNull Args args, @NonNull WorkspaceWriteCapability workspace) {
+        if (args.startLine() < 1 || args.endLine() < args.startLine()) {
+            return ToolErrors.failure("Invalid line range");
+        }
+        if (args.targetContent().isEmpty())
+            return ToolErrors.failure("targetContent must not be empty");
+        try {
+            var file = workspace.file(args.absolutePath());
+            if (!"file".equals(file.kind()))
+                return ToolErrors.failure("Not a regular file: " + args.absolutePath());
+            if (file.size() > MAX_TEXT_BYTES)
+                return ToolErrors.failure("File exceeds 16 MiB (16,777,216 bytes)");
+            String content;
+            try (var input = file.openRead()) {
+                byte[] bytes = input.readNBytes(MAX_TEXT_BYTES + 1);
+                if (bytes.length > MAX_TEXT_BYTES)
+                    return ToolErrors.failure("File exceeds 16 MiB (16,777,216 bytes)");
+                content = new String(bytes, StandardCharsets.UTF_8);
+            }
+            int start = lineStart(content, args.startLine());
+            int end = lineEnd(content, args.endLine());
+            if (start < 0 || end < start) return ToolErrors.failure("Line range outside file");
+            int index = content.indexOf(args.targetContent(), start);
+            if (index < 0 || index + args.targetContent().length() > end)
+                return ToolErrors.failure("targetContent not found in selected range.");
+            int next = content.indexOf(args.targetContent(), index + 1);
+            if (next >= 0 && next + args.targetContent().length() <= end)
+                return ToolErrors.failure("targetContent is not unique in selected range.");
+            String updated =
+                    content.substring(0, index)
+                            + args.replacementContent()
+                            + content.substring(index + args.targetContent().length());
+            byte[] bytes = updated.getBytes(StandardCharsets.UTF_8);
+            if (bytes.length > MAX_TEXT_BYTES)
+                return ToolErrors.failure("Replacement exceeds 16 MiB (16,777,216 bytes)");
+            try (var output = file.openForReplace()) {
+                output.write(bytes);
+            }
+            return ToolJson.object(Map.of("status", "ok", "file", args.absolutePath()));
+        } catch (NoSuchFileException e) {
+            return ToolErrors.failure("Not a regular file: " + args.absolutePath());
+        } catch (IOException e) {
+            return ToolErrors.failure("IO_ERROR", "Cannot update file: " + args.absolutePath());
+        }
+    }
+
+    private static int lineStart(@NonNull String content, int number) {
+        if (number == 1) return 0;
+        int current = 1;
+        for (int i = 0; i < content.length(); i++)
+            if (content.charAt(i) == '\n' && ++current == number) return i + 1;
+        return -1;
+    }
+
+    private static int lineEnd(@NonNull String content, int number) {
+        int start = lineStart(content, number);
+        if (start < 0) return -1;
+        int newline = content.indexOf('\n', start);
+        return newline < 0 ? content.length() : newline + 1;
     }
 }

@@ -1,14 +1,21 @@
 package top.focess.veto.agent.capability;
 
+import java.util.List;
+import java.util.Optional;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.agent.tool.builtin.InputTaskTool;
-import top.focess.veto.agent.tool.builtin.StopTaskTool;
-import top.focess.veto.agent.tool.builtin.ViewTaskTool;
+import top.focess.veto.sandbox.BackgroundTaskManager;
 
 public sealed interface TaskControlCapability extends Capability permits TaskControlCapabilityImpl {
-    @NonNull String viewTask(ViewTaskTool.@NonNull Args args);
+    @NonNull List<BackgroundTaskManager.TaskInfo> list();
 
-    @NonNull String stopTask(StopTaskTool.@NonNull Args args);
+    @NonNull Optional<BackgroundTaskManager.TaskInfo> status(@NonNull String taskId);
 
-    @NonNull String inputTask(InputTaskTool.@NonNull Args args);
+    @NonNull Optional<String> output(@NonNull String taskId, int lines);
+
+    @NonNull List<@NonNull String> inputFailures(@NonNull String taskId);
+
+    @NonNull Optional<BackgroundTaskManager.TaskInfo> stop(@NonNull String taskId);
+
+    BackgroundTaskManager.@NonNull InputResult queueInput(
+            @NonNull String taskId, byte @NonNull [] bytes, boolean closeStdin);
 }

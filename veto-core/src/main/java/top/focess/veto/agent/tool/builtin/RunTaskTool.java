@@ -1,6 +1,8 @@
 package top.focess.veto.agent.tool.builtin;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.capability.ProcessExecutionCapability;
@@ -12,9 +14,12 @@ import top.focess.veto.agent.tool.SecurityHint;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDoc;
 import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.ToolErrors;
+import top.focess.veto.agent.tool.ToolJson;
 import top.focess.veto.agent.tool.ToolResultFormat;
 import top.focess.veto.agent.tool.ToolSecurity;
 import top.focess.veto.sandbox.BackgroundTaskManager;
+import top.focess.veto.sandbox.Command;
 
 /**
  * {@code run_task} - launch a long-running command as a detached background task. Takes the same
@@ -124,6 +129,38 @@ public final class RunTaskTool implements ProcessExecutionTool<RunTaskTool.Args>
     @Override
     public @NonNull String execute(
             @NonNull Args args, @NonNull ProcessExecutionCapability capability) {
-        return capability.runTask(args);
+        int timeout = args.timeout();
+        if (timeout < 0) return ToolErrors.failure("run_task timeout must be zero or positive.");
+        if (args.commands().size() != 1)
+            return ToolErrors.failure(
+                    "run_task requires exactly one command (background mode does not chain); got "
+                            + args.commands().size());
+        var input = args.commands().getFirst();
+        long maximumTimeout = capability.maxRuntime().toSeconds();
+        var info =
+                capability.start(
+                        new Command(input.executable(), input.args()),
+                        timeout,
+                        Boolean.TRUE.equals(args.network()));
+        try {
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("status", "started");
+            result.put("taskId", info.taskId());
+            result.put("pid", info.pid());
+            result.put("command", info.command());
+            result.put("cwd", info.cwd());
+            result.put("requestedTimeoutSeconds", timeout);
+            result.put(
+                    "effectiveTimeoutSeconds",
+                    timeout <= 0 ? maximumTimeout : Math.min(timeout, maximumTimeout));
+            return ToolJson.object(result);
+        } catch (RuntimeException e) {
+            capability.cancel(info.taskId());
+            return ToolErrors.failure(
+                    "Task response encoding failed; the started task was stopped (taskId="
+                            + info.taskId()
+                            + "): "
+                            + e.getMessage());
+        }
     }
 }

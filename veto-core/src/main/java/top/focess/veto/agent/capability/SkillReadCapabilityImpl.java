@@ -1,11 +1,11 @@
 package top.focess.veto.agent.capability;
 
+import java.util.Optional;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
+import top.focess.veto.agent.skills.Skill;
 import top.focess.veto.agent.skills.SkillRegistry;
 import top.focess.veto.agent.tool.ToolCapability;
-import top.focess.veto.agent.tool.ToolErrors;
-import top.focess.veto.agent.tool.builtin.LoadSkillTool;
 
 @Component
 public final class SkillReadCapabilityImpl implements SkillReadCapability {
@@ -16,16 +16,8 @@ public final class SkillReadCapabilityImpl implements SkillReadCapability {
     }
 
     @Override
-    public @NonNull String load(LoadSkillTool.@NonNull Args args) throws Exception {
-        CapabilityAccess.require(ToolCapability.SKILL_READ, "load_skill", args);
-
-        var skill = skillRegistry.loadVerified(args.skillName());
-        if (skill.isEmpty()) {
-            return ToolErrors.failure("Skill '" + args.skillName() + "' not found or tampered.");
-        }
-        String instructions = skill.get().promptInstructions();
-        return instructions == null
-                ? ToolErrors.failure("Skill body is not loaded.")
-                : instructions;
+    public @NonNull Optional<Skill> load(@NonNull String name) {
+        CapabilityAccess.require(ToolCapability.SKILL_READ, "load_skill");
+        return skillRegistry.loadVerified(name);
     }
 }

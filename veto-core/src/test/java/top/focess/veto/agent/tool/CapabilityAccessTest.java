@@ -3,9 +3,10 @@ package top.focess.veto.agent.tool;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import java.nio.charset.StandardCharsets;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
@@ -14,18 +15,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import top.focess.veto.agent.capability.CapabilityAccess;
 import top.focess.veto.agent.capability.CapabilityResolver;
-import top.focess.veto.agent.capability.LoopControlCapabilityImpl;
-import top.focess.veto.agent.capability.SkillReadCapabilityImpl;
-import top.focess.veto.agent.capability.UserInteractionCapabilityImpl;
 import top.focess.veto.agent.capability.WorkspaceReadCapability;
 import top.focess.veto.agent.capability.WorkspaceWriteCapability;
+import top.focess.veto.agent.capability.WritableWorkspaceFile;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
-import top.focess.veto.agent.skills.SkillRegistry;
-import top.focess.veto.agent.tool.builtin.AskUserTool;
-import top.focess.veto.agent.tool.builtin.DeletePathTool;
-import top.focess.veto.agent.tool.builtin.LoadSkillTool;
-import top.focess.veto.agent.tool.builtin.ThinkTool;
-import top.focess.veto.agent.tool.builtin.UserQuestionRegistry;
 import top.focess.veto.agent.tool.builtin.ViewFileTool;
 import top.focess.veto.agent.tool.builtin.WriteToFileTool;
 import top.focess.veto.agent.workspace.PathMode;
@@ -35,39 +28,6 @@ import top.focess.veto.llm.core.ToolResultPresentationMode;
 
 class CapabilityAccessTest {
     private static final @NonNull UUID USER = UUID.randomUUID();
-
-    @Test
-    void noOpStillRequiresItsOwnAuthorizedInvocation(@TempDir @NonNull Path root) throws Exception {
-        var capability = new LoopControlCapabilityImpl();
-        var args = new ThinkTool.Args();
-        assertThrows(SecurityException.class, () -> capability.continueLoop(args));
-        var definition =
-                AgentToolDefinition.from(
-                        "think",
-                        ToolDocs.nonNullClass(ThinkTool.Args.class),
-                        ToolCapability.LOOP_CONTROL);
-        var call = new ToolCall("think", Map.of(), "think-call");
-        var permit =
-                ToolExecutionPermit.capture(call, definition, Workspace.single(root, PathMode.REAL))
-                        .withCaller("agent", USER, null, "owner", null);
-        bind(permit, "agent");
-        assertEquals("", capability.continueLoop(args));
-        bind(permit, "other-agent");
-        assertThrows(SecurityException.class, () -> capability.continueLoop(args));
-        var otherDefinition =
-                AgentToolDefinition.from(
-                        "other",
-                        ToolDocs.nonNullClass(ThinkTool.Args.class),
-                        ToolCapability.LOOP_CONTROL);
-        var otherPermit =
-                ToolExecutionPermit.capture(
-                                new ToolCall("other", Map.of(), "other-call"),
-                                otherDefinition,
-                                Workspace.single(root, PathMode.REAL))
-                        .withCaller("agent", USER, null, "owner", null);
-        bind(otherPermit, "agent");
-        assertThrows(SecurityException.class, () -> capability.continueLoop(args));
-    }
 
     @AfterEach
     void clearContext() {
@@ -100,151 +60,133 @@ class CapabilityAccessTest {
     }
 
     @Test
-    void rejectsWrongCapabilityNameCallerCallIdAndArgumentsBeforeResourceAccess(
-            @TempDir @NonNull Path root) throws Exception {
-        Path file = root.resolve("evidence.txt");
-        Files.writeString(file, "unchanged");
-        var permit = capture(new ViewFileTool(), Map.of("absolutePath", file.toString()), root);
-        var args = new ViewFileTool.Args(file.toString(), null, null);
+    void authorityRejectsWrongCapabilityCallerAndCall(@TempDir @NonNull Path root) {
+        var permit = capture(new ViewFileTool(), Map.of("absolutePath", root.toString()), root);
         bind(permit, "agent");
-        assertDoesNotThrow(
-                () -> CapabilityAccess.require(ToolCapability.WORKSPACE_READ, "view_file", args));
+        CapabilityAccess.require(ToolCapability.WORKSPACE_READ, "view_file");
         assertThrows(
-                ToolDocs.nonNullClass(SecurityException.class),
-                () -> CapabilityAccess.require(ToolCapability.WORKSPACE_WRITE, "view_file", args));
+                SecurityException.class,
+                () -> CapabilityAccess.require(ToolCapability.WORKSPACE_WRITE));
         assertThrows(
-                ToolDocs.nonNullClass(SecurityException.class),
-                () -> CapabilityAccess.require(ToolCapability.WORKSPACE_READ, "list_dir", args));
+                SecurityException.class,
+                () -> CapabilityAccess.require(ToolCapability.WORKSPACE_READ, "list_dir"));
+        bind(permit, "another-agent");
         assertThrows(
-                ToolDocs.nonNullClass(SecurityException.class),
-                () ->
-                        CapabilityAccess.require(
-                                ToolCapability.WORKSPACE_READ,
-                                "view_file",
-                                new ViewFileTool.Args(file.toString(), 2, null)));
-        ToolCallContextHolder.setCurrentCallId("other-call");
+                SecurityException.class,
+                () -> CapabilityAccess.require(ToolCapability.WORKSPACE_READ));
+        bind(permit, "agent");
+        ToolCallContextHolder.setCurrentCallId("another-call");
         assertThrows(
-                ToolDocs.nonNullClass(SecurityException.class),
-                () -> CapabilityAccess.require(ToolCapability.WORKSPACE_READ, "view_file", args));
-        bind(permit, "other-agent");
-        assertThrows(
-                ToolDocs.nonNullClass(SecurityException.class),
-                () -> CapabilityAccess.require(ToolCapability.WORKSPACE_READ, "view_file", args));
-        ToolCallContextHolder.clear();
-        assertThrows(
-                ToolDocs.nonNullClass(SecurityException.class),
-                () -> CapabilityAccess.require(ToolCapability.WORKSPACE_READ, "view_file", args));
-        assertEquals("unchanged", Files.readString(file));
+                SecurityException.class,
+                () -> CapabilityAccess.require(ToolCapability.WORKSPACE_READ));
     }
 
     @Test
-    void readPermitCannotAcquireWriteAuthorityOrReuseEscapedReadAuthority(
-            @TempDir @NonNull Path root) throws Exception {
-        Path file = root.resolve("evidence.txt");
-        Files.writeString(file, "original");
-        var permit = capture(new ViewFileTool(), Map.of("absolutePath", file.toString()), root);
-        bind(permit, "agent");
-        var read = CapabilityResolver.require(ToolDocs.nonNullClass(WorkspaceReadCapability.class));
-        assertTrue(read.readText("absolutePath", null, null).contains("original"));
-        assertThrows(
-                ToolDocs.nonNullClass(SecurityException.class),
-                () ->
-                        CapabilityResolver.require(
-                                ToolDocs.nonNullClass(WorkspaceWriteCapability.class)));
-        assertThrows(
-                ToolDocs.nonNullClass(SecurityException.class),
-                () -> read.listDirectory("absolutePath"));
-        ToolCallContextHolder.clear();
-        assertThrows(
-                ToolDocs.nonNullClass(SecurityException.class),
-                () -> read.readText("absolutePath", null, null));
+    void lookupRestrictsResourcesAndReadHandlesCannotWrite(@TempDir @NonNull Path root)
+            throws Exception {
+        Path file = Files.writeString(root.resolve("allowed.txt"), "approved");
         bind(capture(new ViewFileTool(), Map.of("absolutePath", file.toString()), root), "agent");
+        var workspace =
+                CapabilityResolver.require(ToolDocs.nonNullClass(WorkspaceReadCapability.class));
+        var handle = workspace.file(file.toString());
+        assertFalse(handle instanceof WritableWorkspaceFile);
+        try (var input = handle.openRead()) {
+            assertEquals("approved", new String(input.readAllBytes(), StandardCharsets.UTF_8));
+        }
         assertThrows(
-                ToolDocs.nonNullClass(SecurityException.class),
-                () -> read.readText("absolutePath", null, null));
-        assertEquals("original", Files.readString(file));
+                SecurityException.class,
+                () -> workspace.file(root.resolve("other.txt").toString()));
     }
 
     @Test
-    void writePermitCannotBeSubstitutedForDeleteOrReusedByAnotherCall(@TempDir @NonNull Path root)
-            throws Exception {
-        Path file = root.resolve("preserve.txt");
-        Files.writeString(file, "original");
-        var arguments =
-                Map.<String, Object>of(
-                        "absolutePath",
-                        file.toString(),
-                        "codeContent",
-                        "replacement",
-                        "overwrite",
-                        true);
-        var permit = capture(new WriteToFileTool(), arguments, root);
+    void handlesAndOpenStreamsExpireWithInvocation(@TempDir @NonNull Path root) throws Exception {
+        Path file = Files.writeString(root.resolve("read.txt"), "approved");
+        var permit = capture(new ViewFileTool(), Map.of("absolutePath", file.toString()), root);
         bind(permit, "agent");
-        var write =
-                CapabilityResolver.require(ToolDocs.nonNullClass(WorkspaceWriteCapability.class));
-        assertThrows(
-                ToolDocs.nonNullClass(SecurityException.class),
-                () -> write.deletePath("absolutePath", false));
-        bind(capture(new WriteToFileTool(), arguments, root), "agent");
-        assertThrows(
-                ToolDocs.nonNullClass(SecurityException.class),
-                () -> write.writeText("absolutePath", "replacement", true));
-        assertEquals("original", Files.readString(file));
-    }
-
-    @Test
-    void missingPermitCannotLoadSkillsOrPublishQuestions() {
+        var workspace =
+                CapabilityResolver.require(ToolDocs.nonNullClass(WorkspaceReadCapability.class));
+        var handle = workspace.file(file.toString());
+        var input = handle.openRead();
         ToolCallContextHolder.clear();
-        var skills = mock(ToolDocs.nonNullClass(SkillRegistry.class));
-        var questions = mock(ToolDocs.nonNullClass(UserQuestionRegistry.class));
-        var skillCapability = new SkillReadCapabilityImpl(skills);
-        var questionCapability = new UserInteractionCapabilityImpl(questions);
-        assertThrows(
-                ToolDocs.nonNullClass(SecurityException.class),
-                () -> skillCapability.load(new LoadSkillTool.Args("private-skill")));
-        assertThrows(
-                ToolDocs.nonNullClass(SecurityException.class),
-                () -> questionCapability.ask(new AskUserTool.Args(List.of())));
-        verifyNoInteractions(skills, questions);
+        try {
+            assertThrows(SecurityException.class, () -> input.read());
+        } finally {
+            input.close();
+        }
+        assertThrows(SecurityException.class, () -> handle.openRead());
+        bind(capture(new ViewFileTool(), Map.of("absolutePath", file.toString()), root), "agent");
+        assertThrows(SecurityException.class, () -> handle.openRead());
     }
 
     @Test
-    void workspaceMutationArgumentsCannotChangeAfterScreening(@TempDir @NonNull Path root)
+    void createDoesNotOverwriteAndReplacePublishesAtClose(@TempDir @NonNull Path root)
             throws Exception {
-        Path file = root.resolve("preserve.txt");
-        Files.writeString(file, "original");
-        var permit =
+        Path file = root.resolve("written.txt");
+        var tool = new WriteToFileTool();
+        bind(
+                capture(
+                        tool,
+                        Map.of(
+                                "absolutePath",
+                                file.toString(),
+                                "codeContent",
+                                "first",
+                                "overwrite",
+                                false),
+                        root),
+                "agent");
+        var workspace =
+                CapabilityResolver.require(ToolDocs.nonNullClass(WorkspaceWriteCapability.class));
+        var handle = workspace.file(file.toString());
+        try (var out = handle.openForCreate()) {
+            out.write("first".getBytes(StandardCharsets.UTF_8));
+        }
+        assertEquals("first", Files.readString(file));
+        bind(
+                capture(
+                        tool,
+                        Map.of(
+                                "absolutePath",
+                                file.toString(),
+                                "codeContent",
+                                "second",
+                                "overwrite",
+                                true),
+                        root),
+                "agent");
+        var replacement =
+                CapabilityResolver.require(ToolDocs.nonNullClass(WorkspaceWriteCapability.class))
+                        .file(file.toString());
+        assertThrows(FileAlreadyExistsException.class, () -> replacement.openForCreate());
+        try (var out = replacement.openForReplace()) {
+            out.write("second".getBytes(StandardCharsets.UTF_8));
+            assertEquals("first", Files.readString(file));
+        }
+        assertEquals("second", Files.readString(file));
+    }
+
+    @Test
+    void expiredWriteStreamCannotCommit(@TempDir @NonNull Path root) throws Exception {
+        Path file = root.resolve("uncommitted.txt");
+        bind(
                 capture(
                         new WriteToFileTool(),
                         Map.of(
                                 "absolutePath",
                                 file.toString(),
                                 "codeContent",
-                                "approved",
+                                "x",
                                 "overwrite",
                                 false),
-                        root);
-        bind(permit, "agent");
-        var write =
-                CapabilityResolver.require(ToolDocs.nonNullClass(WorkspaceWriteCapability.class));
-        assertThrows(
-                ToolDocs.nonNullClass(SecurityException.class),
-                () -> write.writeText("absolutePath", "substituted", false));
-        assertThrows(
-                ToolDocs.nonNullClass(SecurityException.class),
-                () -> write.writeText("absolutePath", "approved", true));
-        assertEquals("original", Files.readString(file));
-        var deletion =
-                capture(
-                        new DeletePathTool(),
-                        Map.of("absolutePath", root.toString(), "recursive", false),
-                        root);
-        bind(deletion, "agent");
-        var delete =
-                CapabilityResolver.require(ToolDocs.nonNullClass(WorkspaceWriteCapability.class));
-        assertThrows(
-                ToolDocs.nonNullClass(SecurityException.class),
-                () -> delete.deletePath("absolutePath", true));
-        assertEquals("original", Files.readString(file));
+                        root),
+                "agent");
+        var fileHandle =
+                CapabilityResolver.require(ToolDocs.nonNullClass(WorkspaceWriteCapability.class))
+                        .file(file.toString());
+        var output = fileHandle.openForCreate();
+        output.write(120);
+        ToolCallContextHolder.clear();
+        assertThrows(SecurityException.class, () -> output.close());
+        assertFalse(Files.exists(file));
     }
 }

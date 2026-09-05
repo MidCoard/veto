@@ -2,6 +2,8 @@ package top.focess.veto.agent.capability;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
+import com.tngtech.archunit.base.DescribedPredicate;
+import com.tngtech.archunit.core.domain.JavaMethodCall;
 import com.tngtech.archunit.junit.AnalyzeClasses;
 import com.tngtech.archunit.junit.ArchTest;
 import com.tngtech.archunit.lang.ArchRule;
@@ -14,6 +16,27 @@ import top.focess.veto.agent.tool.WorkspaceWriteTool;
 class CapabilityBoundaryTest {
 
     @ArchTest
+    static final ArchRule bundledToolsCannotOpenHostFilesystems =
+            noClasses()
+                    .that()
+                    .resideInAPackage("top.focess.veto.agent.tool.builtin..")
+                    .and()
+                    .haveSimpleNameNotEndingWith("Test")
+                    .should()
+                    .callMethodWhere(
+                            DescribedPredicate.<JavaMethodCall>describe(
+                                    "open a filesystem or resolve a host file directly",
+                                    call -> {
+                                        String owner = call.getTargetOwner().getName();
+                                        String method = call.getName();
+                                        return (owner.equals("java.nio.file.FileSystems")
+                                                        && method.equals("newFileSystem"))
+                                                || (owner.equals("java.nio.file.Path")
+                                                        && (method.equals("toFile")
+                                                                || method.equals("toRealPath")));
+                                    }));
+
+    @ArchTest
     static final ArchRule bundledToolPackageCannotHideFilesystemAccessInHelpers =
             noClasses()
                     .that()
@@ -22,7 +45,8 @@ class CapabilityBoundaryTest {
                     .haveSimpleNameNotEndingWith("Test")
                     .should()
                     .dependOnClassesThat()
-                    .resideInAnyPackage("java.nio.file..", "java.io..");
+                    .haveNameMatching(
+                            "java\\.io\\.(File|FileInputStream|FileOutputStream|FileReader|FileWriter|RandomAccessFile)|java\\.nio\\.file\\.Files|java\\.nio\\.file\\.spi\\..*|java\\.nio\\.channels\\.(FileChannel|AsynchronousFileChannel)");
 
     @ArchTest
     static final ArchRule workspaceReadToolsCannotBypassTheirCapability =
@@ -33,7 +57,8 @@ class CapabilityBoundaryTest {
                     .areNotInterfaces()
                     .should()
                     .dependOnClassesThat()
-                    .resideInAnyPackage("java.nio.file..", "java.io..");
+                    .haveNameMatching(
+                            "java\\.io\\.(File|FileInputStream|FileOutputStream|FileReader|FileWriter|RandomAccessFile)|java\\.nio\\.file\\.Files|java\\.nio\\.file\\.spi\\..*|java\\.nio\\.channels\\.(FileChannel|AsynchronousFileChannel)");
 
     @ArchTest
     static final ArchRule workspaceWriteToolsCannotBypassTheirCapability =
@@ -44,5 +69,6 @@ class CapabilityBoundaryTest {
                     .areNotInterfaces()
                     .should()
                     .dependOnClassesThat()
-                    .resideInAnyPackage("java.nio.file..", "java.io..");
+                    .haveNameMatching(
+                            "java\\.io\\.(File|FileInputStream|FileOutputStream|FileReader|FileWriter|RandomAccessFile)|java\\.nio\\.file\\.Files|java\\.nio\\.file\\.spi\\..*|java\\.nio\\.channels\\.(FileChannel|AsynchronousFileChannel)");
 }

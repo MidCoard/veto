@@ -33,12 +33,10 @@ import top.focess.veto.llm.core.ToolCall;
  * executes.
  */
 public record ToolExecutionPermit(
-        @NonNull String toolName,
-        @NonNull String callId,
+        @NonNull ToolCall call,
         @NonNull ToolCapability capability,
         String remoteServerName,
         CallerBinding caller,
-        @NonNull Map<@NonNull String, Object> screenedArguments,
         @NonNull Map<@NonNull String, @NonNull AuthorizedPath> filesystemPaths,
         @NonNull List<@NonNull Path> workspaceRoots,
         Path executionRoot,
@@ -48,12 +46,10 @@ public record ToolExecutionPermit(
 
     private static final @NonNull ToolExecutionPermit EMPTY =
             new ToolExecutionPermit(
-                    "",
-                    "",
+                    new ToolCall("", Map.of(), ""),
                     ToolCapability.AGENT_CONTROL,
                     null,
                     null,
-                    Map.of(),
                     Map.of(),
                     List.of(),
                     null,
@@ -62,7 +58,6 @@ public record ToolExecutionPermit(
                     null);
 
     public ToolExecutionPermit {
-        screenedArguments = Map.copyOf(screenedArguments);
         filesystemPaths = Map.copyOf(filesystemPaths);
         workspaceRoots =
                 workspaceRoots.stream().map(path -> path.toAbsolutePath().normalize()).toList();
@@ -71,6 +66,14 @@ public record ToolExecutionPermit(
                 protectedPaths.stream()
                         .map(path -> path.toAbsolutePath().normalize())
                         .collect(Collectors.toUnmodifiableSet());
+    }
+
+    public @NonNull String toolName() {
+        return call.toolName();
+    }
+
+    public @NonNull String callId() {
+        return call.callId();
     }
 
     public static @NonNull ToolExecutionPermit empty() {
@@ -102,12 +105,10 @@ public record ToolExecutionPermit(
                 deployerPolicy == DeployerPolicy.FULL_ACCESS ? Set.of() : protectedSet.paths();
         if (hints.isEmpty()) {
             return new ToolExecutionPermit(
-                    call.toolName(),
-                    call.callId(),
+                    call,
                     definition.capability(),
                     serverName,
                     null,
-                    call.args(),
                     Map.of(),
                     roots,
                     executionRoot,
@@ -146,12 +147,10 @@ public record ToolExecutionPermit(
                                     : FileIdentity.capture(parentPath)));
         }
         return new ToolExecutionPermit(
-                call.toolName(),
-                call.callId(),
+                call,
                 definition.capability(),
                 serverName,
                 null,
-                call.args(),
                 paths,
                 roots,
                 executionRoot,
@@ -163,12 +162,10 @@ public record ToolExecutionPermit(
     /** Binds a screened process-input call to the exact background-task instance it targeted. */
     public @NonNull ToolExecutionPermit withTaskBinding(@NonNull TaskBinding binding) {
         return new ToolExecutionPermit(
-                toolName,
-                callId,
+                call,
                 capability,
                 remoteServerName,
                 caller,
-                screenedArguments,
                 filesystemPaths,
                 workspaceRoots,
                 executionRoot,
@@ -185,12 +182,10 @@ public record ToolExecutionPermit(
             String owner,
             UUID sessionId) {
         return new ToolExecutionPermit(
-                toolName,
-                callId,
+                call,
                 capability,
                 remoteServerName,
                 new CallerBinding(agentId, userId, groupId, owner, sessionId),
-                screenedArguments,
                 filesystemPaths,
                 workspaceRoots,
                 executionRoot,
@@ -232,18 +227,14 @@ public record ToolExecutionPermit(
 
     /** Whether this permit still binds the exact immutable tool call. */
     public boolean matchesCall(@NonNull ToolCall call) {
-        return toolName.equals(call.toolName())
-                && callId.equals(call.callId())
-                && screenedArguments.equals(call.args());
+        return this.call.equals(call);
     }
 
     /** Whether this permit and a fresh capture still bind the same call and resources. */
     public boolean sameTargets(@NonNull ToolExecutionPermit current) {
-        if (!callId.equals(current.callId)
+        if (!call.equals(current.call)
                 || capability != current.capability
-                || !Objects.equals(remoteServerName, current.remoteServerName)
-                || !toolName.equals(current.toolName)
-                || !screenedArguments.equals(current.screenedArguments)) {
+                || !Objects.equals(remoteServerName, current.remoteServerName)) {
             return false;
         }
         if (!filesystemPaths.keySet().equals(current.filesystemPaths.keySet())) {

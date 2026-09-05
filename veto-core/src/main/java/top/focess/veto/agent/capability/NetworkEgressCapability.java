@@ -1,12 +1,18 @@
 package top.focess.veto.agent.capability;
 
+import java.net.URI;
+import java.util.List;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.agent.web.WebFetchTool;
-import top.focess.veto.agent.web.WebSearchTool;
+import top.focess.veto.agent.web.FetchedPage;
+import top.focess.veto.agent.web.SearchOptions;
+import top.focess.veto.agent.web.SearchResult;
 
 public sealed interface NetworkEgressCapability extends Capability
         permits NetworkEgressCapabilityImpl {
-    @NonNull String search(WebSearchTool.@NonNull Args args);
+    @NonNull String searchProviderName();
 
-    @NonNull String fetch(WebFetchTool.@NonNull Args args);
+    @NonNull List<SearchResult> search(@NonNull String query, @NonNull SearchOptions options)
+            throws Exception;
+
+    @NonNull FetchedPage fetch(@NonNull URI uri);
 }

@@ -1,5 +1,8 @@
 package top.focess.veto.agent.tool.builtin;
 
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.capability.TaskControlCapability;
@@ -9,8 +12,11 @@ import top.focess.veto.agent.tool.TaskControlTool;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDoc;
 import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.ToolErrors;
+import top.focess.veto.agent.tool.ToolJson;
 import top.focess.veto.agent.tool.ToolResultFormat;
 import top.focess.veto.agent.tool.ToolSecurity;
+import top.focess.veto.sandbox.BackgroundTaskManager;
 
 /**
  * {@code view_task} - inspect background tasks launched by {@code run_task}. With a {@code taskId}
@@ -98,6 +104,36 @@ public final class ViewTaskTool implements TaskControlTool<ViewTaskTool.Args> {
 
     @Override
     public @NonNull String execute(@NonNull Args args, @NonNull TaskControlCapability capability) {
-        return capability.viewTask(args);
+        String taskId = args.taskId();
+        Map<String, Object> result = new LinkedHashMap<>();
+        if (taskId == null || taskId.isBlank()) {
+            var all = capability.list();
+            result.put("count", all.size());
+            List<Map<String, Object>> tasks = all.stream().map(ViewTaskTool::summary).toList();
+            result.put("tasks", tasks);
+        } else {
+            var found = capability.status(taskId);
+            if (found.isEmpty()) return ToolErrors.failure("task not found: " + taskId);
+            var task = found.get();
+            result.putAll(summary(task));
+            result.put("pid", task.pid());
+            result.put("startedAt", task.startedAt().toString());
+            result.put("uptimeSeconds", task.uptimeSeconds());
+            result.put("cwd", task.cwd());
+            result.put("recentOutput", capability.output(taskId, 50).orElse(""));
+            result.put("inputFailures", capability.inputFailures(taskId));
+        }
+        return ToolJson.object(result);
+    }
+
+    private static @NonNull Map<String, Object> summary(
+            BackgroundTaskManager.@NonNull TaskInfo task) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("taskId", task.taskId());
+        result.put("command", task.command());
+        result.put("alive", task.alive());
+        Integer exitCode = task.exitCode();
+        if (exitCode != null) result.put("exitCode", exitCode);
+        return result;
     }
 }

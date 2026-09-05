@@ -1,5 +1,6 @@
 package top.focess.veto.agent.tool.builtin;
 
+import java.time.Duration;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
@@ -12,9 +13,12 @@ import top.focess.veto.agent.tool.SecurityHint;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDoc;
 import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolResultFormat;
 import top.focess.veto.agent.tool.ToolSecurity;
 import top.focess.veto.sandbox.ChainMode;
+import top.focess.veto.sandbox.Command;
+import top.focess.veto.sandbox.CommandResult;
 
 /** Executes screened commands through the sandbox using the standard native-tool path. */
 @Component
@@ -144,6 +148,24 @@ public final class RunCommandTool implements ProcessExecutionTool<RunCommandTool
     @Override
     public @NonNull String execute(
             @NonNull Args args, @NonNull ProcessExecutionCapability capability) {
-        return capability.runCommand(args);
+        if (args.timeout() < 0) return ToolErrors.failure("timeout must be zero or positive");
+        if (args.commands().isEmpty())
+            return ToolErrors.failure("commands must contain at least one command");
+        var commands =
+                args.commands().stream().map(c -> new Command(c.executable(), c.args())).toList();
+        ChainMode mode = args.connect();
+        if (mode == null) mode = ChainMode.STOP_ON_FAILURE;
+        CommandResult result =
+                capability.run(
+                        commands,
+                        mode,
+                        Duration.ofSeconds(args.timeout()),
+                        Boolean.TRUE.equals(args.network()));
+        String stderr = result.stderr();
+        String content = result.stdout() + (stderr.isEmpty() ? "" : "\n[stderr]\n" + stderr);
+        if (!result.success())
+            return ToolErrors.failure(
+                    "COMMAND_FAILED", content + "\n(exit code: " + result.exitCode() + ")");
+        return content;
     }
 }

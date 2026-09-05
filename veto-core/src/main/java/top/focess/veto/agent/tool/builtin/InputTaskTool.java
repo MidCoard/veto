@@ -1,5 +1,9 @@
 package top.focess.veto.agent.tool.builtin;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.capability.TaskControlCapability;
@@ -12,6 +16,8 @@ import top.focess.veto.agent.tool.TaskControlTool;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDoc;
 import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.ToolErrors;
+import top.focess.veto.agent.tool.ToolJson;
 import top.focess.veto.agent.tool.ToolResultFormat;
 import top.focess.veto.agent.tool.ToolSecurity;
 
@@ -92,6 +98,33 @@ public final class InputTaskTool implements TaskControlTool<InputTaskTool.Args> 
 
     @Override
     public @NonNull String execute(@NonNull Args args, @NonNull TaskControlCapability capability) {
-        return capability.inputTask(args);
+        if (args.content().isEmpty() && !args.appendNewline() && !args.closeStdin()) {
+            return ToolErrors.failure(
+                    "EMPTY_INPUT", "No input, newline, or stdin close was requested.");
+        }
+        byte[] content = args.content().getBytes(StandardCharsets.UTF_8);
+        byte[] bytes = args.appendNewline() ? Arrays.copyOf(content, content.length + 1) : content;
+        if (args.appendNewline()) bytes[content.length] = (byte) '\n';
+        var queued = capability.queueInput(args.taskId(), bytes, args.closeStdin());
+        if (!queued.queued()) {
+            String message =
+                    switch (queued.status()) {
+                        case TASK_NOT_FOUND -> "Task not found: " + args.taskId();
+                        case TASK_NOT_RUNNING -> "Task is not running: " + args.taskId();
+                        case STDIN_CLOSED -> "Task stdin is already closed: " + args.taskId();
+                        case INPUT_TOO_LARGE -> "Input exceeds 65536 bytes.";
+                        case INPUT_QUEUE_FULL -> "Task input queue exceeds 262144 bytes.";
+                        case QUEUED ->
+                                throw new IllegalStateException("queued result handled above");
+                    };
+            return ToolErrors.failure(queued.status().name(), message);
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("status", "queued");
+        result.put("taskId", args.taskId());
+        result.put("bytes", queued.bytes());
+        result.put("newline", args.appendNewline());
+        result.put("closeQueued", queued.closeQueued());
+        return ToolJson.object(result);
     }
 }

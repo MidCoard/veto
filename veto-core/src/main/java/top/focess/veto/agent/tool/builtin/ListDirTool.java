@@ -1,7 +1,12 @@
 package top.focess.veto.agent.tool.builtin;
 
+import java.io.IOException;
+import java.nio.file.NoSuchFileException;
+import java.util.ArrayList;
+import java.util.Comparator;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
+import top.focess.veto.agent.capability.WorkspaceFile;
 import top.focess.veto.agent.capability.WorkspaceReadCapability;
 import top.focess.veto.agent.screening.Danger;
 import top.focess.veto.agent.tool.Doc;
@@ -10,6 +15,7 @@ import top.focess.veto.agent.tool.SecurityHint;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDoc;
 import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolResultFormat;
 import top.focess.veto.agent.tool.ToolSecurity;
 import top.focess.veto.agent.tool.WorkspaceReadTool;
@@ -94,8 +100,35 @@ public final class ListDirTool implements WorkspaceReadTool<ListDirTool.Args> {
     }
 
     @Override
-    public @NonNull String execute(
-            @NonNull Args args, @NonNull WorkspaceReadCapability capability) {
-        return capability.listDirectory("absolutePath");
+    public @NonNull String execute(@NonNull Args args, @NonNull WorkspaceReadCapability workspace) {
+        try {
+            WorkspaceFile directory = workspace.file(args.absolutePath());
+            if (!directory.kind().equals("directory")) {
+                return ToolErrors.failure(
+                        "NOT_A_DIRECTORY", "Not a directory: " + args.absolutePath());
+            }
+            var entries = new ArrayList<String>();
+            for (WorkspaceFile child : directory.children()) {
+                String kind = child.kind();
+                if (!kind.equals("file") && !kind.equals("directory")) continue;
+                String name = WorkspaceTraversal.basename(child.name());
+                entries.add(name + (kind.equals("directory") ? "/" : ""));
+                if (entries.size() > 5000) break;
+            }
+            boolean truncated = entries.size() > 5000;
+            if (truncated) entries.removeLast();
+            entries.sort(
+                    Comparator.comparing(
+                            name ->
+                                    name.endsWith("/")
+                                            ? name.substring(0, name.length() - 1)
+                                            : name));
+            String output = entries.isEmpty() ? "" : String.join("\n", entries) + "\n";
+            return truncated ? output + "[truncated at 5000 entries]\n" : output;
+        } catch (NoSuchFileException e) {
+            return ToolErrors.failure("NOT_A_DIRECTORY", "Not a directory: " + args.absolutePath());
+        } catch (IOException e) {
+            return ToolErrors.failure("IO_ERROR", "Cannot list directory: " + args.absolutePath());
+        }
     }
 }

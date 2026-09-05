@@ -51,8 +51,8 @@ import top.focess.veto.sandbox.SandboxManager;
 import top.focess.veto.sandbox.TestSandboxFactory;
 
 /**
- * Validates {@link ToolEngineImpl}: manifest assembly, native dispatch via {@code executeFromJson},
- * {@code run_command} routing through the no-shell substrate, and agent-tool dispatch.
+ * Validates {@link ToolEngineImpl}: manifest assembly, native dispatch with invocation-bound
+ * arguments, {@code run_command} routing through the no-shell substrate, and agent-tool dispatch.
  */
 class ToolEngineImplTest {
     private static final @NonNull UUID TEST_USER = UUID.randomUUID();
@@ -305,8 +305,7 @@ class ToolEngineImplTest {
                         .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
         SandboxManager sandbox = new SandboxManager(TestSandboxFactory.uncontainedSubprocesses());
         var processes =
-                new ProcessExecutionCapabilityImpl(
-                        sandbox, new BackgroundTaskManager(sandbox), mapper);
+                new ProcessExecutionCapabilityImpl(sandbox, new BackgroundTaskManager(sandbox));
         List<NativeTool<?>> tools =
                 List.of(
                         new ViewFileTool(),
@@ -330,8 +329,8 @@ class ToolEngineImplTest {
                         .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
         SandboxManager sandboxes = new SandboxManager(TestSandboxFactory.platformSandbox());
         BackgroundTaskManager backgroundTasks = new BackgroundTaskManager(sandboxes);
-        var processes = new ProcessExecutionCapabilityImpl(sandboxes, backgroundTasks, mapper);
-        var tasks = new TaskControlCapabilityImpl(backgroundTasks, mapper);
+        var processes = new ProcessExecutionCapabilityImpl(sandboxes, backgroundTasks);
+        var tasks = new TaskControlCapabilityImpl(backgroundTasks);
         List<NativeTool<?>> tools =
                 List.of(
                         new RunCommandTool(processes),
@@ -376,7 +375,8 @@ class ToolEngineImplTest {
                         false,
                         permit.withCaller("test-agent", TEST_USER, null, null, null)));
         try {
-            return engine.execute(call, definition);
+            ToolResult result = engine.execute(call, definition);
+            return result;
         } finally {
             ToolCallContextHolder.clear();
         }
@@ -1091,59 +1091,6 @@ class ToolEngineImplTest {
             assertTrue(
                     result.content().contains("not authorized for the current session"),
                     result.content());
-        } finally {
-            ToolCallContextHolder.clear();
-        }
-    }
-
-    @Test
-    void directRunCommandRejectsArgumentsOutsideItsPermitBeforeProvisioning(
-            @TempDir @NonNull Path tempDir) {
-        SandboxManager sandbox = mock(ToolDocs.nonNullClass(SandboxManager.class));
-        RunCommandTool tool =
-                new RunCommandTool(
-                        new ProcessExecutionCapabilityImpl(
-                                sandbox, new BackgroundTaskManager(sandbox), new ObjectMapper()));
-        ToolCall screened =
-                new ToolCall(
-                        "run_command",
-                        Map.of(
-                                "commands",
-                                List.of(Map.of("executable", "java", "args", List.of("-version"))),
-                                "timeout",
-                                30),
-                        "direct-screened");
-        ToolExecutionPermit permit =
-                ToolExecutionPermit.capture(
-                        screened,
-                        ToolSchemaCompiler.compileNative(tool),
-                        Workspace.single(tempDir, PathMode.REAL));
-        ToolCallContextHolder.set(
-                new ToolCallContext(
-                        "test-agent",
-                        TEST_USER,
-                        null,
-                        null,
-                        null,
-                        ToolResultPresentationMode.BASIC,
-                        false,
-                        permit.withCaller("test-agent", TEST_USER, null, null, null)));
-        ToolCallContextHolder.setCurrentCallId(screened.callId());
-        try {
-            var changed =
-                    new RunCommandTool.Args(
-                            List.of(new RunCommandTool.CommandInput("java", List.of("-help"))),
-                            null,
-                            null,
-                            30);
-            SecurityException failure =
-                    assertThrows(
-                            ToolDocs.nonNullClass(SecurityException.class),
-                            () -> tool.execute(changed));
-            assertTrue(
-                    String.valueOf(failure.getMessage())
-                            .contains("not authorized for the current session"));
-            verifyNoInteractions(sandbox);
         } finally {
             ToolCallContextHolder.clear();
         }

@@ -7,6 +7,7 @@ import top.focess.veto.agent.tool.Doc;
 import top.focess.veto.agent.tool.SkillReadTool;
 import top.focess.veto.agent.tool.ToolDoc;
 import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolResultFormat;
 
 /**
@@ -43,7 +44,14 @@ public final class LoadSkillTool implements SkillReadTool<LoadSkillTool.Args> {
     @Override
     public @NonNull String execute(@NonNull Args args, @NonNull SkillReadCapability capability)
             throws Exception {
-        return capability.load(args);
+        var skill = capability.load(args.skillName());
+        if (skill.isEmpty()) {
+            return ToolErrors.failure("Skill '" + args.skillName() + "' not found or tampered.");
+        }
+        String instructions = skill.get().promptInstructions();
+        return instructions == null
+                ? ToolErrors.failure("Skill body is not loaded.")
+                : instructions;
     }
 
     @ToolDoc(

@@ -1,5 +1,9 @@
 package top.focess.veto.agent.tool.builtin;
 
+import java.io.IOException;
+import java.nio.file.FileAlreadyExistsException;
+import java.nio.file.NoSuchFileException;
+import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.capability.WorkspaceWriteCapability;
@@ -10,6 +14,8 @@ import top.focess.veto.agent.tool.SecurityHint;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDoc;
 import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.ToolErrors;
+import top.focess.veto.agent.tool.ToolJson;
 import top.focess.veto.agent.tool.ToolResultFormat;
 import top.focess.veto.agent.tool.ToolSecurity;
 import top.focess.veto.agent.tool.WorkspaceWriteTool;
@@ -71,7 +77,31 @@ public final class MovePathTool implements WorkspaceWriteTool<MovePathTool.Args>
 
     @Override
     public @NonNull String execute(
-            @NonNull Args args, @NonNull WorkspaceWriteCapability capability) {
-        return capability.movePath("sourceAbsolutePath", "destinationAbsolutePath");
+            @NonNull Args args, @NonNull WorkspaceWriteCapability workspace) {
+        try {
+            var source = workspace.file(args.sourceAbsolutePath());
+            var destination = workspace.file(args.destinationAbsolutePath());
+            String kind = source.kind();
+            source.moveTo(destination);
+            return ToolJson.object(
+                    Map.of(
+                            "status",
+                            "moved",
+                            "source",
+                            args.sourceAbsolutePath(),
+                            "destination",
+                            args.destinationAbsolutePath(),
+                            "kind",
+                            kind));
+        } catch (NoSuchFileException e) {
+            return ToolErrors.failure(
+                    "SOURCE_NOT_FOUND", "Source path not found: " + args.sourceAbsolutePath());
+        } catch (FileAlreadyExistsException e) {
+            return ToolErrors.failure(
+                    "DESTINATION_EXISTS",
+                    "Destination already exists: " + args.destinationAbsolutePath());
+        } catch (IOException e) {
+            return ToolErrors.failure("IO_ERROR", "Cannot move path: " + args.sourceAbsolutePath());
+        }
     }
 }

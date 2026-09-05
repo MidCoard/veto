@@ -39,7 +39,7 @@ class MemoryToolsTest {
         ToolCallContextHolder.clear();
         assertThrows(
                 ToolDocs.nonNullClass(SecurityException.class),
-                () -> capability.recall(new MemoryTools.RecallMemory.Args("private memory")));
+                () -> capability.search("query", 5, 0.5f));
         verifyNoInteractions(store);
     }
 

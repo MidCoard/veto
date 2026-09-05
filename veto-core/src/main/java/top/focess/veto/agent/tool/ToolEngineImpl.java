@@ -4,9 +4,7 @@ import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -23,12 +21,12 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Service;
 import top.focess.veto.agent.capability.RemoteCallCapability;
 import top.focess.veto.agent.capability.RemoteCallCapabilityImpl;
-import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.mcp.transport.McpJsonRpcClient;
 import top.focess.veto.agent.mcp.transport.McpTransport;
 import top.focess.veto.llm.config.LlmJacksonConfig;
 import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.sandbox.SandboxSubstrate;
+import top.focess.veto.util.Nullness;
 
 /**
  * The tool engine implementation — manages server registrations, schema discovery, and tool
@@ -37,10 +35,10 @@ import top.focess.veto.sandbox.SandboxSubstrate;
  * <p>Dispatch by definition flavour:
  *
  * <ul>
- *   <li><b>Native</b> — typed dispatch after capability validation. Workspace paths are replaced by
+ *   <li><b>Native</b> — typed dispatch after capability validation. Workspace capabilities use
  *       Gateway-authorized canonical targets; process tools route through {@link SandboxSubstrate}
  *       or the background-task service.
- *   <li><b>Agent</b> — bean dispatch via {@link AgentTool#executeFromJson}. Each agent tool is a
+ *   <li><b>Agent</b> — bean dispatch via typed invocation binding. Each agent tool is a
  *       self-contained {@link AgentTool} bean — just like native tools are self-contained {@link
  *       NativeTool} beans.
  *   <li><b>External</b> — forwarded over the registered {@link McpTransport}.
@@ -244,7 +242,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
             @NonNull ToolCall call, @NonNull NativeToolDefinition def) throws Exception {
         JsonNode jsonArgs = mapper.valueToTree(call.args());
         NativeToolArgumentValidator.validate(def.name(), jsonArgs, def.argsClass());
-        jsonArgs = authorizedArguments(call, jsonArgs, def);
+        requirePermit(call, def);
         NativeTool<?> bean = nativeByName.get(def.name());
         if (bean == null) {
             return new ToolResult(
@@ -253,52 +251,14 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
                     false,
                     "No bean for native tool: " + def.name());
         }
-        String result = bean.executeFromJson(jsonArgs, mapper);
+        String result = executeLocal(bean, jsonArgs);
         return successfulResult(call, def, result);
     }
 
-    /**
-     * Replaces screened filesystem strings with the canonical targets bound to the execution
-     * permit. Filesystem/process tools fail closed when invoked outside AgentRunner's authorized
-     * execution scope.
-     */
-    private @NonNull JsonNode authorizedArguments(
-            @NonNull ToolCall call,
-            @NonNull JsonNode jsonArgs,
-            @NonNull NativeToolDefinition definition) {
-        ToolCallContext context = requirePermit(call, definition);
-        ToolExecutionPermit permit = context.executionPermit();
-        boolean needsFilesystemPermit =
-                definition.capability() == ToolCapability.WORKSPACE_READ
-                        || definition.capability() == ToolCapability.WORKSPACE_WRITE;
-        if (!needsFilesystemPermit) {
-            return jsonArgs;
-        }
-        if (!(jsonArgs instanceof ObjectNode objectArgs)) {
-            throw new SecurityException("Tool arguments must be an object: " + definition.name());
-        }
-        ObjectNode authorized = objectArgs.deepCopy();
-        for (var entry : definition.paramHints().entrySet()) {
-            if (entry.getValue() != ParamCategory.FILESYSTEM_PATH) {
-                continue;
-            }
-            ToolExecutionPermit.AuthorizedPath path = permit.path(entry.getKey());
-            Path hostPath = path == null ? null : path.hostPath();
-            if (path == null || hostPath == null) {
-                throw new SecurityException(
-                        "Missing authorized filesystem target for parameter '"
-                                + entry.getKey()
-                                + "'");
-            }
-            String supplied = objectArgs.path(entry.getKey()).asText("");
-            if (!path.requestedPath().equals(supplied)) {
-                throw new SecurityException(
-                        "Filesystem argument does not match its execution permit: "
-                                + entry.getKey());
-            }
-            authorized.put(entry.getKey(), hostPath.toString());
-        }
-        return authorized;
+    private <T> @NonNull String executeLocal(
+            @NonNull CapabilityTool<T> tool, @NonNull JsonNode jsonArgs) throws Exception {
+        T args = mapper.treeToValue(jsonArgs, tool.getArgsClass());
+        return tool.execute(Nullness.requireNonNull(args, "Tool arguments deserialized to null"));
     }
 
     private @NonNull ToolResult executeAgent(
@@ -312,7 +272,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
             JsonNode jsonArgs = mapper.valueToTree(call.args());
             NativeToolArgumentValidator.validate(def.name(), jsonArgs, def.argsClass());
             requirePermit(call, def);
-            String result = bean.executeFromJson(jsonArgs, mapper);
+            String result = executeLocal(bean, jsonArgs);
             return successfulResult(call, def, result);
         } catch (ToolExecutionException e) {
             throw e;

@@ -1,10 +1,11 @@
 package top.focess.veto.agent.capability;
 
+import java.util.List;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.agent.tool.builtin.AskUserTool;
+import top.focess.veto.agent.tool.builtin.AskUserTool.Question;
+import top.focess.veto.agent.tool.builtin.UserQuestionRegistry;
 
-/** Operations restricted to the current authorized call and caller. */
 public sealed interface UserInteractionCapability extends Capability
         permits UserInteractionCapabilityImpl {
-    @NonNull String ask(AskUserTool.@NonNull Args args) throws Exception;
+    UserQuestionRegistry.@NonNull AnswerBatch ask(@NonNull List<@NonNull Question> questions);
 }

@@ -1,5 +1,9 @@
 package top.focess.veto.memory;
 
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.capability.MemoryReadCapability;
@@ -12,7 +16,9 @@ import top.focess.veto.agent.tool.RequiredWhen;
 import top.focess.veto.agent.tool.SecurityHint;
 import top.focess.veto.agent.tool.ToolDoc;
 import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolResultFormat;
+import top.focess.veto.util.Nullness;
 
 /**
  * Agent-facing memory tools. Their agent-tool definition flavour means the Gateway returns {@code
@@ -21,6 +27,48 @@ import top.focess.veto.agent.tool.ToolResultFormat;
 public final class MemoryTools {
 
     private MemoryTools() {}
+
+    private static final int MAX_MEMORY_CHARS = 64_000;
+
+    static UUID parseUuidOrNull(String s) {
+        if (s == null || s.isBlank()) {
+            return null;
+        }
+        try {
+            return UUID.fromString(s.strip());
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    public static @NonNull String formatResults(@NonNull List<MemoryStore.ScoredMemory> results) {
+        if (results.isEmpty()) {
+            return "no matching memories";
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append(results.size()).append(" memories:\n");
+        for (MemoryStore.ScoredMemory sm : results) {
+            Memory m = sm.memory();
+            Memory.SourceRef sourceRef = m.sourceRef();
+            sb.append("- [")
+                    .append(m.tier())
+                    .append("] id=")
+                    .append(m.id().value())
+                    .append(" score=")
+                    .append(String.format(Locale.ROOT, "%.3f", sm.score()))
+                    .append(" src=")
+                    .append(sourceRef == null ? "unknown" : sourceRef.kind())
+                    .append(" ")
+                    .append(sourceRef == null ? Map.of() : sourceRef.attrs())
+                    .append("\n");
+            String content = m.content();
+            if (content.length() > 240) {
+                content = content.substring(0, 240) + "...";
+            }
+            sb.append("  ").append(content).append("\n");
+        }
+        return sb.toString();
+    }
 
     /** {@code recall_memory} — search current-session memories and cross-session insights. */
     @Component
@@ -104,7 +152,9 @@ public final class MemoryTools {
         @Override
         public @NonNull String execute(
                 @NonNull Args args, @NonNull MemoryReadCapability capability) {
-            return capability.recall(args);
+            String query =
+                    args.query().length() <= 4000 ? args.query() : args.query().substring(0, 4000);
+            return formatResults(capability.search(query, 5, 0.5f));
         }
     }
 
@@ -213,7 +263,45 @@ public final class MemoryTools {
         @Override
         public @NonNull String execute(
                 @NonNull Args args, @NonNull MemoryWriteCapability capability) {
-            return capability.write(args);
+            String requestedContent = args.content();
+            String requestedProjectId = args.projectId();
+            String requestedPromoteId = args.promoteMemoryId();
+            if (args.mode() == WriteMemory.Mode.PROMOTE) {
+                if ((requestedContent != null && !requestedContent.isBlank())
+                        || (requestedProjectId != null && !requestedProjectId.isBlank())) {
+                    return ToolErrors.failure(
+                            "PROMOTE accepts only promoteMemoryId; memory not promoted");
+                }
+                String promoteId =
+                        Nullness.requireNonNull(
+                                requestedPromoteId,
+                                "RequiredWhen validation must supply promoteMemoryId");
+                try {
+                    MemoryId promoted =
+                            capability.promote(new MemoryId(UUID.fromString(promoteId.strip())));
+                    return promoted != null
+                            ? "promoted: " + promoted.value()
+                            : ToolErrors.failure("memory not found or not owned; not promoted");
+                } catch (IllegalArgumentException e) {
+                    return ToolErrors.failure("memory not found or not owned; not promoted");
+                }
+            }
+            if (requestedPromoteId != null && !requestedPromoteId.isBlank()) {
+                return ToolErrors.failure(
+                        "WRITE does not accept promoteMemoryId; memory not written");
+            }
+            String content =
+                    Nullness.requireNonNull(
+                            requestedContent, "RequiredWhen validation must supply content");
+            if (content.length() > MAX_MEMORY_CHARS) {
+                return ToolErrors.failure("memory exceeds 64000 characters; not written");
+            }
+            UUID projectId = parseUuidOrNull(requestedProjectId);
+            if (requestedProjectId != null && !requestedProjectId.isBlank() && projectId == null) {
+                return ToolErrors.failure("invalid projectId; memory not written");
+            }
+            MemoryId id = capability.add(content, projectId);
+            return "memory written: " + id.value();
         }
     }
 
@@ -283,7 +371,19 @@ public final class MemoryTools {
         @Override
         public @NonNull String execute(
                 @NonNull Args args, @NonNull MemoryWriteCapability capability) {
-            return capability.forget(args);
+            String id = args.memoryId();
+            if (id.isBlank()) {
+                return ToolErrors.failure("memory not found or not owned; nothing forgotten");
+            }
+            try {
+                MemoryId memoryId = new MemoryId(UUID.fromString(id.strip()));
+                boolean forgotten = capability.forget(memoryId);
+                return forgotten
+                        ? "forgotten: " + memoryId.value()
+                        : ToolErrors.failure("memory not found or not owned; nothing forgotten");
+            } catch (IllegalArgumentException e) {
+                return ToolErrors.failure("memory not found or not owned; nothing forgotten");
+            }
         }
     }
 }

@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
+import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
 
 /** Creates an exact approved-call scope for direct capability integration tests. */
@@ -35,12 +36,10 @@ public final class CapabilityTestCalls {
         ToolExecutionPermit old = previous.executionPermit();
         ToolExecutionPermit permit =
                 new ToolExecutionPermit(
-                                tool.getName(),
-                                callId,
+                                new ToolCall(tool.getName(), values, callId),
                                 tool.getCapability(),
                                 null,
                                 null,
-                                values,
                                 old.filesystemPaths(),
                                 old.workspaceRoots(),
                                 old.executionRoot(),

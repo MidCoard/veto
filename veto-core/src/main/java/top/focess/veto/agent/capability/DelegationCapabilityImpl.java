@@ -11,7 +11,6 @@ import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.group.Group;
 import top.focess.veto.group.GroupSpawner;
-import top.focess.veto.group.GroupTools.CreateGroup;
 import top.focess.veto.group.LeaderBinding;
 
 @Component
@@ -34,20 +33,14 @@ public final class DelegationCapabilityImpl implements DelegationCapability {
     }
 
     @Override
-    public @NonNull String createGroup(CreateGroup.@NonNull Args args) {
-        ToolCallContext ctx =
-                CapabilityAccess.require(ToolCapability.DELEGATION, "create_group", args);
-        String task = args.task().strip();
-        if (task.isBlank()) {
-            return ToolErrors.failure(
-                    "Group not created: blank brief. Pass a real description of the work.");
-        }
+    public void createGroup(@NonNull String task) {
+        ToolCallContext ctx = CapabilityAccess.require(ToolCapability.DELEGATION, "create_group");
         // Resolve the calling STANDALONE's identity (the group owner / future Leader).
 
         String owner = ctx.owner();
         if (owner == null || owner.isBlank()) {
-            return ToolErrors.failure(
-                    "Group not created: no authenticated session owner is available.");
+            ToolErrors.failure("Group not created: no authenticated session owner is available.");
+            return;
         }
         String leaderId = ctx.agentId();
         String userId = ctx.userId().toString();
@@ -75,6 +68,5 @@ public final class DelegationCapabilityImpl implements DelegationCapability {
                         g.groupId(),
                         leaderBinding.binding(owner),
                         roleToolFilter.resolve(Role.LEADER)));
-        return "";
     }
 }

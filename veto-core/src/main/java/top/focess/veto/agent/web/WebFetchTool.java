@@ -1,5 +1,9 @@
 package top.focess.veto.agent.web;
 
+import java.net.URI;
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Element;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.capability.NetworkEgressCapability;
@@ -11,6 +15,7 @@ import top.focess.veto.agent.tool.SecurityHint;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDoc;
 import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolResultFormat;
 import top.focess.veto.agent.tool.ToolSecurity;
 
@@ -115,6 +120,37 @@ public final class WebFetchTool implements NetworkEgressTool<WebFetchTool.Args> 
     @Override
     public @NonNull String execute(
             @NonNull Args args, @NonNull NetworkEgressCapability capability) {
-        return capability.fetch(args);
+        URI uri;
+        try {
+            uri = URI.create(args.url().trim());
+        } catch (IllegalArgumentException e) {
+            return ToolErrors.failure("invalid URL: " + args.url().trim());
+        }
+        FetchedPage page = capability.fetch(uri);
+        String readable =
+                page.contentType().contains("html")
+                        ? htmlToText(page.content(), page.uri())
+                        : page.content();
+        int maxChars = page.characterLimit();
+        if (readable.length() > maxChars)
+            readable =
+                    readable.substring(0, maxChars) + "\n\n[truncated at " + maxChars + " chars]";
+        if (page.truncated() && !readable.contains("[truncated at " + maxChars + " chars]"))
+            readable += "\n\n[truncated at response byte limit]";
+        return "[" + page.status() + "] " + page.uri() + "\n\n" + readable;
+    }
+
+    private @NonNull String htmlToText(@NonNull String html, @NonNull URI uri) {
+        Document doc = Jsoup.parse(html, uri.toString());
+        doc.select("script, style, noscript, iframe, nav, footer, header, form").remove();
+        StringBuilder sb = new StringBuilder();
+        Element title = doc.selectFirst("title");
+        if (title != null && !title.text().isBlank()) {
+            sb.append(title.text().trim()).append("\n\n");
+        }
+        Element main = doc.selectFirst("main, article, [role=main], #content, .content");
+        Element root = main != null ? main : doc.body();
+        sb.append(root.wholeText().replaceAll("[ \\t]+", " ").trim());
+        return sb.toString();
     }
 }

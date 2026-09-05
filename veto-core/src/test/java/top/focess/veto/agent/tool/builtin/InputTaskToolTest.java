@@ -99,8 +99,7 @@ class InputTaskToolTest {
 
         String response =
                 CapabilityTestCalls.execute(
-                        new InputTaskTool(
-                                new TaskControlCapabilityImpl(manager, new ObjectMapper())),
+                        new InputTaskTool(new TaskControlCapabilityImpl(manager)),
                         new InputTaskTool.Args(task.taskId(), "hello", true, true));
         JsonNode result = new ObjectMapper().readTree(response);
         assertEquals("queued", result.get("status").asText());
