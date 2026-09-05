@@ -18,8 +18,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import top.focess.veto.llm.core.ChatMessage;
+import top.focess.veto.llm.core.LlmSystemUsage;
 import top.focess.veto.llm.core.ResolvedRequest;
 import top.focess.veto.llm.core.ToolDefinition;
 import top.focess.veto.llm.core.VetoRequest;
@@ -42,8 +46,8 @@ import top.focess.veto.llm.exceptions.ModelCapabilityException;
  */
 final class AnthropicLlmClient extends LlmClient {
 
-    private static final org.slf4j.@NonNull Logger log =
-            org.slf4j.LoggerFactory.getLogger("top.focess.veto.llm.client.AnthropicLlmClient");
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.llm.client.AnthropicLlmClient");
 
     private final @NonNull AnthropicClient sdkClient;
     private final @NonNull ObjectMapper objectMapper;
@@ -84,8 +88,7 @@ final class AnthropicLlmClient extends LlmClient {
         }
 
         Message message = sdkClient.messages().create(builder.build());
-        top.focess.veto.llm.core.LlmSystemUsage.set(
-                message.usage().inputTokens(), message.usage().outputTokens());
+        LlmSystemUsage.set(message.usage().inputTokens(), message.usage().outputTokens());
         if (log.isDebugEnabled()) {
             log.debug("Anthropic raw response blocks: {}", describeBlocks(message));
         }
@@ -99,7 +102,7 @@ final class AnthropicLlmClient extends LlmClient {
                 message.content().stream()
                         .filter(ContentBlock::isText)
                         .map(cb -> cb.asText().text())
-                        .collect(java.util.stream.Collectors.joining("\n"))
+                        .collect(Collectors.joining("\n"))
                         .strip();
 
         String rawInput;

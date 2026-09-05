@@ -3,6 +3,7 @@ package top.focess.veto.llm.provider;
 import static top.focess.veto.util.LogValues.safe;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.net.SocketTimeoutException;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -180,7 +181,7 @@ public abstract class AbstractLlmProvider implements LLMProviderStrategy {
      */
     protected @NonNull LlmException classify(@NonNull Exception e, @NonNull String model) {
         String msg = e.getMessage() == null ? "" : e.getMessage().toLowerCase();
-        if (e instanceof java.net.SocketTimeoutException
+        if (e instanceof SocketTimeoutException
                 || msg.contains("timeout")
                 || msg.contains("timed out")) {
             return new LlmTimeoutException(providerName() + " timed out for model: " + model, e);

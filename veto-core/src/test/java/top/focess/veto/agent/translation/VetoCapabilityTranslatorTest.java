@@ -16,6 +16,7 @@ import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.tool.ToolDocumentation;
 import top.focess.veto.agent.tool.ToolResultFormat;
 import top.focess.veto.agent.tool.builtin.LoadSkillTool;
+import top.focess.veto.llm.core.ToolDefinition;
 
 /**
  * Validates {@link VetoCapabilityTranslator} against the per-turn veto_pulse variant matrix and the
@@ -89,9 +90,9 @@ class VetoCapabilityTranslatorTest {
                         Map.of("thought", Map.of("type", "string")),
                         "required",
                         List.of("thought"));
-        List<top.focess.veto.llm.core.ToolDefinition> tools =
+        List<ToolDefinition> tools =
                 List.of(
-                        new top.focess.veto.llm.core.ToolDefinition(
+                        new ToolDefinition(
                                 "view_file",
                                 "Read a file.",
                                 ToolCapability.WORKSPACE_READ,
@@ -100,7 +101,7 @@ class VetoCapabilityTranslatorTest {
                                 ToolDocumentation.empty(),
                                 List.of(),
                                 List.of(ToolResultFormat.PLAINTEXT)),
-                        new top.focess.veto.llm.core.ToolDefinition(
+                        new ToolDefinition(
                                 "think",
                                 "Continue deliberately.",
                                 ToolCapability.LOOP_CONTROL,
@@ -159,8 +160,7 @@ class VetoCapabilityTranslatorTest {
                         Danger.SAFE,
                         ToolDocs.nonNullClass(LoadSkillTool.Args.class),
                         Map.<String, ParamCategory>of());
-        List<top.focess.veto.llm.core.ToolDefinition> flat =
-                translator.translateTools(List.of(nativeDef, agent));
+        List<ToolDefinition> flat = translator.translateTools(List.of(nativeDef, agent));
         assertEquals(2, flat.size());
         assertEquals("view_file", flat.get(0).name());
         assertEquals("Read a file.", flat.get(0).description());
@@ -201,7 +201,7 @@ class VetoCapabilityTranslatorTest {
                         "required",
                         List.of("absolutePath"));
         var tool =
-                new top.focess.veto.llm.core.ToolDefinition(
+                new ToolDefinition(
                         "view_file",
                         "Read a file.",
                         ToolCapability.WORKSPACE_READ,
@@ -226,6 +226,8 @@ class VetoCapabilityTranslatorTest {
                         .path("inputs")
                         .path("properties")
                         .path("absolutePath")
+                        .path("anyOf")
+                        .get(0)
                         .path("type")
                         .asText());
         assertTrue(

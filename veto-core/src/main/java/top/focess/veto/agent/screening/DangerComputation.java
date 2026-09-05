@@ -2,6 +2,7 @@ package top.focess.veto.agent.screening;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
@@ -9,7 +10,9 @@ import top.focess.veto.agent.intercept.ToolExecutionPermit;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.agent.workspace.Resolution;
+import top.focess.veto.agent.workspace.TrustMarker;
 import top.focess.veto.agent.workspace.Workspace;
+import top.focess.veto.agent.workspace.WorkspaceRoot;
 import top.focess.veto.llm.core.ToolCall;
 
 /**
@@ -146,9 +149,8 @@ public class DangerComputation {
                 return Danger.CRITICAL;
             }
             if (res.rootIndex() >= 0 && res.rootIndex() < workspace.roots().size()) {
-                top.focess.veto.agent.workspace.WorkspaceRoot root =
-                        workspace.roots().get(res.rootIndex());
-                if (root.trust() == top.focess.veto.agent.workspace.TrustMarker.SHARED_GRANT) {
+                WorkspaceRoot root = workspace.roots().get(res.rootIndex());
+                if (root.trust() == TrustMarker.SHARED_GRANT) {
                     // Shared-root reads may proceed through approval; writes remain CRITICAL and
                     // cannot be authorized by a session grant.
                     if (capability == ToolCapability.WORKSPACE_WRITE) {
@@ -262,7 +264,7 @@ public class DangerComputation {
      * allowlist/blacklist sets — plain lowercase names — match executables on both platforms.
      */
     private static @NonNull String normalizeExec(@NonNull String exe) {
-        String name = exe.toLowerCase(java.util.Locale.ROOT);
+        String name = exe.toLowerCase(Locale.ROOT);
         for (String ext : WINDOWS_EXEC_EXTENSIONS) {
             if (name.endsWith(ext)) {
                 return name.substring(0, name.length() - ext.length());

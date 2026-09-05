@@ -7,6 +7,7 @@ import static org.mockito.Mockito.mock;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.translation.CapabilityTranslator;
 
 /**
@@ -26,9 +27,7 @@ class DeepSeekLlmClientExtractJsonTest {
                     "test-key",
                     "DeepSeek",
                     mapper,
-                    mock(
-                            top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                    CapabilityTranslator.class)));
+                    mock(ToolDocs.nonNullClass(CapabilityTranslator.class)));
 
     @Test
     void cleanSingleObjectPassesThrough() throws Exception {

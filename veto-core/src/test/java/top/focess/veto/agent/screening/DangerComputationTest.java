@@ -6,6 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -15,7 +16,9 @@ import top.focess.veto.agent.tool.ParamCategory;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.workspace.PathMode;
+import top.focess.veto.agent.workspace.TrustMarker;
 import top.focess.veto.agent.workspace.Workspace;
+import top.focess.veto.agent.workspace.WorkspaceRoot;
 import top.focess.veto.llm.core.ToolCall;
 
 @SuppressWarnings("initialization.field.uninitialized")
@@ -137,7 +140,7 @@ class DangerComputationTest {
         Path protectedFile = root.resolve(".ssh/id_rsa");
         Files.createDirectories(parentOf(protectedFile));
         Files.writeString(protectedFile, "k");
-        ProtectedSet ps = new ProtectedSet(java.util.Set.of(root.resolve(".ssh")));
+        ProtectedSet ps = new ProtectedSet(Set.of(root.resolve(".ssh")));
         ToolCall call = new ToolCall("view_file", Map.of("path", protectedFile.toString()));
         assertEquals(
                 Danger.CRITICAL,
@@ -149,7 +152,7 @@ class DangerComputationTest {
         Path protectedFile = root.resolve(".ssh/id_rsa");
         Files.createDirectories(parentOf(protectedFile));
         Files.writeString(protectedFile, "k");
-        ProtectedSet ps = new ProtectedSet(java.util.Set.of(root.resolve(".ssh")));
+        ProtectedSet ps = new ProtectedSet(Set.of(root.resolve(".ssh")));
         ToolCall call = new ToolCall("view_file", Map.of("path", protectedFile.toString()));
         // under FULL the protected set is not consulted — but .ssh is also a secret-location →
         // DANGEROUS
@@ -235,12 +238,8 @@ class DangerComputationTest {
         Files.createDirectories(ownedRoot);
         Files.createDirectories(sharedRoot);
 
-        top.focess.veto.agent.workspace.WorkspaceRoot owned =
-                top.focess.veto.agent.workspace.WorkspaceRoot.of(
-                        ownedRoot, top.focess.veto.agent.workspace.TrustMarker.OWNED);
-        top.focess.veto.agent.workspace.WorkspaceRoot shared =
-                top.focess.veto.agent.workspace.WorkspaceRoot.of(
-                        sharedRoot, top.focess.veto.agent.workspace.TrustMarker.SHARED_GRANT);
+        WorkspaceRoot owned = WorkspaceRoot.of(ownedRoot, TrustMarker.OWNED);
+        WorkspaceRoot shared = WorkspaceRoot.of(sharedRoot, TrustMarker.SHARED_GRANT);
 
         Workspace ws = new Workspace(List.of(owned, shared), PathMode.REAL, 0);
 
@@ -295,12 +294,8 @@ class DangerComputationTest {
         Workspace workspace =
                 new Workspace(
                         List.of(
-                                top.focess.veto.agent.workspace.WorkspaceRoot.of(
-                                        ownedRoot,
-                                        top.focess.veto.agent.workspace.TrustMarker.OWNED),
-                                top.focess.veto.agent.workspace.WorkspaceRoot.of(
-                                        sharedRoot,
-                                        top.focess.veto.agent.workspace.TrustMarker.SHARED_GRANT)),
+                                WorkspaceRoot.of(ownedRoot, TrustMarker.OWNED),
+                                WorkspaceRoot.of(sharedRoot, TrustMarker.SHARED_GRANT)),
                         PathMode.REAL,
                         1);
         NativeToolDefinition execDef =
@@ -349,7 +344,7 @@ class DangerComputationTest {
                         call,
                         ws(root),
                         DeployerPolicy.PROTECTED,
-                        new ProtectedSet(java.util.Set.of(root))));
+                        new ProtectedSet(Set.of(root))));
     }
 
     @Test

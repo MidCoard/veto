@@ -3,6 +3,7 @@ package top.focess.veto.agent.screening;
 import jakarta.annotation.PostConstruct;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import org.jspecify.annotations.NonNull;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
@@ -81,7 +82,7 @@ public class DeployerPolicyConfiguration {
             @NonNull String policyName, @NonNull List<@NonNull String> roots) {
         if (roots.isEmpty() || roots.stream().allMatch(String::isBlank)) {
             throw new IllegalStateException(
-                    policyName.toUpperCase(java.util.Locale.ROOT)
+                    policyName.toUpperCase(Locale.ROOT)
                             + " requires at least one veto.security."
                             + policyName
                             + ".roots entry");

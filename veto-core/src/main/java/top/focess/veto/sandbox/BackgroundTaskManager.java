@@ -2,6 +2,9 @@ package top.focess.veto.sandbox;
 
 import static top.focess.veto.util.LogValues.safe;
 
+import jakarta.annotation.PreDestroy;
+import java.io.BufferedInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -13,8 +16,10 @@ import java.util.Deque;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Queue;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -25,6 +30,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import top.focess.veto.agent.AgentRunner;
 
 /**
  * Owns the lifecycle of detached ("background") processes launched by {@code run_task}. A
@@ -63,10 +69,10 @@ public class BackgroundTaskManager {
     /**
      * Per-agent exit notices for tasks that ended since the agent last ran. The UI is pushed
      * TASK_EXITED live, but the agent only executes during an episode, so it is told about these
-     * the next time it runs: {@link top.focess.veto.agent.AgentRunner} drains them into its context
-     * at episode start. Keyed by agentId; entries are consumed (cleared) on drain.
+     * the next time it runs: {@link AgentRunner} drains them into its context at episode start.
+     * Keyed by agentId; entries are consumed (cleared) on drain.
      */
-    private final @NonNull ConcurrentHashMap<String, java.util.Queue<TaskExitNotice>> exitNotices =
+    private final @NonNull ConcurrentHashMap<String, Queue<TaskExitNotice>> exitNotices =
             new ConcurrentHashMap<>();
 
     private final @NonNull ScheduledExecutorService killer =
@@ -203,9 +209,8 @@ public class BackgroundTaskManager {
         // CLIs emit the platform codepage while node/python emit UTF-8, and sniffing needs the
         // whole line's bytes. Splitting on \n/\r bytes is safe — UTF-8 continuation bytes are
         // all >= 0x80, so a line break never falls inside a multi-byte character.
-        try (java.io.BufferedInputStream in =
-                new java.io.BufferedInputStream(process.getInputStream())) {
-            java.io.ByteArrayOutputStream line = new java.io.ByteArrayOutputStream();
+        try (BufferedInputStream in = new BufferedInputStream(process.getInputStream())) {
+            ByteArrayOutputStream line = new ByteArrayOutputStream();
             int b;
             boolean skipLf = false;
             boolean lineTruncated = false;
@@ -246,9 +251,7 @@ public class BackgroundTaskManager {
 
     /** Decodes one raw line (sniffing the encoding) and buffers it ANSI-stripped. */
     private void emitLine(
-            @NonNull ManagedTask task,
-            java.io.@NonNull ByteArrayOutputStream line,
-            boolean truncated) {
+            @NonNull ManagedTask task, @NonNull ByteArrayOutputStream line, boolean truncated) {
         // Same decode-seam scrub as the synchronous path: the buffered lines feed both the agent
         // (view_task) and the UI panel, so both get the identical plain text.
         String decoded = AnsiEscapes.strip(SubprocessOutput.decode(line.toByteArray()));
@@ -289,8 +292,7 @@ public class BackgroundTaskManager {
         Integer recordedExitCode = task.exitCode;
         int code = recordedExitCode != null ? recordedExitCode : -1;
         exitNotices
-                .computeIfAbsent(
-                        task.agentId, k -> new java.util.concurrent.ConcurrentLinkedQueue<>())
+                .computeIfAbsent(task.agentId, k -> new ConcurrentLinkedQueue<>())
                 .add(new TaskExitNotice(task.taskId, task.command, code, task.cause));
     }
 
@@ -468,7 +470,7 @@ public class BackgroundTaskManager {
      * that ended while it was idle, instead of having to remember to poll {@code view_task}.
      */
     public @NonNull List<TaskExitNotice> drainExitNotices(@NonNull String agentId) {
-        java.util.Queue<TaskExitNotice> queue = exitNotices.get(agentId);
+        Queue<TaskExitNotice> queue = exitNotices.get(agentId);
         if (queue == null || queue.isEmpty()) {
             return List.of();
         }
@@ -495,7 +497,7 @@ public class BackgroundTaskManager {
     }
 
     /** Spring shutdown hook - kill every still-running task. */
-    @jakarta.annotation.PreDestroy
+    @PreDestroy
     public void shutdown() {
         for (ManagedTask t : tasks.values()) {
             if (t.alive) {

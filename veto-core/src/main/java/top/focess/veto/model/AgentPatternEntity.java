@@ -6,13 +6,14 @@ import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTier;
+import top.focess.veto.model.tier.ModelTierRegistry;
 
 /**
  * A named agent pattern bound to a {@link ModelTier}. The tier is the live source of truth: at
- * activation the {@link top.focess.veto.model.tier.ModelTierRegistry} resolves the tier against the
- * active model-tier configuration to obtain the concrete provider, model, and credential. Patterns
- * do not know which concrete model they run on - only their tier - so switching the active
- * configuration swaps the model for every pattern at once.
+ * activation the {@link ModelTierRegistry} resolves the tier against the active model-tier
+ * configuration to obtain the concrete provider, model, and credential. Patterns do not know which
+ * concrete model they run on - only their tier - so switching the active configuration swaps the
+ * model for every pattern at once.
  *
  * <p>The {@code provider}/{@code model}/{@code topModel}/{@code credentialKey} columns are a
  * <em>vestigial create-time cache</em>: they are populated from the tier's resolved {@link

@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -16,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.Role;
+import top.focess.veto.agent.identity.RoleToolFilter;
 import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
@@ -34,6 +37,9 @@ import top.focess.veto.llm.core.ProviderType;
 import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.llm.core.VetoResponse;
+import top.focess.veto.sandbox.BackgroundTaskManager;
+import top.focess.veto.sandbox.SandboxManager;
+import top.focess.veto.sandbox.TestSandboxFactory;
 
 /**
  * Exercises the agent loop end-to-end (AgentService → VetoAgent → AgentRunner) with a scripted
@@ -53,8 +59,9 @@ class AgentEndToEndTest {
                 new PromptCompiler(
                         new DefaultCapabilityTranslator(mapper),
                         new SystemPromptResolver(),
-                        mapper);
-        // The @Value defaults are only injected by Spring; set sensible budgets for the unit test.
+                        mapper,
+                        "FULL_ACCESS");
+        // Spring injects configuration in production; the unit test supplies explicit budgets.
         ReflectionTestUtils.setField(compiler, "maxInputTokens", 32000);
         ReflectionTestUtils.setField(compiler, "contextFillRatio", 0.9);
         return new AgentService(
@@ -65,17 +72,16 @@ class AgentEndToEndTest {
                 caller,
                 mapper,
                 List.of(),
-                new top.focess.veto.agent.identity.RoleToolFilter(new TestToolEngine()),
+                new RoleToolFilter(new TestToolEngine()),
                 "REAL",
                 50L,
+                1000,
                 "FULL_ACCESS",
                 "STRICT",
                 null,
                 null,
-                new top.focess.veto.sandbox.BackgroundTaskManager(
-                        new top.focess.veto.sandbox.SandboxManager(
-                                top.focess.veto.sandbox.TestSandboxFactory
-                                        .uncontainedSubprocesses())));
+                new BackgroundTaskManager(
+                        new SandboxManager(TestSandboxFactory.uncontainedSubprocesses())));
     }
 
     private static AgentRunner.@NonNull LlmBinding binding(@NonNull String systemPrompt) {
@@ -133,7 +139,8 @@ class AgentEndToEndTest {
                 new PromptCompiler(
                         new DefaultCapabilityTranslator(mapper),
                         new SystemPromptResolver(),
-                        mapper);
+                        mapper,
+                        "FULL_ACCESS");
         ReflectionTestUtils.setField(compiler, "maxInputTokens", 32000);
         ReflectionTestUtils.setField(compiler, "contextFillRatio", 0.9);
         return new AgentService(
@@ -144,17 +151,16 @@ class AgentEndToEndTest {
                 caller,
                 mapper,
                 List.of(),
-                new top.focess.veto.agent.identity.RoleToolFilter(engine),
+                new RoleToolFilter(engine),
                 "REAL",
                 50L,
+                1000,
                 "FULL_ACCESS",
                 "STRICT",
                 null,
                 null,
-                new top.focess.veto.sandbox.BackgroundTaskManager(
-                        new top.focess.veto.sandbox.SandboxManager(
-                                top.focess.veto.sandbox.TestSandboxFactory
-                                        .uncontainedSubprocesses())));
+                new BackgroundTaskManager(
+                        new SandboxManager(TestSandboxFactory.uncontainedSubprocesses())));
     }
 
     private static @NonNull VetoResponse thoughtOn(String thought, String message) {
@@ -196,7 +202,7 @@ class AgentEndToEndTest {
 
     @Test
     void autonomousLoopExecutesToolCallThenFinishes() throws Exception {
-        List<String> streamed = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+        List<String> streamed = Collections.synchronizedList(new ArrayList<>());
         AgentService service =
                 serviceWith(
                         scripted(

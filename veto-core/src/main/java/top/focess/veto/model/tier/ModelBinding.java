@@ -2,6 +2,7 @@ package top.focess.veto.model.tier;
 
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.llm.core.ProviderType;
+import top.focess.veto.vault.KeysteadVault;
 
 /**
  * A concrete model binding resolved from a user's active model-tier profile for one {@link
@@ -9,8 +10,8 @@ import top.focess.veto.llm.core.ProviderType;
  * provider, model id, the vault credential-key name (resolved per-user downstream), sampling
  * defaults, and an optional base-URL override.
  *
- * <p>The {@code credentialKey} is a {@link top.focess.veto.vault.KeysteadVault} SECURE_NOTE title -
- * a logical name, not the secret itself. Each user stores their own secret under that title.
+ * <p>The {@code credentialKey} is a {@link KeysteadVault} SECURE_NOTE title - a logical name, not
+ * the secret itself. Each user stores their own secret under that title.
  *
  * <p>The {@code baseUrl} overrides the provider's default base URL when set (non-null); when null
  * the caller falls back to the provider strategy's default. Each user configures their own base URL

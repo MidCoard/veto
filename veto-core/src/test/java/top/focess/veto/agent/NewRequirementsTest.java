@@ -7,6 +7,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -18,6 +19,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.test.util.ReflectionTestUtils;
+import top.focess.veto.agent.identity.RoleToolFilter;
 import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
@@ -44,6 +46,8 @@ import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.llm.core.VetoResponse;
 import top.focess.veto.llm.exceptions.LlmException;
+import top.focess.veto.sandbox.BackgroundTaskManager;
+import top.focess.veto.sandbox.SandboxManager;
 
 @SuppressWarnings("initialization.field.uninitialized")
 class NewRequirementsTest {
@@ -82,7 +86,7 @@ class NewRequirementsTest {
     public record ReadArgs(String path) {}
 
     private static class TestToolEngine implements ToolEngine {
-        private final @NonNull Map<String, ToolDefinition> tools = new java.util.HashMap<>();
+        private final @NonNull Map<String, ToolDefinition> tools = new HashMap<>();
 
         public void register(@NonNull ToolDefinition def) {
             tools.put(def.name(), def);
@@ -147,7 +151,8 @@ class NewRequirementsTest {
                 new PromptCompiler(
                         new DefaultCapabilityTranslator(mapper),
                         new SystemPromptResolver(),
-                        mapper);
+                        mapper,
+                        "FULL_ACCESS");
         ReflectionTestUtils.setField(compiler, "maxInputTokens", 32000);
         ReflectionTestUtils.setField(compiler, "contextFillRatio", 0.9);
 
@@ -160,15 +165,16 @@ class NewRequirementsTest {
                         caller,
                         mapper,
                         List.of(),
-                        new top.focess.veto.agent.identity.RoleToolFilter(mcpEngine),
+                        new RoleToolFilter(mcpEngine),
                         "REAL",
                         50L,
+                        1000,
                         "FULL_ACCESS",
                         "STRICT",
                         null,
                         null,
-                        new top.focess.veto.sandbox.BackgroundTaskManager(
-                                new top.focess.veto.sandbox.SandboxManager(
+                        new BackgroundTaskManager(
+                                new SandboxManager(
                                         new top.focess.veto.sandbox
                                                 .ConstrainedSubprocessSubstrate())));
 
@@ -228,7 +234,7 @@ class NewRequirementsTest {
         String resolvedCallId = null;
         while (System.nanoTime() < resolveDeadline) {
             Object pendingValue = ReflectionTestUtils.getField(hitlRegistry, "pending");
-            if (pendingValue instanceof java.util.Map<?, ?> pending && !pending.isEmpty()) {
+            if (pendingValue instanceof Map<?, ?> pending && !pending.isEmpty()) {
                 for (Object pendingKey : pending.keySet()) {
                     if (!(pendingKey instanceof String key)) {
                         continue;
@@ -297,7 +303,8 @@ class NewRequirementsTest {
                 new PromptCompiler(
                         new DefaultCapabilityTranslator(mapper),
                         new SystemPromptResolver(),
-                        mapper);
+                        mapper,
+                        "FULL_ACCESS");
         ReflectionTestUtils.setField(compiler, "maxInputTokens", 32000);
         ReflectionTestUtils.setField(compiler, "contextFillRatio", 0.9);
 
@@ -310,15 +317,16 @@ class NewRequirementsTest {
                         caller,
                         mapper,
                         List.of(),
-                        new top.focess.veto.agent.identity.RoleToolFilter(mcpEngine),
+                        new RoleToolFilter(mcpEngine),
                         "REAL",
                         50L,
+                        1000,
                         "FULL_ACCESS",
                         "STRICT",
                         null,
                         null,
-                        new top.focess.veto.sandbox.BackgroundTaskManager(
-                                new top.focess.veto.sandbox.SandboxManager(
+                        new BackgroundTaskManager(
+                                new SandboxManager(
                                         new top.focess.veto.sandbox
                                                 .ConstrainedSubprocessSubstrate())));
 

@@ -1,10 +1,12 @@
 package top.focess.veto.agent.loop;
 
-import jakarta.annotation.PostConstruct;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -19,6 +21,7 @@ import top.focess.veto.agent.tool.ToolResultStatus;
 import top.focess.veto.agent.translation.CapabilityTranslator;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.ChatMessage;
+import top.focess.veto.llm.core.ToolDefinition;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
 import top.focess.veto.llm.core.ToolResultPresenter;
 
@@ -62,7 +65,7 @@ public class PromptCompiler {
 
     private final @NonNull CapabilityTranslator translator;
     private final @NonNull SystemPromptResolver systemPromptResolver;
-    private final com.fasterxml.jackson.databind.@NonNull ObjectMapper objectMapper;
+    private final @NonNull ObjectMapper objectMapper;
     private final @NonNull ToolResultPresenter toolResultPresenter;
 
     @Value("${veto.context.max_input_tokens}")
@@ -71,32 +74,32 @@ public class PromptCompiler {
     @Value("${veto.context.context_fill_ratio}")
     private double contextFillRatio;
 
-    @Value("${veto.security.deployer-policy}")
-    private @NonNull String deployerPolicyRaw = "FULL_ACCESS";
-
-    private @NonNull DeployerPolicy deployerPolicy = DeployerPolicy.FULL_ACCESS;
+    private final @NonNull DeployerPolicy deployerPolicy;
 
     public PromptCompiler(
             @NonNull CapabilityTranslator translator,
             @NonNull SystemPromptResolver systemPromptResolver,
-            com.fasterxml.jackson.databind.@NonNull ObjectMapper objectMapper) {
-        this(translator, systemPromptResolver, objectMapper, new ToolResultPresenter(objectMapper));
+            @NonNull ObjectMapper objectMapper,
+            @NonNull String deployerPolicyRaw) {
+        this(
+                translator,
+                systemPromptResolver,
+                objectMapper,
+                new ToolResultPresenter(objectMapper),
+                deployerPolicyRaw);
     }
 
     @Autowired
     public PromptCompiler(
             @NonNull CapabilityTranslator translator,
             @NonNull SystemPromptResolver systemPromptResolver,
-            com.fasterxml.jackson.databind.@NonNull ObjectMapper objectMapper,
-            @NonNull ToolResultPresenter toolResultPresenter) {
+            @NonNull ObjectMapper objectMapper,
+            @NonNull ToolResultPresenter toolResultPresenter,
+            @Value("${veto.security.deployer-policy}") @NonNull String deployerPolicyRaw) {
         this.translator = translator;
         this.systemPromptResolver = systemPromptResolver;
         this.objectMapper = objectMapper;
         this.toolResultPresenter = toolResultPresenter;
-    }
-
-    @PostConstruct
-    void initDeployerPolicy() {
         this.deployerPolicy = DeployerPolicy.parse(deployerPolicyRaw);
     }
 
@@ -139,7 +142,7 @@ public class PromptCompiler {
             double correctionFactor,
             @NonNull ToolResultPresentationMode toolResultPresentation) {
 
-        List<top.focess.veto.llm.core.ToolDefinition> flatTools =
+        List<ToolDefinition> flatTools =
                 translator.translateTools(
                         availableTools(
                                 persona.whitelistedTools(), persona.registeredSkills().isEmpty()));
@@ -174,7 +177,7 @@ public class PromptCompiler {
             @NonNull Workspace sessionWorkspace,
             String systemPromptBase,
             @NonNull ToolResultPresentationMode toolResultPresentation) {
-        List<top.focess.veto.llm.core.ToolDefinition> flatTools =
+        List<ToolDefinition> flatTools =
                 translator.translateTools(
                         availableTools(
                                 persona.whitelistedTools(), persona.registeredSkills().isEmpty()));
@@ -184,7 +187,7 @@ public class PromptCompiler {
 
     /** Removes conditional capabilities that cannot succeed for this persona. */
     static @NonNull List<top.focess.veto.agent.tool.@NonNull ToolDefinition> availableTools(
-            java.util.@NonNull Collection<top.focess.veto.agent.tool.@NonNull ToolDefinition> tools,
+            @NonNull Collection<top.focess.veto.agent.tool.@NonNull ToolDefinition> tools,
             boolean skillsEmpty) {
         return tools.stream()
                 .filter(tool -> !skillsEmpty || !"load_skill".equals(tool.name()))
@@ -197,7 +200,7 @@ public class PromptCompiler {
             @NonNull AgentPersona persona,
             @NonNull Workspace sessionWorkspace,
             String base,
-            @NonNull List<top.focess.veto.llm.core.ToolDefinition> flatTools,
+            @NonNull List<ToolDefinition> flatTools,
             @NonNull ToolResultPresentationMode toolResultPresentation) {
         String law = sessionWorkspace.vetoMdResolver().resolve();
         // Persona identity is always retained. A deployer-supplied role base is additional trusted
@@ -531,7 +534,7 @@ public class PromptCompiler {
         ChatMessage next = index + 1 < window.size() ? window.get(index + 1) : null;
         return next != null
                 && "tool".equals(next.role())
-                && java.util.Objects.equals(call.callId(), next.callId());
+                && Objects.equals(call.callId(), next.callId());
     }
 
     private static @NonNull Number number(

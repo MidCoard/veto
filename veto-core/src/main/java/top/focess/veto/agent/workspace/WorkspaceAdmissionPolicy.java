@@ -5,6 +5,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Deque;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
@@ -66,7 +67,7 @@ public final class WorkspaceAdmissionPolicy {
     public @NonNull List<@NonNull Path> admit(
             @NonNull String owner, @NonNull String workspaceRoots) {
         List<Path> supplied =
-                java.util.Arrays.stream(workspaceRoots.split(","))
+                Arrays.stream(workspaceRoots.split(","))
                         .map(String::trim)
                         .filter(root -> !root.isEmpty())
                         .map(root -> HostPathInput.absoluteNormalized(root, "workspace root"))

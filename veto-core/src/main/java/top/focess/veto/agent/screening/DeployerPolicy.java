@@ -1,6 +1,7 @@
 package top.focess.veto.agent.screening;
 
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.util.Nullness;
 
 /**
  * Install-time deployer policy. FULL: no protected set. PROTECT_SENSITIVE: protected set exists.
@@ -19,7 +20,7 @@ public enum DeployerPolicy {
         if (raw == null || raw.isBlank()) {
             return FULL_ACCESS;
         }
-        var policies = top.focess.veto.util.Nullness.requireNonNull(values());
+        var policies = Nullness.requireNonNull(values());
         for (DeployerPolicy p : policies) {
             if (p.name().equalsIgnoreCase(raw.trim())) {
                 return p;

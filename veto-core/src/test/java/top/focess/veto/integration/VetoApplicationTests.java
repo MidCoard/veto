@@ -2,12 +2,14 @@ package top.focess.veto.integration;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Assumptions;
@@ -18,6 +20,8 @@ import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.ApplicationContext;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.*;
+import org.springframework.http.client.ClientHttpResponse;
+import org.springframework.web.client.DefaultResponseErrorHandler;
 import org.springframework.web.client.RestTemplate;
 import top.focess.veto.VetoApplication;
 import top.focess.veto.agent.tool.ToolDocs;
@@ -26,6 +30,7 @@ import top.focess.veto.agent.tool.ToolEngineImpl;
 import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.observability.AuditLogger;
+import top.focess.veto.vault.SessionManager;
 import top.focess.veto.veto.GBNFGrammarEngine;
 import top.focess.veto.veto.LlamaCppBridge;
 import top.focess.veto.veto.SemanticRedactor;
@@ -74,10 +79,9 @@ class VetoApplicationTests {
     public VetoApplicationTests() {
         // Don't throw exceptions on non-2xx responses - we test error codes
         restTemplate.setErrorHandler(
-                new org.springframework.web.client.DefaultResponseErrorHandler() {
+                new DefaultResponseErrorHandler() {
                     @Override
-                    public boolean hasError(
-                            org.springframework.http.client.ClientHttpResponse response) {
+                    public boolean hasError(ClientHttpResponse response) {
                         return false;
                     }
                 });
@@ -289,10 +293,9 @@ class VetoApplicationTests {
     void restRejectsMalformedJsonAtTheBoundary() {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        var sessions =
-                context.getBean(ToolDocs.nonNullClass(top.focess.veto.vault.SessionManager.class));
+        var sessions = context.getBean(ToolDocs.nonNullClass(SessionManager.class));
         headers.set("X-Veto-Session-Token", sessions.createSession("json-boundary-owner"));
-        for (String path : java.util.List.of("/api/auth/setup", "/api/auth/login")) {
+        for (String path : List.of("/api/auth/setup", "/api/auth/login")) {
             HttpEntity<String> request =
                     new HttpEntity<>("{\"username\":42,\"password\":\"password123\"}", headers);
             assertEquals(
@@ -305,9 +308,9 @@ class VetoApplicationTests {
                                     MAP_RESPONSE)
                             .getStatusCode());
         }
-        for (String path : java.util.List.of("/api/veto/process", "/api/veto/check")) {
+        for (String path : List.of("/api/veto/process", "/api/veto/check")) {
             for (String body :
-                    java.util.List.of(
+                    List.of(
                             "{}",
                             "{\"payload\":null}",
                             "{\"payload\":42}",
@@ -329,7 +332,7 @@ class VetoApplicationTests {
             }
         }
         for (String body :
-                java.util.List.of(
+                List.of(
                         "{\"taskType\":42}",
                         "{\"taskType\":\"test\",\"parameters\":[]}",
                         "{\"taskType\":\"test\",\"id\":{}}")) {
@@ -349,7 +352,7 @@ class VetoApplicationTests {
 
     @Test
     void corsAllowsLocalUiToCallTheConfiguredBackendPort()
-            throws java.io.IOException, InterruptedException {
+            throws IOException, InterruptedException {
         String origin = "http://localhost:5173";
         String url = "http://localhost:" + port + "/api/auth/status";
         @NonNull HttpRequest request =
@@ -380,11 +383,10 @@ class VetoApplicationTests {
         String createUrl = "http://localhost:" + port + "/api/tasks";
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        var sessions =
-                context.getBean(ToolDocs.nonNullClass(top.focess.veto.vault.SessionManager.class));
+        var sessions = context.getBean(ToolDocs.nonNullClass(SessionManager.class));
         headers.set("X-Veto-Session-Token", sessions.createSession("task-owner"));
         HttpEntity<Void> authenticated = new HttpEntity<>(headers);
-        for (HttpMethod method : java.util.List.of(HttpMethod.GET, HttpMethod.POST)) {
+        for (HttpMethod method : List.of(HttpMethod.GET, HttpMethod.POST)) {
             HttpHeaders anonymousHeaders = new HttpHeaders();
             anonymousHeaders.setContentType(MediaType.APPLICATION_JSON);
             var anonymous = new HttpEntity<>(Map.of("taskType", "anonymous"), anonymousHeaders);
@@ -394,7 +396,7 @@ class VetoApplicationTests {
                             .exchange(createUrl, method, anonymous, MAP_RESPONSE)
                             .getStatusCode());
         }
-        for (HttpMethod method : java.util.List.of(HttpMethod.GET, HttpMethod.DELETE)) {
+        for (HttpMethod method : List.of(HttpMethod.GET, HttpMethod.DELETE)) {
             assertEquals(
                     HttpStatus.UNAUTHORIZED,
                     restTemplate
@@ -432,7 +434,7 @@ class VetoApplicationTests {
         otherHeaders.setContentType(MediaType.APPLICATION_JSON);
         otherHeaders.set("X-Veto-Session-Token", sessions.createSession("other-task-owner"));
         HttpEntity<Void> other = new HttpEntity<>(otherHeaders);
-        for (HttpMethod method : java.util.List.of(HttpMethod.GET, HttpMethod.DELETE)) {
+        for (HttpMethod method : List.of(HttpMethod.GET, HttpMethod.DELETE)) {
             assertEquals(
                     HttpStatus.NOT_FOUND,
                     restTemplate.exchange(getUrl, method, other, MAP_RESPONSE).getStatusCode());

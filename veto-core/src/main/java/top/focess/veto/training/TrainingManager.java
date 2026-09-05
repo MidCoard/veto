@@ -6,9 +6,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import java.io.*;
+import java.io.Writer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -344,7 +349,7 @@ public class TrainingManager {
             Process process = pb.start();
             try (BufferedReader reader =
                     new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-                reader.transferTo(java.io.Writer.nullWriter());
+                reader.transferTo(Writer.nullWriter());
             }
             boolean finished = process.waitFor(5, TimeUnit.MINUTES);
             if (!finished) {
@@ -394,7 +399,7 @@ public class TrainingManager {
         //noinspection tainting
         if (!Files.isRegularFile(source)
                 || fileName == null
-                || !fileName.toString().toLowerCase(java.util.Locale.ROOT).endsWith(".gguf")) {
+                || !fileName.toString().toLowerCase(Locale.ROOT).endsWith(".gguf")) {
             log.error("Model path is not a regular GGUF file: {}", modelPath);
             return false;
         }
@@ -535,11 +540,11 @@ public class TrainingManager {
             log.info(
                     "Evaluation report parsed: GBNF compliance={}, decision accuracy={}",
                     String.format(
-                            java.util.Locale.ROOT,
+                            Locale.ROOT,
                             "%.1f%%",
                             evalReport.gbnfCompliance().validJsonRate() * 100.0),
                     String.format(
-                            java.util.Locale.ROOT,
+                            Locale.ROOT,
                             "%.1f%%",
                             evalReport.decisionAccuracy().accuracy() * 100.0));
         } catch (Exception e) {
@@ -564,7 +569,7 @@ public class TrainingManager {
             throw new IllegalArgumentException(
                     "Evaluation report field '" + key + "' must be an object");
         }
-        Map<String, Object> result = new java.util.LinkedHashMap<>();
+        Map<String, Object> result = new LinkedHashMap<>();
         for (Map.Entry<?, ?> entry : raw.entrySet()) {
             if (!(entry.getKey() instanceof String entryKey)) {
                 throw new IllegalArgumentException(
@@ -624,9 +629,9 @@ public class TrainingManager {
         String python = resolvePythonPath();
 
         // Build the command
-        java.util.List<String> cmd = new java.util.ArrayList<>();
+        List<String> cmd = new ArrayList<>();
         cmd.add(python);
-        cmd.addAll(java.util.List.of(arguments));
+        cmd.addAll(List.of(arguments));
 
         ProcessBuilder pb = new ProcessBuilder(cmd);
         pb.directory(workingDir.toFile());

@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.jspecify.annotations.NonNull;
@@ -46,7 +47,7 @@ class MarkdownSkillLoaderTest {
         if (instructions == null) throw new AssertionError("expected prompt instructions");
         assertTrue(instructions.contains("execute these actions in order"));
         assertEquals(SkillSourceType.PERSONAL, skill.sourceType());
-        assertEquals(java.util.List.of("run_gradle", "grep_search"), skill.requiredTools());
+        assertEquals(List.of("run_gradle", "grep_search"), skill.requiredTools());
         assertNotNull(skill.contentHash());
     }
 

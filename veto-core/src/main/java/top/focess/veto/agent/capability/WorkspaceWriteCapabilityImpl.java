@@ -9,6 +9,7 @@ import java.nio.file.FileStore;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
@@ -262,7 +263,7 @@ final class WorkspaceWriteCapabilityImpl implements WorkspaceWriteCapability {
             try {
                 Files.delete(entry.path());
                 deleted++;
-            } catch (java.nio.file.NoSuchFileException | DirectoryNotEmptyException e) {
+            } catch (NoSuchFileException | DirectoryNotEmptyException e) {
                 return ToolErrors.failure(
                         "TREE_CHANGED",
                         "Directory changed during deletion after "

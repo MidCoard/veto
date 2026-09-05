@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.screening.DeployerPolicy;
 import top.focess.veto.agent.screening.ProtectedSet;
@@ -59,7 +60,7 @@ public record ToolExecutionPermit(
         protectedPaths =
                 protectedPaths.stream()
                         .map(path -> path.toAbsolutePath().normalize())
-                        .collect(java.util.stream.Collectors.toUnmodifiableSet());
+                        .collect(Collectors.toUnmodifiableSet());
     }
 
     public static @NonNull ToolExecutionPermit empty() {
@@ -209,7 +210,7 @@ public record ToolExecutionPermit(
             return workspaceRoots.get(authorized.rootIndex());
         }
         Path host = authorized.hostPath().toAbsolutePath().normalize();
-        if (java.nio.file.Files.isDirectory(host)) {
+        if (Files.isDirectory(host)) {
             return host;
         }
         Path parent = host.getParent();

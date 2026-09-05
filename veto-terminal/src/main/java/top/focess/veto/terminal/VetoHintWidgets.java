@@ -9,8 +9,8 @@ import top.focess.veto.contract.IpcClient;
 import top.focess.veto.contract.IpcFrame;
 
 /**
- * JLine {@link org.jline.widget.Widgets} subclass that hooks buffer-change widgets to fetch and
- * display inline tail-tip hints via {@link LineReader#setTailTip}.
+ * JLine {@link Widgets} subclass that hooks buffer-change widgets to fetch and display inline
+ * tail-tip hints via {@link LineReader#setTailTip}.
  *
  * <h3>When hints trigger</h3>
  *

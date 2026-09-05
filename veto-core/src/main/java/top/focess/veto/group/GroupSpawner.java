@@ -1,9 +1,13 @@
 package top.focess.veto.group;
 
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,6 +20,7 @@ import top.focess.veto.agent.identity.Role;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
 import top.focess.veto.model.tier.ModelTier;
+import top.focess.veto.util.Nullness;
 
 /**
  * The Spring-orchestrated entry point for spawning a Group with auto-starting Mates. The {@link
@@ -136,7 +141,7 @@ public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
      * Spawn a Group with the given Leader, contextBrief, DAG, and Mates. Each Mate gets its own
      * {@link Agent} (via the factory) + a {@link MateAgent} that auto-starts polling the
      * Blackboard. The returned Group has all the wiring; calling code can then drive orchestration
-     * via {@link GroupOrchestrator#tick(java.util.UUID)}.
+     * via {@link GroupOrchestrator#tick(UUID)}.
      */
     public @NonNull Group spawn(
             @NonNull String leaderId,
@@ -152,7 +157,7 @@ public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
         registry.put(g);
 
         // Allocate and start each Mate, tracking the live instances for disband().
-        List<MateAgent> started = new java.util.ArrayList<>();
+        List<MateAgent> started = new ArrayList<>();
         for (MateSpec spec : mateSpecs) {
             MateAgent mate = startMate(groupId, spec.mateId(), spec.skillset(), agentFactory);
             started.add(mate);
@@ -245,7 +250,7 @@ public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
                         userId,
                         contextBrief,
                         blackboard,
-                        new ExecutionDag(UUID.randomUUID(), java.util.List.of()),
+                        new ExecutionDag(UUID.randomUUID(), List.of()),
                         owner,
                         workspace,
                         toolResultPresentation);
@@ -295,8 +300,8 @@ public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
                         mateId,
                         mateId,
                         "a Mate assigned to the " + skillset + " skillset",
-                        java.util.Set.of(),
-                        java.util.List.of(),
+                        Set.of(),
+                        List.of(),
                         Role.MATE);
         Agent agent = agentFactory.create(persona, mateBinding);
         MateAgent mate =
@@ -309,9 +314,7 @@ public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
                         breakers,
                         defaultMaxCallsPerEpisode);
         mate.start();
-        liveMates
-                .computeIfAbsent(groupId, k -> new java.util.concurrent.CopyOnWriteArrayList<>())
-                .add(mate);
+        liveMates.computeIfAbsent(groupId, k -> new CopyOnWriteArrayList<>()).add(mate);
         return mate;
     }
 
@@ -365,7 +368,7 @@ public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
      * breaker registry entries, mark the group DISBANDED, and retain the Blackboard for audit.
      * Idempotent - calling disband twice is a no-op.
      */
-    public void disband(java.util.@NonNull UUID groupId) {
+    public void disband(@NonNull UUID groupId) {
         Group g = registry.get(groupId);
         if (g == null) {
             // Even if the group record is gone, still try to clean up any straggler Mates.
@@ -376,7 +379,7 @@ public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
         // Stop Mates first so they stop writing to the Blackboard; then flip state.
         stopMates(groupId);
         breakers.clear(groupId);
-        registry.disband(groupId, java.time.Instant.now());
+        registry.disband(groupId, Instant.now());
         orchestrator.onGroupDisbanded(groupId);
     }
 
@@ -400,7 +403,7 @@ public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
             return ModelTier.MID;
         }
         try {
-            return top.focess.veto.util.Nullness.requireNonNull(ModelTier.valueOf(s));
+            return Nullness.requireNonNull(ModelTier.valueOf(s));
         } catch (IllegalArgumentException e) {
             return ModelTier.MID;
         }

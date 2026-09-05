@@ -18,6 +18,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.llm.core.VetoResponse;
 
 /**
  * Jackson module that leniently deserializes string-element collections on the {@linkplain
@@ -32,8 +33,8 @@ import org.jspecify.annotations.NonNull;
  * recovers the list from either string form instead of failing.
  *
  * <p>Only string-element collections are affected: arrays of objects (e.g. the {@code calls} list
- * on {@link top.focess.veto.llm.core.VetoResponse}) keep Jackson's default collection deserializer,
- * so response parsing is untouched. Real JSON arrays pass through unchanged.
+ * on {@link VetoResponse}) keep Jackson's default collection deserializer, so response parsing is
+ * untouched. Real JSON arrays pass through unchanged.
  */
 public final class LenientStringListModule extends SimpleModule {
 

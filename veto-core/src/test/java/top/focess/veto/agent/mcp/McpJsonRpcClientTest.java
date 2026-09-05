@@ -10,11 +10,19 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
+import java.net.StandardProtocolFamily;
+import java.net.UnixDomainSocketAddress;
+import java.nio.ByteBuffer;
+import java.nio.channels.ServerSocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -75,24 +83,22 @@ class McpJsonRpcClientTest {
 
     @Test
     void socketTimeoutClosesAnUnresponsiveConnection(@TempDir @NonNull Path root) throws Exception {
-        java.nio.channels.ServerSocketChannel listener;
+        ServerSocketChannel listener;
         try {
-            listener =
-                    java.nio.channels.ServerSocketChannel.open(
-                            java.net.StandardProtocolFamily.UNIX);
+            listener = ServerSocketChannel.open(StandardProtocolFamily.UNIX);
         } catch (UnsupportedOperationException e) {
-            org.junit.jupiter.api.Assumptions.abort("Unix domain sockets are unavailable");
+            Assumptions.abort("Unix domain sockets are unavailable");
             return;
         }
         try (var server = listener) {
             var address = root.resolve("rpc.sock");
-            server.bind(java.net.UnixDomainSocketAddress.of(address));
-            var closed = new java.util.concurrent.CompletableFuture<Boolean>();
+            server.bind(UnixDomainSocketAddress.of(address));
+            var closed = new CompletableFuture<Boolean>();
             Thread.ofVirtual()
                     .start(
                             () -> {
                                 try (var peer = server.accept()) {
-                                    var buffer = java.nio.ByteBuffer.allocate(4096);
+                                    var buffer = ByteBuffer.allocate(4096);
                                     while (peer.read(buffer) >= 0) buffer.clear();
                                     closed.complete(true);
                                 } catch (IOException e) {
@@ -113,7 +119,7 @@ class McpJsonRpcClientTest {
                                                             new McpTransport.SocketMcpTransport(
                                                                     address))));
             assertEquals("MCP server timed out", failure.getMessage());
-            assertTrue(closed.get(2, java.util.concurrent.TimeUnit.SECONDS));
+            assertTrue(closed.get(2, TimeUnit.SECONDS));
         }
     }
 
@@ -140,8 +146,7 @@ class McpJsonRpcClientTest {
                 """;
         // Stdio frames each JSON-RPC message on a single line.
         var transport = stdio(response.replace("\n", ""));
-        when(transport.processBuilder().command())
-                .thenReturn(java.util.List.of("server", "secret-password"));
+        when(transport.processBuilder().command()).thenReturn(List.of("server", "secret-password"));
         var tools = new McpJsonRpcClient().discoverTools(transport);
         assertTrue(tools.getFirst().serverName().startsWith("mcp-"));
         assertFalse(tools.getFirst().serverName().contains("secret-password"));
@@ -250,8 +255,7 @@ class McpJsonRpcClientTest {
         // The four transport variants are sealed; we can construct each and pattern-match.
         McpTransport sse = new McpTransport.SseMcpTransport("https://example.com/mcp", "token");
         McpTransport stdio = new McpTransport.StdioMcpTransport(new ProcessBuilder("echo", "hi"));
-        McpTransport socket =
-                new McpTransport.SocketMcpTransport(java.nio.file.Path.of("/tmp/sock"));
+        McpTransport socket = new McpTransport.SocketMcpTransport(Path.of("/tmp/sock"));
         McpTransport client = new McpTransport.ClientDelegatedMcpTransport("ws-channel-1");
         assertNotNull(sse);
         assertNotNull(stdio);
@@ -262,8 +266,7 @@ class McpJsonRpcClientTest {
     @Test
     void missingSocketFailsWithIOException() {
         McpJsonRpcClient rpc = new McpJsonRpcClient();
-        McpTransport socket =
-                new McpTransport.SocketMcpTransport(java.nio.file.Path.of("/tmp/sock"));
+        McpTransport socket = new McpTransport.SocketMcpTransport(Path.of("/tmp/sock"));
         assertThrows(IOException.class, () -> rpc.discoverTools(socket));
     }
 }

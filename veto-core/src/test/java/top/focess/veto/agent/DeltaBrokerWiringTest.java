@@ -4,11 +4,13 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
+import java.util.ArrayDeque;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
+import top.focess.veto.agent.identity.RoleToolFilter;
 import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
@@ -20,6 +22,9 @@ import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.llm.core.ProviderType;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.llm.core.VetoResponse;
+import top.focess.veto.sandbox.BackgroundTaskManager;
+import top.focess.veto.sandbox.SandboxManager;
+import top.focess.veto.sandbox.TestSandboxFactory;
 
 /**
  * Verifies the Part-8 emission seam: an agent's user-facing message is published as a per-session
@@ -38,7 +43,8 @@ class DeltaBrokerWiringTest {
                 new PromptCompiler(
                         new DefaultCapabilityTranslator(mapper),
                         new SystemPromptResolver(),
-                        mapper);
+                        mapper,
+                        "FULL_ACCESS");
         ReflectionTestUtils.setField(compiler, "maxInputTokens", 32000);
         ReflectionTestUtils.setField(compiler, "contextFillRatio", 0.9);
         return new AgentService(
@@ -49,17 +55,16 @@ class DeltaBrokerWiringTest {
                 caller,
                 mapper,
                 List.of(),
-                new top.focess.veto.agent.identity.RoleToolFilter(new TestToolEngine()),
+                new RoleToolFilter(new TestToolEngine()),
                 "REAL",
                 50L,
+                1000,
                 "FULL_ACCESS",
                 "STRICT",
                 broker,
                 null,
-                new top.focess.veto.sandbox.BackgroundTaskManager(
-                        new top.focess.veto.sandbox.SandboxManager(
-                                top.focess.veto.sandbox.TestSandboxFactory
-                                        .uncontainedSubprocesses())));
+                new BackgroundTaskManager(
+                        new SandboxManager(TestSandboxFactory.uncontainedSubprocesses())));
     }
 
     private static AgentRunner.@NonNull LlmBinding binding(@NonNull String systemPrompt) {
@@ -73,7 +78,7 @@ class DeltaBrokerWiringTest {
 
     private static @NonNull UniformLLMCaller scripted(
             @NonNull VetoResponse @NonNull ... responses) {
-        var queue = new java.util.ArrayDeque<>(List.of(responses));
+        var queue = new ArrayDeque<>(List.of(responses));
         return request -> {
             VetoResponse r = queue.poll();
             if (r == null) {

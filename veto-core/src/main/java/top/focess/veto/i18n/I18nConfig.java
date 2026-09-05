@@ -5,14 +5,15 @@ import java.util.Locale;
 import org.jspecify.annotations.NonNull;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.web.servlet.LocaleResolver;
 import org.springframework.web.servlet.i18n.AcceptHeaderLocaleResolver;
 
 /**
  * Request-locale configuration: the {@code Accept-Language} header selects the locale used for
  * user-facing messages (see {@link Msg}). Absent or unsupported values fall back to English. The
- * DispatcherServlet binds the resolved locale to {@link
- * org.springframework.context.i18n.LocaleContextHolder} for the duration of the request.
+ * DispatcherServlet binds the resolved locale to {@link LocaleContextHolder} for the duration of
+ * the request.
  */
 @Configuration
 public class I18nConfig {

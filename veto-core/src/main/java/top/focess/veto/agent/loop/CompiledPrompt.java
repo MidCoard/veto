@@ -5,11 +5,11 @@ import java.util.List;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.llm.core.ChatMessage;
 import top.focess.veto.llm.core.ToolDefinition;
+import top.focess.veto.llm.core.VetoRequest;
 
 /**
  * The assembled LLM payload produced by {@link PromptCompiler} each loop cycle. The loop combines
- * this with provider/model/credential options to build a {@link
- * top.focess.veto.llm.core.VetoRequest}.
+ * this with provider/model/credential options to build a {@link VetoRequest}.
  *
  * @param systemMessage the Layer-1+2+3 system message (always {@code messages[0]}, never trimmed)
  * @param messages the role-mapped, token-budgeted conversation, oldest→newest. Pair-safe truncation

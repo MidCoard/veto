@@ -1,6 +1,7 @@
 package top.focess.veto.controller;
 
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -107,7 +108,7 @@ public class TaskController {
                     .body(Map.of("status", "error", "message", Msg.get("error.task.notFound", id)));
         }
 
-        java.util.HashMap<String, Object> result = new java.util.HashMap<>();
+        HashMap<String, Object> result = new HashMap<>();
         result.put("status", "ok");
         result.put("id", payload.getId());
         result.put("taskType", payload.getTaskType());

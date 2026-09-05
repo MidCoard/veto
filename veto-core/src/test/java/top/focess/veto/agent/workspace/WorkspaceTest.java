@@ -5,14 +5,14 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class WorkspaceTest {
 
     @Test
-    void rootsAreOrderedAndCurrentRootDefaultsToZero(
-            @TempDir @org.jspecify.annotations.NonNull Path tmp) throws Exception {
+    void rootsAreOrderedAndCurrentRootDefaultsToZero(@TempDir @NonNull Path tmp) throws Exception {
         Path a = tmp.resolve("a");
         Files.createDirectories(a);
         Path b = tmp.resolve("b");
@@ -36,8 +36,7 @@ class WorkspaceTest {
     }
 
     @Test
-    void currentRootIndexOutOfRangeRejected(@TempDir @org.jspecify.annotations.NonNull Path tmp)
-            throws Exception {
+    void currentRootIndexOutOfRangeRejected(@TempDir @NonNull Path tmp) throws Exception {
         Path a = tmp.resolve("a");
         Files.createDirectories(a);
         assertThrows(
@@ -48,8 +47,7 @@ class WorkspaceTest {
     }
 
     @Test
-    void singleRootFactoryRoundTrips(@TempDir @org.jspecify.annotations.NonNull Path tmp)
-            throws Exception {
+    void singleRootFactoryRoundTrips(@TempDir @NonNull Path tmp) throws Exception {
         Path a = tmp.resolve("a");
         Files.createDirectories(a);
         Workspace ws = Workspace.single(a, PathMode.REAL);
@@ -58,8 +56,7 @@ class WorkspaceTest {
     }
 
     @Test
-    void configSelectsAnExplicitCurrentRoot(@TempDir @org.jspecify.annotations.NonNull Path tmp)
-            throws Exception {
+    void configSelectsAnExplicitCurrentRoot(@TempDir @NonNull Path tmp) throws Exception {
         Path first = Files.createDirectories(tmp.resolve("first"));
         Path selected = Files.createDirectories(tmp.resolve("selected"));
         Workspace ws = Workspace.fromConfig("", first + "," + selected, PathMode.REAL.name(), 1);
@@ -69,7 +66,7 @@ class WorkspaceTest {
     }
 
     @Test
-    void exposesResolvers(@TempDir @org.jspecify.annotations.NonNull Path tmp) throws Exception {
+    void exposesResolvers(@TempDir @NonNull Path tmp) throws Exception {
         Path a = tmp.resolve("a");
         Files.createDirectories(a);
         Workspace ws = Workspace.single(a, PathMode.VIRTUAL);

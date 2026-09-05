@@ -51,14 +51,18 @@ public class VetoController {
                                     Msg.get("error.veto.payloadRequired")));
         }
 
-        String dagPayloadId =
-                request.dagPayloadId() == null
-                        ? UUID.randomUUID().toString()
-                        : request.dagPayloadId();
-        String requestId =
-                request.requestId() == null ? UUID.randomUUID().toString() : request.requestId();
-        String componentSource =
-                request.componentSource() == null ? "gateway" : request.componentSource();
+        String dagPayloadId = request.dagPayloadId();
+        if (dagPayloadId == null) {
+            dagPayloadId = UUID.randomUUID().toString();
+        }
+        String requestId = request.requestId();
+        if (requestId == null) {
+            requestId = UUID.randomUUID().toString();
+        }
+        String componentSource = request.componentSource();
+        if (componentSource == null) {
+            componentSource = "gateway";
+        }
 
         log.info(
                 "REST: /api/veto/process - payload={} bytes, source={}",

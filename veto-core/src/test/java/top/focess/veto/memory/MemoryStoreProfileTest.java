@@ -6,6 +6,7 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import top.focess.veto.agent.tool.ToolDocs;
 
 /**
  * Regression for the {@link MemoryStore} bean-conflict: {@link InMemoryMemoryStore} must be
@@ -23,7 +24,7 @@ class MemoryStoreProfileTest {
     @Test
     void vectorProfileResolvesSingleVectorBackedStore() {
         assertInstanceOf(
-                top.focess.veto.agent.tool.ToolDocs.nonNullClass(VectorIndexMemoryStore.class),
+                ToolDocs.nonNullClass(VectorIndexMemoryStore.class),
                 memoryStore,
                 "veto.memory.store=vector must resolve the vector-backed store with no bean conflict");
     }

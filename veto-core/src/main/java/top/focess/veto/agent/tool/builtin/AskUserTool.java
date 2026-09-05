@@ -130,7 +130,7 @@ public final class AskUserTool implements AgentTool<AskUserTool.Args> {
         if (questions.isEmpty() || questions.size() > 3) {
             ToolErrors.failure("INVALID_QUESTIONS", "ask_user requires between 1 and 3 questions.");
         }
-        java.util.Set<String> ids = new java.util.HashSet<>();
+        Set<String> ids = new HashSet<>();
         for (Question question : questions) {
             if (question.header().isBlank() || length(question.header()) > 12) {
                 ToolErrors.failure(

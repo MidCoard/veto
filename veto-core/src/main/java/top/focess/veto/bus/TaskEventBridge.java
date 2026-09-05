@@ -1,6 +1,7 @@
 package top.focess.veto.bus;
 
 import jakarta.annotation.PostConstruct;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,7 +47,7 @@ public class TaskEventBridge {
 
     private void publish(
             DeltaFrame.@NonNull Kind kind, BackgroundTaskManager.@NonNull TaskInfo info) {
-        java.util.UUID sessionId = info.sessionId();
+        UUID sessionId = info.sessionId();
         if (sessionId == null) {
             // A task without a session (standalone / test) has no session-scoped subscriber to
             // route to; the tool_result of run_task already told the model the taskId.

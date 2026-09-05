@@ -13,6 +13,9 @@ spring:
         dialect: org.hibernate.dialect.H2Dialect
 
 veto:
+  guided:
+    max-steps: 1000
+
   slm:
     enabled: false
   terminal:

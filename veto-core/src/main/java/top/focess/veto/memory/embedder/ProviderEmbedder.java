@@ -14,6 +14,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.llm.core.ProviderType;
 import top.focess.veto.llm.credential.CredentialResolver;
+import top.focess.veto.vault.KeysteadVault;
 
 /**
  * Provider-backed {@link Embedder} - calls a remote embeddings REST API (OpenAI-compatible or
@@ -22,9 +23,9 @@ import top.focess.veto.llm.credential.CredentialResolver;
  *
  * <p>Uses JDK {@code HttpClient} (no extra dependency) and the provider's stable REST surface,
  * mirroring the DeepSeek client approach. The API key is resolved at call time from the {@link
- * top.focess.veto.vault.KeysteadVault} via {@link CredentialResolver}, so it never lives in config
- * or the instance. Failures throw {@link IllegalStateException} (best-effort memory is non-fatal to
- * the agent loop - callers swallow and continue, same as capture today).
+ * KeysteadVault} via {@link CredentialResolver}, so it never lives in config or the instance.
+ * Failures throw {@link IllegalStateException} (best-effort memory is non-fatal to the agent loop -
+ * callers swallow and continue, same as capture today).
  *
  * <p>Supports {@code openai} (any OpenAI-compatible {@code /v1/embeddings} endpoint, incl.
  * OpenRouter/local) and {@code gemini}. A local ONNX embedder is the fast-follow.

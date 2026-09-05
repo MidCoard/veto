@@ -11,6 +11,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
+import top.focess.veto.agent.identity.RoleToolFilter;
 import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
@@ -19,16 +20,21 @@ import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.llm.core.ChatMessage;
 import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.llm.core.ProviderType;
+import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.llm.core.VetoRequest;
 import top.focess.veto.llm.core.VetoResponse;
+import top.focess.veto.llm.exceptions.ModelSchemaException;
+import top.focess.veto.sandbox.BackgroundTaskManager;
+import top.focess.veto.sandbox.SandboxManager;
+import top.focess.veto.sandbox.TestSandboxFactory;
 
 /**
  * Targets {@link AgentRunner}'s schema-violation retry path in isolation from the broader
- * end-to-end flows covered by {@code AgentEndToEndTest}. On a {@link
- * top.focess.veto.llm.exceptions.ModelSchemaException} (thrown by {@code ResponseEnforcer}) the
- * runner must inject an ephemeral user-role rejection message into the retry request — guiding the
- * model to regenerate without persisting the rejection into turn history.
+ * end-to-end flows covered by {@code AgentEndToEndTest}. On a {@link ModelSchemaException} (thrown
+ * by {@code ResponseEnforcer}) the runner must inject an ephemeral user-role rejection message into
+ * the retry request — guiding the model to regenerate without persisting the rejection into turn
+ * history.
  */
 class AgentRunnerTest {
 
@@ -46,8 +52,9 @@ class AgentRunnerTest {
                 new PromptCompiler(
                         new DefaultCapabilityTranslator(mapper),
                         new SystemPromptResolver(),
-                        mapper);
-        // The @Value defaults are only injected by Spring; set sensible budgets for the unit test.
+                        mapper,
+                        "FULL_ACCESS");
+        // Spring injects configuration in production; the unit test supplies explicit budgets.
         ReflectionTestUtils.setField(compiler, "maxInputTokens", 32000);
         ReflectionTestUtils.setField(compiler, "contextFillRatio", 0.9);
         return new AgentService(
@@ -58,17 +65,16 @@ class AgentRunnerTest {
                 caller,
                 mapper,
                 List.of(),
-                new top.focess.veto.agent.identity.RoleToolFilter(new TestToolEngine()),
+                new RoleToolFilter(new TestToolEngine()),
                 "REAL",
                 maxCallsPerEpisode,
+                1000,
                 "FULL_ACCESS",
                 "STRICT",
                 null,
                 null,
-                new top.focess.veto.sandbox.BackgroundTaskManager(
-                        new top.focess.veto.sandbox.SandboxManager(
-                                top.focess.veto.sandbox.TestSandboxFactory
-                                        .uncontainedSubprocesses())));
+                new BackgroundTaskManager(
+                        new SandboxManager(TestSandboxFactory.uncontainedSubprocesses())));
     }
 
     @Test
@@ -82,9 +88,7 @@ class AgentRunnerTest {
                     if (calls.getAndIncrement() == 0) {
                         return new VetoResponse(
                                 "I need to inspect one more thing.",
-                                List.of(
-                                        new top.focess.veto.llm.core.ToolCall(
-                                                "missing_tool", Map.of(), "breaker-call")),
+                                List.of(new ToolCall("missing_tool", Map.of(), "breaker-call")),
                                 null,
                                 new VetoResponse.Features(false),
                                 null);
@@ -155,18 +159,9 @@ class AgentRunnerTest {
                         """
                         [
                           {
-                            "id": "capture",
-                            "label": "Capture the observation",
-                            "type": "tool",
-                            "tool": "missing_tool",
-                            "inputs": {},
-                            "outputs": {"result": "content"}
-                          },
-                          {
                             "id": "finish",
                             "label": "Return the result",
-                            "type": "STOP",
-                            "result_binding": "result"
+                            "type": "STOP"
                           }
                         ]
                         """);
@@ -176,9 +171,7 @@ class AgentRunnerTest {
                     if (seenRequests.size() == 1) {
                         return new VetoResponse(
                                 "I will switch to a deterministic program after this call.",
-                                List.of(
-                                        new top.focess.veto.llm.core.ToolCall(
-                                                "missing_tool", Map.of(), "switch-call")),
+                                List.of(new ToolCall("missing_tool", Map.of(), "switch-call")),
                                 null,
                                 new VetoResponse.Features(true),
                                 null);

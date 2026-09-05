@@ -2,12 +2,14 @@ package top.focess.veto.client.core;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+import top.focess.veto.contract.IpcClient;
 import top.focess.veto.contract.IpcFrame;
 import top.focess.veto.contract.IpcMeta;
 
@@ -15,15 +17,15 @@ import top.focess.veto.contract.IpcMeta;
  * Direct, deterministic tests of {@link ClientSession}'s protocol logic — one per cell of the
  * interaction matrices. The session is transport-agnostic (fed frames via {@link
  * ClientSession#onFrame}, returns frames via {@link ClientSession#submit}/{@link
- * ClientSession#cancel}), so no ZMQ or {@link top.focess.veto.contract.IpcClient} is needed — a
- * recording {@link ClientView} captures every render event.
+ * ClientSession#cancel}), so no ZMQ or {@link IpcClient} is needed — a recording {@link ClientView}
+ * captures every render event.
  */
 class ClientSessionTest {
 
     /** A ClientView that records every callback as a string for assertion. */
     private static final class RecordingView implements ClientView {
         final @NonNull List<@NonNull String> events =
-                Collections.synchronizedList(new java.util.ArrayList<>());
+                Collections.synchronizedList(new ArrayList<>());
 
         @Override
         public void onDelta(@NonNull String content) {

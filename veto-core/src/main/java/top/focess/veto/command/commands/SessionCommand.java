@@ -1,5 +1,6 @@
 package top.focess.veto.command.commands;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import org.jspecify.annotations.NonNull;
@@ -166,7 +167,7 @@ public class SessionCommand extends VetoCommand {
                 .filter(se -> se.getName().toLowerCase().startsWith(prefix))
                 .map(
                         se -> {
-                            java.time.Instant lastActive = se.getLastActiveAt();
+                            Instant lastActive = se.getLastActiveAt();
                             return CommandCompletion.of(
                                     se.getName(), lastActive == null ? "" : lastActive.toString());
                         })

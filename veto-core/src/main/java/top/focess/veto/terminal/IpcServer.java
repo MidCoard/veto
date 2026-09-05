@@ -6,6 +6,7 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.Map;
 import java.util.concurrent.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
@@ -146,8 +147,7 @@ public class IpcServer {
     private @NonNull ServerTransport transport;
     private volatile boolean running;
 
-    @Value("${veto.terminal.bind-address}")
-    private @NonNull String bindAddress = "tcp://127.0.0.1:5555";
+    private final @NonNull String bindAddress;
 
     /**
      * Constructs a new {@code IpcServer}. Spring calls this constructor with the {@link
@@ -155,11 +155,16 @@ public class IpcServer {
      *
      * @param registry the command registry used to dispatch requests and produce completions
      * @param agentService the agent service used to resolve/decline pending HITL vetoes
+     * @param bindAddress the required configured ZeroMQ bind address
      */
     @SuppressWarnings({"initialization.fields.uninitialized", "NotNullFieldNotInitialized"})
-    public IpcServer(@NonNull CommandRegistry registry, @NonNull AgentService agentService) {
+    public IpcServer(
+            @NonNull CommandRegistry registry,
+            @NonNull AgentService agentService,
+            @Value("${veto.terminal.bind-address}") @NonNull String bindAddress) {
         this.registry = registry;
         this.agentService = agentService;
+        this.bindAddress = bindAddress;
     }
 
     // ── Lifecycle ────────────────────────────────────────────────────────
@@ -169,8 +174,7 @@ public class IpcServer {
      * infrastructure threads.
      *
      * <p>Invoked automatically by Spring after the bean is constructed ({@link PostConstruct}). The
-     * bind address is read from the {@code veto.terminal.bind-address} property, defaulting to
-     * {@code tcp://127.0.0.1:5555}.
+     * bind address is read from the required {@code veto.terminal.bind-address} property.
      */
     @PostConstruct
     public void start() {
@@ -587,16 +591,16 @@ public class IpcServer {
      * CommandRegistry#dispatch}, stores it in {@code session.activeRequest}, resets {@link
      * Session#terminalSent}, then submits it to {@link #requestPool}.
      *
-     * <p>A {@link FutureTask} (rather than a {@link java.util.concurrent.CompletableFuture}) is
-     * used because it <em>owns</em> the task: {@code cancel(true)} interrupts the thread running
-     * the body, so a command blocked in interruptible I/O unwinds promptly instead of running to
-     * completion. {@code done()} is the completion hook — it runs once when the body returns,
-     * throws, or is cancelled, and is the sole owner of slot release + dispatch-next. {@code
-     * activeRequest} is assigned before {@code execute}, so the body can never reach {@code done()}
-     * before the slot is wired (no submit-then-assign race). The body passes its own identity to
-     * {@link #sendTerminal} so a cancelled body whose interrupt lands between blocking points — and
-     * thus reaches {@code sendTerminal} before unwinding — is still suppressed once the slot has
-     * moved on.
+     * <p>A {@link FutureTask} (rather than a {@link CompletableFuture}) is used because it
+     * <em>owns</em> the task: {@code cancel(true)} interrupts the thread running the body, so a
+     * command blocked in interruptible I/O unwinds promptly instead of running to completion.
+     * {@code done()} is the completion hook — it runs once when the body returns, throws, or is
+     * cancelled, and is the sole owner of slot release + dispatch-next. {@code activeRequest} is
+     * assigned before {@code execute}, so the body can never reach {@code done()} before the slot
+     * is wired (no submit-then-assign race). The body passes its own identity to {@link
+     * #sendTerminal} so a cancelled body whose interrupt lands between blocking points — and thus
+     * reaches {@code sendTerminal} before unwinding — is still suppressed once the slot has moved
+     * on.
      *
      * @param session the session that owns the request
      * @param req the request frame to dispatch
@@ -890,7 +894,7 @@ public class IpcServer {
          * closeSession} to suppress a lingering body's frame after teardown.
          *
          * <p>Protected by {@link #requestLock} (a plain boolean — the lock serializes the
-         * check-and-set, so no {@link java.util.concurrent.atomic.AtomicBoolean} is needed).
+         * check-and-set, so no {@link AtomicBoolean} is needed).
          */
         boolean terminalSent;
 

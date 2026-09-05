@@ -116,7 +116,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
     }
 
     /** Discover tools from a remote MCP server via JSON-RPC tools/list and register them. */
-    public synchronized java.util.@NonNull List<RemoteToolDefinition> discoverAndRegister(
+    public synchronized @NonNull List<RemoteToolDefinition> discoverAndRegister(
             @NonNull McpTransport transport) {
         try {
             List<RemoteToolDefinition> tools = remoteClient.discoverTools(transport);
@@ -137,7 +137,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
             return tools;
         } catch (IOException e) {
             log.warn("ToolEngine: tools/list discovery failed ({})", e.getClass().getSimpleName());
-            return java.util.List.of();
+            return List.of();
         }
     }
 

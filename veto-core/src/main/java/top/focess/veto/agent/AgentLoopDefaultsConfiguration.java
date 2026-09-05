@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import top.focess.veto.agent.intercept.Gateway;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.translation.CapabilityTranslator;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
@@ -28,10 +29,9 @@ public class AgentLoopDefaultsConfiguration {
      * The default {@link Workspace} (built from {@code veto.workspace.*} config). Kept as a bean so
      * components that need a fallback workspace can inject it directly (e.g. the {@code
      * SystemPromptDumpTest} diagnostic). Per-session workspaces are built by {@link
-     * top.focess.veto.agent.AgentService#buildWorkspace} from the session's reported cwd and
-     * threaded through the per-agent {@link top.focess.veto.agent.intercept.Gateway} into the
-     * {@link PromptCompiler}; this bean is not that path. {@code @ConditionalOnMissingBean} lets a
-     * richer workspace bean override.
+     * AgentService#buildWorkspace} from the session's reported cwd and threaded through the
+     * per-agent {@link Gateway} into the {@link PromptCompiler}; this bean is not that path.
+     * {@code @ConditionalOnMissingBean} lets a richer workspace bean override.
      */
     @Bean
     @ConditionalOnMissingBean(Workspace.class)

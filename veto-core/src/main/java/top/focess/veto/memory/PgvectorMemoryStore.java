@@ -5,6 +5,7 @@ import static top.focess.veto.util.LogValues.safe;
 import jakarta.annotation.PostConstruct;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceException;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -166,7 +167,7 @@ public class PgvectorMemoryStore implements MemoryStore {
                 .setParameter("content", memory.content())
                 .setParameter("vec", vecToString(memory.embedding()))
                 .setParameter("sref", sourceRef == null ? null : sourceRef.kind())
-                .setParameter("cat", java.sql.Timestamp.from(memory.createdAt()))
+                .setParameter("cat", Timestamp.from(memory.createdAt()))
                 .executeUpdate();
         return memory.id();
     }
@@ -253,7 +254,7 @@ public class PgvectorMemoryStore implements MemoryStore {
     private static @NonNull Memory rowToMemory(Object @NonNull [] row) {
         UUID sessionId = row[2] == null ? null : UUID.fromString((String) row[2]);
         UUID projectId = row[4] == null ? null : UUID.fromString((String) row[4]);
-        java.sql.Timestamp ts = (java.sql.Timestamp) row[7];
+        Timestamp ts = (Timestamp) row[7];
         MemoryTier tier = MemoryTier.valueOf((String) row[3]);
         if (tier == null) {
             throw new IllegalStateException("Native memory row contains an unknown tier");

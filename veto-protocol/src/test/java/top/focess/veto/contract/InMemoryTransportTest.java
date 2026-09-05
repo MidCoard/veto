@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -74,7 +75,7 @@ class InMemoryTransportTest {
         } else if (frame instanceof IpcFrame.Request) {
             transport.deliver(new IpcFrame.Delta("hello "));
             transport.deliver(new IpcFrame.Delta("world"));
-            transport.deliver(new IpcFrame.Done(java.util.Map.of(), null));
+            transport.deliver(new IpcFrame.Done(Map.of(), null));
         }
         // Heartbeat / Bye / Cancel / Input: ignored by the responder.
     }

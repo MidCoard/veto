@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.List;
 import java.util.Optional;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
@@ -27,19 +28,18 @@ class BackgroundTaskManagerTest {
         String exe =
                 Path.of(System.getProperty("java.home"), "bin", win ? "java.exe" : "java")
                         .toString();
-        return new Command(exe, java.util.List.of("-version"));
+        return new Command(exe, List.of("-version"));
     }
 
     private static @NonNull Command longRunning() {
         boolean win = System.getProperty("os.name").toLowerCase().contains("win");
         return win
-                ? new Command("ping", java.util.List.of("-n", "60", "127.0.0.1"))
-                : new Command("sleep", java.util.List.of("60"));
+                ? new Command("ping", List.of("-n", "60", "127.0.0.1"))
+                : new Command("sleep", List.of("60"));
     }
 
     @Test
-    void startReturnsImmediatelyAndCapturesExit(
-            @TempDir @org.jspecify.annotations.NonNull Path tempDir) {
+    void startReturnsImmediatelyAndCapturesExit(@TempDir @NonNull Path tempDir) {
         BackgroundTaskManager mgr = newManager();
         BackgroundTaskManager.TaskInfo info = mgr.start("agent-a", javaVersion(), tempDir, 0, null);
         assertEquals("agent-a", info.agentId());
@@ -59,13 +59,13 @@ class BackgroundTaskManagerTest {
 
     @Test
     @EnabledOnOs(OS.WINDOWS)
-    void stopKillsRunningTaskWindows(@TempDir @org.jspecify.annotations.NonNull Path tempDir) {
+    void stopKillsRunningTaskWindows(@TempDir @NonNull Path tempDir) {
         stopKillsRunningTask(tempDir);
     }
 
     @Test
     @EnabledOnOs({OS.LINUX, OS.MAC})
-    void stopKillsRunningTaskPosix(@TempDir @org.jspecify.annotations.NonNull Path tempDir) {
+    void stopKillsRunningTaskPosix(@TempDir @NonNull Path tempDir) {
         stopKillsRunningTask(tempDir);
     }
 
@@ -80,7 +80,7 @@ class BackgroundTaskManagerTest {
     }
 
     @Test
-    void exitNoticesCarryTheCause(@TempDir @org.jspecify.annotations.NonNull Path tempDir) {
+    void exitNoticesCarryTheCause(@TempDir @NonNull Path tempDir) {
         BackgroundTaskManager mgr = newManager();
         // Natural exit → NATURAL.
         BackgroundTaskManager.TaskInfo natural =
@@ -102,7 +102,7 @@ class BackgroundTaskManagerTest {
     }
 
     @Test
-    void perAgentIsolation(@TempDir @org.jspecify.annotations.NonNull Path tempDir) {
+    void perAgentIsolation(@TempDir @NonNull Path tempDir) {
         BackgroundTaskManager mgr = newManager();
         BackgroundTaskManager.TaskInfo a = mgr.start("agent-a", longRunning(), tempDir, 0, null);
         // agent-b cannot see or stop agent-a's task.
@@ -116,7 +116,7 @@ class BackgroundTaskManagerTest {
     }
 
     @Test
-    void stopAllKillsEveryOwnedTask(@TempDir @org.jspecify.annotations.NonNull Path tempDir) {
+    void stopAllKillsEveryOwnedTask(@TempDir @NonNull Path tempDir) {
         BackgroundTaskManager mgr = newManager();
         BackgroundTaskManager.TaskInfo t1 = mgr.start("agent-c", longRunning(), tempDir, 0, null);
         BackgroundTaskManager.TaskInfo t2 = mgr.start("agent-c", longRunning(), tempDir, 0, null);
@@ -133,8 +133,7 @@ class BackgroundTaskManagerTest {
             @NonNull Duration timeout) {
         long deadline = System.currentTimeMillis() + timeout.toMillis();
         while (System.currentTimeMillis() < deadline) {
-            java.util.List<BackgroundTaskManager.TaskExitNotice> notices =
-                    mgr.drainExitNotices(agentId);
+            List<BackgroundTaskManager.TaskExitNotice> notices = mgr.drainExitNotices(agentId);
             if (!notices.isEmpty()) {
                 return notices.get(0);
             }

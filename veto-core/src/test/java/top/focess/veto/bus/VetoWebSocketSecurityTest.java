@@ -16,6 +16,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentMatchers;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.server.ServerHttpRequest;
@@ -86,8 +87,8 @@ class VetoWebSocketSecurityTest {
                         .text("private")
                         .build());
 
-        verify(alice).sendMessage(org.mockito.ArgumentMatchers.any(TextMessage.class));
-        verify(bob, never()).sendMessage(org.mockito.ArgumentMatchers.any(TextMessage.class));
+        verify(alice).sendMessage(ArgumentMatchers.any(TextMessage.class));
+        verify(bob, never()).sendMessage(ArgumentMatchers.any(TextMessage.class));
     }
 
     private static @NonNull ServerHttpRequest request(@NonNull String uri) {

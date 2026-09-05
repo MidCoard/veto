@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.AgentService;
@@ -22,9 +23,11 @@ import top.focess.veto.agent.tool.NativeToolDefinition;
 import top.focess.veto.agent.tool.ParamCategory;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDefinition;
+import top.focess.veto.agent.workspace.Resolution;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.llm.core.ToolCall;
+import top.focess.veto.util.Nullness;
 
 /**
  * The single human-in-the-loop registry. It owns four responsibilities:
@@ -384,21 +387,22 @@ public class HitlRegistry {
             @NonNull String agentId,
             @NonNull String callId,
             @NonNull InterceptResolution resolution) {
-        Pending p = pending.remove(key(agentId, callId));
+        Pending p = pending.get(key(agentId, callId));
         if (p == null) {
             return false;
         }
-        if (resolution.createsGrant() && p.call() != null && p.def() != null) {
-            PermissionGrant grant = buildGrant(agentId, p.call(), p.def(), resolution);
-            if (grant != null) {
-                grants.computeIfAbsent(agentId, k -> ConcurrentHashMap.newKeySet()).add(grant);
-                grantLog.computeIfAbsent(
-                                agentId, k -> new java.util.concurrent.CopyOnWriteArrayList<>())
-                        .add(grant);
+        synchronized (p) {
+            if (p.future().isDone()) return false;
+            if (resolution.createsGrant() && p.call() != null && p.def() != null) {
+                PermissionGrant grant = buildGrant(agentId, p.call(), p.def(), resolution);
+                if (grant != null) {
+                    grants.computeIfAbsent(agentId, k -> ConcurrentHashMap.newKeySet()).add(grant);
+                    grantLog.computeIfAbsent(agentId, k -> new CopyOnWriteArrayList<>()).add(grant);
+                }
             }
+            p.future().complete(resolution);
+            return true;
         }
-        p.future().complete(resolution);
-        return true;
     }
 
     /**
@@ -568,7 +572,7 @@ public class HitlRegistry {
         }
         Map<String, Object> args = call.args();
         for (var entry : hints.entrySet()) {
-            if (entry.getValue() != top.focess.veto.agent.tool.ParamCategory.FILESYSTEM_PATH) {
+            if (entry.getValue() != ParamCategory.FILESYSTEM_PATH) {
                 continue;
             }
             Object v = args.get(entry.getKey());
@@ -576,10 +580,10 @@ public class HitlRegistry {
                 continue;
             }
             try {
-                top.focess.veto.agent.workspace.Resolution res = ws.pathResolver().resolveToHost(s);
+                Resolution res = ws.pathResolver().resolveToHost(s);
                 Path host =
                         res.inScope()
-                                ? top.focess.veto.util.Nullness.requireNonNull(
+                                ? Nullness.requireNonNull(
                                         res.hostPath(), "in-scope resolution has no host path")
                                 : normalizedAbsolute(s);
                 Path parent = host.getParent();
@@ -620,7 +624,7 @@ public class HitlRegistry {
         pending.forEach(
                 (k, p) -> {
                     ToolCall call = p.call();
-                    if (!k.startsWith(prefix) || call == null) {
+                    if (!k.startsWith(prefix) || call == null || p.future().isDone()) {
                         return;
                     }
                     Map<@NonNull String, Object> view = new LinkedHashMap<>();

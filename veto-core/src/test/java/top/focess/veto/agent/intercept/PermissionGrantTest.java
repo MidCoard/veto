@@ -12,6 +12,8 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import top.focess.veto.agent.screening.Danger;
+import top.focess.veto.agent.screening.Relevance;
+import top.focess.veto.agent.screening.Screening;
 import top.focess.veto.agent.tool.AgentToolDefinition;
 import top.focess.veto.agent.tool.NativeToolDefinition;
 import top.focess.veto.agent.tool.ParamCategory;
@@ -291,12 +293,7 @@ class PermissionGrantTest {
                         Map.of("path", ParamCategory.FILESYSTEM_PATH));
         ToolCall call = new ToolCall("view_file", Map.of("path", "/x"));
         var screening =
-                new top.focess.veto.agent.screening.Screening(
-                        top.focess.veto.agent.screening.Relevance.HIGH,
-                        top.focess.veto.agent.screening.Danger.ELEVATED,
-                        false,
-                        top.focess.veto.agent.intercept.VetoScenario.READ,
-                        "test");
+                new Screening(Relevance.HIGH, Danger.ELEVATED, false, VetoScenario.READ, "test");
         assertEquals(VetoScenario.READ, registry.scenarioFor(call, readDef, screening));
     }
 
@@ -314,9 +311,9 @@ class PermissionGrantTest {
                         Map.of());
         ToolCall call = new ToolCall("run_command", Map.of());
         var screening =
-                new top.focess.veto.agent.screening.Screening(
-                        top.focess.veto.agent.screening.Relevance.LOW,
-                        top.focess.veto.agent.screening.Danger.CRITICAL,
+                new Screening(
+                        Relevance.LOW,
+                        Danger.CRITICAL,
                         false,
                         VetoScenario.EXEC_DETERMINISTIC,
                         "test");
@@ -338,12 +335,8 @@ class PermissionGrantTest {
                         Map.of());
         ToolCall call = new ToolCall("run_command", Map.of());
         var screening =
-                new top.focess.veto.agent.screening.Screening(
-                        top.focess.veto.agent.screening.Relevance.LOW,
-                        top.focess.veto.agent.screening.Danger.DANGEROUS,
-                        true,
-                        VetoScenario.EXEC_SEMANTIC,
-                        "test");
+                new Screening(
+                        Relevance.LOW, Danger.DANGEROUS, true, VetoScenario.EXEC_SEMANTIC, "test");
         assertEquals(VetoScenario.EXEC_SEMANTIC, registry.scenarioFor(call, execDef, screening));
     }
 
@@ -360,12 +353,7 @@ class PermissionGrantTest {
                         Map.of());
         ToolCall call = new ToolCall("create_group", Map.of());
         var screening =
-                new top.focess.veto.agent.screening.Screening(
-                        top.focess.veto.agent.screening.Relevance.HIGH,
-                        top.focess.veto.agent.screening.Danger.SAFE,
-                        false,
-                        VetoScenario.GENERIC,
-                        "test");
+                new Screening(Relevance.HIGH, Danger.SAFE, false, VetoScenario.GENERIC, "test");
         assertEquals(VetoScenario.GENERIC, registry.scenarioFor(call, agentDef, screening));
     }
 }

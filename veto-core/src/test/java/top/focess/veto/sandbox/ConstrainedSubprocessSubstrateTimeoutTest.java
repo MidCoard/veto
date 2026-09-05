@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -48,7 +49,7 @@ class ConstrainedSubprocessSubstrateTimeoutTest {
     }
 
     @Test
-    void runawayProcessIsKilledAtTheCap(@TempDir @org.jspecify.annotations.NonNull Path root) {
+    void runawayProcessIsKilledAtTheCap(@TempDir @NonNull Path root) {
         long start = System.nanoTime();
         @NonNull CommandResult result =
                 run(root, List.of(sleeper()), ChainMode.STOP_ON_FAILURE, Duration.ofSeconds(2));
@@ -64,7 +65,7 @@ class ConstrainedSubprocessSubstrateTimeoutTest {
     }
 
     @Test
-    void fastCommandStillReturnsItsOutput(@TempDir @org.jspecify.annotations.NonNull Path root) {
+    void fastCommandStillReturnsItsOutput(@TempDir @NonNull Path root) {
         @NonNull CommandResult result =
                 run(
                         root,
@@ -78,7 +79,7 @@ class ConstrainedSubprocessSubstrateTimeoutTest {
     }
 
     @Test
-    void chainSharesOneDeadline(@TempDir @org.jspecify.annotations.NonNull Path root) {
+    void chainSharesOneDeadline(@TempDir @NonNull Path root) {
         // The sleeper eats the whole 2s budget; the echo that follows must be cut off by the
         // shared deadline instead of getting its own 2s window.
         long start = System.nanoTime();
@@ -101,7 +102,7 @@ class ConstrainedSubprocessSubstrateTimeoutTest {
     }
 
     @Test
-    void zeroTimeoutMeansNoCapButStillDrains(@TempDir @org.jspecify.annotations.NonNull Path root) {
+    void zeroTimeoutMeansNoCapButStillDrains(@TempDir @NonNull Path root) {
         @NonNull CommandResult result =
                 run(root, List.of(echoer("unbounded")), ChainMode.STOP_ON_FAILURE, Duration.ZERO);
 
@@ -116,9 +117,8 @@ class ConstrainedSubprocessSubstrateTimeoutTest {
      * of mojibake.
      */
     @Test
-    void bareNameResolvesAndCodepageOutputDecodes(
-            @TempDir @org.jspecify.annotations.NonNull Path root) {
-        org.junit.jupiter.api.Assumptions.assumeTrue(WINDOWS, "Windows-specific behavior");
+    void bareNameResolvesAndCodepageOutputDecodes(@TempDir @NonNull Path root) {
+        Assumptions.assumeTrue(WINDOWS, "Windows-specific behavior");
         @NonNull CommandResult result =
                 run(
                         root,

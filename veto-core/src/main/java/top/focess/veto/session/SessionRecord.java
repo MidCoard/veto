@@ -1,6 +1,8 @@
 package top.focess.veto.session;
 
 import java.time.Instant;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
 
@@ -16,7 +18,7 @@ public record SessionRecord(
         int rewoundRecords) {
 
     public SessionRecord {
-        payload = java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(payload));
+        payload = Collections.unmodifiableMap(new LinkedHashMap<>(payload));
     }
 
     public @NonNull SessionRecord withRewoundRecords(int count) {

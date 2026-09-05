@@ -18,6 +18,7 @@ import top.focess.veto.model.tier.ModelTierBindingEntity;
 import top.focess.veto.model.tier.ModelTierField;
 import top.focess.veto.model.tier.ModelTierProfileService;
 import top.focess.veto.model.tier.ModelTierRegistry;
+import top.focess.veto.util.Nullness;
 
 /**
  * Manages the per-user, runtime-switchable model-tier profiles. A user creates one or more named
@@ -250,7 +251,7 @@ public class ModelTierCommand extends VetoCommand {
             @NonNull CommandSender sender, @NonNull Command cmd, @NonNull String @NonNull [] argv) {
         if (!LOGGED_IN.test(sender)) return List.of();
         String prefix = argv.length > 0 ? argv[argv.length - 1].toLowerCase() : "";
-        var fields = top.focess.veto.util.Nullness.requireNonNull(ModelTierField.values());
+        var fields = Nullness.requireNonNull(ModelTierField.values());
         return Arrays.stream(fields)
                 .map(ModelTierField::field)
                 .filter(f -> f.startsWith(prefix))

@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 
 /**
@@ -74,6 +75,6 @@ public record ProtectedSet(@NonNull Set<Path> paths) {
     private static @NonNull Set<Path> canonicalizeAll(@NonNull Set<Path> in) {
         return in.stream()
                 .map(p -> p.toAbsolutePath().normalize())
-                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+                .collect(Collectors.toUnmodifiableSet());
     }
 }

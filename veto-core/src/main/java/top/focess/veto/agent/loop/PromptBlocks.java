@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.identity.Role;
@@ -75,8 +76,11 @@ public final class PromptBlocks {
                             + " Explain your decisions concisely in the final response."
                             + " Act autonomously: gather information with tools, make changes, and verify them"
                             + " - only stop to ask the user when you genuinely cannot proceed. "
-                            + "You may delegate a decomposable task by calling `create_group` (you transform"
-                            + " into the Leader of a new group).";
+                            + "\n\n## Delegation Rules\n"
+                            + "Call `create_group` only when the requested task can be split into distinct"
+                            + " subtasks with clear outputs and delegation is likely to reduce completion"
+                            + " time or provide needed expertise. Do not call it for a small, tightly"
+                            + " coupled, or sequential task that you can complete directly.";
             case LEADER ->
                     "## Your Role\n"
                             + "Role: LEADER. You author the execution DAG node by"
@@ -93,7 +97,9 @@ public final class PromptBlocks {
                             + CRAFT
                             + " Execute the assigned node and finish with a concise internal report. The"
                             + " engine captures that final message and delivers it to the Leader; you do not"
-                            + " address the end user or post to the Blackboard yourself. You do NOT delegate"
+                            + " address the end user or post to the Blackboard yourself. If a necessary"
+                            + " user choice blocks the assigned task, include the question in your final"
+                            + " internal report to the Leader. You do NOT delegate"
                             + " further. You may recall existing session memories and cross-session insights,"
                             + " but you cannot create, promote, delete, or otherwise mutate them.";
         };
@@ -141,7 +147,7 @@ public final class PromptBlocks {
     public static @NonNull String environment() {
         String osName = System.getProperty("os.name", "unknown");
         String osArch = System.getProperty("os.arch", "unknown");
-        boolean windows = osName.toLowerCase(java.util.Locale.ROOT).contains("win");
+        boolean windows = osName.toLowerCase(Locale.ROOT).contains("win");
         StringBuilder sb = new StringBuilder();
         sb.append("## Environment\n");
         sb.append("- OS: ").append(osName).append(" (").append(osArch).append(").\n");
@@ -305,7 +311,7 @@ public final class PromptBlocks {
         String rendered =
                 example.replace("\"/abs", "\"<workspace-root>")
                         .replace("\"/workspace", "\"<workspace-root>");
-        if (System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("win")) {
+        if (System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win")) {
             String pathPrefix = "<workspace-root>/";
             int pathStart = rendered.indexOf(pathPrefix);
             while (pathStart >= 0) {

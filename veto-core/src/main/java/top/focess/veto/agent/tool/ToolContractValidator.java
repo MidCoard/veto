@@ -1,5 +1,6 @@
 package top.focess.veto.agent.tool;
 
+import java.util.List;
 import org.jspecify.annotations.NonNull;
 
 /**
@@ -48,7 +49,7 @@ public final class ToolContractValidator {
                 "errorsAndEdgeCases is required");
         require(definition, !documentation.security().isBlank(), "security is required");
         boolean embedsHeading =
-                java.util.List.of(
+                List.of(
                                 documentation.behavior(),
                                 documentation.whenToUse(),
                                 documentation.whenNotToUse(),

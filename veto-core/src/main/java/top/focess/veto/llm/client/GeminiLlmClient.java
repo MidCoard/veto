@@ -15,6 +15,7 @@ import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.translation.CapabilityTranslator;
 import top.focess.veto.llm.core.ChatMessage;
+import top.focess.veto.llm.core.LlmSystemUsage;
 import top.focess.veto.llm.core.ResolvedRequest;
 import top.focess.veto.llm.core.VetoRequest;
 import top.focess.veto.llm.exceptions.ModelCapabilityException;
@@ -71,7 +72,7 @@ final class GeminiLlmClient extends LlmClient {
             var usage = response.usageMetadata().get();
             long prompt = usage.promptTokenCount().map(Number::longValue).orElse(0L);
             long candidates = usage.candidatesTokenCount().map(Number::longValue).orElse(0L);
-            top.focess.veto.llm.core.LlmSystemUsage.set(prompt, candidates);
+            LlmSystemUsage.set(prompt, candidates);
         }
 
         String text = response.text();

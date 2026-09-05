@@ -2,10 +2,17 @@ package top.focess.veto.agent.loop;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.NullNode;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.tool.ToolResult;
 import top.focess.veto.llm.core.VetoResponse;
 
@@ -64,26 +71,59 @@ public class Scope {
     /**
      * Resolves a {@code $var|literal} spec to a concrete value (literal if no {@code $} prefix).
      */
-    public @NonNull Object resolveValue(String spec) {
-        if (spec == null) {
-            return UNDEFINED;
-        }
-        if (spec.startsWith("$")) {
-            return get(spec);
-        }
-        return spec; // literal
+    public @NonNull Scope child() {
+        return new Scope(objectMapper, this);
     }
 
-    /** Resolves {@code $var} references inside a text against the scope (stringified). */
+    public @NonNull Object resolveValue(Object spec) {
+        if (spec == null) return NullNode.getInstance();
+        if (spec instanceof JsonNode node) {
+            if (node.isTextual()) return resolveValue(node.asText());
+            if (node.isNull()) return node;
+            if (node.isNumber()) return node.numberValue();
+            if (node.isBoolean()) return node.booleanValue();
+            if (node.isArray()) {
+                List<Object> values = new ArrayList<>();
+                node.forEach(value -> values.add(resolveValue(value)));
+                return values;
+            }
+            Map<String, Object> values = new LinkedHashMap<>();
+            node.properties().forEach(e -> values.put(e.getKey(), resolveValue(e.getValue())));
+            return values;
+        }
+        if (spec instanceof String text) {
+            if (text.startsWith("$$")) return text.substring(1);
+            if (text.startsWith("$")) {
+                Object value = get(text);
+                if (value == UNDEFINED)
+                    throw new IllegalArgumentException("Unbound guided input: " + text);
+                return value;
+            }
+        }
+        return spec;
+    }
+
+    /**
+     * Replace complete variable tokens once; never interpolate text introduced by a replacement.
+     */
     public @NonNull String resolveVars(String text) {
-        if (text == null) {
-            return "";
+        if (text == null) return "";
+        var matcher = Pattern.compile("\\$\\$|\\$[A-Za-z_][A-Za-z0-9_]*").matcher(text);
+        StringBuilder result = new StringBuilder();
+        while (matcher.find()) {
+            String token = matcher.group();
+            String replacement;
+            if (token.equals("$$")) replacement = "$";
+            else {
+                Object value = get(token);
+                if (value == UNDEFINED)
+                    throw new IllegalArgumentException("Unbound guided input: " + token);
+                replacement = stringify(value);
+            }
+            matcher.appendReplacement(result, Matcher.quoteReplacement(replacement));
         }
-        String out = text;
-        for (var entry : bindings.entrySet()) {
-            out = out.replace("$" + entry.getKey(), stringify(entry.getValue()));
-        }
-        return out;
+        matcher.appendTail(result);
+        return result.toString();
     }
 
     private @NonNull String stringify(Object value) {
@@ -99,7 +139,16 @@ public class Scope {
         for (var entry : outputs.entrySet()) {
             String var = entry.getKey();
             String field = entry.getValue();
-            Object value = extractField(node, field, result.content());
+            Object value =
+                    switch (field) {
+                        case "success" -> result.success();
+                        case "status" -> result.status().name();
+                        case "errorCode" -> result.errorCode();
+                        default ->
+                                !result.success() && !"content".equals(field)
+                                        ? UNDEFINED
+                                        : extractField(node, field, result.content());
+                    };
             put(var, value == null ? "" : value);
         }
     }
@@ -135,12 +184,13 @@ public class Scope {
     }
 
     private Object extractField(JsonNode node, String field, String rawContent) {
-        if (node == null || field == null || field.isBlank() || "content".equals(field)) {
-            return rawContent;
-        }
+        if (field == null || field.isBlank() || "content".equals(field)) return rawContent;
+        if (node == null)
+            throw new IllegalArgumentException(
+                    "Result is not JSON; bind content instead of " + field);
         JsonNode at = node.get(field);
         if (at == null) {
-            return rawContent;
+            throw new IllegalArgumentException("Missing guided result field: " + field);
         }
         if (at.isNumber()) {
             return at.numberValue();
@@ -148,7 +198,8 @@ public class Scope {
         if (at.isBoolean()) {
             return at.booleanValue();
         }
-        return at.asText();
+        if (at.isNull()) return at;
+        return objectMapper.convertValue(at, ToolDocs.nonNullClass(Object.class));
     }
 
     /** Number of bindings in this scope (excludes parent). */

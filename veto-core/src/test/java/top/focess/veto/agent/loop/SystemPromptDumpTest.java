@@ -11,6 +11,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
@@ -36,7 +37,7 @@ import top.focess.veto.llm.core.ToolDefinition;
  * <p>Run it on demand:
  *
  * <pre>{@code
- * ./gradlew.bat :veto-core:test --tests "top.focess.veto.agent.loop.SystemPromptDumpTest"
+ * ./gradlew.bat :veto-core:test --tests "SystemPromptDumpTest"
  * }</pre>
  *
  * <p>Then open the files under {@code veto-core/build/prompt-dump/}. This bypasses the running app
@@ -115,6 +116,17 @@ class SystemPromptDumpTest {
             write("03-tools-" + role + ".md", inventory(roleTools));
         }
         deleteLegacyRolePolicyDumps(roles);
+        String standalone = Files.readString(DUMP_DIR.resolve("STANDALONE.md"));
+        assertFalse(
+                Pattern.compile("(?i)\\b(leader|mates?)\\b").matcher(standalone).find(),
+                "Standalone instructions and its actual tool catalog must not describe other roles");
+        assertTrue(standalone.contains("## Delegation Rules"));
+        assertTrue(standalone.contains("## Operating Contract"));
+        assertFalse(standalone.contains("system/runtime contract"));
+        assertTrue(
+                Files.readString(DUMP_DIR.resolve("MATE.md"))
+                        .contains(
+                                "include the question in your final internal report to the Leader"));
 
         int count = 6 + roles.length * 2;
         System.out.println(

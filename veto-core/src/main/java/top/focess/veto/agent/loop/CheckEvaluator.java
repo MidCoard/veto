@@ -16,6 +16,7 @@ public final class CheckEvaluator {
      * Evaluates a non-{@link Check.Llm} check to a boolean. {@link Check.Llm} throws (loop-owned).
      */
     public static boolean evaluate(@NonNull Check check, @NonNull Scope scope, int currentSteps) {
+        scope.put("CURRENT_STEPS", currentSteps);
         return switch (check) {
             case Check.Equals e -> stringOf(scope.get(e.var())).equals(e.value());
             case Check.NotEquals e -> !stringOf(scope.get(e.var())).equals(e.value());

@@ -3,6 +3,7 @@ package top.focess.veto.veto;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import java.io.*;
+import java.net.ServerSocket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -275,7 +276,7 @@ public class LlamaCppBridge {
 
     /** Find an available port for llama-server. */
     private int findAvailablePort() throws IOException {
-        try (java.net.ServerSocket socket = new java.net.ServerSocket(0)) {
+        try (ServerSocket socket = new ServerSocket(0)) {
             return socket.getLocalPort();
         }
     }

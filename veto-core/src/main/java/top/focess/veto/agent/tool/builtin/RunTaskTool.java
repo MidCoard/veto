@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
@@ -150,7 +151,7 @@ public final class RunTaskTool implements NativeTool<RunTaskTool.Args> {
             throw new SecurityException("run_task requires its screened execution permit");
         }
         String agentId = ctx.agentId();
-        java.util.UUID sessionId = ctx.sessionId();
+        UUID sessionId = ctx.sessionId();
         var cwd = ctx.executionPermit().requireExecutionRoot();
         SandboxProfile profile =
                 SandboxProfile.forExecution(

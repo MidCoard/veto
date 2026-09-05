@@ -1,5 +1,6 @@
 package top.focess.veto.agent.tool;
 
+import java.util.Locale;
 import org.jspecify.annotations.NonNull;
 
 /** The content encodings a successful tool result may use. Status is carried separately. */
@@ -26,7 +27,7 @@ public enum ToolResultFormat {
 
     public static @NonNull ToolResultFormat fromId(Object value) {
         if (value == null) return UNKNOWN;
-        return switch (value.toString().toLowerCase(java.util.Locale.ROOT)) {
+        return switch (value.toString().toLowerCase(Locale.ROOT)) {
             case "json" -> JSON;
             case "plaintext" -> PLAINTEXT;
             default -> UNKNOWN;

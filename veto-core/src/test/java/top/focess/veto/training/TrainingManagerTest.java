@@ -6,6 +6,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -145,11 +147,11 @@ class TrainingManagerTest {
                         Files.createDirectories(output.resolve("gguf"))
                                 .resolve("veto-slm-q4_k_m.gguf"),
                         new byte[] {1, 2, 3});
-        java.util.List<String> deployments = new java.util.ArrayList<>();
+        List<String> deployments = new ArrayList<>();
         manager.setDeployCallback(deployments::add);
         manager.completeTraining(TrainingManager.resolveGgufModelPath(output));
         assertArrayEquals(new byte[] {1, 2, 3}, Files.readAllBytes(target));
-        assertEquals(java.util.List.of(target.toString()), deployments);
+        assertEquals(List.of(target.toString()), deployments);
         assertEquals(
                 converted.toAbsolutePath().toString(), manager.getProgress().getTrainedModelPath());
         assertEquals(TrainingProgress.Status.COMPLETED, manager.getProgress().getStatus());

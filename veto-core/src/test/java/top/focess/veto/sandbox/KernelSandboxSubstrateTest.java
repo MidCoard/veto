@@ -7,11 +7,14 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
@@ -99,8 +102,7 @@ class KernelSandboxSubstrateTest {
         CommandResult result =
                 substrate.runCommands(
                         handle,
-                        java.util.List.of(
-                                new Command("cmd", java.util.List.of("/c", "echo", "sandbox-ok"))),
+                        List.of(new Command("cmd", List.of("/c", "echo", "sandbox-ok"))),
                         Path.of("."),
                         ChainMode.STOP_ON_FAILURE,
                         Duration.ofSeconds(20));
@@ -246,12 +248,7 @@ class KernelSandboxSubstrateTest {
         ConstrainedSubprocessSubstrate substrate = new ConstrainedSubprocessSubstrate(kernel);
         SandboxProfile profile =
                 new SandboxProfile(
-                        workspace,
-                        512,
-                        100,
-                        8,
-                        Duration.ofSeconds(30),
-                        java.util.Set.of(protectedFile));
+                        workspace, 512, 100, 8, Duration.ofSeconds(30), Set.of(protectedFile));
         SandboxHandle handle = substrate.provision(profile);
         String java = Path.of(System.getProperty("java.home"), "bin", "java.exe").toString();
 
@@ -297,12 +294,7 @@ class KernelSandboxSubstrateTest {
         ConstrainedSubprocessSubstrate substrate = new ConstrainedSubprocessSubstrate(kernel);
         SandboxProfile profile =
                 new SandboxProfile(
-                        workspace,
-                        512,
-                        100,
-                        8,
-                        Duration.ofSeconds(30),
-                        java.util.Set.of(protectedFile));
+                        workspace, 512, 100, 8, Duration.ofSeconds(30), Set.of(protectedFile));
         SandboxHandle handle = substrate.provision(profile);
         String java = Path.of(System.getProperty("java.home"), "bin", "java.exe").toString();
         try {
@@ -350,12 +342,7 @@ class KernelSandboxSubstrateTest {
         ConstrainedSubprocessSubstrate substrate = new ConstrainedSubprocessSubstrate(kernel);
         SandboxProfile profile =
                 new SandboxProfile(
-                        workspace,
-                        512,
-                        100,
-                        8,
-                        Duration.ofSeconds(30),
-                        java.util.Set.of(protectedFile));
+                        workspace, 512, 100, 8, Duration.ofSeconds(30), Set.of(protectedFile));
         SandboxHandle handle = substrate.provision(profile);
 
         Files.writeString(protectedFile, "HOST_SECRET=value");
@@ -373,8 +360,7 @@ class KernelSandboxSubstrateTest {
         server.createContext(
                 "/probe",
                 exchange -> {
-                    byte[] body =
-                            "network-escape".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                    byte[] body = "network-escape".getBytes(StandardCharsets.UTF_8);
                     exchange.sendResponseHeaders(200, body.length);
                     try (var response = exchange.getResponseBody()) {
                         response.write(body);
@@ -429,9 +415,9 @@ class KernelSandboxSubstrateTest {
                         8,
                         Duration.ofSeconds(30),
                         true,
-                        java.util.Set.of(),
-                        java.util.Set.of(),
-                        java.util.Set.of());
+                        Set.of(),
+                        Set.of(),
+                        Set.of());
         SandboxHandle handle = substrate.provision(profile);
 
         CommandResult result =
@@ -458,10 +444,9 @@ class KernelSandboxSubstrateTest {
         CommandResult result =
                 substrate.runCommands(
                         handle,
-                        java.util.List.of(
-                                new Command(
-                                        "cmd", java.util.List.of("/c", "echo", "sandbox-pipeline")),
-                                new Command("findstr", java.util.List.of("sandbox-pipeline"))),
+                        List.of(
+                                new Command("cmd", List.of("/c", "echo", "sandbox-pipeline")),
+                                new Command("findstr", List.of("sandbox-pipeline"))),
                         Path.of("."),
                         ChainMode.PIPE,
                         Duration.ofSeconds(20));
@@ -469,7 +454,7 @@ class KernelSandboxSubstrateTest {
         assertEquals(
                 0, result.exitCode(), "stdout=" + result.stdout() + "; stderr=" + result.stderr());
         assertTrue(result.stdout().contains("sandbox-pipeline"), result.stdout());
-        assertEquals(java.util.List.of(0, 0), result.perCommand());
+        assertEquals(List.of(0, 0), result.perCommand());
     }
 
     @Test
@@ -484,10 +469,10 @@ class KernelSandboxSubstrateTest {
         Process process =
                 substrate.startBackground(
                         handle,
-                        new Command("cmd", java.util.List.of("/c", "echo", "background-ok")),
+                        new Command("cmd", List.of("/c", "echo", "background-ok")),
                         Path.of("."));
 
-        assertTrue(process.waitFor(10, java.util.concurrent.TimeUnit.SECONDS));
+        assertTrue(process.waitFor(10, TimeUnit.SECONDS));
         assertEquals(0, process.exitValue());
     }
 

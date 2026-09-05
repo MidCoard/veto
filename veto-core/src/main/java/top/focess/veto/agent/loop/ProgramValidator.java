@@ -1,8 +1,12 @@
 package top.focess.veto.agent.loop;
 
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.model.tier.ModelTier;
 
 /**
  * Validates an {@link ActionsProgram} before guided mode loads it. A program that fails validation
@@ -47,6 +51,25 @@ public final class ProgramValidator {
                     throw new InvalidProgramException("action " + a.id() + ": tool required");
                 }
             }
+            if (a instanceof GenerateAction g) {
+                Double temperature = g.temperature();
+                if (temperature != null
+                        && (!Double.isFinite(temperature) || temperature < 0 || temperature > 2))
+                    throw new InvalidProgramException("temperature must be between 0 and 2");
+                String tier = g.modelTier();
+                if (tier != null) {
+                    try {
+                        ModelTier.valueOf(tier);
+                    } catch (IllegalArgumentException e) {
+                        throw new InvalidProgramException("Unknown model_tier: " + tier);
+                    }
+                }
+                validateBindings(new HashSet<>(g.inputs().keySet()), g.outputs());
+                for (String field : g.outputs().values())
+                    if (!Set.of("message", "thought").contains(field))
+                        throw new InvalidProgramException("Unknown generate output: " + field);
+            }
+            if (a instanceof ToolAction t) validateBindings(Set.of(), t.outputs());
             if (a instanceof GotoAction g) {
                 if (g.index() < 0 || g.index() >= n) {
                     throw new InvalidProgramException("goto out of range: " + g.index());
@@ -62,9 +85,60 @@ public final class ProgramValidator {
                 }
             }
         }
+        for (Action action : program.actions()) {
+            if (action instanceof ConditionalGotoAction condition) {
+                Check check = condition.check();
+                if (check instanceof Check.ExitOk exit && !ids.contains(exit.stepId()))
+                    throw new InvalidProgramException(
+                            "exit_ok references unknown step: " + exit.stepId());
+                if (check instanceof Check.Numeric numeric
+                        && !Set.of("gt", "lt", "eq", "gte", "lte").contains(numeric.op()))
+                    throw new InvalidProgramException(
+                            "Unknown numeric comparison: " + numeric.op());
+                if (check instanceof Check.Matches matches) {
+                    try {
+                        Pattern.compile(matches.regex());
+                    } catch (PatternSyntaxException e) {
+                        throw new InvalidProgramException("Invalid regex");
+                    }
+                }
+            }
+        }
+        boolean[] reachesStop = new boolean[n];
+        boolean changed;
+        do {
+            changed = false;
+            for (int i = n - 1; i >= 0; i--) {
+                Action action = program.actions().get(i);
+                boolean reachable = action instanceof StopAction;
+                if (action instanceof GotoAction jump) reachable = reachesStop[jump.index()];
+                else if (action instanceof ConditionalGotoAction branch) {
+                    Integer fallback = branch.falseGoto();
+                    int next = fallback == null ? i + 1 : fallback;
+                    reachable = reachesStop[branch.trueGoto()] || (next < n && reachesStop[next]);
+                } else if (!reachable && i + 1 < n) reachable = reachesStop[i + 1];
+                if (reachable && !reachesStop[i]) {
+                    reachesStop[i] = true;
+                    changed = true;
+                }
+            }
+        } while (changed);
+        for (boolean reachable : reachesStop)
+            if (!reachable)
+                throw new InvalidProgramException("Every action must have a path to STOP");
         if (!acyclic(program)) {
             throw new InvalidProgramException(
                     "goto/conditional_goto graph has a deterministic cycle");
+        }
+    }
+
+    private static void validateBindings(
+            @NonNull Set<String> inputs, @NonNull Map<String, String> outputs) {
+        Set<String> names = new HashSet<>(inputs);
+        names.addAll(outputs.keySet());
+        for (String name : names) {
+            if (!name.matches("[A-Za-z_][A-Za-z0-9_]*") || name.equals("CURRENT_STEPS"))
+                throw new InvalidProgramException("Invalid or reserved binding name: " + name);
         }
     }
 
@@ -101,9 +175,12 @@ public final class ProgramValidator {
         boolean cycle = false;
         if (a instanceof GotoAction g) {
             cycle = hasCycle(p, g.index(), onStack, visited);
+        } else if (!(a instanceof ConditionalGotoAction)
+                && !(a instanceof StopAction)
+                && i + 1 < p.actions().size()) {
+            cycle = hasCycle(p, i + 1, onStack, visited);
         }
-        // conditional_goto: a conditional cycle is bounded by CURRENT_STEPS checks ( note); we
-        // only flag unconditional goto cycles here.
+        // Conditional loops are allowed; the runtime step budget bounds every action.
         onStack[i] = false;
         return cycle;
     }

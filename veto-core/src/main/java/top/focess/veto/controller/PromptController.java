@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import top.focess.veto.agent.AgentRunner;
+import top.focess.veto.agent.AgentService;
 import top.focess.veto.controller.dto.SubmitPromptRequest;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.llm.core.LlmOptions;
@@ -36,12 +37,12 @@ public class PromptController {
             LoggerFactory.getLogger("top.focess.veto.controller.PromptController");
 
     private final @NonNull SessionService sessionService;
-    private final top.focess.veto.agent.@NonNull AgentService agentService;
+    private final @NonNull AgentService agentService;
     private final @NonNull KeysteadVault vault;
 
     PromptController(
             @NonNull SessionService sessionService,
-            top.focess.veto.agent.@NonNull AgentService agentService,
+            @NonNull AgentService agentService,
             @NonNull KeysteadVault vault) {
         this.sessionService = sessionService;
         this.agentService = agentService;

@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
@@ -79,7 +80,7 @@ class MacOsSeatbeltSandboxTest {
     }
 
     private static int occurrences(@NonNull String value, @NonNull String needle) {
-        return value.split(java.util.regex.Pattern.quote(needle), -1).length - 1;
+        return value.split(Pattern.quote(needle), -1).length - 1;
     }
 
     private static @NonNull SandboxProfile profile(@NonNull Path workspace) {

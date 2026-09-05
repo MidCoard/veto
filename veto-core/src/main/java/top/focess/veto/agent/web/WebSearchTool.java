@@ -1,6 +1,7 @@
 package top.focess.veto.agent.web;
 
 import java.net.URI;
+import java.net.http.HttpTimeoutException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -150,7 +151,7 @@ public final class WebSearchTool implements NativeTool<WebSearchTool.Args> {
             return format(bounded);
         } catch (IllegalArgumentException e) {
             return error(e.getMessage());
-        } catch (java.net.http.HttpTimeoutException e) {
+        } catch (HttpTimeoutException e) {
             return error(
                     "web_search timed out ("
                             + provider.name()

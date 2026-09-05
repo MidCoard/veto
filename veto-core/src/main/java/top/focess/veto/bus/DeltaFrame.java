@@ -1,5 +1,6 @@
 package top.focess.veto.bus;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.BooleanNode;
@@ -10,6 +11,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.util.Nullness;
 
 /**
  * A single streaming update emitted by the agent loop and consumed by a transport such as a
@@ -126,7 +128,7 @@ public record DeltaFrame(
         try {
             JsonNode node = mapper.readTree(json);
             Kind parsedKind =
-                    top.focess.veto.util.Nullness.requireNonNull(
+                    Nullness.requireNonNull(
                             Kind.valueOf(node.path("kind").asText()), "DeltaFrame kind is missing");
             return new DeltaFrame(
                     UUID.fromString(node.path("sessionId").asText()),
@@ -135,9 +137,7 @@ public record DeltaFrame(
                     parsedKind,
                     node.path("text").asText(""),
                     mapper.convertValue(
-                            node.path("attrs"),
-                            new com.fasterxml.jackson.core.type.TypeReference<
-                                    Map<String, JsonNode>>() {}));
+                            node.path("attrs"), new TypeReference<Map<String, JsonNode>>() {}));
         } catch (Exception e) {
             throw new RuntimeException("DeltaFrame parse failed", e);
         }

@@ -20,6 +20,9 @@ spring:
     show-sql: false
 
 veto:
+  guided:
+    max-steps: 1000
+
   bus:
     websocket:
       port: 9090

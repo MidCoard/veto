@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.Optional;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -102,7 +103,7 @@ class GatewayScreeningTest {
         Workspace ws = Workspace.single(root, PathMode.REAL);
         SlmScreeningProvider raisesDanger =
                 (call, def, activeTask, thought, executionContext) ->
-                        java.util.Optional.of(
+                        Optional.of(
                                 new SlmScreening(
                                         Relevance.LOW,
                                         Danger.DANGEROUS,
@@ -126,7 +127,7 @@ class GatewayScreeningTest {
 
         SlmScreeningProvider claimsSafe =
                 (call, def, activeTask, thought, executionContext) ->
-                        java.util.Optional.of(
+                        Optional.of(
                                 new SlmScreening(Relevance.HIGH, Danger.SAFE, "model claims safe"));
         Gateway deterministicFloor =
                 new Gateway(

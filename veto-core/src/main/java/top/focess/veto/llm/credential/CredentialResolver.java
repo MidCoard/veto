@@ -1,5 +1,6 @@
 package top.focess.veto.llm.credential;
 
+import java.util.Objects;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Service;
 import top.focess.veto.llm.core.ProviderType;
@@ -39,7 +40,7 @@ public class CredentialResolver {
             throw new CredentialException("Credential key is missing for provider " + providerType);
         }
         try {
-            return java.util.Objects.requireNonNull(
+            return Objects.requireNonNull(
                     vault.readNoteBody(credentialKey)
                             .orElseThrow(
                                     () ->

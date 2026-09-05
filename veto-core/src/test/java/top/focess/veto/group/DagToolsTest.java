@@ -81,8 +81,7 @@ class DagToolsTest {
         UUID groupId = activeGroup();
         NodeEdit edit =
                 orchestrator.addNode(groupId, "node-1", "Implement login", "coding", Set.of());
-        assertInstanceOf(
-                top.focess.veto.agent.tool.ToolDocs.nonNullClass(NodeEdit.Applied.class), edit);
+        assertInstanceOf(ToolDocs.nonNullClass(NodeEdit.Applied.class), edit);
         DagNode node = findNode(requireGroup(registry.get(groupId)), "node-1");
         assertEquals(DagNode.NodeState.PENDING, node.state());
         assertEquals("coding", node.requiredSkillset());
@@ -94,9 +93,7 @@ class DagToolsTest {
         orchestrator.addNode(groupId, "node-1", "a", "coding", Set.of());
         NodeEdit edit = orchestrator.addNode(groupId, "node-1", "b", "testing", Set.of());
         NodeEdit.Rejected r =
-                assertInstanceOf(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(NodeEdit.Rejected.class),
-                        edit);
+                assertInstanceOf(ToolDocs.nonNullClass(NodeEdit.Rejected.class), edit);
         assertTrue(r.reason().contains("already exists"), r.reason());
     }
 
@@ -105,9 +102,7 @@ class DagToolsTest {
         UUID groupId = activeGroup();
         NodeEdit edit = orchestrator.addNode(groupId, "node-1", "a", "coding", Set.of("node-9"));
         NodeEdit.Rejected r =
-                assertInstanceOf(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(NodeEdit.Rejected.class),
-                        edit);
+                assertInstanceOf(ToolDocs.nonNullClass(NodeEdit.Rejected.class), edit);
         assertTrue(r.reason().contains("unknown dependency node-9"), r.reason());
     }
 
@@ -118,17 +113,14 @@ class DagToolsTest {
         orchestrator.removeNode(groupId, "node-1");
         NodeEdit edit = orchestrator.addNode(groupId, "node-2", "b", "coding", Set.of("node-1"));
         NodeEdit.Rejected r =
-                assertInstanceOf(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(NodeEdit.Rejected.class),
-                        edit);
+                assertInstanceOf(ToolDocs.nonNullClass(NodeEdit.Rejected.class), edit);
         assertTrue(r.reason().contains("stale"), r.reason());
     }
 
     @Test
     void addNodeRejectsUnknownGroup() {
         NodeEdit edit = orchestrator.addNode(UUID.randomUUID(), "node-1", "a", "coding", Set.of());
-        assertInstanceOf(
-                top.focess.veto.agent.tool.ToolDocs.nonNullClass(NodeEdit.Rejected.class), edit);
+        assertInstanceOf(ToolDocs.nonNullClass(NodeEdit.Rejected.class), edit);
     }
 
     @Test
@@ -136,8 +128,7 @@ class DagToolsTest {
         UUID groupId = activeGroup();
         orchestrator.addNode(groupId, "node-1", "a", "coding", Set.of());
         NodeEdit edit = orchestrator.removeNode(groupId, "node-1");
-        assertInstanceOf(
-                top.focess.veto.agent.tool.ToolDocs.nonNullClass(NodeEdit.Applied.class), edit);
+        assertInstanceOf(ToolDocs.nonNullClass(NodeEdit.Applied.class), edit);
         assertEquals(
                 DagNode.NodeState.STALE,
                 findNode(requireGroup(registry.get(groupId)), "node-1").state());
@@ -150,9 +141,7 @@ class DagToolsTest {
         orchestrator.addNode(groupId, "node-2", "b", "testing", Set.of("node-1"));
         NodeEdit edit = orchestrator.removeNode(groupId, "node-1");
         NodeEdit.Rejected r =
-                assertInstanceOf(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(NodeEdit.Rejected.class),
-                        edit);
+                assertInstanceOf(ToolDocs.nonNullClass(NodeEdit.Rejected.class), edit);
         assertTrue(r.reason().contains("node-2"), r.reason());
         // The node is untouched.
         assertEquals(
@@ -178,9 +167,7 @@ class DagToolsTest {
         registry.put(g.withDag(g.dag().withNode("node-1", verified)));
         NodeEdit edit = orchestrator.removeNode(groupId, "node-1");
         NodeEdit.Rejected r =
-                assertInstanceOf(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(NodeEdit.Rejected.class),
-                        edit);
+                assertInstanceOf(ToolDocs.nonNullClass(NodeEdit.Rejected.class), edit);
         assertTrue(r.reason().contains("verified"), r.reason());
     }
 

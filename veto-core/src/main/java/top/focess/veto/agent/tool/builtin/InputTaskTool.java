@@ -1,6 +1,7 @@
 package top.focess.veto.agent.tool.builtin;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -105,7 +106,7 @@ public final class InputTaskTool implements NativeTool<InputTaskTool.Args> {
         byte[] content = args.content().getBytes(StandardCharsets.UTF_8);
         byte[] bytes;
         if (args.appendNewline()) {
-            bytes = java.util.Arrays.copyOf(content, content.length + 1);
+            bytes = Arrays.copyOf(content, content.length + 1);
             bytes[content.length] = (byte) '\n';
         } else {
             bytes = content;

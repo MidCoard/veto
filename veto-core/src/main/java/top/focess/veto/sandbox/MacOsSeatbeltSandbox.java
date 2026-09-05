@@ -172,7 +172,7 @@ final class MacOsSeatbeltSandbox {
         Path real = absolute;
         try {
             real = absolute.toRealPath();
-        } catch (java.io.IOException ignored) {
+        } catch (IOException ignored) {
             // The subsequent exec fails normally if the approved executable disappeared.
         }
         String absoluteValue = seatbeltString(absolute.toString());

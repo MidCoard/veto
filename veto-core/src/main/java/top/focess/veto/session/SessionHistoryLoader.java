@@ -14,6 +14,7 @@ import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.TurnType;
 import top.focess.veto.memory.TurnRecordEntity;
 import top.focess.veto.memory.TurnRecordRepository;
+import top.focess.veto.util.Nullness;
 
 /**
  * Loads a session's durable conversation log (the existing {@code turn_records} table, written on
@@ -88,7 +89,7 @@ public class SessionHistoryLoader {
         return switch (storedType) {
             case "SYSTEM_PROMPT" -> TurnType.AGENT_INIT;
             case "RECALL" -> TurnType.REWIND;
-            default -> top.focess.veto.util.Nullness.requireNonNull(TurnType.valueOf(storedType));
+            default -> Nullness.requireNonNull(TurnType.valueOf(storedType));
         };
     }
 

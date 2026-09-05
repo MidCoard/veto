@@ -6,10 +6,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
+import top.focess.veto.agent.identity.RoleToolFilter;
 import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
@@ -29,6 +31,9 @@ import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.llm.core.VetoRequest;
 import top.focess.veto.llm.core.VetoResponse;
+import top.focess.veto.sandbox.BackgroundTaskManager;
+import top.focess.veto.sandbox.SandboxManager;
+import top.focess.veto.sandbox.TestSandboxFactory;
 
 /**
  * Verifies the production agent persona resolves a real tool whitelist from the {@link ToolEngine}
@@ -53,7 +58,7 @@ class PersonaToolWhitelistTest {
                         Map.of("path", ParamCategory.FILESYSTEM_PATH));
         return new ToolEngine() {
             @Override
-            public @NonNull List<ToolDefinition> getActiveTools(java.util.Set<String> whitelist) {
+            public @NonNull List<ToolDefinition> getActiveTools(Set<String> whitelist) {
                 return List.of(read);
             }
 
@@ -77,7 +82,8 @@ class PersonaToolWhitelistTest {
                 new PromptCompiler(
                         new DefaultCapabilityTranslator(mapper),
                         new SystemPromptResolver(),
-                        mapper);
+                        mapper,
+                        "FULL_ACCESS");
         ReflectionTestUtils.setField(compiler, "maxInputTokens", 32000);
         ReflectionTestUtils.setField(compiler, "contextFillRatio", 0.9);
         return new AgentService(
@@ -88,17 +94,16 @@ class PersonaToolWhitelistTest {
                 caller,
                 mapper,
                 List.of(),
-                new top.focess.veto.agent.identity.RoleToolFilter(engine),
+                new RoleToolFilter(engine),
                 "REAL",
                 50L,
+                1000,
                 "FULL_ACCESS",
                 "STRICT",
                 null,
                 null,
-                new top.focess.veto.sandbox.BackgroundTaskManager(
-                        new top.focess.veto.sandbox.SandboxManager(
-                                top.focess.veto.sandbox.TestSandboxFactory
-                                        .uncontainedSubprocesses())));
+                new BackgroundTaskManager(
+                        new SandboxManager(TestSandboxFactory.uncontainedSubprocesses())));
     }
 
     private static AgentRunner.@NonNull LlmBinding binding() {

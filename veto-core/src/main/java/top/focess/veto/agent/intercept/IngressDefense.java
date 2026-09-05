@@ -13,6 +13,7 @@ import top.focess.veto.agent.tool.ParamCategory;
 import top.focess.veto.agent.tool.RemoteToolDefinition;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDefinition;
+import top.focess.veto.agent.tool.ToolResult;
 import top.focess.veto.llm.core.ToolCall;
 
 /**
@@ -69,7 +70,7 @@ public class IngressDefense {
     public @NonNull String maskAndFrame(
             @NonNull ToolCall call,
             @NonNull ToolDefinition def,
-            top.focess.veto.agent.tool.@NonNull ToolResult result,
+            @NonNull ToolResult result,
             boolean maskObservation,
             @NonNull ReadHistory readHistory) {
         String body = result.content();
@@ -135,7 +136,7 @@ public class IngressDefense {
     public @NonNull String maskAndFrame(
             @NonNull ToolCall call,
             @NonNull ToolDefinition def,
-            top.focess.veto.agent.tool.@NonNull ToolResult result,
+            @NonNull ToolResult result,
             @NonNull ApprovalDecision decision,
             @NonNull ReadHistory readHistory) {
         boolean mask = true;
@@ -148,7 +149,7 @@ public class IngressDefense {
                 switch (def) {
                     case NativeToolDefinition n -> n.paramHints();
                     case AgentToolDefinition a -> a.paramHints();
-                    case RemoteToolDefinition r -> java.util.Map.of();
+                    case RemoteToolDefinition r -> Map.of();
                 };
         for (var entry : hints.entrySet()) {
             if (entry.getValue() == ParamCategory.FILESYSTEM_PATH) {

@@ -16,6 +16,7 @@ import top.focess.veto.model.tier.ModelTierBindingEntity;
 import top.focess.veto.model.tier.ModelTierField;
 import top.focess.veto.model.tier.ModelTierProfileEntity;
 import top.focess.veto.model.tier.ModelTierProfileService;
+import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.KeysteadVault;
 
 /**
@@ -116,9 +117,7 @@ public class ModelTierController {
         String user = requireUser();
         ModelTier parsedTier;
         try {
-            parsedTier =
-                    top.focess.veto.util.Nullness.requireNonNull(
-                            ModelTier.valueOf(tier.toUpperCase()));
+            parsedTier = Nullness.requireNonNull(ModelTier.valueOf(tier.toUpperCase()));
         } catch (IllegalArgumentException e) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST, Msg.get("error.tier.unknownTier", tier));

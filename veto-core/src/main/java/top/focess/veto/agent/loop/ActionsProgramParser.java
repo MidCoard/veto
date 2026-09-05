@@ -38,31 +38,27 @@ public final class ActionsProgramParser {
                             id,
                             label,
                             text(a, "tool"),
-                            toStringMap(a.get("inputs")),
+                            toInputMap(a.get("inputs")),
                             toStringMap(a.get("outputs")));
             case "generate" ->
                     new GenerateAction(
                             id,
                             label,
                             text(a, "prompt"),
-                            toStringMap(a.get("inputs")),
+                            toInputMap(a.get("inputs")),
                             toStringMap(a.get("outputs")),
-                            a.has("thought") && !a.get("thought").isNull()
-                                    ? a.get("thought").asBoolean()
-                                    : null,
+                            optionalBoolean(a, "thought"),
                             nullableText(a, "model_tier"),
-                            a.has("temperature") && a.get("temperature").isNumber()
-                                    ? a.get("temperature").asDouble()
-                                    : null);
-            case "goto" -> new GotoAction(id, label, a.get("index").asInt());
+                            optionalNumber(a, "temperature"));
+            case "goto" -> new GotoAction(id, label, integer(a, "index"));
             case "conditional_goto" ->
                     new ConditionalGotoAction(
                             id,
                             label,
                             parseCheck(a.get("check")),
-                            a.get("true_goto").asInt(),
+                            integer(a, "true_goto"),
                             a.has("false_goto") && !a.get("false_goto").isNull()
-                                    ? a.get("false_goto").asInt()
+                                    ? integer(a, "false_goto")
                                     : null);
             case "STOP" -> new StopAction(id, label, nullableText(a, "result_binding"));
             default ->
@@ -91,10 +87,35 @@ public final class ActionsProgramParser {
         };
     }
 
+    private static Boolean optionalBoolean(@NonNull JsonNode node, @NonNull String field) {
+        JsonNode value = node.get(field);
+        if (value == null || value.isNull()) return null;
+        if (!value.isBoolean())
+            throw new ProgramValidator.InvalidProgramException(field + " must be boolean");
+        return value.booleanValue();
+    }
+
+    private static Double optionalNumber(@NonNull JsonNode node, @NonNull String field) {
+        JsonNode value = node.get(field);
+        if (value == null || value.isNull()) return null;
+        if (!value.isNumber())
+            throw new ProgramValidator.InvalidProgramException(field + " must be numeric");
+        return value.doubleValue();
+    }
+
+    private static int integer(@NonNull JsonNode node, @NonNull String field) {
+        JsonNode value = node.get(field);
+        if (value == null || !value.isIntegralNumber() || !value.canConvertToInt())
+            throw new ProgramValidator.InvalidProgramException(field + " must be an integer");
+        return value.intValue();
+    }
+
     private static @NonNull String text(JsonNode n, @NonNull String field) {
         if (n == null || !n.has(field) || n.get(field).isNull()) {
             return "";
         }
+        if (!n.get(field).isTextual())
+            throw new ProgramValidator.InvalidProgramException(field + " must be a string");
         return n.get(field).asText();
     }
 
@@ -102,14 +123,23 @@ public final class ActionsProgramParser {
         if (n == null || !n.has(field) || n.get(field).isNull()) {
             return null;
         }
+        if (!n.get(field).isTextual())
+            throw new ProgramValidator.InvalidProgramException(field + " must be a string");
         return n.get(field).asText();
+    }
+
+    private static @NonNull Map<String, Object> toInputMap(JsonNode node) {
+        if (node == null || !node.isObject())
+            throw new ProgramValidator.InvalidProgramException("inputs must be an object");
+        Map<String, Object> values = new HashMap<>();
+        node.properties().forEach(e -> values.put(e.getKey(), e.getValue().deepCopy()));
+        return values;
     }
 
     private static @NonNull Map<@NonNull String, @NonNull String> toStringMap(JsonNode node) {
         Map<@NonNull String, @NonNull String> map = new HashMap<>();
-        if (node == null || !node.isObject()) {
-            return map;
-        }
+        if (node == null || !node.isObject())
+            throw new ProgramValidator.InvalidProgramException("outputs must be an object");
         node.properties()
                 .forEach(
                         e -> {

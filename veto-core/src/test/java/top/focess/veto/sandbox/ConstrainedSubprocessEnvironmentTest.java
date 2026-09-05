@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -60,7 +61,7 @@ class ConstrainedSubprocessEnvironmentTest {
             @TempDir @NonNull Path workspace) throws Exception {
         Path toolRoot = Files.createDirectory(workspace.resolve("tool-root"));
         Path cacheRoot = Files.createDirectory(workspace.resolve("cache-root"));
-        String pathValue = toolRoot + java.io.File.pathSeparator + "not-a-path";
+        String pathValue = toolRoot + File.pathSeparator + "not-a-path";
 
         SandboxProfile.EnvironmentRoots roots =
                 SandboxProfile.EnvironmentRoots.discover(

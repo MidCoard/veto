@@ -2,6 +2,7 @@ package top.focess.veto.memory;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -185,7 +186,7 @@ class InMemoryMemoryStoreTest {
                 content,
                 embedder.embed(content),
                 Memory.SourceRef.insightOrigin("test"),
-                java.time.Instant.now());
+                Instant.now());
     }
 
     private static <T extends @NonNull Object> @NonNull T requireValue(T value, String message) {

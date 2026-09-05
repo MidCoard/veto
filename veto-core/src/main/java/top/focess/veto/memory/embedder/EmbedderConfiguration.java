@@ -8,6 +8,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import top.focess.veto.agent.AgentLoopDefaultsConfiguration;
 import top.focess.veto.llm.config.LlmJacksonConfig;
 import top.focess.veto.llm.credential.CredentialResolver;
 
@@ -22,8 +23,8 @@ import top.focess.veto.llm.credential.CredentialResolver;
  * </ul>
  *
  * <p>This mirrors the {@code @ConditionalOnMissingBean} default pattern used by {@link
- * top.focess.veto.agent.AgentLoopDefaultsConfiguration}: a richer bean overrides the default,
- * rather than the mutually-exclusive {@code @ConditionalOnProperty} the stores use.
+ * AgentLoopDefaultsConfiguration}: a richer bean overrides the default, rather than the
+ * mutually-exclusive {@code @ConditionalOnProperty} the stores use.
  */
 @Configuration
 @EnableConfigurationProperties(EmbedderProperties.class)

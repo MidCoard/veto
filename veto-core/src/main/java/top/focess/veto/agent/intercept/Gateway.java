@@ -9,7 +9,9 @@ import java.util.Optional;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.drift.ReadHistory;
+import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.screening.Danger;
 import top.focess.veto.agent.screening.DangerComputation;
 import top.focess.veto.agent.screening.DeployerPolicy;
@@ -19,6 +21,7 @@ import top.focess.veto.agent.screening.Screening;
 import top.focess.veto.agent.screening.SlmScreening;
 import top.focess.veto.agent.screening.SlmScreeningProvider;
 import top.focess.veto.agent.tool.AgentToolDefinition;
+import top.focess.veto.agent.tool.NativeToolDefinition;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.agent.workspace.Workspace;
@@ -51,9 +54,9 @@ public class Gateway {
 
     /**
      * Constructs a per-agent Gateway wired to its screening dependencies. The caller ({@link
-     * top.focess.veto.agent.AgentService}) assembles the deterministic {@link DangerComputation},
-     * the optional {@link SlmScreeningProvider}, the deployer {@link DeployerPolicy} + {@link
-     * ProtectedSet}, and this agent's {@link ReadHistory}.
+     * AgentService}) assembles the deterministic {@link DangerComputation}, the optional {@link
+     * SlmScreeningProvider}, the deployer {@link DeployerPolicy} + {@link ProtectedSet}, and this
+     * agent's {@link ReadHistory}.
      *
      * @param workspace the agent's workspace; incoming paths resolve against its resolver.
      * @param dangerComputation the deterministic danger computation (path/shell classification).
@@ -130,7 +133,7 @@ public class Gateway {
         Danger danger =
                 advisory.map(screening -> maxDanger(deterministicDanger, screening.danger()))
                         .orElse(deterministicDanger);
-        if (def instanceof top.focess.veto.agent.tool.NativeToolDefinition nativeDefinition
+        if (def instanceof NativeToolDefinition nativeDefinition
                 && nativeDefinition.requiresSemanticScreening()
                 && advisory.isEmpty()) {
             danger = maxDanger(danger, Danger.DANGEROUS);
@@ -274,8 +277,8 @@ public class Gateway {
 
     /**
      * The per-session {@link Workspace} this Gateway screens against. Threaded to the {@link
-     * top.focess.veto.agent.loop.PromptCompiler} so the system prompt mounts the session's actual
-     * roots (not the default bean workspace).
+     * PromptCompiler} so the system prompt mounts the session's actual roots (not the default bean
+     * workspace).
      */
     public @NonNull Workspace workspace() {
         return workspace;

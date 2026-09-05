@@ -4,8 +4,10 @@ import jakarta.persistence.*;
 import java.time.Instant;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.agent.AgentService;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
 import top.focess.veto.llm.core.ToolResultPresentationModeConverter;
+import top.focess.veto.session.SessionService;
 
 /**
  * A session - the conversation container a terminal/frontend attaches to. Holds one primary agent
@@ -26,8 +28,8 @@ public class SessionEntity {
     /**
      * CSV of host paths backing the session's workspace (the roots the session's agents resolve
      * paths against). Nullable in the schema so existing rows survive a {@code ddl-auto=update}
-     * add-column; {@link top.focess.veto.session.SessionService#createSession} enforces it
-     * non-blank at creation (the "path required" contract).
+     * add-column; {@link SessionService#createSession} enforces it non-blank at creation (the "path
+     * required" contract).
      */
     @Column(name = "workspace_roots")
     private String workspaceRoots;
@@ -60,8 +62,7 @@ public class SessionEntity {
      * @param owner the session owner
      * @param name the session name
      * @param workspaceRoots CSV of host paths backing the session's workspace; null/blank falls
-     *     back to the JVM working dir at activation (see {@link
-     *     top.focess.veto.agent.AgentService})
+     *     back to the JVM working dir at activation (see {@link AgentService})
      */
     public SessionEntity(@NonNull String owner, @NonNull String name, String workspaceRoots) {
         this(owner, name, workspaceRoots, ToolResultPresentationMode.BASIC);

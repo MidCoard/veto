@@ -1,6 +1,7 @@
 package top.focess.veto.agent.tool.builtin;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,7 +33,7 @@ public final class UserQuestionRegistry {
         List<Pending> matching =
                 pending.values().stream()
                         .filter(value -> value.agentId().equals(agentId))
-                        .sorted(java.util.Comparator.comparing(Pending::callId))
+                        .sorted(Comparator.comparing(Pending::callId))
                         .toList();
         List<Map<String, Object>> result = new ArrayList<>();
         for (Pending value : matching) {

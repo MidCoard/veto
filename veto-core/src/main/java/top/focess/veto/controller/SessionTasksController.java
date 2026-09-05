@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.jspecify.annotations.NonNull;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -88,7 +89,7 @@ public class SessionTasksController {
                         .orElse(false);
         // Try the state-matching action; if the task flipped state meanwhile (exit landed between
         // the check and the action), the other action applies.
-        java.util.Optional<Map.Entry<String, BackgroundTaskManager.TaskInfo>> result =
+        Optional<Map.Entry<String, BackgroundTaskManager.TaskInfo>> result =
                 alive
                         ? taskManager
                                 .stop(agentId, taskId, BackgroundTaskManager.ExitCause.USER_STOP)

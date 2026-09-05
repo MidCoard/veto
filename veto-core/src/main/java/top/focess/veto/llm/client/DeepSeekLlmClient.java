@@ -1,5 +1,6 @@
 package top.focess.veto.llm.client;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -8,13 +9,16 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
+import org.slf4j.LoggerFactory;
 import top.focess.veto.agent.translation.CapabilityTranslator;
 import top.focess.veto.llm.core.ChatMessage;
 import top.focess.veto.llm.core.LlmOptions;
+import top.focess.veto.llm.core.LlmSystemUsage;
 import top.focess.veto.llm.core.ResolvedRequest;
 import top.focess.veto.llm.core.VetoRequest;
 import top.focess.veto.llm.exceptions.ModelCapabilityException;
@@ -86,7 +90,7 @@ final class DeepSeekLlmClient extends LlmClient {
 
             // Build input items from the conversation messages (skip system - it goes in
             // instructions).
-            List<Map<String, Object>> inputItems = new java.util.ArrayList<>();
+            List<Map<String, Object>> inputItems = new ArrayList<>();
             for (ChatMessage msg : request.messages()) {
                 if ("system".equals(msg.role())) {
                     continue;
@@ -103,7 +107,7 @@ final class DeepSeekLlmClient extends LlmClient {
             }
 
             String json = objectMapper.writeValueAsString(body);
-            org.slf4j.LoggerFactory.getLogger("top.focess.veto.llm.client.DeepSeekLlmClient")
+            LoggerFactory.getLogger("top.focess.veto.llm.client.DeepSeekLlmClient")
                     .debug(
                             "DeepSeek Responses API request ({} chars): {}",
                             json.length(),
@@ -141,12 +145,11 @@ final class DeepSeekLlmClient extends LlmClient {
                 Number prompt = (Number) usage.get("input_tokens");
                 Number completion = (Number) usage.get("output_tokens");
                 if (prompt != null && completion != null) {
-                    top.focess.veto.llm.core.LlmSystemUsage.set(
-                            prompt.longValue(), completion.longValue());
+                    LlmSystemUsage.set(prompt.longValue(), completion.longValue());
                 }
             }
 
-            org.slf4j.LoggerFactory.getLogger("top.focess.veto.llm.client.DeepSeekLlmClient")
+            LoggerFactory.getLogger("top.focess.veto.llm.client.DeepSeekLlmClient")
                     .debug(
                             "DeepSeek Responses API response: contentLen={} contentBlank={}",
                             content == null ? 0 : content.length(),
@@ -239,7 +242,7 @@ final class DeepSeekLlmClient extends LlmClient {
      * {@code text.format: json_schema} enforcement on multi-turn conversations.
      */
     private @NonNull Map<String, Object> toInputItem(@NonNull ChatMessage msg)
-            throws com.fasterxml.jackson.core.JsonProcessingException {
+            throws JsonProcessingException {
         if ("tool".equals(msg.role())) {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("role", "user");
@@ -289,7 +292,7 @@ final class DeepSeekLlmClient extends LlmClient {
         try {
             JsonNode node = objectMapper.readTree(toolArgs);
             return node != null && node.isObject() ? node : objectMapper.createObjectNode();
-        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+        } catch (JsonProcessingException e) {
             return objectMapper.createObjectNode();
         }
     }

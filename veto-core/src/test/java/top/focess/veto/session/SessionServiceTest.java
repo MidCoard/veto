@@ -3,6 +3,8 @@ package top.focess.veto.session;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import java.lang.reflect.Field;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
@@ -29,7 +31,7 @@ import top.focess.veto.model.tier.ModelTierRegistry;
 class SessionServiceTest {
 
     private final @NonNull ModelTierRegistry tierRegistry =
-            mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(ModelTierRegistry.class));
+            mock(ToolDocs.nonNullClass(ModelTierRegistry.class));
 
     /**
      * A stable cwd used by the terminal-side tests. Matches sessions whose workspaceRoots is null
@@ -56,20 +58,11 @@ class SessionServiceTest {
 
     @Test
     void createSessionBuildsPrimaryAgent() {
-        SessionRepository sessions =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionRepository.class));
-        AgentInstanceRepository agents =
-                mock(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                AgentInstanceRepository.class));
-        AgentPatternRepository patterns =
-                mock(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                AgentPatternRepository.class));
-        AgentService agentService =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(AgentService.class));
-        SessionHistoryLoader loader =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionHistoryLoader.class));
+        SessionRepository sessions = mock(ToolDocs.nonNullClass(SessionRepository.class));
+        AgentInstanceRepository agents = mock(ToolDocs.nonNullClass(AgentInstanceRepository.class));
+        AgentPatternRepository patterns = mock(ToolDocs.nonNullClass(AgentPatternRepository.class));
+        AgentService agentService = mock(ToolDocs.nonNullClass(AgentService.class));
+        SessionHistoryLoader loader = mock(ToolDocs.nonNullClass(SessionHistoryLoader.class));
 
         AgentPatternEntity pattern =
                 new AgentPatternEntity(
@@ -77,10 +70,9 @@ class SessionServiceTest {
         when(patterns.findByNameAndOwner("coder", "alice")).thenReturn(Optional.of(pattern));
         when(sessions.findByOwnerAndNameAndWorkspaceRoots(anyString(), anyString(), anyString()))
                 .thenReturn(Optional.empty());
-        when(sessions.save(
-                        any(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionEntity.class))))
+        when(sessions.save(any(ToolDocs.nonNullClass(SessionEntity.class))))
                 .thenAnswer(i -> i.getArgument(0));
-        when(agents.save(any(top.focess.veto.agent.tool.ToolDocs.nonNullClass(AgentEntity.class))))
+        when(agents.save(any(ToolDocs.nonNullClass(AgentEntity.class))))
                 .thenAnswer(i -> i.getArgument(0));
 
         SessionService service =
@@ -89,26 +81,16 @@ class SessionServiceTest {
         SessionEntity session = service.createSession("alice", "coder");
         assertEquals(ToolResultPresentationMode.BASIC, session.getToolResultPresentation());
         requirePrimaryAgentId(session, "primary agent created and linked");
-        verify(agents)
-                .save(any(top.focess.veto.agent.tool.ToolDocs.nonNullClass(AgentEntity.class)));
+        verify(agents).save(any(ToolDocs.nonNullClass(AgentEntity.class)));
     }
 
     @Test
     void createSessionWithCustomName() {
-        SessionRepository sessions =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionRepository.class));
-        AgentInstanceRepository agents =
-                mock(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                AgentInstanceRepository.class));
-        AgentPatternRepository patterns =
-                mock(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                AgentPatternRepository.class));
-        AgentService agentService =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(AgentService.class));
-        SessionHistoryLoader loader =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionHistoryLoader.class));
+        SessionRepository sessions = mock(ToolDocs.nonNullClass(SessionRepository.class));
+        AgentInstanceRepository agents = mock(ToolDocs.nonNullClass(AgentInstanceRepository.class));
+        AgentPatternRepository patterns = mock(ToolDocs.nonNullClass(AgentPatternRepository.class));
+        AgentService agentService = mock(ToolDocs.nonNullClass(AgentService.class));
+        SessionHistoryLoader loader = mock(ToolDocs.nonNullClass(SessionHistoryLoader.class));
 
         AgentPatternEntity pattern =
                 new AgentPatternEntity(
@@ -116,10 +98,9 @@ class SessionServiceTest {
         when(patterns.findByNameAndOwner("coder", "alice")).thenReturn(Optional.of(pattern));
         when(sessions.findByOwnerAndNameAndWorkspaceRoots(anyString(), anyString(), anyString()))
                 .thenReturn(Optional.empty());
-        when(sessions.save(
-                        any(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionEntity.class))))
+        when(sessions.save(any(ToolDocs.nonNullClass(SessionEntity.class))))
                 .thenAnswer(i -> i.getArgument(0));
-        when(agents.save(any(top.focess.veto.agent.tool.ToolDocs.nonNullClass(AgentEntity.class))))
+        when(agents.save(any(ToolDocs.nonNullClass(AgentEntity.class))))
                 .thenAnswer(i -> i.getArgument(0));
 
         SessionService service =
@@ -132,28 +113,18 @@ class SessionServiceTest {
         assertEquals(ToolResultPresentationMode.DETAILED, session.getToolResultPresentation());
 
         ArgumentCaptor<SessionEntity> captor =
-                ArgumentCaptor.forClass(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionEntity.class));
+                ArgumentCaptor.forClass(ToolDocs.nonNullClass(SessionEntity.class));
         verify(sessions, atLeastOnce()).save(captor.capture());
         assertEquals("mysession", captor.getAllValues().get(0).getName());
     }
 
     @Test
     void createSessionGeneratesUniqueNameFromPattern() {
-        SessionRepository sessions =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionRepository.class));
-        AgentInstanceRepository agents =
-                mock(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                AgentInstanceRepository.class));
-        AgentPatternRepository patterns =
-                mock(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                AgentPatternRepository.class));
-        AgentService agentService =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(AgentService.class));
-        SessionHistoryLoader loader =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionHistoryLoader.class));
+        SessionRepository sessions = mock(ToolDocs.nonNullClass(SessionRepository.class));
+        AgentInstanceRepository agents = mock(ToolDocs.nonNullClass(AgentInstanceRepository.class));
+        AgentPatternRepository patterns = mock(ToolDocs.nonNullClass(AgentPatternRepository.class));
+        AgentService agentService = mock(ToolDocs.nonNullClass(AgentService.class));
+        SessionHistoryLoader loader = mock(ToolDocs.nonNullClass(SessionHistoryLoader.class));
 
         AgentPatternEntity pattern =
                 new AgentPatternEntity(
@@ -161,10 +132,9 @@ class SessionServiceTest {
         when(patterns.findByNameAndOwner("coder", "alice")).thenReturn(Optional.of(pattern));
         when(sessions.findByOwnerAndNameAndWorkspaceRoots(anyString(), anyString(), anyString()))
                 .thenReturn(Optional.empty());
-        when(sessions.save(
-                        any(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionEntity.class))))
+        when(sessions.save(any(ToolDocs.nonNullClass(SessionEntity.class))))
                 .thenAnswer(i -> i.getArgument(0));
-        when(agents.save(any(top.focess.veto.agent.tool.ToolDocs.nonNullClass(AgentEntity.class))))
+        when(agents.save(any(ToolDocs.nonNullClass(AgentEntity.class))))
                 .thenAnswer(i -> i.getArgument(0));
 
         SessionService service =
@@ -181,20 +151,11 @@ class SessionServiceTest {
 
     @Test
     void activateResolvesConfigFromPrimaryAgent() {
-        SessionRepository sessions =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionRepository.class));
-        AgentInstanceRepository agents =
-                mock(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                AgentInstanceRepository.class));
-        AgentPatternRepository patterns =
-                mock(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                AgentPatternRepository.class));
-        AgentService agentService =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(AgentService.class));
-        SessionHistoryLoader loader =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionHistoryLoader.class));
+        SessionRepository sessions = mock(ToolDocs.nonNullClass(SessionRepository.class));
+        AgentInstanceRepository agents = mock(ToolDocs.nonNullClass(AgentInstanceRepository.class));
+        AgentPatternRepository patterns = mock(ToolDocs.nonNullClass(AgentPatternRepository.class));
+        AgentService agentService = mock(ToolDocs.nonNullClass(AgentService.class));
+        SessionHistoryLoader loader = mock(ToolDocs.nonNullClass(SessionHistoryLoader.class));
 
         SessionEntity session = new SessionEntity("alice", "coder");
         AgentEntity agent =
@@ -216,7 +177,7 @@ class SessionServiceTest {
         when(loader.load(session.getId(), agent.getId())).thenReturn(List.of());
         when(agentService.getOrCreateAgent(
                         anyString(), any(), any(), anyList(), any(), any(), any(), anyInt(), any()))
-                .thenReturn(mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(Agent.class)));
+                .thenReturn(mock(ToolDocs.nonNullClass(Agent.class)));
 
         SessionService service =
                 new SessionService(sessions, agents, patterns, agentService, loader, tierRegistry);
@@ -231,20 +192,11 @@ class SessionServiceTest {
 
     @Test
     void deactivateClearsActive() {
-        SessionRepository sessions =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionRepository.class));
-        AgentInstanceRepository agents =
-                mock(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                AgentInstanceRepository.class));
-        AgentPatternRepository patterns =
-                mock(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                AgentPatternRepository.class));
-        AgentService agentService =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(AgentService.class));
-        SessionHistoryLoader loader =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionHistoryLoader.class));
+        SessionRepository sessions = mock(ToolDocs.nonNullClass(SessionRepository.class));
+        AgentInstanceRepository agents = mock(ToolDocs.nonNullClass(AgentInstanceRepository.class));
+        AgentPatternRepository patterns = mock(ToolDocs.nonNullClass(AgentPatternRepository.class));
+        AgentService agentService = mock(ToolDocs.nonNullClass(AgentService.class));
+        SessionHistoryLoader loader = mock(ToolDocs.nonNullClass(SessionHistoryLoader.class));
 
         SessionEntity session = new SessionEntity("alice", "coder");
         AgentEntity agent =
@@ -265,7 +217,7 @@ class SessionServiceTest {
         when(loader.load(session.getId(), agent.getId())).thenReturn(List.of());
         when(agentService.getOrCreateAgent(
                         anyString(), any(), any(), anyList(), any(), any(), any()))
-                .thenReturn(mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(Agent.class)));
+                .thenReturn(mock(ToolDocs.nonNullClass(Agent.class)));
 
         SessionService service =
                 new SessionService(sessions, agents, patterns, agentService, loader, tierRegistry);
@@ -276,20 +228,11 @@ class SessionServiceTest {
 
     @Test
     void deactivateUserDetachesUserTerminals() {
-        SessionRepository sessions =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionRepository.class));
-        AgentInstanceRepository agents =
-                mock(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                AgentInstanceRepository.class));
-        AgentPatternRepository patterns =
-                mock(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                AgentPatternRepository.class));
-        AgentService agentService =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(AgentService.class));
-        SessionHistoryLoader loader =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionHistoryLoader.class));
+        SessionRepository sessions = mock(ToolDocs.nonNullClass(SessionRepository.class));
+        AgentInstanceRepository agents = mock(ToolDocs.nonNullClass(AgentInstanceRepository.class));
+        AgentPatternRepository patterns = mock(ToolDocs.nonNullClass(AgentPatternRepository.class));
+        AgentService agentService = mock(ToolDocs.nonNullClass(AgentService.class));
+        SessionHistoryLoader loader = mock(ToolDocs.nonNullClass(SessionHistoryLoader.class));
 
         SessionEntity session = new SessionEntity("alice", "coder");
         AgentEntity agent =
@@ -311,7 +254,7 @@ class SessionServiceTest {
         when(loader.load(session.getId(), agent.getId())).thenReturn(List.of());
         when(agentService.getOrCreateAgent(
                         anyString(), any(), any(), anyList(), any(), any(), any()))
-                .thenReturn(mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(Agent.class)));
+                .thenReturn(mock(ToolDocs.nonNullClass(Agent.class)));
 
         SessionService service =
                 new SessionService(sessions, agents, patterns, agentService, loader, tierRegistry);
@@ -326,20 +269,11 @@ class SessionServiceTest {
 
     @Test
     void resumeLastSessionActivatesOwnersMostRecent() {
-        SessionRepository sessions =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionRepository.class));
-        AgentInstanceRepository agents =
-                mock(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                AgentInstanceRepository.class));
-        AgentPatternRepository patterns =
-                mock(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                AgentPatternRepository.class));
-        AgentService agentService =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(AgentService.class));
-        SessionHistoryLoader loader =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionHistoryLoader.class));
+        SessionRepository sessions = mock(ToolDocs.nonNullClass(SessionRepository.class));
+        AgentInstanceRepository agents = mock(ToolDocs.nonNullClass(AgentInstanceRepository.class));
+        AgentPatternRepository patterns = mock(ToolDocs.nonNullClass(AgentPatternRepository.class));
+        AgentService agentService = mock(ToolDocs.nonNullClass(AgentService.class));
+        SessionHistoryLoader loader = mock(ToolDocs.nonNullClass(SessionHistoryLoader.class));
 
         SessionEntity session = new SessionEntity("alice", "coder");
         AgentEntity agent =
@@ -361,7 +295,7 @@ class SessionServiceTest {
         when(loader.load(session.getId(), agent.getId())).thenReturn(List.of());
         when(agentService.getOrCreateAgent(
                         anyString(), any(), any(), anyList(), any(), any(), any()))
-                .thenReturn(mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(Agent.class)));
+                .thenReturn(mock(ToolDocs.nonNullClass(Agent.class)));
 
         SessionService service =
                 new SessionService(sessions, agents, patterns, agentService, loader, tierRegistry);
@@ -373,20 +307,11 @@ class SessionServiceTest {
 
     @Test
     void resumeLastSessionEmptyWhenOwnerHasNoSessions() {
-        SessionRepository sessions =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionRepository.class));
-        AgentInstanceRepository agents =
-                mock(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                AgentInstanceRepository.class));
-        AgentPatternRepository patterns =
-                mock(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                AgentPatternRepository.class));
-        AgentService agentService =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(AgentService.class));
-        SessionHistoryLoader loader =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionHistoryLoader.class));
+        SessionRepository sessions = mock(ToolDocs.nonNullClass(SessionRepository.class));
+        AgentInstanceRepository agents = mock(ToolDocs.nonNullClass(AgentInstanceRepository.class));
+        AgentPatternRepository patterns = mock(ToolDocs.nonNullClass(AgentPatternRepository.class));
+        AgentService agentService = mock(ToolDocs.nonNullClass(AgentService.class));
+        SessionHistoryLoader loader = mock(ToolDocs.nonNullClass(SessionHistoryLoader.class));
 
         when(sessions.findByOwner("alice")).thenReturn(List.of());
 
@@ -398,45 +323,27 @@ class SessionServiceTest {
 
     @Test
     void createSessionRejectsUnknownPattern() {
-        SessionRepository sessions =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionRepository.class));
-        AgentInstanceRepository agents =
-                mock(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                AgentInstanceRepository.class));
-        AgentPatternRepository patterns =
-                mock(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                AgentPatternRepository.class));
-        AgentService agentService =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(AgentService.class));
-        SessionHistoryLoader loader =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionHistoryLoader.class));
+        SessionRepository sessions = mock(ToolDocs.nonNullClass(SessionRepository.class));
+        AgentInstanceRepository agents = mock(ToolDocs.nonNullClass(AgentInstanceRepository.class));
+        AgentPatternRepository patterns = mock(ToolDocs.nonNullClass(AgentPatternRepository.class));
+        AgentService agentService = mock(ToolDocs.nonNullClass(AgentService.class));
+        SessionHistoryLoader loader = mock(ToolDocs.nonNullClass(SessionHistoryLoader.class));
         when(patterns.findByNameAndOwner("nope", "alice")).thenReturn(Optional.empty());
 
         SessionService service =
                 new SessionService(sessions, agents, patterns, agentService, loader, tierRegistry);
         assertThrows(
-                top.focess.veto.agent.tool.ToolDocs.nonNullClass(IllegalArgumentException.class),
+                ToolDocs.nonNullClass(IllegalArgumentException.class),
                 () -> service.createSession("alice", "nope"));
     }
 
     @Test
     void deleteCascadesAndDetachesTerminal() {
-        SessionRepository sessions =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionRepository.class));
-        AgentInstanceRepository agents =
-                mock(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                AgentInstanceRepository.class));
-        AgentPatternRepository patterns =
-                mock(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                AgentPatternRepository.class));
-        AgentService agentService =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(AgentService.class));
-        SessionHistoryLoader loader =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionHistoryLoader.class));
+        SessionRepository sessions = mock(ToolDocs.nonNullClass(SessionRepository.class));
+        AgentInstanceRepository agents = mock(ToolDocs.nonNullClass(AgentInstanceRepository.class));
+        AgentPatternRepository patterns = mock(ToolDocs.nonNullClass(AgentPatternRepository.class));
+        AgentService agentService = mock(ToolDocs.nonNullClass(AgentService.class));
+        SessionHistoryLoader loader = mock(ToolDocs.nonNullClass(SessionHistoryLoader.class));
 
         SessionEntity session = new SessionEntity("alice", "coder");
         AgentEntity agent =
@@ -458,7 +365,7 @@ class SessionServiceTest {
         when(loader.load(session.getId(), agent.getId())).thenReturn(List.of());
         when(agentService.getOrCreateAgent(
                         anyString(), any(), any(), anyList(), any(), any(), any()))
-                .thenReturn(mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(Agent.class)));
+                .thenReturn(mock(ToolDocs.nonNullClass(Agent.class)));
 
         SessionService service =
                 new SessionService(sessions, agents, patterns, agentService, loader, tierRegistry);
@@ -476,20 +383,11 @@ class SessionServiceTest {
 
     @Test
     void deleteReturnsFalseForUnknownSession() {
-        SessionRepository sessions =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionRepository.class));
-        AgentInstanceRepository agents =
-                mock(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                AgentInstanceRepository.class));
-        AgentPatternRepository patterns =
-                mock(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                AgentPatternRepository.class));
-        AgentService agentService =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(AgentService.class));
-        SessionHistoryLoader loader =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionHistoryLoader.class));
+        SessionRepository sessions = mock(ToolDocs.nonNullClass(SessionRepository.class));
+        AgentInstanceRepository agents = mock(ToolDocs.nonNullClass(AgentInstanceRepository.class));
+        AgentPatternRepository patterns = mock(ToolDocs.nonNullClass(AgentPatternRepository.class));
+        AgentService agentService = mock(ToolDocs.nonNullClass(AgentService.class));
+        SessionHistoryLoader loader = mock(ToolDocs.nonNullClass(SessionHistoryLoader.class));
         when(sessions.findByOwner("alice")).thenReturn(List.of());
         when(sessions.findFirstByNameAndOwnerOrderByLastActiveAtDesc("nope", "alice"))
                 .thenReturn(Optional.empty());
@@ -502,20 +400,11 @@ class SessionServiceTest {
 
     @Test
     void activateSeedsReplayedHistoryIntoAgent() {
-        SessionRepository sessions =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionRepository.class));
-        AgentInstanceRepository agents =
-                mock(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                AgentInstanceRepository.class));
-        AgentPatternRepository patterns =
-                mock(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                AgentPatternRepository.class));
-        AgentService agentService =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(AgentService.class));
-        SessionHistoryLoader loader =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionHistoryLoader.class));
+        SessionRepository sessions = mock(ToolDocs.nonNullClass(SessionRepository.class));
+        AgentInstanceRepository agents = mock(ToolDocs.nonNullClass(AgentInstanceRepository.class));
+        AgentPatternRepository patterns = mock(ToolDocs.nonNullClass(AgentPatternRepository.class));
+        AgentService agentService = mock(ToolDocs.nonNullClass(AgentService.class));
+        SessionHistoryLoader loader = mock(ToolDocs.nonNullClass(SessionHistoryLoader.class));
 
         SessionEntity session =
                 new SessionEntity(
@@ -547,7 +436,7 @@ class SessionServiceTest {
         when(loader.load(session.getId(), agent.getId())).thenReturn(history);
         when(agentService.getOrCreateAgent(
                         anyString(), any(), any(), anyList(), any(), any(), any(), anyInt(), any()))
-                .thenReturn(mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(Agent.class)));
+                .thenReturn(mock(ToolDocs.nonNullClass(Agent.class)));
 
         SessionService service =
                 new SessionService(sessions, agents, patterns, agentService, loader, tierRegistry);
@@ -631,7 +520,7 @@ class SessionServiceTest {
 
     /** Synthetic terminal cwd rooted under the JVM tmp dir; deterministic across runs. */
     private static @NonNull String fakeDir(@NonNull String name) {
-        return java.nio.file.Path.of(
+        return Path.of(
                         Objects.requireNonNull(
                                 System.getProperty("java.io.tmpdir"), "java.io.tmpdir"),
                         name)
@@ -651,20 +540,11 @@ class SessionServiceTest {
 
     @Test
     void listSessionsScopedToCwdReturnsOnlyInWorkspaceSessions() {
-        SessionRepository sessions =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionRepository.class));
-        AgentInstanceRepository agents =
-                mock(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                AgentInstanceRepository.class));
-        AgentPatternRepository patterns =
-                mock(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                AgentPatternRepository.class));
-        AgentService agentService =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(AgentService.class));
-        SessionHistoryLoader loader =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionHistoryLoader.class));
+        SessionRepository sessions = mock(ToolDocs.nonNullClass(SessionRepository.class));
+        AgentInstanceRepository agents = mock(ToolDocs.nonNullClass(AgentInstanceRepository.class));
+        AgentPatternRepository patterns = mock(ToolDocs.nonNullClass(AgentPatternRepository.class));
+        AgentService agentService = mock(ToolDocs.nonNullClass(AgentService.class));
+        SessionHistoryLoader loader = mock(ToolDocs.nonNullClass(SessionHistoryLoader.class));
 
         @NonNull String projectA = fakeDir("veto-test-ws-A");
         @NonNull String projectB = fakeDir("veto-test-ws-B");
@@ -702,20 +582,11 @@ class SessionServiceTest {
 
     @Test
     void listSessionsUnscopedReturnsAll() {
-        SessionRepository sessions =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionRepository.class));
-        AgentInstanceRepository agents =
-                mock(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                AgentInstanceRepository.class));
-        AgentPatternRepository patterns =
-                mock(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                AgentPatternRepository.class));
-        AgentService agentService =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(AgentService.class));
-        SessionHistoryLoader loader =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionHistoryLoader.class));
+        SessionRepository sessions = mock(ToolDocs.nonNullClass(SessionRepository.class));
+        AgentInstanceRepository agents = mock(ToolDocs.nonNullClass(AgentInstanceRepository.class));
+        AgentPatternRepository patterns = mock(ToolDocs.nonNullClass(AgentPatternRepository.class));
+        AgentService agentService = mock(ToolDocs.nonNullClass(AgentService.class));
+        SessionHistoryLoader loader = mock(ToolDocs.nonNullClass(SessionHistoryLoader.class));
 
         SessionEntity a = new SessionEntity("alice", "alpha", fakeDir("ws-A"));
         SessionEntity b = new SessionEntity("alice", "beta", fakeDir("ws-B"));
@@ -730,20 +601,11 @@ class SessionServiceTest {
 
     @Test
     void activateRejectsOutOfWorkspaceCwd() {
-        SessionRepository sessions =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionRepository.class));
-        AgentInstanceRepository agents =
-                mock(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                AgentInstanceRepository.class));
-        AgentPatternRepository patterns =
-                mock(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                AgentPatternRepository.class));
-        AgentService agentService =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(AgentService.class));
-        SessionHistoryLoader loader =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionHistoryLoader.class));
+        SessionRepository sessions = mock(ToolDocs.nonNullClass(SessionRepository.class));
+        AgentInstanceRepository agents = mock(ToolDocs.nonNullClass(AgentInstanceRepository.class));
+        AgentPatternRepository patterns = mock(ToolDocs.nonNullClass(AgentPatternRepository.class));
+        AgentService agentService = mock(ToolDocs.nonNullClass(AgentService.class));
+        SessionHistoryLoader loader = mock(ToolDocs.nonNullClass(SessionHistoryLoader.class));
 
         @NonNull String projectA = fakeDir("veto-test-ws-A");
         @NonNull String projectB = fakeDir("veto-test-ws-B");
@@ -757,8 +619,7 @@ class SessionServiceTest {
 
         IllegalArgumentException ex =
                 assertThrows(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                IllegalArgumentException.class),
+                        ToolDocs.nonNullClass(IllegalArgumentException.class),
                         () -> service.activate("term-1", "alpha", "alice", projectB));
         assertTrue(
                 String.valueOf(ex.getMessage()).contains("alpha"),
@@ -775,20 +636,11 @@ class SessionServiceTest {
 
     @Test
     void activateAcceptsCwdInsideWorkspaceRoot() {
-        SessionRepository sessions =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionRepository.class));
-        AgentInstanceRepository agents =
-                mock(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                AgentInstanceRepository.class));
-        AgentPatternRepository patterns =
-                mock(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                AgentPatternRepository.class));
-        AgentService agentService =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(AgentService.class));
-        SessionHistoryLoader loader =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionHistoryLoader.class));
+        SessionRepository sessions = mock(ToolDocs.nonNullClass(SessionRepository.class));
+        AgentInstanceRepository agents = mock(ToolDocs.nonNullClass(AgentInstanceRepository.class));
+        AgentPatternRepository patterns = mock(ToolDocs.nonNullClass(AgentPatternRepository.class));
+        AgentService agentService = mock(ToolDocs.nonNullClass(AgentService.class));
+        SessionHistoryLoader loader = mock(ToolDocs.nonNullClass(SessionHistoryLoader.class));
 
         @NonNull String projectA = fakeDir("veto-test-ws-A");
         @NonNull String projectASub = fakeDir("veto-test-ws-A/inner");
@@ -812,7 +664,7 @@ class SessionServiceTest {
         when(loader.load(session.getId(), agent.getId())).thenReturn(List.of());
         when(agentService.getOrCreateAgent(
                         anyString(), any(), any(), anyList(), any(), any(), any()))
-                .thenReturn(mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(Agent.class)));
+                .thenReturn(mock(ToolDocs.nonNullClass(Agent.class)));
 
         SessionService service =
                 new SessionService(sessions, agents, patterns, agentService, loader, tierRegistry);
@@ -824,20 +676,11 @@ class SessionServiceTest {
 
     @Test
     void resumeLastSessionSkipsOutOfWorkspaceSessions() {
-        SessionRepository sessions =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionRepository.class));
-        AgentInstanceRepository agents =
-                mock(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                AgentInstanceRepository.class));
-        AgentPatternRepository patterns =
-                mock(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                AgentPatternRepository.class));
-        AgentService agentService =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(AgentService.class));
-        SessionHistoryLoader loader =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionHistoryLoader.class));
+        SessionRepository sessions = mock(ToolDocs.nonNullClass(SessionRepository.class));
+        AgentInstanceRepository agents = mock(ToolDocs.nonNullClass(AgentInstanceRepository.class));
+        AgentPatternRepository patterns = mock(ToolDocs.nonNullClass(AgentPatternRepository.class));
+        AgentService agentService = mock(ToolDocs.nonNullClass(AgentService.class));
+        SessionHistoryLoader loader = mock(ToolDocs.nonNullClass(SessionHistoryLoader.class));
 
         @NonNull String projectA = fakeDir("veto-test-ws-A");
         @NonNull String projectB = fakeDir("veto-test-ws-B");
@@ -846,9 +689,7 @@ class SessionServiceTest {
         // findFirstByOwnerOrderByLastActiveAtDesc would silently resume into it.)
         SessionEntity inA = new SessionEntity("alice", "alpha", projectA);
         try {
-            java.lang.reflect.Field f =
-                    top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionEntity.class)
-                            .getDeclaredField("lastActiveAt");
+            Field f = ToolDocs.nonNullClass(SessionEntity.class).getDeclaredField("lastActiveAt");
             f.setAccessible(true);
             f.set(inA, Instant.now());
         } catch (ReflectiveOperationException e) {
@@ -869,28 +710,17 @@ class SessionServiceTest {
 
     @Test
     void resumeLastSessionPicksMostRecentInWorkspace() {
-        SessionRepository sessions =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionRepository.class));
-        AgentInstanceRepository agents =
-                mock(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                AgentInstanceRepository.class));
-        AgentPatternRepository patterns =
-                mock(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                AgentPatternRepository.class));
-        AgentService agentService =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(AgentService.class));
-        SessionHistoryLoader loader =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionHistoryLoader.class));
+        SessionRepository sessions = mock(ToolDocs.nonNullClass(SessionRepository.class));
+        AgentInstanceRepository agents = mock(ToolDocs.nonNullClass(AgentInstanceRepository.class));
+        AgentPatternRepository patterns = mock(ToolDocs.nonNullClass(AgentPatternRepository.class));
+        AgentService agentService = mock(ToolDocs.nonNullClass(AgentService.class));
+        SessionHistoryLoader loader = mock(ToolDocs.nonNullClass(SessionHistoryLoader.class));
 
         @NonNull String projectA = fakeDir("veto-test-ws-A");
         // Two sessions in projectA; the newer one is alpha, the older one is zulu.
         SessionEntity older = new SessionEntity("alice", "zulu", projectA);
         try {
-            java.lang.reflect.Field f =
-                    top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionEntity.class)
-                            .getDeclaredField("lastActiveAt");
+            Field f = ToolDocs.nonNullClass(SessionEntity.class).getDeclaredField("lastActiveAt");
             f.setAccessible(true);
             f.set(older, Instant.now().minusSeconds(60));
         } catch (ReflectiveOperationException e) {
@@ -898,9 +728,7 @@ class SessionServiceTest {
         }
         SessionEntity newer = new SessionEntity("alice", "alpha", projectA);
         try {
-            java.lang.reflect.Field f =
-                    top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionEntity.class)
-                            .getDeclaredField("lastActiveAt");
+            Field f = ToolDocs.nonNullClass(SessionEntity.class).getDeclaredField("lastActiveAt");
             f.setAccessible(true);
             f.set(newer, Instant.now());
         } catch (ReflectiveOperationException e) {
@@ -925,7 +753,7 @@ class SessionServiceTest {
         when(loader.load(newer.getId(), agent.getId())).thenReturn(List.of());
         when(agentService.getOrCreateAgent(
                         anyString(), any(), any(), anyList(), any(), any(), any()))
-                .thenReturn(mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(Agent.class)));
+                .thenReturn(mock(ToolDocs.nonNullClass(Agent.class)));
 
         SessionService service =
                 new SessionService(sessions, agents, patterns, agentService, loader, tierRegistry);
@@ -942,20 +770,11 @@ class SessionServiceTest {
 
     @Test
     void createSessionAllowsSameNameInDifferentWorkspace() {
-        SessionRepository sessions =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionRepository.class));
-        AgentInstanceRepository agents =
-                mock(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                AgentInstanceRepository.class));
-        AgentPatternRepository patterns =
-                mock(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                AgentPatternRepository.class));
-        AgentService agentService =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(AgentService.class));
-        SessionHistoryLoader loader =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionHistoryLoader.class));
+        SessionRepository sessions = mock(ToolDocs.nonNullClass(SessionRepository.class));
+        AgentInstanceRepository agents = mock(ToolDocs.nonNullClass(AgentInstanceRepository.class));
+        AgentPatternRepository patterns = mock(ToolDocs.nonNullClass(AgentPatternRepository.class));
+        AgentService agentService = mock(ToolDocs.nonNullClass(AgentService.class));
+        SessionHistoryLoader loader = mock(ToolDocs.nonNullClass(SessionHistoryLoader.class));
 
         @NonNull String projectA = fakeDir("ws-A");
         @NonNull String projectB = fakeDir("ws-B");
@@ -967,10 +786,9 @@ class SessionServiceTest {
         // in a different workspace, so it doesn't match this exact (name, workspaceRoots) lookup.
         when(sessions.findByOwnerAndNameAndWorkspaceRoots(anyString(), anyString(), anyString()))
                 .thenReturn(Optional.empty());
-        when(sessions.save(
-                        any(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionEntity.class))))
+        when(sessions.save(any(ToolDocs.nonNullClass(SessionEntity.class))))
                 .thenAnswer(i -> i.getArgument(0));
-        when(agents.save(any(top.focess.veto.agent.tool.ToolDocs.nonNullClass(AgentEntity.class))))
+        when(agents.save(any(ToolDocs.nonNullClass(AgentEntity.class))))
                 .thenAnswer(i -> i.getArgument(0));
 
         SessionService service =
@@ -989,8 +807,7 @@ class SessionServiceTest {
         // workspace. createSession saves twice: first to get the generated id, then again to
         // persist the primaryAgentId once the agent row is built. Both saves carry projectB.
         ArgumentCaptor<SessionEntity> captor =
-                ArgumentCaptor.forClass(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionEntity.class));
+                ArgumentCaptor.forClass(ToolDocs.nonNullClass(SessionEntity.class));
         verify(sessions, times(2)).save(captor.capture());
         assertTrue(
                 captor.getAllValues().stream()
@@ -1002,20 +819,11 @@ class SessionServiceTest {
 
     @Test
     void createSessionRejectsSameNameInSameWorkspace() {
-        SessionRepository sessions =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionRepository.class));
-        AgentInstanceRepository agents =
-                mock(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                AgentInstanceRepository.class));
-        AgentPatternRepository patterns =
-                mock(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                AgentPatternRepository.class));
-        AgentService agentService =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(AgentService.class));
-        SessionHistoryLoader loader =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionHistoryLoader.class));
+        SessionRepository sessions = mock(ToolDocs.nonNullClass(SessionRepository.class));
+        AgentInstanceRepository agents = mock(ToolDocs.nonNullClass(AgentInstanceRepository.class));
+        AgentPatternRepository patterns = mock(ToolDocs.nonNullClass(AgentPatternRepository.class));
+        AgentService agentService = mock(ToolDocs.nonNullClass(AgentService.class));
+        SessionHistoryLoader loader = mock(ToolDocs.nonNullClass(SessionHistoryLoader.class));
 
         @NonNull String projectA = fakeDir("ws-A");
         AgentPatternEntity pattern =
@@ -1031,8 +839,7 @@ class SessionServiceTest {
 
         IllegalArgumentException ex =
                 assertThrows(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                IllegalArgumentException.class),
+                        ToolDocs.nonNullClass(IllegalArgumentException.class),
                         () -> service.createSession("alice", "coder", "ds", projectA));
         assertTrue(
                 String.valueOf(ex.getMessage()).contains("ds"),
@@ -1040,26 +847,16 @@ class SessionServiceTest {
         assertTrue(
                 String.valueOf(ex.getMessage()).contains(projectA),
                 "error names the workspace so the user knows which one conflicts");
-        verify(sessions, never())
-                .save(any(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionEntity.class)));
+        verify(sessions, never()).save(any(ToolDocs.nonNullClass(SessionEntity.class)));
     }
 
     @Test
     void createSessionImplicitNameSucceedsWhenPatternNameTaken() {
-        SessionRepository sessions =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionRepository.class));
-        AgentInstanceRepository agents =
-                mock(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                AgentInstanceRepository.class));
-        AgentPatternRepository patterns =
-                mock(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                AgentPatternRepository.class));
-        AgentService agentService =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(AgentService.class));
-        SessionHistoryLoader loader =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionHistoryLoader.class));
+        SessionRepository sessions = mock(ToolDocs.nonNullClass(SessionRepository.class));
+        AgentInstanceRepository agents = mock(ToolDocs.nonNullClass(AgentInstanceRepository.class));
+        AgentPatternRepository patterns = mock(ToolDocs.nonNullClass(AgentPatternRepository.class));
+        AgentService agentService = mock(ToolDocs.nonNullClass(AgentService.class));
+        SessionHistoryLoader loader = mock(ToolDocs.nonNullClass(SessionHistoryLoader.class));
 
         @NonNull String projectA = fakeDir("ws-A");
         AgentPatternEntity pattern =
@@ -1076,10 +873,9 @@ class SessionServiceTest {
                         argThat(name -> name != null && name.startsWith("coder-")),
                         eq(projectA)))
                 .thenReturn(Optional.empty());
-        when(sessions.save(
-                        any(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionEntity.class))))
+        when(sessions.save(any(ToolDocs.nonNullClass(SessionEntity.class))))
                 .thenAnswer(i -> i.getArgument(0));
-        when(agents.save(any(top.focess.veto.agent.tool.ToolDocs.nonNullClass(AgentEntity.class))))
+        when(agents.save(any(ToolDocs.nonNullClass(AgentEntity.class))))
                 .thenAnswer(i -> i.getArgument(0));
 
         SessionService service =
@@ -1095,20 +891,11 @@ class SessionServiceTest {
 
     @Test
     void activatePicksExplicitWorkspaceOverLegacyNull() {
-        SessionRepository sessions =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionRepository.class));
-        AgentInstanceRepository agents =
-                mock(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                AgentInstanceRepository.class));
-        AgentPatternRepository patterns =
-                mock(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                AgentPatternRepository.class));
-        AgentService agentService =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(AgentService.class));
-        SessionHistoryLoader loader =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionHistoryLoader.class));
+        SessionRepository sessions = mock(ToolDocs.nonNullClass(SessionRepository.class));
+        AgentInstanceRepository agents = mock(ToolDocs.nonNullClass(AgentInstanceRepository.class));
+        AgentPatternRepository patterns = mock(ToolDocs.nonNullClass(AgentPatternRepository.class));
+        AgentService agentService = mock(ToolDocs.nonNullClass(AgentService.class));
+        SessionHistoryLoader loader = mock(ToolDocs.nonNullClass(SessionHistoryLoader.class));
 
         @NonNull String projectA = fakeDir("ws-A");
         // Two "ds" sessions for alice: one legacy (NULL = matches any cwd), one explicitly bound
@@ -1134,7 +921,7 @@ class SessionServiceTest {
         when(loader.load(explicit.getId(), agent.getId())).thenReturn(List.of());
         when(agentService.getOrCreateAgent(
                         anyString(), any(), any(), anyList(), any(), any(), any()))
-                .thenReturn(mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(Agent.class)));
+                .thenReturn(mock(ToolDocs.nonNullClass(Agent.class)));
 
         SessionService service =
                 new SessionService(sessions, agents, patterns, agentService, loader, tierRegistry);
@@ -1151,20 +938,11 @@ class SessionServiceTest {
 
     @Test
     void deleteRemovesAllSessionsWithSameName() {
-        SessionRepository sessions =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionRepository.class));
-        AgentInstanceRepository agents =
-                mock(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                AgentInstanceRepository.class));
-        AgentPatternRepository patterns =
-                mock(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                AgentPatternRepository.class));
-        AgentService agentService =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(AgentService.class));
-        SessionHistoryLoader loader =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(SessionHistoryLoader.class));
+        SessionRepository sessions = mock(ToolDocs.nonNullClass(SessionRepository.class));
+        AgentInstanceRepository agents = mock(ToolDocs.nonNullClass(AgentInstanceRepository.class));
+        AgentPatternRepository patterns = mock(ToolDocs.nonNullClass(AgentPatternRepository.class));
+        AgentService agentService = mock(ToolDocs.nonNullClass(AgentService.class));
+        SessionHistoryLoader loader = mock(ToolDocs.nonNullClass(SessionHistoryLoader.class));
 
         @NonNull String projectA = fakeDir("ws-A");
         @NonNull String projectB = fakeDir("ws-B");

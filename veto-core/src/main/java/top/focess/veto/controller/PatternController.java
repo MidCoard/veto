@@ -15,6 +15,7 @@ import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierConfigException;
 import top.focess.veto.model.tier.ModelTierRegistry;
+import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.KeysteadVault;
 
 @RestController
@@ -58,9 +59,7 @@ public class PatternController {
         }
         ModelTier tier;
         try {
-            tier =
-                    top.focess.veto.util.Nullness.requireNonNull(
-                            ModelTier.valueOf(tierValue.toUpperCase()));
+            tier = Nullness.requireNonNull(ModelTier.valueOf(tierValue.toUpperCase()));
         } catch (IllegalArgumentException e) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST, Msg.get("error.pattern.missingFields"));

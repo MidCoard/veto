@@ -1,6 +1,8 @@
 package top.focess.veto.group;
 
+import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.identity.Role;
@@ -40,46 +42,18 @@ public final class GroupTools {
     @Component
     @ToolDoc(
             resultFormats = {ToolResultFormat.PLAINTEXT},
-            description =
-                    "Spawn a delegation group for a task; you transform into its Leader "
-                            + "and plan the work.",
-            behavior =
-                    """
-                    Transforms you into the Leader of a new, empty group and makes `task` your planning \
-                    brief. Existing context is summarized when necessary. Mates start as their nodes \
-                    become ready. A successful transform returns no content; a refusal leaves your role \
-                    unchanged.
-                    """,
-            whenToUse =
-                    """
-                    Use `create_group` when a goal is too large or spans too many domains for one \
-                    agent and you want to delegate it to a group you lead. Pass a short brief of \
-                    the work; you become the Leader and plan from there.
-                    """,
+            description = "Request delegation for a task.",
+            behavior = "Creates a delegation group using the supplied task brief.",
+            whenToUse = "Use when the task meets the Delegation Rules in the system message.",
             whenNotToUse =
-                    """
-                    - Do not use it for work you can finish yourself - a group adds coordination cost.
-                    - Do not try to supply a plan up front - you build it node by node as Leader, \
-                    via `create_node`.
-                    """,
+                    "Do not use for small, tightly coupled, or sequential work that can be completed directly.",
             resultContract =
-                    """
-                    On success - empty; you continue as the Leader with `task` as the planning brief.
-                    On refusal:
-                      Group not created: <reason and what to do next>
-                    """,
-            errorsAndEdgeCases =
-                    """
-                    - Blank `task` -> not created; pass a real brief.
-                    """,
+                    "Success returns empty text. Refusal returns: Group not created: <reason and what to do next>.",
+            errorsAndEdgeCases = "A blank task is refused; supply a concise, concrete brief.",
             security =
-                    """
-                    Agent tool with `DELEGATION` capability. The Gateway returns `NotScreened`. Available \
-                    only in the single-agent loop - not offered to Leaders or Mates.
-                    """,
+                    "Delegation remains within the user's authorized task and workspace boundaries.",
             examples = {
-                "{\"task\": \"Redesign the persistence layer, migrate its callers, and verify the affected modules\"}",
-                "{\"task\": \"Rewrite the persistence layer\"}"
+                "{\"task\": \"Review the persistence implementation and its callers, and verify the affected modules\"}"
             },
             returnExamples = {""})
     public static final class CreateGroup implements AgentTool<CreateGroup.Args> {
@@ -102,8 +76,7 @@ public final class GroupTools {
 
         public record Args(
                 @SecurityHint(ParamCategory.GENERIC)
-                        @Doc(
-                                "Short brief of the work to be done (seeds your investigation as Leader).")
+                        @Doc("Short brief of the work to be done and the expected result.")
                         @NonNull String task) {}
 
         @Override
@@ -388,9 +361,8 @@ public final class GroupTools {
                 return ToolErrors.failure("Group not inspected: group record not found.");
             }
             Group group = initial;
-            java.util.List<BlackboardMessage> messages = newMessages(groupId, since);
-            long deadline =
-                    System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(waitSeconds);
+            List<BlackboardMessage> messages = newMessages(groupId, since);
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(waitSeconds);
             while (messages.isEmpty()
                     && group.state() == initial.state()
                     && System.nanoTime() < deadline) {
@@ -410,11 +382,11 @@ public final class GroupTools {
             return render(group, messages, since);
         }
 
-        private java.util.@NonNull List<@NonNull BlackboardMessage> newMessages(
+        private @NonNull List<@NonNull BlackboardMessage> newMessages(
                 @NonNull UUID groupId, long since) {
             Group group = registry.get(groupId);
             if (group == null) {
-                return java.util.List.of();
+                return List.of();
             }
             return blackboard.readFor(groupId, "LEADER").stream()
                     .filter(message -> message.turnSeq() > since)
@@ -427,7 +399,7 @@ public final class GroupTools {
 
         private static @NonNull String render(
                 @NonNull Group group,
-                java.util.@NonNull List<@NonNull BlackboardMessage> messages,
+                @NonNull List<@NonNull BlackboardMessage> messages,
                 long since) {
             StringBuilder result = new StringBuilder();
             result.append("Group state: ").append(group.state()).append('\n');

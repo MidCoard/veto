@@ -1,6 +1,7 @@
 package top.focess.veto.group;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
@@ -19,6 +20,7 @@ import top.focess.veto.agent.AgentAction;
 import top.focess.veto.agent.AgentResult;
 import top.focess.veto.agent.AgentState;
 import top.focess.veto.agent.TurnRecord;
+import top.focess.veto.agent.loop.LoopBreaker;
 
 /**
  * Consumes {@code TASK_DISPATCH} messages from the Blackboard, runs the underlying {@link Agent},
@@ -37,9 +39,9 @@ import top.focess.veto.agent.TurnRecord;
  *   <li>On result failure: post {@code FEEDBACK} with the failure reason.
  * </ol>
  *
- * <p>Each Mate has its own per-episode call ceiling via the {@link
- * top.focess.veto.agent.loop.LoopBreaker} (registered with the {@link MateBreakerRegistry}). On
- * trip, the Mate posts a terminal {@code STATUS} and pauses until the Leader re-dispatches.
+ * <p>Each Mate has its own per-episode call ceiling via the {@link LoopBreaker} (registered with
+ * the {@link MateBreakerRegistry}). On trip, the Mate posts a terminal {@code STATUS} and pauses
+ * until the Leader re-dispatches.
  */
 public class MateAgent {
 
@@ -219,7 +221,7 @@ public class MateAgent {
         // 4. Await the result (bounded).
         AgentResult result;
         try {
-            result = agent.await(java.time.Duration.ofMillis(taskTimeoutMs));
+            result = agent.await(Duration.ofMillis(taskTimeoutMs));
         } catch (Exception e) {
             // Only a genuine interrupt restores the flag - a broad Exception must not poison the
             // thread (see ConstrainedSubprocessSubstrate's run-catch for the failure mode).

@@ -4,6 +4,7 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.TimeoutException;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -163,7 +164,7 @@ public class PromptHandler {
             String resultMessage = result.message();
             String reason = resultMessage.isBlank() ? "Agent failed." : resultMessage;
             return IpcFrame.Error.ofError(reason);
-        } catch (java.util.concurrent.TimeoutException e) {
+        } catch (TimeoutException e) {
             log.warn("Agent episode timed out for session {}", sessionId);
             return IpcFrame.Error.ofError("Agent timed out.");
         } catch (InterruptedException e) {

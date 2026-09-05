@@ -1,6 +1,9 @@
 package top.focess.veto.llm.client;
 
+import com.anthropic.client.AnthropicClient;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.genai.Client;
+import com.openai.client.OpenAIClient;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -113,8 +116,7 @@ public class LlmClientFactory {
             @NonNull String apiKey,
             boolean supportsJsonSchema,
             @NonNull String providerName) {
-        com.openai.client.OpenAIClient sdk =
-                get(com.openai.client.OpenAIClient.class, baseUrl, apiKey);
+        OpenAIClient sdk = get(OpenAIClient.class, baseUrl, apiKey);
         return new OpenAiLlmClient(
                 sdk, supportsJsonSchema, providerName, objectMapper, capabilityTranslator);
     }
@@ -139,8 +141,7 @@ public class LlmClientFactory {
      * @return the LlmClient adapter
      */
     public @NonNull LlmClient anthropic(String baseUrl, @NonNull String apiKey) {
-        com.anthropic.client.AnthropicClient sdk =
-                get(com.anthropic.client.AnthropicClient.class, baseUrl, apiKey);
+        AnthropicClient sdk = get(AnthropicClient.class, baseUrl, apiKey);
         return new AnthropicLlmClient(sdk, objectMapper);
     }
 
@@ -152,7 +153,7 @@ public class LlmClientFactory {
      * @return the LlmClient adapter
      */
     public @NonNull LlmClient gemini(String baseUrl, @NonNull String apiKey) {
-        com.google.genai.Client sdk = get(com.google.genai.Client.class, baseUrl, apiKey);
+        Client sdk = get(Client.class, baseUrl, apiKey);
         return new GeminiLlmClient(sdk, objectMapper, capabilityTranslator);
     }
 

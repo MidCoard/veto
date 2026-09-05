@@ -5,8 +5,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 
@@ -147,7 +149,7 @@ public record SandboxProfile(
             Set<Path> readExecute = new HashSet<>();
             Set<Path> readWriteExecute = new HashSet<>();
             for (var entry : environment.entrySet()) {
-                String name = entry.getKey().toUpperCase(java.util.Locale.ROOT);
+                String name = entry.getKey().toUpperCase(Locale.ROOT);
                 boolean cache = name.contains("CACHE");
                 boolean executionPath =
                         name.equals("PATH")
@@ -162,8 +164,7 @@ public record SandboxProfile(
                 if (value == null || value.isBlank()) {
                     continue;
                 }
-                for (String component :
-                        value.split(java.util.regex.Pattern.quote(File.pathSeparator))) {
+                for (String component : value.split(Pattern.quote(File.pathSeparator))) {
                     addExistingAbsolutePath(
                             component, readExecute, cache ? readWriteExecute : null);
                 }

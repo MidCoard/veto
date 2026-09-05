@@ -1,5 +1,6 @@
 package top.focess.veto.agent.tool;
 
+import java.util.Locale;
 import org.jspecify.annotations.NonNull;
 
 /** Provider-independent execution status retained in the durable tool-result record. */
@@ -22,7 +23,7 @@ public enum ToolResultStatus {
 
     public static @NonNull ToolResultStatus from(Object value, boolean fallbackSuccess) {
         if (value == null) return fallbackSuccess ? SUCCESS : FAILURE;
-        return switch (value.toString().toLowerCase(java.util.Locale.ROOT)) {
+        return switch (value.toString().toLowerCase(Locale.ROOT)) {
             case "success" -> SUCCESS;
             case "failure" -> FAILURE;
             case "refused" -> REFUSED;

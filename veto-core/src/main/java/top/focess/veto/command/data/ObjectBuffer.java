@@ -4,18 +4,18 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.NoSuchElementException;
 import org.jspecify.annotations.NonNull;
+import top.focess.command.DataCollection;
+import top.focess.command.DataConverter;
 import top.focess.command.data.DataBuffer;
 
 /**
  * A generic {@link DataBuffer} backed by an object array, for argument types that have no dedicated
- * buffer in the focess-command framework (e.g. enums parsed via {@link
- * top.focess.command.DataConverter#ofEnum}).
+ * buffer in the focess-command framework (e.g. enums parsed via {@link DataConverter#ofEnum}).
  *
  * <p>The framework pre-registers buffers only for its built-in converters (String, Integer, Long,
  * Double, Boolean). A custom converter's target class still needs a buffer so {@link
- * top.focess.command.DataCollection} can allocate storage for it during parsing; this buffer fills
- * that role for any reference type and is paired with the converter via {@link
- * top.focess.command.DataCollection#register}.
+ * DataCollection} can allocate storage for it during parsing; this buffer fills that role for any
+ * reference type and is paired with the converter via {@link DataCollection#register}.
  *
  * @param <T> the element type
  */

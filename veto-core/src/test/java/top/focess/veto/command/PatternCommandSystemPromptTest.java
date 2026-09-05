@@ -9,6 +9,7 @@ import top.focess.command.CommandManager;
 import top.focess.command.CommandPermission;
 import top.focess.command.CommandResult;
 import top.focess.command.ExecutionResult;
+import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.command.commands.PatternCommand;
 import top.focess.veto.llm.core.ProviderType;
 import top.focess.veto.model.AgentPatternEntity;
@@ -27,23 +28,15 @@ class PatternCommandSystemPromptTest {
 
     @Test
     void createBindsToTierAndDoesNotStoreSystemPrompt() {
-        AgentPatternRepository repo =
-                mock(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                AgentPatternRepository.class));
-        VetoCommandSender sender =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(VetoCommandSender.class));
-        when(sender.hasPermission(
-                        any(
-                                top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                        CommandPermission.class))))
+        AgentPatternRepository repo = mock(ToolDocs.nonNullClass(AgentPatternRepository.class));
+        VetoCommandSender sender = mock(ToolDocs.nonNullClass(VetoCommandSender.class));
+        when(sender.hasPermission(any(ToolDocs.nonNullClass(CommandPermission.class))))
                 .thenReturn(true);
         when(sender.isLoggedIn()).thenReturn(true);
         when(sender.username()).thenReturn("alice");
         when(sender.requireUsername()).thenReturn("alice");
 
-        ModelTierRegistry tierRegistry =
-                mock(top.focess.veto.agent.tool.ToolDocs.nonNullClass(ModelTierRegistry.class));
+        ModelTierRegistry tierRegistry = mock(ToolDocs.nonNullClass(ModelTierRegistry.class));
         when(tierRegistry.resolve("alice", ModelTier.TOP))
                 .thenReturn(
                         new ModelBinding(
@@ -58,8 +51,7 @@ class PatternCommandSystemPromptTest {
         manager.register(new PatternCommand(repo, tierRegistry));
 
         ArgumentCaptor<AgentPatternEntity> captor =
-                ArgumentCaptor.forClass(
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(AgentPatternEntity.class));
+                ArgumentCaptor.forClass(ToolDocs.nonNullClass(AgentPatternEntity.class));
 
         ExecutionResult result = manager.dispatch(sender, "pattern create p1 TOP");
 
@@ -79,7 +71,7 @@ class PatternCommandSystemPromptTest {
         assertThrows(
                 NoSuchFieldException.class,
                 () ->
-                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(AgentPatternEntity.class)
+                        ToolDocs.nonNullClass(AgentPatternEntity.class)
                                 .getDeclaredField("systemPrompt"),
                 "AgentPatternEntity must not carry a systemPrompt field");
     }

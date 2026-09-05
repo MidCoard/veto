@@ -10,7 +10,10 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mockito;
 import org.springframework.test.util.ReflectionTestUtils;
+import top.focess.veto.agent.identity.RoleToolFilter;
 import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
@@ -25,6 +28,9 @@ import top.focess.veto.llm.core.VetoResponse;
 import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.memory.TurnRecordEntity;
 import top.focess.veto.memory.TurnRecordRepository;
+import top.focess.veto.sandbox.BackgroundTaskManager;
+import top.focess.veto.sandbox.SandboxManager;
+import top.focess.veto.sandbox.TestSandboxFactory;
 import top.focess.veto.vault.UserContext;
 
 /**
@@ -45,7 +51,8 @@ class PerUserIdentityTest {
                 new PromptCompiler(
                         new DefaultCapabilityTranslator(mapper),
                         new SystemPromptResolver(),
-                        mapper);
+                        mapper,
+                        "FULL_ACCESS");
         ReflectionTestUtils.setField(compiler, "maxInputTokens", 32000);
         ReflectionTestUtils.setField(compiler, "contextFillRatio", 0.9);
         return new AgentService(
@@ -56,17 +63,16 @@ class PerUserIdentityTest {
                 caller,
                 mapper,
                 List.of(),
-                new top.focess.veto.agent.identity.RoleToolFilter(new TestToolEngine()),
+                new RoleToolFilter(new TestToolEngine()),
                 "REAL",
                 50L,
+                1000,
                 "FULL_ACCESS",
                 "STRICT",
                 null,
                 turnLog,
-                new top.focess.veto.sandbox.BackgroundTaskManager(
-                        new top.focess.veto.sandbox.SandboxManager(
-                                top.focess.veto.sandbox.TestSandboxFactory
-                                        .uncontainedSubprocesses())));
+                new BackgroundTaskManager(
+                        new SandboxManager(TestSandboxFactory.uncontainedSubprocesses())));
     }
 
     private static AgentRunner.@NonNull LlmBinding binding() {
@@ -84,8 +90,7 @@ class PerUserIdentityTest {
      */
     @Test
     void suppliedUserIdFlowsToTurnLog() throws Exception {
-        TurnRecordRepository repo =
-                org.mockito.Mockito.mock(ToolDocs.nonNullClass(TurnRecordRepository.class));
+        TurnRecordRepository repo = Mockito.mock(ToolDocs.nonNullClass(TurnRecordRepository.class));
         TurnLogService turnLog = new TurnLogService(repo, new ObjectMapper());
 
         List<VetoRequest> seenRequests = new CopyOnWriteArrayList<>();
@@ -109,9 +114,9 @@ class PerUserIdentityTest {
         assertTrue(result.success(), "Episode should complete successfully");
 
         // Verify turns were logged under the supplied userId, not DEFAULT_USER_ID
-        org.mockito.ArgumentCaptor<TurnRecordEntity> captor =
-                org.mockito.ArgumentCaptor.forClass(ToolDocs.nonNullClass(TurnRecordEntity.class));
-        org.mockito.Mockito.verify(repo, org.mockito.Mockito.atLeastOnce()).save(captor.capture());
+        ArgumentCaptor<TurnRecordEntity> captor =
+                ArgumentCaptor.forClass(ToolDocs.nonNullClass(TurnRecordEntity.class));
+        Mockito.verify(repo, Mockito.atLeastOnce()).save(captor.capture());
         TurnRecordEntity first = captor.getAllValues().get(0);
         assertEquals(
                 TEST_USER_ID.toString(),
@@ -129,8 +134,7 @@ class PerUserIdentityTest {
      */
     @Test
     void defaultUserIdUsedWhenNotSupplied() throws Exception {
-        TurnRecordRepository repo =
-                org.mockito.Mockito.mock(ToolDocs.nonNullClass(TurnRecordRepository.class));
+        TurnRecordRepository repo = Mockito.mock(ToolDocs.nonNullClass(TurnRecordRepository.class));
         TurnLogService turnLog = new TurnLogService(repo, new ObjectMapper());
 
         UniformLLMCaller caller =
@@ -150,9 +154,9 @@ class PerUserIdentityTest {
         assertTrue(result.success());
 
         // Turns logged under DEFAULT_USER_ID
-        org.mockito.ArgumentCaptor<TurnRecordEntity> captor =
-                org.mockito.ArgumentCaptor.forClass(ToolDocs.nonNullClass(TurnRecordEntity.class));
-        org.mockito.Mockito.verify(repo, org.mockito.Mockito.atLeastOnce()).save(captor.capture());
+        ArgumentCaptor<TurnRecordEntity> captor =
+                ArgumentCaptor.forClass(ToolDocs.nonNullClass(TurnRecordEntity.class));
+        Mockito.verify(repo, Mockito.atLeastOnce()).save(captor.capture());
         TurnRecordEntity first = captor.getAllValues().get(0);
         assertEquals(AgentService.DEFAULT_USER_ID.toString(), first.getUserId());
     }
@@ -165,8 +169,7 @@ class PerUserIdentityTest {
      */
     @Test
     void ownerStampedOnAgentThreadForCredentialResolution() throws Exception {
-        TurnRecordRepository repo =
-                org.mockito.Mockito.mock(ToolDocs.nonNullClass(TurnRecordRepository.class));
+        TurnRecordRepository repo = Mockito.mock(ToolDocs.nonNullClass(TurnRecordRepository.class));
         TurnLogService turnLog = new TurnLogService(repo, new ObjectMapper());
 
         List<String> seen = new CopyOnWriteArrayList<>();
@@ -212,8 +215,7 @@ class PerUserIdentityTest {
      */
     @Test
     void nullOwnerLeavesUserContextUnset() throws Exception {
-        TurnRecordRepository repo =
-                org.mockito.Mockito.mock(ToolDocs.nonNullClass(TurnRecordRepository.class));
+        TurnRecordRepository repo = Mockito.mock(ToolDocs.nonNullClass(TurnRecordRepository.class));
         TurnLogService turnLog = new TurnLogService(repo, new ObjectMapper());
 
         AtomicBoolean sawNullContext = new AtomicBoolean();

@@ -4,10 +4,13 @@ import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.AgentRunner;
+import top.focess.veto.agent.AgentService;
+import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierRegistry;
+import top.focess.veto.util.Nullness;
 
 /**
  * The Leader's {@link AgentRunner.LlmBinding} - the model the STANDALONE agent is promoted to when
@@ -19,7 +22,7 @@ import top.focess.veto.model.tier.ModelTierRegistry;
  * <p>Kept separate from {@link GroupAgentFactory} (the Mate factory) so the transform path does not
  * depend on the AgentService-bound Mate wiring: {@code create_group} resolves the Leader binding
  * without constructing a Mate, and the binding is resolvable in a unit test without an {@link
- * top.focess.veto.agent.AgentService}.
+ * AgentService}.
  */
 @Component
 public class LeaderBinding {
@@ -40,8 +43,8 @@ public class LeaderBinding {
     /**
      * The Leader's model binding (provider / model / credential / options / system-prompt base),
      * resolved from the owner's active model-tier profile for this binding's tier. The owner is the
-     * session username (read from the calling agent's {@link
-     * top.focess.veto.agent.tool.ToolCallContext} at {@code create_group} time).
+     * session username (read from the calling agent's {@link ToolCallContext} at {@code
+     * create_group} time).
      */
     public AgentRunner.@NonNull LlmBinding binding(@NonNull String owner) {
         ModelBinding resolved = tierRegistry.resolve(owner, tier);
@@ -59,7 +62,7 @@ public class LeaderBinding {
             return ModelTier.TOP;
         }
         try {
-            return top.focess.veto.util.Nullness.requireNonNull(ModelTier.valueOf(s));
+            return Nullness.requireNonNull(ModelTier.valueOf(s));
         } catch (IllegalArgumentException e) {
             return ModelTier.TOP;
         }

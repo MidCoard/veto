@@ -4,6 +4,7 @@ import static top.focess.veto.util.LogValues.safe;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -81,7 +82,7 @@ public class LlmLeader {
         try {
             String prompt = buildAuthorPrompt(groupId, contextBrief);
             leaderAgent.submit(prompt);
-            AgentResult result = leaderAgent.await(java.time.Duration.ofSeconds(30));
+            AgentResult result = leaderAgent.await(Duration.ofSeconds(30));
             if (result.success()) {
                 ExecutionDag parsed = parseDagFromJson(groupId, result.message());
                 if (parsed != null && !parsed.nodes().isEmpty()) {
@@ -111,7 +112,7 @@ public class LlmLeader {
         try {
             String prompt = buildPivotPrompt(group, perMateMessageCount, contextSaturationRatio);
             leaderAgent.submit(prompt);
-            AgentResult result = leaderAgent.await(java.time.Duration.ofSeconds(15));
+            AgentResult result = leaderAgent.await(Duration.ofSeconds(15));
             if (result.success()) {
                 // Parse the {pivot: bool, ...} JSON; do NOT string-match (a prior version
                 // matched "PIVOT" inside the key name even when the value was false).

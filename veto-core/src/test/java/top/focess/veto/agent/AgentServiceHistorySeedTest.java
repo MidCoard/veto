@@ -10,6 +10,8 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
+import top.focess.veto.agent.identity.RoleToolFilter;
 import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
@@ -21,6 +23,10 @@ import top.focess.veto.llm.core.ProviderType;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.llm.core.VetoRequest;
 import top.focess.veto.llm.core.VetoResponse;
+import top.focess.veto.memory.TurnLogService;
+import top.focess.veto.sandbox.BackgroundTaskManager;
+import top.focess.veto.sandbox.SandboxManager;
+import top.focess.veto.sandbox.TestSandboxFactory;
 
 /**
  * Verifies {@link AgentService#getOrCreateAgent} seeds replayed history on first creation (so a
@@ -93,15 +99,11 @@ class AgentServiceHistorySeedTest {
         AgentRunner runner =
                 assertInstanceOf(
                         ToolDocs.nonNullClass(AgentRunner.class),
-                        requireField(
-                                org.springframework.test.util.ReflectionTestUtils.getField(
-                                        a, "runner")));
+                        requireField(ReflectionTestUtils.getField(a, "runner")));
         int turnNumber =
                 assertInstanceOf(
                         ToolDocs.nonNullClass(Integer.class),
-                        requireField(
-                                org.springframework.test.util.ReflectionTestUtils.getField(
-                                        runner, "turnNumber")));
+                        requireField(ReflectionTestUtils.getField(runner, "turnNumber")));
         assertEquals(5, turnNumber, "seedHistory advances turnNumber to the max replayed turn");
     }
 
@@ -176,11 +178,10 @@ class AgentServiceHistorySeedTest {
                 new PromptCompiler(
                         new DefaultCapabilityTranslator(mapper),
                         new SystemPromptResolver(),
-                        mapper);
-        org.springframework.test.util.ReflectionTestUtils.setField(
-                compiler, "maxInputTokens", 32000);
-        org.springframework.test.util.ReflectionTestUtils.setField(
-                compiler, "contextFillRatio", 0.9);
+                        mapper,
+                        "FULL_ACCESS");
+        ReflectionTestUtils.setField(compiler, "maxInputTokens", 32000);
+        ReflectionTestUtils.setField(compiler, "contextFillRatio", 0.9);
         return new AgentService(
                 new TestToolEngine(),
                 new HitlRegistry(),
@@ -189,17 +190,16 @@ class AgentServiceHistorySeedTest {
                 caller,
                 mapper,
                 List.of(),
-                new top.focess.veto.agent.identity.RoleToolFilter(new TestToolEngine()),
+                new RoleToolFilter(new TestToolEngine()),
                 "REAL",
                 50L,
+                1000,
                 "FULL_ACCESS",
                 "STRICT",
                 null,
-                new top.focess.veto.memory.TurnLogService(null, mapper),
-                new top.focess.veto.sandbox.BackgroundTaskManager(
-                        new top.focess.veto.sandbox.SandboxManager(
-                                top.focess.veto.sandbox.TestSandboxFactory
-                                        .uncontainedSubprocesses())));
+                new TurnLogService(null, mapper),
+                new BackgroundTaskManager(
+                        new SandboxManager(TestSandboxFactory.uncontainedSubprocesses())));
     }
 
     private static AgentRunner.@NonNull LlmBinding binding() {

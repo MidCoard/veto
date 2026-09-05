@@ -14,7 +14,7 @@ public record GenerateAction(
         @NonNull String id,
         @NonNull String label,
         @NonNull String prompt,
-        @NonNull Map<String, String> inputs,
+        @NonNull Map<String, Object> inputs,
         @NonNull Map<String, String> outputs,
         Boolean thought,
         String modelTier,
@@ -40,6 +40,8 @@ public record GenerateAction(
 
     /** Resolves {@code $var} references inside the prompt text against the scope. */
     public @NonNull String resolvePrompt(@NonNull Scope scope) {
-        return scope.resolveVars(prompt);
+        Scope local = scope.child();
+        resolveInputs(scope).forEach(local::put);
+        return local.resolveVars(prompt);
     }
 }

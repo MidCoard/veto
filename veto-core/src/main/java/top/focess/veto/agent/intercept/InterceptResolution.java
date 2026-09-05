@@ -1,11 +1,12 @@
 package top.focess.veto.agent.intercept;
 
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import org.jspecify.annotations.NonNull;
 
 /**
  * The user's resolution of a veto pause, delivered via the veto endpoint and used to complete the
- * parked {@link java.util.concurrent.CompletableFuture}.
+ * parked {@link CompletableFuture}.
  *
  * <p>For {@code _LIKE_THIS} variants the {@code editedArgs} carry the call's args (used to
  * construct the grant's match key, with value positions wildcarded appropriately).

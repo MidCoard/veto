@@ -7,9 +7,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -84,7 +86,7 @@ class PathToolsTest {
         Path destination = root.resolve("destination-link");
         try {
             Files.createSymbolicLink(source, missingTarget);
-        } catch (UnsupportedOperationException | java.io.IOException | SecurityException e) {
+        } catch (UnsupportedOperationException | IOException | SecurityException e) {
             Assumptions.abort("Symbolic links unavailable: " + e.getMessage());
         }
         permit(
@@ -234,8 +236,7 @@ class PathToolsTest {
             @NonNull Path root,
             @NonNull Map<@NonNull String, @NonNull String> paths,
             @NonNull Set<@NonNull Path> protectedPaths) {
-        Map<String, ToolExecutionPermit.AuthorizedPath> authorized =
-                new java.util.LinkedHashMap<>();
+        Map<String, ToolExecutionPermit.AuthorizedPath> authorized = new LinkedHashMap<>();
         paths.forEach(
                 (name, path) ->
                         authorized.put(

@@ -14,6 +14,7 @@ import java.util.Arrays;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -299,7 +300,7 @@ public class KeysteadVault {
             return handle.listSecrets().stream()
                     .filter(m -> m.type() == SecretType.SECURE_NOTE)
                     .map(m -> m.profile().title())
-                    .collect(java.util.stream.Collectors.toSet());
+                    .collect(Collectors.toSet());
         }
     }
 

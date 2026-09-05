@@ -3,8 +3,10 @@ package top.focess.veto.agent.capability;
 import com.fasterxml.jackson.databind.node.NullNode;
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.channels.Channels;
 import java.nio.channels.SeekableByteChannel;
+import java.nio.charset.MalformedInputException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystems;
 import java.nio.file.FileVisitResult;
@@ -74,7 +76,7 @@ final class WorkspaceReadCapabilityImpl implements WorkspaceReadCapability {
                 }
                 entries.add(entry);
             }
-        } catch (IOException | java.io.UncheckedIOException e) {
+        } catch (IOException | UncheckedIOException e) {
             return ToolErrors.failure(
                     "IO_ERROR", "Cannot list directory: " + authorized.requestedPath());
         }
@@ -160,7 +162,7 @@ final class WorkspaceReadCapabilityImpl implements WorkspaceReadCapability {
                 output.append(rendered);
                 emitted++;
             }
-        } catch (java.nio.charset.MalformedInputException e) {
+        } catch (MalformedInputException e) {
             return ToolErrors.failure(
                     "INVALID_UTF8", "File is not valid UTF-8: " + authorized.requestedPath());
         } catch (IOException e) {

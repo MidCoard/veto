@@ -12,7 +12,7 @@ public record ToolAction(
         @NonNull String id,
         @NonNull String label,
         @NonNull String tool,
-        @NonNull Map<String, String> inputs,
+        @NonNull Map<String, Object> inputs,
         @NonNull Map<String, String> outputs)
         implements Action {
 

@@ -1,6 +1,7 @@
 package top.focess.veto.agent.identity;
 
 import java.util.Set;
+import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.tool.ToolCapability;
@@ -90,7 +91,7 @@ public class RoleToolFilter {
         return toolEngine.getActiveTools(null).stream()
                 .filter(tool -> allowed.contains(tool.capability()))
                 .filter(tool -> selectedCapabilities.contains(tool.capability()))
-                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+                .collect(Collectors.toUnmodifiableSet());
     }
 
     /** Returns the immutable capability ceiling for a role. */

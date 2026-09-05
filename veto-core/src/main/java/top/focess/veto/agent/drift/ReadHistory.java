@@ -5,13 +5,13 @@ import java.time.Instant;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.agent.intercept.Gateway;
 import top.focess.veto.agent.workspace.Workspace;
 
 /**
- * Records the state of every file the agent reads during a session; the {@link
- * top.focess.veto.agent.intercept.Gateway} consults it on every write to detect external
- * modifications. Lazy, demand-driven: record on read, compare at write, invalidate after a
- * successful write. No snapshot-on-pause, no scan-on-resume.
+ * Records the state of every file the agent reads during a session; the {@link Gateway} consults it
+ * on every write to detect external modifications. Lazy, demand-driven: record on read, compare at
+ * write, invalidate after a successful write. No snapshot-on-pause, no scan-on-resume.
  *
  * <p>Per-agent / per-session. Keyed by the workspace-relative path (the same form the read and
  * write tools use), so the agent's virtual-root resolution is applied before lookup.

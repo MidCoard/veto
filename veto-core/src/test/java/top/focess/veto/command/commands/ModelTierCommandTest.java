@@ -24,17 +24,14 @@ import top.focess.veto.model.tier.ModelTierRegistry;
 /**
  * Verifies the {@code /modeltier} command dispatches to {@link ModelTierProfileService} / {@link
  * ModelTierRegistry} and renders the right output for each subcommand. The service layer is covered
- * by {@link top.focess.veto.model.tier.DefaultModelTierServiceTest}; this test fixes the command
- * wiring (argument parsing, per-field validation routing, output messages).
+ * by the model-tier service tests; this test fixes the command wiring (argument parsing, per-field
+ * validation routing, output messages).
  */
 class ModelTierCommandTest {
 
     private static @NonNull VetoCommandSender aliceSender() {
         VetoCommandSender sender = mock(ToolDocs.nonNullClass(VetoCommandSender.class));
-        when(sender.hasPermission(
-                        any(
-                                top.focess.veto.agent.tool.ToolDocs.nonNullClass(
-                                        CommandPermission.class))))
+        when(sender.hasPermission(any(ToolDocs.nonNullClass(CommandPermission.class))))
                 .thenReturn(true);
         when(sender.isLoggedIn()).thenReturn(true);
         when(sender.username()).thenReturn("alice");

@@ -1,5 +1,6 @@
 package top.focess.veto.command.commands;
 
+import java.time.Duration;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
 import top.focess.command.CommandResult;
@@ -40,7 +41,7 @@ public class CompactCommand extends VetoCommand {
                     try {
                         agent.compact();
                         // Wait for compaction task to complete
-                        var result = agent.await(java.time.Duration.ofMinutes(2));
+                        var result = agent.await(Duration.ofMinutes(2));
                         if (result.success()) {
                             s.output("Compaction completed successfully.");
                             return CommandResult.ALLOW;

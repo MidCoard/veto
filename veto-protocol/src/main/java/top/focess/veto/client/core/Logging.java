@@ -4,6 +4,7 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.LoggerContext;
 import java.util.logging.LogManager;
 import org.slf4j.ILoggerFactory;
+import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.bridge.SLF4JBridgeHandler;
 import top.focess.veto.contract.ClientOptions;
@@ -32,8 +33,7 @@ public final class Logging {
     public static void configure(boolean debug) {
         ILoggerFactory factory = LoggerFactory.getILoggerFactory();
         if (factory instanceof LoggerContext context) {
-            context.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME)
-                    .setLevel(debug ? Level.DEBUG : Level.OFF);
+            context.getLogger(Logger.ROOT_LOGGER_NAME).setLevel(debug ? Level.DEBUG : Level.OFF);
         }
 
         // Route JUL through SLF4J to silence JLine fallback warnings on the console.

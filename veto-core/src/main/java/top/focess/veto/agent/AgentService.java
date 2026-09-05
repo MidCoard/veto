@@ -37,14 +37,24 @@ import top.focess.veto.agent.screening.ProtectedSet;
 import top.focess.veto.agent.screening.ProtectedSetResolver;
 import top.focess.veto.agent.screening.ScreeningMode;
 import top.focess.veto.agent.screening.SlmScreeningProvider;
+import top.focess.veto.agent.tool.ToolCallContext;
+import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.agent.tool.ToolEngine;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.bus.DeltaBroker;
+import top.focess.veto.bus.DeltaFrame;
+import top.focess.veto.group.GroupAgentFactory;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.llm.config.LlmJacksonConfig;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
 import top.focess.veto.llm.core.UniformLLMCaller;
+import top.focess.veto.memory.TurnLogService;
+import top.focess.veto.model.tier.ModelTierRegistry;
+import top.focess.veto.observability.ObservabilityConfiguration;
+import top.focess.veto.sandbox.BackgroundTaskManager;
+import top.focess.veto.util.Nullness;
+import top.focess.veto.vault.CredentialVaultConfiguration;
 
 /**
  * The shared agent service ("Multi-Client Unification"). Both the ZMQ terminal ({@code
@@ -64,6 +74,15 @@ public class AgentService {
             LoggerFactory.getLogger("top.focess.veto.agent.AgentService");
     private static final @NonNull Duration DEFAULT_AWAIT = Duration.ofMinutes(5);
 
+    private ModelTierRegistry guidedTierRegistry;
+
+    private final int maxGuidedSteps;
+
+    @Autowired
+    void setGuidedTierRegistry(@NonNull ModelTierRegistry registry) {
+        guidedTierRegistry = registry;
+    }
+
     private final @NonNull ToolEngine toolEngine;
     private final @NonNull HitlRegistry hitlRegistry;
     private final @NonNull IngressDefense ingressDefense;
@@ -79,8 +98,8 @@ public class AgentService {
     // Optional event-stream sink shared by created AgentRunners.
     private final DeltaBroker deltaBroker;
     // Optional durable turn log shared by created AgentRunners.
-    private final top.focess.veto.memory.TurnLogService turnLogService;
-    private final top.focess.veto.sandbox.@NonNull BackgroundTaskManager backgroundTaskManager;
+    private final TurnLogService turnLogService;
+    private final @NonNull BackgroundTaskManager backgroundTaskManager;
     private final @NonNull ProtectedSetResolver protectedSetResolver;
     private final @NonNull SlmScreeningProvider slmScreeningProvider;
 
@@ -108,11 +127,12 @@ public class AgentService {
             @NonNull RoleToolFilter roleToolFilter,
             @Value("${veto.workspace.path-mode}") @NonNull String pathMode,
             @Value("${veto.breaker.max_calls_per_episode}") long maxCallsPerEpisode,
+            @Value("${veto.guided.max-steps}") int maxGuidedSteps,
             @NonNull DeployerPolicyConfiguration deployerPolicyConfiguration,
             @Value("${veto.security.screening-mode}") @NonNull String screeningModeRaw,
             DeltaBroker deltaBroker,
-            top.focess.veto.memory.TurnLogService turnLogService,
-            top.focess.veto.sandbox.@NonNull BackgroundTaskManager backgroundTaskManager,
+            TurnLogService turnLogService,
+            @NonNull BackgroundTaskManager backgroundTaskManager,
             @NonNull ProtectedSetResolver protectedSetResolver,
             @NonNull SlmScreeningProvider slmScreeningProvider) {
         this.toolEngine = toolEngine;
@@ -126,6 +146,10 @@ public class AgentService {
         this.defaultWorkspace = Workspace.fromConfig("", "", pathMode);
         this.roleToolFilter = roleToolFilter;
         this.maxCallsPerEpisode = maxCallsPerEpisode;
+        if (maxGuidedSteps <= 0) {
+            throw new IllegalArgumentException("veto.guided.max-steps must be positive");
+        }
+        this.maxGuidedSteps = maxGuidedSteps;
         this.deployerPolicy = deployerPolicyConfiguration.getDeployerPolicy();
         if (this.deployerPolicy == DeployerPolicy.FULL_ACCESS) {
             log.info(
@@ -157,11 +181,12 @@ public class AgentService {
             @NonNull RoleToolFilter roleToolFilter,
             @NonNull String pathMode,
             long maxCallsPerEpisode,
+            int maxGuidedSteps,
             @NonNull String deployerPolicyRaw,
             @NonNull String screeningModeRaw,
             DeltaBroker deltaBroker,
-            top.focess.veto.memory.TurnLogService turnLogService,
-            top.focess.veto.sandbox.@NonNull BackgroundTaskManager backgroundTaskManager) {
+            TurnLogService turnLogService,
+            @NonNull BackgroundTaskManager backgroundTaskManager) {
         this(
                 toolEngine,
                 hitlRegistry,
@@ -173,6 +198,7 @@ public class AgentService {
                 roleToolFilter,
                 pathMode,
                 maxCallsPerEpisode,
+                maxGuidedSteps,
                 policyConfigurationFor(deployerPolicyRaw),
                 screeningModeRaw,
                 deltaBroker,
@@ -180,8 +206,8 @@ public class AgentService {
                 backgroundTaskManager,
                 new ProtectedSetResolver(
                         policyConfigurationFor(deployerPolicyRaw),
-                        new top.focess.veto.observability.ObservabilityConfiguration(),
-                        new top.focess.veto.vault.CredentialVaultConfiguration()),
+                        new ObservabilityConfiguration(),
+                        new CredentialVaultConfiguration()),
                 SlmScreeningProvider.unavailable());
     }
 
@@ -219,10 +245,10 @@ public class AgentService {
     /**
      * Fire-and-forget submit: resolves (or creates) the agent, binds the model configuration, and
      * starts the episode, returning as soon as the run is enqueued. The episode's progress and
-     * outcome travel as {@link top.focess.veto.bus.DeltaFrame} events on the {@code DeltaBroker}
-     * (session-scoped), and the durable result lands in the turn log — callers subscribe and read,
-     * they do not block here. This is the transport shape the web UI uses: REST submits, WebSocket
-     * streams, REST GET history stays the authoritative read.
+     * outcome travel as {@link DeltaFrame} events on the {@code DeltaBroker} (session-scoped), and
+     * the durable result lands in the turn log — callers subscribe and read, they do not block
+     * here. This is the transport shape the web UI uses: REST submits, WebSocket streams, REST GET
+     * history stays the authoritative read.
      */
     public void submitNow(
             @NonNull String agentKey,
@@ -432,8 +458,8 @@ public class AgentService {
      * behavior (mint a fresh persona UUID, session id = persona id) is preserved.
      *
      * @param owner the session owner (username) whose model-tier profile resolves the agent's tier;
-     *     threaded onto the runner's {@link top.focess.veto.agent.tool.ToolCallContext} so group
-     *     spawns resolve per-user. Null in legacy/test paths.
+     *     threaded onto the runner's {@link ToolCallContext} so group spawns resolve per-user. Null
+     *     in legacy/test paths.
      */
     public @NonNull Agent getOrCreateAgent(
             @NonNull String sessionId,
@@ -643,6 +669,7 @@ public class AgentService {
                         backgroundTaskManager);
         // Stamp the session owner so group-spawned Mates / Leaders resolve their tier against the
         // user's active model-tier profile via the ToolCallContext.
+        runner.configureGuided(guidedTierRegistry, maxGuidedSteps);
         runner.setOwner(owner);
         runner.setToolResultPresentation(toolResultPresentation);
         if (primaryAgentId != null) {
@@ -702,10 +729,9 @@ public class AgentService {
     /**
      * Builds a Mate {@link Agent} with explicit user identity <em>and</em> session owner. The Mate
      * inherits the Leader's userId (memory tenant) and owner (whose model-tier profile resolves the
-     * Mate's tier). This is the overload the production group factory ({@link
-     * top.focess.veto.group.GroupAgentFactory}) uses - it reads both from the calling agent's
-     * {@link top.focess.veto.agent.tool.ToolCallContext} so the Mate resolves its model against the
-     * same user's active profile as the Leader.
+     * Mate's tier). This is the overload the production group factory ({@link GroupAgentFactory})
+     * uses - it reads both from the calling agent's {@link ToolCallContext} so the Mate resolves
+     * its model against the same user's active profile as the Leader.
      */
     public @NonNull Agent createMate(
             @NonNull AgentPersona persona,
@@ -760,6 +786,7 @@ public class AgentService {
                         backgroundTaskManager);
         // Stamp the session owner so the Mate (or one-shot Leader) resolves its tier against the
         // user's active model-tier profile via the ToolCallContext.
+        runner.configureGuided(guidedTierRegistry, maxGuidedSteps);
         runner.setOwner(owner);
         runner.setToolResultPresentation(toolResultPresentation);
         return new VetoAgent(scoped, runner);
@@ -810,8 +837,7 @@ public class AgentService {
     /**
      * The workspace registered for the agent (by persona id), or the fallback default. Used by the
      * group engine to inherit the calling session's workspace when spawning Mates / a one-shot
-     * Leader (the calling agent's persona id is read from the {@link
-     * top.focess.veto.agent.tool.ToolCallContextHolder}).
+     * Leader (the calling agent's persona id is read from the {@link ToolCallContextHolder}).
      */
     public @NonNull Workspace workspaceOf(@NonNull String agentId) {
         return hitlRegistry.workspace(agentId);
@@ -857,7 +883,7 @@ public class AgentService {
         if ("BYPASS_ALL".equalsIgnoreCase(normalized)) {
             return ScreeningMode.PERMISSIVE;
         }
-        var modes = top.focess.veto.util.Nullness.requireNonNull(ScreeningMode.values());
+        var modes = Nullness.requireNonNull(ScreeningMode.values());
         for (ScreeningMode m : modes) {
             if (m.name().equalsIgnoreCase(normalized)) {
                 return m;

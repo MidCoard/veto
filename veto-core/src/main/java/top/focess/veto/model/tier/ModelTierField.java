@@ -1,6 +1,7 @@
 package top.focess.veto.model.tier;
 
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.util.Nullness;
 
 /**
  * A single configurable field of a {@link ModelTierBindingEntity}. Each field is set independently
@@ -40,7 +41,7 @@ public enum ModelTierField {
      * @return the field, or null if {@code s} does not name a field
      */
     public static ModelTierField fromField(@NonNull String s) {
-        var fields = top.focess.veto.util.Nullness.requireNonNull(values());
+        var fields = Nullness.requireNonNull(values());
         for (ModelTierField f : fields) {
             if (f.field.equalsIgnoreCase(s)) {
                 return f;

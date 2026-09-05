@@ -1,11 +1,9 @@
 package top.focess.veto.agent.intercept;
 
 /**
- * The scenario a veto pause belongs to. Determined by the {@link
- * top.focess.veto.agent.intercept.GatewayResult} the {@link
- * top.focess.veto.agent.intercept.Gateway} produced (which depends on the call's capability,
- * danger, what tripped). The scenario fixes the offered option set; one shared HITL mechanism,
- * several resolution vocabularies.
+ * The scenario a veto pause belongs to. Determined by the {@link GatewayResult} the {@link Gateway}
+ * produced (which depends on the call's capability, danger, what tripped). The scenario fixes the
+ * offered option set; one shared HITL mechanism, several resolution vocabularies.
  *
  * <p>The option set is <b>tool-declared</b>: the Gateway asks the {@code ToolDefinition} which
  * options this tool exposes for HITL resolution, and renders those. {@link HitlRegistry} maps the

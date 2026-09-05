@@ -31,6 +31,7 @@ import top.focess.veto.llm.core.ToolResultPresentationMode;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierRegistry;
+import top.focess.veto.util.Nullness;
 
 /**
  * Verifies the Model B {@code GroupTools} native-tool bodies are wired to the runtime (GroupSpawner
@@ -112,7 +113,7 @@ class GroupToolsWiringTest {
             ToolCallContextHolder.TransformRequest request = ToolCallContextHolder.drainTransform();
             ToolCallContextHolder.TransformDirective directive =
                     assertInstanceOf(
-                                    top.focess.veto.agent.tool.ToolDocs.nonNullClass(
+                                    ToolDocs.nonNullClass(
                                             ToolCallContextHolder.TransformRequest.ToLeader.class),
                                     requireTransform(request))
                             .directive();
@@ -128,7 +129,7 @@ class GroupToolsWiringTest {
             assertTrue(g.dag().nodes().isEmpty(), "the group starts with an empty DAG");
             assertSame(
                     workspace,
-                    top.focess.veto.util.Nullness.requireNonNull(g.workspace()),
+                    Nullness.requireNonNull(g.workspace()),
                     "the group carries the Leader's workspace");
             spawner.disband(g.groupId());
         } finally {
@@ -186,7 +187,7 @@ class GroupToolsWiringTest {
             ToolCallContextHolder.TransformRequest request = ToolCallContextHolder.drainTransform();
             String brief =
                     assertInstanceOf(
-                                    top.focess.veto.agent.tool.ToolDocs.nonNullClass(
+                                    ToolDocs.nonNullClass(
                                             ToolCallContextHolder.TransformRequest.ToStandalone
                                                     .class),
                                     requireTransform(request))

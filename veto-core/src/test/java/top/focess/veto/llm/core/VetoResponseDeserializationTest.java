@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.tool.ToolDocs;
@@ -17,9 +18,9 @@ class VetoResponseDeserializationTest {
 
     @Test
     void toolCallsHaveStableIdsFromConstructionAndDeserialization() throws Exception {
-        ToolCall created = new ToolCall("think", java.util.Map.of());
+        ToolCall created = new ToolCall("think", Map.of());
         assertTrue(created.callId().startsWith("call_"));
-        assertNotEquals(created.callId(), new ToolCall("think", java.util.Map.of()).callId());
+        assertNotEquals(created.callId(), new ToolCall("think", Map.of()).callId());
         for (String idField : List.of("", ",\"call_id\":null")) {
             ToolCall parsed =
                     mapper.readValue(

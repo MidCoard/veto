@@ -1,5 +1,6 @@
 package top.focess.veto.bus;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -9,6 +10,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import org.jspecify.annotations.NonNull;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
@@ -76,7 +78,7 @@ public class DeltaBroker {
             } catch (RuntimeException e) {
                 // Don't let one bad subscriber block the others, but log it so a broken
                 // transport is diagnosable (was previously swallowed silently).
-                org.slf4j.LoggerFactory.getLogger("top.focess.veto.bus.DeltaBroker")
+                LoggerFactory.getLogger("top.focess.veto.bus.DeltaBroker")
                         .warn(
                                 "DeltaBroker: subscriber threw on session {} (frame seq={},"
                                         + " kind={})",
@@ -90,7 +92,7 @@ public class DeltaBroker {
             try {
                 sub.accept(sequenced);
             } catch (RuntimeException e) {
-                org.slf4j.LoggerFactory.getLogger("top.focess.veto.bus.DeltaBroker")
+                LoggerFactory.getLogger("top.focess.veto.bus.DeltaBroker")
                         .warn(
                                 "DeltaBroker: wildcard subscriber threw on session {} (frame"
                                         + " seq={}, kind={})",
@@ -104,7 +106,7 @@ public class DeltaBroker {
 
     /** Test-only: list of subscriber counts per session. */
     public @NonNull Map<UUID, Integer> subscriberCounts() {
-        Map<UUID, Integer> out = new java.util.HashMap<>();
+        Map<UUID, Integer> out = new HashMap<>();
         for (var entry : listeners.entrySet()) {
             out.put(entry.getKey(), entry.getValue().size());
         }

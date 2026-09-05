@@ -1,6 +1,7 @@
 package top.focess.veto.agent;
 
 import java.time.Instant;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
@@ -29,7 +30,7 @@ public record TurnRecord(
         // Null-tolerant unmodifiable copy: the payload schema has OPTIONAL fields (e.g. a
         // synthetic TOOL_RESPONSE observation carries no call_id), so Map.copyOf's null-hostile
         // copy would throw NPE for those. Keys remain String; values may legitimately be null.
-        payload = java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(payload));
+        payload = Collections.unmodifiableMap(new LinkedHashMap<>(payload));
         if (timestamp == null) {
             timestamp = Instant.now();
         }

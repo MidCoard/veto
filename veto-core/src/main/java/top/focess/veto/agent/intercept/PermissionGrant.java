@@ -1,6 +1,7 @@
 package top.focess.veto.agent.intercept;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
@@ -64,7 +65,7 @@ public sealed interface PermissionGrant
      */
     record ReadGrant(
             @NonNull String toolFamily,
-            java.nio.file.@NonNull Path directoryPrefix,
+            @NonNull Path directoryPrefix,
             @NonNull List<@NonNull String> flagShape)
             implements PermissionGrant {
 
@@ -94,7 +95,7 @@ public sealed interface PermissionGrant
      */
     record WriteGrant(
             @NonNull String toolName,
-            java.nio.file.@NonNull Path directoryPrefix,
+            @NonNull Path directoryPrefix,
             @NonNull List<@NonNull String> flagShape)
             implements PermissionGrant {
 
@@ -185,7 +186,7 @@ public sealed interface PermissionGrant
             if (execObj == null) {
                 return null;
             }
-            java.util.List<@NonNull String> out = new java.util.ArrayList<>();
+            List<@NonNull String> out = new ArrayList<>();
             out.add(execObj.toString());
             if (argsObj instanceof List<?> argList) {
                 for (Object a : argList) {
@@ -199,8 +200,7 @@ public sealed interface PermissionGrant
     }
 
     /** Exact-match grant for a remote or otherwise unclassified tool call. */
-    record ExactToolGrant(
-            @NonNull String toolName, java.util.@NonNull Map<@NonNull String, Object> args)
+    record ExactToolGrant(@NonNull String toolName, @NonNull Map<@NonNull String, Object> args)
             implements PermissionGrant {
 
         @Override

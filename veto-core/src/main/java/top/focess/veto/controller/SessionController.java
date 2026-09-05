@@ -10,8 +10,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 import top.focess.veto.agent.TurnRecord;
+import top.focess.veto.contract.IpcFrame;
 import top.focess.veto.controller.dto.CreateSessionRequest;
 import top.focess.veto.i18n.Msg;
+import top.focess.veto.llm.core.ToolResultPresentationMode;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.session.SessionHistoryLoader;
 import top.focess.veto.session.SessionRecordService;
@@ -23,11 +25,11 @@ import top.focess.veto.vault.KeysteadVault;
  * REST facade over {@link SessionService} for remote UIs (veto-ui).
  *
  * <p>Unlike the terminal path - which maps the terminal's cwd to the workspace via the {@link
- * top.focess.veto.contract.IpcFrame.Hello} handshake - a remote UI has no cwd to report, so it
- * declares the workspace roots explicitly in the create request body. The owner is the
- * authenticated vault user; activation/attachment is a UI concern (the UI holds the returned
- * session id and submits prompts through its own transport), so this controller only manages the
- * session lifecycle, not prompt dispatch.
+ * IpcFrame.Hello} handshake - a remote UI has no cwd to report, so it declares the workspace roots
+ * explicitly in the create request body. The owner is the authenticated vault user;
+ * activation/attachment is a UI concern (the UI holds the returned session id and submits prompts
+ * through its own transport), so this controller only manages the session lifecycle, not prompt
+ * dispatch.
  */
 @RestController
 @RequestMapping("/api/sessions")
@@ -81,8 +83,7 @@ public class SessionController {
                 body.name(),
                 roots,
                 rootIndex == null ? 0 : rootIndex,
-                top.focess.veto.llm.core.ToolResultPresentationMode.canonicalize(
-                        body.toolResultPresentation()));
+                ToolResultPresentationMode.canonicalize(body.toolResultPresentation()));
     }
 
     @DeleteMapping("/{name}")

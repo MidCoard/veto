@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
@@ -137,7 +138,7 @@ public class VetoCapabilityTranslator implements CapabilityTranslator {
         ArrayNode variants = MAPPER.createArrayNode();
         tools.stream()
                 .sorted(
-                        java.util.Comparator.comparing(
+                        Comparator.comparing(
                                 top.focess.veto.llm.core.ToolDefinition::name,
                                 String.CASE_INSENSITIVE_ORDER))
                 .forEach(tool -> variants.add(toolActionSchema(tool)));
@@ -162,7 +163,7 @@ public class VetoCapabilityTranslator implements CapabilityTranslator {
     private static @NonNull ObjectNode generateActionSchema() {
         ObjectNode properties = actionProperties("generate");
         properties.set("prompt", stringNode("Prompt for the scoped model generation."));
-        properties.set("inputs", stringMapSchema("Input name to literal or $variable reference."));
+        properties.set("inputs", MAPPER.createObjectNode().put("type", "object"));
         properties.set("outputs", stringMapSchema("Result variable name to message or thought."));
         properties.set("thought", typedSchemaNode("boolean", "Whether to request reasoning."));
         properties.set("model_tier", stringNode("Optional model-tier override."));
@@ -238,15 +239,8 @@ public class VetoCapabilityTranslator implements CapabilityTranslator {
         JsonNode toolSchema = MAPPER.valueToTree(tool.inputSchema());
         toolSchema
                 .path("properties")
-                .fieldNames()
-                .forEachRemaining(
-                        name ->
-                                properties.set(
-                                        name,
-                                        stringNode(
-                                                "Literal value or $variable reference for "
-                                                        + name
-                                                        + ".")));
+                .properties()
+                .forEach(e -> properties.set(e.getKey(), bindingValueSchema(e.getValue())));
         schema.set("properties", properties);
         JsonNode required = toolSchema.path("required");
         if (required.isArray() && !required.isEmpty()) {
@@ -254,6 +248,28 @@ public class VetoCapabilityTranslator implements CapabilityTranslator {
         }
         schema.put("additionalProperties", false);
         return schema;
+    }
+
+    private static @NonNull JsonNode bindingValueSchema(@NonNull JsonNode original) {
+        ObjectNode literal = original.deepCopy();
+        if (literal.path("properties").isObject()) {
+            ObjectNode properties = MAPPER.createObjectNode();
+            literal.path("properties")
+                    .properties()
+                    .forEach(e -> properties.set(e.getKey(), bindingValueSchema(e.getValue())));
+            literal.set("properties", properties);
+        }
+        if (literal.has("items")) literal.set("items", bindingValueSchema(literal.path("items")));
+        ObjectNode reference =
+                MAPPER.createObjectNode()
+                        .put("type", "string")
+                        .put("pattern", "^\\$[A-Za-z_][A-Za-z0-9_]*$");
+        ObjectNode union = MAPPER.createObjectNode();
+        union.putArray("anyOf")
+                .add(literal)
+                .add(reference)
+                .add(MAPPER.createObjectNode().put("type", "null"));
+        return union;
     }
 
     private static @NonNull ObjectNode stringMapSchema(@NonNull String description) {
@@ -301,7 +317,7 @@ public class VetoCapabilityTranslator implements CapabilityTranslator {
         ArrayNode variants = MAPPER.createArrayNode();
         tools.stream()
                 .sorted(
-                        java.util.Comparator.comparing(
+                        Comparator.comparing(
                                 top.focess.veto.llm.core.ToolDefinition::name,
                                 String.CASE_INSENSITIVE_ORDER))
                 .forEach(tool -> variants.add(callVariant(tool)));

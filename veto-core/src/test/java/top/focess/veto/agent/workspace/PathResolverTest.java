@@ -2,8 +2,10 @@ package top.focess.veto.agent.workspace;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
@@ -21,7 +23,7 @@ class PathResolverTest {
      * (built from {@code tmp}) must be real too for the {@code startsWith(root)} and {@code
      * assertEquals(...)} checks to hold. Canonicalize once up front.
      */
-    @TempDir @org.jspecify.annotations.NonNull Path tmp;
+    @TempDir @NonNull Path tmp;
 
     @BeforeEach
     void canonicalizeTempDir() throws Exception {
@@ -30,7 +32,7 @@ class PathResolverTest {
 
     private @NonNull Workspace twoRoots(@NonNull Path a, @NonNull Path b) {
         return new Workspace(
-                java.util.List.of(
+                List.of(
                         WorkspaceRoot.of(a, TrustMarker.OWNED),
                         WorkspaceRoot.of(b, TrustMarker.OWNED)),
                 PathMode.VIRTUAL,
@@ -84,7 +86,7 @@ class PathResolverTest {
         Files.createDirectories(b);
         Workspace ws =
                 new Workspace(
-                        java.util.List.of(
+                        List.of(
                                 WorkspaceRoot.of(a, TrustMarker.OWNED),
                                 WorkspaceRoot.of(b, TrustMarker.OWNED)),
                         PathMode.REAL,
@@ -103,7 +105,7 @@ class PathResolverTest {
         Files.createDirectories(b);
         Workspace ws =
                 new Workspace(
-                        java.util.List.of(
+                        List.of(
                                 WorkspaceRoot.of(a, TrustMarker.OWNED),
                                 WorkspaceRoot.of(b, TrustMarker.OWNED)),
                         PathMode.REAL,
@@ -153,7 +155,7 @@ class PathResolverTest {
         Path link = a.resolve("escape-link");
         try {
             Files.createSymbolicLink(link, outside);
-        } catch (UnsupportedOperationException | java.io.IOException e) {
+        } catch (UnsupportedOperationException | IOException e) {
             Assumptions.assumeTrue(
                     false, "symlinks not supported on this filesystem: " + e.getMessage());
             return;
@@ -181,7 +183,7 @@ class PathResolverTest {
         Path link = a.resolve("escape-link");
         try {
             Files.createSymbolicLink(link, outside);
-        } catch (UnsupportedOperationException | java.io.IOException e) {
+        } catch (UnsupportedOperationException | IOException e) {
             Assumptions.assumeTrue(
                     false, "symlinks not supported on this filesystem: " + e.getMessage());
             return;

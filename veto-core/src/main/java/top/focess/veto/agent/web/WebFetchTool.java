@@ -10,8 +10,10 @@ import java.net.UnknownHostException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
@@ -245,7 +247,7 @@ public final class WebFetchTool implements NativeTool<WebFetchTool.Args> {
             return ToolErrors.failure("too many redirects for " + uri);
         } catch (ToolExecutionException e) {
             throw e;
-        } catch (java.net.http.HttpTimeoutException e) {
+        } catch (HttpTimeoutException e) {
             return ToolErrors.failure("timed out after " + timeoutSeconds + "s fetching " + uri);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -268,7 +270,7 @@ public final class WebFetchTool implements NativeTool<WebFetchTool.Args> {
         try {
             return read.get(remainingNanos(deadline), TimeUnit.NANOSECONDS);
         } catch (TimeoutException e) {
-            throw new java.net.http.HttpTimeoutException("Response body deadline exceeded");
+            throw new HttpTimeoutException("Response body deadline exceeded");
         } catch (ExecutionException e) {
             throw new IOException("Could not read response body", e.getCause());
         } finally {
@@ -276,10 +278,10 @@ public final class WebFetchTool implements NativeTool<WebFetchTool.Args> {
         }
     }
 
-    private static long remainingNanos(long deadline) throws java.net.http.HttpTimeoutException {
+    private static long remainingNanos(long deadline) throws HttpTimeoutException {
         long remaining = deadline - System.nanoTime();
         if (remaining <= 0) {
-            throw new java.net.http.HttpTimeoutException("Fetch deadline exceeded");
+            throw new HttpTimeoutException("Fetch deadline exceeded");
         }
         return remaining;
     }
@@ -290,7 +292,7 @@ public final class WebFetchTool implements NativeTool<WebFetchTool.Args> {
         byte[] bytes = body.readNBytes(byteLimit);
         if (bytes.length == byteLimit) {
             int kept = Math.max(0, byteLimit - 1);
-            return new BoundedBody(java.util.Arrays.copyOf(bytes, kept), true);
+            return new BoundedBody(Arrays.copyOf(bytes, kept), true);
         }
         return new BoundedBody(bytes, false);
     }

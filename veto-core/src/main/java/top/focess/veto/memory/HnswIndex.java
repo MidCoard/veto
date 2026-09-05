@@ -2,6 +2,7 @@ package top.focess.veto.memory;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -340,7 +341,7 @@ public class HnswIndex {
     /** A node in the HNSW graph: its neighbors per layer. */
     private static final class Node {
         final @NonNull UUID id;
-        final @NonNull Map<Integer, Set<UUID>> neighborsByLevel = new java.util.HashMap<>();
+        final @NonNull Map<Integer, Set<UUID>> neighborsByLevel = new HashMap<>();
 
         Node(@NonNull UUID id, int topLevel) {
             this.id = id;

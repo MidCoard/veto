@@ -6,6 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -123,7 +124,7 @@ class DeployerPolicyTest {
         Files.writeString(root.resolve(".ssh/id_rsa"), "secret");
         Workspace ws = Workspace.single(root, PathMode.REAL);
         // .ssh is in the protected set; even within the deploy zone, the read is CRITICAL.
-        ProtectedSet ps = new ProtectedSet(java.util.Set.of(root.resolve(".ssh")));
+        ProtectedSet ps = new ProtectedSet(Set.of(root.resolve(".ssh")));
         ToolCall call =
                 new ToolCall("view_file", Map.of("path", root.resolve(".ssh/id_rsa").toString()));
         Danger danger =

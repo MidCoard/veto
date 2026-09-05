@@ -1,11 +1,13 @@
 package top.focess.veto.command;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.command.*;
+import top.focess.command.CommandSender;
 import top.focess.veto.contract.IpcFrame;
 import top.focess.veto.contract.IpcFrame.HintInfo;
 import top.focess.veto.contract.IpcMeta;
@@ -142,7 +144,7 @@ public class CommandRegistry {
 
     private @NonNull Map<String, Object> buildDoneMeta(
             @NonNull VetoCommandSender sender, boolean wasLogout) {
-        Map<String, Object> meta = new java.util.HashMap<>();
+        Map<String, Object> meta = new HashMap<>();
         if (wasLogout) {
             meta.put(IpcMeta.CLEAR_SESSION, true);
         } else if (sender.isLoggedIn()) {
@@ -225,8 +227,8 @@ public class CommandRegistry {
      * Returns tab-completion candidates for the given partial command-line input.
      *
      * <p>Strips the leading {@code /} (if present) and delegates to {@link
-     * CommandManager#route(top.focess.command.CommandSender, String)} to compute candidates.
-     * Non-slash input returns an empty list — only slash-commands support tab-completion.
+     * CommandManager#route(CommandSender, String)} to compute candidates. Non-slash input returns
+     * an empty list — only slash-commands support tab-completion.
      *
      * @param sender the command sender for the active terminal session
      * @param partial the partial command string, including the leading {@code /}; may be {@code

@@ -21,6 +21,7 @@ import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.translation.CapabilityTranslator;
 import top.focess.veto.llm.core.ChatMessage;
 import top.focess.veto.llm.core.LlmOptions;
+import top.focess.veto.llm.core.LlmSystemUsage;
 import top.focess.veto.llm.core.ResolvedRequest;
 import top.focess.veto.llm.core.VetoRequest;
 import top.focess.veto.llm.exceptions.ModelCapabilityException;
@@ -107,8 +108,7 @@ final class OpenAiLlmClient extends LlmClient {
         ChatCompletion completion = sdkClient.chat().completions().create(builder.build());
         if (completion.usage().isPresent()) {
             var usage = completion.usage().get();
-            top.focess.veto.llm.core.LlmSystemUsage.set(
-                    usage.promptTokens(), usage.completionTokens());
+            LlmSystemUsage.set(usage.promptTokens(), usage.completionTokens());
         }
         String content =
                 completion

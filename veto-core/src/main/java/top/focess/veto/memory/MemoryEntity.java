@@ -5,8 +5,10 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.util.Nullness;
 
 /**
  * JPA persistence for a {@link Memory}. Stored in PostgreSQL with JSONB columns (Hibernate's {@code
@@ -69,8 +71,7 @@ public class MemoryEntity {
     }
 
     public static @NonNull Memory toMemory(@NonNull MemoryEntity e) {
-        MemoryTier parsedTier =
-                top.focess.veto.util.Nullness.requireNonNull(MemoryTier.valueOf(e.tier));
+        MemoryTier parsedTier = Nullness.requireNonNull(MemoryTier.valueOf(e.tier));
         return new Memory(
                 new MemoryId(UUID.fromString(e.id)),
                 UUID.fromString(e.userId),
@@ -80,7 +81,7 @@ public class MemoryEntity {
                 e.content,
                 deserializeEmbedding(e.embedding),
                 new Memory.SourceRef(
-                        "stored", java.util.Map.of("raw", e.sourceRef == null ? "" : e.sourceRef)),
+                        "stored", Map.of("raw", e.sourceRef == null ? "" : e.sourceRef)),
                 e.createdAt);
     }
 

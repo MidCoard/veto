@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeSet;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.agent.tool.AgentToolDefinition;
 import top.focess.veto.agent.tool.NativeToolDefinition;
 import top.focess.veto.agent.tool.ParamCategory;
 import top.focess.veto.agent.tool.ToolCapability;
@@ -131,7 +132,7 @@ public final class MatchKeyExtractor {
         if (def instanceof NativeToolDefinition n) {
             return n.paramHints();
         }
-        if (def instanceof top.focess.veto.agent.tool.AgentToolDefinition a) {
+        if (def instanceof AgentToolDefinition a) {
             return a.paramHints();
         }
         return Map.of();

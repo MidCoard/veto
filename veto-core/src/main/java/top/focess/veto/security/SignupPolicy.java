@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import top.focess.veto.util.Nullness;
 
 /**
  * Reads the deployer-configured signup policy ({@code veto.security.signup.mode}) and validates it
@@ -63,8 +64,7 @@ public class SignupPolicy {
             return SignupMode.SOLO;
         }
         try {
-            return top.focess.veto.util.Nullness.requireNonNull(
-                    SignupMode.valueOf(raw.trim().toUpperCase()));
+            return Nullness.requireNonNull(SignupMode.valueOf(raw.trim().toUpperCase()));
         } catch (IllegalArgumentException e) {
             throw new IllegalStateException(
                     "Unknown veto.security.signup.mode '"

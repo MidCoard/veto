@@ -1,5 +1,6 @@
 package top.focess.veto.session;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Arrays;
@@ -15,7 +16,9 @@ import top.focess.veto.agent.Agent;
 import top.focess.veto.agent.AgentRunner;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.TurnRecord;
+import top.focess.veto.agent.workspace.PathResolver;
 import top.focess.veto.agent.workspace.WorkspaceAdmissionPolicy;
+import top.focess.veto.controller.SessionController;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
@@ -27,6 +30,7 @@ import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTierRegistry;
+import top.focess.veto.security.UserAdminService;
 
 /**
  * Owns the session lifecycle: create/list/activate/deactivate, plus the per-terminal active-session
@@ -187,7 +191,7 @@ public class SessionService {
         }
         for (Path admittedRoot : declaredRoots) {
             try {
-                java.nio.file.Files.createDirectories(admittedRoot);
+                Files.createDirectories(admittedRoot);
             } catch (Exception e) {
                 throw new IllegalArgumentException(
                         Msg.get(
@@ -266,8 +270,8 @@ public class SessionService {
 
     /**
      * Returns every session owned by {@code owner}, irrespective of workspace binding. Used by the
-     * REST facade ({@link top.focess.veto.controller.SessionController#list}) where there is no
-     * terminal cwd to scope to — the web UI is expected to group / filter as it wishes.
+     * REST facade ({@link SessionController#list}) where there is no terminal cwd to scope to — the
+     * web UI is expected to group / filter as it wishes.
      */
     public @NonNull List<SessionEntity> listSessions(@NonNull String owner) {
         return sessions.findByOwner(owner);
@@ -401,7 +405,7 @@ public class SessionService {
     /**
      * Deletes a session and cascades: detaches any terminal attached to it, terminates the
      * in-memory agent, and removes the session's agent instances + the session row. Mirrors the
-     * per-session slice of {@link top.focess.veto.security.UserAdminService#deleteUser}.
+     * per-session slice of {@link UserAdminService#deleteUser}.
      *
      * <p>Because two sessions may share a name across workspaces, the {@code (owner, name)} pair is
      * not unique; the REST caller ({@code SessionController}) has no workspace context to
@@ -595,10 +599,9 @@ public class SessionService {
      * causes a false negative.
      *
      * <p>This is a purely lexical check — symlink-resolved canonicalization is the job of {@link
-     * top.focess.veto.agent.workspace.PathResolver} at tool-call time, not session routing. A
-     * terminal that has symlinked itself into a session's workspace is still "in" it for
-     * session-routing purposes; the agent's tool calls will then resolve symlinks per their own
-     * canonicalization rules.
+     * PathResolver} at tool-call time, not session routing. A terminal that has symlinked itself
+     * into a session's workspace is still "in" it for session-routing purposes; the agent's tool
+     * calls will then resolve symlinks per their own canonicalization rules.
      */
     private static boolean isInWorkspace(String sessionWorkspaceRoots, @NonNull String cwd) {
         if (sessionWorkspaceRoots == null || sessionWorkspaceRoots.isBlank()) {

@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 
 /**
- * Regression tests for the INVALID_HANDLE_VALUE check on Windows OpenProcess. The previous
+ * Regression tests for the INVALID_HANDLE_VALUE check on Windows kernel32.OpenProcess. The previous
  * implementation compared only against Pointer.NULL, which let INVALID_HANDLE_VALUE
  * (0xFFFFFFFFFFFFFFFF, i.e. (HANDLE)-1) slip through and silently fail AssignProcessToJobObject
  * with ERROR_INVALID_HANDLE — defeating KILL_ON_JOB_CLOSE.
@@ -55,7 +55,8 @@ class KernelSandboxInvalidHandleTest {
             Assumptions.abort("kernel32 not loadable: " + t.getMessage());
             return;
         }
-        // Pid -2 — definitely not a live process. Per MSDN, OpenProcess returns either NULL
+        // Pid -2 — definitely not a live process. Per MSDN, kernel32.OpenProcess returns either
+        // NULL
         // or INVALID_HANDLE_VALUE on failure. We check both sentinels.
         WinNT.HANDLE handle = kernel32.OpenProcess(0x1F0FFF, false, -2);
         // The HANDLE wrapper is never literally null (JNA wraps a primitive long). The wrapped

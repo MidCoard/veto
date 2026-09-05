@@ -1,6 +1,7 @@
 package top.focess.veto.memory.embedder;
 
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.memory.MemoryStore;
 
 /**
  * Deterministic hash embedder - the local default
@@ -11,8 +12,8 @@ import org.jspecify.annotations.NonNull;
  * semantics are weak for semantic recall (a real embedding model wins there) but sufficient to
  * demonstrate the architecture and to run tests/offline without a provider dependency.
  *
- * <p>This deterministic implementation is shared by all {@link top.focess.veto.memory.MemoryStore}
- * implementations, now extracted to a single place.
+ * <p>This deterministic implementation is shared by all {@link MemoryStore} implementations, now
+ * extracted to a single place.
  */
 public final class HashEmbedder implements Embedder {
 

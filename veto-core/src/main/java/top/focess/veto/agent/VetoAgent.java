@@ -2,6 +2,7 @@ package top.focess.veto.agent;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeoutException;
@@ -9,6 +10,7 @@ import java.util.function.Consumer;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.identity.AgentPersona;
+import top.focess.veto.agent.intercept.VetoPrompt;
 import top.focess.veto.agent.tool.ToolDefinition;
 
 /**
@@ -120,12 +122,12 @@ public class VetoAgent implements Agent {
      * Stamps the session's message locale (the request's Accept-Language on the REST path; null
      * resets to English) so agent-thread messages render in the user's language.
      */
-    public void setLocale(java.util.Locale locale) {
+    public void setLocale(Locale locale) {
         runner.setLocale(locale);
     }
 
     /** The session's message locale (see {@link #setLocale}). */
-    public java.util.@NonNull Locale locale() {
+    public @NonNull Locale locale() {
         return runner.locale();
     }
 
@@ -133,7 +135,7 @@ public class VetoAgent implements Agent {
      * Seeds replayed history (from the durable turn log) into the runner on session activate.
      * Idempotent; see {@link AgentRunner#seedHistory}.
      */
-    public void seedHistory(java.util.@NonNull List<TurnRecord> history) {
+    public void seedHistory(@NonNull List<TurnRecord> history) {
         runner.seedHistory(history);
     }
 
@@ -142,12 +144,12 @@ public class VetoAgent implements Agent {
      * cares about streaming. The listener fires on the agent's virtual thread as each {@code
      * response.message} is emitted.
      */
-    public void addMessageListener(java.util.function.@NonNull Consumer<String> listener) {
+    public void addMessageListener(@NonNull Consumer<String> listener) {
         runner.addMessageListener(listener);
     }
 
     /** Unsubscribes a user-facing-message listener. */
-    public void removeMessageListener(java.util.function.@NonNull Consumer<String> listener) {
+    public void removeMessageListener(@NonNull Consumer<String> listener) {
         runner.removeMessageListener(listener);
     }
 
@@ -156,12 +158,12 @@ public class VetoAgent implements Agent {
      * transport cares about streaming reasoning. The listener fires on the agent's virtual thread
      * as each {@code response.thought} is emitted, before the matching message.
      */
-    public void addThoughtListener(java.util.function.@NonNull Consumer<String> listener) {
+    public void addThoughtListener(@NonNull Consumer<String> listener) {
         runner.addThoughtListener(listener);
     }
 
     /** Unsubscribes an interim-thought listener. */
-    public void removeThoughtListener(java.util.function.@NonNull Consumer<String> listener) {
+    public void removeThoughtListener(@NonNull Consumer<String> listener) {
         runner.removeThoughtListener(listener);
     }
 
@@ -170,16 +172,12 @@ public class VetoAgent implements Agent {
      * about rendering veto pickers. The listener fires on the agent's virtual thread when a tool
      * call parks for approval.
      */
-    public void addVetoListener(
-            java.util.function.@NonNull Consumer<top.focess.veto.agent.intercept.VetoPrompt>
-                    listener) {
+    public void addVetoListener(@NonNull Consumer<VetoPrompt> listener) {
         runner.addVetoListener(listener);
     }
 
     /** Unsubscribes a HITL-veto listener. */
-    public void removeVetoListener(
-            java.util.function.@NonNull Consumer<top.focess.veto.agent.intercept.VetoPrompt>
-                    listener) {
+    public void removeVetoListener(@NonNull Consumer<VetoPrompt> listener) {
         runner.removeVetoListener(listener);
     }
 
@@ -189,14 +187,12 @@ public class VetoAgent implements Agent {
      * thread when a TOOL_CALL turn is appended — i.e. just before the model receives the matching
      * tool result.
      */
-    public void addToolCallListener(
-            java.util.function.@NonNull Consumer<AgentRunner.ToolCallEvent> listener) {
+    public void addToolCallListener(@NonNull Consumer<AgentRunner.ToolCallEvent> listener) {
         runner.addToolCallListener(listener);
     }
 
     /** Unsubscribes a tool-call listener. */
-    public void removeToolCallListener(
-            java.util.function.@NonNull Consumer<AgentRunner.ToolCallEvent> listener) {
+    public void removeToolCallListener(@NonNull Consumer<AgentRunner.ToolCallEvent> listener) {
         runner.removeToolCallListener(listener);
     }
 
@@ -205,14 +201,12 @@ public class VetoAgent implements Agent {
      * transport cares about streaming the observation the model received. The listener fires on the
      * agent's virtual thread when a TOOL_RESPONSE turn is appended.
      */
-    public void addToolResultListener(
-            java.util.function.@NonNull Consumer<AgentRunner.ToolResultEvent> listener) {
+    public void addToolResultListener(@NonNull Consumer<AgentRunner.ToolResultEvent> listener) {
         runner.addToolResultListener(listener);
     }
 
     /** Unsubscribes a tool-result listener. */
-    public void removeToolResultListener(
-            java.util.function.@NonNull Consumer<AgentRunner.ToolResultEvent> listener) {
+    public void removeToolResultListener(@NonNull Consumer<AgentRunner.ToolResultEvent> listener) {
         runner.removeToolResultListener(listener);
     }
 

@@ -1,22 +1,24 @@
 package top.focess.veto.group;
 
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
 import top.focess.veto.model.tier.ModelTier;
+import top.focess.veto.model.tier.ModelTierRegistry;
 
 /**
  * A Mate's resolved tier + system-prompt base + session owner, produced by {@link GroupSpawner}
  * from the skillset config (or the global Mate defaults) and passed to {@link
  * GroupSpawner.AgentFactory#create}. The factory resolves the concrete provider/model/credential
- * from the tier via the {@link top.focess.veto.model.tier.ModelTierRegistry} for the owner's active
- * profile; the system-prompt base is role-specific and kept here (never on the persona).
+ * from the tier via the {@link ModelTierRegistry} for the owner's active profile; the system-prompt
+ * base is role-specific and kept here (never on the persona).
  *
  * <p>The {@code owner} (the session owner username) is carried here because the factory runs on the
  * {@link GroupTickScheduler} thread when a Mate is lazily provisioned - outside any tool-call
- * scope, so the owner cannot be read from the {@link
- * top.focess.veto.agent.tool.ToolCallContextHolder} thread-local there. It is stamped on the {@link
- * Group} at {@code create_group} time and flows here through the group spawner.
+ * scope, so the owner cannot be read from the {@link ToolCallContextHolder} thread-local there. It
+ * is stamped on the {@link Group} at {@code create_group} time and flows here through the group
+ * spawner.
  *
  * @param tier the model tier this Mate runs on
  * @param systemPromptBase the Mate's system-prompt base (null/blank → persona-derived)

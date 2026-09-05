@@ -13,7 +13,7 @@ import org.springframework.context.annotation.Configuration;
  * mapper so its lenient, record-friendly settings cannot leak into the web layer.
  *
  * <p>Also registers {@link JavaTimeModule} as a bean so Spring Boot's auto-configuration picks it
- * up and the web-layer ObjectMapper can serialize {@code java.time.Instant} fields on JPA entities
+ * up and the web-layer ObjectMapper can serialize {@code Instant} fields on JPA entities
  * (SessionEntity.createdAt, AgentPatternEntity.createdAt, etc.).
  */
 @Configuration
@@ -22,7 +22,7 @@ public class LlmJacksonConfig {
 
     /**
      * Auto-detected by Spring Boot and registered with the default web-layer ObjectMapper. Without
-     * this, {@code java.time.Instant} fields on JPA entities cause 500 errors on serialization.
+     * this, {@code Instant} fields on JPA entities cause 500 errors on serialization.
      */
     @Bean
     public @NonNull Module javaTimeModule() {

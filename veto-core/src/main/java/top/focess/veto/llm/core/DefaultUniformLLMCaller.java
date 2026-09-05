@@ -13,6 +13,7 @@ import top.focess.veto.llm.exceptions.LlmException;
 import top.focess.veto.llm.exceptions.ModelCapabilityException;
 import top.focess.veto.llm.exceptions.PlainTextResponseException;
 import top.focess.veto.llm.provider.LLMProviderStrategy;
+import top.focess.veto.util.Nullness;
 
 /**
  * Default orchestrator. Owns the responsibilities that used to be scattered across providers:
@@ -87,7 +88,7 @@ public class DefaultUniformLLMCaller implements UniformLLMCaller {
                 backoff(attempt, e);
             }
         }
-        throw top.focess.veto.util.Nullness.requireNonNull(last);
+        throw Nullness.requireNonNull(last);
     }
 
     private void backoff(int attempt, @NonNull LlmException cause) {

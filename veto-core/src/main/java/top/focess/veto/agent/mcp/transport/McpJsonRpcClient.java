@@ -9,11 +9,17 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.net.StandardProtocolFamily;
 import java.net.URI;
+import java.net.UnixDomainSocketAddress;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.ByteBuffer;
+import java.nio.channels.Channels;
+import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -30,7 +36,7 @@ import top.focess.veto.agent.tool.RemoteToolDefinition;
 /**
  * A minimal JSON-RPC 2.0 client for talking to remote MCP servers. Supports the {@code tools/list}
  * discovery and {@code tools/call} invocation over both stdio (subprocess stdin/stdout JSON lines)
- * and SSE (HTTP POST + Server-Sent-Events) transports.
+ * and SSE (HTTP requestBuilder.POST + Server-Sent-Events) transports.
  *
  * <p>The client intentionally implements only the MCP methods Veto needs ({@code tools/list} and
  * {@code tools/call}); it does not implement notifications, sampling, roots, or other optional MCP
@@ -138,7 +144,7 @@ public final class McpJsonRpcClient {
     /**
      * JSON-RPC over a Unix domain socket. The transport writes one request line (newline-delimited
      * JSON) to the socket and reads one response line. Container-sandbox sockets (Linux/macOS) use
-     * the {@code java.net.UnixDomainSocketAddress} path.
+     * the {@code UnixDomainSocketAddress} path.
      *
      * <p>Unix-domain socket types are part of the supported Java baseline. Platforms without Unix
      * sockets fail with a descriptive {@link IOException}.
@@ -148,22 +154,21 @@ public final class McpJsonRpcClient {
             @NonNull String body,
             long timeoutMs)
             throws IOException {
-        if (!java.nio.file.Files.exists(transport.socketPath())) {
+        if (!Files.exists(transport.socketPath())) {
             throw new IOException("Socket MCP server not found at " + transport.socketPath());
         }
-        try (java.nio.channels.SocketChannel ch =
-                java.nio.channels.SocketChannel.open(java.net.StandardProtocolFamily.UNIX)) {
+        try (SocketChannel ch = SocketChannel.open(StandardProtocolFamily.UNIX)) {
             return withDeadline(
                     () -> {
-                        java.net.UnixDomainSocketAddress address =
-                                java.net.UnixDomainSocketAddress.of(transport.socketPath());
+                        UnixDomainSocketAddress address =
+                                UnixDomainSocketAddress.of(transport.socketPath());
                         ch.connect(address);
                         byte[] bytes = (body + "\n").getBytes(StandardCharsets.UTF_8);
-                        java.nio.ByteBuffer out = java.nio.ByteBuffer.wrap(bytes);
+                        ByteBuffer out = ByteBuffer.wrap(bytes);
                         while (out.hasRemaining()) {
                             ch.write(out);
                         }
-                        return readResponse(java.nio.channels.Channels.newInputStream(ch));
+                        return readResponse(Channels.newInputStream(ch));
                     },
                     timeoutMs);
         } catch (UnsupportedOperationException e) {

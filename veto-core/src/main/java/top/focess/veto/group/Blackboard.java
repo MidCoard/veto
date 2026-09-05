@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
@@ -43,9 +44,7 @@ public class Blackboard {
                         message.type(),
                         message.payload(),
                         seq);
-        messages.computeIfAbsent(
-                        message.groupId(), k -> new java.util.concurrent.CopyOnWriteArrayList<>())
-                .add(stamped);
+        messages.computeIfAbsent(message.groupId(), k -> new CopyOnWriteArrayList<>()).add(stamped);
         return stamped;
     }
 

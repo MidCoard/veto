@@ -2,14 +2,19 @@ package top.focess.veto.sandbox;
 
 import static top.focess.veto.util.LogValues.safe;
 
+import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -244,10 +249,10 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
             extensions =
                     (pathext == null || pathext.isBlank())
                             ? List.of(".com", ".exe", ".bat", ".cmd")
-                            : java.util.Arrays.stream(pathext.split(";"))
+                            : Arrays.stream(pathext.split(";"))
                                     .map(String::trim)
                                     .filter(e -> !e.isEmpty())
-                                    .map(e -> e.toLowerCase(java.util.Locale.ROOT))
+                                    .map(e -> e.toLowerCase(Locale.ROOT))
                                     .toList();
         } else {
             extensions = List.of("");
@@ -256,13 +261,13 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
         if (windows) {
             searchDirectories.add(workdir);
         }
-        for (String dir : path.split(java.util.regex.Pattern.quote(java.io.File.pathSeparator))) {
+        for (String dir : path.split(Pattern.quote(File.pathSeparator))) {
             if (dir.isBlank()) {
                 continue;
             }
             searchDirectories.add(Path.of(dir));
         }
-        String lower = executable.toLowerCase(java.util.Locale.ROOT);
+        String lower = executable.toLowerCase(Locale.ROOT);
         boolean hasExecutableExtension = windows && extensions.stream().anyMatch(lower::endsWith);
         for (Path dir : searchDirectories) {
             if (hasExecutableExtension) {
@@ -287,7 +292,7 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
         if (!System.getProperty("os.name", "").toLowerCase().contains("win")) {
             return false;
         }
-        String lower = executable.toLowerCase(java.util.Locale.ROOT);
+        String lower = executable.toLowerCase(Locale.ROOT);
         return lower.endsWith(".cmd") || lower.endsWith(".bat");
     }
 
@@ -450,7 +455,7 @@ public final class ConstrainedSubprocessSubstrate implements SandboxSubstrate {
     }
 
     /** One writer (the drain thread) per buffer; the main thread reads only after join(). */
-    private static void drain(java.io.@NonNull InputStream in, @NonNull BoundedByteBuffer sink) {
+    private static void drain(@NonNull InputStream in, @NonNull BoundedByteBuffer sink) {
         try {
             byte[] buf = new byte[8192];
             int n;

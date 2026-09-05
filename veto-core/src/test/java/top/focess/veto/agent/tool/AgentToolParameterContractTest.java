@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.EnumSet;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.group.BlackboardMessage;
 import top.focess.veto.group.GroupTools;
@@ -20,7 +21,7 @@ class AgentToolParameterContractTest {
                         .path("type")
                         .path("enum");
         var messageTypes =
-                java.util.EnumSet.allOf(ToolDocs.nonNullClass(BlackboardMessage.MessageType.class));
+                EnumSet.allOf(ToolDocs.nonNullClass(BlackboardMessage.MessageType.class));
         assertEquals(messageTypes.size(), values.size());
         ObjectMapper mapper = new ObjectMapper();
         for (BlackboardMessage.MessageType type : messageTypes) {

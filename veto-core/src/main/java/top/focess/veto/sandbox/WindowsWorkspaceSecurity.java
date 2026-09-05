@@ -8,9 +8,11 @@ import com.sun.jna.platform.win32.Kernel32;
 import com.sun.jna.ptr.IntByReference;
 import com.sun.jna.ptr.PointerByReference;
 import com.sun.jna.win32.StdCallLibrary;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -267,10 +269,10 @@ final class WindowsWorkspaceSecurity {
                 }
                 syntheticMasks.put(denied, new SyntheticMask(directory, 1));
                 acquired.add(denied);
-            } catch (java.nio.file.FileAlreadyExistsException raced) {
+            } catch (FileAlreadyExistsException raced) {
                 // A host process created the protected node first; provision() masks that real
                 // node.
-            } catch (java.io.IOException e) {
+            } catch (IOException e) {
                 releaseCreationMasks(acquired);
                 throw new IllegalStateException(
                         "Cannot create protected Windows sandbox mask: " + denied, e);
@@ -317,7 +319,7 @@ final class WindowsWorkspaceSecurity {
                     continue;
                 }
                 Files.deleteIfExists(path);
-            } catch (java.io.IOException ignored) {
+            } catch (IOException ignored) {
                 // A host-side change wins: never delete a node that no longer matches the empty
                 // mask.
             }
@@ -434,7 +436,7 @@ final class WindowsWorkspaceSecurity {
             List<AclEntry> retained = new ArrayList<>(view.getAcl());
             retained.removeIf(entry -> sandboxSidStrings.contains(entry.principal().getName()));
             view.setAcl(retained);
-        } catch (java.io.IOException e) {
+        } catch (IOException e) {
             throw new IllegalStateException(
                     "Cannot mask protected Windows sandbox path: " + path, e);
         }

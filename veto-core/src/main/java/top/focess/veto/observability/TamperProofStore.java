@@ -9,6 +9,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 import javax.crypto.*;
 import javax.crypto.spec.GCMParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -272,7 +273,7 @@ public class TamperProofStore {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] keyBytes =
                     digest.digest(config.getEncryptionKey().getBytes(StandardCharsets.UTF_8));
-            return new javax.crypto.spec.SecretKeySpec(keyBytes, "AES");
+            return new SecretKeySpec(keyBytes, "AES");
         } catch (NoSuchAlgorithmException e) {
             throw new RuntimeException("SHA-256 not available", e);
         }

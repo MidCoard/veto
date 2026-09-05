@@ -1,6 +1,10 @@
 package top.focess.veto.llm.client;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.util.ArrayList;
+import java.util.List;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.llm.core.ResolvedRequest;
 
@@ -51,7 +55,7 @@ public abstract class LlmClient {
         // Collect every TOP-LEVEL balanced JSON object as [start, endExclusive) spans. The scan
         // resumes past each closed object so nested objects are not double-counted; a '{' that
         // never closes (a prose brace, a truncated fragment) is skipped.
-        java.util.List<int[]> spans = new java.util.ArrayList<>();
+        List<int[]> spans = new ArrayList<>();
         int start = trimmed.indexOf('{');
         while (start >= 0) {
             int end = balancedObjectEnd(trimmed, start);
@@ -69,16 +73,15 @@ public abstract class LlmClient {
             int[] span = spans.get(0);
             return trimmed.substring(span[0], span[1]);
         }
-        com.fasterxml.jackson.databind.node.ObjectNode merged = objectMapper.createObjectNode();
+        ObjectNode merged = objectMapper.createObjectNode();
         for (int[] span : spans) {
             try {
                 if (objectMapper.readTree(trimmed.substring(span[0], span[1]))
-                        instanceof com.fasterxml.jackson.databind.node.ObjectNode obj) {
+                        instanceof ObjectNode obj) {
                     obj.properties()
                             .forEach(
                                     entry -> {
-                                        com.fasterxml.jackson.databind.JsonNode existing =
-                                                merged.get(entry.getKey());
+                                        JsonNode existing = merged.get(entry.getKey());
                                         if ("calls".equals(entry.getKey())
                                                 && existing
                                                         instanceof

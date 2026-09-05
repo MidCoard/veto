@@ -2,6 +2,7 @@ package top.focess.veto.agent.screening;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.intercept.VetoScenario;
@@ -15,7 +16,7 @@ class ScreeningTest {
     @Test
     void unavailableProviderReturnsNoFabricatedJudgment() {
         SlmScreeningProvider provider = SlmScreeningProvider.unavailable();
-        ToolCall call = new ToolCall("any", java.util.Map.of());
+        ToolCall call = new ToolCall("any", Map.of());
         assertTrue(provider.screen(call, anAgentToolDef(), "any thought").isEmpty());
     }
 
@@ -42,6 +43,6 @@ class ScreeningTest {
                 ToolCapability.AGENT_CONTROL,
                 Danger.SAFE,
                 ToolDocs.nonNullClass(Object.class),
-                java.util.Map.of());
+                Map.of());
     }
 }

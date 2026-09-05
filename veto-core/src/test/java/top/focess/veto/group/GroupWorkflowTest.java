@@ -2,6 +2,7 @@ package top.focess.veto.group;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -161,7 +162,7 @@ class GroupWorkflowTest {
         registry.put(g);
         assertEquals(Group.GroupState.ACTIVE, requireGroup(registry.get(g.groupId())).state());
 
-        registry.disband(g.groupId(), java.time.Instant.now());
+        registry.disband(g.groupId(), Instant.now());
         assertEquals(Group.GroupState.DISBANDED, requireGroup(registry.get(g.groupId())).state());
     }
 

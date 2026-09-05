@@ -1,11 +1,12 @@
 package top.focess.veto.memory.embedder;
 
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.memory.MemoryStore;
+import top.focess.veto.memory.PgvectorMemoryStore;
 
 /**
- * Text -> vector embedding for the memory subsystem, decoupled from {@link
- * top.focess.veto.memory.MemoryStore} so the embedding model can evolve (local implementation vs.
- * provider API) without touching storage.
+ * Text -> vector embedding for the memory subsystem, decoupled from {@link MemoryStore} so the
+ * embedding model can evolve (local implementation vs. provider API) without touching storage.
  *
  * <p>The active bean is selected by {@link EmbedderConfiguration}: a {@link HashEmbedder} is the
  * local default ({@code @ConditionalOnMissingBean}); when {@code veto.memory.embedder.provider} is
@@ -24,8 +25,8 @@ public interface Embedder {
 
     /**
      * The dimensionality of vectors this embedder produces. Must be stable across calls so that
-     * {@link top.focess.veto.memory.PgvectorMemoryStore} can size its {@code vector(N)} column and
-     * that indices/scores comparing two vectors stay well-formed.
+     * {@link PgvectorMemoryStore} can size its {@code vector(N)} column and that indices/scores
+     * comparing two vectors stay well-formed.
      *
      * @return the vector dimension
      */

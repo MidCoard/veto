@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
 
 /** Codex-aligned Linux launcher: Bubblewrap filesystem/namespaces plus an inner seccomp stage. */
@@ -121,7 +122,7 @@ final class LinuxBubblewrapSandbox {
         Set<Path> candidates = new LinkedHashSet<>(SYSTEM_BWRAP_CANDIDATES);
         String path = System.getenv("PATH");
         if (path != null && !path.isBlank()) {
-            for (String entry : path.split(java.util.regex.Pattern.quote(File.pathSeparator))) {
+            for (String entry : path.split(Pattern.quote(File.pathSeparator))) {
                 if (!entry.isBlank()) {
                     candidates.add(Path.of(entry).toAbsolutePath().normalize().resolve("bwrap"));
                 }

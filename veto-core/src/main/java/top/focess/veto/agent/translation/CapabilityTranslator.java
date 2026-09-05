@@ -30,7 +30,7 @@ public interface CapabilityTranslator {
 
     /**
      * Builds the per-turn {@code veto_pulse} response schema that constrains the model to a {@link
-     * top.focess.veto.llm.core.VetoResponse}.
+     * VetoResponse}.
      *
      * @param guidedSwitch whether this is the guided-switch turn (emits {@code actions} + {@code
      *     features.guided=true}; {@code calls} forbidden) vs an autonomous turn ({@code calls}
