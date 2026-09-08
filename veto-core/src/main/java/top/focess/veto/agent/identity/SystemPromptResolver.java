@@ -60,7 +60,8 @@ public class SystemPromptResolver {
         return delegationPrompt;
     }
 
-    private static @NonNull String loadRules(@NonNull String resource) {
+    /** Loads required instructions from a bundled classpath resource. */
+    public static @NonNull String loadRules(@NonNull String resource) {
         try (InputStream in = new ClassPathResource(resource).getInputStream()) {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8).strip();
         } catch (IOException e) {

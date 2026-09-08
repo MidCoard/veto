@@ -173,9 +173,7 @@ public final class PromptBlocks {
         sb.append(
                 "These are the tools available to YOU."
                         + " Call them by populating the `calls` array with an entry whose `tool_name`"
-                        + " is the tool and whose `args` matches the schema below."
-                        + " Schematic examples use `<workspace-root>`; replace it with an exact root"
-                        + " from the Workspace block.\n");
+                        + " is the tool and whose `args` matches the schema below.\n");
         List<ToolDefinition> sorted =
                 flatTools.stream()
                         .sorted(

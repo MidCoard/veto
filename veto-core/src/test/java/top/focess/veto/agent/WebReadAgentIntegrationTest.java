@@ -226,6 +226,19 @@ class WebReadAgentIntegrationTest {
         assertTrue(result.success(), result.message());
         assertEquals("Timeout is 30 seconds.", result.message());
         assertEquals(3, childRequests.size());
+        String childSystem = childRequests.getFirst().systemPrompt();
+        assertTrue(childSystem.contains("## Operating Contract"));
+        assertTrue(childSystem.contains("## Task Instructions"));
+        assertTrue(childSystem.contains("## Your Tools"));
+        assertTrue(childSystem.contains("## Response Protocol"));
+        for (String name : List.of("fetch_page", "find_sections", "read_sections", "finish_read")) {
+            assertTrue(childSystem.contains("### `" + name + "`"));
+        }
+        assertFalse(childSystem.contains("### `run_command`"));
+        assertFalse(childSystem.contains("## Workspace"));
+        assertFalse(childSystem.contains("## Delegation Rules"));
+        assertFalse(childSystem.contains("{{TASK_INSTRUCTIONS}}"));
+        assertFalse(childSystem.contains("{{TOOLS}}"));
         ArgumentCaptor<@NonNull TurnRecordEntity> captured = ArgumentCaptor.captor();
         verify(turnRepository, atLeastOnce()).save(captured.capture());
         var savedTurns = captured.getAllValues();

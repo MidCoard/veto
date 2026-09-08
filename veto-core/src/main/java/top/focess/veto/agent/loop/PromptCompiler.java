@@ -121,12 +121,18 @@ public class PromptCompiler {
         this.objectMapper = mapper;
         this.toolResultPresenter = new ToolResultPresenter(mapper);
         this.deployerPolicy = DeployerPolicy.PROTECTED;
-        this.isolatedInstructions = instructions;
+        this.isolatedInstructions =
+                PromptTemplate.render(
+                        SystemPromptResolver.loadRules("veto/default-tool-agent-system-prompt.md"),
+                        Map.of("TASK_INSTRUCTIONS", instructions));
         this.maxInputTokens = maxInputTokens;
         this.contextFillRatio = 1;
     }
 
-    /** Uses fixed instructions without resolving workspace, role, skill, or environment content. */
+    /**
+     * Links the tool-agent template without resolving workspace, group role, skills, or
+     * environment.
+     */
     public static @NonNull PromptCompiler isolated(
             @NonNull CapabilityTranslator translator,
             @NonNull ObjectMapper mapper,
@@ -289,7 +295,16 @@ public class PromptCompiler {
             @NonNull ToolResultPresentationMode toolResultPresentation,
             boolean guidedEnabled) {
         String fixed = isolatedInstructions;
-        if (fixed != null) return fixed;
+        if (fixed != null) {
+            return PromptTemplate.render(
+                    fixed,
+                    Map.of(
+                            "IDENTITY",
+                                    PromptBlocks.identity(persona.name(), persona.description()),
+                            "TOOLS", PromptBlocks.tools(flatTools),
+                            "RESULT_CONVENTIONS",
+                                    PromptBlocks.resultConventions(toolResultPresentation)));
+        }
         SystemPromptResolver resolver = systemPromptResolver;
         if (resolver == null) throw new IllegalStateException("Missing standard prompt resolver");
         String law = sessionWorkspace.vetoMdResolver().resolve();
