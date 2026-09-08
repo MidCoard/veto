@@ -3,6 +3,7 @@ package top.focess.veto.agent.capability;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.tool.ToolCallContext;
@@ -12,6 +13,7 @@ import top.focess.veto.group.Blackboard;
 import top.focess.veto.group.BlackboardMessage;
 import top.focess.veto.group.BlackboardMessage.MessageType;
 import top.focess.veto.group.Group;
+import top.focess.veto.group.Group.GroupState;
 import top.focess.veto.group.GroupOrchestrator;
 import top.focess.veto.group.GroupOrchestrator.NodeEdit;
 import top.focess.veto.group.GroupRegistry;
@@ -68,6 +70,23 @@ public final class GroupControlCapabilityImpl implements GroupControlCapability 
         if (id == null) throw new SecurityException("No active group");
         spawner.disband(id);
         ToolCallContextHolder.requestReverseTransform(brief);
+    }
+
+    @Override
+    public void awaitChange(long since, @NonNull GroupState state, int waitSeconds)
+            throws InterruptedException {
+        var ctx = CapabilityAccess.require(ToolCapability.GROUP_CONTROL, "inspect_group");
+        requireLeader(ctx);
+        UUID id = ctx.groupId();
+        if (id == null) return;
+        blackboard.awaitChange(
+                () -> {
+                    Group current = registry.get(id);
+                    return current == null
+                            || current.state() != state
+                            || !newMessages(id, since).isEmpty();
+                },
+                TimeUnit.SECONDS.toNanos(Math.max(0, Math.min(30, waitSeconds))));
     }
 
     @Override

@@ -63,7 +63,7 @@ public class ProtectedSetResolver {
             paths.add(resolveConfiguredPath(vault.getVaultHome()));
         }
         for (String configured : configuration.getPaths()) {
-            if (configured != null && !configured.isBlank()) {
+            if (!configured.isBlank()) {
                 paths.add(resolveConfiguredPath(configured));
             }
         }

@@ -143,17 +143,7 @@ public final class RunTaskTool implements ProcessExecutionTool<RunTaskTool.Args>
                         timeout,
                         Boolean.TRUE.equals(args.network()));
         try {
-            Map<String, Object> result = new LinkedHashMap<>();
-            result.put("status", "started");
-            result.put("taskId", info.taskId());
-            result.put("pid", info.pid());
-            result.put("command", info.command());
-            result.put("cwd", info.cwd());
-            result.put("requestedTimeoutSeconds", timeout);
-            result.put(
-                    "effectiveTimeoutSeconds",
-                    timeout <= 0 ? maximumTimeout : Math.min(timeout, maximumTimeout));
-            return ToolJson.object(result);
+            return startedResult(info, timeout, maximumTimeout);
         } catch (RuntimeException e) {
             capability.cancel(info.taskId());
             return ToolErrors.failure(
@@ -162,5 +152,20 @@ public final class RunTaskTool implements ProcessExecutionTool<RunTaskTool.Args>
                             + "): "
                             + e.getMessage());
         }
+    }
+
+    private static @NonNull String startedResult(
+            BackgroundTaskManager.@NonNull TaskInfo info, int timeout, long maximumTimeout) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("status", "started");
+        result.put("taskId", info.taskId());
+        result.put("pid", info.pid());
+        result.put("command", info.command());
+        result.put("cwd", info.cwd());
+        result.put("requestedTimeoutSeconds", timeout);
+        result.put(
+                "effectiveTimeoutSeconds",
+                timeout == 0 ? maximumTimeout : Math.min(timeout, maximumTimeout));
+        return ToolJson.object(result);
     }
 }

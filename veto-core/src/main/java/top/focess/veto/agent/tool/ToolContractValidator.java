@@ -1,7 +1,7 @@
 package top.focess.veto.agent.tool;
 
 import java.lang.reflect.Modifier;
-import java.util.List;
+import java.util.stream.Stream;
 import org.jspecify.annotations.NonNull;
 import org.springframework.aop.support.AopUtils;
 import top.focess.veto.agent.capability.*;
@@ -131,14 +131,13 @@ public final class ToolContractValidator {
                 "errorsAndEdgeCases is required");
         require(definition, !documentation.security().isBlank(), "security is required");
         boolean embedsHeading =
-                List.of(
+                Stream.of(
                                 documentation.behavior(),
                                 documentation.whenToUse(),
                                 documentation.whenNotToUse(),
                                 documentation.resultContract(),
                                 documentation.errorsAndEdgeCases(),
                                 documentation.security())
-                        .stream()
                         .anyMatch(section -> section.contains("#### "));
         require(
                 definition,

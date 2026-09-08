@@ -277,6 +277,4 @@ public final class NetworkEgressCapabilityImpl implements NetworkEgressCapabilit
         }
         return "https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80;
     }
-
-    /** Converts HTML to clean readable text (title + main body; scripts/styles/nav removed). */
 }

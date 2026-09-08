@@ -5,7 +5,9 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BooleanSupplier;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 
@@ -45,7 +47,24 @@ public class Blackboard {
                         message.payload(),
                         seq);
         messages.computeIfAbsent(message.groupId(), k -> new CopyOnWriteArrayList<>()).add(stamped);
+        signalChange();
         return stamped;
+    }
+
+    /** Waits for a message or group-state condition without polling. */
+    public synchronized void awaitChange(@NonNull BooleanSupplier ready, long timeoutNanos)
+            throws InterruptedException {
+        long deadline = System.nanoTime() + timeoutNanos;
+        long remaining = timeoutNanos;
+        while (!ready.getAsBoolean() && remaining > 0) {
+            TimeUnit.NANOSECONDS.timedWait(this, remaining);
+            remaining = deadline - System.nanoTime();
+        }
+    }
+
+    /** Wakes readers after messages or group state change. */
+    public synchronized void signalChange() {
+        notifyAll();
     }
 
     /** Read all messages for a group, in turnSeq order. */

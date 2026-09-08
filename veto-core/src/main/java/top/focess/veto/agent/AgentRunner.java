@@ -910,22 +910,7 @@ public class AgentRunner {
                 }
                 VetoResponse checked =
                         ResponseEnforcer.enforce(response, allowGuided, whitelistedTools);
-                var generatedCalls = checked.calls();
-                String checkedMessage = checked.message();
-                if (completionTool != null
-                        && (checked.guide() != null
-                                || generatedCalls == null
-                                || generatedCalls.size() != 1
-                                || (checkedMessage != null && !checkedMessage.isBlank())))
-                    throw new ModelSchemaException(
-                            "This agent requires exactly one tool call per turn and must complete through "
-                                    + completionTool
-                                    + "; freeform answers and guide are not accepted");
-                if (generation != null
-                        && ((generatedCalls != null && !generatedCalls.isEmpty())
-                                || checked.guide() != null))
-                    throw new ModelSchemaException(
-                            "generate requires message output and no calls or guide");
+                validateResponseMode(checked, generation);
                 return checked;
             } catch (ModelSchemaException e) {
                 log.warn(
@@ -949,6 +934,25 @@ public class AgentRunner {
                 throw e;
             }
         }
+    }
+
+    private void validateResponseMode(@NonNull VetoResponse checked, GenerateAction generation) {
+        var generatedCalls = checked.calls();
+        String checkedMessage = checked.message();
+        if (completionTool != null
+                && (checked.guide() != null
+                        || generatedCalls == null
+                        || generatedCalls.size() != 1
+                        || (checkedMessage != null && !checkedMessage.isBlank())))
+            throw new ModelSchemaException(
+                    "This agent requires exactly one tool call per turn and must complete through "
+                            + completionTool
+                            + "; freeform answers and guide are not accepted");
+        if (generation != null
+                && ((generatedCalls != null && !generatedCalls.isEmpty())
+                        || checked.guide() != null))
+            throw new ModelSchemaException(
+                    "generate requires message output and no calls or guide");
     }
 
     private @NonNull VetoRequest generationRequest(
@@ -1599,27 +1603,27 @@ public class AgentRunner {
 
     private void appendThought(@NonNull VetoResponse response) {
         String thought = response.thought();
-        if ((thought != null && !thought.isBlank()) || response.guide() != null) {
-            // Store the thought text + the provider's reasoning_content (if any). The
-            // reasoning_content is echoed back on the next request's assistant message so DeepSeek
-            // thinking mode accepts the conversation history.
-            Map<String, Object> payload = new HashMap<>();
-            if (response.guide() != null) {
-                JsonNode responseJson = objectMapper.valueToTree(response);
-                payload.put("response", responseJson.toString());
-            } else if (thought != null) {
-                payload.put("response", thought);
-            }
-            if (lastReasoningContent != null && !lastReasoningContent.isBlank()) {
-                payload.put("reasoning_content", lastReasoningContent);
-            }
-            appendTurn(new TurnRecord(++turnNumber, TurnType.ASSISTANT_THOUGHT, payload, null));
-            lastReasoningContent = null; // consumed
-            // Stream the thought to transports now (after it is durably recorded). The terminal
-            // renders it dimmed/muted ahead of the user-facing message that follows, so the user
-            // can follow the reasoning without it competing with the answer.
-            if (thought != null) emitThought(thought);
+        // Store the thought text + the provider's reasoning_content (if any). The
+        // reasoning_content is echoed back on the next request's assistant message so DeepSeek
+        // thinking mode accepts the conversation history.
+        Map<String, Object> payload = new HashMap<>();
+        if (response.guide() != null) {
+            JsonNode responseJson = objectMapper.valueToTree(response);
+            payload.put("response", responseJson.toString());
+        } else if (thought != null && !thought.isBlank()) {
+            payload.put("response", thought);
+        } else {
+            return;
         }
+        if (lastReasoningContent != null && !lastReasoningContent.isBlank()) {
+            payload.put("reasoning_content", lastReasoningContent);
+        }
+        appendTurn(new TurnRecord(++turnNumber, TurnType.ASSISTANT_THOUGHT, payload, null));
+        lastReasoningContent = null; // consumed
+        // Stream the thought to transports now (after it is durably recorded). The terminal
+        // renders it dimmed/muted ahead of the user-facing message that follows, so the user
+        // can follow the reasoning without it competing with the answer.
+        if (thought != null) emitThought(thought);
     }
 
     private void emitMessage(@NonNull String message) {

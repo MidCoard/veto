@@ -74,7 +74,7 @@ import top.focess.veto.agent.tool.WorkspaceWriteTool;
         })
 public final class DeletePathTool implements WorkspaceWriteTool<DeletePathTool.Args> {
     private static final int MAX_ENTRIES = 50_000;
-    private static final Duration MAX_DURATION = Duration.ofSeconds(10);
+    private static final @NonNull Duration MAX_DURATION = Duration.ofSeconds(10);
 
     public record Args(
             @NonNull @SecurityHint(ParamCategory.FILESYSTEM_PATH) @Doc("Absolute path to delete.")

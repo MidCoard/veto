@@ -54,13 +54,17 @@ public final class TaskControlCapabilityImpl implements TaskControlCapability {
         UUID sessionId = context.sessionId();
         var binding = context.executionPermit().taskBinding();
         if (binding == null
-                || sessionId == null
                 || !binding.taskId().equals(taskId)
                 || !binding.agentId().equals(context.agentId())
                 || !binding.sessionId().equals(sessionId)) {
             throw new SecurityException("Input requires the authorized task instance");
         }
         return taskManager.queueInput(
-                context.agentId(), sessionId, taskId, binding.taskInstanceId(), bytes, closeStdin);
+                context.agentId(),
+                binding.sessionId(),
+                taskId,
+                binding.taskInstanceId(),
+                bytes,
+                closeStdin);
     }
 }

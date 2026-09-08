@@ -87,21 +87,7 @@ public final class ProgramValidator {
         }
         for (Action action : program.actions()) {
             if (action instanceof ConditionalGotoAction condition) {
-                Check check = condition.check();
-                if (check instanceof Check.ExitOk exit && !ids.contains(exit.stepId()))
-                    throw new InvalidProgramException(
-                            "exit_ok references unknown step: " + exit.stepId());
-                if (check instanceof Check.Numeric numeric
-                        && !Set.of("gt", "lt", "eq", "gte", "lte").contains(numeric.op()))
-                    throw new InvalidProgramException(
-                            "Unknown numeric comparison: " + numeric.op());
-                if (check instanceof Check.Matches matches) {
-                    try {
-                        Pattern.compile(matches.regex());
-                    } catch (PatternSyntaxException e) {
-                        throw new InvalidProgramException("Invalid regex");
-                    }
-                }
+                validateCheck(condition.check(), ids);
             }
         }
         boolean[] reachesStop = new boolean[n];
@@ -129,6 +115,21 @@ public final class ProgramValidator {
         if (!acyclic(program)) {
             throw new InvalidProgramException(
                     "goto/conditional_goto graph has a deterministic cycle");
+        }
+    }
+
+    private static void validateCheck(@NonNull Check check, @NonNull Set<String> ids) {
+        if (check instanceof Check.ExitOk exit && !ids.contains(exit.stepId()))
+            throw new InvalidProgramException("exit_ok references unknown step: " + exit.stepId());
+        if (check instanceof Check.Numeric numeric
+                && !Set.of("gt", "lt", "eq", "gte", "lte").contains(numeric.op()))
+            throw new InvalidProgramException("Unknown numeric comparison: " + numeric.op());
+        if (check instanceof Check.Matches matches) {
+            try {
+                Pattern.compile(matches.regex());
+            } catch (PatternSyntaxException e) {
+                throw new InvalidProgramException("Invalid regex");
+            }
         }
     }
 

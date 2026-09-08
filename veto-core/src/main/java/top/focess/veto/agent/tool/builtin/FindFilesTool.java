@@ -101,8 +101,7 @@ public final class FindFilesTool implements WorkspaceReadTool<FindFilesTool.Args
             var traversal = new WorkspaceTraversal(root);
             List<String> matches = new ArrayList<>();
             String reason = null;
-            WorkspaceFile file;
-            while ((file = traversal.next()) != null) {
+            while (traversal.next() != null) {
                 String relative = traversal.relativeName();
                 if (matcher.matcher(relative).matches()) {
                     if (matches.size() == 5000) {

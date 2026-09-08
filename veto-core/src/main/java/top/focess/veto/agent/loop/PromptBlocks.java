@@ -306,7 +306,7 @@ public final class PromptBlocks {
      * Keep result examples portable instead of teaching POSIX-only placeholder paths on Windows.
      */
     private static @NonNull String schematicResult(@NonNull String example) {
-        return example.replaceAll("/(?:abs|workspace)(?:/[^\\s\\\",}\\]]+)*", "<absolute-path>");
+        return example.replaceAll("/(?:abs|workspace)(?:/[^\\s\",}\\]]+)*", "<absolute-path>");
     }
 
     private static @NonNull String resultFenceLanguage(@NonNull String example) {

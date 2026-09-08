@@ -21,5 +21,5 @@ public enum ToolCapability {
     USER_INTERACTION,
     /** Fail-closed fallback for an agent tool that has not yet declared a specific capability. */
     AGENT_CONTROL,
-    REMOTE_UNKNOWN;
+    REMOTE_UNKNOWN
 }

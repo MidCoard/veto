@@ -4,6 +4,8 @@
 
 version: "1.0"
 linter: qodana-jvm-community
+bootstrap: sh ./gradlew :veto-core:generateVersion :veto-terminal:generateVersion --warning-mode fail
+failThreshold: 0
 profile:
   name: qodana.recommended
 include:

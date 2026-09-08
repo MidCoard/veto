@@ -22,6 +22,7 @@ public class GroupRegistry {
 
     public void put(@NonNull Group group) {
         groups.put(group.groupId(), group);
+        group.blackboard().signalChange();
     }
 
     public Group get(@NonNull UUID groupId) {
@@ -33,11 +34,14 @@ public class GroupRegistry {
         if (g == null) {
             return;
         }
-        groups.put(groupId, g.withState(Group.GroupState.DISBANDED, when));
+        put(g.withState(Group.GroupState.DISBANDED, when));
     }
 
     public boolean remove(@NonNull UUID groupId) {
-        return groups.remove(groupId) != null;
+        Group removed = groups.remove(groupId);
+        if (removed == null) return false;
+        removed.blackboard().signalChange();
+        return true;
     }
 
     public @NonNull Map<UUID, Group> snapshot() {

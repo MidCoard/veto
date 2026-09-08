@@ -140,7 +140,7 @@ public class Gateway {
         }
         Relevance relevance = advisory.map(SlmScreening::relevance).orElse(Relevance.HIGH);
         VetoScenario scenario = scenarioFor(danger, def);
-        String reason = reasonFor(deterministicDanger, advisory, danger, def);
+        String reason = reasonFor(deterministicDanger, advisory.orElse(null), danger, def);
         return new GatewayResult.Screened(
                 new Screening(relevance, danger, advisory.isPresent(), scenario, reason),
                 executionPermit);
@@ -199,12 +199,13 @@ public class Gateway {
 
     private @NonNull String reasonFor(
             @NonNull Danger deterministicDanger,
-            @NonNull Optional<SlmScreening> advisory,
+            SlmScreening advisory,
             @NonNull Danger finalDanger,
             @NonNull ToolDefinition def) {
         String slm =
-                advisory.map(value -> value.danger() + " (" + value.reason() + ")")
-                        .orElse("unavailable");
+                advisory == null
+                        ? "unavailable"
+                        : advisory.danger() + " (" + advisory.reason() + ")";
         return def.capability()
                 + " default="
                 + def.defaultDanger()

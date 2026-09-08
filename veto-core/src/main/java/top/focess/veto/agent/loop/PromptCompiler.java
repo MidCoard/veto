@@ -206,7 +206,7 @@ public class PromptCompiler {
                 translator.translateTools(
                         availableTools(
                                 persona.whitelistedTools(), persona.registeredSkills().isEmpty()));
-        String linkedSystemMessage =
+        String systemMessage =
                 buildSystemMessage(
                         persona,
                         sessionWorkspace,
@@ -214,7 +214,6 @@ public class PromptCompiler {
                         flatTools,
                         toolResultPresentation,
                         guidedEnabled);
-        String systemMessage = linkedSystemMessage;
         List<ChatMessage> conversation = resolveRewinds(history, toolResultPresentation);
         if (isolatedInstructions != null) {
             var schema = translator.vetoResponseSchema(false, flatTools);
@@ -336,7 +335,6 @@ public class PromptCompiler {
                         "Isolated agent's latest observation exceeds its input budget");
             ChatMessage removed = messages.remove(1);
             if (removed.callId() != null
-                    && !messages.isEmpty()
                     && "tool".equals(messages.get(1).role())
                     && Objects.equals(removed.callId(), messages.get(1).callId()))
                 messages.remove(1);

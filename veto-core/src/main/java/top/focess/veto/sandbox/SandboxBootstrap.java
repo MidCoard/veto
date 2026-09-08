@@ -31,7 +31,7 @@ public final class SandboxBootstrap {
     }
 
     /** Entry point used when Veto is running from a regular JVM classpath. */
-    public static void main(@NonNull String @NonNull [] args) {
+    static void main(@NonNull String @NonNull [] args) {
         System.exit(run(args));
     }
 

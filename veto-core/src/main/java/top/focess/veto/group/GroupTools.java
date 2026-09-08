@@ -1,7 +1,6 @@
 package top.focess.veto.group;
 
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.capability.DelegationCapability;
@@ -269,25 +268,17 @@ public final class GroupTools {
             Integer requestedWait = args.waitSeconds();
             int waitSeconds = requestedWait == null ? 0 : requestedWait;
             waitSeconds = Math.max(0, Math.min(30, waitSeconds));
-            GroupSnapshot group = initial;
-            List<BlackboardMessage> messages = capability.messages(since);
-            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(waitSeconds);
-            while (messages.isEmpty()
-                    && group.state() == initial.state()
-                    && System.nanoTime() < deadline) {
-                try {
-                    Thread.sleep(100);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    return ToolErrors.failure("Group not inspected: wait interrupted.");
-                }
-                GroupSnapshot refreshed = capability.snapshot();
-                if (refreshed == null) {
-                    return ToolErrors.failure("Group not inspected: group record disappeared.");
-                }
-                group = refreshed;
-                messages = capability.messages(since);
+            try {
+                capability.awaitChange(since, initial.state(), waitSeconds);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return ToolErrors.failure("Group not inspected: wait interrupted.");
             }
+            GroupSnapshot group = capability.snapshot();
+            if (group == null) {
+                return ToolErrors.failure("Group not inspected: group record disappeared.");
+            }
+            List<BlackboardMessage> messages = capability.messages(since);
             return render(group, messages, since);
         }
     }

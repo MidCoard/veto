@@ -209,7 +209,7 @@ final class WorkspaceFileAccess {
         Path temporary = parent.resolve(".veto-write-" + UUID.randomUUID() + ".tmp");
         boolean created = false;
         boolean moved = false;
-        FileIdentity createdIdentity = FileIdentity.unavailable();
+        FileIdentity createdIdentity;
         try {
             try (OutputStream staging =
                     Files.newOutputStream(

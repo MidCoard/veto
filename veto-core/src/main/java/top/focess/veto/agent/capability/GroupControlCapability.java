@@ -5,6 +5,7 @@ import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.group.BlackboardMessage;
 import top.focess.veto.group.BlackboardMessage.MessageType;
+import top.focess.veto.group.Group.GroupState;
 import top.focess.veto.group.GroupOrchestrator.NodeEdit;
 import top.focess.veto.group.GroupSnapshot;
 
@@ -13,6 +14,9 @@ public sealed interface GroupControlCapability extends Capability
     GroupSnapshot snapshot();
 
     @NonNull List<@NonNull BlackboardMessage> messages(long since);
+
+    void awaitChange(long since, @NonNull GroupState state, int waitSeconds)
+            throws InterruptedException;
 
     void disband(@NonNull String brief);
 
