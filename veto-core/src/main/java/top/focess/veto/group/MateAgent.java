@@ -11,6 +11,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
@@ -54,7 +55,7 @@ public class MateAgent {
     private final @NonNull Blackboard blackboard;
     private final @NonNull MateBreakerRegistry breakers;
     private final long pollIntervalMs;
-    private final long taskTimeoutMs;
+    private final long resultPollIntervalMs;
     private final @NonNull String skillset;
 
     /** Set of turnSeqs we have already processed (so we don't re-dispatch on each tick). */
@@ -82,7 +83,7 @@ public class MateAgent {
                 breakers,
                 maxCallsPerEpisode,
                 200,
-                60_000);
+                1_000);
     }
 
     public MateAgent(
@@ -94,7 +95,7 @@ public class MateAgent {
             @NonNull MateBreakerRegistry breakers,
             long maxCallsPerEpisode,
             long pollIntervalMs,
-            long taskTimeoutMs) {
+            long resultPollIntervalMs) {
         this.mateId = mateId;
         this.groupId = groupId;
         this.skillset = skillset;
@@ -102,7 +103,7 @@ public class MateAgent {
         this.blackboard = blackboard;
         this.breakers = breakers;
         this.pollIntervalMs = pollIntervalMs;
-        this.taskTimeoutMs = taskTimeoutMs;
+        this.resultPollIntervalMs = resultPollIntervalMs;
         this.scheduler =
                 Executors.newSingleThreadScheduledExecutor(
                         r -> {
@@ -140,35 +141,22 @@ public class MateAgent {
                 scheduler.scheduleAtFixedRate(this::poll, 0, pollIntervalMs, TimeUnit.MILLISECONDS);
     }
 
-    /**
-     * Stop polling. Awaits termination of in-flight tasks (bounded by taskTimeoutMs + slack) so a
-     * mid-task poll cannot post Blackboard messages after disband has flipped the group's state.
-     */
+    /** Stop polling, interrupt the result waiter, and terminate the underlying agent. */
     public void stop() {
         if (!running.compareAndSet(true, false)) {
             return;
         }
+        agent.terminate();
         if (pollTask != null) {
-            pollTask.cancel(false);
+            pollTask.cancel(true);
         }
-        scheduler.shutdown();
+        scheduler.shutdownNow();
         try {
-            // Bounded by the longest possible poll-tick work (handleDispatch awaits the agent
-            // for up to taskTimeoutMs; add a small slack). If the await times out the in-flight
-            // task is best-effort left to finish — it can no longer post Blackboard messages
-            // because the scheduler is shut down (the executor refuses new tasks; in-flight
-            // tasks continue but are bounded by their own await deadline).
-            long awaitMs = taskTimeoutMs + 2_000L;
-            if (!scheduler.awaitTermination(awaitMs, TimeUnit.MILLISECONDS)) {
-                log.warn(
-                        "MateAgent[{}] did not terminate within {}ms — forcing shutdown",
-                        mateId,
-                        awaitMs);
-                scheduler.shutdownNow();
+            if (!scheduler.awaitTermination(2_000L, TimeUnit.MILLISECONDS)) {
+                log.warn("MateAgent[{}] result waiter did not stop within 2 seconds", mateId);
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            scheduler.shutdownNow();
         }
     }
 
@@ -178,6 +166,9 @@ public class MateAgent {
             long seen = lastSeenSeqByReceiver.getOrDefault(key, 0L);
             List<BlackboardMessage> newMessages = newMessagesSince(seen);
             for (BlackboardMessage m : newMessages) {
+                if (!running.get()) {
+                    break;
+                }
                 lastSeenSeqByReceiver.put(key, m.turnSeq());
                 if (m.type() == BlackboardMessage.MessageType.TASK_DISPATCH) {
                     handleDispatch(m);
@@ -218,27 +209,35 @@ public class MateAgent {
         log.info("MateAgent[{}] dispatching node {}: {}", mateId, nodeId, instruction);
         agent.submit(instruction);
 
-        // 4. Await the result (bounded).
-        AgentResult result;
-        try {
-            result = agent.await(Duration.ofMillis(taskTimeoutMs));
-        } catch (Exception e) {
-            // Only a genuine interrupt restores the flag - a broad Exception must not poison the
-            // thread (see ConstrainedSubprocessSubstrate's run-catch for the failure mode).
-            if (e instanceof InterruptedException) {
+        // Await the actual task result. A polling deadline is not a task failure: a Mate
+        // can legitimately need several model calls, tool waits, or user approvals.
+        while (running.get()) {
+            try {
+                AgentResult result = agent.await(Duration.ofMillis(resultPollIntervalMs));
+                if (!running.get()) {
+                    return;
+                }
+                breakers.recordModelCall(groupId, mateId);
+                if (result.success()) {
+                    postAccept(nodeId, result.message());
+                } else {
+                    postFeedback(nodeId, result.message());
+                }
+                return;
+            } catch (TimeoutException e) {
+                // Check lifecycle state, then continue waiting for this same task.
+            } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
+                if (running.get()) {
+                    postFeedback(nodeId, "result wait interrupted");
+                }
+                return;
+            } catch (RuntimeException e) {
+                if (running.get()) {
+                    postFeedback(nodeId, "result wait failed: " + e.getMessage());
+                }
+                return;
             }
-            breakers.recordModelCall(groupId, mateId);
-            postFeedback(nodeId, "await interrupted: " + e.getMessage());
-            return;
-        }
-        breakers.recordModelCall(groupId, mateId);
-
-        // 5. Dispatch the result.
-        if (result.success()) {
-            postAccept(nodeId, result.message());
-        } else {
-            postFeedback(nodeId, result.message());
         }
     }
 

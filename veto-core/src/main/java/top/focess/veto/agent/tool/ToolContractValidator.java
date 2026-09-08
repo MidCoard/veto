@@ -47,7 +47,9 @@ public final class ToolContractValidator {
                     case WORKSPACE_WRITE -> tool instanceof WorkspaceWriteTool<?>;
                     case PROCESS_EXECUTION -> tool instanceof ProcessExecutionTool<?>;
                     case TASK_CONTROL -> tool instanceof TaskControlTool<?>;
-                    case NETWORK_EGRESS -> tool instanceof NetworkEgressTool<?>;
+                    case NETWORK_EGRESS ->
+                            tool instanceof NetworkEgressTool<?>
+                                    || tool instanceof WebDocumentTool<?>;
                     case MEMORY_READ -> tool instanceof MemoryReadTool<?>;
                     case MEMORY_WRITE -> tool instanceof MemoryWriteTool<?>;
                     case DELEGATION -> tool instanceof DelegationTool<?>;
@@ -68,7 +70,10 @@ public final class ToolContractValidator {
                     case PROCESS_EXECUTION ->
                             ToolDocs.nonNullClass(ProcessExecutionCapability.class);
                     case TASK_CONTROL -> ToolDocs.nonNullClass(TaskControlCapability.class);
-                    case NETWORK_EGRESS -> ToolDocs.nonNullClass(NetworkEgressCapability.class);
+                    case NETWORK_EGRESS ->
+                            tool instanceof WebDocumentTool<?>
+                                    ? ToolDocs.nonNullClass(WebDocumentCapability.class)
+                                    : ToolDocs.nonNullClass(NetworkEgressCapability.class);
                     case MEMORY_READ -> ToolDocs.nonNullClass(MemoryReadCapability.class);
                     case MEMORY_WRITE -> ToolDocs.nonNullClass(MemoryWriteCapability.class);
                     case DELEGATION -> ToolDocs.nonNullClass(DelegationCapability.class);

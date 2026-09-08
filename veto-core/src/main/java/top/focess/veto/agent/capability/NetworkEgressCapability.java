@@ -15,4 +15,6 @@ public sealed interface NetworkEgressCapability extends Capability
             throws Exception;
 
     @NonNull FetchedPage fetch(@NonNull URI uri);
+
+    @NonNull WebReadCapability openReader(@NonNull URI uri);
 }

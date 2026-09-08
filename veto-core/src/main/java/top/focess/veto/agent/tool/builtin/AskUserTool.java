@@ -19,9 +19,11 @@ import top.focess.veto.agent.tool.ToolResultFormat;
 import top.focess.veto.agent.tool.ToolResultStatus;
 import top.focess.veto.agent.tool.UserInteractionTool;
 
-/** Pauses the calling agent until the user answers one to three short questions. */
+/** Pauses the calling agent for a batch of up to {@value #MAX_QUESTIONS} questions. */
 @Component
 public final class AskUserTool implements UserInteractionTool<AskUserTool.Args> {
+
+    private static final int MAX_QUESTIONS = 10;
 
     private final @NonNull UserInteractionCapability capability;
 
@@ -31,7 +33,10 @@ public final class AskUserTool implements UserInteractionTool<AskUserTool.Args> 
 
     @ToolDoc(
             resultFormats = {ToolResultFormat.JSON},
-            description = "Ask the user one to three short questions and wait for their answers.",
+            description =
+                    "Ask the user up to "
+                            + MAX_QUESTIONS
+                            + " short questions and wait for their answers.",
             behavior =
                     "Publishes one pending question batch to the session UI and pauses this agent"
                             + " call until the user answers or cancels. The UI adds a free-form Other"
@@ -39,7 +44,10 @@ public final class AskUserTool implements UserInteractionTool<AskUserTool.Args> 
                             + " batches are in-memory and are cancelled by a backend restart.",
             whenToUse =
                     "Use it when a missing user choice materially changes the result and cannot be"
-                            + " inferred safely.",
+                            + " inferred safely. Usually ask 1-3 questions; combine additional independent questions"
+                            + " when needed, up to "
+                            + MAX_QUESTIONS
+                            + ". Ask dependent questions in separate batches after receiving earlier answers.",
             whenNotToUse =
                     "Do not use it for permission approval, status updates, facts discoverable with"
                             + " tools, or optional preferences that do not block useful progress.",
@@ -50,7 +58,9 @@ public final class AskUserTool implements UserInteractionTool<AskUserTool.Args> 
                             + " USER_CANCELLED, while invalid values use INVALID_QUESTIONS; their"
                             + " content remains actionable plaintext in every mode.",
             errorsAndEdgeCases =
-                    "Provide 1-3 questions. Headers are 1-12 characters, ids are unique snake_case,"
+                    "Provide 1-"
+                            + MAX_QUESTIONS
+                            + " questions. Headers are 1-12 characters, ids are unique snake_case,"
                             + " prompts are 1-300 characters, and each question has 2-3 mutually"
                             + " exclusive options. The first option must be recommended and its label"
                             + " must end with `(Recommended)`. Labels are case-insensitively unique;"
@@ -67,7 +77,9 @@ public final class AskUserTool implements UserInteractionTool<AskUserTool.Args> 
     public record Args(
             @NonNull
                     @Doc(
-                            "One to three questions shown together. Each object contains required"
+                            "One to "
+                                    + MAX_QUESTIONS
+                                    + " questions shown together. Each object contains required"
                                     + " `header`, `id`, `question`, and `options` fields.")
                     List<@NonNull Question> questions) {}
 
@@ -107,7 +119,17 @@ public final class AskUserTool implements UserInteractionTool<AskUserTool.Args> 
             @NonNull Args args, @NonNull UserInteractionCapability capability) throws Exception {
         validate(args.questions());
 
-        UserQuestionRegistry.AnswerBatch answer = capability.ask(List.copyOf(args.questions()));
+        UserQuestionRegistry.AnswerBatch answer;
+        try {
+            answer = capability.ask(args.questions());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ToolExecutionException(
+                    ToolResultStatus.CANCELLED,
+                    ToolResultFormat.PLAINTEXT,
+                    "TOOL_INTERRUPTED",
+                    "The question was interrupted.");
+        }
         if (answer.cancelled()) {
             throw new ToolExecutionException(
                     ToolResultStatus.CANCELLED,
@@ -121,8 +143,10 @@ public final class AskUserTool implements UserInteractionTool<AskUserTool.Args> 
     }
 
     private static void validate(@NonNull List<@NonNull Question> questions) {
-        if (questions.isEmpty() || questions.size() > 3) {
-            ToolErrors.failure("INVALID_QUESTIONS", "ask_user requires between 1 and 3 questions.");
+        if (questions.isEmpty() || questions.size() > MAX_QUESTIONS) {
+            ToolErrors.failure(
+                    "INVALID_QUESTIONS",
+                    "ask_user requires between 1 and " + MAX_QUESTIONS + " questions.");
         }
         Set<String> ids = new HashSet<>();
         for (Question question : questions) {

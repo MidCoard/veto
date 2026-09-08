@@ -45,10 +45,9 @@ public final class UserQuestionController {
             @PathVariable @NonNull String name,
             @PathVariable @NonNull String callId,
             @RequestBody @NonNull AnswerQuestionsRequest body) {
-        if (!registry.answer(
-                RequestAuthorization.requireAgentId(name, sessionService, vault),
-                callId,
-                body.answers())) {
+        String agentId = RequestAuthorization.requireAgentId(name, sessionService, vault);
+        var answers = body.answers();
+        if (answers == null || !registry.answer(agentId, callId, answers)) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST, "Question batch or answers are invalid");
         }

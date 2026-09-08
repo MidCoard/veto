@@ -141,12 +141,29 @@ class GuidedExecutionTest {
                             assertFalse(request.userPrompt().contains("$document"));
                             return message("Migration summary");
                         };
+        var service = service(caller, new HitlRegistry(), root);
         var result =
-                service(caller, new HitlRegistry(), root)
-                        .submit("read-guided", "Read the notes", binding(), Duration.ofSeconds(15));
+                service.submit("read-guided", "Read the notes", binding(), Duration.ofSeconds(15));
         assertTrue(result.success(), result.message());
         assertEquals("Migration summary", result.message());
         assertEquals(3, calls.get());
+        var agent = service.agent("read-guided");
+        if (agent == null) throw new AssertionError("agent missing");
+        assertEquals(
+                List.of("Migration summary"),
+                agent.history().stream()
+                        .filter(turn -> turn.type() == TurnType.ASSISTANT_RESPONSE)
+                        .map(turn -> turn.payload().get("content"))
+                        .toList(),
+                "Intermediate generation and semantic judgments must not become user answers");
+        assertFalse(
+                agent.history().stream()
+                        .anyMatch(
+                                turn ->
+                                        turn.type() == TurnType.TOOL_RESPONSE
+                                                && Boolean.FALSE.equals(
+                                                        turn.payload().get("success"))),
+                "Normal STOP must not be recorded as a failed tool");
     }
 
     @Test

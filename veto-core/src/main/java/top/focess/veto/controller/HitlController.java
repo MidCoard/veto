@@ -48,14 +48,17 @@ public class HitlController {
     }
 
     /**
-     * GET /api/sessions/{name}/vetoes - the pending veto prompts for the session's primary agent:
+     * GET /api/sessions/{name}/vetoes - the pending veto prompts for the session's agents:
      * [{callId, toolName, args, options}]. Empty when nothing is parked (or the session has no
      * primary agent yet); 404 when the session does not exist.
      */
     @GetMapping("/{name}/vetoes")
     public @NonNull ResponseEntity<?> pending(@PathVariable @NonNull String name) {
         String agentId = RequestAuthorization.requireAgentId(name, sessionService, vault);
-        return ResponseEntity.ok(hitlRegistry.pendingFor(agentId));
+        return ResponseEntity.ok(
+                hitlRegistry.sessionAgents(agentId).stream()
+                        .flatMap(id -> hitlRegistry.pendingFor(id).stream())
+                        .toList());
     }
 
     /**
@@ -74,7 +77,24 @@ public class HitlController {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST, Msg.get("error.hitl.optionRequired"));
         }
-        if (!agentService.resolveVeto(agentId, callId, option)) {
+        var candidates =
+                hitlRegistry.sessionAgents(agentId).stream()
+                        .filter(
+                                id ->
+                                        hitlRegistry.pendingFor(id).stream()
+                                                .anyMatch(
+                                                        prompt ->
+                                                                callId.equals(
+                                                                        prompt.get("callId"))))
+                        .toList();
+        if (candidates.size() > 1) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT, "More than one agent has this pending call id");
+        }
+        boolean resolved =
+                candidates.size() == 1
+                        && agentService.resolveVeto(candidates.getFirst(), callId, option);
+        if (!resolved) {
             throw new ResponseStatusException(
                     HttpStatus.NOT_FOUND, Msg.get("error.hitl.noPendingVeto", callId));
         }
@@ -83,16 +103,19 @@ public class HitlController {
 
     /**
      * POST /api/sessions/{name}/cancel - the REST counterpart of the terminal's cancel: every veto
-     * currently parked for the session's primary agent is declined (fail-safe refusal), so the
-     * agent unstucks and winds the episode down. A running-but-not-parked episode has no
-     * server-side interrupt primitive (matching the terminal, where cancel only detaches the
-     * waiting thread) - the client should also abort its in-flight prompt request. Returns the
-     * number of vetoes declined.
+     * currently parked for the session's agents is declined (fail-safe refusal), so the agent
+     * unstucks and winds the episode down. A running-but-not-parked episode has no server-side
+     * interrupt primitive (matching the terminal, where cancel only detaches the waiting thread) -
+     * the client should also abort its in-flight prompt request. Returns the number of vetoes
+     * declined.
      */
     @PostMapping("/{name}/cancel")
     public @NonNull ResponseEntity<?> cancel(@PathVariable @NonNull String name) {
         String agentId = RequestAuthorization.requireAgentId(name, sessionService, vault);
-        int declined = agentService.declineAllVetoes(agentId);
+        int declined =
+                hitlRegistry.sessionAgents(agentId).stream()
+                        .mapToInt(agentService::declineAllVetoes)
+                        .sum();
         return ResponseEntity.ok(Map.of("status", "ok", "declined", declined));
     }
 }

@@ -14,7 +14,8 @@ public sealed interface NativeTool<T> extends CapabilityTool<T>
                 WorkspaceWriteTool,
                 ProcessExecutionTool,
                 TaskControlTool,
-                NetworkEgressTool {
+                NetworkEgressTool,
+                WebDocumentTool {
 
     @Override
     default @NonNull ToolCapability getCapability() {

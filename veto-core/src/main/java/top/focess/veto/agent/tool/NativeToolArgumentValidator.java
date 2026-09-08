@@ -12,11 +12,11 @@ import java.util.List;
 import org.jspecify.annotations.NonNull;
 
 /** Validates native-tool arguments against the same record schema advertised to the model. */
-final class NativeToolArgumentValidator {
+public final class NativeToolArgumentValidator {
 
     private NativeToolArgumentValidator() {}
 
-    static void validate(
+    public static void validate(
             @NonNull String toolName, @NonNull JsonNode arguments, @NonNull Class<?> argsClass) {
         JsonNode schema = ToolSchemaCompiler.compileFromRecord(argsClass);
         List<String> issues = new ArrayList<>();

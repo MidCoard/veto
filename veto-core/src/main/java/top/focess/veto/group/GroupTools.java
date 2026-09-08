@@ -475,6 +475,11 @@ public final class GroupTools {
         long next = since;
         for (BlackboardMessage message : messages) {
             next = Math.max(next, message.turnSeq());
+            var report = GroupOrchestrator.resultFromMate(message);
+            String payload =
+                    report instanceof DagNode.ResultSuccess success
+                            ? success.summary()
+                            : message.payload();
             result.append("- seq=")
                     .append(message.turnSeq())
                     .append(" sender=")
@@ -482,7 +487,7 @@ public final class GroupTools {
                     .append(" type=")
                     .append(message.type())
                     .append(" payload=")
-                    .append(oneLine(message.payload()))
+                    .append(oneLine(payload))
                     .append('\n');
         }
         result.append("nextSinceSeq: ").append(next);

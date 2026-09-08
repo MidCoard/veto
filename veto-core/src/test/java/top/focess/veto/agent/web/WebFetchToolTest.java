@@ -45,6 +45,7 @@ class WebFetchToolTest {
                     new WebFetchTool(
                             new NetworkEgressCapabilityImpl(
                                     mock(ToolDocs.nonNullClass(SearchProvider.class)),
+                                    mock(ToolDocs.nonNullClass(WebReader.class)),
                                     1,
                                     1000,
                                     true));
@@ -72,7 +73,11 @@ class WebFetchToolTest {
         WebFetchTool tool =
                 new WebFetchTool(
                         new NetworkEgressCapabilityImpl(
-                                mock(ToolDocs.nonNullClass(SearchProvider.class)), 5, 1000, false));
+                                mock(ToolDocs.nonNullClass(SearchProvider.class)),
+                                mock(ToolDocs.nonNullClass(WebReader.class)),
+                                5,
+                                1000,
+                                false));
 
         ToolExecutionException error =
                 assertThrows(
@@ -110,6 +115,7 @@ class WebFetchToolTest {
                     new WebFetchTool(
                             new NetworkEgressCapabilityImpl(
                                     mock(ToolDocs.nonNullClass(SearchProvider.class)),
+                                    mock(ToolDocs.nonNullClass(WebReader.class)),
                                     5,
                                     10,
                                     true));
@@ -158,6 +164,7 @@ class WebFetchToolTest {
                     new WebFetchTool(
                             new NetworkEgressCapabilityImpl(
                                     mock(ToolDocs.nonNullClass(SearchProvider.class)),
+                                    mock(ToolDocs.nonNullClass(WebReader.class)),
                                     5,
                                     1000,
                                     true));

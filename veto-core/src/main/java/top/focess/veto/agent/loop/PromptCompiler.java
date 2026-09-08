@@ -1,6 +1,8 @@
 package top.focess.veto.agent.loop;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -24,6 +26,7 @@ import top.focess.veto.llm.core.ChatMessage;
 import top.focess.veto.llm.core.ToolDefinition;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
 import top.focess.veto.llm.core.ToolResultPresenter;
+import top.focess.veto.llm.core.VetoRequest;
 
 /**
  * Assembles each outgoing LLM payload from the agent's turn history, persona, and resolved tool
@@ -64,7 +67,7 @@ public class PromptCompiler {
                     + " still needed)";
 
     private final @NonNull CapabilityTranslator translator;
-    private final @NonNull SystemPromptResolver systemPromptResolver;
+    private final SystemPromptResolver systemPromptResolver;
     private final @NonNull ObjectMapper objectMapper;
     private final @NonNull ToolResultPresenter toolResultPresenter;
 
@@ -75,6 +78,7 @@ public class PromptCompiler {
     private double contextFillRatio;
 
     private final @NonNull DeployerPolicy deployerPolicy;
+    private final String isolatedInstructions;
 
     public PromptCompiler(
             @NonNull CapabilityTranslator translator,
@@ -101,6 +105,62 @@ public class PromptCompiler {
         this.objectMapper = objectMapper;
         this.toolResultPresenter = toolResultPresenter;
         this.deployerPolicy = DeployerPolicy.parse(deployerPolicyRaw);
+        this.isolatedInstructions = null;
+    }
+
+    private PromptCompiler(
+            @NonNull CapabilityTranslator translator,
+            @NonNull ObjectMapper mapper,
+            @NonNull String instructions,
+            int maxInputTokens) {
+        if (instructions.isBlank() || maxInputTokens <= 0)
+            throw new IllegalArgumentException(
+                    "Isolated prompt needs instructions and a positive input budget");
+        this.translator = translator;
+        this.systemPromptResolver = null;
+        this.objectMapper = mapper;
+        this.toolResultPresenter = new ToolResultPresenter(mapper);
+        this.deployerPolicy = DeployerPolicy.PROTECTED;
+        this.isolatedInstructions = instructions;
+        this.maxInputTokens = maxInputTokens;
+        this.contextFillRatio = 1;
+    }
+
+    /** Uses fixed instructions without resolving workspace, role, skill, or environment content. */
+    public static @NonNull PromptCompiler isolated(
+            @NonNull CapabilityTranslator translator,
+            @NonNull ObjectMapper mapper,
+            @NonNull String instructions,
+            int maxInputTokens) {
+        return new PromptCompiler(translator, mapper, instructions, maxInputTokens);
+    }
+
+    /** Reapplies isolated budgeting after transient schema-repair observations are appended. */
+    public @NonNull VetoRequest fitRequest(@NonNull VetoRequest request) {
+        if (isolatedInstructions == null) return request;
+        List<ChatMessage> conversation = request.messages();
+        boolean hasSystem =
+                !conversation.isEmpty() && "system".equals(conversation.getFirst().role());
+        if (hasSystem) conversation = conversation.subList(1, conversation.size());
+        List<ChatMessage> messages =
+                new ArrayList<>(
+                        fitIsolatedBudget(
+                                request.systemPrompt(),
+                                conversation,
+                                request.tools(),
+                                request.responseSchema()));
+        if (hasSystem) messages.add(0, request.messages().getFirst());
+        return new VetoRequest(
+                request.systemPrompt(),
+                request.userPrompt(),
+                request.tools(),
+                request.providerType(),
+                request.modelName(),
+                request.credentialKey(),
+                request.options(),
+                messages,
+                request.responseSchema(),
+                request.baseUrl());
     }
 
     /**
@@ -156,6 +216,18 @@ public class PromptCompiler {
                         guidedEnabled);
         String systemMessage = linkedSystemMessage;
         List<ChatMessage> conversation = resolveRewinds(history, toolResultPresentation);
+        if (isolatedInstructions != null) {
+            var schema = translator.vetoResponseSchema(false, flatTools);
+            List<ChatMessage> messages =
+                    fitIsolatedBudget(systemMessage, conversation, flatTools, schema);
+            return new CompiledPrompt(
+                    systemMessage,
+                    messages,
+                    flatTools,
+                    schema,
+                    Math.max(0, conversation.size() - messages.size()),
+                    isolatedSize(systemMessage, messages, flatTools, schema));
+        }
         List<ChatMessage> budgeted = fitBudget(systemMessage, conversation, correctionFactor);
         List<ChatMessage> messages = wellFormed(conversation, budgeted);
 
@@ -217,6 +289,10 @@ public class PromptCompiler {
             @NonNull List<ToolDefinition> flatTools,
             @NonNull ToolResultPresentationMode toolResultPresentation,
             boolean guidedEnabled) {
+        String fixed = isolatedInstructions;
+        if (fixed != null) return fixed;
+        SystemPromptResolver resolver = systemPromptResolver;
+        if (resolver == null) throw new IllegalStateException("Missing standard prompt resolver");
         String law = sessionWorkspace.vetoMdResolver().resolve();
         // Persona identity is always retained. A deployer-supplied role base is additional trusted
         // guidance, not an identity replacement; otherwise Mate id/skillset context disappears.
@@ -231,7 +307,7 @@ public class PromptCompiler {
         blocks.put(
                 "DELEGATION_RULES",
                 flatTools.stream().anyMatch(tool -> "create_group".equals(tool.name()))
-                        ? systemPromptResolver.delegationPrompt()
+                        ? resolver.delegationPrompt()
                         : "");
         blocks.put("WORKSPACE", PromptBlocks.workspace(sessionWorkspace));
         blocks.put("ENVIRONMENT", PromptBlocks.environment());
@@ -239,11 +315,51 @@ public class PromptCompiler {
                 "RESULT_CONVENTIONS",
                 flatTools.isEmpty() ? "" : PromptBlocks.resultConventions(toolResultPresentation));
         blocks.put("TOOLS", PromptBlocks.tools(flatTools));
-        blocks.put("GUIDED_PROTOCOL", guidedEnabled ? systemPromptResolver.guidedPrompt() : "");
+        blocks.put("GUIDED_PROTOCOL", guidedEnabled ? resolver.guidedPrompt() : "");
         blocks.put(
                 "BOUNDARIES", PromptBlocks.boundaries(deployerPolicy, sessionWorkspace.pathMode()));
         blocks.put("SKILLS", PromptBlocks.skills(persona.registeredSkills()));
-        return PromptTemplate.render(systemPromptResolver.defaultPrompt(), blocks);
+        return PromptTemplate.render(resolver.defaultPrompt(), blocks);
+    }
+
+    private @NonNull List<ChatMessage> fitIsolatedBudget(
+            @NonNull String system,
+            @NonNull List<ChatMessage> conversation,
+            @NonNull List<ToolDefinition> tools,
+            JsonNode schema) {
+        List<ChatMessage> messages = new ArrayList<>(wellFormed(conversation, conversation));
+        // The opening user message is the invocation's objective. Always retain it while removing
+        // old call/result pairs; never substitute a later tool error as the task anchor.
+        while (isolatedSize(system, messages, tools, schema) > maxInputTokens) {
+            if (messages.size() <= 3)
+                throw new IllegalStateException(
+                        "Isolated agent's latest observation exceeds its input budget");
+            ChatMessage removed = messages.remove(1);
+            if (removed.callId() != null
+                    && !messages.isEmpty()
+                    && "tool".equals(messages.get(1).role())
+                    && Objects.equals(removed.callId(), messages.get(1).callId()))
+                messages.remove(1);
+        }
+        return messages;
+    }
+
+    private long isolatedSize(
+            @NonNull String system,
+            @NonNull List<ChatMessage> messages,
+            @NonNull List<ToolDefinition> tools,
+            JsonNode schema) {
+        // Serialized UTF-8 bytes conservatively account for content, reasoning, tool arguments,
+        // tool definitions, schema, and message framing without assuming English token density.
+        try {
+            return system.getBytes(StandardCharsets.UTF_8).length
+                    + objectMapper.writeValueAsBytes(messages).length
+                    + objectMapper.writeValueAsBytes(tools).length
+                    + (schema == null ? 4 : objectMapper.writeValueAsBytes(schema).length)
+                    + 256L;
+        } catch (Exception error) {
+            throw new IllegalStateException("Could not measure isolated model input", error);
+        }
     }
 
     // ── REWIND resolution ────────────────────────────────────────────

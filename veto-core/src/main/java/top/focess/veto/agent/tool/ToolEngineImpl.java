@@ -16,6 +16,7 @@ import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.SmartInitializingSingleton;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Service;
@@ -58,7 +59,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
     private final @NonNull ObjectMapper mapper;
     private final @NonNull McpJsonRpcClient remoteClient;
     private final @NonNull List<NativeTool<?>> nativeToolBeans;
-    private final @NonNull ApplicationContext applicationContext;
+    private final ApplicationContext applicationContext;
 
     private final @NonNull Map<String, NativeToolDefinition> nativeDefs = new ConcurrentHashMap<>();
     private final @NonNull Map<String, NativeTool<?>> nativeByName = new ConcurrentHashMap<>();
@@ -68,6 +69,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
     private final @NonNull Map<String, RemoteCallCapability> remoteCapabilities =
             new ConcurrentHashMap<>();
 
+    @Autowired
     public ToolEngineImpl(
             @Qualifier(LlmJacksonConfig.LLM_OBJECT_MAPPER) @NonNull ObjectMapper mapper,
             @NonNull List<NativeTool<?>> nativeToolBeans,
@@ -76,6 +78,21 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
         this.remoteClient = new McpJsonRpcClient(mapper);
         this.nativeToolBeans = nativeToolBeans;
         this.applicationContext = applicationContext;
+    }
+
+    private ToolEngineImpl(@NonNull ObjectMapper mapper, @NonNull List<NativeTool<?>> tools) {
+        this.mapper = mapper;
+        this.remoteClient = new McpJsonRpcClient(mapper);
+        this.nativeToolBeans = List.copyOf(tools);
+        this.applicationContext = null;
+    }
+
+    /** Registers only the supplied handlers through the normal contract validation path. */
+    public static @NonNull ToolEngineImpl isolated(
+            @NonNull ObjectMapper mapper, @NonNull List<NativeTool<?>> tools) {
+        ToolEngineImpl engine = new ToolEngineImpl(mapper, tools);
+        engine.init();
+        return engine;
     }
 
     @Override
@@ -99,15 +116,19 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
         }
 
         // Discover and register agent tools via Spring
-        for (AgentTool<?> bean : applicationContext.getBeansOfType(AgentTool.class).values()) {
-            String toolName = bean.getName();
-            AgentToolDefinition def =
-                    AgentToolDefinition.from(toolName, bean.getArgsClass(), bean.getCapability());
-            ToolContractValidator.validateHandler(bean, def);
-            ensureUniqueName(def.name());
-            agentDefs.put(def.name(), def);
-            agentBeans.put(toolName, bean);
-            log.info("ToolEngine: registered agent tool '{}'.", def.name());
+        ApplicationContext context = applicationContext;
+        if (context != null) {
+            for (AgentTool<?> bean : context.getBeansOfType(AgentTool.class).values()) {
+                String toolName = bean.getName();
+                AgentToolDefinition def =
+                        AgentToolDefinition.from(
+                                toolName, bean.getArgsClass(), bean.getCapability());
+                ToolContractValidator.validateHandler(bean, def);
+                ensureUniqueName(def.name());
+                agentDefs.put(def.name(), def);
+                agentBeans.put(toolName, bean);
+                log.info("ToolEngine: registered agent tool '{}'.", def.name());
+            }
         }
 
         log.info(

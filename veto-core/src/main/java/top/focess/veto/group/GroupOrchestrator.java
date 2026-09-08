@@ -4,6 +4,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -430,7 +431,7 @@ public class GroupOrchestrator {
         return group;
     }
 
-    private static DagNode.@NonNull NodeResult resultFromMate(@NonNull BlackboardMessage message) {
+    static DagNode.@NonNull NodeResult resultFromMate(@NonNull BlackboardMessage message) {
         String[] parts = message.payload().split(":", 3);
         if (message.type() == BlackboardMessage.MessageType.ACCEPT
                 && parts.length == 3
@@ -462,26 +463,37 @@ public class GroupOrchestrator {
 
     private @NonNull Group dispatch(@NonNull Group group) {
         ExecutionDag dag = group.dag();
+        Set<String> busyMates = new HashSet<>();
+        for (DagNode node : dag.nodes()) {
+            String assigned = node.assignedMateId();
+            if (node.state() == DagNode.NodeState.RUNNING && assigned != null) {
+                busyMates.add(assigned);
+            }
+        }
         for (DagNode n : dag.dispatchable()) {
             String mateId = n.assignedMateId();
+            if (mateId != null && busyMates.contains(mateId)) {
+                continue;
+            }
             if (mateId == null) {
                 if (provisioner == null) {
                     // No lazy provisioning (test path); assignMates handles assignment, so an
                     // unassigned dispatchable node just waits for the next tick.
                     continue;
                 }
-                // Reuse an existing Mate of the required skillset if one exists; otherwise
+                // Reuse an idle Mate of the required skillset if one exists; otherwise
                 // provision
                 // one lazily. The provisioner starts the Mate agent but does NOT touch the registry
                 // - the group update below (withMate + node assignment) is persisted atomically at
                 // the end of the tick, so no Mate registration is lost to a stale-snapshot write.
-                mateId = existingMateOfSkillset(group, n.requiredSkillset());
+                mateId = existingMateOfSkillset(group, n.requiredSkillset(), busyMates);
                 if (mateId == null) {
                     mateId = provisioner.provision(group.groupId(), n.requiredSkillset());
                     group = group.withMate(mateId, n.requiredSkillset());
                     dag = group.dag();
                 }
             }
+            busyMates.add(mateId);
             String task = n.description();
             String dispatchPayload = n.nodeId() + ":" + task;
             BlackboardMessage msg =
@@ -511,13 +523,14 @@ public class GroupOrchestrator {
         return group;
     }
 
-    /** Returns the id of any existing Mate of the given skillset, or null if none exists. */
-    private static String existingMateOfSkillset(@NonNull Group group, String skillset) {
+    /** Returns an idle Mate of the given skillset, or null if none is available. */
+    private static String existingMateOfSkillset(
+            @NonNull Group group, String skillset, @NonNull Set<String> busyMates) {
         if (skillset == null || skillset.isBlank()) {
             return null;
         }
         for (var entry : group.mates().entrySet()) {
-            if (skillset.equals(entry.getValue())) {
+            if (skillset.equals(entry.getValue()) && !busyMates.contains(entry.getKey())) {
                 return entry.getKey();
             }
         }

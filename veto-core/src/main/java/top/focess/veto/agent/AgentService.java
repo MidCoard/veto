@@ -74,6 +74,8 @@ public class AgentService {
             LoggerFactory.getLogger("top.focess.veto.agent.AgentService");
     private static final @NonNull Duration DEFAULT_AWAIT = Duration.ofMinutes(5);
 
+    private final @NonNull SessionAgentRegistry sessionAgents;
+
     private ModelTierRegistry guidedTierRegistry;
 
     private final int maxGuidedSteps;
@@ -134,7 +136,9 @@ public class AgentService {
             TurnLogService turnLogService,
             @NonNull BackgroundTaskManager backgroundTaskManager,
             @NonNull ProtectedSetResolver protectedSetResolver,
-            @NonNull SlmScreeningProvider slmScreeningProvider) {
+            @NonNull SlmScreeningProvider slmScreeningProvider,
+            @NonNull SessionAgentRegistry sessionAgents) {
+        this.sessionAgents = sessionAgents;
         this.toolEngine = toolEngine;
         this.hitlRegistry = hitlRegistry;
         this.ingressDefense = ingressDefense;
@@ -208,7 +212,8 @@ public class AgentService {
                         policyConfigurationFor(deployerPolicyRaw),
                         new ObservabilityConfiguration(),
                         new CredentialVaultConfiguration()),
-                SlmScreeningProvider.unavailable());
+                SlmScreeningProvider.unavailable(),
+                new SessionAgentRegistry());
     }
 
     /** Replaces the constructor's test fallback with the deployer-configured Workspace bean. */
@@ -602,7 +607,7 @@ public class AgentService {
     public void remove(@NonNull String agentKey) {
         VetoAgent a = agents.remove(agentKey);
         if (a != null) {
-            a.terminate();
+            sessionAgents.stopSession(a.sessionId());
             // Kill any background tasks the agent launched so they don't outlive their owner.
             backgroundTaskManager.stopAll(a.id());
         }
@@ -703,15 +708,14 @@ public class AgentService {
         if (primaryAgentId != null) {
             runner.setSessionId(UUID.fromString(agentKey));
         }
-        return new VetoAgent(persona, runner);
+        return sessionAgents.start(persona, runner);
     }
 
     /**
      * Builds a Mate {@link Agent} (a Leader-delegated worker) for the group engine. Unlike {@link
      * #createAgent} this does not register the agent under a transport key (Mates are not
-     * transport-addressable — {@code GroupSpawner} tracks their lifecycle) and uses an empty {@link
-     * ProtectedSet} (Mates inherit screening via the Gateway; per-user isolation is not wired for
-     * spawned Mates yet).
+     * transport-addressable). The session registry owns their runtime lifetime while {@code
+     * GroupSpawner} manages group membership. Each Mate receives its owner's protected paths.
      */
     public @NonNull Agent createMate(
             @NonNull AgentPersona persona, AgentRunner.@NonNull LlmBinding binding) {
@@ -790,6 +794,26 @@ public class AgentService {
             @NonNull Workspace workspace,
             @NonNull ToolResultPresentationMode toolResultPresentation,
             boolean guidedEnabled) {
+        return createMate(
+                persona,
+                binding,
+                userId,
+                owner,
+                workspace,
+                toolResultPresentation,
+                guidedEnabled,
+                null);
+    }
+
+    public @NonNull Agent createMate(
+            @NonNull AgentPersona persona,
+            AgentRunner.@NonNull LlmBinding binding,
+            @NonNull UUID userId,
+            String owner,
+            @NonNull Workspace workspace,
+            @NonNull ToolResultPresentationMode toolResultPresentation,
+            boolean guidedEnabled,
+            UUID sessionId) {
         // Re-scope the persona's tools to its role. The persona may have been built with the full
         // standalone manifest before its role (MATE/LEADER) was known; the RoleToolFilter narrows
         // it to the role's allow-list (MATE: no group tools; LEADER: read + arrange only).
@@ -830,7 +854,10 @@ public class AgentService {
         runner.setOwner(owner);
         runner.setToolResultPresentation(toolResultPresentation);
         runner.setGuidedEnabled(guidedEnabled);
-        return new VetoAgent(scoped, runner);
+        if (sessionId != null) {
+            return sessionAgents.startInSession(sessionId, scoped, runner);
+        }
+        return sessionAgents.start(scoped, runner);
     }
 
     /** Builds the standalone persona from the active, role-scoped tool catalog. */

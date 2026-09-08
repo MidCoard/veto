@@ -3,6 +3,7 @@ package top.focess.veto.agent;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -32,9 +33,12 @@ import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.tool.ToolEngine;
 import top.focess.veto.agent.tool.ToolResult;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
+import top.focess.veto.agent.workspace.PathMode;
+import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.llm.core.ProviderType;
 import top.focess.veto.llm.core.ToolCall;
+import top.focess.veto.llm.core.ToolResultPresentationMode;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.llm.core.VetoResponse;
 import top.focess.veto.sandbox.BackgroundTaskManager;
@@ -348,6 +352,8 @@ class AgentEndToEndTest {
                         ToolDocs.nonNullClass(AgentPersona.class),
                         requireField(ReflectionTestUtils.getField(runner, "persona")));
         assertEquals(Role.LEADER, persona.role(), "persona role advanced to LEADER");
+        assertEquals(Role.LEADER, agent.persona().role());
+        assertEquals(runner.whitelistedToolsView(), agent.whitelistedTools());
         assertEquals("leader-model", runner.binding().model(), "the Leader binding was applied");
         assertEquals(
                 engine.lastDirective().groupId(),
@@ -371,9 +377,12 @@ class AgentEndToEndTest {
                         .anyMatch(
                                 t ->
                                         t.type() == TurnType.USER_PROMPT
-                                                && "Lead the group and ship the feature."
-                                                        .equals(t.payload().get("content"))),
-                "the Leader brief was seeded as a user prompt");
+                                                && String.valueOf(t.payload().get("content"))
+                                                        .contains(
+                                                                "Lead the group and ship the feature.")
+                                                && String.valueOf(t.payload().get("content"))
+                                                        .contains("Ship the feature.")),
+                "the original request survives the delegation brief");
         assertReturnsToIdle(agent);
     }
 
@@ -421,6 +430,8 @@ class AgentEndToEndTest {
                         ToolDocs.nonNullClass(AgentPersona.class),
                         requireField(ReflectionTestUtils.getField(runner, "persona")));
         assertEquals(Role.STANDALONE, persona.role(), "persona role restored to STANDALONE");
+        assertEquals(Role.STANDALONE, agent.persona().role());
+        assertEquals(runner.whitelistedToolsView(), agent.whitelistedTools());
         assertEquals(
                 "stub-model",
                 runner.binding().model(),
@@ -442,10 +453,167 @@ class AgentEndToEndTest {
                         .anyMatch(
                                 t ->
                                         t.type() == TurnType.USER_PROMPT
-                                                && "Delegation complete: feature shipped."
-                                                        .equals(t.payload().get("content"))),
+                                                && String.valueOf(t.payload().get("content"))
+                                                        .contains(
+                                                                "Delegation complete: feature shipped.")
+                                                && String.valueOf(t.payload().get("content"))
+                                                        .contains("Ship the feature.")),
                 "the disband brief was seeded as a user prompt");
         assertReturnsToIdle(agent);
+    }
+
+    @Test
+    void mateUsesParentSessionBeforeItsFirstTurn() throws Exception {
+        UUID sessionId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        var service = serviceWith(scripted(thoughtOn("Report", "Mate finished.")));
+        service.getOrCreateAgent(
+                sessionId.toString(),
+                UUID.randomUUID().toString(),
+                binding("Parent"),
+                List.of(),
+                userId,
+                "owner",
+                Path.of(".").toAbsolutePath().toString(),
+                0,
+                ToolResultPresentationMode.BASIC,
+                false);
+        var persona =
+                new AgentPersona(
+                        UUID.randomUUID().toString(),
+                        "Mate",
+                        "Worker",
+                        Set.of(),
+                        List.of(),
+                        Role.MATE);
+        var mate =
+                service.createMate(
+                        persona,
+                        binding("Mate"),
+                        userId,
+                        "owner",
+                        Workspace.single(Path.of("."), PathMode.REAL),
+                        ToolResultPresentationMode.BASIC,
+                        false,
+                        sessionId);
+        try {
+            var runner =
+                    assertInstanceOf(
+                            ToolDocs.nonNullClass(AgentRunner.class),
+                            requireField(ReflectionTestUtils.getField(mate, "runner")));
+            assertEquals(sessionId, ReflectionTestUtils.getField(runner, "sessionId"));
+            assertNotEquals(persona.id(), sessionId.toString());
+            mate.submit("Execute assigned work");
+            assertTrue(mate.await(EPISODE_TIMEOUT).success());
+            assertFalse(mate.history().isEmpty());
+            assertEquals(sessionId, ReflectionTestUtils.getField(runner, "sessionId"));
+        } finally {
+            service.remove(sessionId.toString());
+        }
+    }
+
+    @Test
+    void guidedTransformsContinueTheLoopAndDiscardTheOldProgram() throws Exception {
+        var leaderBinding = binding("leader base");
+        var engine =
+                new TransformToolEngine(
+                        leaderBinding, Set.of(transformDefinition("disband_group")));
+        var mapper = new ObjectMapper();
+        var forward =
+                new VetoResponse(
+                        null,
+                        null,
+                        null,
+                        new VetoResponse.Guide(
+                                mapper.readTree(
+                                        """
+                [{"id":"delegate","label":"Delegate","type":"tool","tool":"create_group","inputs":{"task":"ship it"},"outputs":{"stale":"content"}},
+                 {"id":"stop","label":"Old stop","type":"STOP","result_binding":"stale"}]
+                """)));
+        var reverse =
+                new VetoResponse(
+                        null,
+                        null,
+                        null,
+                        new VetoResponse.Guide(
+                                mapper.readTree(
+                                        """
+                [{"id":"disband","label":"Disband","type":"tool","tool":"disband_group","inputs":{},"outputs":{"stale":"content"}},
+                 {"id":"stop","label":"Old stop","type":"STOP","result_binding":"stale"}]
+                """)));
+        var service =
+                serviceWith(
+                        engine,
+                        scriptedWithCompactor(
+                                forward,
+                                reverse,
+                                thoughtOn("Finished", "Both transformations completed.")));
+        service.getOrCreateAgent(
+                "guided-transform",
+                null,
+                binding("standalone base"),
+                List.of(),
+                UUID.randomUUID(),
+                null,
+                null,
+                0,
+                ToolResultPresentationMode.BASIC,
+                true);
+        var result =
+                service.submit(
+                        "guided-transform",
+                        "Ship the feature",
+                        binding("standalone base"),
+                        EPISODE_TIMEOUT);
+        assertTrue(result.success(), result.message());
+        assertEquals("Both transformations completed.", result.message());
+        var agent = requireAgent(service.agent("guided-transform"));
+        assertEquals(List.of("create_group", "disband_group"), engine.executed);
+        assertEquals(2, agent.history().stream().filter(t -> t.type() == TurnType.REWIND).count());
+        assertReturnsToIdle(agent);
+    }
+
+    @Test
+    void transformationStopsCallsAuthoredForThePreviousRole() throws Exception {
+        var engine = new TransformToolEngine(binding("leader base"), Set.of());
+        var delegate = new ToolCall("create_group", Map.of("task", "ship it"));
+        var service =
+                serviceWith(
+                        engine,
+                        scriptedWithCompactor(
+                                new VetoResponse(
+                                        "Delegate",
+                                        List.of(
+                                                delegate,
+                                                new ToolCall(
+                                                        "create_group",
+                                                        Map.of("task", "stale duplicate"))),
+                                        null,
+                                        null),
+                                thoughtOn("Leading", "Leader continued.")));
+        var result =
+                service.submit(
+                        "batch-transform", "Ship it", binding("standalone base"), EPISODE_TIMEOUT);
+        assertTrue(result.success(), result.message());
+        assertEquals("Leader continued.", result.message());
+        assertEquals(
+                List.of("create_group"),
+                engine.executed,
+                "Old-role calls must not execute after transformation");
+        assertReturnsToIdle(requireAgent(service.agent("batch-transform")));
+    }
+
+    @SuppressWarnings("type.arguments.not.inferred")
+    private static @NonNull ToolDefinition transformDefinition(@NonNull String name) {
+        return new AgentToolDefinition(
+                name,
+                "transform stub",
+                "create_group".equals(name)
+                        ? ToolCapability.DELEGATION
+                        : ToolCapability.GROUP_CONTROL,
+                Danger.SAFE,
+                ToolDocs.nonNullClass(Void.class),
+                Map.of());
     }
 
     /**
@@ -460,6 +628,7 @@ class AgentEndToEndTest {
         private final @NonNull Set<ToolDefinition> leaderTools;
         private final @NonNull UUID groupId = UUID.randomUUID();
         private ToolCallContextHolder.TransformDirective lastDirective;
+        private final List<String> executed = new ArrayList<>();
 
         TransformToolEngine(
                 AgentRunner.@NonNull LlmBinding leaderBinding,
@@ -476,26 +645,22 @@ class AgentEndToEndTest {
 
         @Override
         public @NonNull List<ToolDefinition> getActiveTools(Set<String> whitelist) {
-            return List.of();
+            return List.of(
+                    transformDefinition("create_group"), transformDefinition("disband_group"));
         }
 
         @Override
         @SuppressWarnings("type.arguments.not.inferred")
         public ToolDefinition resolveDefinition(@NonNull String toolName) {
             if ("create_group".equals(toolName) || "disband_group".equals(toolName)) {
-                return new AgentToolDefinition(
-                        toolName,
-                        "transform stub",
-                        ToolCapability.GROUP_CONTROL,
-                        Danger.SAFE,
-                        ToolDocs.nonNullClass(Void.class),
-                        Map.of());
+                return transformDefinition(toolName);
             }
             return null;
         }
 
         @Override
         public @NonNull ToolResult execute(@NonNull ToolCall call, @NonNull ToolDefinition def) {
+            executed.add(call.toolName());
             if ("create_group".equals(call.toolName())) {
                 ToolCallContextHolder.TransformDirective directive =
                         new ToolCallContextHolder.TransformDirective(

@@ -1,0 +1,41 @@
+package top.focess.veto.agent.web;
+
+import org.jspecify.annotations.NonNull;
+import top.focess.veto.agent.capability.WebDocumentCapability;
+import top.focess.veto.agent.screening.Danger;
+import top.focess.veto.agent.tool.ToolCapability;
+import top.focess.veto.agent.tool.ToolSecurity;
+import top.focess.veto.agent.tool.WebDocumentTool;
+
+/** Invocation-local tool; deliberately not registered as a Spring component. */
+@ToolSecurity(capability = ToolCapability.NETWORK_EGRESS, defaultDanger = Danger.SAFE)
+final class FinishReadTool implements WebDocumentTool<WebReader.Finish> {
+    private final @NonNull WebDocumentCapability document;
+
+    FinishReadTool(@NonNull WebDocumentCapability document) {
+        this.document = document;
+    }
+
+    @Override
+    public @NonNull String getName() {
+        return "finish_read";
+    }
+
+    // Class literals are non-null despite the checker's package-default interpretation.
+    @SuppressWarnings("nullness:return")
+    @Override
+    public @NonNull Class<WebReader.Finish> getArgsClass() {
+        return WebReader.Finish.class;
+    }
+
+    @Override
+    public @NonNull WebDocumentCapability documentCapability() {
+        return document;
+    }
+
+    @Override
+    public @NonNull String execute(
+            WebReader.@NonNull Finish args, @NonNull WebDocumentCapability capability) {
+        return capability.finish(args);
+    }
+}

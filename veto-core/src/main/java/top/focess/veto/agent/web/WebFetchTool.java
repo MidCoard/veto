@@ -54,8 +54,9 @@ public final class WebFetchTool implements NetworkEgressTool<WebFetchTool.Args> 
                     """,
             whenToUse =
                     """
-                    - Use it whenever the user asks you to read, inspect, summarize, or verify a \
-                    specific public URL.
+                    - Use it when you need the actual readable text of a specific public URL. \
+                    Prefer `web_read` for focused questions, verification, and summaries so full \
+                    page content stays outside your context.
                     - After `web_search`, fetch the most relevant authoritative result before \
                     presenting a searched claim as verified. Search snippets alone are not enough.
                     - Use it for documentation, API references, release notes, and articles whose \

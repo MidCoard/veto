@@ -62,7 +62,8 @@ public class GroupAgentFactory implements GroupSpawner.AgentFactory {
                 owner,
                 workspace,
                 mateBinding.toolResultPresentation(),
-                mateBinding.guidedEnabled());
+                mateBinding.guidedEnabled(),
+                mateBinding.sessionId());
     }
 
     private AgentRunner.@NonNull LlmBinding resolveBinding(

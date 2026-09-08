@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -94,6 +95,25 @@ public class HitlRegistry {
     /** Pending veto futures keyed by {@code agentId + "|" + callId}. */
     private final @NonNull ConcurrentHashMap<@NonNull String, @NonNull Pending> pending =
             new ConcurrentHashMap<>();
+
+    private final @NonNull ConcurrentHashMap<@NonNull String, @NonNull UUID> sessions =
+            new ConcurrentHashMap<>();
+
+    public void setSession(@NonNull String agentId, @NonNull UUID sessionId) {
+        sessions.put(agentId, sessionId);
+    }
+
+    /** Runtime members of the already-authorized primary agent's session. */
+    public @NonNull List<@NonNull String> sessionAgents(@NonNull String primaryAgentId) {
+        UUID sessionId = sessions.get(primaryAgentId);
+        if (sessionId == null) return List.of(primaryAgentId);
+        List<@NonNull String> members = new ArrayList<>();
+        sessions.forEach(
+                (id, session) -> {
+                    if (sessionId.equals(session)) members.add(id);
+                });
+        return List.copyOf(members);
+    }
 
     /** Permission grants per agent (session-scoped; cleared on terminate). */
     private final @NonNull
@@ -628,6 +648,7 @@ public class HitlRegistry {
                         return;
                     }
                     Map<@NonNull String, Object> view = new LinkedHashMap<>();
+                    view.put("agentId", agentId);
                     view.put("callId", call.callId());
                     view.put("toolName", call.toolName());
                     view.put("args", call.args());
@@ -678,6 +699,8 @@ public class HitlRegistry {
 
     /** Drops any pending veto + grants for the agent (on terminate). */
     public void clear(@NonNull String agentId) {
+        declineAll(agentId);
+        sessions.remove(agentId);
         pending.keySet().removeIf(k -> k.startsWith(agentId + "|"));
         grants.remove(agentId);
         grantLog.remove(agentId);

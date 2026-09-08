@@ -48,6 +48,7 @@ public final class DelegationCapabilityImpl implements DelegationCapability {
         // Register an empty group - no DAG yet, no Mates. The Leader (the transformed caller)
         // authors the DAG node by node via create_node; the engine provisions Mates lazily on
         // dispatch.
+        var resolvedLeaderBinding = leaderBinding.binding(owner);
         Group g =
                 spawner.registerEmptyGroup(
                         leaderId,
@@ -56,7 +57,8 @@ public final class DelegationCapabilityImpl implements DelegationCapability {
                         task,
                         hitlRegistry.workspace(leaderId),
                         ctx.toolResultPresentation(),
-                        ctx.guidedEnabled());
+                        ctx.guidedEnabled(),
+                        ctx.sessionId());
 
         // Request the delegation transform: the runner rewinds, re-seeds the Leader persona +
         // tool set + top-tier binding, stamps the group, and re-injects the brief. This call's
@@ -66,7 +68,7 @@ public final class DelegationCapabilityImpl implements DelegationCapability {
                 new ToolCallContextHolder.TransformDirective(
                         task,
                         g.groupId(),
-                        leaderBinding.binding(owner),
+                        resolvedLeaderBinding,
                         roleToolFilter.resolve(Role.LEADER)));
     }
 }

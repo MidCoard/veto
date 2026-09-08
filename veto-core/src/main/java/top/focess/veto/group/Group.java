@@ -38,7 +38,8 @@ public record Group(
         String owner,
         Workspace workspace,
         @NonNull ToolResultPresentationMode toolResultPresentation,
-        boolean guidedEnabled) {
+        boolean guidedEnabled,
+        UUID sessionId) {
 
     public Group {
         mates = Map.copyOf(mates);
@@ -142,6 +143,30 @@ public record Group(
             Workspace workspace,
             @NonNull ToolResultPresentationMode toolResultPresentation,
             boolean guidedEnabled) {
+        return create(
+                leaderId,
+                userId,
+                contextBrief,
+                blackboard,
+                dag,
+                owner,
+                workspace,
+                toolResultPresentation,
+                guidedEnabled,
+                null);
+    }
+
+    public static @NonNull Group create(
+            @NonNull String leaderId,
+            @NonNull String userId,
+            String contextBrief,
+            @NonNull Blackboard blackboard,
+            @NonNull ExecutionDag dag,
+            String owner,
+            Workspace workspace,
+            @NonNull ToolResultPresentationMode toolResultPresentation,
+            boolean guidedEnabled,
+            UUID sessionId) {
         UUID id = UUID.randomUUID();
         return new Group(
                 id,
@@ -157,7 +182,8 @@ public record Group(
                 owner,
                 workspace,
                 toolResultPresentation,
-                guidedEnabled);
+                guidedEnabled,
+                sessionId);
     }
 
     public @NonNull Group withDag(@NonNull ExecutionDag newDag) {
@@ -175,7 +201,8 @@ public record Group(
                 owner,
                 workspace,
                 toolResultPresentation,
-                guidedEnabled);
+                guidedEnabled,
+                sessionId);
     }
 
     public @NonNull Group withState(@NonNull GroupState newState, @NonNull Instant when) {
@@ -193,7 +220,8 @@ public record Group(
                 owner,
                 workspace,
                 toolResultPresentation,
-                guidedEnabled);
+                guidedEnabled,
+                sessionId);
     }
 
     public @NonNull Group withMate(@NonNull String mateId, @NonNull String skillset) {
@@ -213,7 +241,8 @@ public record Group(
                 owner,
                 workspace,
                 toolResultPresentation,
-                guidedEnabled);
+                guidedEnabled,
+                sessionId);
     }
 
     public @NonNull Group withoutMate(@NonNull String mateId) {
@@ -236,7 +265,8 @@ public record Group(
                 owner,
                 workspace,
                 toolResultPresentation,
-                guidedEnabled);
+                guidedEnabled,
+                sessionId);
     }
 
     public boolean isActive() {

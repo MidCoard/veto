@@ -14,14 +14,24 @@ import org.springframework.stereotype.Service;
 @Service
 public final class UserQuestionRegistry {
 
-    private final @NonNull ConcurrentHashMap<String, Pending> pending = new ConcurrentHashMap<>();
+    private final @NonNull ConcurrentHashMap<Key, Pending> pending = new ConcurrentHashMap<>();
 
     public @NonNull CompletableFuture<AnswerBatch> register(
             @NonNull String agentId,
             @NonNull String callId,
             @NonNull List<AskUserTool.Question> questions) {
         CompletableFuture<AnswerBatch> future = new CompletableFuture<>();
-        Pending value = new Pending(agentId, callId, questions, future);
+        List<AskUserTool.Question> snapshot =
+                questions.stream()
+                        .map(
+                                question ->
+                                        new AskUserTool.Question(
+                                                question.header(),
+                                                question.id(),
+                                                question.question(),
+                                                List.copyOf(question.options())))
+                        .toList();
+        Pending value = new Pending(agentId, callId, snapshot, future);
         if (pending.putIfAbsent(key(agentId, callId), value) != null) {
             throw new IllegalStateException("Question batch already pending: " + callId);
         }
@@ -72,9 +82,11 @@ public final class UserQuestionRegistry {
         return true;
     }
 
-    private static @NonNull String key(@NonNull String agentId, @NonNull String callId) {
-        return agentId + "|" + callId;
+    private static @NonNull Key key(@NonNull String agentId, @NonNull String callId) {
+        return new Key(agentId, callId);
     }
+
+    private record Key(@NonNull String agentId, @NonNull String callId) {}
 
     private record Pending(
             @NonNull String agentId,

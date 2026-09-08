@@ -3,6 +3,7 @@ package top.focess.veto.agent.web;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
 
 import java.net.http.HttpTimeoutException;
 import java.util.List;
@@ -34,7 +35,12 @@ class WebSearchToolTest {
     void timeoutReturnsCanonicalUnsuccessfulObservation() throws Exception {
         WebSearchTool tool =
                 new WebSearchTool(
-                        new NetworkEgressCapabilityImpl(new TimeoutProvider(), 5, 1000, false));
+                        new NetworkEgressCapabilityImpl(
+                                new TimeoutProvider(),
+                                mock(ToolDocs.nonNullClass(WebReader.class)),
+                                5,
+                                1000,
+                                false));
 
         ToolExecutionException error =
                 assertThrows(
@@ -66,7 +72,13 @@ class WebSearchToolTest {
                     }
                 };
         WebSearchTool tool =
-                new WebSearchTool(new NetworkEgressCapabilityImpl(provider, 5, 1000, false));
+                new WebSearchTool(
+                        new NetworkEgressCapabilityImpl(
+                                provider,
+                                mock(ToolDocs.nonNullClass(WebReader.class)),
+                                5,
+                                1000,
+                                false));
 
         ToolExecutionException error =
                 assertThrows(

@@ -187,7 +187,8 @@ public class AgentRunner {
     private int programCounter = 0;
     private int currentSteps = 0;
     private @NonNull Scope scope;
-    private @NonNull CompletableFuture<AgentResult> resultFuture = new CompletableFuture<>();
+    private volatile @NonNull CompletableFuture<AgentResult> resultFuture =
+            new CompletableFuture<>();
     private Consumer<AgentResult> callback;
     private volatile boolean sessionAlive = true;
     private double correctionFactor = 1.0;
@@ -286,6 +287,7 @@ public class AgentRunner {
         // agentId is the persona id (a UUID string — see AgentService.createAgent); derive the
         // per-session frame key once. Fail-fast if a non-UUID id ever reaches here.
         this.sessionId = UUID.fromString(agentId);
+        hitlRegistry.setSession(agentId, this.sessionId);
         this.userId = userId;
         this.turnLogService = turnLogService;
         this.backgroundTaskManager = backgroundTaskManager;
@@ -298,7 +300,10 @@ public class AgentRunner {
 
     // ── Virtual-thread loop ────────────────────────────────────────────────
 
+    private volatile Thread runningThread;
+
     public void run() {
+        runningThread = Thread.currentThread();
         // Stamp the session owner onto the agent's virtual thread so credential resolution on the
         // LLM-call path (CredentialResolver → KeysteadVault.currentHandle → UserContext.get) and
         // the embedder path resolve against the owner's vault rather than the single-active-handle
@@ -339,7 +344,7 @@ public class AgentRunner {
                                         "Agent {} cleared a stale interrupt after compaction",
                                         agentId);
                             }
-                            transitionTo(AgentState.IDLE);
+                            if (sessionAlive) transitionTo(AgentState.IDLE);
                         }
                         continue;
                     }
@@ -366,7 +371,7 @@ public class AgentRunner {
                                         "Agent {} cleared a stale interrupt after a prompt",
                                         agentId);
                             }
-                            transitionTo(AgentState.IDLE);
+                            if (sessionAlive) transitionTo(AgentState.IDLE);
                         }
                     }
                 } catch (InterruptedException e) {
@@ -375,6 +380,8 @@ public class AgentRunner {
                 }
             }
         } finally {
+            runningThread = null;
+            notifyTermination();
             UserContext.clear();
         }
     }
@@ -382,6 +389,7 @@ public class AgentRunner {
     // ── Episode setup + autonomous loop ─────────────────────────────────────
 
     private void processUserPrompt(@NonNull String prompt) {
+        completionToolFinished = false;
         declinedCallSignatures.clear();
         // Actively tell the agent about background tasks that ended since it last ran — drained
         // into the context BEFORE the new user prompt so the model reads them together. This is
@@ -671,7 +679,11 @@ public class AgentRunner {
                     if (message != null && !message.isBlank()) {
                         emitMessage(message);
                     }
+                    AgentPersona programPersona = persona;
                     runGuided();
+                    if (persona != programPersona) {
+                        continue; // A role transformation starts a fresh reasoning episode.
+                    }
                     return; // guided mode finished, back to idle
                 }
                 // invalid program → stay autonomous (rejection fed back as observation)
@@ -689,6 +701,7 @@ public class AgentRunner {
             List<ToolCall> responseCalls = response.calls();
             if (responseCalls != null && !responseCalls.isEmpty()) {
                 executeToolCalls(responseCalls, response.thought());
+                if (completionToolFinished) return;
             } else {
                 // No tool calls: the agent has emitted its answer with nothing further to act
                 // on. Termination routes on call presence - calls absent means stop. The agent
@@ -727,6 +740,9 @@ public class AgentRunner {
                 case ToolAction tool -> {
                     ToolCall call = new ToolCall(tool.tool(), tool.resolveInputs(scope));
                     ToolResult result = executeOneCall(call);
+                    if (activeProgram != program) {
+                        return; // The tool replaced the role and cleared this program and scope.
+                    }
                     scope.put("step_ok:" + tool.id(), result.success());
                     scope.bindTool(tool.outputs(), result);
                     programCounter++;
@@ -792,7 +808,9 @@ public class AgentRunner {
                                                                             + resultBinding))
                                     : scope.synthesize();
                     emitMessage(result);
-                    escapeToAutonomous("STOP");
+                    activeProgram = null;
+                    programCounter = 0;
+                    guided = false;
                     return;
                 }
                 default -> {
@@ -815,8 +833,6 @@ public class AgentRunner {
         }
         VetoResponse response = callModel(false, gen);
         if (!Boolean.FALSE.equals(gen.thought())) appendThought(response);
-        String message = response.message();
-        if (message != null) appendTurn(TurnRecord.assistantResponse(++turnNumber, message));
         return response;
     }
 
@@ -881,6 +897,7 @@ public class AgentRunner {
                     throw new BreakerTripException();
                 }
                 breaker.recordModelCall();
+                request = promptCompiler.fitRequest(request);
                 response = caller.call(request);
                 // Capture the provider's reasoning content (DeepSeek thinking mode) so it can be
                 // stored in the ASSISTANT_THOUGHT turn and echoed back on the next request's
@@ -894,6 +911,16 @@ public class AgentRunner {
                 VetoResponse checked =
                         ResponseEnforcer.enforce(response, allowGuided, whitelistedTools);
                 var generatedCalls = checked.calls();
+                String checkedMessage = checked.message();
+                if (completionTool != null
+                        && (checked.guide() != null
+                                || generatedCalls == null
+                                || generatedCalls.size() != 1
+                                || (checkedMessage != null && !checkedMessage.isBlank())))
+                    throw new ModelSchemaException(
+                            "This agent requires exactly one tool call per turn and must complete through "
+                                    + completionTool
+                                    + "; freeform answers and guide are not accepted");
                 if (generation != null
                         && ((generatedCalls != null && !generatedCalls.isEmpty())
                                 || checked.guide() != null))
@@ -1217,7 +1244,16 @@ public class AgentRunner {
                                     + " the blockage and stop.",
                             false);
                 } else {
-                    executeOneConfirmedCall(call, executionPermits.get(i));
+                    AgentPersona callPersona = persona;
+                    ToolResult result = executeOneConfirmedCall(call, executionPermits.get(i));
+                    if (result.success() && call.toolName().equals(completionTool)) {
+                        emitMessage(result.content());
+                        completionToolFinished = true;
+                        return;
+                    }
+                    if (persona != callPersona) {
+                        return; // Remaining calls were authored for the previous role.
+                    }
                 }
             }
 
@@ -1970,8 +2006,14 @@ public class AgentRunner {
      * will complete, not the previous episode's already-completed one.
      */
     public void startTask(Consumer<AgentResult> callback, @NonNull AgentAction action) {
+        if (!sessionAlive) throw new IllegalStateException("Agent has terminated");
         this.callback = callback;
         this.resultFuture = new CompletableFuture<>();
+        if (!sessionAlive) {
+            resultFuture.complete(
+                    AgentResult.failure(Msg.get(locale, "error.agent.interrupted"), Map.of()));
+            return;
+        }
         if (this.state == AgentState.INTERCEPTED) {
             hitlRegistry.declineAll(agentId);
         }
@@ -2093,6 +2135,17 @@ public class AgentRunner {
         return whitelistedTools;
     }
 
+    private String completionTool;
+    private boolean completionToolFinished;
+
+    /** Requires a successful call to this registered tool to finish the episode. */
+    public void setCompletionTool(@NonNull String toolName) {
+        if (!whitelistedTools.contains(toolName))
+            throw new IllegalArgumentException("Completion tool must be in the agent's whitelist");
+        this.completionTool = toolName;
+        this.completionToolFinished = false;
+    }
+
     public @NonNull String agentId() {
         return agentId;
     }
@@ -2138,6 +2191,11 @@ public class AgentRunner {
     // streams.
     public void setSessionId(@NonNull UUID sessionId) {
         this.sessionId = sessionId;
+        hitlRegistry.setSession(agentId, sessionId);
+    }
+
+    public @NonNull AgentPersona personaView() {
+        return persona;
     }
 
     /**
@@ -2198,7 +2256,14 @@ public class AgentRunner {
         if (!summary.isBlank() && !"{}".equals(summary)) {
             appendTurn(TurnRecord.compactionSummary(++turnNumber, summary));
         }
-        appendTurn(TurnRecord.userPrompt(++turnNumber, directive.brief()));
+        appendTurn(
+                TurnRecord.userPrompt(
+                        ++turnNumber,
+                        "Original user request (preserve all requirements):\n"
+                                + activeUserTask
+                                + "\n\nAgent-authored delegation brief (does not replace the user's request):\n"
+                                + directive.brief()
+                                + "\n\nRuntime progress: create_group has already succeeded and the group is active. Continue the remaining work with your current Leader tools. Do not repeat group creation or restart the original first-turn instructions."));
 
         // Fresh reasoning episode from the brief: clear guided state + program, reset the breaker
         // and scope so prior standalone state does not leak into the Leader's planning.
@@ -2257,7 +2322,13 @@ public class AgentRunner {
         if (!summary.isBlank() && !"{}".equals(summary)) {
             appendTurn(TurnRecord.compactionSummary(++turnNumber, summary));
         }
-        appendTurn(TurnRecord.userPrompt(++turnNumber, brief));
+        appendTurn(
+                TurnRecord.userPrompt(
+                        ++turnNumber,
+                        "The group has been disbanded. Complete any remaining work and answer the original request; do not repeat completed delegation.\n\nOriginal user request:\n"
+                                + activeUserTask
+                                + "\n\nDelegated outcome:\n"
+                                + brief));
 
         this.guided = false;
         this.activeProgram = null;
@@ -2267,10 +2338,30 @@ public class AgentRunner {
         log.info("Agent {} reversed transform back to STANDALONE (group disbanded)", agentId);
     }
 
+    private volatile Runnable terminationCallback;
+
+    void onTermination(@NonNull Runnable callback) {
+        terminationCallback = callback;
+    }
+
+    public @NonNull UUID sessionId() {
+        return sessionId;
+    }
+
+    private void notifyTermination() {
+        Runnable callback = terminationCallback;
+        if (callback != null) callback.run();
+    }
+
     public void terminate() {
         sessionAlive = false;
         transitionTo(AgentState.TERMINATED);
+        resultFuture.complete(
+                AgentResult.failure(Msg.get(locale, "error.agent.interrupted"), Map.of()));
         hitlRegistry.clear(agentId);
+        Thread thread = runningThread;
+        if (thread != null && thread != Thread.currentThread()) thread.interrupt();
+        notifyTermination();
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────

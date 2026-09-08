@@ -31,10 +31,12 @@ import top.focess.veto.agent.web.SearchOptions;
 import top.focess.veto.agent.web.SearchProvider;
 import top.focess.veto.agent.web.SearchResult;
 import top.focess.veto.agent.web.WebProxySelector;
+import top.focess.veto.agent.web.WebReader;
 
 @Component
 public final class NetworkEgressCapabilityImpl implements NetworkEgressCapability {
     private final @NonNull SearchProvider provider;
+    private final @NonNull WebReader reader;
 
     private static final int MAX_REDIRECTS = 5;
 
@@ -50,10 +52,12 @@ public final class NetworkEgressCapabilityImpl implements NetworkEgressCapabilit
     @Autowired
     public NetworkEgressCapabilityImpl(
             @NonNull SearchProvider provider,
+            @NonNull WebReader reader,
             @Value("${veto.webfetch.timeout-seconds}") int timeoutSeconds,
             @Value("${veto.webfetch.max-chars}") int maxChars,
             @Value("${veto.webfetch.allow-private-addresses}") boolean allowPrivateAddresses) {
         this.provider = provider;
+        this.reader = reader;
         this.timeoutSeconds = timeoutSeconds;
         this.maxChars = maxChars;
         if (timeoutSeconds <= 0 || maxChars <= 0) {
@@ -87,7 +91,24 @@ public final class NetworkEgressCapabilityImpl implements NetworkEgressCapabilit
     @Override
     public @NonNull FetchedPage fetch(@NonNull URI uri) {
         CapabilityAccess.require(ToolCapability.NETWORK_EGRESS, "web_fetch");
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds);
+        return fetchDocument(uri, Long.MAX_VALUE);
+    }
+
+    @Override
+    public @NonNull WebReadCapability openReader(@NonNull URI uri) {
+        var parent = CapabilityAccess.require(ToolCapability.NETWORK_EGRESS, "web_read");
+        Object approvedUrl = parent.executionPermit().call().args().get("url");
+        if (!(approvedUrl instanceof String value) || !uri.equals(URI.create(value.trim()))) {
+            throw new SecurityException("Reader URL differs from the approved destination.");
+        }
+        return new WebReadCapability(deadline -> fetchDocument(uri, deadline), parent, reader);
+    }
+
+    private @NonNull FetchedPage fetchDocument(@NonNull URI uri, long readerDeadline) {
+        long deadline =
+                Math.min(
+                        readerDeadline,
+                        System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds));
         String validationError = validateUri(uri);
         if (validationError != null) {
             return ToolErrors.failure(validationError);
@@ -128,7 +149,7 @@ public final class NetworkEgressCapabilityImpl implements NetworkEgressCapabilit
                     }
                     if (!sameOrigin(uri, next)) {
                         return ToolErrors.failure(
-                                "cross-origin redirect requires a separate web_fetch approval: "
+                                "cross-origin redirect requires a separately approved tool call: "
                                         + next);
                     }
                     current = next;

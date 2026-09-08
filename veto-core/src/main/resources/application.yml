@@ -70,6 +70,13 @@ veto:
     max-chars: 40000
     allow-private-addresses: false
 
+  webread:
+    model-tier: LOW
+    max-rounds: 12
+    timeout-seconds: 120
+    max-input-tokens: 32000
+    max-output-tokens: 4096
+
   websearch:
     provider: duckduckgo
     brave:

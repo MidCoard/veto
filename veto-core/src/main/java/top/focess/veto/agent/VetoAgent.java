@@ -4,6 +4,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
@@ -22,14 +23,10 @@ import top.focess.veto.agent.tool.ToolDefinition;
 public class VetoAgent implements Agent {
 
     private final @NonNull String id;
-    private final @NonNull AgentPersona persona;
-    private final @NonNull Set<String> whitelistedTools;
     private final @NonNull AgentRunner runner;
 
     public VetoAgent(@NonNull AgentPersona persona, @NonNull AgentRunner runner) {
         this.id = persona.id();
-        this.persona = persona;
-        this.whitelistedTools = runner.whitelistedToolsView();
         this.runner = runner;
         Thread.ofVirtual().name("agent-" + id).start(runner::run);
     }
@@ -41,17 +38,17 @@ public class VetoAgent implements Agent {
 
     @Override
     public @NonNull String name() {
-        return persona.name();
+        return runner.personaView().name();
     }
 
     @Override
     public @NonNull AgentPersona persona() {
-        return persona;
+        return runner.personaView();
     }
 
     @Override
     public @NonNull Set<String> whitelistedTools() {
-        return whitelistedTools;
+        return runner.whitelistedToolsView();
     }
 
     @Override
@@ -88,6 +85,14 @@ public class VetoAgent implements Agent {
     @Override
     public void resume() {
         runner.enqueue(new AgentAction.ResumeAction());
+    }
+
+    void onTermination(@NonNull Runnable callback) {
+        runner.onTermination(callback);
+    }
+
+    public @NonNull UUID sessionId() {
+        return runner.sessionId();
     }
 
     @Override
@@ -212,6 +217,6 @@ public class VetoAgent implements Agent {
 
     /** The persona's resolved manifest (for the PromptCompiler / tests). */
     public @NonNull Set<ToolDefinition> manifest() {
-        return persona.whitelistedTools();
+        return runner.personaView().whitelistedTools();
     }
 }

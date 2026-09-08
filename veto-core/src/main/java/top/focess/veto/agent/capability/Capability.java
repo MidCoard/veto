@@ -7,6 +7,8 @@ public sealed interface Capability
                 ProcessExecutionCapability,
                 TaskControlCapability,
                 NetworkEgressCapability,
+                WebReadCapability,
+                WebDocumentCapability,
                 MemoryReadCapability,
                 MemoryWriteCapability,
                 DelegationCapability,

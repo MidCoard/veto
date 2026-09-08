@@ -7,5 +7,6 @@ import top.focess.veto.agent.tool.builtin.UserQuestionRegistry;
 
 public sealed interface UserInteractionCapability extends Capability
         permits UserInteractionCapabilityImpl {
-    UserQuestionRegistry.@NonNull AnswerBatch ask(@NonNull List<@NonNull Question> questions);
+    UserQuestionRegistry.@NonNull AnswerBatch ask(@NonNull List<@NonNull Question> questions)
+            throws InterruptedException;
 }

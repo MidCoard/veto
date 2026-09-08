@@ -1,5 +1,6 @@
 package top.focess.veto.group;
 
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.workspace.Workspace;
@@ -31,4 +32,5 @@ public record MateBinding(
         String owner,
         Workspace workspace,
         @NonNull ToolResultPresentationMode toolResultPresentation,
-        boolean guidedEnabled) {}
+        boolean guidedEnabled,
+        UUID sessionId) {}

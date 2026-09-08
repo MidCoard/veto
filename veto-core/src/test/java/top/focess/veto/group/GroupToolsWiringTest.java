@@ -123,6 +123,7 @@ class GroupToolsWiringTest {
 
     @Test
     void createGroupRegistersEmptyGroupAndRequestsTransform() throws Exception {
+        UUID parentSession = UUID.randomUUID();
         HitlRegistry hitlRegistry = new HitlRegistry();
         Workspace workspace = Workspace.single(Path.of("group-workspace"), PathMode.REAL);
         hitlRegistry.setWorkspace("agent-1", workspace);
@@ -137,7 +138,7 @@ class GroupToolsWiringTest {
                         UUID.randomUUID(),
                         null,
                         "owner",
-                        null,
+                        parentSession,
                         ToolResultPresentationMode.BASIC,
                         true,
                         ToolExecutionPermit.empty()));
@@ -161,6 +162,14 @@ class GroupToolsWiringTest {
             assertEquals(1, registry.snapshot().size(), "one group registered");
             Group g = registry.snapshot().values().iterator().next();
             assertTrue(g.isActive());
+            assertEquals(parentSession, g.sessionId());
+            assertEquals(
+                    parentSession,
+                    g.withMate("test-mate", "review")
+                            .withDag(g.dag())
+                            .withState(Group.GroupState.COMPLETED, g.createdAt())
+                            .withoutMate("test-mate")
+                            .sessionId());
             assertTrue(g.guidedEnabled(), "the group inherits guided availability");
             assertTrue(
                     g.withMate("test-mate", "review")
@@ -411,8 +420,8 @@ class GroupToolsWiringTest {
                         g.groupId(),
                         "mate-1",
                         "LEADER",
-                        BlackboardMessage.MessageType.FEEDBACK,
-                        "node-1:feedback:test failed",
+                        BlackboardMessage.MessageType.ACCEPT,
+                        "node-1:accept-base64:UmVwb3J0OiB0ZXN0cyBwYXNzZWQu",
                         0));
 
         InspectGroup inspect =
@@ -431,8 +440,10 @@ class GroupToolsWiringTest {
                         ToolExecutionPermit.empty()));
         try {
             String first = CapabilityTestCalls.execute(inspect, new InspectGroup.Args(0L, 0));
-            assertTrue(first.contains("sender=mate-1 type=FEEDBACK"));
+            assertTrue(first.contains("sender=mate-1 type=ACCEPT"));
             assertTrue(first.contains("nextSinceSeq: 1"));
+            assertTrue(first.contains("Report: tests passed."));
+            assertFalse(first.contains("accept-base64"));
 
             String second = CapabilityTestCalls.execute(inspect, new InspectGroup.Args(1L, 0));
             assertTrue(second.contains("New Mate messages:\n- (none)"));
