@@ -32,7 +32,7 @@ import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.agent.web.FetchedPage;
 import top.focess.veto.agent.web.SearchProvider;
-import top.focess.veto.agent.web.WebReadTool;
+import top.focess.veto.agent.web.WebFetchTool;
 import top.focess.veto.agent.web.WebReader;
 import top.focess.veto.llm.core.ProviderType;
 import top.focess.veto.llm.core.ToolCall;
@@ -180,8 +180,8 @@ class WebReadChildAuthorityTest {
             UserContext.set("test-owner");
             String result =
                     CapabilityTestCalls.execute(
-                            new WebReadTool(network),
-                            new WebReadTool.Args(url.toString(), "Find timeout units."));
+                            new WebFetchTool(network),
+                            new WebFetchTool.Args(url.toString(), "Find timeout units."));
             assertEquals("complete", mapper.readTree(result).path("outcome").asText());
             assertEquals(
                     url.toString(),
@@ -211,7 +211,7 @@ class WebReadChildAuthorityTest {
     void childBindingRejectsRebindingAndWrongIdentityEvenForCachedContent() {
         UUID user = UUID.randomUUID();
         UUID session = UUID.randomUUID();
-        ToolCallContext parent = install("parent", user, "owner", session, "web_read");
+        ToolCallContext parent = install("parent", user, "owner", session, "web_fetch");
         AtomicInteger fetches = new AtomicInteger();
         WebReadCapability access =
                 new WebReadCapability(
@@ -238,7 +238,7 @@ class WebReadChildAuthorityTest {
                         scope("child", user, "other-owner", session, "fetch_page"),
                         scope("child", user, "owner", UUID.randomUUID(), "fetch_page"),
                         scope("child", user, "owner", session, "web_fetch"),
-                        scope("parent", user, "owner", session, "web_read"))) {
+                        scope("parent", user, "owner", session, "web_fetch"))) {
             activate(wrong);
             assertThrows(SecurityException.class, () -> access.fetch(Long.MAX_VALUE));
         }

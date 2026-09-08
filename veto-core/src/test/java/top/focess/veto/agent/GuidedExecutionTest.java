@@ -168,11 +168,9 @@ class GuidedExecutionTest {
 
     @Test
     void approvalResumesTypedCommandThenStop(@TempDir @NonNull Path root) throws Exception {
-        String executable =
-                new ObjectMapper()
-                        .writeValueAsString(
-                                Path.of(System.getProperty("java.home"), "bin", "java.exe")
-                                        .toString());
+        Path java = Path.of(System.getProperty("java.home"), "bin", "java");
+        if (!Files.isExecutable(java)) java = java.resolveSibling("java.exe");
+        String executable = new ObjectMapper().writeValueAsString(java.toString());
         String program =
                 """
             [{"id":"command","label":"Java version","type":"tool","tool":"run_command","inputs":{"commands":[{"executable":JAVA,"args":["-version"]}],"timeout":10,"network":false},"outputs":{"output":"content"}},

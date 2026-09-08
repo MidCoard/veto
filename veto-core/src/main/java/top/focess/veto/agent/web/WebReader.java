@@ -101,11 +101,11 @@ public final class WebReader {
             @NonNull ModelTierRegistry models,
             @NonNull CapabilityTranslator translator,
             @NonNull SessionAgentRegistry sessionAgents,
-            @Value("${veto.webread.model-tier}") @NonNull ModelTier tier,
-            @Value("${veto.webread.max-rounds}") int maxRounds,
-            @Value("${veto.webread.timeout-seconds}") int timeoutSeconds,
-            @Value("${veto.webread.max-input-tokens}") int maxInputTokens,
-            @Value("${veto.webread.max-output-tokens}") int maxOutputTokens) {
+            @Value("${veto.webfetch.model-tier}") @NonNull ModelTier tier,
+            @Value("${veto.webfetch.max-rounds}") int maxRounds,
+            @Value("${veto.webfetch.timeout-seconds}") int timeoutSeconds,
+            @Value("${veto.webfetch.max-input-tokens}") int maxInputTokens,
+            @Value("${veto.webfetch.max-output-tokens}") int maxOutputTokens) {
         if (maxRounds < 3 || timeoutSeconds < 1 || maxInputTokens < 16000 || maxOutputTokens < 256)
             throw new IllegalArgumentException("Invalid webread execution limits.");
         this.sessionAgents = sessionAgents;
@@ -219,7 +219,7 @@ public final class WebReader {
             @NonNull Execution execution) {}
 
     public @NonNull String read(@NonNull String objective, @NonNull WebReadCapability access) {
-        var parent = CapabilityAccess.require(ToolCapability.NETWORK_EGRESS, "web_read");
+        var parent = CapabilityAccess.require(ToolCapability.NETWORK_EGRESS, "web_fetch");
         String owner = parent.owner();
         UUID sessionId = parent.sessionId();
         if (owner == null || sessionId == null || !owner.equals(UserContext.get()))

@@ -57,7 +57,7 @@ class WebReaderLoopTest {
 
     @Test
     void missingLowUsesMidInTheRealReaderLoop() throws Exception {
-        WebReadTool tool = tool(script(List.of(fetch(), read(), finish("s1"))), 6, 10);
+        WebFetchTool tool = tool(script(List.of(fetch(), read(), finish("s1"))), 6, 10);
         when(models.resolve("test-owner", ModelTier.LOW))
                 .thenThrow(new ModelTierConfigException("LOW is unbound"));
         when(models.resolve("test-owner", ModelTier.MID))
@@ -71,7 +71,7 @@ class WebReaderLoopTest {
 
     @Test
     void missingLowAndMidUseTop() throws Exception {
-        WebReadTool tool = tool(script(List.of(fetch(), read(), finish("s1"))), 6, 10);
+        WebFetchTool tool = tool(script(List.of(fetch(), read(), finish("s1"))), 6, 10);
         when(models.resolve("test-owner", ModelTier.LOW))
                 .thenThrow(new ModelTierConfigException("LOW is unbound"));
         when(models.resolve("test-owner", ModelTier.MID))
@@ -86,7 +86,7 @@ class WebReaderLoopTest {
 
     @Test
     void noConfiguredTierFailsBeforeFetchingOrCallingAModel() throws Exception {
-        WebReadTool tool = tool(script(List.of()), 6, 10);
+        WebFetchTool tool = tool(script(List.of()), 6, 10);
         for (ModelTier candidate : List.of(ModelTier.LOW, ModelTier.MID, ModelTier.TOP)) {
             when(models.resolve("test-owner", candidate))
                     .thenThrow(new ModelTierConfigException("No configured binding"));
@@ -103,7 +103,7 @@ class WebReaderLoopTest {
 
     @Test
     void isolatedLoopReturnsOnlySelectedEvidenceAndConfiguredModel() throws Exception {
-        WebReadTool tool = tool(script(List.of(fetch(), read(), finish("s1"))), 6, 10);
+        WebFetchTool tool = tool(script(List.of(fetch(), read(), finish("s1"))), 6, 10);
         String result = execute(tool);
         var json = mapper.readTree(result);
         assertEquals("complete", json.path("outcome").asText());
@@ -135,7 +135,7 @@ class WebReaderLoopTest {
             html.append("</p>");
         }
         html.append("</main>");
-        WebReadTool tool =
+        WebFetchTool tool =
                 tool(
                         script(
                                 List.of(
@@ -202,7 +202,7 @@ class WebReaderLoopTest {
                     .append("</p>");
         }
         html.append("</main>");
-        WebReadTool tool =
+        WebFetchTool tool =
                 tool(
                         script(
                                 List.of(
@@ -264,7 +264,6 @@ class WebReaderLoopTest {
                         "load_skill",
                         "web_search",
                         "web_fetch",
-                        "web_read",
                         "create_group",
                         "create_node",
                         "post_message",
@@ -333,7 +332,7 @@ class WebReaderLoopTest {
 
     @Test
     void modelFailureIsAnErrorNotANegativeResearchFinding() {
-        WebReadTool tool =
+        WebFetchTool tool =
                 tool(
                         request -> {
                             throw new IllegalStateException("provider secret must not escape");
@@ -357,7 +356,7 @@ class WebReaderLoopTest {
     void modelTimeoutInterruptsTheWorkerAndClosesTheCapability() throws Exception {
         CountDownLatch interrupted = new CountDownLatch(1);
         AtomicReference<Thread> worker = new AtomicReference<>();
-        WebReadTool tool = tool(blocking(interrupted, worker, new CountDownLatch(1)), 4, 1);
+        WebFetchTool tool = tool(blocking(interrupted, worker, new CountDownLatch(1)), 4, 1);
         ToolExecutionException error =
                 assertThrows(
                         ToolDocs.nonNullClass(ToolExecutionException.class), () -> execute(tool));
@@ -379,7 +378,7 @@ class WebReaderLoopTest {
         AtomicReference<Thread> worker = new AtomicReference<>();
         AtomicReference<Throwable> failure = new AtomicReference<>();
         AtomicReference<String> result = new AtomicReference<>();
-        WebReadTool tool = tool(blocking(interrupted, worker, entered), 4, 20);
+        WebFetchTool tool = tool(blocking(interrupted, worker, entered), 4, 20);
         Thread parent =
                 Thread.ofVirtual()
                         .start(
@@ -439,11 +438,11 @@ class WebReaderLoopTest {
         };
     }
 
-    private @NonNull WebReadTool tool(@NonNull UniformLLMCaller caller, int rounds, int timeout) {
+    private @NonNull WebFetchTool tool(@NonNull UniformLLMCaller caller, int rounds, int timeout) {
         return tool(caller, rounds, timeout, 32000);
     }
 
-    private @NonNull WebReadTool tool(
+    private @NonNull WebFetchTool tool(
             @NonNull UniformLLMCaller caller, int rounds, int timeout, int maxInputTokens) {
         var network = mock(ToolDocs.nonNullClass(NetworkEgressCapabilityImpl.class));
         when(network.openReader(any())).thenReturn(access);
@@ -498,13 +497,13 @@ class WebReaderLoopTest {
                                 registry.stopSession(sessionId);
                             }
                         });
-        return new WebReadTool(network);
+        return new WebFetchTool(network);
     }
 
-    private @NonNull String execute(@NonNull WebReadTool tool) throws Exception {
+    private @NonNull String execute(@NonNull WebFetchTool tool) throws Exception {
         UserContext.set("test-owner");
         return CapabilityTestCalls.execute(
-                tool, new WebReadTool.Args("https://example.com/docs", "Find timeout units."));
+                tool, new WebFetchTool.Args("https://example.com/docs", "Find timeout units."));
     }
 
     private static @NonNull VetoResponse fetch() {

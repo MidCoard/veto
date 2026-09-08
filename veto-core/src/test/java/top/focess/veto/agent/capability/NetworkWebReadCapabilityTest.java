@@ -11,6 +11,8 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -23,7 +25,7 @@ import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.tool.ToolExecutionException;
 import top.focess.veto.agent.tool.ToolSchemaCompiler;
 import top.focess.veto.agent.web.SearchProvider;
-import top.focess.veto.agent.web.WebReadTool;
+import top.focess.veto.agent.web.WebFetchTool;
 import top.focess.veto.agent.web.WebReader;
 
 class NetworkWebReadCapabilityTest {
@@ -31,7 +33,7 @@ class NetworkWebReadCapabilityTest {
 
     @Test
     void publicToolPassesRestrictedDependencyRegistrationContract() {
-        WebReadTool tool = new WebReadTool(network(false));
+        WebFetchTool tool = new WebFetchTool(network(false));
         assertDoesNotThrow(
                 () ->
                         ToolContractValidator.validateHandler(
@@ -43,7 +45,7 @@ class NetworkWebReadCapabilityTest {
         NetworkEgressCapabilityImpl network = network(true);
         URI approved = URI.create("http://127.0.0.1:1/approved");
         assertThrows(SecurityException.class, () -> network.openReader(approved));
-        WebReadTool tool =
+        WebFetchTool tool =
                 tool(
                         network,
                         invocation -> {
@@ -71,7 +73,7 @@ class NetworkWebReadCapabilityTest {
         server.start();
         AtomicReference<WebReadCapability> captured = new AtomicReference<>();
         try {
-            WebReadTool tool =
+            WebFetchTool tool =
                     tool(
                             network(true),
                             invocation -> {
@@ -111,7 +113,7 @@ class NetworkWebReadCapabilityTest {
         target.start();
         origin.start();
         try {
-            WebReadTool tool = fetchingTool(network(true));
+            WebFetchTool tool = fetchingTool(network(true));
             ToolExecutionException error =
                     assertThrows(
                             ToolDocs.nonNullClass(ToolExecutionException.class),
@@ -137,7 +139,7 @@ class NetworkWebReadCapabilityTest {
                 });
         server.start();
         try {
-            WebReadTool tool = fetchingTool(network(false));
+            WebFetchTool tool = fetchingTool(network(false));
             ToolExecutionException error =
                     assertThrows(
                             ToolDocs.nonNullClass(ToolExecutionException.class),
@@ -201,7 +203,74 @@ class NetworkWebReadCapabilityTest {
                 mock(ToolDocs.nonNullClass(SearchProvider.class)), reader, 5, 10000, allowPrivate);
     }
 
-    private @NonNull WebReadTool fetchingTool(@NonNull NetworkEgressCapabilityImpl network) {
+    @Test
+    // Class literals are non-null despite the checker's package-default interpretation.
+    @SuppressWarnings("nullness:argument")
+    void readerFetchTimesOutWhenHeadersArriveButBodyStalls() throws Exception {
+        CountDownLatch releaseBody = new CountDownLatch(1);
+        HttpServer server = server();
+        server.createContext(
+                "/slow",
+                exchange -> {
+                    exchange.sendResponseHeaders(200, 100);
+                    exchange.getResponseBody().write('x');
+                    exchange.getResponseBody().flush();
+                    try {
+                        releaseBody.await(10, TimeUnit.SECONDS);
+                    } catch (InterruptedException error) {
+                        Thread.currentThread().interrupt();
+                    } finally {
+                        exchange.close();
+                    }
+                });
+        server.start();
+        try {
+            @NonNull SearchProvider provider = mock();
+            WebFetchTool tool =
+                    fetchingTool(new NetworkEgressCapabilityImpl(provider, reader, 1, 1000, true));
+            long started = System.nanoTime();
+            ToolExecutionException error =
+                    assertThrows(
+                            ToolExecutionException.class,
+                            () -> execute(tool, url(server, "/slow")));
+            assertTrue(error.content().contains("timed out"));
+            assertTrue(Duration.ofNanos(System.nanoTime() - started).toSeconds() < 5);
+        } finally {
+            releaseBody.countDown();
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void readerFetchBoundsResponseAfterSameOriginRedirect() throws Exception {
+        HttpServer server = server();
+        server.createContext("/start", exchange -> redirect(exchange, "/document"));
+        server.createContext(
+                "/document", exchange -> respond(exchange, "abcdefghijklmnopqrstuvwxyz".repeat(3)));
+        server.start();
+        try {
+            @NonNull SearchProvider provider = mock();
+            WebFetchTool tool =
+                    tool(
+                            new NetworkEgressCapabilityImpl(provider, reader, 5, 10, true),
+                            invocation -> {
+                                WebReadCapability access = invocation.getArgument(1);
+                                if (access == null)
+                                    throw new AssertionError("Missing reader capability");
+                                var page = access.fetch(deadline());
+                                assertEquals(url(server, "/document"), page.uri());
+                                assertEquals(10, page.characterLimit());
+                                assertTrue(page.truncated());
+                                assertEquals(40, page.content().length());
+                                return "bounded page";
+                            });
+            assertEquals("bounded page", execute(tool, url(server, "/start")));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    private @NonNull WebFetchTool fetchingTool(@NonNull NetworkEgressCapabilityImpl network) {
         return tool(
                 network,
                 invocation -> {
@@ -211,17 +280,17 @@ class NetworkWebReadCapabilityTest {
                 });
     }
 
-    private @NonNull WebReadTool tool(
+    private @NonNull WebFetchTool tool(
             @NonNull NetworkEgressCapabilityImpl network, @NonNull Answer<String> action) {
         when(reader.read(anyString(), any(ToolDocs.nonNullClass(WebReadCapability.class))))
                 .thenAnswer(action);
-        return new WebReadTool(network);
+        return new WebFetchTool(network);
     }
 
-    private static @NonNull String execute(@NonNull WebReadTool tool, @NonNull URI uri)
+    private static @NonNull String execute(@NonNull WebFetchTool tool, @NonNull URI uri)
             throws Exception {
         return CapabilityTestCalls.execute(
-                tool, new WebReadTool.Args(uri.toString(), "Read timeout units."));
+                tool, new WebFetchTool.Args(uri.toString(), "Read timeout units."));
     }
 
     private static long deadline() {

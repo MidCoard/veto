@@ -41,7 +41,7 @@ public final class WebReadCapability implements Capability, AutoCloseable {
 
     private void authorizeParent() {
         if (closed
-                || !CapabilityAccess.require(ToolCapability.NETWORK_EGRESS, "web_read")
+                || !CapabilityAccess.require(ToolCapability.NETWORK_EGRESS, "web_fetch")
                         .equals(parent))
             throw new SecurityException("Reader invocation changed or ended.");
     }

@@ -53,16 +53,17 @@ public final class NetworkEgressCapabilityImpl implements NetworkEgressCapabilit
     public NetworkEgressCapabilityImpl(
             @NonNull SearchProvider provider,
             @NonNull WebReader reader,
-            @Value("${veto.webfetch.timeout-seconds}") int timeoutSeconds,
-            @Value("${veto.webfetch.max-chars}") int maxChars,
-            @Value("${veto.webfetch.allow-private-addresses}") boolean allowPrivateAddresses) {
+            @Value("${veto.webfetch.fetch.timeout-seconds}") int timeoutSeconds,
+            @Value("${veto.webfetch.fetch.max-chars}") int maxChars,
+            @Value("${veto.webfetch.fetch.allow-private-addresses}")
+                    boolean allowPrivateAddresses) {
         this.provider = provider;
         this.reader = reader;
         this.timeoutSeconds = timeoutSeconds;
         this.maxChars = maxChars;
         if (timeoutSeconds <= 0 || maxChars <= 0) {
             throw new IllegalArgumentException(
-                    "web_fetch timeout-seconds and max-chars must both be positive");
+                    "Web reading fetch timeout-seconds and max-chars must both be positive");
         }
         this.allowPrivateAddresses = allowPrivateAddresses;
         HttpClient.Builder builder =
@@ -89,14 +90,8 @@ public final class NetworkEgressCapabilityImpl implements NetworkEgressCapabilit
     }
 
     @Override
-    public @NonNull FetchedPage fetch(@NonNull URI uri) {
-        CapabilityAccess.require(ToolCapability.NETWORK_EGRESS, "web_fetch");
-        return fetchDocument(uri, Long.MAX_VALUE);
-    }
-
-    @Override
     public @NonNull WebReadCapability openReader(@NonNull URI uri) {
-        var parent = CapabilityAccess.require(ToolCapability.NETWORK_EGRESS, "web_read");
+        var parent = CapabilityAccess.require(ToolCapability.NETWORK_EGRESS, "web_fetch");
         Object approvedUrl = parent.executionPermit().call().args().get("url");
         if (!(approvedUrl instanceof String value) || !uri.equals(URI.create(value.trim()))) {
             throw new SecurityException("Reader URL differs from the approved destination.");

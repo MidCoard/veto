@@ -31,21 +31,21 @@
       "defaultValue": "tcp://127.0.0.1:5555"
     },
     {
-      "name": "veto.webfetch.timeout-seconds",
+      "name": "veto.webfetch.fetch.timeout-seconds",
       "type": "java.lang.Integer",
-      "description": "HTTP request timeout for web_fetch in seconds.",
+      "description": "HTTP fetch timeout within a web reading in seconds.",
       "defaultValue": 30
     },
     {
-      "name": "veto.webfetch.max-chars",
+      "name": "veto.webfetch.fetch.max-chars",
       "type": "java.lang.Integer",
-      "description": "Maximum rendered characters returned by web_fetch.",
+      "description": "Size limit for the page fetched by the isolated web reader.",
       "defaultValue": 40000
     },
     {
-      "name": "veto.webfetch.allow-private-addresses",
+      "name": "veto.webfetch.fetch.allow-private-addresses",
       "type": "java.lang.Boolean",
-      "description": "Allow web_fetch to contact loopback, link-local, private, or multicast destinations. Keep disabled unless agents must access a trusted intranet.",
+      "description": "Allow the web reader to contact loopback, link-local, private, or multicast destinations. Keep disabled unless agents must access a trusted intranet.",
       "defaultValue": false
     }
   ],

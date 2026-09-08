@@ -37,7 +37,7 @@ import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.tool.ToolEngineImpl;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.agent.web.FetchedPage;
-import top.focess.veto.agent.web.WebReadTool;
+import top.focess.veto.agent.web.WebFetchTool;
 import top.focess.veto.agent.web.WebReader;
 import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.llm.core.ProviderType;
@@ -139,7 +139,7 @@ class WebReadAgentIntegrationTest {
         var context = mock(ToolDocs.nonNullClass(ApplicationContext.class));
         when(context.getBeansOfType(AgentTool.class)).thenReturn(Map.of());
         ToolEngineImpl engine =
-                new ToolEngineImpl(mapper, List.of(new WebReadTool(network)), context);
+                new ToolEngineImpl(mapper, List.of(new WebFetchTool(network)), context);
         engine.afterSingletonsInstantiated();
         List<VetoRequest> parentRequests = new ArrayList<>();
         AtomicInteger parentTurn = new AtomicInteger();
@@ -153,7 +153,7 @@ class WebReadAgentIntegrationTest {
                                 null,
                                 List.of(
                                         new ToolCall(
-                                                "web_read",
+                                                "web_fetch",
                                                 Map.of(
                                                         "url",
                                                         "https://example.com/docs",
@@ -169,7 +169,7 @@ class WebReadAgentIntegrationTest {
                                 new VetoResponse.Guide(
                                         mapper.readTree(
                                                 """
-                        [{"id":"read","label":"Read","type":"tool","tool":"web_read","inputs":{"url":"https://example.com/docs","objective":"Find timeout units."},"outputs":{"reading":"content"}},
+                        [{"id":"read","label":"Read","type":"tool","tool":"web_fetch","inputs":{"url":"https://example.com/docs","objective":"Find timeout units."},"outputs":{"reading":"content"}},
                          {"id":"answer","label":"Answer","type":"generate","prompt":"Answer from $reading","inputs":{"reading":"$reading"},"outputs":{"answer":"message"}},
                          {"id":"done","label":"Done","type":"STOP","result_binding":"answer"}]
                         """)));
@@ -315,12 +315,12 @@ class WebReadAgentIntegrationTest {
         var context = mock(ToolDocs.nonNullClass(ApplicationContext.class));
         when(context.getBeansOfType(AgentTool.class)).thenReturn(Map.of());
         ToolEngineImpl engine =
-                new ToolEngineImpl(mapper, List.of(new WebReadTool(network)), context);
+                new ToolEngineImpl(mapper, List.of(new WebFetchTool(network)), context);
         engine.afterSingletonsInstantiated();
         UniformLLMCaller parentCaller =
                 request ->
                         call(
-                                "web_read",
+                                "web_fetch",
                                 Map.of(
                                         "url",
                                         "https://example.com/docs",

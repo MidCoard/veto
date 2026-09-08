@@ -33,10 +33,10 @@ veto:
   skills:
     project-dir: ""
   webfetch:
-    timeout-seconds: 30
-    max-chars: 40000
-    allow-private-addresses: false
-  webread:
+    fetch:
+      timeout-seconds: 30
+      max-chars: 40000
+      allow-private-addresses: false
     model-tier: LOW
     max-rounds: 12
     timeout-seconds: 120
