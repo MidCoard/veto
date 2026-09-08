@@ -22,6 +22,7 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.mockito.ArgumentCaptor;
 import org.springframework.context.ApplicationContext;
 import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.agent.capability.NetworkEgressCapabilityImpl;
@@ -46,6 +47,9 @@ import top.focess.veto.llm.core.ToolResultPresentationMode;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.llm.core.VetoRequest;
 import top.focess.veto.llm.core.VetoResponse;
+import top.focess.veto.memory.TurnLogService;
+import top.focess.veto.memory.TurnRecordEntity;
+import top.focess.veto.memory.TurnRecordRepository;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierRegistry;
@@ -104,6 +108,7 @@ class WebReadAgentIntegrationTest {
                 .thenReturn(
                         new ModelBinding(
                                 ProviderType.DEEPSEEK, "isolated-reader", "reader-key", 0, 2048));
+        @NonNull TurnRecordRepository turnRepository = mock();
         WebReader reader =
                 new WebReader(
                         mapper,
@@ -111,6 +116,7 @@ class WebReadAgentIntegrationTest {
                         models,
                         new DefaultCapabilityTranslator(mapper),
                         registry,
+                        new TurnLogService(turnRepository, mapper),
                         ModelTier.LOW,
                         5,
                         15,
@@ -220,6 +226,18 @@ class WebReadAgentIntegrationTest {
         assertTrue(result.success(), result.message());
         assertEquals("Timeout is 30 seconds.", result.message());
         assertEquals(3, childRequests.size());
+        ArgumentCaptor<@NonNull TurnRecordEntity> captured = ArgumentCaptor.captor();
+        verify(turnRepository, atLeastOnce()).save(captured.capture());
+        var savedTurns = captured.getAllValues();
+        assertTrue(
+                savedTurns.stream()
+                        .allMatch(row -> sessionId.toString().equals(row.getSessionId())));
+        assertTrue(savedTurns.stream().allMatch(row -> user.toString().equals(row.getUserId())));
+        assertEquals(1, savedTurns.stream().map(TurnRecordEntity::getAgentId).distinct().count());
+        assertTrue(
+                savedTurns.stream()
+                        .anyMatch(row -> row.getPayload().contains("RAW_CHILD_PAGE_SENTINEL")));
+        assertTrue(savedTurns.stream().anyMatch(row -> row.getType().equals("AGENT_INIT")));
         assertTrue(mapper.writeValueAsString(childRequests).contains("RAW_CHILD_PAGE_SENTINEL"));
         assertFalse(
                 mapper.writeValueAsString(childRequests).contains("MAIN_PRIVATE_CONTEXT_SENTINEL"));
@@ -290,6 +308,7 @@ class WebReadAgentIntegrationTest {
         var models = mock(ToolDocs.nonNullClass(ModelTierRegistry.class));
         when(models.resolve("test-owner", ModelTier.LOW))
                 .thenReturn(new ModelBinding(ProviderType.DEEPSEEK, "reader", "key", 0, 2048));
+        @NonNull TurnRecordRepository turnRepository = mock();
         WebReader reader =
                 new WebReader(
                         mapper,
@@ -297,6 +316,7 @@ class WebReadAgentIntegrationTest {
                         models,
                         new DefaultCapabilityTranslator(mapper),
                         registry,
+                        new TurnLogService(turnRepository, mapper),
                         ModelTier.LOW,
                         5,
                         30,

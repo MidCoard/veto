@@ -39,6 +39,7 @@ import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.llm.core.VetoResponse;
+import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierRegistry;
@@ -128,6 +129,7 @@ class WebReadChildAuthorityTest {
                             models,
                             new DefaultCapabilityTranslator(mapper),
                             registry,
+                            new TurnLogService(null, mapper),
                             ModelTier.LOW,
                             6,
                             15,

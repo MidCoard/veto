@@ -10,8 +10,8 @@ import top.focess.veto.llm.core.ToolResultPresentationModeConverter;
 import top.focess.veto.session.SessionService;
 
 /**
- * A session - the conversation container a terminal/frontend attaches to. Holds one primary agent
- * (plus future sub-agents). DB-persisted so it survives restart.
+ * A session - the conversation container a terminal/frontend attaches to. Holds a primary agent and
+ * the other agents that participate in the session. DB-persisted so it survives restart.
  */
 @Entity
 @Table(name = "sessions")

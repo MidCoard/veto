@@ -37,6 +37,7 @@ import top.focess.veto.llm.core.ToolDefinition;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.llm.core.VetoRequest;
 import top.focess.veto.llm.core.VetoResponse;
+import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierConfigException;
@@ -471,6 +472,7 @@ class WebReaderLoopTest {
                         models,
                         new DefaultCapabilityTranslator(mapper),
                         registry,
+                        new TurnLogService(null, mapper),
                         ModelTier.LOW,
                         rounds,
                         timeout,

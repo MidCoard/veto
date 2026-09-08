@@ -1,17 +1,30 @@
 package top.focess.veto.agent;
 
 import jakarta.annotation.PreDestroy;
+import java.time.Instant;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.identity.AgentPersona;
+import top.focess.veto.agent.identity.Role;
+import top.focess.veto.memory.TurnRecordRepository;
+import top.focess.veto.model.AgentEntity;
+import top.focess.veto.model.AgentInstanceRepository;
 
 /** Owns live agents and invocation dependencies independently of group membership. */
 @Component
 public final class SessionAgentRegistry {
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.agent.SessionAgentRegistry");
+
     public record Entry(
             @NonNull UUID sessionId,
             String parentAgentId,
@@ -20,6 +33,84 @@ public final class SessionAgentRegistry {
 
     private final @NonNull Map<@NonNull String, @NonNull Entry> live = new HashMap<>();
     private boolean closed;
+    private final AgentInstanceRepository repository;
+    private final TurnRecordRepository turns;
+
+    /** Embedded runners without a database still have runtime lifecycle ownership. */
+    public SessionAgentRegistry() {
+        repository = null;
+        turns = null;
+    }
+
+    @Autowired
+    public SessionAgentRegistry(
+            @NonNull AgentInstanceRepository repository, @NonNull TurnRecordRepository turns) {
+        this.repository = repository;
+        this.turns = turns;
+    }
+
+    public record AgentSummary(
+            @NonNull String id,
+            @NonNull String name,
+            Role role,
+            AgentState state,
+            String parentAgentId,
+            String parentCallId,
+            boolean live,
+            Instant createdAt,
+            Instant startedAt,
+            Instant endedAt) {}
+
+    /** Session membership survives runtime cleanup; histories remain in their own streams. */
+    public synchronized @NonNull List<@NonNull AgentSummary> records(@NonNull UUID sessionId) {
+        Map<@NonNull String, @NonNull AgentSummary> result = new LinkedHashMap<>();
+        if (repository != null) {
+            for (AgentEntity entity : repository.findBySessionId(sessionId.toString())) {
+                String role = entity.getRuntimeRole();
+                result.put(
+                        entity.getId(),
+                        new AgentSummary(
+                                entity.getId(),
+                                entity.getName(),
+                                role == null ? null : Role.valueOf(role),
+                                entity.getEndedAt() == null ? null : AgentState.TERMINATED,
+                                entity.getParentAgentId(),
+                                entity.getParentCallId(),
+                                false,
+                                entity.getCreatedAt(),
+                                entity.getStartedAt(),
+                                entity.getEndedAt()));
+            }
+        }
+        if (turns != null) {
+            for (String id : turns.findAgentIdsBySessionId(sessionId.toString())) {
+                if (id != null && !id.isBlank() && !"legacy".equals(id)) {
+                    result.putIfAbsent(
+                            id,
+                            new AgentSummary(
+                                    id, id, null, null, null, null, false, null, null, null));
+                }
+            }
+        }
+        for (Entry entry : agents(sessionId)) {
+            VetoAgent agent = entry.agent();
+            AgentSummary saved = result.get(agent.id());
+            result.put(
+                    agent.id(),
+                    new AgentSummary(
+                            agent.id(),
+                            saved == null ? agent.name() : saved.name(),
+                            agent.persona().role(),
+                            agent.state(),
+                            entry.parentAgentId(),
+                            entry.parentCallId(),
+                            true,
+                            saved == null ? null : saved.createdAt(),
+                            saved == null ? null : saved.startedAt(),
+                            null));
+        }
+        return result.values().stream().sorted(Comparator.comparing(AgentSummary::id)).toList();
+    }
 
     public synchronized @NonNull VetoAgent start(
             @NonNull AgentPersona persona, @NonNull AgentRunner runner) {
@@ -50,6 +141,28 @@ public final class SessionAgentRegistry {
         if (closed || live.containsKey(entry.agent().id())) {
             throw new IllegalStateException(
                     "Agent registry is closed or agent is already registered");
+        }
+        if (repository != null) {
+            try {
+                AgentEntity entity =
+                        repository
+                                .findById(entry.agent().id())
+                                .orElseGet(
+                                        () ->
+                                                AgentEntity.spawned(
+                                                        entry.agent().id(),
+                                                        entry.sessionId().toString(),
+                                                        entry.agent().name()));
+                if (!entity.getSessionId().equals(entry.sessionId().toString())) {
+                    throw new IllegalStateException("Agent belongs to another session");
+                }
+                entity.started(
+                        entry.agent().persona(), entry.parentAgentId(), entry.parentCallId());
+                repository.save(entity);
+            } catch (RuntimeException error) {
+                entry.agent().terminate();
+                throw error;
+            }
         }
         live.put(entry.agent().id(), entry);
         entry.agent().onTermination(() -> stop(entry.agent().id()));
@@ -92,6 +205,21 @@ public final class SessionAgentRegistry {
                         .toList();
         children.forEach(this::stop);
         entry.agent().terminate();
+        var store = repository;
+        if (store != null) {
+            try {
+                AgentEntity entity = store.findById(agentId).orElse(null);
+                if (entity != null) {
+                    entity.ended(entry.agent().persona());
+                    store.save(entity);
+                }
+            } catch (RuntimeException error) {
+                log.warn(
+                        "Could not save stop time for agent {}; its identity remains recorded",
+                        agentId,
+                        error);
+            }
+        }
     }
 
     public synchronized void stopSession(@NonNull UUID sessionId) {

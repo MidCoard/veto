@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import java.time.Instant;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTier;
 
@@ -59,7 +60,59 @@ public class AgentEntity {
     @Column(name = "created_at", nullable = false)
     private @NonNull Instant createdAt = Instant.EPOCH;
 
+    private String runtimeRole;
+
+    private String parentAgentId;
+    private String parentCallId;
+    private Instant startedAt;
+    private Instant endedAt;
+
     protected AgentEntity() {}
+
+    /** Durable identity for an agent started inside an existing session. */
+    public static @NonNull AgentEntity spawned(
+            @NonNull String id, @NonNull String sessionId, @NonNull String name) {
+        AgentEntity entity = new AgentEntity();
+        entity.id = id;
+        entity.sessionId = sessionId;
+        entity.name = name;
+        entity.role = Role.SUB;
+        entity.createdAt = Instant.now();
+        return entity;
+    }
+
+    public void started(@NonNull AgentPersona persona, String parentAgentId, String parentCallId) {
+        this.runtimeRole = persona.role().name();
+        this.parentAgentId = parentAgentId;
+        this.parentCallId = parentCallId;
+        if (startedAt == null) startedAt = Instant.now();
+        endedAt = null;
+    }
+
+    public void ended(@NonNull AgentPersona persona) {
+        runtimeRole = persona.role().name();
+        endedAt = Instant.now();
+    }
+
+    public String getRuntimeRole() {
+        return runtimeRole;
+    }
+
+    public String getParentAgentId() {
+        return parentAgentId;
+    }
+
+    public String getParentCallId() {
+        return parentCallId;
+    }
+
+    public Instant getStartedAt() {
+        return startedAt;
+    }
+
+    public Instant getEndedAt() {
+        return endedAt;
+    }
 
     /**
      * Create an agent bound to a tier. {@code cache} is the tier's resolved binding at create time,

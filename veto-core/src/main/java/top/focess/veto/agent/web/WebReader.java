@@ -40,6 +40,7 @@ import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.llm.core.LlmSystemUsage;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.llm.core.VetoRequest;
+import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierConfigException;
@@ -83,6 +84,7 @@ public final class WebReader {
         When earlier observations have been removed to fit context, reread evidence as needed.
         """;
     private final @NonNull SessionAgentRegistry sessionAgents;
+    private final @NonNull TurnLogService turnLogService;
     private final @NonNull ObjectMapper mapper;
     private final @NonNull UniformLLMCaller caller;
     private final @NonNull ModelTierRegistry models;
@@ -99,6 +101,7 @@ public final class WebReader {
             @NonNull ModelTierRegistry models,
             @NonNull CapabilityTranslator translator,
             @NonNull SessionAgentRegistry sessionAgents,
+            @NonNull TurnLogService turnLogService,
             @Value("${veto.webfetch.model-tier}") @NonNull ModelTier tier,
             @Value("${veto.webfetch.max-rounds}") int maxRounds,
             @Value("${veto.webfetch.timeout-seconds}") int timeoutSeconds,
@@ -107,6 +110,7 @@ public final class WebReader {
         if (maxRounds < 3 || timeoutSeconds < 1 || maxInputTokens < 16000 || maxOutputTokens < 256)
             throw new IllegalArgumentException("Invalid webread execution limits.");
         this.sessionAgents = sessionAgents;
+        this.turnLogService = turnLogService;
         this.mapper = mapper;
         this.caller = caller;
         this.models = models;
@@ -275,7 +279,7 @@ public final class WebReader {
                                     model.baseUrl()),
                             null,
                             parent.userId(),
-                            null,
+                            turnLogService,
                             null);
             runner.setOwner(owner);
             runner.setSessionId(sessionId);
