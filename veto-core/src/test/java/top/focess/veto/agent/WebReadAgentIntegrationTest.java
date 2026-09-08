@@ -67,6 +67,14 @@ class WebReadAgentIntegrationTest {
                     childRequests.add(request);
                     var active = registry.agents(sessionId);
                     assertEquals(2, active.size());
+                    assertEquals(
+                            AgentState.WAITING,
+                            active.stream()
+                                    .filter(entry -> entry.parentAgentId() == null)
+                                    .findFirst()
+                                    .orElseThrow()
+                                    .agent()
+                                    .state());
                     var child =
                             active.stream()
                                     .filter(entry -> entry.parentAgentId() != null)

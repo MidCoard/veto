@@ -23,7 +23,7 @@ import top.focess.veto.agent.tool.ToolSecurity;
 /**
  * {@code web_search} - search the web and return titled, linked results. Uses a pluggable {@link
  * SearchProvider}: the keyless DuckDuckGo provider by default (works out of the box), or the Brave
- * API when configured. Follow up with {@code web_fetch} to read a specific result.
+ * API when configured. Follow up with {@code web_read} to read a specific result.
  */
 @Component
 @ToolSecurity(capability = ToolCapability.NETWORK_EGRESS, defaultDanger = Danger.ELEVATED)
@@ -57,12 +57,12 @@ public final class WebSearchTool implements NetworkEgressTool<WebSearchTool.Args
                     - Use it for current or time-sensitive facts, unfamiliar identifiers, security \
                     research, documentation, versions, examples, and how-tos when you do not \
                     already have a reliable URL.
-                    - Search results are leads, not final evidence. Follow up with `web_fetch` on \
+                    - Search results are leads, not final evidence. Follow up with `web_read` on \
                     the most relevant authoritative result before making a strong factual claim.
                     """,
             whenNotToUse =
                     """
-                    - Do not use it when you already know the URL - `web_fetch` it directly.
+                    - Do not use it when you already know the URL - `web_read` it directly.
                     - If the user explicitly requested a search or verification, do not substitute \
                     your own memory even when the fact seems familiar.
                     - Otherwise, do not use it for stable facts you reliably already know.

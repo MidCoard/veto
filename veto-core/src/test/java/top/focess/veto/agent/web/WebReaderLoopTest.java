@@ -39,6 +39,7 @@ import top.focess.veto.llm.core.VetoRequest;
 import top.focess.veto.llm.core.VetoResponse;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTier;
+import top.focess.veto.model.tier.ModelTierConfigException;
 import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.vault.UserContext;
 
@@ -47,10 +48,57 @@ class WebReaderLoopTest {
     private final @NonNull WebReadCapability access =
             mock(ToolDocs.nonNullClass(WebReadCapability.class));
     private final @NonNull List<@NonNull VetoRequest> requests = new ArrayList<>();
+    private final @NonNull ModelTierRegistry models = mock();
 
     @AfterEach
     void clearOwner() {
         UserContext.clear();
+    }
+
+    @Test
+    void missingLowUsesMidInTheRealReaderLoop() throws Exception {
+        WebReadTool tool = tool(script(List.of(fetch(), read(), finish("s1"))), 6, 10);
+        when(models.resolve("test-owner", ModelTier.LOW))
+                .thenThrow(new ModelTierConfigException("LOW is unbound"));
+        when(models.resolve("test-owner", ModelTier.MID))
+                .thenReturn(
+                        new ModelBinding(ProviderType.DEEPSEEK, "mid-reader", "mid-key", 0, 2048));
+        var result = mapper.readTree(execute(tool));
+        assertEquals("mid-reader", result.path("execution").path("model").asText());
+        assertTrue(requests.stream().allMatch(request -> request.modelName().equals("mid-reader")));
+        verify(models, never()).resolve("test-owner", ModelTier.TOP);
+    }
+
+    @Test
+    void missingLowAndMidUseTop() throws Exception {
+        WebReadTool tool = tool(script(List.of(fetch(), read(), finish("s1"))), 6, 10);
+        when(models.resolve("test-owner", ModelTier.LOW))
+                .thenThrow(new ModelTierConfigException("LOW is unbound"));
+        when(models.resolve("test-owner", ModelTier.MID))
+                .thenThrow(new ModelTierConfigException("MID is incomplete"));
+        when(models.resolve("test-owner", ModelTier.TOP))
+                .thenReturn(
+                        new ModelBinding(ProviderType.DEEPSEEK, "top-reader", "top-key", 0, 2048));
+        var result = mapper.readTree(execute(tool));
+        assertEquals("top-reader", result.path("execution").path("model").asText());
+        assertTrue(requests.stream().allMatch(request -> request.modelName().equals("top-reader")));
+    }
+
+    @Test
+    void noConfiguredTierFailsBeforeFetchingOrCallingAModel() throws Exception {
+        WebReadTool tool = tool(script(List.of()), 6, 10);
+        for (ModelTier candidate : List.of(ModelTier.LOW, ModelTier.MID, ModelTier.TOP)) {
+            when(models.resolve("test-owner", candidate))
+                    .thenThrow(new ModelTierConfigException("No configured binding"));
+        }
+        try {
+            execute(tool);
+            fail("Expected missing model configuration to fail");
+        } catch (ModelTierConfigException expected) {
+            assertEquals("No configured binding", expected.getMessage());
+        }
+        assertTrue(requests.isEmpty());
+        verify(access, never()).fetch(anyLong());
     }
 
     @Test
@@ -74,6 +122,8 @@ class WebReaderLoopTest {
         assertEquals("test-owner", UserContext.get());
         verify(access).fetch(anyLong());
         verify(access).close();
+        verify(models, never()).resolve("test-owner", ModelTier.MID);
+        verify(models, never()).resolve("test-owner", ModelTier.TOP);
     }
 
     @Test
@@ -297,6 +347,8 @@ class WebReaderLoopTest {
         assertEquals("READER_MODEL", error.errorCode());
         assertFalse(message.contains("provider secret"));
         assertFalse(message.contains("not_found"));
+        verify(models, never()).resolve("test-owner", ModelTier.MID);
+        verify(models, never()).resolve("test-owner", ModelTier.TOP);
         verify(access).close();
         verify(access, never()).fetch(anyLong());
     }
@@ -404,7 +456,6 @@ class WebReaderLoopTest {
                                 "<main><p>The timeout is 30 seconds.</p><p>UNRELATED_PAGE_BODY</p></main>",
                                 false,
                                 10000));
-        var models = mock(ToolDocs.nonNullClass(ModelTierRegistry.class));
         when(models.resolve("test-owner", ModelTier.LOW))
                 .thenReturn(
                         new ModelBinding(

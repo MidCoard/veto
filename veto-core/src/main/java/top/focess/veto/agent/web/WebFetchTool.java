@@ -5,7 +5,6 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jspecify.annotations.NonNull;
-import org.springframework.stereotype.Component;
 import top.focess.veto.agent.capability.NetworkEgressCapability;
 import top.focess.veto.agent.screening.Danger;
 import top.focess.veto.agent.tool.Doc;
@@ -20,15 +19,15 @@ import top.focess.veto.agent.tool.ToolResultFormat;
 import top.focess.veto.agent.tool.ToolSecurity;
 
 /**
- * {@code web_fetch} - fetch a URL and return its readable content. Key-free: a direct HTTP GET, so
- * it works out of the box. HTML is converted to clean text (title + main body, scripts/styles
- * stripped) via Jsoup; JSON and plain text are returned as-is. Content is truncated to a size cap.
+ * Legacy {@code web_fetch} adapter, excluded from the application tool catalog. New reading calls
+ * use {@link WebReadTool} and its isolated reader. A direct HTTP GET means this adapter it works
+ * out of the box. HTML is converted to clean text (title + main body, scripts/styles stripped) via
+ * Jsoup; JSON and plain text are returned as-is. Content is truncated to a size cap.
  *
  * <p>Fetched page content is untrusted input - it is returned as DATA for the model to read, and
  * the web UI renders it without executing embedded markup (no raw-HTML rendering), so a malicious
  * page cannot inject script.
  */
-@Component
 @ToolSecurity(capability = ToolCapability.NETWORK_EGRESS, defaultDanger = Danger.ELEVATED)
 public final class WebFetchTool implements NetworkEgressTool<WebFetchTool.Args> {
     private final @NonNull NetworkEgressCapability capability;

@@ -32,7 +32,7 @@ public final class WebReadTool implements NetworkEgressTool<WebReadTool.Args> {
             whenToUse =
                     "Use for focused documentation questions, extracting facts, or summarizing a public page. After web_search, read an authoritative result to verify a claim.",
             whenNotToUse =
-                    "Use web_search to discover URLs. Use web_fetch when you need the actual readable text. This tool cannot browse interactive pages, follow unrelated links, or return complete large datasets.",
+                    "Use web_search to discover URLs. This tool cannot browse interactive pages, follow unrelated links, or return complete large datasets.",
             resultContract =
                     "JSON with outcome (complete, partial, not_found), answer, evidence (url, section, quote), limitations, and execution metadata. Complete means the answer is supported, not that the entire page was read. Partial identifies missing coverage.",
             errorsAndEdgeCases =

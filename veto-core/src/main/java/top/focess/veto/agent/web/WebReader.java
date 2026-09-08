@@ -42,7 +42,9 @@ import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.llm.core.LlmSystemUsage;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.llm.core.VetoRequest;
+import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTier;
+import top.focess.veto.model.tier.ModelTierConfigException;
 import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.vault.UserContext;
 
@@ -70,6 +72,10 @@ public final class WebReader {
         limitations. Select at most eight IDs you actually read. The host supplies exact quotes.
         Never invent missing facts. not_found requires reading the complete retained document;
         otherwise use partial. Complete requires evidence for the answer. Include caveats.
+        Support every factual claim with inspected source text. Do not add remembered background,
+        current adoption, or external status claims that the page does not establish. Distinguish
+        explicit source statements from inferences. Preserve the scope of words such as MAY and
+        MUST; an optional property does not make the entire object optional.
         If asked for complete code or data that cannot fit, report partial, not a lossy substitute.
         Call one tool per turn. Do not use guide or a freeform final message.
         Example: timeout question -> fetch_page({}) -> read_sections({"ids":["s12","s13"]})
@@ -221,7 +227,7 @@ public final class WebReader {
                     "READER_IDENTITY", "Reader needs an authenticated session owner.");
         if (objective.length() > MAX_ANSWER_CHARS)
             return ToolErrors.failure("INVALID_ARGUMENTS", "Reading objective is too long.");
-        var model = models.resolve(owner, tier);
+        var model = resolveModel(owner, tier);
         long start = System.nanoTime();
         long deadline = start + Duration.ofSeconds(timeoutSeconds).toNanos();
         String id = UUID.randomUUID().toString();
@@ -388,6 +394,30 @@ public final class WebReader {
             } finally {
                 sessionAgents.stop(id);
             }
+        }
+    }
+
+    private @NonNull ModelBinding resolveModel(
+            @NonNull String owner, @NonNull ModelTier candidate) {
+        try {
+            var model = models.resolve(owner, candidate);
+            log.info(
+                    "Web reader model resolved: requestedTier={}, selectedTier={}, model={}",
+                    tier,
+                    candidate,
+                    model.model());
+            return model;
+        } catch (ModelTierConfigException error) {
+            ModelTier next =
+                    switch (candidate) {
+                        case LOCAL -> ModelTier.LOW;
+                        case LOW -> ModelTier.MID;
+                        case MID -> ModelTier.TOP;
+                        case TOP -> null;
+                    };
+            if (next == null) throw error;
+            log.info("Web reader tier {} is not configured; trying {}", candidate, next);
+            return resolveModel(owner, next);
         }
     }
 

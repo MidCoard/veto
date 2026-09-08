@@ -3,13 +3,17 @@ package top.focess.veto.controller;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
+import top.focess.veto.agent.AgentState;
+import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.agent.TurnRecord;
+import top.focess.veto.agent.identity.Role;
 import top.focess.veto.contract.IpcFrame;
 import top.focess.veto.controller.dto.CreateSessionRequest;
 import top.focess.veto.i18n.Msg;
@@ -39,16 +43,19 @@ public class SessionController {
     private final @NonNull KeysteadVault vault;
     private final @NonNull SessionHistoryLoader historyLoader;
     private final @NonNull SessionRecordService recordService;
+    private final @NonNull SessionAgentRegistry agentRegistry;
 
     public SessionController(
             @NonNull SessionService service,
             @NonNull KeysteadVault vault,
             @NonNull SessionHistoryLoader historyLoader,
-            @NonNull SessionRecordService recordService) {
+            @NonNull SessionRecordService recordService,
+            @NonNull SessionAgentRegistry agentRegistry) {
         this.service = service;
         this.vault = vault;
         this.historyLoader = historyLoader;
         this.recordService = recordService;
+        this.agentRegistry = agentRegistry;
     }
 
     @GetMapping
@@ -145,6 +152,31 @@ public class SessionController {
         return ResponseEntity.ok(
                 recordService.load(
                         cfg.sessionId(), name, cfg.toolResultPresentation(), cfg.guidedEnabled()));
+    }
+
+    public record LiveAgent(
+            @NonNull String id,
+            @NonNull String name,
+            @NonNull Role role,
+            @NonNull AgentState state,
+            String parentAgentId,
+            String parentCallId) {}
+
+    /** Runtime metadata only; inspection never exports a child agent's reading history. */
+    @GetMapping("/{name}/agents")
+    public @NonNull List<@NonNull LiveAgent> agents(@PathVariable @NonNull String name) {
+        SessionConfig cfg = requireOwnedSession(name);
+        return agentRegistry.agents(UUID.fromString(cfg.sessionId())).stream()
+                .map(
+                        entry ->
+                                new LiveAgent(
+                                        entry.agent().id(),
+                                        entry.agent().name(),
+                                        entry.agent().persona().role(),
+                                        entry.agent().state(),
+                                        entry.parentAgentId(),
+                                        entry.parentCallId()))
+                .toList();
     }
 
     private @NonNull SessionConfig requireOwnedSession(@NonNull String name) {

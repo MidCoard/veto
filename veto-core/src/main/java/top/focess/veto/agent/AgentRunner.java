@@ -1231,6 +1231,7 @@ public class AgentRunner {
             }
 
             // 3. Execute phase (all confirmed / skipped)
+            if (state == AgentState.INTERCEPTED) transitionTo(AgentState.WAITING);
             for (int i = 0; i < calls.size(); i++) {
                 ToolCall call = calls.get(i);
                 if (skippedCalls.contains(call)) {
@@ -1397,7 +1398,12 @@ public class AgentRunner {
             }
         }
 
-        return executeResolvedCall(call, def, decision, executionPermit);
+        transitionTo(AgentState.WAITING);
+        try {
+            return executeResolvedCall(call, def, decision, executionPermit);
+        } finally {
+            if (state == AgentState.WAITING) transitionTo(AgentState.RUNNING);
+        }
     }
 
     private @NonNull ToolResult toolNotFound(@NonNull ToolCall call) {

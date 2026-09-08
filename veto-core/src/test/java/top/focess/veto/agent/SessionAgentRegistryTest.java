@@ -243,7 +243,8 @@ class SessionAgentRegistryTest {
 
     private static @NonNull AgentRunner runner(@NonNull AgentPersona persona) {
         AgentRunner runner = mock(ToolDocs.nonNullClass(AgentRunner.class));
-        when(runner.state()).thenReturn(AgentState.IDLE);
+        AtomicReference<AgentState> state = new AtomicReference<>(AgentState.IDLE);
+        when(runner.state()).thenAnswer(invocation -> state.get());
         when(runner.personaView()).thenReturn(persona);
         AtomicReference<Runnable> termination = new AtomicReference<>();
         doAnswer(
@@ -255,7 +256,7 @@ class SessionAgentRegistryTest {
                 .onTermination(any());
         doAnswer(
                         invocation -> {
-                            when(runner.state()).thenReturn(AgentState.TERMINATED);
+                            state.set(AgentState.TERMINATED);
                             Runnable callback = termination.get();
                             if (callback != null) callback.run();
                             return null;
