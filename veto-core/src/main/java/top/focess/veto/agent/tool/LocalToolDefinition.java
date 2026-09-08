@@ -5,10 +5,12 @@ import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
 
-/** Shared schema and documentation derived from local tool arguments. */
+/** Tool-class documentation and independent argument schemas for local tools. */
 public sealed interface LocalToolDefinition extends ToolDefinition
         permits NativeToolDefinition, AgentToolDefinition {
     @NonNull Class<?> argsClass();
+
+    @NonNull Class<?> toolClass();
 
     @NonNull Map<@NonNull String, @NonNull ParamCategory> paramHints();
 
@@ -21,21 +23,21 @@ public sealed interface LocalToolDefinition extends ToolDefinition
 
     @Override
     default @NonNull List<@NonNull String> examples() {
-        return ToolDocs.examplesOf(argsClass());
+        return ToolDocs.examplesOf(toolClass());
     }
 
     @Override
     default @NonNull List<@NonNull String> returnExamples() {
-        return ToolDocs.returnExamplesOf(argsClass());
+        return ToolDocs.returnExamplesOf(toolClass());
     }
 
     @Override
     default @NonNull List<@NonNull ToolResultFormat> resultFormats() {
-        return ToolDocs.resultFormatsOf(argsClass());
+        return ToolDocs.resultFormatsOf(toolClass());
     }
 
     @Override
     default @NonNull ToolDocumentation documentation() {
-        return ToolDocs.documentationOf(argsClass());
+        return ToolDocs.documentationOf(toolClass());
     }
 }

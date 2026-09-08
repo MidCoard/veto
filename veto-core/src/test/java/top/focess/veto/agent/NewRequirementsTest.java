@@ -66,6 +66,7 @@ class NewRequirementsTest {
                 ToolCapability.PROCESS_EXECUTION,
                 Danger.ELEVATED,
                 false,
+                Object.class,
                 ToolDocs.nonNullClass(ExecArgs.class),
                 Map.of());
     }
@@ -77,6 +78,7 @@ class NewRequirementsTest {
                 ToolCapability.WORKSPACE_READ,
                 Danger.SAFE,
                 false,
+                Object.class,
                 ToolDocs.nonNullClass(ReadArgs.class),
                 Map.of("path", ParamCategory.FILESYSTEM_PATH));
     }

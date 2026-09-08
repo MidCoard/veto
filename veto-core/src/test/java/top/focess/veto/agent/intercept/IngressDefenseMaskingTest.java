@@ -33,6 +33,7 @@ class IngressDefenseMaskingTest {
                 ToolCapability.WORKSPACE_READ,
                 Danger.SAFE,
                 false,
+                Object.class,
                 ToolDocs.nonNullClass(Void.class),
                 Map.of("path", ParamCategory.FILESYSTEM_PATH));
     }

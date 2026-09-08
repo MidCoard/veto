@@ -4,23 +4,21 @@ import java.util.List;
 import org.jspecify.annotations.NonNull;
 
 /**
- * Reflects {@link ToolDoc} off a tool's args class into the {@link ToolDefinition#examples()} and
- * {@link ToolDefinition#documentation()} accessors. Centralized so {@link AgentToolDefinition} and
- * {@link NativeToolDefinition} share one read path; a missing annotation yields an empty list /
- * empty string (the tool renders without long-form doc or examples).
+ * Reflects {@link ToolDoc} off a tool implementation class into the {@link
+ * ToolDefinition#examples()} and {@link ToolDefinition#documentation()} accessors. Centralized so
+ * {@link AgentToolDefinition} and {@link NativeToolDefinition} share one read path; a missing
+ * annotation yields an empty list / empty string (the tool renders without long-form doc or
+ * examples).
  *
- * <p>The annotation is resolved by {@link #toolDocOf(Class)}: read directly off the args class, and
- * if absent there, off the args class's enclosing tool class. A tool may therefore declare
- * {@code @ToolDoc} on either its args record (the convention for {@code NativeTool}s like {@code
- * ListDirTool}) or its enclosing bean class (the convention for the nested agent tools in {@code
- * MemoryTools}); both placements render.
+ * <p>The annotation is resolved by {@link #toolDocOf(Class)} from the implementation class.
+ * Argument records are used separately for parameter schemas and validation.
  */
 public final class ToolDocs {
 
     private ToolDocs() {}
 
-    static @NonNull String descriptionOf(@NonNull Class<?> argsClass) {
-        ToolDoc doc = toolDocOf(argsClass);
+    static @NonNull String descriptionOf(@NonNull Class<?> toolClass) {
+        ToolDoc doc = toolDocOf(toolClass);
         return doc != null && !doc.description().isEmpty()
                 ? doc.description()
                 : firstSentenceOf(doc == null ? "" : doc.behavior());
@@ -38,45 +36,35 @@ public final class ToolDocs {
         return type;
     }
 
-    /**
-     * Resolves the {@link ToolDoc} for a tool from its args class. The annotation is read directly
-     * off the args class; if absent there, off the args class's enclosing tool class - so a tool
-     * may declare {@code @ToolDoc} on either its args record or its enclosing bean class. Returns
-     * null when neither carries the annotation.
-     */
-    static ToolDoc toolDocOf(@NonNull Class<?> argsClass) {
-        ToolDoc doc = argsClass.getAnnotation(nonNullClass(ToolDoc.class));
-        if (doc != null) {
-            return doc;
-        }
-        Class<?> enclosing = argsClass.getEnclosingClass();
-        return enclosing != null ? enclosing.getAnnotation(nonNullClass(ToolDoc.class)) : null;
+    /** Reads tool-class documentation without inferring an owner from the argument record. */
+    static ToolDoc toolDocOf(@NonNull Class<?> toolClass) {
+        return toolClass.getAnnotation(nonNullClass(ToolDoc.class));
     }
 
-    public static @NonNull List<String> examplesOf(@NonNull Class<?> argsClass) {
-        ToolDoc doc = toolDocOf(argsClass);
+    public static @NonNull List<String> examplesOf(@NonNull Class<?> toolClass) {
+        ToolDoc doc = toolDocOf(toolClass);
         return doc == null ? List.of() : List.of(doc.examples());
     }
 
     /**
-     * Returns the {@link ToolDoc#returnExamples()} for the given args class, or an empty list when
+     * Returns the {@link ToolDoc#returnExamples()} for the given tool class, or an empty list when
      * the class has no {@code @ToolDoc}.
      */
-    public static @NonNull List<String> returnExamplesOf(@NonNull Class<?> argsClass) {
-        ToolDoc doc = toolDocOf(argsClass);
+    public static @NonNull List<String> returnExamplesOf(@NonNull Class<?> toolClass) {
+        ToolDoc doc = toolDocOf(toolClass);
         return doc == null ? List.of() : List.of(doc.returnExamples());
     }
 
     /** Returns the explicitly declared wire result formats for a documented Veto tool. */
     public static @NonNull List<@NonNull ToolResultFormat> resultFormatsOf(
-            @NonNull Class<?> argsClass) {
-        ToolDoc doc = toolDocOf(argsClass);
+            @NonNull Class<?> toolClass) {
+        ToolDoc doc = toolDocOf(toolClass);
         return doc == null ? List.of() : List.of(doc.resultFormats());
     }
 
     /** Returns the typed documentation sections for a tool. */
-    public static @NonNull ToolDocumentation documentationOf(@NonNull Class<?> argsClass) {
-        ToolDoc doc = toolDocOf(argsClass);
+    public static @NonNull ToolDocumentation documentationOf(@NonNull Class<?> toolClass) {
+        ToolDoc doc = toolDocOf(toolClass);
         return doc == null
                 ? ToolDocumentation.empty()
                 : new ToolDocumentation(

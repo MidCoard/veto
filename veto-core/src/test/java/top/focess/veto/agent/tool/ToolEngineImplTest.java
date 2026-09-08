@@ -57,18 +57,9 @@ import top.focess.veto.sandbox.TestSandboxFactory;
 class ToolEngineImplTest {
     private static final @NonNull UUID TEST_USER = UUID.randomUUID();
 
-    @ToolDoc(
-            description = "Fails for protocol testing.",
-            resultFormats = {ToolResultFormat.PLAINTEXT},
-            behavior = "Always reports the requested protocol failure.",
-            whenToUse = "Use in protocol failure tests.",
-            whenNotToUse = "Do not use outside tests.",
-            resultContract = "Plain text.",
-            errorsAndEdgeCases = "The supplied reason is returned as a failure.",
-            security = "Test-only agent tool.",
-            examples = {"{\"reason\":\"bad input\"}"},
-            returnExamples = {"ok"})
     private record FailingAgentArgs(@NonNull String reason) {}
+
+    private record JsonAgentArgs(@NonNull String output) {}
 
     @ToolDoc(
             description = "Returns JSON for boundary tests.",
@@ -81,8 +72,6 @@ class ToolEngineImplTest {
             security = "Test-only agent tool.",
             examples = {"{\"output\":\"{}\"}"},
             returnExamples = {"{}"})
-    private record JsonAgentArgs(@NonNull String output) {}
-
     private static class JsonAgentTool implements LoopControlTool<JsonAgentArgs> {
         @Override
         public @NonNull LoopControlCapability loopControlCapability() {
@@ -125,6 +114,28 @@ class ToolEngineImplTest {
     }
 
     @Test
+    void toolDocumentationAndSiblingArgumentsHaveIndependentSources() {
+        var tool = new JsonAgentTool();
+        var definition =
+                AgentToolDefinition.from(
+                        tool.getName(), tool.getClass(), tool.getArgsClass(), tool.getCapability());
+        assertEquals("Returns JSON for boundary tests.", definition.description());
+        assertEquals(List.of("{\"output\":\"{}\"}"), definition.examples());
+        assertEquals(List.of("{}"), definition.returnExamples());
+        assertEquals(List.of(ToolResultFormat.JSON), definition.resultFormats());
+        assertEquals("Returns the supplied output.", definition.documentation().behavior());
+        assertEquals("One JSON value.", definition.documentation().resultContract());
+        assertEquals(
+                definition.documentation(),
+                ToolDocs.documentationOf(new UndeclaredAgentTool().getClass()));
+        assertNull(ToolDocs.toolDocOf(tool.getArgsClass()));
+        assertEquals(
+                ToolSchemaCompiler.compileFromRecord(tool.getArgsClass()),
+                definition.inputSchema());
+        assertDoesNotThrow(() -> ToolContractValidator.validateHandler(tool, definition));
+    }
+
+    @Test
     void registrationRejectsUndeclaredCapability() {
         var failure = registrationFailure(new UndeclaredAgentTool());
         assertTrue(String.valueOf(failure.getMessage()).contains("AGENT_CONTROL"));
@@ -141,7 +152,10 @@ class ToolEngineImplTest {
         var tool = new JsonAgentTool();
         var wrongDefinition =
                 AgentToolDefinition.from(
-                        tool.getName(), tool.getArgsClass(), ToolCapability.MEMORY_READ);
+                        tool.getName(),
+                        tool.getClass(),
+                        tool.getArgsClass(),
+                        ToolCapability.MEMORY_READ);
         var failure =
                 assertThrows(
                         ToolDocs.nonNullClass(IllegalArgumentException.class),
@@ -181,8 +195,8 @@ class ToolEngineImplTest {
     void agentExecutionRejectsUnboundOrMismatchedAuthorization(@NonNull String mismatch)
             throws Exception {
         ApplicationContext appCtx = mock(ToolDocs.nonNullClass(ApplicationContext.class));
-        when(appCtx.getBeansOfType(AgentTool.class))
-                .thenReturn(Map.of("jsonAgentTool", new JsonAgentTool()));
+        var tool = new JsonAgentTool();
+        when(appCtx.getBeansOfType(AgentTool.class)).thenReturn(Map.of("jsonAgentTool", tool));
         ToolEngineImpl engine = new ToolEngineImpl(new ObjectMapper(), List.of(), appCtx);
         engine.init();
         ToolDefinition definition = definition(engine, "json_agent");
@@ -191,6 +205,7 @@ class ToolEngineImplTest {
                 mismatch.equals("capability")
                         ? AgentToolDefinition.from(
                                 "json_agent",
+                                tool.getClass(),
                                 ToolDocs.nonNullClass(JsonAgentArgs.class),
                                 ToolCapability.MEMORY_READ)
                         : definition;
@@ -271,6 +286,17 @@ class ToolEngineImplTest {
         assertEquals(output, result.content());
     }
 
+    @ToolDoc(
+            description = "Fails for protocol testing.",
+            resultFormats = {ToolResultFormat.PLAINTEXT},
+            behavior = "Always reports the requested protocol failure.",
+            whenToUse = "Use in protocol failure tests.",
+            whenNotToUse = "Do not use outside tests.",
+            resultContract = "Plain text.",
+            errorsAndEdgeCases = "The supplied reason is returned as a failure.",
+            security = "Test-only agent tool.",
+            examples = {"{\"reason\":\"bad input\"}"},
+            returnExamples = {"ok"})
     private static final class FailingAgentTool implements LoopControlTool<FailingAgentArgs> {
         @Override
         public @NonNull LoopControlCapability loopControlCapability() {
@@ -417,6 +443,7 @@ class ToolEngineImplTest {
                         registered.capability(),
                         registered.defaultDanger(),
                         registered.requiresSemanticScreening(),
+                        registered.toolClass(),
                         registered.argsClass(),
                         registered.paramHints());
         ToolCall call =

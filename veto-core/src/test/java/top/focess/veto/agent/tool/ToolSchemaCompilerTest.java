@@ -52,6 +52,7 @@ class ToolSchemaCompilerTest {
                         ToolCapability.WORKSPACE_READ,
                         Danger.SAFE,
                         false,
+                        Object.class,
                         ToolDocs.nonNullClass(NestedContracts.class),
                         hints);
         var agentDefinition =
@@ -60,6 +61,7 @@ class ToolSchemaCompilerTest {
                         "think",
                         ToolCapability.LOOP_CONTROL,
                         Danger.SAFE,
+                        Object.class,
                         ToolDocs.nonNullClass(NestedContracts.class),
                         hints);
         hints.clear();

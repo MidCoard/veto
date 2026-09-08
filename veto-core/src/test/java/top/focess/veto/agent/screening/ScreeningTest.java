@@ -42,6 +42,7 @@ class ScreeningTest {
                 "d",
                 ToolCapability.AGENT_CONTROL,
                 Danger.SAFE,
+                Object.class,
                 ToolDocs.nonNullClass(Object.class),
                 Map.of());
     }

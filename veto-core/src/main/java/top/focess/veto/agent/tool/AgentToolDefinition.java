@@ -11,11 +11,12 @@ import top.focess.veto.agent.screening.Danger;
  *
  * <p>The Gateway identifies this definition flavour and returns {@code NotScreened}; capability
  * still selects the caller-scoped runtime service. These tools flow through the LoopInterceptor
- * chain for audit/uniformity. Parameter schemas are reflected from the args record + {@link
- * ToolDoc} annotation.
+ * chain for audit/uniformity. Parameter schemas are reflected from the args record; {@link ToolDoc}
+ * is read from the tool implementation class.
  *
  * @param name the tool identifier (snake_case)
  * @param description the one-liner — what the tool is
+ * @param toolClass the implementation class declaring tool documentation
  * @param argsClass the Java record carrying the tool's structured parameters
  * @param paramHints per-parameter {@link ParamCategory} hints reflected from {@link SecurityHint}
  */
@@ -24,6 +25,7 @@ public record AgentToolDefinition(
         @NonNull String description,
         @NonNull ToolCapability capability,
         @NonNull Danger defaultDanger,
+        @NonNull Class<?> toolClass,
         @NonNull Class<?> argsClass,
         @NonNull Map<@NonNull String, @NonNull ParamCategory> paramHints)
         implements LocalToolDefinition {
@@ -34,10 +36,13 @@ public record AgentToolDefinition(
 
     /** Factory with an explicit name and effect capability supplied by the handler bean. */
     public static @NonNull AgentToolDefinition from(
-            @NonNull String name, @NonNull Class<?> argsClass, @NonNull ToolCapability capability) {
-        String description = ToolDocs.descriptionOf(argsClass);
+            @NonNull String name,
+            @NonNull Class<?> toolClass,
+            @NonNull Class<?> argsClass,
+            @NonNull ToolCapability capability) {
+        String description = ToolDocs.descriptionOf(toolClass);
         Map<@NonNull String, @NonNull ParamCategory> hints = ToolSchemaCompiler.hintsOf(argsClass);
         return new AgentToolDefinition(
-                name, description, capability, Danger.SAFE, argsClass, hints);
+                name, description, capability, Danger.SAFE, toolClass, argsClass, hints);
     }
 }

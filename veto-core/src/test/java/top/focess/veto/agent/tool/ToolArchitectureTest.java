@@ -30,6 +30,7 @@ class ToolArchitectureTest {
                         case AgentTool<?> agentTool ->
                                 AgentToolDefinition.from(
                                         agentTool.getName(),
+                                        agentTool.getClass(),
                                         agentTool.getArgsClass(),
                                         agentTool.getCapability());
                         default ->
@@ -38,6 +39,20 @@ class ToolArchitectureTest {
                     };
             assertDoesNotThrow(
                     () -> ToolContractValidator.validateHandler(tool, definition), tool.getName());
+            ToolDoc documentation = ToolDocs.toolDocOf(tool.getClass());
+            if (documentation == null) {
+                throw new AssertionError("Missing ToolDoc on " + tool.getName());
+            }
+            assertNull(ToolDocs.toolDocOf(tool.getArgsClass()), tool.getName());
+            assertEquals(List.of(documentation.examples()), definition.examples(), tool.getName());
+            assertEquals(
+                    List.of(documentation.returnExamples()),
+                    definition.returnExamples(),
+                    tool.getName());
+            assertEquals(
+                    ToolDocs.documentationOf(tool.getClass()),
+                    definition.documentation(),
+                    tool.getName());
         }
     }
 }

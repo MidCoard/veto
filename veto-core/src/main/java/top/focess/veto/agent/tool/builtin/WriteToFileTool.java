@@ -24,67 +24,67 @@ import top.focess.veto.agent.tool.WorkspaceWriteTool;
 /** {@code write_to_file} — create a new file or completely overwrite an existing file. */
 @Component
 @ToolSecurity(capability = ToolCapability.WORKSPACE_WRITE, defaultDanger = Danger.ELEVATED)
+@ToolDoc(
+        resultFormats = {ToolResultFormat.JSON},
+        description = "Create a new file or completely overwrite an existing file.",
+        behavior =
+                """
+                Writes `codeContent` to `absolutePath` as UTF-8. When `overwrite` is false and the file \
+                already exists, the write is refused (no partial write). When the file does not exist, \
+                parent directories are created as needed and the file is created. When `overwrite` is true, \
+                the tool writes a same-directory temporary file and replaces the target directory entry. \
+                The UTF-8 encoded `codeContent` is limited to 16 MiB (16,777,216 bytes), checked before \
+                directories or temporary files are created. This bounds memory and filesystem use per call.
+                """,
+        whenToUse =
+                """
+                Use `write_to_file` to create a new file or to completely replace an existing file's \
+                contents with new text - authoring a new source file, regenerating a file from scratch, or \
+                replacing a file whose contents are mostly changing. Pass the full intended content; the \
+                tool writes it verbatim.
+                """,
+        whenNotToUse =
+                """
+                - Do not use `write_to_file` for a small, localized change to an existing file - use \
+                `replace_file_content` (it targets a line range and is safer for surgical edits).
+                - Do not use it to append - it overwrites. There is no append mode.
+                - Do not pass a partial file expecting the rest to be preserved; the entire file becomes \
+                exactly `codeContent`.
+                - Do not use it to inspect a file first - read with `view_file`, then decide.
+                """,
+        resultContract =
+                """
+                - Success: \
+                `{"status":"ok","file":"<absolutePath>","bytes":<byteCount>}`, where `byteCount` is \
+                the UTF-8 byte length written.
+                - Oversized content (failure): \
+                `Content exceeds 16 MiB (16,777,216 bytes)`.
+                - Existing `absolutePath` with overwrite disabled (failure): \
+                `File exists and overwrite=false: <absolutePath>`.
+                """,
+        errorsAndEdgeCases =
+                """
+                - Parent creation, temporary-file, disk, or move failures produce a failed tool result and \
+                do not count as success.
+                - `codeContent` is written byte-for-byte; an empty string creates an empty file.
+                - Replacing a target may replace its filesystem metadata. Symbolic-link and Windows \
+                reparse-point targets are rejected; the tool does not write through them or replace them.
+                """,
+        security =
+                "Follow the current Boundaries rules. Writing may require approval. If access is refused, change approach. Do not write secrets into files.",
+        examples = {
+            "{\"absolutePath\": \"/abs/src/Main.java\", \"codeContent\": \"package x;\\n\", \"overwrite\": false}",
+            "{\"absolutePath\": \"/abs/src/Main.java\", \"codeContent\": \"package x;\\npublic class Main {}\\n\", \"overwrite\": true}",
+            "{\"absolutePath\": \"/abs/notes/todo.md\", \"codeContent\": \"# Todo\\n- [ ] x\\n\", \"overwrite\": false}",
+            "{\"absolutePath\": \"/abs/src/util/Helper.java\", \"codeContent\": \"package util;\\npublic class Helper {}\\n\", \"overwrite\": false}",
+            "{\"absolutePath\": \"/abs/empty.txt\", \"codeContent\": \"\", \"overwrite\": true}",
+            "{\"absolutePath\": \"/abs/config/local.properties\", \"codeContent\": \"debug=true\\n\", \"overwrite\": false}",
+            "{\"absolutePath\": \"/abs/src/Main.java\", \"codeContent\": \"// rewritten\\n\", \"overwrite\": true}"
+        },
+        returnExamples = {"{\"status\":\"ok\",\"file\":\"/abs/src/Main.java\",\"bytes\":128}"})
 public final class WriteToFileTool implements WorkspaceWriteTool<WriteToFileTool.Args> {
     private static final int MAX_TEXT_BYTES = 16 * 1024 * 1024;
 
-    @ToolDoc(
-            resultFormats = {ToolResultFormat.JSON},
-            description = "Create a new file or completely overwrite an existing file.",
-            behavior =
-                    """
-                    Writes `codeContent` to `absolutePath` as UTF-8. When `overwrite` is false and the file \
-                    already exists, the write is refused (no partial write). When the file does not exist, \
-                    parent directories are created as needed and the file is created. When `overwrite` is true, \
-                    the tool writes a same-directory temporary file and replaces the target directory entry. \
-                    The UTF-8 encoded `codeContent` is limited to 16 MiB (16,777,216 bytes), checked before \
-                    directories or temporary files are created. This bounds memory and filesystem use per call.
-                    """,
-            whenToUse =
-                    """
-                    Use `write_to_file` to create a new file or to completely replace an existing file's \
-                    contents with new text - authoring a new source file, regenerating a file from scratch, or \
-                    replacing a file whose contents are mostly changing. Pass the full intended content; the \
-                    tool writes it verbatim.
-                    """,
-            whenNotToUse =
-                    """
-                    - Do not use `write_to_file` for a small, localized change to an existing file - use \
-                    `replace_file_content` (it targets a line range and is safer for surgical edits).
-                    - Do not use it to append - it overwrites. There is no append mode.
-                    - Do not pass a partial file expecting the rest to be preserved; the entire file becomes \
-                    exactly `codeContent`.
-                    - Do not use it to inspect a file first - read with `view_file`, then decide.
-                    """,
-            resultContract =
-                    """
-                    - Success: \
-                    `{"status":"ok","file":"<absolutePath>","bytes":<byteCount>}`, where `byteCount` is \
-                    the UTF-8 byte length written.
-                    - Oversized content (failure): \
-                    `Content exceeds 16 MiB (16,777,216 bytes)`.
-                    - Existing `absolutePath` with overwrite disabled (failure): \
-                    `File exists and overwrite=false: <absolutePath>`.
-                    """,
-            errorsAndEdgeCases =
-                    """
-                    - Parent creation, temporary-file, disk, or move failures produce a failed tool result and \
-                    do not count as success.
-                    - `codeContent` is written byte-for-byte; an empty string creates an empty file.
-                    - Replacing a target may replace its filesystem metadata. Symbolic-link and Windows \
-                    reparse-point targets are rejected; the tool does not write through them or replace them.
-                    """,
-            security =
-                    "Follow the current Boundaries rules. Writing may require approval. If access is refused, change approach. Do not write secrets into files.",
-            examples = {
-                "{\"absolutePath\": \"/abs/src/Main.java\", \"codeContent\": \"package x;\\n\", \"overwrite\": false}",
-                "{\"absolutePath\": \"/abs/src/Main.java\", \"codeContent\": \"package x;\\npublic class Main {}\\n\", \"overwrite\": true}",
-                "{\"absolutePath\": \"/abs/notes/todo.md\", \"codeContent\": \"# Todo\\n- [ ] x\\n\", \"overwrite\": false}",
-                "{\"absolutePath\": \"/abs/src/util/Helper.java\", \"codeContent\": \"package util;\\npublic class Helper {}\\n\", \"overwrite\": false}",
-                "{\"absolutePath\": \"/abs/empty.txt\", \"codeContent\": \"\", \"overwrite\": true}",
-                "{\"absolutePath\": \"/abs/config/local.properties\", \"codeContent\": \"debug=true\\n\", \"overwrite\": false}",
-                "{\"absolutePath\": \"/abs/src/Main.java\", \"codeContent\": \"// rewritten\\n\", \"overwrite\": true}"
-            },
-            returnExamples = {"{\"status\":\"ok\",\"file\":\"/abs/src/Main.java\",\"bytes\":128}"})
     public record Args(
             @SecurityHint(ParamCategory.FILESYSTEM_PATH) @Doc("Absolute path of the file to write.")
                     @NonNull String absolutePath,

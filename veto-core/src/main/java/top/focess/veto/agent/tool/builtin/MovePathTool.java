@@ -23,42 +23,41 @@ import top.focess.veto.agent.tool.WorkspaceWriteTool;
 /** Moves one file, link, or bounded directory tree without overwrite or copy-delete fallback. */
 @Component
 @ToolSecurity(capability = ToolCapability.WORKSPACE_WRITE, defaultDanger = Danger.ELEVATED)
+@ToolDoc(
+        resultFormats = {ToolResultFormat.JSON},
+        description = "Move or rename one authorized file, link, or directory without overwriting.",
+        behavior =
+                "Moves the source to an existing destination parent without overwriting. A"
+                        + " cross-filesystem move fails instead of copying and deleting the source."
+                        + " Directory preflight does not follow links, snapshots entry identities,"
+                        + " and is bounded to 50000 entries or 10 seconds.",
+        whenToUse =
+                "Use it to rename or relocate one exact file, symbolic link, or directory tree."
+                        + " Discover an uncertain source first with find_files or list_dir.",
+        whenNotToUse = "Do not use it to copy content or replace an existing destination.",
+        resultContract =
+                "Success returns JSON with `status`, the two requested paths as `source` and"
+                        + " `destination`, and `kind` (`file`, `directory`, or `symbolic_link`). In"
+                        + " detailed-result mode, failures use SOURCE_NOT_FOUND,"
+                        + " DESTINATION_EXISTS, INVALID_DESTINATION, CROSS_FILESYSTEM_MOVE,"
+                        + " MOVE_LIMIT_EXCEEDED, TREE_CHANGED, UNSAFE_LINK, or IO_ERROR; failure"
+                        + " content is actionable plaintext in every mode.",
+        errorsAndEdgeCases =
+                "The destination parent must already exist. A destination created concurrently"
+                        + " is not overwritten. Symbolic links are moved as links. Protected"
+                        + " descendants reject a directory move before mutation. If an entry"
+                        + " changes after preflight, the move stops with TREE_CHANGED before"
+                        + " mutation.",
+        security =
+                "Both source and destination must be allowed by the current Boundaries rules. Moving files may require approval.",
+        examples = {
+            "{\"sourceAbsolutePath\":\"<workspace-root>/old.txt\",\"destinationAbsolutePath\":\"<workspace-root>/new.txt\"}"
+        },
+        returnExamples = {
+            "{\"status\":\"moved\",\"source\":\"<workspace-root>/old.txt\",\"destination\":\"<workspace-root>/new.txt\",\"kind\":\"file\"}"
+        })
 public final class MovePathTool implements WorkspaceWriteTool<MovePathTool.Args> {
 
-    @ToolDoc(
-            resultFormats = {ToolResultFormat.JSON},
-            description =
-                    "Move or rename one authorized file, link, or directory without overwriting.",
-            behavior =
-                    "Moves the source to an existing destination parent without overwriting. A"
-                            + " cross-filesystem move fails instead of copying and deleting the source."
-                            + " Directory preflight does not follow links, snapshots entry identities,"
-                            + " and is bounded to 50000 entries or 10 seconds.",
-            whenToUse =
-                    "Use it to rename or relocate one exact file, symbolic link, or directory tree."
-                            + " Discover an uncertain source first with find_files or list_dir.",
-            whenNotToUse = "Do not use it to copy content or replace an existing destination.",
-            resultContract =
-                    "Success returns JSON with `status`, the two requested paths as `source` and"
-                            + " `destination`, and `kind` (`file`, `directory`, or `symbolic_link`). In"
-                            + " detailed-result mode, failures use SOURCE_NOT_FOUND,"
-                            + " DESTINATION_EXISTS, INVALID_DESTINATION, CROSS_FILESYSTEM_MOVE,"
-                            + " MOVE_LIMIT_EXCEEDED, TREE_CHANGED, UNSAFE_LINK, or IO_ERROR; failure"
-                            + " content is actionable plaintext in every mode.",
-            errorsAndEdgeCases =
-                    "The destination parent must already exist. A destination created concurrently"
-                            + " is not overwritten. Symbolic links are moved as links. Protected"
-                            + " descendants reject a directory move before mutation. If an entry"
-                            + " changes after preflight, the move stops with TREE_CHANGED before"
-                            + " mutation.",
-            security =
-                    "Both source and destination must be allowed by the current Boundaries rules. Moving files may require approval.",
-            examples = {
-                "{\"sourceAbsolutePath\":\"<workspace-root>/old.txt\",\"destinationAbsolutePath\":\"<workspace-root>/new.txt\"}"
-            },
-            returnExamples = {
-                "{\"status\":\"moved\",\"source\":\"<workspace-root>/old.txt\",\"destination\":\"<workspace-root>/new.txt\",\"kind\":\"file\"}"
-            })
     public record Args(
             @NonNull @SecurityHint(ParamCategory.FILESYSTEM_PATH) @Doc("Absolute source path.")
                     String sourceAbsolutePath,

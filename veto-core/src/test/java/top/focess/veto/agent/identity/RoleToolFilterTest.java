@@ -60,7 +60,8 @@ class RoleToolFilterTest {
 
     private static @NonNull AgentToolDefinition tool(
             @NonNull String name, @NonNull ToolCapability capability) {
-        return new AgentToolDefinition(name, name, capability, Danger.SAFE, Object.class, Map.of());
+        return new AgentToolDefinition(
+                name, name, capability, Danger.SAFE, Object.class, Object.class, Map.of());
     }
 
     private static @NonNull ToolEngine engine() {

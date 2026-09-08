@@ -612,6 +612,7 @@ class AgentEndToEndTest {
                         ? ToolCapability.DELEGATION
                         : ToolCapability.GROUP_CONTROL,
                 Danger.SAFE,
+                Object.class,
                 ToolDocs.nonNullClass(Void.class),
                 Map.of());
     }

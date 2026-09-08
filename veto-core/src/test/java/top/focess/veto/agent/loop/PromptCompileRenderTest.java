@@ -199,7 +199,7 @@ class PromptCompileRenderTest {
         assertFalse(environment.contains("npm.cmd"));
         assertFalse(environment.contains("Main.java"));
         assertTrue(
-                ToolDocs.documentationOf(ToolDocs.nonNullClass(RunCommandTool.Args.class))
+                ToolDocs.documentationOf(ToolDocs.nonNullClass(RunCommandTool.class))
                         .behavior()
                         .contains("there is no shell"));
     }
@@ -415,9 +415,13 @@ class PromptCompileRenderTest {
 
     @Test
     void forgetResultContractUsesOneNonDisclosingFailure() {
+        // Java class literals are non-null; Checker treats this nested literal as nullable.
+        @SuppressWarnings("nullness:assignment")
+        @NonNull Class<?> toolClass = MemoryTools.ForgetMemory.class;
         var manifest =
                 AgentToolDefinition.from(
                         "forget_memory",
+                        toolClass,
                         ToolDocs.nonNullClass(MemoryTools.ForgetMemory.Args.class),
                         ToolCapability.MEMORY_WRITE);
         List<ToolDefinition> flat =
@@ -445,8 +449,8 @@ class PromptCompileRenderTest {
 
     @Test
     void realToolArgsRenderRichCatalog() {
-        // Compile the REAL grep_search args record (its @Doc descriptions + typed @ToolDoc sections
-        // + examples) the same way the engine does, then render the catalog block end-to-end.
+        // Compile the real grep_search parameter schema and tool-class documentation the same way
+        // the engine does, then render the catalog block end-to-end.
         ObjectMapper mapper = new ObjectMapper();
         Map<String, Object> schema =
                 mapper.convertValue(
@@ -458,10 +462,10 @@ class PromptCompileRenderTest {
                         "grep_search",
                         "Search for exact pattern matches inside files.",
                         schema,
-                        ToolDocs.examplesOf(ToolDocs.nonNullClass(GrepSearchTool.Args.class)),
-                        ToolDocs.documentationOf(ToolDocs.nonNullClass(GrepSearchTool.Args.class)),
-                        ToolDocs.returnExamplesOf(ToolDocs.nonNullClass(GrepSearchTool.Args.class)),
-                        ToolDocs.resultFormatsOf(ToolDocs.nonNullClass(GrepSearchTool.Args.class)));
+                        ToolDocs.examplesOf(ToolDocs.nonNullClass(GrepSearchTool.class)),
+                        ToolDocs.documentationOf(ToolDocs.nonNullClass(GrepSearchTool.class)),
+                        ToolDocs.returnExamplesOf(ToolDocs.nonNullClass(GrepSearchTool.class)),
+                        ToolDocs.resultFormatsOf(ToolDocs.nonNullClass(GrepSearchTool.class)));
         String block = PromptBlocks.tools(List.of(tool));
         System.out.println("===== REAL grep_search catalog entry =====\n" + block);
         assertTrue(block.contains("### `grep_search`"), "tool heading rendered:\n" + block);
@@ -479,12 +483,12 @@ class PromptCompileRenderTest {
                 block.contains("Absolute path to search under."),
                 "real @Doc arg description rendered:\n" + block);
         assertFalse(
-                ToolDocs.documentationOf(ToolDocs.nonNullClass(GrepSearchTool.Args.class))
+                ToolDocs.documentationOf(ToolDocs.nonNullClass(GrepSearchTool.class))
                         .behavior()
                         .isBlank(),
                 "grep_search has a typed @ToolDoc behavior section");
         assertTrue(
-                ToolDocs.examplesOf(ToolDocs.nonNullClass(GrepSearchTool.Args.class)).size() >= 3,
+                ToolDocs.examplesOf(ToolDocs.nonNullClass(GrepSearchTool.class)).size() >= 3,
                 "grep_search demonstrates its optional filters without duplicate examples");
     }
 

@@ -15,6 +15,7 @@ public record NativeToolDefinition(
         @NonNull ToolCapability capability,
         @NonNull Danger defaultDanger,
         boolean requiresSemanticScreening,
+        @NonNull Class<?> toolClass,
         @NonNull Class<?> argsClass,
         @NonNull Map<@NonNull String, @NonNull ParamCategory> paramHints)
         implements LocalToolDefinition {

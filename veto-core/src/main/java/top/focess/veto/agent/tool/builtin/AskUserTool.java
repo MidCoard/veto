@@ -21,9 +21,52 @@ import top.focess.veto.agent.tool.UserInteractionTool;
 
 /** Pauses the calling agent for a batch of up to {@value #MAX_QUESTIONS} questions. */
 @Component
+@ToolDoc(
+        resultFormats = {ToolResultFormat.JSON},
+        description =
+                "Ask the user up to "
+                        + AskUserTool.MAX_QUESTIONS
+                        + " short questions and wait for their answers.",
+        behavior =
+                "Publishes one pending question batch to the session UI and pauses this agent"
+                        + " call until the user answers or cancels. The UI adds a free-form Other"
+                        + " choice; every answer is returned under its stable question id. Pending"
+                        + " batches are in-memory and are cancelled by a backend restart.",
+        whenToUse =
+                "Use it when a missing user choice materially changes the result and cannot be"
+                        + " inferred safely. Usually ask 1-3 questions; combine additional independent questions"
+                        + " when needed, up to "
+                        + AskUserTool.MAX_QUESTIONS
+                        + ". Ask dependent questions in separate batches after receiving earlier answers.",
+        whenNotToUse =
+                "Do not use it for permission approval, status updates, facts discoverable with"
+                        + " tools, or optional preferences that do not block useful progress.",
+        resultContract =
+                "Success returns JSON `{\"answers\":{\"question_id\":\"selected or entered"
+                        + " value\"}}`. The `answers` object is keyed by question id. In"
+                        + " detailed-result mode, cancellation has status cancelled and errorCode"
+                        + " USER_CANCELLED, while invalid values use INVALID_QUESTIONS; their"
+                        + " content remains actionable plaintext in every mode.",
+        errorsAndEdgeCases =
+                "Provide 1-"
+                        + AskUserTool.MAX_QUESTIONS
+                        + " questions. Headers are 1-12 characters, ids are unique snake_case,"
+                        + " prompts are 1-300 characters, and each question has 2-3 mutually"
+                        + " exclusive options. The first option must be recommended and its label"
+                        + " must end with `(Recommended)`. Labels are case-insensitively unique;"
+                        + " `Other` is reserved for the UI.",
+        security =
+                "A user answer does not replace any separate approval required to perform an operation.",
+        examples = {
+            "{\"questions\":[{\"header\":\"Format\",\"id\":\"format\",\"question\":\"Which"
+                    + " output format should I use?\",\"options\":[{\"label\":\"Markdown"
+                    + " (Recommended)\",\"description\":\"Easy to review and"
+                    + " edit.\"},{\"label\":\"Plain text\",\"description\":\"No formatting.\"}]}]}"
+        },
+        returnExamples = {"{\"answers\":{\"format\":\"Markdown (Recommended)\"}}"})
 public final class AskUserTool implements UserInteractionTool<AskUserTool.Args> {
 
-    private static final int MAX_QUESTIONS = 10;
+    static final int MAX_QUESTIONS = 10;
 
     private final @NonNull UserInteractionCapability capability;
 
@@ -31,49 +74,6 @@ public final class AskUserTool implements UserInteractionTool<AskUserTool.Args> 
         this.capability = capability;
     }
 
-    @ToolDoc(
-            resultFormats = {ToolResultFormat.JSON},
-            description =
-                    "Ask the user up to "
-                            + MAX_QUESTIONS
-                            + " short questions and wait for their answers.",
-            behavior =
-                    "Publishes one pending question batch to the session UI and pauses this agent"
-                            + " call until the user answers or cancels. The UI adds a free-form Other"
-                            + " choice; every answer is returned under its stable question id. Pending"
-                            + " batches are in-memory and are cancelled by a backend restart.",
-            whenToUse =
-                    "Use it when a missing user choice materially changes the result and cannot be"
-                            + " inferred safely. Usually ask 1-3 questions; combine additional independent questions"
-                            + " when needed, up to "
-                            + MAX_QUESTIONS
-                            + ". Ask dependent questions in separate batches after receiving earlier answers.",
-            whenNotToUse =
-                    "Do not use it for permission approval, status updates, facts discoverable with"
-                            + " tools, or optional preferences that do not block useful progress.",
-            resultContract =
-                    "Success returns JSON `{\"answers\":{\"question_id\":\"selected or entered"
-                            + " value\"}}`. The `answers` object is keyed by question id. In"
-                            + " detailed-result mode, cancellation has status cancelled and errorCode"
-                            + " USER_CANCELLED, while invalid values use INVALID_QUESTIONS; their"
-                            + " content remains actionable plaintext in every mode.",
-            errorsAndEdgeCases =
-                    "Provide 1-"
-                            + MAX_QUESTIONS
-                            + " questions. Headers are 1-12 characters, ids are unique snake_case,"
-                            + " prompts are 1-300 characters, and each question has 2-3 mutually"
-                            + " exclusive options. The first option must be recommended and its label"
-                            + " must end with `(Recommended)`. Labels are case-insensitively unique;"
-                            + " `Other` is reserved for the UI.",
-            security =
-                    "A user answer does not replace any separate approval required to perform an operation.",
-            examples = {
-                "{\"questions\":[{\"header\":\"Format\",\"id\":\"format\",\"question\":\"Which"
-                        + " output format should I use?\",\"options\":[{\"label\":\"Markdown"
-                        + " (Recommended)\",\"description\":\"Easy to review and"
-                        + " edit.\"},{\"label\":\"Plain text\",\"description\":\"No formatting.\"}]}]}"
-            },
-            returnExamples = {"{\"answers\":{\"format\":\"Markdown (Recommended)\"}}"})
     public record Args(
             @NonNull
                     @Doc(

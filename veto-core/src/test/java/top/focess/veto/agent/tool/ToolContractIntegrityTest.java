@@ -30,20 +30,20 @@ class ToolContractIntegrityTest {
     @Test
     void everyCallExamplePassesItsRuntimeArgumentValidator() {
         for (NativeTool<?> tool : nativeTools) {
-            validateExamples(tool.getName(), tool.getArgsClass());
+            validateExamples(tool.getName(), tool.getClass(), tool.getArgsClass());
         }
         for (AgentTool<?> tool : agentTools) {
-            validateExamples(tool.getName(), tool.getArgsClass());
+            validateExamples(tool.getName(), tool.getClass(), tool.getArgsClass());
         }
     }
 
     @Test
     void everyDeclaredRequiredParameterIsRejectedCentrallyWhenMissingOrNull() {
         for (NativeTool<?> tool : nativeTools) {
-            verifyRequiredParameters(tool.getName(), tool.getArgsClass());
+            verifyRequiredParameters(tool.getName(), tool.getClass(), tool.getArgsClass());
         }
         for (AgentTool<?> tool : agentTools) {
-            verifyRequiredParameters(tool.getName(), tool.getArgsClass());
+            verifyRequiredParameters(tool.getName(), tool.getClass(), tool.getArgsClass());
         }
     }
 
@@ -77,8 +77,9 @@ class ToolContractIntegrityTest {
         }
     }
 
-    private void validateExamples(@NonNull String toolName, @NonNull Class<?> argsClass) {
-        for (String example : ToolDocs.examplesOf(argsClass)) {
+    private void validateExamples(
+            @NonNull String toolName, @NonNull Class<?> toolClass, @NonNull Class<?> argsClass) {
+        for (String example : ToolDocs.examplesOf(toolClass)) {
             assertDoesNotThrow(
                     () -> {
                         JsonNode args = mapper.readTree(example);
@@ -89,9 +90,10 @@ class ToolContractIntegrityTest {
         }
     }
 
-    private void verifyRequiredParameters(@NonNull String toolName, @NonNull Class<?> argsClass) {
+    private void verifyRequiredParameters(
+            @NonNull String toolName, @NonNull Class<?> toolClass, @NonNull Class<?> argsClass) {
         JsonNode schema = ToolSchemaCompiler.compileFromRecord(argsClass);
-        ObjectNode complete = exampleArguments(argsClass, schema);
+        ObjectNode complete = exampleArguments(toolClass, schema);
         assertDoesNotThrow(
                 () -> NativeToolArgumentValidator.validate(toolName, complete, argsClass),
                 () -> toolName + " synthesized valid arguments were rejected");
@@ -192,8 +194,8 @@ class ToolContractIntegrityTest {
             @NonNull String parentPointer, @NonNull String name, @NonNull String displayPath) {}
 
     private @NonNull ObjectNode exampleArguments(
-            @NonNull Class<?> argsClass, @NonNull JsonNode schema) {
-        List<String> examples = ToolDocs.examplesOf(argsClass);
+            @NonNull Class<?> toolClass, @NonNull JsonNode schema) {
+        List<String> examples = ToolDocs.examplesOf(toolClass);
         if (examples.isEmpty()) {
             return synthesizeObject(schema);
         }
@@ -202,9 +204,9 @@ class ToolContractIntegrityTest {
             if (parsed instanceof ObjectNode object) {
                 return object;
             }
-            throw new AssertionError(argsClass.getName() + " has a non-object call example");
+            throw new AssertionError(toolClass.getName() + " has a non-object call example");
         } catch (Exception e) {
-            throw new AssertionError(argsClass.getName() + " has an unreadable call example", e);
+            throw new AssertionError(toolClass.getName() + " has an unreadable call example", e);
         }
     }
 

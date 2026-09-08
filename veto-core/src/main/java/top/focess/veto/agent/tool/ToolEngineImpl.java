@@ -122,7 +122,10 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
                 String toolName = bean.getName();
                 AgentToolDefinition def =
                         AgentToolDefinition.from(
-                                toolName, bean.getArgsClass(), bean.getCapability());
+                                toolName,
+                                bean.getClass(),
+                                bean.getArgsClass(),
+                                bean.getCapability());
                 ToolContractValidator.validateHandler(bean, def);
                 ensureUniqueName(def.name());
                 agentDefs.put(def.name(), def);

@@ -32,6 +32,10 @@ public final class ToolContractValidator {
      */
     public static void validateHandler(
             @NonNull CapabilityTool<?> tool, @NonNull ToolDefinition definition) {
+        require(
+                definition,
+                ToolDocs.toolDocOf(tool.getArgsClass()) == null,
+                "ToolDoc belongs on the tool implementation class, not the argument record");
         validate(definition);
         require(
                 definition,

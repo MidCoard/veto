@@ -55,6 +55,7 @@ class GatewayScreeningTest {
                 ToolCapability.WORKSPACE_READ,
                 Danger.SAFE,
                 false,
+                Object.class,
                 ToolDocs.nonNullClass(String.class),
                 Map.of("path", ParamCategory.FILESYSTEM_PATH));
     }
@@ -66,6 +67,7 @@ class GatewayScreeningTest {
                 ToolCapability.WORKSPACE_WRITE,
                 Danger.ELEVATED,
                 false,
+                Object.class,
                 ToolDocs.nonNullClass(String.class),
                 Map.of("path", ParamCategory.FILESYSTEM_PATH));
     }
@@ -78,6 +80,7 @@ class GatewayScreeningTest {
                         "load",
                         ToolCapability.SKILL_READ,
                         Danger.SAFE,
+                        Object.class,
                         ToolDocs.nonNullClass(String.class),
                         Map.of());
         GatewayResult r =

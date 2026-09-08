@@ -24,15 +24,11 @@ import top.focess.veto.agent.tool.WorkspaceWriteTool;
 /** {@code replace_file_content} — replace a single contiguous block of text in an existing file. */
 @Component
 @ToolSecurity(capability = ToolCapability.WORKSPACE_WRITE, defaultDanger = Danger.ELEVATED)
-public final class ReplaceFileContentTool
-        implements WorkspaceWriteTool<ReplaceFileContentTool.Args> {
-    private static final int MAX_TEXT_BYTES = 16 * 1024 * 1024;
-
-    @ToolDoc(
-            resultFormats = {ToolResultFormat.JSON},
-            description = "Replace a single contiguous block of code in an existing file.",
-            behavior =
-                    """
+@ToolDoc(
+        resultFormats = {ToolResultFormat.JSON},
+        description = "Replace a single contiguous block of code in an existing file.",
+        behavior =
+                """
                     Reads `absolutePath` as UTF-8 and searches only the inclusive `startLine`/`endLine` range. \
                     Exactly one occurrence of `targetContent` must exist inside that range. The updated content \
                     is written through a same-directory temporary file and replacement move. An empty \
@@ -40,8 +36,8 @@ public final class ReplaceFileContentTool
                     UTF-8 content are limited to 16 MiB (16,777,216 bytes). The limit bounds the complete \
                     in-memory edit and the temporary-file write performed by one call.
                     """,
-            whenToUse =
-                    """
+        whenToUse =
+                """
                     Use `replace_file_content` to make a localized, surgical edit to an existing file - renaming \
                     a symbol in one spot, fixing a few lines, or swapping a block for new text. It targets a \
                     contiguous range and replaces the unique exact occurrence of `targetContent` within that \
@@ -50,8 +46,8 @@ public final class ReplaceFileContentTool
                     Always `view_file` the target range first so your `targetContent` matches the file exactly \
                     (whitespace included).
                     """,
-            whenNotToUse =
-                    """
+        whenNotToUse =
+                """
                     - Do not use `replace_file_content` to create a file or rewrite most of it - use \
                     `write_to_file`.
                     - Do not use it blind - if `targetContent` does not match the file byte-for-byte, the call \
@@ -61,8 +57,8 @@ public final class ReplaceFileContentTool
                     - Do not pass a `targetContent` so short it could match unintended locations (e.g. a bare \
                     `}`); include enough surrounding context to be unique.
                     """,
-            resultContract =
-                    """
+        resultContract =
+                """
                     - Success: `{"status":"ok","file":"<absolutePath>"}`.
                     - Invalid `absolutePath`, range, or replacement (failure): one of \
                     `Not a regular file: <absolutePath>`, `File exceeds 16 MiB (16,777,216 bytes)`, \
@@ -73,8 +69,8 @@ public final class ReplaceFileContentTool
                     `targetContent not found in selected range.` or \
                     `targetContent is not unique in selected range.` The file remains unchanged.
                     """,
-            errorsAndEdgeCases =
-                    """
+        errorsAndEdgeCases =
+                """
                     - After a match failure, reread the selected range and quote enough surrounding context \
                     to make the target unique before retrying.
                     - Only regular files are editable; discover the target with `list_dir` and inspect it \
@@ -85,18 +81,22 @@ public final class ReplaceFileContentTool
                     - Replacing the directory entry can replace filesystem metadata. Symbolic-link and \
                     Windows reparse-point targets are rejected rather than followed or replaced.
                     """,
-            security =
-                    "Follow the current Boundaries rules. Changes may require approval. If access is refused, change approach; never conceal disallowed content.",
-            examples = {
-                "{\"absolutePath\": \"/abs/src/Main.java\", \"startLine\": 5, \"endLine\": 8, \"targetContent\": \"old\", \"replacementContent\": \"new\"}",
-                "{\"absolutePath\": \"/abs/src/Main.java\", \"startLine\": 12, \"endLine\": 12, \"targetContent\": \"int x = 1;\", \"replacementContent\": \"int x = 2;\"}",
-                "{\"absolutePath\": \"/abs/src/Main.java\", \"startLine\": 1, \"endLine\": 1, \"targetContent\": \"package old;\", \"replacementContent\": \"package new;\"}",
-                "{\"absolutePath\": \"/abs/README.md\", \"startLine\": 3, \"endLine\": 3, \"targetContent\": \"# Old Title\", \"replacementContent\": \"# New Title\"}",
-                "{\"absolutePath\": \"/abs/config/app.yml\", \"startLine\": 10, \"endLine\": 10, \"targetContent\": \"port: 8080\", \"replacementContent\": \"port: 8443\"}",
-                "{\"absolutePath\": \"/abs/src/Main.java\", \"startLine\": 20, \"endLine\": 24, \"targetContent\": \"// TODO\\n\", \"replacementContent\": \"// done\\n\"}",
-                "{\"absolutePath\": \"/abs/src/Main.java\", \"startLine\": 8, \"endLine\": 8, \"targetContent\": \"    return null;\", \"replacementContent\": \"    return value;\"}"
-            },
-            returnExamples = {"{\"status\":\"ok\",\"file\":\"/abs/src/Main.java\"}"})
+        security =
+                "Follow the current Boundaries rules. Changes may require approval. If access is refused, change approach; never conceal disallowed content.",
+        examples = {
+            "{\"absolutePath\": \"/abs/src/Main.java\", \"startLine\": 5, \"endLine\": 8, \"targetContent\": \"old\", \"replacementContent\": \"new\"}",
+            "{\"absolutePath\": \"/abs/src/Main.java\", \"startLine\": 12, \"endLine\": 12, \"targetContent\": \"int x = 1;\", \"replacementContent\": \"int x = 2;\"}",
+            "{\"absolutePath\": \"/abs/src/Main.java\", \"startLine\": 1, \"endLine\": 1, \"targetContent\": \"package old;\", \"replacementContent\": \"package new;\"}",
+            "{\"absolutePath\": \"/abs/README.md\", \"startLine\": 3, \"endLine\": 3, \"targetContent\": \"# Old Title\", \"replacementContent\": \"# New Title\"}",
+            "{\"absolutePath\": \"/abs/config/app.yml\", \"startLine\": 10, \"endLine\": 10, \"targetContent\": \"port: 8080\", \"replacementContent\": \"port: 8443\"}",
+            "{\"absolutePath\": \"/abs/src/Main.java\", \"startLine\": 20, \"endLine\": 24, \"targetContent\": \"// TODO\\n\", \"replacementContent\": \"// done\\n\"}",
+            "{\"absolutePath\": \"/abs/src/Main.java\", \"startLine\": 8, \"endLine\": 8, \"targetContent\": \"    return null;\", \"replacementContent\": \"    return value;\"}"
+        },
+        returnExamples = {"{\"status\":\"ok\",\"file\":\"/abs/src/Main.java\"}"})
+public final class ReplaceFileContentTool
+        implements WorkspaceWriteTool<ReplaceFileContentTool.Args> {
+    private static final int MAX_TEXT_BYTES = 16 * 1024 * 1024;
+
     public record Args(
             @SecurityHint(ParamCategory.FILESYSTEM_PATH) @Doc("Absolute path of the file to patch.")
                     @NonNull String absolutePath,

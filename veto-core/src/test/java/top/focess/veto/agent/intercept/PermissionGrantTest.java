@@ -51,6 +51,7 @@ class PermissionGrantTest {
                         ToolCapability.WORKSPACE_READ,
                         Danger.SAFE,
                         false,
+                        Object.class,
                         ToolDocs.nonNullClass(Object.class),
                         Map.of("path", ParamCategory.FILESYSTEM_PATH));
         ToolCall call =
@@ -81,6 +82,7 @@ class PermissionGrantTest {
                         ToolCapability.WORKSPACE_READ,
                         Danger.SAFE,
                         false,
+                        Object.class,
                         ToolDocs.nonNullClass(Object.class),
                         Map.of("path", ParamCategory.FILESYSTEM_PATH));
         ToolCall call =
@@ -103,6 +105,7 @@ class PermissionGrantTest {
                         ToolCapability.WORKSPACE_WRITE,
                         Danger.ELEVATED,
                         false,
+                        Object.class,
                         ToolDocs.nonNullClass(Object.class),
                         Map.of("path", ParamCategory.FILESYSTEM_PATH));
         ToolCall call =
@@ -138,6 +141,7 @@ class PermissionGrantTest {
                         ToolCapability.PROCESS_EXECUTION,
                         Danger.ELEVATED,
                         false,
+                        Object.class,
                         ToolDocs.nonNullClass(Object.class),
                         Map.of());
         PermissionGrant.ToolCallSpec spec = MatchKeyExtractor.extract(gitStatus, execDef, ws);
@@ -164,6 +168,7 @@ class PermissionGrantTest {
                         ToolCapability.PROCESS_EXECUTION,
                         Danger.ELEVATED,
                         false,
+                        Object.class,
                         ToolDocs.nonNullClass(Object.class),
                         Map.of());
         PermissionGrant.ToolCallSpec spec = MatchKeyExtractor.extract(gitPush, execDef, ws);
@@ -187,6 +192,7 @@ class PermissionGrantTest {
                         ToolCapability.WORKSPACE_READ,
                         Danger.SAFE,
                         false,
+                        Object.class,
                         ToolDocs.nonNullClass(Object.class),
                         Map.of("path", ParamCategory.FILESYSTEM_PATH));
         ToolCall call = new ToolCall("view_file", Map.of("path", root.resolve("a.txt").toString()));
@@ -290,6 +296,7 @@ class PermissionGrantTest {
                         Danger.SAFE,
                         false,
                         Object.class,
+                        Object.class,
                         Map.of("path", ParamCategory.FILESYSTEM_PATH));
         ToolCall call = new ToolCall("view_file", Map.of("path", "/x"));
         var screening =
@@ -307,6 +314,7 @@ class PermissionGrantTest {
                         ToolCapability.PROCESS_EXECUTION,
                         Danger.ELEVATED,
                         false,
+                        Object.class,
                         Object.class,
                         Map.of());
         ToolCall call = new ToolCall("run_command", Map.of());
@@ -332,6 +340,7 @@ class PermissionGrantTest {
                         Danger.ELEVATED,
                         false,
                         Object.class,
+                        Object.class,
                         Map.of());
         ToolCall call = new ToolCall("run_command", Map.of());
         var screening =
@@ -349,6 +358,7 @@ class PermissionGrantTest {
                         "create",
                         ToolCapability.DELEGATION,
                         Danger.SAFE,
+                        Object.class,
                         Object.class,
                         Map.of());
         ToolCall call = new ToolCall("create_group", Map.of());

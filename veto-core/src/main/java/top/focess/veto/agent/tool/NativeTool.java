@@ -24,6 +24,6 @@ public sealed interface NativeTool<T> extends CapabilityTool<T>
 
     /** The description explaining when and how the LLM should invoke the tool. */
     default @NonNull String getDescription() {
-        return ToolDocs.descriptionOf(getArgsClass());
+        return ToolDocs.descriptionOf(getClass());
     }
 }

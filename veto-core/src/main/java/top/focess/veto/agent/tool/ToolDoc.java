@@ -1,22 +1,21 @@
 package top.focess.veto.agent.tool;
 
 import java.lang.annotation.ElementType;
+import java.lang.annotation.Inherited;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 import org.jspecify.annotations.NonNull;
 
 /**
- * LLM-facing documentation for a tool, declared on its args record or its enclosing tool class.
- * Carries a one-liner {@link #description()}, typed documentation sections, and concrete
- * call/result examples. Reflected at load time into {@link ToolDefinition#documentation()} so
- * section identity is preserved through prompt rendering. Parallels {@link Doc} at the whole-tool
- * level.
+ * LLM-facing documentation declared on a tool implementation class. Carries a one-liner {@link
+ * #description()}, typed documentation sections, and concrete call/result examples. Reflected at
+ * load time into {@link ToolDefinition#documentation()} so section identity is preserved through
+ * prompt rendering. Parallels {@link Doc} at the whole-tool level.
  *
- * <p>Resolution (see {@link ToolDocs#toolDocOf(Class)}): the annotation is read directly off the
- * args class; if absent there, off the args class's enclosing tool class. So a tool may declare
- * {@code @ToolDoc} on its args record (e.g. {@code ListDirTool.Args}, {@code LoadSkillTool.Args})
- * or on its enclosing bean class (e.g. the nested agent tools in {@code MemoryTools}); both render.
+ * <p>Resolution (see {@link ToolDocs#toolDocOf(Class)}) uses the tool implementation class,
+ * including inherited tool documentation. Argument records carry only parameter annotations such as
+ * {@link Doc}; their location and enclosing class do not determine tool documentation.
  *
  * <p>Each semantic block has its own annotation member. Do not embed Markdown headings in a field.
  * The prompt renderer owns heading names and canonical order. {@link #resultContract()} owns every
@@ -30,6 +29,7 @@ import org.jspecify.annotations.NonNull;
  */
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
+@Inherited
 public @interface ToolDoc {
 
     /**

@@ -23,21 +23,19 @@ import top.focess.veto.agent.tool.WorkspaceReadTool;
 /** {@code list_dir} — list contents of a directory (files and child subdirectories). */
 @Component
 @ToolSecurity(capability = ToolCapability.WORKSPACE_READ, defaultDanger = Danger.SAFE)
-public final class ListDirTool implements WorkspaceReadTool<ListDirTool.Args> {
-
-    @ToolDoc(
-            resultFormats = {ToolResultFormat.PLAINTEXT},
-            description = "List contents of a directory (files and child subdirectories).",
-            behavior =
-                    """
+@ToolDoc(
+        resultFormats = {ToolResultFormat.PLAINTEXT},
+        description = "List contents of a directory (files and child subdirectories).",
+        behavior =
+                """
                     Lists the direct children of `absolutePath` (files and subdirectories, one level deep). \
                     Entries are sorted lexicographically. Subdirectory names are suffixed with `/` so you can \
                     distinguish folders from files at a glance. Hidden files (dotfiles) are included. The \
                     listing is not recursive. Protected entries, symbolic links, and Windows reparse \
                     points are omitted, so an empty result means no visible entries.
                     """,
-            whenToUse =
-                    """
+        whenToUse =
+                """
                     Use `list_dir` to discover the immediate contents of a directory - enumerating a project's \
                     top-level layout, finding what files a module contains, or locating a subdirectory before \
                     reading a specific file. It returns the names of files and child directories in the given \
@@ -45,8 +43,8 @@ public final class ListDirTool implements WorkspaceReadTool<ListDirTool.Args> {
 
                     It is the right first step when you know a directory but not its contents.
                     """,
-            whenNotToUse =
-                    """
+        whenNotToUse =
+                """
                     - Do not use `list_dir` to read a file's contents - use `view_file`.
                     - Do not use it to search for text across files - use `grep_search`.
                     - Do not use it expecting a recursive tree; it lists one level only. To descend, call \
@@ -54,8 +52,8 @@ public final class ListDirTool implements WorkspaceReadTool<ListDirTool.Args> {
                     - Do not use it to check whether a single specific file exists; `view_file` on that path \
                     tells you directly.
                     """,
-            resultContract =
-                    """
+        resultContract =
+                """
                     - Success: one sorted entry per line. Directory \
                     entries end with `/`; file entries do not. A directory with no visible entries yields no lines.
                     - Supplied `absolutePath` does not exist or is not a directory (failure): \
@@ -63,8 +61,8 @@ public final class ListDirTool implements WorkspaceReadTool<ListDirTool.Args> {
                     - Directory cannot be opened or enumerated (failure): \
                     `Cannot list directory: <absolutePath>`.
                     """,
-            errorsAndEdgeCases =
-                    """
+        errorsAndEdgeCases =
+                """
                     - After a path rejection, do not retry a similar guess. Return to the last \
                     successful parent listing and reconstruct the path from observed child names. A common \
                     mistake is dropping a parent segment. If the intended target is a file, use `view_file`.
@@ -73,18 +71,20 @@ public final class ListDirTool implements WorkspaceReadTool<ListDirTool.Args> {
                     - A directory access or iteration failure rejects the listing; it is not returned as a \
                     partial success.
                     """,
-            security =
-                    "Read-only. Follow the current Boundaries rules. If access is refused, change scope instead of retrying the same path.",
-            examples = {
-                "{\"absolutePath\": \"/abs/src\"}",
-                "{\"absolutePath\": \"/abs\"}",
-                "{\"absolutePath\": \"/abs/src/main/java\"}",
-                "{\"absolutePath\": \"/abs/src/test\"}",
-                "{\"absolutePath\": \"/abs/config\"}",
-                "{\"absolutePath\": \"/abs/src/util\"}",
-                "{\"absolutePath\": \"/abs/notes\"}"
-            },
-            returnExamples = {"README.md\nbuild.gradle.kts\nsrc/"})
+        security =
+                "Read-only. Follow the current Boundaries rules. If access is refused, change scope instead of retrying the same path.",
+        examples = {
+            "{\"absolutePath\": \"/abs/src\"}",
+            "{\"absolutePath\": \"/abs\"}",
+            "{\"absolutePath\": \"/abs/src/main/java\"}",
+            "{\"absolutePath\": \"/abs/src/test\"}",
+            "{\"absolutePath\": \"/abs/config\"}",
+            "{\"absolutePath\": \"/abs/src/util\"}",
+            "{\"absolutePath\": \"/abs/notes\"}"
+        },
+        returnExamples = {"README.md\nbuild.gradle.kts\nsrc/"})
+public final class ListDirTool implements WorkspaceReadTool<ListDirTool.Args> {
+
     public record Args(
             @SecurityHint(ParamCategory.FILESYSTEM_PATH) @Doc("Absolute path to list contents of.")
                     @NonNull String absolutePath) {}

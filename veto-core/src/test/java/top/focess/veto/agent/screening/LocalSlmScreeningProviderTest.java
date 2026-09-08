@@ -62,6 +62,7 @@ class LocalSlmScreeningProviderTest {
                         ToolCapability.WORKSPACE_READ,
                         Danger.SAFE,
                         false,
+                        Object.class,
                         ToolDocs.nonNullClass(Object.class),
                         Map.of("path", ParamCategory.FILESYSTEM_PATH));
         ToolCall call = new ToolCall("view_file", Map.of("path", "/a/b"));
@@ -82,6 +83,7 @@ class LocalSlmScreeningProviderTest {
                         ToolCapability.WORKSPACE_READ,
                         Danger.SAFE,
                         false,
+                        Object.class,
                         ToolDocs.nonNullClass(Object.class),
                         Map.of("path", ParamCategory.FILESYSTEM_PATH));
         ToolCall call = new ToolCall("view_file", Map.of("path", "/a/b"));
@@ -105,6 +107,7 @@ class LocalSlmScreeningProviderTest {
                         ToolCapability.TASK_CONTROL,
                         Danger.SAFE,
                         true,
+                        Object.class,
                         ToolDocs.nonNullClass(Object.class),
                         Map.of("content", ParamCategory.PROCESS_INPUT));
         ToolCall call = new ToolCall("input_task", Map.of("taskId", "bg-1", "content", "yes"));
@@ -135,6 +138,7 @@ class LocalSlmScreeningProviderTest {
                         ToolCapability.WORKSPACE_WRITE,
                         Danger.ELEVATED,
                         false,
+                        Object.class,
                         ToolDocs.nonNullClass(Object.class),
                         Map.of("path", ParamCategory.FILESYSTEM_PATH));
         ToolCall call = new ToolCall("write_to_file", Map.of("path", "/x", "content", "y"));
@@ -158,6 +162,7 @@ class LocalSlmScreeningProviderTest {
                         ToolCapability.PROCESS_EXECUTION,
                         Danger.ELEVATED,
                         false,
+                        Object.class,
                         ToolDocs.nonNullClass(Object.class),
                         Map.of());
         ToolCall call = new ToolCall("run_command", Map.of("commands", List.of()));
@@ -179,6 +184,7 @@ class LocalSlmScreeningProviderTest {
                         ToolCapability.WORKSPACE_READ,
                         Danger.SAFE,
                         false,
+                        Object.class,
                         Object.class,
                         Map.of("path", ParamCategory.FILESYSTEM_PATH));
         ToolCall call = new ToolCall("view_file", Map.of("path", "/a/b"));

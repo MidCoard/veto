@@ -147,6 +147,9 @@ class VetoCapabilityTranslatorTest {
 
     @Test
     void translateToolsFlattensManifestToNameDescriptionSchema() {
+        // Java class literals are non-null; Checker treats this literal as nullable.
+        @SuppressWarnings("nullness:assignment")
+        @NonNull Class<?> toolClass = LoadSkillTool.class;
         NativeToolDefinition nativeDef =
                 new NativeToolDefinition(
                         "view_file",
@@ -154,6 +157,7 @@ class VetoCapabilityTranslatorTest {
                         ToolCapability.WORKSPACE_READ,
                         Danger.SAFE,
                         false,
+                        toolClass,
                         ToolDocs.nonNullClass(LoadSkillTool.Args.class),
                         Map.<String, ParamCategory>of());
         AgentToolDefinition agent =
@@ -162,6 +166,7 @@ class VetoCapabilityTranslatorTest {
                         "Load a skill.",
                         ToolCapability.SKILL_READ,
                         Danger.SAFE,
+                        toolClass,
                         ToolDocs.nonNullClass(LoadSkillTool.Args.class),
                         Map.<String, ParamCategory>of());
         List<ToolDefinition> flat = translator.translateTools(List.of(nativeDef, agent));

@@ -45,6 +45,7 @@ public final class ToolSchemaCompiler {
                 toolBean.getCapability(),
                 security.defaultDanger(),
                 security.requiresSemanticScreening(),
+                toolBean.getClass(),
                 argsClass,
                 hints);
     }
@@ -61,7 +62,8 @@ public final class ToolSchemaCompiler {
     /**
      * Reflects {@link SecurityHint} annotations off an args record's components into a map of
      * parameter name to {@link ParamCategory}. Extracted from {@link #compileNative}'s inline loop
-     * so it can be reused by {@link AgentToolDefinition#from(String, Class, ToolCapability)}.
+     * so it can be reused by {@link AgentToolDefinition#from(String, Class, Class,
+     * ToolCapability)}.
      */
     public static @NonNull Map<@NonNull String, @NonNull ParamCategory> hintsOf(
             @NonNull Class<?> argsClass) {

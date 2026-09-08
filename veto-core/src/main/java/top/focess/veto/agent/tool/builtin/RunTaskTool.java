@@ -36,6 +36,61 @@ import top.focess.veto.sandbox.Command;
  */
 @Component
 @ToolSecurity(capability = ToolCapability.PROCESS_EXECUTION, defaultDanger = Danger.ELEVATED)
+@ToolDoc(
+        resultFormats = {ToolResultFormat.JSON},
+        description =
+                "Launch a long-running command as a detached background task (non-blocking). "
+                        + "Returns a taskId immediately; the process keeps running across turns.",
+        behavior =
+                """
+                Starts the single `commands[0]` entry and returns immediately. The executable and arguments \
+                follow the same direct-execution rules as `run_command`. It runs from the session workspace \
+                root. Output (stdout+stderr merged) is captured for `view_task`. \
+                `timeout` (seconds; 0 selects the configured maximum) bounds the task's total \
+                lifetime - it is auto-killed after it elapses. When the task ends you are told \
+                about it on your next turn; you can also inspect it any time with `view_task` \
+                or end it with `stop_task`.
+                """,
+        whenToUse =
+                """
+                Use `run_task` for a long-running process that you want running while you keep \
+                working - a dev server (`npm run dev`), a file watcher, \
+                a long build you will check later. The call returns at once with a `taskId`; \
+                the process survives across turns and its output is captured for you.
+                """,
+        whenNotToUse =
+                """
+                - Do not use it for a command whose result you need immediately - use \
+                `run_command` (blocking) instead.
+                - Do not launch more than one command per call - background mode does not \
+                chain; express a pipeline as separate steps.
+                - Do not stop a task you launched with an OS kill command (`taskkill` / `kill`) \
+                - use `stop_task` with its `taskId`. That is the only sanctioned stop path and \
+                it keeps task status and final output available to `view_task`.
+                """,
+        resultContract =
+                """
+                A JSON outcome: `{"status":"started","taskId":"bg-3","pid":1234, \
+                "command":"npm run dev","cwd":"...","requestedTimeoutSeconds":0, \
+                "effectiveTimeoutSeconds":600}`.
+                """,
+        errorsAndEdgeCases =
+                """
+                - Any supplied command count other than one -> rejected (background mode does not chain).
+                - A negative supplied `timeout` -> rejected.
+                - Only the latest 5000 output lines are retained; an unterminated line is capped at 65536 bytes.
+                """,
+        security =
+                "The working directory is the session workspace root. Execution and requested network access may require approval. Background execution does not grant additional file or network access.",
+        examples = {
+            "{\"commands\": [{\"executable\": \"npm\", \"args\": [\"run\", \"dev\"]}], \"timeout\": 0}",
+            "{\"commands\": [{\"executable\": \"python\", \"args\": [\"-m\", \"http.server\", \"8000\"]}], \"timeout\": 3600}",
+            "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"test\", \"--continuous\"]}], \"timeout\": 1800}"
+        },
+        returnExamples = {
+            "{\"status\": \"started\", \"taskId\": \"bg-3\", \"pid\": 12345, \"command\": \"npm run dev\","
+                    + " \"cwd\": \"/abs/app\", \"requestedTimeoutSeconds\": 0, \"effectiveTimeoutSeconds\": 600}"
+        })
 public final class RunTaskTool implements ProcessExecutionTool<RunTaskTool.Args> {
     private final @NonNull ProcessExecutionCapability capability;
 
@@ -43,61 +98,6 @@ public final class RunTaskTool implements ProcessExecutionTool<RunTaskTool.Args>
         this.capability = capability;
     }
 
-    @ToolDoc(
-            resultFormats = {ToolResultFormat.JSON},
-            description =
-                    "Launch a long-running command as a detached background task (non-blocking). "
-                            + "Returns a taskId immediately; the process keeps running across turns.",
-            behavior =
-                    """
-                    Starts the single `commands[0]` entry and returns immediately. The executable and arguments \
-                    follow the same direct-execution rules as `run_command`. It runs from the session workspace \
-                    root. Output (stdout+stderr merged) is captured for `view_task`. \
-                    `timeout` (seconds; 0 selects the configured maximum) bounds the task's total \
-                    lifetime - it is auto-killed after it elapses. When the task ends you are told \
-                    about it on your next turn; you can also inspect it any time with `view_task` \
-                    or end it with `stop_task`.
-                    """,
-            whenToUse =
-                    """
-                    Use `run_task` for a long-running process that you want running while you keep \
-                    working - a dev server (`npm run dev`), a file watcher, \
-                    a long build you will check later. The call returns at once with a `taskId`; \
-                    the process survives across turns and its output is captured for you.
-                    """,
-            whenNotToUse =
-                    """
-                    - Do not use it for a command whose result you need immediately - use \
-                    `run_command` (blocking) instead.
-                    - Do not launch more than one command per call - background mode does not \
-                    chain; express a pipeline as separate steps.
-                    - Do not stop a task you launched with an OS kill command (`taskkill` / `kill`) \
-                    - use `stop_task` with its `taskId`. That is the only sanctioned stop path and \
-                    it keeps task status and final output available to `view_task`.
-                    """,
-            resultContract =
-                    """
-                    A JSON outcome: `{"status":"started","taskId":"bg-3","pid":1234, \
-                    "command":"npm run dev","cwd":"...","requestedTimeoutSeconds":0, \
-                    "effectiveTimeoutSeconds":600}`.
-                    """,
-            errorsAndEdgeCases =
-                    """
-                    - Any supplied command count other than one -> rejected (background mode does not chain).
-                    - A negative supplied `timeout` -> rejected.
-                    - Only the latest 5000 output lines are retained; an unterminated line is capped at 65536 bytes.
-                    """,
-            security =
-                    "The working directory is the session workspace root. Execution and requested network access may require approval. Background execution does not grant additional file or network access.",
-            examples = {
-                "{\"commands\": [{\"executable\": \"npm\", \"args\": [\"run\", \"dev\"]}], \"timeout\": 0}",
-                "{\"commands\": [{\"executable\": \"python\", \"args\": [\"-m\", \"http.server\", \"8000\"]}], \"timeout\": 3600}",
-                "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"test\", \"--continuous\"]}], \"timeout\": 1800}"
-            },
-            returnExamples = {
-                "{\"status\": \"started\", \"taskId\": \"bg-3\", \"pid\": 12345, \"command\": \"npm run dev\","
-                        + " \"cwd\": \"/abs/app\", \"requestedTimeoutSeconds\": 0, \"effectiveTimeoutSeconds\": 600}"
-            })
     public record Args(
             @SecurityHint(ParamCategory.SHELL_COMMAND)
                     @Doc("Exactly one command: {executable, args}. Background mode does not chain.")

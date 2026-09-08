@@ -30,13 +30,11 @@ import top.focess.veto.agent.tool.WorkspaceReadTool;
 /** Searches file contents through a call-scoped workspace-read capability. */
 @Component
 @ToolSecurity(capability = ToolCapability.WORKSPACE_READ, defaultDanger = Danger.SAFE)
-public final class GrepSearchTool implements WorkspaceReadTool<GrepSearchTool.Args> {
-
-    @ToolDoc(
-            resultFormats = {ToolResultFormat.PLAINTEXT},
-            description = "Search for exact pattern matches inside files.",
-            behavior =
-                    """
+@ToolDoc(
+        resultFormats = {ToolResultFormat.PLAINTEXT},
+        description = "Search for exact pattern matches inside files.",
+        behavior =
+                """
                     Walks `absolutePath` recursively and reports each UTF-8 line that contains `query` as a \
                     substring. When `caseInsensitive` is true, casing in \
                     either the query or line is ignored. `includes`, when given, restricts the search to files whose \
@@ -48,21 +46,21 @@ public final class GrepSearchTool implements WorkspaceReadTool<GrepSearchTool.Ar
                     matches, and 1000000 output characters are processed, with a maximum traversal time of 10 seconds; \
                     a truncation marker means the result is incomplete.
                     """,
-            whenToUse =
-                    """
+        whenToUse =
+                """
                     Use `grep_search` to locate occurrences of an exact text pattern across a tree of files - finding \
                     where a symbol is referenced, tracking down a `TODO`/`FIXME` marker, finding a definition, or \
                     enumerating call sites before a refactor. Prefer it over `view_file` when you do not yet know which \
                     file holds the text; grep identifies the file and line, then `view_file` reads surrounding context.
                     """,
-            whenNotToUse =
-                    """
+        whenNotToUse =
+                """
                     - Do not use `grep_search` to read a file whose path you already know - use `view_file`.
                     - Do not use it to list a directory - use `list_dir`.
                     - The match is an exact substring only. There is no regex, alternation, or anchoring.
                     """,
-            resultContract =
-                    """
+        resultContract =
+                """
                     - Success: one match per line as `<file>:<lineNumber>: <line text>` (1-indexed). No hits returns \
                     `(no matches)`; bounded results end with `[truncated: ...]`.
                     - Missing path (failure, PATH_NOT_FOUND): `Search path does not exist: <absolutePath>`.
@@ -71,24 +69,26 @@ public final class GrepSearchTool implements WorkspaceReadTool<GrepSearchTool.Ar
                     - A symbolic-link or reparse-point root fails with UNSAFE_LINK; a protected root fails with \
                     PATH_PROTECTED.
                     """,
-            errorsAndEdgeCases =
-                    """
+        errorsAndEdgeCases =
+                """
                     - `absolutePath` may name one regular file or a directory tree.
                     - Very large trees are truncated; narrow with `includes` or a tighter `absolutePath`.
                     - Unreadable, changing, linked, protected, and non-UTF-8 files are skipped.
                     - `caseInsensitive` and `includes` are optional; omit them for a case-sensitive search of all files.
                     """,
-            security =
-                    "Read-only. Searches do not follow symbolic links or open protected files. Follow the current Boundaries rules.",
-            examples = {
-                "{\"absolutePath\": \"/abs/src\", \"query\": \"TODO\"}",
-                "{\"absolutePath\": \"/abs/src\", \"query\": \"todo\", \"caseInsensitive\": true}",
-                "{\"absolutePath\": \"/abs/src\", \"query\": \"public class \", \"includes\": [\"*.java\"]}"
-            },
-            returnExamples = {
-                "/abs/src/Main.java:12: // TODO: refactor\n/abs/src/util/Helper.java:30: // TODO(jess): cleanup",
-                "(no matches)"
-            })
+        security =
+                "Read-only. Searches do not follow symbolic links or open protected files. Follow the current Boundaries rules.",
+        examples = {
+            "{\"absolutePath\": \"/abs/src\", \"query\": \"TODO\"}",
+            "{\"absolutePath\": \"/abs/src\", \"query\": \"todo\", \"caseInsensitive\": true}",
+            "{\"absolutePath\": \"/abs/src\", \"query\": \"public class \", \"includes\": [\"*.java\"]}"
+        },
+        returnExamples = {
+            "/abs/src/Main.java:12: // TODO: refactor\n/abs/src/util/Helper.java:30: // TODO(jess): cleanup",
+            "(no matches)"
+        })
+public final class GrepSearchTool implements WorkspaceReadTool<GrepSearchTool.Args> {
+
     public record Args(
             @SecurityHint(ParamCategory.FILESYSTEM_PATH) @Doc("Absolute path to search under.")
                     @NonNull String absolutePath,

@@ -139,6 +139,7 @@ class DeployerPolicyTest {
                 ToolCapability.WORKSPACE_READ,
                 Danger.SAFE,
                 false,
+                Object.class,
                 ToolDocs.nonNullClass(Object.class),
                 Map.of("path", ParamCategory.FILESYSTEM_PATH));
     }
