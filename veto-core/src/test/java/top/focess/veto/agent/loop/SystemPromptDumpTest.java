@@ -75,6 +75,55 @@ class SystemPromptDumpTest {
     private final @NonNull ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
+    void defaultTemplateContainsOnlyOrderedBlocks() {
+        assertTrue(
+                resolver.defaultPrompt()
+                        .lines()
+                        .allMatch(line -> line.isBlank() || line.matches("\\{\\{[A-Z_]+}}")));
+        assertTrue(resolver.commonBlocks().values().stream().noneMatch(String::isBlank));
+    }
+
+    @Test
+    void sharedStyleAndDiagramCapabilityApplyToEveryRole() {
+        for (Role role : roles()) {
+            String linked =
+                    promptCompiler.linkSystemMessage(
+                            personaFor(role),
+                            dumpWorkspace(),
+                            baseFor(role),
+                            ToolResultPresentationMode.BASIC,
+                            true);
+            assertTrue(linked.contains(resolver.answerStyle()));
+            assertTrue(
+                    linked.contains(
+                            "flowchart, sequenceDiagram, stateDiagram-v2, erDiagram, classDiagram"));
+            assertTrue(linked.contains("required outer JSON object"));
+            assertFalse(linked.contains("presentation profile"));
+            assertFalse(linked.contains("{{ANSWER_STYLE}}"));
+            assertFalse(linked.contains("{{PRESENTATION_CAPABILITIES}}"));
+        }
+        String legacy = "Recorded original prompt, before presentation profiles.";
+        var compiled =
+                promptCompiler.compile(
+                        personaFor(Role.STANDALONE),
+                        dumpWorkspace(),
+                        null,
+                        List.of(TurnRecord.agentInit(1, "standalone", legacy, "test", "test")),
+                        false,
+                        1.0);
+        assertEquals(legacy, compiled.systemMessage());
+        String baseline =
+                promptCompiler.linkSystemMessage(
+                        personaFor(Role.STANDALONE),
+                        dumpWorkspace(),
+                        null,
+                        ToolResultPresentationMode.BASIC,
+                        false);
+        assertTrue(baseline.contains(resolver.answerStyle()));
+        assertTrue(baseline.contains("## Diagram Rendering"));
+    }
+
+    @Test
     void dumpFullSystemPrompts() throws IOException {
         Files.createDirectories(DUMP_DIR);
 
@@ -292,11 +341,12 @@ class SystemPromptDumpTest {
         assertFalse(
                 Files.readString(DUMP_DIR.resolve("LEADER.md")).contains("execute in parallel"),
                 "prompt must match ordered runtime tool execution");
+        String sharedInstructions = PromptTemplate.render(template, resolver.commonBlocks());
         assertFalse(
-                template.contains("veto_pulse"),
+                sharedInstructions.contains("veto_pulse"),
                 "internal response-schema names must not be exposed to the model");
         assertFalse(
-                template.contains("For a Mate"),
+                sharedInstructions.contains("For a Mate"),
                 "the shared response protocol must not contain role-specific behavior");
         assertFalse(
                 objectMapper

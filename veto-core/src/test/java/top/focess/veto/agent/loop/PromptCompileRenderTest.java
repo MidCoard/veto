@@ -210,6 +210,7 @@ class PromptCompileRenderTest {
             String base,
             @NonNull List<@NonNull ToolDefinition> tools) {
         Map<String, String> blocks = new LinkedHashMap<>();
+        blocks.putAll(resolver.commonBlocks());
         blocks.put("GUIDED_PROTOCOL", "");
         blocks.put(
                 "DELEGATION_RULES",

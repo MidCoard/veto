@@ -304,7 +304,7 @@ public class PromptCompiler {
         if (base != null && !base.isBlank()) {
             identity += "\n\n## Additional Role Guidance\n" + base.strip();
         }
-        Map<String, String> blocks = new LinkedHashMap<>();
+        Map<String, String> blocks = new LinkedHashMap<>(resolver.commonBlocks());
         blocks.put("LAW", PromptBlocks.law(law));
         blocks.put("IDENTITY", identity);
         blocks.put("ROLE", PromptBlocks.role(persona.role()));

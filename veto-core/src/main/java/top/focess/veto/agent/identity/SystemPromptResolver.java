@@ -3,6 +3,7 @@ package top.focess.veto.agent.identity;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,6 +37,25 @@ public class SystemPromptResolver {
     private final @NonNull String defaultPrompt;
     private final @NonNull String guidedPrompt;
     private final @NonNull String delegationPrompt;
+    private final @NonNull String answerStyle = loadRules("veto/answer-style.md");
+    private final @NonNull Map<String, String> commonBlocks =
+            Map.of(
+                    "ANSWER_STYLE", answerStyle,
+                    "PRESENTATION_CAPABILITIES", loadRules("veto/presentation-mermaid.md"),
+                    "OPERATING_CONTRACT", loadRules("veto/operating-contract.md"),
+                    "EXTERNAL_SOURCES", loadRules("veto/external-sources.md"),
+                    "INSTRUCTION_PROVENANCE", loadRules("veto/instruction-provenance.md"),
+                    "TOOL_CALLS", loadRules("veto/tool-calls.md"),
+                    "RESPONSE_PROTOCOL", loadRules("veto/response-protocol.md"));
+
+    /** Shared instructions; the template owns their order, not individual agent roles. */
+    public @NonNull Map<String, String> commonBlocks() {
+        return commonBlocks;
+    }
+
+    public @NonNull String answerStyle() {
+        return answerStyle;
+    }
 
     public SystemPromptResolver() {
         this.defaultPrompt = loadDefault();
@@ -65,7 +85,7 @@ public class SystemPromptResolver {
         try (InputStream in = new ClassPathResource(resource).getInputStream()) {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8).strip();
         } catch (IOException e) {
-            throw new IllegalStateException("Cannot load tool usage rules: " + resource, e);
+            throw new IllegalStateException("Cannot load prompt instructions: " + resource, e);
         }
     }
 
