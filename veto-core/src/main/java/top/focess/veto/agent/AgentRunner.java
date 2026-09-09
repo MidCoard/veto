@@ -1053,7 +1053,8 @@ public class AgentRunner {
                 } finally {
                     List<LlmSystemUsage.Usage> measurements = LlmSystemUsage.drain();
                     for (LlmSystemUsage.Usage measured : measurements) {
-                        Map<String, Object> measurement = contextUsage.measure(request, measured);
+                        Map<String, Object> measurement =
+                                contextUsage.measure(request, measured, requestThroughTurn);
                         measurement.put("throughTurn", requestThroughTurn);
                         recordUsage(requestThroughTurn, measurement);
                     }
@@ -1969,7 +1970,7 @@ public class AgentRunner {
             metadata.put("contextMaxTokens", binding.options().contextWindowOrDefault());
             turn = new TurnRecord(turn.turnNumber(), turn.type(), metadata, turn.timestamp());
         }
-        turn = RecordTokenCounter.annotate(turn, objectMapper, correctionFactor);
+        turn = RecordTokenCounter.unmeasured(turn);
         TurnRecord numbered;
         synchronized (this) {
             // turn_number is the durable unique key (uk_turn_records_agent_turn on

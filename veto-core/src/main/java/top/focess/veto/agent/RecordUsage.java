@@ -19,6 +19,14 @@ public final class RecordUsage {
         }
         usage.add(measurement);
         payload.put("llmUsage", usage);
+        if (Boolean.TRUE.equals(measurement.get("recordDelta"))
+                && measurement.get("contextDeltaTokens") instanceof Number delta
+                && delta.longValue() >= 0) {
+            payload.put("usedTokens", delta.longValue());
+            payload.put("tokenCountSource", "measured");
+            if (measurement.get("fromRecordTurn") instanceof Number fromTurn)
+                payload.put("tokenDeltaFromTurn", fromTurn);
+        }
         return new TurnRecord(turn.turnNumber(), turn.type(), payload, turn.timestamp());
     }
 
@@ -29,7 +37,7 @@ public final class RecordUsage {
         List<TurnRecord> result = new ArrayList<>();
         for (TurnRecord turn : raw) {
             if (turn.type() != TurnType.TOKEN_USAGE) {
-                result.add(turn);
+                result.add(RecordTokenCounter.withoutEstimate(turn));
                 continue;
             }
             int target = result.size() - 1;

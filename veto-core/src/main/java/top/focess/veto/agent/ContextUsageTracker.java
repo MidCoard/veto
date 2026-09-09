@@ -11,13 +11,20 @@ import top.focess.veto.llm.core.VetoRequest;
 public final class ContextUsageTracker {
     private VetoRequest previous;
     private long previousTokens;
+    private int previousThroughTurn = -1;
 
     public void reset() {
         previous = null;
+        previousThroughTurn = -1;
     }
 
     public @NonNull Map<String, Object> measure(
             @NonNull VetoRequest request, LlmSystemUsage.@NonNull Usage usage) {
+        return measure(request, usage, -1);
+    }
+
+    public @NonNull Map<String, Object> measure(
+            @NonNull VetoRequest request, LlmSystemUsage.@NonNull Usage usage, int throughTurn) {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("inputTokens", usage.promptTokens());
         data.put("outputTokens", usage.completionTokens());
@@ -43,9 +50,17 @@ public final class ContextUsageTracker {
             data.put("contextDeltaTokens", usage.promptTokens() - previousTokens);
             data.put("fromMessageIndex", before.messages().size());
             data.put("appendedMessages", request.messages().size() - before.messages().size());
+            if (previousThroughTurn >= 0
+                    && throughTurn > previousThroughTurn
+                    && request.messages().size() > before.messages().size()
+                    && usage.promptTokens() >= previousTokens) {
+                data.put("recordDelta", true);
+                data.put("fromRecordTurn", previousThroughTurn + 1);
+            }
         }
         previous = request;
         previousTokens = usage.promptTokens();
+        previousThroughTurn = throughTurn;
         return data;
     }
 }

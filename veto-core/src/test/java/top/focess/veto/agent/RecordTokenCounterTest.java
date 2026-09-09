@@ -2,63 +2,73 @@ package top.focess.veto.agent;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import java.time.Instant;
+import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.session.SessionRecord;
+import top.focess.veto.llm.core.*;
 
 class RecordTokenCounterTest {
-    private final ObjectMapper mapper = new ObjectMapper();
-
-    @Test
-    void countsOnlyTheContentAndMarksEstimates() {
-        TurnRecord turn =
-                new TurnRecord(
-                        1,
-                        TurnType.TOOL_RESPONSE,
-                        Map.of(
-                                "content",
-                                "abcdef",
-                                "call_id",
-                                "not part of content",
-                                "success",
-                                true),
-                        null);
-        TurnRecord measured = RecordTokenCounter.annotate(turn, mapper, 1.5);
-        assertEquals(Long.valueOf(3), (Object) RecordTokenCounter.count(measured.payload()));
-        assertEquals("estimated", measured.payload().get("tokenCountSource"));
-        assertEquals(turn.payload().get("content"), measured.payload().get("content"));
-        assertEquals(
-                Long.valueOf(0),
-                (Object)
-                        RecordTokenCounter.count(
-                                RecordTokenCounter.annotate(TurnRecord.userPrompt(2, ""), mapper, 1)
-                                        .payload()));
+    private @NonNull VetoRequest request(@NonNull List<ChatMessage> messages) {
+        return new VetoRequest(
+                "system",
+                "",
+                List.of(),
+                ProviderType.DEEPSEEK,
+                "model",
+                "key",
+                new LlmOptions(null, null, 4096, null),
+                messages,
+                null,
+                null);
     }
 
     @Test
-    void retainsUnknownLegacyValuesAndDoesNotRecountRestoredRecords() {
-        TurnRecord restored =
+    void assignsTheBatchDeltaOnlyToItsLastRecordAndPreservesItOnRetry() {
+        ContextUsageTracker tracker = new ContextUsageTracker();
+        var first = request(List.of(ChatMessage.user("one")));
+        var second =
+                request(
+                        List.of(
+                                ChatMessage.user("one"),
+                                ChatMessage.assistant("answer"),
+                                ChatMessage.user("two")));
+        assertFalse(
+                tracker.measure(first, new LlmSystemUsage.Usage(100, 10), 2)
+                        .containsKey("recordDelta"));
+        TurnRecord last = TurnRecord.userPrompt(4, "two");
+        var measurement = tracker.measure(second, new LlmSystemUsage.Usage(125, 8), 4);
+        TurnRecord updated = RecordUsage.add(last, measurement);
+        assertEquals(Long.valueOf(25), (Object) RecordTokenCounter.count(updated.payload()));
+        assertEquals(3, updated.payload().get("tokenDeltaFromTurn"));
+        assertNull(RecordTokenCounter.count(TurnRecord.assistantResponse(3, "answer").payload()));
+        updated =
+                RecordUsage.add(
+                        updated, tracker.measure(second, new LlmSystemUsage.Usage(125, 9), 4));
+        assertEquals(Long.valueOf(25), (Object) RecordTokenCounter.count(updated.payload()));
+        tracker.reset();
+        assertFalse(
+                tracker.measure(second, new LlmSystemUsage.Usage(80, 1), 7)
+                        .containsKey("recordDelta"));
+    }
+
+    @Test
+    void discardsHistoricalEstimatesAndNeverEstimatesNewOrRestoredRecords() {
+        TurnRecord estimated =
                 new TurnRecord(
                         1,
                         TurnType.USER_PROMPT,
-                        Map.of("content", "hello", "restored_from_turn", 5),
+                        Map.of(
+                                "content",
+                                "hello",
+                                "usedTokens",
+                                12,
+                                "tokenCountSource",
+                                "estimated"),
                         null);
-        assertNull(
-                RecordTokenCounter.count(
-                        RecordTokenCounter.annotate(restored, mapper, 1).payload()));
-        SessionRecord legacy =
-                new SessionRecord(
-                        "agent",
-                        1,
-                        "USER_PROMPT",
-                        Map.of("content", "hello"),
-                        Instant.EPOCH,
-                        true,
-                        0,
-                        0);
-        assertNull(legacy.tokenCount());
-        assertNull(legacy.tokenCountSource());
+        assertNull(RecordTokenCounter.count(estimated.payload()));
+        assertFalse(
+                RecordTokenCounter.withoutEstimate(estimated).payload().containsKey("usedTokens"));
+        assertNull(RecordTokenCounter.count(RecordTokenCounter.unmeasured(estimated).payload()));
     }
 }
