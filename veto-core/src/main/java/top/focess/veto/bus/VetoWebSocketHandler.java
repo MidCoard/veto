@@ -59,7 +59,9 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
             session.close(CloseStatus.POLICY_VIOLATION.withReason("authentication required"));
             return;
         }
-        sessions.add(session);
+        sessions.add(
+                new org.springframework.web.socket.handler.ConcurrentWebSocketSessionDecorator(
+                        session, 10000, 1024 * 1024));
         sessionUsers.put(session.getId(), authenticatedUser);
         log.info("WS Bus: Authenticated client '{}' connected", session.getId());
 
@@ -75,7 +77,7 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
                                     Instant.now().toString(),
                                     "version",
                                     "1.0.0-SNAPSHOT"));
-            session.sendMessage(new TextMessage(welcome));
+            sendTo(session, new TextMessage(welcome));
         } catch (IOException e) {
             log.warn("WS Bus: Failed to send welcome to '{}'", session.getId(), e);
         }
@@ -266,7 +268,7 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
     @Override
     public void afterConnectionClosed(
             @NonNull WebSocketSession session, @NonNull CloseStatus status) {
-        sessions.remove(session);
+        sessions.removeIf(candidate -> candidate.getId().equals(session.getId()));
         sessionRoutes.remove(session.getId());
         sessionUsers.remove(session.getId());
         log.info(
@@ -283,7 +285,7 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
                 "WS Bus: Transport error for '{}': {}",
                 session.getId(),
                 safe(exception.getMessage()));
-        sessions.remove(session);
+        sessions.removeIf(candidate -> candidate.getId().equals(session.getId()));
         sessionRoutes.remove(session.getId());
         sessionUsers.remove(session.getId());
     }
@@ -316,7 +318,7 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
                     && senderUser.equals(sessionUsers.get(s.getId()))
                     && acceptsRoute) {
                 try {
-                    s.sendMessage(new TextMessage(json));
+                    sendTo(s, new TextMessage(json));
                 } catch (IOException e) {
                     log.warn("WS Bus: Failed to send broadcast to '{}'", s.getId(), e);
                 }
@@ -339,7 +341,7 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
         for (WebSocketSession session : sessions) {
             if (session.isOpen() && owner.equals(sessionUsers.get(session.getId()))) {
                 try {
-                    session.sendMessage(new TextMessage(json));
+                    sendTo(session, new TextMessage(json));
                 } catch (IOException e) {
                     log.warn("WS Bus: Failed to send frame to '{}'", session.getId(), e);
                 }
@@ -352,10 +354,30 @@ public class VetoWebSocketHandler extends TextWebSocketHandler {
         try {
             String json = objectMapper.writeValueAsString(data);
             if (session.isOpen()) {
-                session.sendMessage(new TextMessage(json));
+                sendTo(session, new TextMessage(json));
             }
         } catch (IOException e) {
             log.warn("WS Bus: Failed to send to '{}'", session.getId(), e);
+        }
+    }
+
+    private void sendTo(@NonNull WebSocketSession target, @NonNull TextMessage message)
+            throws IOException {
+        WebSocketSession wrapped =
+                sessions.stream()
+                        .filter(candidate -> candidate.getId().equals(target.getId()))
+                        .findFirst()
+                        .orElse(null);
+        if (wrapped == null) return;
+        try {
+            wrapped.sendMessage(message);
+        } catch (RuntimeException | IOException error) {
+            try {
+                wrapped.close(CloseStatus.SERVER_ERROR);
+            } catch (IOException closeError) {
+                log.debug("Could not close failed socket", closeError);
+            }
+            throw error;
         }
     }
 

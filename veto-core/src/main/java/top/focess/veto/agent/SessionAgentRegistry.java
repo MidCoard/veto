@@ -16,6 +16,7 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.Role;
+import top.focess.veto.bus.SessionInvalidations;
 import top.focess.veto.memory.TurnRecordRepository;
 import top.focess.veto.model.AgentEntity;
 import top.focess.veto.model.AgentInstanceRepository;
@@ -24,6 +25,13 @@ import top.focess.veto.monitor.MonitorService;
 /** Owns live agents and invocation dependencies independently of group membership. */
 @Component
 public final class SessionAgentRegistry {
+    private SessionInvalidations invalidations;
+
+    @Autowired
+    public void attachInvalidations(@NonNull SessionInvalidations invalidations) {
+        this.invalidations = invalidations;
+    }
+
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.agent.SessionAgentRegistry");
 
@@ -183,6 +191,7 @@ public final class SessionAgentRegistry {
             }
         }
         live.put(entry.agent().id(), entry);
+        if (invalidations != null) invalidations.changed(entry.sessionId(), "agents", "execution");
         entry.agent().onTermination(() -> stop(entry.agent().id()));
         if (entry.agent().state() == AgentState.TERMINATED) stop(entry.agent().id());
     }
@@ -226,6 +235,7 @@ public final class SessionAgentRegistry {
     public synchronized void stop(@NonNull String agentId) {
         Entry entry = live.remove(agentId);
         if (entry == null) return;
+        if (invalidations != null) invalidations.changed(entry.sessionId(), "agents", "execution");
         var children =
                 live.values().stream()
                         .filter(child -> agentId.equals(child.parentAgentId()))

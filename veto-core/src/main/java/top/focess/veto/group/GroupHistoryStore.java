@@ -8,10 +8,19 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import top.focess.veto.bus.SessionInvalidations;
 
 @Service
 public class GroupHistoryStore {
+    private SessionInvalidations invalidations;
+
+    @Autowired
+    public void attachInvalidations(@NonNull SessionInvalidations invalidations) {
+        this.invalidations = invalidations;
+    }
+
     private static final @NonNull TypeReference<GroupHistoryView> VIEW_TYPE =
             new TypeReference<>() {};
     private final @NonNull GroupHistoryRepository repository;
@@ -40,6 +49,7 @@ public class GroupHistoryStore {
         try {
             repository.save(
                     new GroupHistoryEntity(session.toString(), mapper.writeValueAsString(view)));
+            if (invalidations != null) invalidations.changed(session, "groups");
         } catch (JsonProcessingException error) {
             throw new IllegalStateException("Cannot serialize group history", error);
         }

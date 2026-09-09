@@ -12,6 +12,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.jspecify.annotations.NonNull;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.screening.Danger;
@@ -26,6 +27,7 @@ import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.agent.workspace.Resolution;
 import top.focess.veto.agent.workspace.Workspace;
+import top.focess.veto.bus.SessionInvalidations;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.util.Nullness;
@@ -55,6 +57,12 @@ import top.focess.veto.util.Nullness;
  */
 @Component
 public class HitlRegistry {
+    private SessionInvalidations invalidations;
+
+    @Autowired
+    public void attachInvalidations(@NonNull SessionInvalidations invalidations) {
+        this.invalidations = invalidations;
+    }
 
     /**
      * The runtime-tunable screening matrix ({@link ScreeningMode#cell}). Defaults to {@link
@@ -381,6 +389,11 @@ public class HitlRegistry {
         CompletableFuture<@NonNull InterceptResolution> future = new CompletableFuture<>();
         pending.put(
                 key(agentId, callId), new Pending(future, call, def, options, danger, relevance));
+        if (invalidations != null) invalidations.agentChanged(agentId, "interactions");
+        future.whenComplete(
+                (ignored, error) -> {
+                    if (invalidations != null) invalidations.agentChanged(agentId, "interactions");
+                });
         return future;
     }
 

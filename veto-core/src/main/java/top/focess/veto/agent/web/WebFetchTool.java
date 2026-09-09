@@ -50,7 +50,7 @@ public final class WebFetchTool implements NetworkEgressTool<WebFetchTool.Args> 
             @SecurityHint(ParamCategory.URL) @Doc("Absolute HTTP(S) URL to read.")
                     @NonNull String url,
             @Doc(
-                            "Question to investigate or material to extract. Include relevant conditions and versions, ask for qualifications or exceptions that could change the answer, and preserve requested language, quotations, and completeness. Avoid assuming the conclusion.")
+                            "Question to investigate or material to extract. Rewrite to clarify intent, split questions, or add useful search terms. Treat added hypotheses and candidate examples as things to verify, not facts. Preserve relevant conditions, the requested answer language, quotations, and completeness; ask for qualifications or exceptions that could change the answer.")
                     @NonNull String objective) {}
 
     @Override

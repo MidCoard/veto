@@ -62,6 +62,22 @@ public class TaskEventBridge implements BackgroundTaskManager.TaskListener {
         publish(DeltaFrame.Kind.TASK_EXITED, info);
     }
 
+    @Override
+    public void onTaskRemoved(BackgroundTaskManager.@NonNull TaskInfo info) {
+        UUID sessionId = info.sessionId();
+        if (sessionId == null) return;
+        broker.publish(
+                DeltaFrame.builder()
+                        .sessionId(sessionId)
+                        .kind(DeltaFrame.Kind.SESSION_INVALIDATED)
+                        .attr(
+                                "resources",
+                                com.fasterxml.jackson.databind.node.JsonNodeFactory.instance
+                                        .arrayNode()
+                                        .add("tasks"))
+                        .build());
+    }
+
     private void observe(
             BackgroundTaskManager.@NonNull TaskInfo info,
             BackgroundTaskManager.@NonNull ExitCause cause) {

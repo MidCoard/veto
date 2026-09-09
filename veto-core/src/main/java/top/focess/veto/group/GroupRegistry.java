@@ -8,6 +8,7 @@ import java.util.concurrent.ConcurrentMap;
 import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import top.focess.veto.bus.SessionInvalidations;
 
 /**
  * The in-process registry of active Groups. {@code create_group} creates and stores a Group; {@code
@@ -22,6 +23,12 @@ public class GroupRegistry {
     private final @NonNull ConcurrentMap<UUID, Group> groups = new ConcurrentHashMap<>();
 
     private GroupHistoryStore historyStore;
+    private SessionInvalidations invalidations;
+
+    @Autowired
+    public void attachInvalidations(@NonNull SessionInvalidations invalidations) {
+        this.invalidations = invalidations;
+    }
 
     @Autowired
     public void attachHistory(@NonNull GroupHistoryStore historyStore) {
@@ -38,6 +45,8 @@ public class GroupRegistry {
                         || previous.state() != group.state())) store.save(group);
         groups.put(group.groupId(), group);
         group.blackboard().signalChange();
+        if (invalidations != null && group.sessionId() != null && previous != group)
+            invalidations.changed(group.sessionId(), "groups");
     }
 
     public Group get(@NonNull UUID groupId) {
@@ -56,6 +65,8 @@ public class GroupRegistry {
         Group removed = groups.remove(groupId);
         if (removed == null) return false;
         removed.blackboard().signalChange();
+        if (invalidations != null && removed.sessionId() != null)
+            invalidations.changed(removed.sessionId(), "groups");
         return true;
     }
 

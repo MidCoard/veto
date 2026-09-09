@@ -159,6 +159,22 @@ public class SessionController {
                         cfg.sessionId(), name, cfg.toolResultPresentation(), cfg.guidedEnabled()));
     }
 
+    /**
+     * Authoritative live execution state for reconnecting clients; absent agents are not running.
+     */
+    @GetMapping("/{name}/execution")
+    public @NonNull List<ExecutionState> execution(@PathVariable @NonNull String name) {
+        SessionConfig cfg = requireOwnedSession(name);
+        return agentRegistry.agents(UUID.fromString(cfg.sessionId())).stream()
+                .map(
+                        entry ->
+                                new ExecutionState(
+                                        entry.agent().id(), entry.agent().hasPendingWork()))
+                .toList();
+    }
+
+    public record ExecutionState(@NonNull String agentId, boolean busy) {}
+
     /** Complete session roster, with live state overlaid on durable agent identities. */
     @GetMapping("/{name}/agents")
     public @NonNull List<SessionAgentRegistry.@NonNull AgentSummary> agents(

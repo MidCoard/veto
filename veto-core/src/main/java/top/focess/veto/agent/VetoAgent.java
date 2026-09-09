@@ -41,6 +41,10 @@ public class VetoAgent implements Agent {
         Thread.ofVirtual().name("agent-" + id).start(runner::run);
     }
 
+    public boolean hasPendingWork() {
+        return runner.hasPendingWork();
+    }
+
     public boolean userInteractionEnabled() {
         return userInteractionEnabled;
     }

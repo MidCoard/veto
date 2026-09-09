@@ -1110,7 +1110,7 @@ public class AgentRunner {
                         e.getMessage() == null
                                 ? "LLM call failed without a message"
                                 : e.getMessage());
-                this.state = AgentState.IDLE;
+                transitionTo(AgentState.IDLE);
                 throw e;
             }
         }
@@ -1432,7 +1432,7 @@ public class AgentRunner {
                                 refusedObservation(refusalDetail),
                                 false);
                     }
-                    this.state = AgentState.IDLE;
+                    transitionTo(AgentState.IDLE);
                     throw new VetoRefusedException();
                 }
             }
@@ -1903,7 +1903,17 @@ public class AgentRunner {
             return;
         }
         try {
-            deltaBroker.publish(frame);
+            Map<String, JsonNode> attributes = new HashMap<>(frame.attrs());
+            attributes.put(
+                    "agentId", com.fasterxml.jackson.databind.node.TextNode.valueOf(agentId));
+            deltaBroker.publish(
+                    new DeltaFrame(
+                            frame.sessionId(),
+                            frame.sequence(),
+                            frame.emittedAt(),
+                            frame.kind(),
+                            frame.text(),
+                            attributes));
         } catch (RuntimeException e) {
             log.warn("Agent {} delta-broker publish failed (kind={})", agentId, frame.kind(), e);
         }
@@ -2260,7 +2270,34 @@ public class AgentRunner {
     // ── state + API ops (called by VetoAgent / transport) ────────────────────
 
     private void transitionTo(@NonNull AgentState next) {
+        if (this.state == next) return;
         this.state = next;
+        notifyExecutionChanged();
+    }
+
+    private void notifyExecutionChanged() {
+        publishFrame(
+                DeltaFrame.builder()
+                        .sessionId(sessionId)
+                        .kind(DeltaFrame.Kind.SESSION_INVALIDATED)
+                        .attr("agentId", agentId)
+                        .attr(
+                                "resources",
+                                objectMapper.createArrayNode().add("agents").add("execution"))
+                        .build());
+    }
+
+    public boolean hasPendingWork() {
+        if (!sessionAlive || state == AgentState.TERMINATED) return false;
+        return state != AgentState.IDLE
+                || actionQueue.stream()
+                        .anyMatch(
+                                action ->
+                                        action instanceof AgentAction.UserPromptAction
+                                                || action
+                                                        instanceof
+                                                        AgentAction.DirectUserPromptAction
+                                                || action instanceof AgentAction.CompactAction);
     }
 
     /**
@@ -2282,10 +2319,12 @@ public class AgentRunner {
             hitlRegistry.declineAll(agentId);
         }
         actionQueue.add(action);
+        notifyExecutionChanged();
     }
 
     public void enqueue(@NonNull AgentAction action) {
         actionQueue.add(action);
+        notifyExecutionChanged();
     }
 
     public void bind(@NonNull LlmBinding binding) {
@@ -2474,6 +2513,7 @@ public class AgentRunner {
                 persona.whitelistedTools().stream()
                         .map(ToolDefinition::name)
                         .collect(Collectors.toUnmodifiableSet());
+        notifyExecutionChanged();
     }
 
     /**

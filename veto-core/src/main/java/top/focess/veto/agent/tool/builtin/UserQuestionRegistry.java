@@ -8,11 +8,19 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.NonNull;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import top.focess.veto.bus.SessionInvalidations;
 
 /** In-memory rendezvous between ask_user tool calls and authenticated UI responses. */
 @Service
 public final class UserQuestionRegistry {
+    private SessionInvalidations invalidations;
+
+    @Autowired
+    public void attachInvalidations(@NonNull SessionInvalidations invalidations) {
+        this.invalidations = invalidations;
+    }
 
     private final @NonNull ConcurrentHashMap<Key, Pending> pending = new ConcurrentHashMap<>();
 
@@ -35,7 +43,12 @@ public final class UserQuestionRegistry {
         if (pending.putIfAbsent(key(agentId, callId), value) != null) {
             throw new IllegalStateException("Question batch already pending: " + callId);
         }
-        future.whenComplete((ignored, error) -> pending.remove(key(agentId, callId), value));
+        if (invalidations != null) invalidations.agentChanged(agentId, "interactions");
+        future.whenComplete(
+                (ignored, error) -> {
+                    pending.remove(key(agentId, callId), value);
+                    if (invalidations != null) invalidations.agentChanged(agentId, "interactions");
+                });
         return future;
     }
 

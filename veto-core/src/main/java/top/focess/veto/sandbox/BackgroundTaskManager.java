@@ -175,6 +175,8 @@ public class BackgroundTaskManager {
 
         void onTaskExited(@NonNull TaskInfo info);
 
+        default void onTaskRemoved(@NonNull TaskInfo info) {}
+
         default void onTaskExited(@NonNull TaskInfo info, @NonNull ExitCause cause) {
             onTaskExited(info);
         }
@@ -454,7 +456,15 @@ public class BackgroundTaskManager {
         if (t == null || t.alive) {
             return Optional.empty();
         }
-        tasks.remove(taskId);
+        if (!tasks.remove(taskId, t)) return Optional.empty();
+        TaskListener listener = taskListener;
+        if (listener != null) {
+            try {
+                listener.onTaskRemoved(t.toInfo());
+            } catch (RuntimeException error) {
+                log.warn("Task removal notification failed", error);
+            }
+        }
         log.info("Background task {} removed (agent={})", taskId, agentId);
         return Optional.of(t.toInfo());
     }

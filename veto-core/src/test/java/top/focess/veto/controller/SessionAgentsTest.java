@@ -43,11 +43,32 @@ class SessionAgentsTest {
 
     @Test
     void requiresOwnerBeforeReadingRuntimeMetadata() throws Exception {
+        mvc.perform(get("/api/sessions/private/execution")).andExpect(status().isUnauthorized());
         mvc.perform(get("/api/sessions/private/agents")).andExpect(status().isUnauthorized());
         when(vault.currentUser()).thenReturn("other-user");
         when(sessions.resolveByName("private", "other-user")).thenReturn(Optional.empty());
         mvc.perform(get("/api/sessions/private/agents")).andExpect(status().isNotFound());
+        mvc.perform(get("/api/sessions/private/execution")).andExpect(status().isNotFound());
         verifyNoInteractions(registry);
+    }
+
+    @Test
+    void executionSnapshotReportsQueuedWorkWithoutReturningHistory() throws Exception {
+        UUID sessionId = UUID.randomUUID();
+        SessionService.@NonNull SessionConfig cfg = mock();
+        top.focess.veto.agent.@NonNull VetoAgent agent = mock();
+        when(cfg.sessionId()).thenReturn(sessionId.toString());
+        when(vault.currentUser()).thenReturn("owner");
+        when(sessions.resolveByName("session", "owner")).thenReturn(Optional.of(cfg));
+        when(agent.id()).thenReturn("primary");
+        when(agent.hasPendingWork()).thenReturn(true);
+        when(registry.agents(sessionId))
+                .thenReturn(List.of(new SessionAgentRegistry.Entry(sessionId, null, null, agent)));
+        mvc.perform(get("/api/sessions/session/execution"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].agentId").value("primary"))
+                .andExpect(jsonPath("$[0].busy").value(true));
+        verifyNoInteractions(history);
     }
 
     @Test

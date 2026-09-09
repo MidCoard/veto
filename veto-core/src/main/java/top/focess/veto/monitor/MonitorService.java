@@ -13,9 +13,11 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import top.focess.veto.agent.SessionAgentRegistry;
+import top.focess.veto.bus.SessionInvalidations;
 import top.focess.veto.group.DagNode;
 import top.focess.veto.group.Group;
 import top.focess.veto.group.GroupRegistry;
@@ -25,6 +27,13 @@ import top.focess.veto.sandbox.BackgroundTaskManager;
 /** Domain observations and time triggers share persistence and a single runner delivery path. */
 @Service
 public class MonitorService {
+    private SessionInvalidations invalidations;
+
+    @Autowired
+    public void attachInvalidations(@NonNull SessionInvalidations invalidations) {
+        this.invalidations = invalidations;
+    }
+
     private static final @NonNull TypeReference<MonitorRecord> RECORD_TYPE =
             new TypeReference<>() {};
     private final @NonNull MonitorRepository repository;
@@ -352,9 +361,12 @@ public class MonitorService {
     }
 
     private void save(@NonNull MonitorRecord record) {
+        if (record.equals(records.get(record.id()))) return;
         try {
             repository.save(new MonitorEntity(record.id(), mapper.writeValueAsString(record)));
             records.put(record.id(), record);
+            if (invalidations != null)
+                invalidations.changed(UUID.fromString(record.sessionId()), "monitors");
         } catch (JsonProcessingException error) {
             throw new IllegalStateException("Cannot save Monitor", error);
         }
