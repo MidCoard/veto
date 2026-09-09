@@ -6,12 +6,23 @@ import org.jspecify.annotations.NonNull;
 import top.focess.veto.group.BlackboardMessage;
 import top.focess.veto.group.BlackboardMessage.MessageType;
 import top.focess.veto.group.Group.GroupState;
+import top.focess.veto.group.GroupOrchestrator.Inspection;
 import top.focess.veto.group.GroupOrchestrator.NodeEdit;
 import top.focess.veto.group.GroupSnapshot;
 
 public sealed interface GroupControlCapability extends Capability
         permits GroupControlCapabilityImpl {
     GroupSnapshot snapshot();
+
+    @NonNull String createMate(@NonNull String name, @NonNull String responsibility);
+
+    @NonNull NodeEdit createTask(
+            @NonNull String id,
+            @NonNull String description,
+            @NonNull String mateId,
+            @NonNull Set<String> dependencies);
+
+    Inspection inspect(long since);
 
     @NonNull List<@NonNull BlackboardMessage> messages(long since);
 
@@ -26,7 +37,9 @@ public sealed interface GroupControlCapability extends Capability
             @NonNull String id,
             @NonNull String description,
             @NonNull String skillset,
-            @NonNull Set<String> dependencies);
+            @NonNull Set<String> dependencies,
+            String mateId,
+            boolean newMate);
 
     @NonNull NodeEdit removeNode(@NonNull String id);
 }

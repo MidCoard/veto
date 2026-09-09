@@ -11,7 +11,7 @@ import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.web.SearchOptions;
 import top.focess.veto.agent.web.SearchProvider;
-import top.focess.veto.agent.web.WebReader;
+import top.focess.veto.agent.web.WebFetchExecutor;
 import top.focess.veto.sandbox.BackgroundTaskManager;
 import top.focess.veto.sandbox.ChainMode;
 import top.focess.veto.sandbox.SandboxManager;
@@ -27,7 +27,11 @@ class NativeCapabilityBoundaryTest {
         var task = new TaskControlCapabilityImpl(tasks);
         var network =
                 new NetworkEgressCapabilityImpl(
-                        provider, mock(ToolDocs.nonNullClass(WebReader.class)), 5, 1000, false);
+                        provider,
+                        mock(ToolDocs.nonNullClass(WebFetchExecutor.class)),
+                        5,
+                        1000,
+                        false);
         assertThrows(
                 ToolDocs.nonNullClass(SecurityException.class),
                 () -> process.run(List.of(), ChainMode.STOP_ON_FAILURE, Duration.ZERO, false));

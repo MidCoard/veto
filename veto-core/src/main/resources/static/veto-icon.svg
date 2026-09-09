@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">Veto</title>
+  <desc id="desc">A precise ivory V with a separated vermilion segment on its right arm, set on a graphite rounded square.</desc>
+  <rect width="256" height="256" rx="52" fill="#0E1116"/>
+  <path d="M48 60H84L128 160L150 110H185.78L144 204H112Z" fill="#E3E7EE"/>
+  <path d="M172 60H208L192.89 94H157.04Z" fill="#E5484D"/>
+</svg>

@@ -6,13 +6,13 @@ import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.tool.ToolCallContext;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.web.FetchedPage;
-import top.focess.veto.agent.web.WebReader;
+import top.focess.veto.agent.web.WebFetchExecutor;
 
 /** Invocation-local authority to fetch one approved document. No arbitrary URL operation exists. */
 public final class WebReadCapability implements Capability, AutoCloseable {
     private final @NonNull LongFunction<@NonNull FetchedPage> fetch;
     private final @NonNull ToolCallContext parent;
-    private final @NonNull WebReader reader;
+    private final @NonNull WebFetchExecutor reader;
     private volatile boolean closed;
     private String readerId;
     private FetchedPage page;
@@ -20,7 +20,7 @@ public final class WebReadCapability implements Capability, AutoCloseable {
     WebReadCapability(
             @NonNull LongFunction<@NonNull FetchedPage> fetch,
             @NonNull ToolCallContext parent,
-            @NonNull WebReader reader) {
+            @NonNull WebFetchExecutor reader) {
         this.fetch = fetch;
         this.parent = parent;
         this.reader = reader;

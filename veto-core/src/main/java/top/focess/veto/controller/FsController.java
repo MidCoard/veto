@@ -1,6 +1,7 @@
 package top.focess.veto.controller;
 
 import java.io.IOException;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -14,6 +15,8 @@ import org.jspecify.annotations.NonNull;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -23,10 +26,10 @@ import top.focess.veto.security.HostPathInput;
 import top.focess.veto.vault.KeysteadVault;
 
 /**
- * Read-only directory listing for remote UIs (veto-ui), so a session's workspace roots can be
- * picked from the server's filesystem instead of typed blind. Directories only - a workspace root
- * is always a directory, and not listing files keeps the surface (and response sizes) small. Hidden
- * and unreadable entries are skipped.
+ * Directory browsing and explicit child-directory creation for remote UIs (veto-ui), so a session's
+ * workspace roots can be picked from the server's filesystem instead of typed blind. Directories
+ * only - a workspace root is always a directory, and not listing files keeps the surface (and
+ * response sizes) small. Hidden and unreadable entries are skipped.
  *
  * <p>Any authenticated user may browse: sessions already accept arbitrary host paths, so this
  * exposes nothing the create endpoint would not. There is no allowlist - deployment policy does not
@@ -102,6 +105,55 @@ public class FsController {
         Path parent = dir.getParent();
         return ResponseEntity.ok(
                 body(dir.toString(), parent != null ? parent.toString() : null, entries));
+    }
+
+    public record CreateDirectoryRequest(String parent, String name) {}
+
+    @PostMapping("/directories")
+    public @NonNull ResponseEntity<?> createDirectory(
+            @RequestBody @NonNull CreateDirectoryRequest request) {
+        if (vault.currentUser() == null) {
+            return ResponseEntity.status(401)
+                    .body(Map.of("error", Msg.get("error.auth.notAuthenticated")));
+        }
+        String parentText = request.parent();
+        String name = request.name();
+        if (name == null
+                || name.isBlank()
+                || name.length() > 255
+                || name.equals(".")
+                || name.equals("..")
+                || !name.equals(name.strip())
+                || name.endsWith(".")
+                || name.chars().anyMatch(c -> c < 32 || "/\\:<>\"|?*".indexOf(c) >= 0)) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", Msg.get("error.fs.invalidName")));
+        }
+        Path parent;
+        try {
+            if (parentText == null) throw new IllegalArgumentException("Missing parent");
+            parent = HostPathInput.absoluteNormalized(parentText, "parent").toRealPath();
+            if (!Files.isDirectory(parent)) throw new IllegalArgumentException("Not a directory");
+        } catch (IllegalArgumentException | IOException e) {
+            return ResponseEntity.badRequest()
+                    .body(
+                            Map.of(
+                                    "error",
+                                    Msg.get(
+                                            "error.fs.notDirectory",
+                                            parentText == null ? "" : parentText)));
+        }
+        try {
+            Path created = Files.createDirectory(parent.resolve(name));
+            return ResponseEntity.status(HttpStatus.CREATED)
+                    .body(Map.of("path", created.toString()));
+        } catch (FileAlreadyExistsException e) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(Map.of("error", Msg.get("error.fs.alreadyExists", name)));
+        } catch (IOException | IllegalArgumentException | SecurityException e) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", Msg.get("error.fs.cannotCreate", name)));
+        }
     }
 
     private static @NonNull Map<String, Object> body(

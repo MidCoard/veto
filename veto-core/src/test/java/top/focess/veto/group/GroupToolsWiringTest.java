@@ -299,7 +299,7 @@ class GroupToolsWiringTest {
     }
 
     @Test
-    void postMessagePostsToBlackboardForReceiver() throws Exception {
+    void postMessageRecordsLeaderNote() throws Exception {
         Group g = spawner.registerEmptyGroup("leader", "default", null, "brief");
         registry.put(g.withMate("mate-1", "coding"));
 
@@ -322,10 +322,10 @@ class GroupToolsWiringTest {
                     CapabilityTestCalls.execute(
                             post,
                             new PostMessage.Args(
-                                    BlackboardMessage.MessageType.FEEDBACK, "mate-1", "oops"));
+                                    BlackboardMessage.MessageType.FEEDBACK, "LEADER", "oops"));
             assertEquals("posted", result);
 
-            List<BlackboardMessage> forMate = blackboard.readFor(g.groupId(), "mate-1");
+            List<BlackboardMessage> forMate = blackboard.readFor(g.groupId(), "LEADER");
             assertEquals(1, forMate.size());
             assertEquals(BlackboardMessage.MessageType.FEEDBACK, forMate.get(0).type());
             assertEquals("oops", forMate.get(0).payload());
@@ -333,6 +333,25 @@ class GroupToolsWiringTest {
                     "LEADER",
                     forMate.get(0).senderId(),
                     "sender is the Leader (blackboard identity)");
+            assertThrows(
+                    ToolDocs.nonNullClass(ToolExecutionException.class),
+                    () ->
+                            CapabilityTestCalls.execute(
+                                    post,
+                                    new PostMessage.Args(
+                                            BlackboardMessage.MessageType.TASK_DISPATCH,
+                                            "mate-1",
+                                            "hidden:work")));
+            assertThrows(
+                    ToolDocs.nonNullClass(ToolExecutionException.class),
+                    () ->
+                            CapabilityTestCalls.execute(
+                                    post,
+                                    new PostMessage.Args(
+                                            BlackboardMessage.MessageType.FEEDBACK,
+                                            "mate-1",
+                                            "silently ignored before")));
+            assertTrue(blackboard.readFor(g.groupId(), "mate-1").isEmpty());
             spawner.disband(g.groupId());
         } finally {
             ToolCallContextHolder.clear();

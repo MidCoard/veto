@@ -32,8 +32,8 @@ import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.agent.web.FetchedPage;
 import top.focess.veto.agent.web.SearchProvider;
+import top.focess.veto.agent.web.WebFetchExecutor;
 import top.focess.veto.agent.web.WebFetchTool;
-import top.focess.veto.agent.web.WebReader;
 import top.focess.veto.llm.core.ProviderType;
 import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
@@ -122,8 +122,8 @@ class WebReadChildAuthorityTest {
                             new ModelBinding(
                                     ProviderType.DEEPSEEK, "reader", "reader-key", 0, 2048));
             SessionAgentRegistry registry = new SessionAgentRegistry();
-            WebReader reader =
-                    new WebReader(
+            WebFetchExecutor reader =
+                    new WebFetchExecutor(
                             mapper,
                             caller,
                             models,
@@ -228,7 +228,7 @@ class WebReadChildAuthorityTest {
                                     100);
                         },
                         parent,
-                        mock(ToolDocs.nonNullClass(WebReader.class)));
+                        mock(ToolDocs.nonNullClass(WebFetchExecutor.class)));
         access.bindReader("child");
         assertThrows(SecurityException.class, () -> access.bindReader("replacement"));
         install("child", user, "owner", session, "fetch_page");

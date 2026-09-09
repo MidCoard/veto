@@ -2,17 +2,18 @@ package top.focess.veto.agent.loop;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import top.focess.veto.agent.HistoryProjection;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.TurnType;
 import top.focess.veto.agent.identity.AgentPersona;
@@ -145,17 +146,9 @@ public class PromptCompiler {
     public @NonNull VetoRequest fitRequest(@NonNull VetoRequest request) {
         if (isolatedInstructions == null) return request;
         List<ChatMessage> conversation = request.messages();
-        boolean hasSystem =
-                !conversation.isEmpty() && "system".equals(conversation.getFirst().role());
-        if (hasSystem) conversation = conversation.subList(1, conversation.size());
         List<ChatMessage> messages =
                 new ArrayList<>(
-                        fitIsolatedBudget(
-                                request.systemPrompt(),
-                                conversation,
-                                request.tools(),
-                                request.responseSchema()));
-        if (hasSystem) messages.add(0, request.messages().getFirst());
+                        fitIsolatedBudget(conversation, request.tools(), request.responseSchema()));
         return new VetoRequest(
                 request.systemPrompt(),
                 request.userPrompt(),
@@ -212,26 +205,22 @@ public class PromptCompiler {
                 translator.translateTools(
                         availableTools(
                                 persona.whitelistedTools(), persona.registeredSkills().isEmpty()));
-        String systemMessage =
-                buildSystemMessage(
-                        persona,
-                        sessionWorkspace,
-                        systemPromptBase,
-                        flatTools,
-                        toolResultPresentation,
-                        guidedEnabled);
         List<ChatMessage> conversation = resolveRewinds(history, toolResultPresentation);
+        String systemMessage =
+                conversation.stream()
+                        .filter(message -> "system".equals(message.role()))
+                        .map(ChatMessage::content)
+                        .collect(Collectors.joining("\n\n"));
         if (isolatedInstructions != null) {
             var schema = translator.vetoResponseSchema(false, flatTools);
-            List<ChatMessage> messages =
-                    fitIsolatedBudget(systemMessage, conversation, flatTools, schema);
+            List<ChatMessage> messages = fitIsolatedBudget(conversation, flatTools, schema);
             return new CompiledPrompt(
                     systemMessage,
                     messages,
                     flatTools,
                     schema,
                     Math.max(0, conversation.size() - messages.size()),
-                    isolatedSize(systemMessage, messages, flatTools, schema));
+                    isolatedSize(messages, flatTools, schema));
         }
         List<ChatMessage> budgeted = fitBudget(systemMessage, conversation, correctionFactor);
         List<ChatMessage> messages = wellFormed(conversation, budgeted);
@@ -241,7 +230,8 @@ public class PromptCompiler {
         int trimmed = conversation.size() - budgeted.size();
         long estimate = Math.round(ceilChars(systemMessage.length()) * correctionFactor);
         for (ChatMessage msg : messages) {
-            estimate += Math.round(ceilChars(msg.content().length()) * correctionFactor);
+            if (!"system".equals(msg.role()))
+                estimate += Math.round(ceilChars(msg.content().length()) * correctionFactor);
         }
         return new CompiledPrompt(
                 systemMessage, messages, flatTools, responseSchema, trimmed, estimate);
@@ -337,36 +327,39 @@ public class PromptCompiler {
     }
 
     private @NonNull List<ChatMessage> fitIsolatedBudget(
-            @NonNull String system,
             @NonNull List<ChatMessage> conversation,
             @NonNull List<ToolDefinition> tools,
             JsonNode schema) {
         List<ChatMessage> messages = new ArrayList<>(wellFormed(conversation, conversation));
         // The opening user message is the invocation's objective. Always retain it while removing
         // old call/result pairs; never substitute a later tool error as the task anchor.
-        while (isolatedSize(system, messages, tools, schema) > maxInputTokens) {
+        while (isolatedSize(messages, tools, schema) > maxInputTokens) {
             if (messages.size() <= 3)
                 throw new IllegalStateException(
                         "Isolated agent's latest observation exceeds its input budget");
-            ChatMessage removed = messages.remove(1);
+            int removeIndex = 0;
+            while (removeIndex < messages.size()
+                    && "system".equals(messages.get(removeIndex).role())) removeIndex++;
+            removeIndex++; // Preserve the invocation objective.
+            if (messages.size() - removeIndex <= 2)
+                throw new IllegalStateException("Isolated agent input exceeds budget");
+            ChatMessage removed = messages.remove(removeIndex);
             if (removed.callId() != null
-                    && "tool".equals(messages.get(1).role())
-                    && Objects.equals(removed.callId(), messages.get(1).callId()))
-                messages.remove(1);
+                    && "tool".equals(messages.get(removeIndex).role())
+                    && Objects.equals(removed.callId(), messages.get(removeIndex).callId()))
+                messages.remove(removeIndex);
         }
         return messages;
     }
 
     private long isolatedSize(
-            @NonNull String system,
             @NonNull List<ChatMessage> messages,
             @NonNull List<ToolDefinition> tools,
             JsonNode schema) {
         // Serialized UTF-8 bytes conservatively account for content, reasoning, tool arguments,
         // tool definitions, schema, and message framing without assuming English token density.
         try {
-            return system.getBytes(StandardCharsets.UTF_8).length
-                    + objectMapper.writeValueAsBytes(messages).length
+            return objectMapper.writeValueAsBytes(messages).length
                     + objectMapper.writeValueAsBytes(tools).length
                     + (schema == null ? 4 : objectMapper.writeValueAsBytes(schema).length)
                     + 256L;
@@ -380,7 +373,7 @@ public class PromptCompiler {
     /**
      * Walks history ascending, applying REWIND suffix-drops; returns the effective compiled list.
      */
-    private @NonNull List<ChatMessage> resolveRewinds(
+    @NonNull List<ChatMessage> resolveRewinds(
             List<TurnRecord> history, @NonNull ToolResultPresentationMode toolResultPresentation) {
         List<ChatMessage> compiled = new ArrayList<>();
         if (history == null) {
@@ -391,18 +384,17 @@ public class PromptCompiler {
         // tool call as a single assistant turn, matching the standard tool-calling format.
         String pendingThought = null;
         String pendingReasoning = null;
-        for (TurnRecord turn : history) {
+        for (TurnRecord turn : HistoryProjection.effective(history)) {
             if (turn.type() == TurnType.AGENT_INIT) {
                 if (pendingThought != null && !pendingThought.isBlank()) {
                     compiled.add(ChatMessage.assistant(pendingThought));
                 }
                 pendingThought = null;
                 pendingReasoning = null;
+                compiled.add(ChatMessage.system(str(turn.payload(), "system_prompt")));
                 continue;
             }
             if (turn.type() == TurnType.REWIND) {
-                int fromIndex = number(turn.payload(), "from_index").intValue();
-                truncate(compiled, fromIndex);
                 String recalledContent = str(turn.payload(), "content");
                 if (!recalledContent.isBlank()) {
                     compiled.add(ChatMessage.user(recalledContent));
@@ -437,15 +429,6 @@ public class PromptCompiler {
         return compiled;
     }
 
-    private static void truncate(@NonNull List<ChatMessage> compiled, int fromIndex) {
-        if (fromIndex < 0) {
-            fromIndex = 0;
-        }
-        while (compiled.size() > fromIndex) {
-            compiled.remove(compiled.size() - 1);
-        }
-    }
-
     /**
      * Role mapping. ASSISTANT_THOUGHT is handled by the caller (resolveRewinds buffers it and
      * merges into the next TOOL_CALL or ASSISTANT_RESPONSE). The pending thought/reasoning are
@@ -458,6 +441,8 @@ public class PromptCompiler {
             @NonNull ToolResultPresentationMode toolResultPresentation) {
         String thoughtContent = pendingThought != null ? pendingThought : "";
         return switch (turn.type()) {
+            case MONITOR_EVENT ->
+                    ChatMessage.user("[Monitor observation] " + str(turn.payload(), "content"));
             case USER_PROMPT -> ChatMessage.user(renderUserPrompt(turn.payload()));
             case USER_INTERRUPT ->
                     ChatMessage.user("[User feedback]: " + str(turn.payload(), "feedback"));
@@ -475,7 +460,7 @@ public class PromptCompiler {
                         callId, toolName, toolArgs, thoughtContent, pendingReasoning);
             }
             case TOOL_RESPONSE -> mapPresentedToolResponse(turn, toolResultPresentation);
-            case AGENT_INIT -> null; // handled as an ordered system insertion before role mapping
+            case AGENT_INIT -> null; // handled before role mapping
             case COMPACTION_SUMMARY -> ChatMessage.user(str(turn.payload(), "content"));
             case REWIND -> null;
         };
@@ -573,8 +558,18 @@ public class PromptCompiler {
         long estimate = Math.round(ceilChars(systemMessage.length()) * correctionFactor);
         List<ChatMessage> kept = new ArrayList<>();
         int i = conversation.size() - 1;
+        boolean exhausted = false;
         while (i >= 0) {
             ChatMessage msg = conversation.get(i);
+            if ("system".equals(msg.role())) {
+                kept.add(0, msg);
+                i--;
+                continue;
+            }
+            if (exhausted) {
+                i--;
+                continue;
+            }
             // Pair-safety: a tool message must not be kept without its preceding assistant
             // tool_call message. Treat the (assistant, tool) pair as a single budget unit.
             if ("tool".equals(msg.role())
@@ -586,7 +581,9 @@ public class PromptCompiler {
                                 (ceilChars(contentLen(msg)) + ceilChars(contentLen(paired)))
                                         * correctionFactor);
                 if (estimate + pairEstimate > budget && !kept.isEmpty()) {
-                    break; // neither fits - stop
+                    exhausted = true;
+                    i -= 2;
+                    continue;
                 }
                 kept.add(0, msg); // tool first (so it ends up after assistant)
                 kept.add(0, paired); // assistant before tool
@@ -598,7 +595,9 @@ public class PromptCompiler {
             // observation from llm_error / guided_program_rejected - safe to keep alone).
             long turnEstimate = Math.round(ceilChars(contentLen(msg)) * correctionFactor);
             if (estimate + turnEstimate > budget && !kept.isEmpty()) {
-                break;
+                exhausted = true;
+                i--;
+                continue;
             }
             kept.add(0, msg);
             estimate += turnEstimate;
@@ -664,9 +663,12 @@ public class PromptCompiler {
         }
         // Invariant 3: the conversation must open on a user message; re-anchor if the budget
         // trimmed the opening user turn (or the window collapsed entirely).
-        if (out.isEmpty() || !"user".equals(out.get(0).role())) {
+        int firstConversation = 0;
+        while (firstConversation < out.size() && "system".equals(out.get(firstConversation).role()))
+            firstConversation++;
+        if (firstConversation == out.size() || !"user".equals(out.get(firstConversation).role())) {
             String anchor = lastUserContent(full);
-            out.add(0, ChatMessage.user(anchor != null ? anchor : "(continued)"));
+            out.add(firstConversation, ChatMessage.user(anchor != null ? anchor : "(continued)"));
         }
         return out;
     }
@@ -678,15 +680,6 @@ public class PromptCompiler {
         return next != null
                 && "tool".equals(next.role())
                 && Objects.equals(call.callId(), next.callId());
-    }
-
-    private static @NonNull Number number(
-            @NonNull Map<String, Object> payload, @NonNull String key) {
-        Object value = payload.get(key);
-        if (value instanceof Number number) {
-            return number;
-        }
-        throw new IllegalArgumentException("Turn payload '" + key + "' must be numeric");
     }
 
     /** The content of the last user-role message (the episode's opening prompt), or null. */

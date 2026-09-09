@@ -108,7 +108,7 @@ class AgentServiceHistorySeedTest {
     }
 
     @Test
-    void restartedAgentUsesLastOrderedSystemSnapshotWithoutAddingAnother() throws Exception {
+    void restartedAgentRecordsUpdatedSystemAndPreservesEffectiveConversation() throws Exception {
         UUID sessionId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
         AgentRunner.LlmBinding binding = binding();
@@ -143,8 +143,13 @@ class AgentServiceHistorySeedTest {
         resumed.submit("second request");
         assertTrue(resumed.await(TIMEOUT).success());
 
-        assertEquals(2, count(resumed.history(), TurnType.AGENT_INIT));
-        assertEquals(2, count(resumed.history(), TurnType.USER_PROMPT));
+        assertEquals(3, count(resumed.history(), TurnType.AGENT_INIT));
+        assertEquals(1, count(HistoryProjection.effective(resumed.history()), TurnType.AGENT_INIT));
+        assertEquals(
+                2, count(HistoryProjection.effective(resumed.history()), TurnType.USER_PROMPT));
+        assertTrue(
+                resumed.history().stream()
+                        .anyMatch(turn -> turn.payload().containsKey("restored_from_turn")));
         VetoRequest request =
                 assertInstanceOf(ToolDocs.nonNullClass(VetoRequest.class), resumedRequest.get());
         assertEquals("system", request.messages().get(0).role());

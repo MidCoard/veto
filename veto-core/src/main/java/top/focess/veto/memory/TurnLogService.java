@@ -74,6 +74,18 @@ public class TurnLogService {
         }
     }
 
+    /** Notifications must be durable before their source queue is acknowledged. */
+    public void logRequired(
+            @NonNull TurnRecord turn,
+            @NonNull UUID sessionId,
+            @NonNull UUID userId,
+            @NonNull String agentId) {
+        if (!enabled || turnRecordRepository == null) {
+            throw new IllegalStateException("Durable turn logging is unavailable");
+        }
+        turnRecordRepository.save(TurnRecordEntity.of(turn, sessionId, userId, agentId, mapper));
+    }
+
     /**
      * Every turn type is loggable, including the compiler directives (REWIND, AGENT_INIT,
      * COMPACTION_SUMMARY): they are part of the durable raw history the loader replays, and

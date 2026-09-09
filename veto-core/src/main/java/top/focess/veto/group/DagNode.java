@@ -28,7 +28,8 @@ public record DagNode(
     public enum NodeState {
         PENDING, // not yet dispatched
         RUNNING, // dispatched to a Mate
-        VERIFIED, // a testing Mate accepted the artifact
+        VERIFIED, // legacy internal name: the assigned Mate returned successfully, not independent
+        // review
         FAILED, // verifier rejected; awaits Leader re-plan
         STALE // superseded (Mate removed / re-assigned); not to be re-dispatched
     }

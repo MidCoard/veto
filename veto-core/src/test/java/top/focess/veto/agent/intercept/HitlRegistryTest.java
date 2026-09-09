@@ -28,6 +28,20 @@ class HitlRegistryTest {
     }
 
     @Test
+    void lifecycleCancellationIsNotAttributedToAUserClick() throws Exception {
+        HitlRegistry registry = new HitlRegistry();
+        var future = registry.register("agent", "cancel", call(), null, E2_OPTIONS, null);
+        registry.declineAll("agent");
+        var resolution = future.get(1, TimeUnit.SECONDS);
+        assertEquals(InterceptResolution.Source.LIFECYCLE_CANCEL, resolution.source());
+        assertTrue(resolution.refusalReason().contains("lifecycle"));
+        var next = registry.register("agent", "client", call(), null, E2_OPTIONS, null);
+        registry.resolveOption("agent", "client", "EXEC_DECLINE");
+        assertEquals(
+                InterceptResolution.Source.CLIENT_RESPONSE, next.get(1, TimeUnit.SECONDS).source());
+    }
+
+    @Test
     void resolveOptionAcceptsAValidOptionName() throws Exception {
         HitlRegistry registry = new HitlRegistry();
         CompletableFuture<InterceptResolution> future =

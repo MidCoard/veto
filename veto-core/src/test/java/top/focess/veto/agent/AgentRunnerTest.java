@@ -4,12 +4,19 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.Mockito;
 import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.agent.identity.RoleToolFilter;
 import top.focess.veto.agent.identity.SystemPromptResolver;
@@ -25,6 +32,8 @@ import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.llm.core.VetoRequest;
 import top.focess.veto.llm.core.VetoResponse;
 import top.focess.veto.llm.exceptions.ModelSchemaException;
+import top.focess.veto.monitor.MonitorRecord;
+import top.focess.veto.monitor.MonitorService;
 import top.focess.veto.sandbox.BackgroundTaskManager;
 import top.focess.veto.sandbox.SandboxManager;
 import top.focess.veto.sandbox.TestSandboxFactory;
@@ -37,6 +46,108 @@ import top.focess.veto.sandbox.TestSandboxFactory;
  * history.
  */
 class AgentRunnerTest {
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void monitorWakeUsesObservationAndSameRunnerWithoutFakeUserPrompt(boolean retryAcknowledgement)
+            throws Exception {
+        var seen = new CopyOnWriteArrayList<VetoRequest>();
+        var resumed = new CountDownLatch(1);
+        var service =
+                serviceWith(
+                        request -> {
+                            seen.add(request);
+                            if (seen.size() > 1) resumed.countDown();
+                            return new VetoResponse(null, null, "Done", null);
+                        });
+        service.submit("monitor-wake", "Initial task", binding("System"), EPISODE_TIMEOUT);
+        var agent = requireAgent(service.agent("monitor-wake"));
+        @NonNull MonitorService monitors = Mockito.mock();
+        var event =
+                new MonitorRecord.Event(
+                        "wake",
+                        "timer",
+                        "TIME_ONCE",
+                        "Scheduled wake-up: review the result",
+                        Instant.now());
+        var pending = new AtomicBoolean(true);
+        var failAcknowledgement = new AtomicBoolean(retryAcknowledgement);
+        var acknowledgementFailed = new CountDownLatch(1);
+        Mockito.when(monitors.pending(agent.id(), agent.sessionId().toString()))
+                .thenAnswer(call -> pending.get() ? List.of(event) : List.of());
+        Mockito.doAnswer(
+                        call -> {
+                            if (failAcknowledgement.getAndSet(false)) {
+                                acknowledgementFailed.countDown();
+                                throw new IllegalStateException("acknowledgement storage failed");
+                            }
+                            pending.set(false);
+                            return null;
+                        })
+                .when(monitors)
+                .acknowledge(agent.id(), event);
+        agent.attachMonitor(monitors);
+        try {
+            agent.signalMonitor();
+            if (retryAcknowledgement) {
+                assertTrue(acknowledgementFailed.await(5, TimeUnit.SECONDS));
+                assertFalse(agent.await(EPISODE_TIMEOUT).success());
+                agent.signalMonitor();
+            }
+            assertTrue(resumed.await(5, TimeUnit.SECONDS));
+            assertTrue(agent.await(EPISODE_TIMEOUT).success());
+            assertEquals(
+                    1,
+                    agent.history().stream().filter(t -> t.type() == TurnType.USER_PROMPT).count());
+            assertEquals(
+                    1,
+                    agent.history().stream()
+                            .filter(t -> t.type() == TurnType.MONITOR_EVENT)
+                            .count());
+            assertTrue(
+                    seen.getLast().messages().stream()
+                            .anyMatch(m -> m.content().contains("Scheduled wake-up")));
+        } finally {
+            agent.terminate();
+        }
+    }
+
+    @Test
+    void groupNotificationCannotResetEpisodeBudget() throws Exception {
+        var calls = new AtomicInteger();
+        var service =
+                serviceWith(
+                        request -> {
+                            calls.incrementAndGet();
+                            return new VetoResponse(null, null, "Done", null);
+                        },
+                        1L);
+        service.submit("monitor-budget", "Initial task", binding("System"), EPISODE_TIMEOUT);
+        var agent = requireAgent(service.agent("monitor-budget"));
+        @NonNull MonitorService monitors = Mockito.mock();
+        var event =
+                new MonitorRecord.Event(
+                        "result", "group", "RESOURCE_EVENT", "Task completed", Instant.now());
+        Mockito.when(monitors.pending(agent.id(), agent.sessionId().toString()))
+                .thenReturn(List.of(event));
+        var consumed = new CountDownLatch(1);
+        Mockito.doAnswer(
+                        call -> {
+                            consumed.countDown();
+                            return null;
+                        })
+                .when(monitors)
+                .acknowledge(agent.id(), event);
+        agent.attachMonitor(monitors);
+        try {
+            agent.signalMonitor();
+            assertTrue(consumed.await(5, TimeUnit.SECONDS));
+            assertFalse(agent.await(EPISODE_TIMEOUT).success());
+            assertEquals(1, calls.get());
+        } finally {
+            agent.terminate();
+        }
+    }
 
     private static final Duration EPISODE_TIMEOUT = Duration.ofSeconds(10);
 

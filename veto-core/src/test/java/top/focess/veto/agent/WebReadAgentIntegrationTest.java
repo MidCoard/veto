@@ -38,8 +38,8 @@ import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.tool.ToolEngineImpl;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.agent.web.FetchedPage;
+import top.focess.veto.agent.web.WebFetchExecutor;
 import top.focess.veto.agent.web.WebFetchTool;
-import top.focess.veto.agent.web.WebReader;
 import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.llm.core.ProviderType;
 import top.focess.veto.llm.core.ToolCall;
@@ -109,8 +109,8 @@ class WebReadAgentIntegrationTest {
                         new ModelBinding(
                                 ProviderType.DEEPSEEK, "isolated-reader", "reader-key", 0, 2048));
         @NonNull TurnRecordRepository turnRepository = mock();
-        WebReader reader =
-                new WebReader(
+        WebFetchExecutor reader =
+                new WebFetchExecutor(
                         mapper,
                         childCaller,
                         models,
@@ -322,8 +322,8 @@ class WebReadAgentIntegrationTest {
         when(models.resolve("test-owner", ModelTier.LOW))
                 .thenReturn(new ModelBinding(ProviderType.DEEPSEEK, "reader", "key", 0, 2048));
         @NonNull TurnRecordRepository turnRepository = mock();
-        WebReader reader =
-                new WebReader(
+        WebFetchExecutor reader =
+                new WebFetchExecutor(
                         mapper,
                         childCaller,
                         models,

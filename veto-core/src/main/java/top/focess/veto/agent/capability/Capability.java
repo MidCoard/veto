@@ -13,6 +13,7 @@ public sealed interface Capability
                 MemoryWriteCapability,
                 DelegationCapability,
                 GroupControlCapability,
+                MonitorCapability,
                 LoopControlCapability,
                 SkillReadCapability,
                 UserInteractionCapability,

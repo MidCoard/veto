@@ -12,6 +12,7 @@ import org.jspecify.annotations.NonNull;
  */
 public sealed interface AgentAction
         permits AgentAction.UserPromptAction,
+                AgentAction.MonitorAction,
                 AgentAction.PauseAction,
                 AgentAction.ResumeAction,
                 AgentAction.TerminateAction,
@@ -23,6 +24,9 @@ public sealed interface AgentAction
      * Breaker trip resumption uses a {@code UserPromptAction("continue")}.
      */
     record UserPromptAction(@NonNull String prompt) implements AgentAction {}
+
+    /** A wake hint; sourced observations are read from the Monitor inbox by the same Runner. */
+    record MonitorAction() implements AgentAction {}
 
     /** Pause the agent → {@link AgentState#PAUSED}. */
     record PauseAction() implements AgentAction {}

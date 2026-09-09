@@ -90,8 +90,8 @@ class PromptCompileRenderTest {
         assertCompiled(
                 prompt,
                 "Role: LEADER.",
-                "Use `inspect_group` to wait for and read Mate outcomes",
-                "do NOT call `create_group`");
+                "Outcomes arrive automatically as Monitor observations.",
+                "You do not execute work directly or call create_group.");
         assertFalse(
                 prompt.contains("## Your Tools\n"),
                 "leader with no tools should drop the Tools block");

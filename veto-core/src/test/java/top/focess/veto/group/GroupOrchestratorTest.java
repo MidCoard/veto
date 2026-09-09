@@ -2,9 +2,11 @@ package top.focess.veto.group;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -72,6 +74,26 @@ class GroupOrchestratorTest {
     }
 
     @Test
+    void inspectionConsumesAcceptBeforeReturningItsMatchingNodeState() {
+        Group group = setupGroup();
+        registry.put(group);
+        orchestrator.tick(group.groupId());
+        GroupTestMessages.accept(blackboard, group.groupId(), "Mate-A", "n1");
+        var inspection = orchestrator.inspect(group.groupId(), 0);
+        if (inspection == null) throw new AssertionError("Missing inspection");
+        assertTrue(
+                inspection.messages().stream()
+                        .anyMatch(m -> m.type() == BlackboardMessage.MessageType.ACCEPT));
+        assertEquals(
+                DagNode.NodeState.VERIFIED,
+                inspection.group().nodes().stream()
+                        .filter(n -> n.nodeId().equals("n1"))
+                        .findFirst()
+                        .orElseThrow()
+                        .state());
+    }
+
+    @Test
     void feedbackMarksNodeFailed() {
         Group g = setupGroup();
         registry.put(g);
@@ -111,6 +133,198 @@ class GroupOrchestratorTest {
     }
 
     @Test
+    void completedGroupRetainsMatesAndAcceptsFollowUpWork() {
+        Group group = setupGroup();
+        registry.put(group);
+        orchestrator.tick(group.groupId());
+        GroupTestMessages.accept(blackboard, group.groupId(), "Mate-A", "n1");
+        orchestrator.tick(group.groupId());
+        GroupTestMessages.accept(blackboard, group.groupId(), "Mate-B", "n2");
+        Group completed = requireGroup(orchestrator.tick(group.groupId()));
+        assertEquals(Group.GroupState.COMPLETED, completed.state());
+        assertEquals(group.mates(), completed.mates());
+        assertNull(completed.disbandedAt());
+
+        assertTrue(
+                orchestrator.addNode(
+                                group.groupId(),
+                                "follow-up",
+                                "Continue the work",
+                                "coding",
+                                Set.of("n2"))
+                        instanceof GroupOrchestrator.NodeEdit.Applied);
+        Group resumed = requireGroup(orchestrator.tick(group.groupId()));
+        assertEquals(Group.GroupState.ACTIVE, resumed.state());
+        assertEquals(group.groupId(), resumed.groupId());
+        assertEquals(group.mates(), resumed.mates());
+        assertEquals(DagNode.NodeState.VERIFIED, findNode(resumed, "n2").state());
+        assertEquals(DagNode.NodeState.RUNNING, findNode(resumed, "follow-up").state());
+
+        registry.disband(group.groupId(), Instant.now());
+        assertTrue(
+                orchestrator.addNode(
+                                group.groupId(),
+                                "after-disband",
+                                "Must not run",
+                                "coding",
+                                Set.of())
+                        instanceof GroupOrchestrator.NodeEdit.Rejected);
+    }
+
+    @Test
+    void reservedReviewerCannotBeReusedForItsOwnUpstreamTask() {
+        Group group =
+                Group.create(
+                        "Leader-1",
+                        "user-1",
+                        "review",
+                        blackboard,
+                        new ExecutionDag(
+                                UUID.randomUUID(),
+                                List.of(DagNode.pending("source", "Produce", "coding", Set.of()))));
+        registry.put(group);
+        AtomicInteger next = new AtomicInteger();
+        GroupOrchestrator withProvisioning =
+                new GroupOrchestrator(
+                        registry,
+                        blackboard,
+                        new HeuristicLeader(),
+                        (id, skillset) -> "new-" + next.incrementAndGet());
+        assertTrue(
+                withProvisioning.addNode(
+                                group.groupId(),
+                                "review",
+                                "Independent review",
+                                "coding",
+                                Set.of("source"),
+                                null,
+                                true)
+                        instanceof GroupOrchestrator.NodeEdit.Applied);
+        Group dispatched = requireGroup(withProvisioning.tick(group.groupId()));
+        assertEquals("new-1", findNode(dispatched, "review").assignedMateId());
+        assertEquals("new-2", findNode(dispatched, "source").assignedMateId());
+        assertEquals(DagNode.NodeState.PENDING, findNode(dispatched, "review").state());
+    }
+
+    @Test
+    void independentReviewCreatesAnotherMateDespiteMatchingIdleMember() {
+        Group group = setupGroup();
+        registry.put(group);
+        GroupOrchestrator withProvisioning =
+                new GroupOrchestrator(
+                        registry,
+                        blackboard,
+                        new HeuristicLeader(),
+                        (id, skillset) -> "independent-reviewer");
+        assertTrue(
+                withProvisioning.addNode(
+                                group.groupId(),
+                                "independent",
+                                "Independent review",
+                                "coding",
+                                Set.of("n1"),
+                                null,
+                                true)
+                        instanceof GroupOrchestrator.NodeEdit.Applied);
+        Group registered = requireGroup(registry.get(group.groupId()));
+        assertEquals("independent-reviewer", findNode(registered, "independent").assignedMateId());
+        assertEquals(3, registered.mates().size());
+        assertEquals(DagNode.NodeState.PENDING, findNode(registered, "independent").state());
+        assertTrue(
+                withProvisioning.addNode(
+                                group.groupId(),
+                                "ambiguous",
+                                "Review",
+                                "coding",
+                                Set.of(),
+                                "Mate-A",
+                                true)
+                        instanceof GroupOrchestrator.NodeEdit.Rejected);
+        assertFalse(
+                requireGroup(registry.get(group.groupId())).dag().nodeIds().contains("ambiguous"));
+    }
+
+    @Test
+    void pinnedMateWaitsForItsWorkAndReceivesDependencyReport() {
+        Group group = setupGroup();
+        registry.put(group);
+        orchestrator.tick(group.groupId());
+        assertTrue(
+                orchestrator.addNode(
+                                group.groupId(),
+                                "follow",
+                                "Review previous result",
+                                "different-label",
+                                Set.of("n1"),
+                                "Mate-B")
+                        instanceof GroupOrchestrator.NodeEdit.Applied);
+        assertTrue(
+                orchestrator.addNode(
+                                group.groupId(),
+                                "unknown",
+                                "Review",
+                                "coding",
+                                Set.of(),
+                                "outsider")
+                        instanceof GroupOrchestrator.NodeEdit.Rejected);
+        GroupTestMessages.accept(blackboard, group.groupId(), "Mate-A", "n1");
+        Group busy = requireGroup(orchestrator.tick(group.groupId()));
+        assertEquals(DagNode.NodeState.RUNNING, findNode(busy, "n2").state());
+        assertEquals(DagNode.NodeState.PENDING, findNode(busy, "follow").state());
+        GroupTestMessages.accept(blackboard, group.groupId(), "Mate-B", "n2");
+        Group ready = requireGroup(orchestrator.tick(group.groupId()));
+        assertEquals("Mate-B", findNode(ready, "follow").assignedMateId());
+        assertEquals(DagNode.NodeState.RUNNING, findNode(ready, "follow").state());
+        var dispatch =
+                blackboard.readFor(group.groupId(), "Mate-B").stream()
+                        .filter(
+                                m ->
+                                        m.type() == BlackboardMessage.MessageType.TASK_DISPATCH
+                                                && m.payload().startsWith("follow:"))
+                        .findFirst()
+                        .orElseThrow();
+        assertTrue(dispatch.payload().contains("Node: n1"));
+        assertTrue(dispatch.payload().contains("Executed by Mate: Mate-A"));
+        assertTrue(dispatch.payload().contains("Synthetic Mate completion."));
+        assertFalse(dispatch.payload().contains("Node: n2"));
+        assertFalse(dispatch.payload().contains("accept-base64"));
+    }
+
+    @Test
+    void runningNodeCannotDisappearWhileItsMateIsExecuting() {
+        Group group = setupGroup();
+        registry.put(group);
+        orchestrator.tick(group.groupId());
+        GroupTestMessages.accept(blackboard, group.groupId(), "Mate-A", "n1");
+        orchestrator.tick(group.groupId());
+        assertTrue(
+                orchestrator.removeNode(group.groupId(), "n2")
+                        instanceof GroupOrchestrator.NodeEdit.Rejected);
+        assertEquals(
+                DagNode.NodeState.RUNNING,
+                findNode(requireGroup(registry.get(group.groupId())), "n2").state());
+    }
+
+    @Test
+    void malformedCompletionCannotUnlockDependentWork() {
+        Group group = setupGroup();
+        registry.put(group);
+        orchestrator.tick(group.groupId());
+        blackboard.post(
+                new BlackboardMessage(
+                        UUID.randomUUID().toString(),
+                        group.groupId(),
+                        "Mate-A",
+                        "LEADER",
+                        BlackboardMessage.MessageType.ACCEPT,
+                        "n1:accept-base64:!!!",
+                        0));
+        Group result = requireGroup(orchestrator.tick(group.groupId()));
+        assertEquals(DagNode.NodeState.FAILED, findNode(result, "n1").state());
+        assertEquals(DagNode.NodeState.PENDING, findNode(result, "n2").state());
+    }
+
+    @Test
     void replanFailedReturnsNodeToPending() {
         Group g = setupGroup();
         registry.put(g);
@@ -122,39 +336,47 @@ class GroupOrchestratorTest {
         // Leader re-plans: the failed node goes back to PENDING.
         Group replanned = requireGroup(orchestrator.replanFailed(g.groupId(), "n1"));
         assertEquals(DagNode.NodeState.PENDING, findNode(replanned, "n1").state());
+        assertEquals(replanned, registry.get(g.groupId()));
+        Group retried = requireGroup(orchestrator.tick(g.groupId()));
+        assertEquals(1, findNode(retried, "n1").retryCount());
+        assertTrue(
+                blackboard.readFor(g.groupId(), "Mate-A").stream()
+                        .anyMatch(
+                                m ->
+                                        m.payload()
+                                                .contains(
+                                                        "Previous attempt failed: needs another pass")));
+        orchestrator.replanFailed(g.groupId(), "n1");
+        assertEquals(
+                DagNode.NodeState.RUNNING,
+                findNode(requireGroup(registry.get(g.groupId())), "n1").state());
     }
 
     @Test
-    void terminalStatusFromMateReassignsNode() {
-        Group g = setupGroup();
-        registry.put(g);
-        // Simulate the orchestrator dispatching n1.
-        orchestrator.tick(g.groupId());
-        // Simulate Mate-A's breaker tripping. The terminal message's payload format is
-        // "terminal:<nodeId>:<reason>". After the terminal status, the orchestrator
-        // re-dispatches the node (PENDING → RUNNING in the same tick) — the assertion
-        // here is that the terminal status was *processed* (not silently dropped). The
-        // dispatch message on the Blackboard is the durable evidence.
-        BlackboardMessage terminal =
+    void terminalStatusStopsRedispatchAndPreservesFailure() {
+        Group group = setupGroup();
+        registry.put(group);
+        orchestrator.tick(group.groupId());
+        blackboard.post(
                 new BlackboardMessage(
                         UUID.randomUUID().toString(),
-                        g.groupId(),
+                        group.groupId(),
                         "Mate-A",
                         "LEADER",
                         BlackboardMessage.MessageType.STATUS,
                         "terminal:n1:breaker-trip",
-                        0);
-        blackboard.post(terminal);
-        Group ticked = requireGroup(orchestrator.tick(g.groupId()));
-        // The terminal status caused n1 to be marked PENDING (via ingest), then the dispatch
-        // phase re-dispatched it (PENDING → RUNNING). The Blackboard shows the cycle: one
-        // terminal STATUS, two TASK_DISPATCH messages (the original + the re-dispatch).
-        List<BlackboardMessage> log = blackboard.readAll(g.groupId());
-        long taskDispatches =
-                log.stream()
+                        0));
+        Group ticked = requireGroup(orchestrator.tick(group.groupId()));
+        assertEquals(DagNode.NodeState.FAILED, findNode(ticked, "n1").state());
+        assertEquals(
+                new DagNode.ResultFailure("breaker-trip", List.of()),
+                findNode(ticked, "n1").result());
+        orchestrator.tick(group.groupId());
+        assertEquals(
+                1,
+                blackboard.readAll(group.groupId()).stream()
                         .filter(m -> m.type() == BlackboardMessage.MessageType.TASK_DISPATCH)
-                        .count();
-        assertEquals(2, taskDispatches, "n1 should be re-dispatched after terminal status");
+                        .count());
     }
 
     @Test

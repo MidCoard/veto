@@ -44,7 +44,7 @@ import top.focess.veto.model.tier.ModelTierConfigException;
 import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.vault.UserContext;
 
-class WebReaderLoopTest {
+class WebFetchExecutorLoopTest {
     private final @NonNull ObjectMapper mapper = new ObjectMapper();
     private final @NonNull WebReadCapability access =
             mock(ToolDocs.nonNullClass(WebReadCapability.class));
@@ -465,8 +465,8 @@ class WebReaderLoopTest {
                                 0,
                                 2048));
         SessionAgentRegistry registry = new SessionAgentRegistry();
-        WebReader reader =
-                new WebReader(
+        WebFetchExecutor reader =
+                new WebFetchExecutor(
                         mapper,
                         caller,
                         models,

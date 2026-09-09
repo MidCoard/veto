@@ -62,6 +62,13 @@ public class AgentEntity {
 
     private String runtimeRole;
 
+    @Column(columnDefinition = "TEXT")
+    private String responsibility;
+
+    public String getResponsibility() {
+        return responsibility;
+    }
+
     private String parentAgentId;
     private String parentCallId;
     private Instant startedAt;
@@ -83,6 +90,7 @@ public class AgentEntity {
 
     public void started(@NonNull AgentPersona persona, String parentAgentId, String parentCallId) {
         this.runtimeRole = persona.role().name();
+        this.responsibility = persona.description();
         this.parentAgentId = parentAgentId;
         this.parentCallId = parentCallId;
         if (startedAt == null) startedAt = Instant.now();

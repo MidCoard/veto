@@ -77,7 +77,8 @@ public class HeuristicLeader {
                             n.requiredSkillset(),
                             n.dependsOn(),
                             n.state(),
-                            n.result());
+                            n.result(),
+                            n.retryCount());
             next.add(updated);
             changed = true;
         }

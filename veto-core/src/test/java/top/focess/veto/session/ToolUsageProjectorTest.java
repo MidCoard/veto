@@ -14,6 +14,55 @@ class ToolUsageProjectorTest {
     private static final @NonNull Instant START = Instant.parse("2026-09-02T00:00:00Z");
 
     @Test
+    void contextRestorationDoesNotCountAsAnotherExecution() {
+        var usage =
+                ToolUsageProjector.project(
+                        List.of(
+                                record(
+                                        "leader",
+                                        1,
+                                        "TOOL_CALL",
+                                        Map.of("call_id", "c", "tool_name", "create_group"),
+                                        0,
+                                        false),
+                                record(
+                                        "leader",
+                                        2,
+                                        "TOOL_RESPONSE",
+                                        Map.of("call_id", "c", "success", true),
+                                        10,
+                                        false),
+                                record(
+                                        "leader",
+                                        5,
+                                        "TOOL_CALL",
+                                        Map.of(
+                                                "call_id",
+                                                "c",
+                                                "tool_name",
+                                                "create_group",
+                                                "restored_from_turn",
+                                                1),
+                                        20,
+                                        true),
+                                record(
+                                        "leader",
+                                        6,
+                                        "TOOL_RESPONSE",
+                                        Map.of(
+                                                "call_id",
+                                                "c",
+                                                "success",
+                                                true,
+                                                "restored_from_turn",
+                                                2),
+                                        30,
+                                        true)));
+        assertEquals(1, usage.totalCalls());
+        assertEquals(1, usage.successfulCalls());
+    }
+
+    @Test
     void derivesUsageByCorrelatingCallsAndResponsesWithoutCopyingContent() {
         List<SessionRecord> records =
                 List.of(

@@ -21,6 +21,30 @@ import top.focess.veto.llm.core.ToolCall;
 class TurnLogServiceTest {
 
     @Test
+    void requiredLoggingPropagatesStorageFailure() {
+        @NonNull TurnRecordRepository repo = mock();
+        var service = new TurnLogService(repo, new ObjectMapper());
+        when(repo.save(any())).thenThrow(new IllegalStateException("database unavailable"));
+        assertThrows(
+                ToolDocs.nonNullClass(IllegalStateException.class),
+                () ->
+                        service.logRequired(
+                                TurnRecord.userPrompt(1, "event"),
+                                UUID.randomUUID(),
+                                UUID.randomUUID(),
+                                "agent"));
+        service.setEnabled(false);
+        assertThrows(
+                ToolDocs.nonNullClass(IllegalStateException.class),
+                () ->
+                        service.logRequired(
+                                TurnRecord.userPrompt(2, "event"),
+                                UUID.randomUUID(),
+                                UUID.randomUUID(),
+                                "agent"));
+    }
+
+    @Test
     void logWritesRawTurnLog() {
         @NonNull TurnRecordRepository repo =
                 mock(ToolDocs.nonNullClass(TurnRecordRepository.class));

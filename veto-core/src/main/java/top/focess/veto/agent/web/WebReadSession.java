@@ -26,11 +26,11 @@ final class WebReadSession implements WebDocumentCapability, AutoCloseable {
     private final @NonNull ToolCallContext parent;
     private final @NonNull UUID sessionId;
     private final long deadline;
-    private final @NonNull Supplier<WebReader.@NonNull Execution> execution;
+    private final @NonNull Supplier<WebFetchExecutor.@NonNull Execution> execution;
     private volatile boolean closed;
     private int observationBudget;
     private WebReadDocument document;
-    private volatile WebReader.Result result;
+    private volatile WebFetchExecutor.Result result;
     private volatile ToolExecutionException failure;
 
     WebReadSession(
@@ -40,7 +40,7 @@ final class WebReadSession implements WebDocumentCapability, AutoCloseable {
             @NonNull ToolCallContext parent,
             @NonNull UUID sessionId,
             long deadline,
-            @NonNull Supplier<WebReader.@NonNull Execution> execution) {
+            @NonNull Supplier<WebFetchExecutor.@NonNull Execution> execution) {
         this.mapper = mapper;
         this.resource = resource;
         this.agentId = agentId;
@@ -51,7 +51,7 @@ final class WebReadSession implements WebDocumentCapability, AutoCloseable {
     }
 
     private void authorize(@NonNull String operation) {
-        WebReader.checkDeadline(deadline);
+        WebFetchExecutor.checkDeadline(deadline);
         var context = CapabilityAccess.require(ToolCapability.NETWORK_EGRESS, operation);
         if (closed
                 || !agentId.equals(context.agentId())
@@ -107,11 +107,12 @@ final class WebReadSession implements WebDocumentCapability, AutoCloseable {
     }
 
     @Override
-    public @NonNull String finish(WebReader.@NonNull Finish value) {
+    public @NonNull String finish(FinishReadTool.@NonNull Args value) {
         authorize("finish_read");
-        WebReader.Result completed = WebReader.finish(value, document(), execution.get());
+        WebFetchExecutor.Result completed =
+                WebFetchExecutor.finish(value, document(), execution.get());
         String content = json(completed);
-        WebReader.checkDeadline(deadline);
+        WebFetchExecutor.checkDeadline(deadline);
         result = completed;
         return content;
     }
@@ -126,7 +127,7 @@ final class WebReadSession implements WebDocumentCapability, AutoCloseable {
         observationBudget = Math.max(0, bytes);
     }
 
-    WebReader.Result result() {
+    WebFetchExecutor.Result result() {
         return result;
     }
 

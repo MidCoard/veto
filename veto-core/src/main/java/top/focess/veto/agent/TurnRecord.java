@@ -191,7 +191,11 @@ public record TurnRecord(
      * drops {@code from_index..end}. Never emitted as a message.
      */
     public static @NonNull TurnRecord rewind(int turnNumber, int fromIndex) {
-        return new TurnRecord(turnNumber, TurnType.REWIND, Map.of("from_index", fromIndex), null);
+        return new TurnRecord(
+                turnNumber,
+                TurnType.REWIND,
+                Map.of(fromIndex == 0 ? "record_index" : "from_index", fromIndex),
+                null);
     }
 
     /** A rewind that also re-injects a recalled brief as the next user message. */

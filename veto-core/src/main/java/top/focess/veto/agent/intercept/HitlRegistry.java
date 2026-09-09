@@ -447,7 +447,11 @@ public class HitlRegistry {
         InterceptResolution resolution =
                 chosen != null
                         ? new InterceptResolution(chosen, null, chosen.impliesMasking())
-                        : new InterceptResolution(firstRefusal(p.options()), null);
+                        : new InterceptResolution(
+                                firstRefusal(p.options()),
+                                null,
+                                true,
+                                InterceptResolution.Source.INVALID_RESPONSE);
         return resolve(agentId, callId, resolution);
     }
 
@@ -460,7 +464,14 @@ public class HitlRegistry {
         if (p == null) {
             return false;
         }
-        return resolve(agentId, callId, new InterceptResolution(firstRefusal(p.options()), null));
+        return resolve(
+                agentId,
+                callId,
+                new InterceptResolution(
+                        firstRefusal(p.options()),
+                        null,
+                        true,
+                        InterceptResolution.Source.LIFECYCLE_CANCEL));
     }
 
     /** Parses the option name against the offered set (case-insensitive); null if not offered. */
@@ -690,7 +701,10 @@ public class HitlRegistry {
                             && p.future()
                                     .complete(
                                             new InterceptResolution(
-                                                    VetoOption.EXEC_DECLINE, null))) {
+                                                    VetoOption.EXEC_DECLINE,
+                                                    null,
+                                                    true,
+                                                    InterceptResolution.Source.LIFECYCLE_CANCEL))) {
                         declined[0]++;
                     }
                 });

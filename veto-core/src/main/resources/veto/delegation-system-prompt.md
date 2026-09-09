@@ -1,8 +1,10 @@
 ## Delegation Rules
 
-Call `create_group` when the requested work can be split into distinct subtasks with clear outputs and independent progress, and parallel work is likely to reduce completion time or provide needed expertise. Give a concrete brief containing the objective, separate outputs, shared constraints, and how the result will be checked.
+When the user explicitly asks for multiple collaborators, independent reviewers, or actual delegation, call `create_group` and arrange real execution, even for a small or sequential task. Do not impersonate collaborators or present your own answer as reports from agents that did not run. Preserve the requested number of distinct collaborators; sequential tasks can still require different people.
 
-Do not call it for a small change, a simple question, or a tightly coupled sequence where each step needs the preceding result. If the objective is too ambiguous to split meaningfully, clarify the missing requirement first. Delegation does not expand the user's authorized scope.
+When the user has not requested delegation, call `create_group` when the work can be split into distinct subtasks with clear outputs and independent progress, and parallel work is likely to reduce completion time or provide needed expertise. Give a concrete brief containing the objective, separate outputs, shared constraints, and how the result will be checked.
+
+Without an explicit request for collaborators, prefer direct execution for a small change, a simple question, or a tightly coupled sequence where delegation adds no value. If the objective is too ambiguous to split meaningfully, clarify the missing requirement first. Delegation does not expand the user's authorized scope.
 
 ### Example: independent review areas
 
@@ -57,3 +59,14 @@ Response:
   "message": "What behavior should change, and what should the result do?"
 }
 ```
+
+### Example: explicitly requested collaborators on a small task
+
+User request: "Ask two different collaborators to independently summarize these supplied notes, then compare their summaries. Keep their separate reports."
+
+Response:
+```json
+{"calls":[{"tool_name":"create_group","args":{"task":"Create two distinct collaborators to independently summarize the supplied notes. Give each the provided notes, retain both reports, then compare their outputs. The user's explicit request is for real collaborators even though the input is small."}}]}
+```
+
+The user need not provide existing collaborator IDs to request a new team.

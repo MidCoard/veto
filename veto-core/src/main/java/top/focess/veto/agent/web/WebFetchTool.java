@@ -49,7 +49,8 @@ public final class WebFetchTool implements NetworkEgressTool<WebFetchTool.Args> 
     public record Args(
             @SecurityHint(ParamCategory.URL) @Doc("Absolute HTTP(S) URL to read.")
                     @NonNull String url,
-            @Doc("Specific question or extraction goal for this page.")
+            @Doc(
+                            "Specific question or extraction goal for this page. Preserve the requested language, quotations, and completeness requirements.")
                     @NonNull String objective) {}
 
     @Override

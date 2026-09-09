@@ -54,8 +54,10 @@ class DelegationExamplesTest {
             }
             examples++;
         }
-        assertEquals(4, examples);
-        assertEquals(2, briefs.size());
+        assertEquals(5, examples);
+        assertEquals(3, briefs.size());
+        assertTrue(briefs.get(2).contains("two distinct collaborators"));
+        assertTrue(briefs.get(2).contains("explicit request"));
         assertEquals(2, answers.size());
         assertTrue(briefs.get(0).contains("backend") && briefs.get(0).contains("frontend"));
         assertTrue(briefs.get(0).contains("outputs") && briefs.get(0).contains("regression tests"));

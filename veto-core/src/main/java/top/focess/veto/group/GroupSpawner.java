@@ -377,6 +377,40 @@ public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
         return mateId;
     }
 
+    /** Explicit members use the default binding; responsibility text never selects authority. */
+    public @NonNull String createNamedMate(
+            @NonNull UUID groupId, @NonNull String name, @NonNull String responsibility) {
+        AgentFactory factory = agentFactory;
+        if (factory == null) throw new IllegalStateException("Agent factory is unavailable");
+        Group group = registry.get(groupId);
+        if (group == null) throw new IllegalArgumentException("Unknown group");
+        String id = UUID.randomUUID().toString();
+        MateBinding binding =
+                new MateBinding(
+                        mateTier,
+                        mateSystemPromptBase,
+                        group.owner(),
+                        group.workspace(),
+                        group.toolResultPresentation(),
+                        group.guidedEnabled(),
+                        group.sessionId());
+        AgentPersona persona =
+                new AgentPersona(id, name, responsibility, Set.of(), List.of(), Role.MATE);
+        Agent agent = factory.create(persona, binding);
+        MateAgent mate =
+                new MateAgent(
+                        id,
+                        groupId,
+                        responsibility,
+                        agent,
+                        blackboard,
+                        breakers,
+                        defaultMaxCallsPerEpisode);
+        mate.start();
+        liveMates.computeIfAbsent(groupId, k -> new CopyOnWriteArrayList<>()).add(mate);
+        return id;
+    }
+
     /**
      * Remove a Mate from a group: stop its polling scheduler and drop it from the group + the live
      * tracker. In-flight nodes the Mate owned go back to PENDING on the next tick for

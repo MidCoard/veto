@@ -6,6 +6,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import org.jspecify.annotations.NonNull;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
@@ -20,7 +21,21 @@ public class GroupRegistry {
 
     private final @NonNull ConcurrentMap<UUID, Group> groups = new ConcurrentHashMap<>();
 
+    private GroupHistoryStore historyStore;
+
+    @Autowired
+    public void attachHistory(@NonNull GroupHistoryStore historyStore) {
+        this.historyStore = historyStore;
+    }
+
     public void put(@NonNull Group group) {
+        Group previous = groups.get(group.groupId());
+        GroupHistoryStore store = historyStore;
+        if (store != null
+                && (previous == null
+                        || !previous.dag().equals(group.dag())
+                        || !previous.mates().equals(group.mates())
+                        || previous.state() != group.state())) store.save(group);
         groups.put(group.groupId(), group);
         group.blackboard().signalChange();
     }

@@ -11,11 +11,12 @@ import top.focess.veto.llm.core.VetoRequest;
  * The assembled LLM payload produced by {@link PromptCompiler} each loop cycle. The loop combines
  * this with provider/model/credential options to build a {@link VetoRequest}.
  *
- * @param systemMessage the Layer-1+2+3 system message (always {@code messages[0]}, never trimmed)
- * @param messages the role-mapped, token-budgeted conversation, oldest→newest. Pair-safe truncation
- *     plus the {@code PromptCompiler.wellFormed} contract: it opens on a user message, every
- *     tool_result immediately follows its tool_call, and no tool_call dangles unanswered - the
- *     shape every strict provider accepts.
+ * @param systemMessage the effective system messages joined for providers with a separate system
+ *     field
+ * @param messages the complete ordered, token-budgeted message list, including effective system
+ *     records. Pair-safe truncation plus the {@code PromptCompiler.wellFormed} contract: it opens
+ *     on a user message, every tool_result immediately follows its tool_call, and no tool_call
+ *     dangles unanswered - the shape every strict provider accepts.
  * @param tools the flat, provider-translated tool list (full whitelist, every cycle)
  * @param responseSchema the per-turn {@code veto_pulse} schema variant ({@code null} → provider
  *     default)

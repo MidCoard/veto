@@ -37,7 +37,7 @@ class WebSearchToolTest {
                 new WebSearchTool(
                         new NetworkEgressCapabilityImpl(
                                 new TimeoutProvider(),
-                                mock(ToolDocs.nonNullClass(WebReader.class)),
+                                mock(ToolDocs.nonNullClass(WebFetchExecutor.class)),
                                 5,
                                 1000,
                                 false));
@@ -75,7 +75,7 @@ class WebSearchToolTest {
                 new WebSearchTool(
                         new NetworkEgressCapabilityImpl(
                                 provider,
-                                mock(ToolDocs.nonNullClass(WebReader.class)),
+                                mock(ToolDocs.nonNullClass(WebFetchExecutor.class)),
                                 5,
                                 1000,
                                 false));

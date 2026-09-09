@@ -18,7 +18,30 @@ import org.jspecify.annotations.NonNull;
  *     explicitly choose otherwise.
  */
 public record InterceptResolution(
-        @NonNull VetoOption option, Map<String, Object> editedArgs, boolean maskObservation) {
+        @NonNull VetoOption option,
+        Map<String, Object> editedArgs,
+        boolean maskObservation,
+        @NonNull Source source) {
+
+    public enum Source {
+        CLIENT_RESPONSE,
+        LIFECYCLE_CANCEL,
+        INVALID_RESPONSE
+    }
+
+    public InterceptResolution(
+            @NonNull VetoOption option, Map<String, Object> editedArgs, boolean maskObservation) {
+        this(option, editedArgs, maskObservation, Source.CLIENT_RESPONSE);
+    }
+
+    public @NonNull String refusalReason() {
+        return switch (source) {
+            case CLIENT_RESPONSE -> "declined by the client (" + option.name() + ")";
+            case LIFECYCLE_CANCEL ->
+                    "cancelled by the session or agent lifecycle (" + option.name() + ")";
+            case INVALID_RESPONSE -> "invalid approval response (" + option.name() + ")";
+        };
+    }
 
     /** Compact constructor — back-compat for callers that do not specify masking. */
     public InterceptResolution(@NonNull VetoOption option, Map<String, Object> editedArgs) {

@@ -1,5 +1,7 @@
 # Veto
 
+<img src="veto-core/src/main/resources/static/veto-icon.svg" alt="Veto" width="80" height="80" />
+
 Veto is a local agent runtime that places an explicit security and approval boundary between a
 cloud reasoning model and the host machine. The model proposes tool calls; Veto validates their
 arguments, screens their intent and risk, asks for human approval when required, executes approved

@@ -90,6 +90,45 @@ class DagToolsTest {
                 .orElseThrow();
     }
 
+    @Test
+    void explicitTaskUsesExistingMemberWithoutSkillsetParameter() throws Exception {
+        UUID id = activeGroup();
+        Group group = registry.get(id);
+        if (group == null) throw new AssertionError("Missing group");
+        registry.put(group.withMate("alice", "Review calculations"));
+        setContext("leader-1", id);
+        var tool = new CollaborationTools.CreateTask(createNode.groupControlCapability());
+        CapabilityTestCalls.execute(
+                tool, new CollaborationTools.CreateTask.Args("first", "Calculate", "alice", null));
+        CapabilityTestCalls.execute(
+                tool, new CollaborationTools.CreateTask.Args("second", "Recheck", "alice", null));
+        Group updated = orchestrator.tick(id);
+        if (updated == null) throw new AssertionError("Missing group");
+        assertEquals(1, updated.mates().size());
+        assertEquals("alice", findNode(updated, "first").assignedMateId());
+        assertEquals("alice", findNode(updated, "second").assignedMateId());
+        assertEquals(DagNode.NodeState.RUNNING, findNode(updated, "first").state());
+        assertEquals(DagNode.NodeState.PENDING, findNode(updated, "second").state());
+    }
+
+    @Test
+    void explicitTaskRejectsUnknownMemberWithoutCreatingWork() throws Exception {
+        UUID id = activeGroup();
+        setContext("leader-1", id);
+        var tool = new CollaborationTools.CreateTask(createNode.groupControlCapability());
+        assertThrows(
+                ToolDocs.nonNullClass(ToolExecutionException.class),
+                () ->
+                        CapabilityTestCalls.execute(
+                                tool,
+                                new CollaborationTools.CreateTask.Args(
+                                        "first", "Calculate", "outsider", null)));
+        Group group = registry.get(id);
+        if (group == null) throw new AssertionError("Missing group");
+        assertTrue(group.dag().nodes().isEmpty());
+        assertTrue(group.mates().isEmpty());
+    }
+
     // --- engine ops ---
 
     @Test
@@ -196,7 +235,8 @@ class DagToolsTest {
         String out =
                 CapabilityTestCalls.execute(
                         createNode,
-                        new DagTools.CreateNode.Args("node-1", "Implement login", "coding", null));
+                        new DagTools.CreateNode.Args(
+                                "node-1", "Implement login", "coding", null, null, null));
         assertEquals("Node created: node-1 (skillset: coding). It is eligible for dispatch.", out);
     }
 
@@ -205,12 +245,13 @@ class DagToolsTest {
         UUID groupId = activeGroup();
         setContext("leader-1", groupId);
         CapabilityTestCalls.execute(
-                createNode, new DagTools.CreateNode.Args("node-1", "a", "coding", null));
+                createNode,
+                new DagTools.CreateNode.Args("node-1", "a", "coding", null, null, null));
         String out =
                 CapabilityTestCalls.execute(
                         createNode,
                         new DagTools.CreateNode.Args(
-                                "node-2", "Test login", "testing", List.of("node-1")));
+                                "node-2", "Test login", "testing", List.of("node-1"), null, null));
         assertEquals(
                 "Node created: node-2 (skillset: testing, depends on: node-1). It becomes eligible after its dependencies verify.",
                 out);
@@ -227,7 +268,12 @@ class DagToolsTest {
                                 CapabilityTestCalls.execute(
                                         createNode,
                                         new DagTools.CreateNode.Args(
-                                                "node-1", "a", "coding", List.of("node-9"))));
+                                                "node-1",
+                                                "a",
+                                                "coding",
+                                                List.of("node-9"),
+                                                null,
+                                                null)));
         assertEquals(
                 "Node not created: unknown dependency node-9. Create dependencies before the nodes that need them.",
                 ToolErrors.normalize(error.getMessage()));
@@ -243,7 +289,7 @@ class DagToolsTest {
                                 CapabilityTestCalls.execute(
                                         createNode,
                                         new DagTools.CreateNode.Args(
-                                                "node-1", "a", "coding", null)));
+                                                "node-1", "a", "coding", null, null, null)));
         String message = ToolErrors.normalize(error.getMessage());
         assertTrue(message.startsWith("Node not created: no active group"), message);
     }
@@ -253,7 +299,8 @@ class DagToolsTest {
         UUID groupId = activeGroup();
         setContext("leader-1", groupId);
         CapabilityTestCalls.execute(
-                createNode, new DagTools.CreateNode.Args("node-2", "a", "coding", null));
+                createNode,
+                new DagTools.CreateNode.Args("node-2", "a", "coding", null, null, null));
         String out =
                 CapabilityTestCalls.execute(removeNode, new DagTools.RemoveNode.Args("node-2"));
         assertEquals("Node removed: node-2 (marked stale).", out);
@@ -264,10 +311,12 @@ class DagToolsTest {
         UUID groupId = activeGroup();
         setContext("leader-1", groupId);
         CapabilityTestCalls.execute(
-                createNode, new DagTools.CreateNode.Args("node-1", "a", "coding", null));
+                createNode,
+                new DagTools.CreateNode.Args("node-1", "a", "coding", null, null, null));
         CapabilityTestCalls.execute(
                 createNode,
-                new DagTools.CreateNode.Args("node-3", "b", "testing", List.of("node-1")));
+                new DagTools.CreateNode.Args(
+                        "node-3", "b", "testing", List.of("node-1"), null, null));
         ToolExecutionException error =
                 assertThrows(
                         ToolDocs.nonNullClass(ToolExecutionException.class),

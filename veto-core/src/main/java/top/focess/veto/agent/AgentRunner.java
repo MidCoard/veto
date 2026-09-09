@@ -5,6 +5,7 @@ import static top.focess.veto.util.LogValues.safe;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -20,6 +21,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
@@ -87,6 +89,8 @@ import top.focess.veto.llm.exceptions.ModelSchemaException;
 import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierRegistry;
+import top.focess.veto.monitor.MonitorRecord;
+import top.focess.veto.monitor.MonitorService;
 import top.focess.veto.sandbox.BackgroundTaskManager;
 import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.KeysteadVault;
@@ -199,7 +203,6 @@ public class AgentRunner {
     // Captured in callModel via ReasoningContentHolder, stored in the ASSISTANT_THOUGHT turn by
     // appendThought, and echoed back on the next request's assistant message by PromptCompiler.
     private String lastReasoningContent = null;
-    private boolean agentInitPresent = false;
     // The episode's first request is compiled against a prospective history containing the new
     // user turn. That exact immutable payload is dispatched after AGENT_INIT → USER_PROMPT are
     // persisted in logical order. Null after the first dispatch.
@@ -300,6 +303,106 @@ public class AgentRunner {
 
     // ── Virtual-thread loop ────────────────────────────────────────────────
 
+    private MonitorService monitorService;
+    private volatile boolean waitingForMonitor;
+    private final AtomicBoolean monitorQueued = new AtomicBoolean();
+
+    public void attachMonitor(@NonNull MonitorService service) {
+        this.monitorService = service;
+    }
+
+    public void signalMonitor() {
+        if (sessionAlive && monitorQueued.compareAndSet(false, true))
+            actionQueue.add(new AgentAction.MonitorAction());
+    }
+
+    /** Append before acknowledging so a crash cannot silently consume an observation. */
+    private boolean injectMonitorEvents() {
+        MonitorService service = monitorService;
+        if (service == null) return false;
+        boolean inserted = false;
+        for (MonitorRecord.Event event : service.pending(agentId, sessionId.toString())) {
+            boolean recorded =
+                    history().stream().anyMatch(t -> event.id().equals(t.payload().get("eventId")));
+            if (!recorded) {
+                appendTurn(
+                        new TurnRecord(
+                                ++turnNumber,
+                                TurnType.MONITOR_EVENT,
+                                Map.of(
+                                        "eventId",
+                                        event.id(),
+                                        "monitorId",
+                                        event.monitorId(),
+                                        "kind",
+                                        event.kind(),
+                                        "content",
+                                        event.content()),
+                                event.occurredAt()));
+                inserted = true;
+            }
+            service.acknowledge(agentId, event);
+            // A retried acknowledgement still needs reasoning, even if the history already exists.
+            inserted = true;
+        }
+        return inserted;
+    }
+
+    private void completeOrWaitForMonitor() {
+        MonitorService service = monitorService;
+        if (service != null
+                && (service.hasGroupWork(agentId) || service.hasUndeliveredGroup(agentId))) {
+            waitingForMonitor = true;
+            transitionTo(AgentState.WAITING);
+            signalMonitor();
+        } else completeSuccess();
+    }
+
+    private void processMonitor() {
+        MonitorService service = monitorService;
+        if (service == null
+                || awaitingBreakerContinuation
+                || state == AgentState.PAUSED
+                || state == AgentState.INTERCEPTED
+                || !sessionAlive) return;
+        var events = service.pending(agentId, sessionId.toString());
+        if (events.isEmpty()) return;
+        if (resultFuture.isDone()) {
+            resultFuture = new CompletableFuture<>();
+            callback = null;
+        }
+        boolean scheduled = events.stream().anyMatch(e -> e.kind().equals("TIME_ONCE"));
+        if (scheduled && !waitingForMonitor) {
+            breaker.newEpisode();
+            activeUserTask =
+                    events.stream()
+                            .filter(e -> e.kind().equals("TIME_ONCE"))
+                            .map(MonitorRecord.Event::content)
+                            .collect(Collectors.joining("\n"));
+            scope = new Scope(objectMapper);
+        }
+        waitingForMonitor = false;
+        transitionTo(AgentState.RUNNING);
+        try {
+            refreshSystemHistory();
+            boolean inserted = injectMonitorEvents();
+            if (!inserted) return;
+            preparedFirstPrompt = null;
+            activeProgram = null;
+            guided = false;
+            completionToolFinished = false;
+            runAutonomous();
+            completeOrWaitForMonitor();
+        } catch (BreakerTripException e) {
+            completeBreaker();
+        } catch (Exception e) {
+            completeFailure(failureMessage(e));
+        } finally {
+            if (sessionAlive && !waitingForMonitor && state != AgentState.PAUSED)
+                transitionTo(AgentState.IDLE);
+        }
+    }
+
     private volatile Thread runningThread;
 
     public void run() {
@@ -317,6 +420,11 @@ public class AgentRunner {
             while (sessionAlive && state != AgentState.TERMINATED) {
                 try {
                     AgentAction action = actionQueue.take();
+                    if (action instanceof AgentAction.MonitorAction) {
+                        monitorQueued.set(false);
+                        processMonitor();
+                        continue;
+                    }
                     if (action instanceof AgentAction.TerminateAction) {
                         transitionTo(AgentState.TERMINATED);
                         break;
@@ -344,15 +452,16 @@ public class AgentRunner {
                                         "Agent {} cleared a stale interrupt after compaction",
                                         agentId);
                             }
-                            if (sessionAlive) transitionTo(AgentState.IDLE);
+                            if (sessionAlive && !waitingForMonitor) transitionTo(AgentState.IDLE);
                         }
                         continue;
                     }
                     if (action instanceof AgentAction.UserPromptAction upa) {
                         transitionTo(AgentState.RUNNING);
                         try {
+                            waitingForMonitor = false;
                             processUserPrompt(upa.prompt());
-                            completeSuccess();
+                            completeOrWaitForMonitor();
                         } catch (BreakerTripException e) {
                             completeBreaker();
                         } catch (Exception e) {
@@ -371,7 +480,7 @@ public class AgentRunner {
                                         "Agent {} cleared a stale interrupt after a prompt",
                                         agentId);
                             }
-                            if (sessionAlive) transitionTo(AgentState.IDLE);
+                            if (sessionAlive && !waitingForMonitor) transitionTo(AgentState.IDLE);
                         }
                     }
                 } catch (InterruptedException e) {
@@ -396,6 +505,7 @@ public class AgentRunner {
         // the push half of the task lifecycle (the UI gets TASK_EXITED live; the agent gets it
         // here on its next turn instead of having to remember to poll view_task).
         injectPendingTaskExitNotices();
+        injectMonitorEvents();
         // Fresh UserPromptAction: reset guided state and program counter. An exact "continue" has
         // special semantics only immediately after a breaker trip. Preserve the literal user input
         // in history while attaching the prior task for prompt compilation; otherwise a long,
@@ -406,9 +516,7 @@ public class AgentRunner {
                         : null;
         this.activeUserTask = resumeContext != null ? resumeContext : prompt;
         awaitingBreakerContinuation = false;
-        if (!agentInitPresent) {
-            appendAgentInit(linkCurrentSystemMessage());
-        }
+        refreshSystemHistory();
         TurnRecord prospectiveUserTurn =
                 resumeContext != null
                         ? TurnRecord.breakerContinuation(turnNumber + 1, prompt, resumeContext)
@@ -464,6 +572,10 @@ public class AgentRunner {
      */
     private void injectPendingTaskExitNotices() {
         if (backgroundTaskManager == null) {
+            return;
+        }
+        if (monitorService != null) {
+            backgroundTaskManager.drainExitNotices(agentId);
             return;
         }
         for (BackgroundTaskManager.TaskExitNotice notice :
@@ -525,8 +637,15 @@ public class AgentRunner {
         }
 
         String finalSummary = computeCompactionSummary(workTurns);
+        if ("{}".equals(finalSummary)) {
+            appendObservation(
+                    "compaction_failed",
+                    "No valid summary was produced; the context was retained.");
+            return;
+        }
 
         appendTurn(TurnRecord.rewind(++turnNumber, 0));
+        appendAgentInit(linkCurrentSystemMessage());
         appendTurn(TurnRecord.compactionSummary(++turnNumber, finalSummary));
         emitMessage(Msg.get(locale, "error.agent.compactDone", workTurns.size()));
         // Domain event: the session compacted. Subscribers can mark the ledger boundary without
@@ -553,7 +672,7 @@ public class AgentRunner {
             return "{}";
         }
         StringBuilder sb = new StringBuilder();
-        for (TurnRecord turn : workTurns) {
+        for (TurnRecord turn : HistoryProjection.effective(workTurns)) {
             if (turn.type() == TurnType.AGENT_INIT) {
                 continue;
             }
@@ -650,8 +769,14 @@ public class AgentRunner {
                         binding.baseUrl());
         VetoResponse response = caller.call(request);
         String message = response.message();
-        String thought = response.thought();
-        return message != null && !message.isBlank() ? message : (thought != null ? thought : "{}");
+        if (message == null || message.isBlank()) return "{}";
+        try {
+            var summary = objectMapper.readTree(message);
+            return summary != null && summary.isObject() ? message : "{}";
+        } catch (Exception invalid) {
+            log.warn("Compactor returned an invalid summary; retaining the explicit task brief");
+            return "{}";
+        }
     }
 
     private void runAutonomous() {
@@ -663,6 +788,7 @@ public class AgentRunner {
             // request. Do not mutate history between that compilation and its dispatch.
             if (preparedFirstPrompt == null) {
                 injectPendingTaskExitNotices();
+                injectMonitorEvents();
             }
             if (breaker.shouldTrip()) {
                 tripBreaker();
@@ -725,6 +851,7 @@ public class AgentRunner {
             }
             // Same mid-episode task-lifecycle drain as the autonomous loop.
             injectPendingTaskExitNotices();
+            injectMonitorEvents();
             if (programCounter < 0 || programCounter >= program.actions().size()) {
                 escapeToAutonomous("program counter out of bounds");
                 return;
@@ -884,6 +1011,7 @@ public class AgentRunner {
         CompiledPrompt compiled = preparedFirstPrompt;
         preparedFirstPrompt = null;
         if (compiled == null) {
+            refreshSystemHistory();
             compiled = compilePrompt(List.copyOf(history), allowGuided);
         }
         long estimatedTokens = compiled.estimatedTokens();
@@ -1036,6 +1164,25 @@ public class AgentRunner {
                 guidedEnabled);
     }
 
+    /** Record configuration changes explicitly rather than silently recompiling an old init. */
+    private void refreshSystemHistory() {
+        List<TurnRecord> additions;
+        synchronized (history) {
+            additions =
+                    HistoryProjection.reinitialize(
+                            history,
+                            turnNumber,
+                            persona.role().name(),
+                            linkCurrentSystemMessage(),
+                            binding.provider().name(),
+                            binding.model());
+        }
+        for (TurnRecord record : additions) {
+            turnNumber = record.turnNumber();
+            appendTurn(record);
+        }
+    }
+
     private void appendAgentInit(@NonNull String systemPrompt) {
         LlmBinding current = binding;
         String role = persona.role().name().toLowerCase(Locale.ROOT);
@@ -1046,12 +1193,10 @@ public class AgentRunner {
                         systemPrompt,
                         current.provider().name(),
                         current.model()));
-        agentInitPresent = true;
     }
 
     private @NonNull VetoRequest buildRequest(@NonNull CompiledPrompt compiled) {
         List<ChatMessage> messages = new ArrayList<>();
-        messages.add(ChatMessage.system(compiled.systemMessage()));
         messages.addAll(compiled.messages());
         LlmBinding b = binding;
         return new VetoRequest(
@@ -1211,8 +1356,7 @@ public class AgentRunner {
                             skippedCalls.add(call);
                             declinedCallSignatures.add(toolCallSignature(call));
                         } else if (resolution.isRefusal()) {
-                            refusalDetail =
-                                    "declined by the user (" + resolution.option().name() + ")";
+                            refusalDetail = resolution.refusalReason();
                             batchApproved = false;
                             break;
                         }
@@ -1243,7 +1387,7 @@ public class AgentRunner {
                     appendToolResponse(
                             call.toolName(),
                             call.callId(),
-                            refusedObservation("declined by the user (DECLINE_AND_CONTINUE)")
+                            refusedObservation("declined by the client (DECLINE_AND_CONTINUE)")
                                     + " Continue without this call: do not retry it"
                                     + " unchanged - pick a different approach, or explain"
                                     + " the blockage and stop.",
@@ -1438,8 +1582,19 @@ public class AgentRunner {
      * DeltaFrame.Kind#VETO_RESOLVED} so subscribers can drop the prompt without polling. The single
      * wait-and-announce point shared by every veto await site.
      */
+    private final Map<String, Map<String, Object>> approvalReceipts = new HashMap<>();
+
     private @NonNull InterceptResolution awaitResolution(@NonNull String callId) {
         InterceptResolution resolution = hitlRegistry.await(agentId, callId);
+        approvalReceipts.put(
+                callId,
+                Map.of(
+                        "decision",
+                        resolution.option().name(),
+                        "decisionSource",
+                        resolution.source().name(),
+                        "resolvedAt",
+                        Instant.now().toString()));
         publishFrame(
                 DeltaFrame.builder()
                         .sessionId(sessionId)
@@ -1473,7 +1628,7 @@ public class AgentRunner {
             appendToolResponse(
                     call.toolName(),
                     call.callId(),
-                    refusedObservation("declined by the user (" + resolution.option().name() + ")"),
+                    refusedObservation(resolution.refusalReason()),
                     false);
             return null;
         }
@@ -1726,9 +1881,18 @@ public class AgentRunner {
     /** Persists exactly the representation that this session presents to the model. */
     private void appendToolResponse(@NonNull ToolResult result) {
         String presented = toolResultPresenter.present(result, toolResultPresentation);
-        appendTurn(
+        TurnRecord turn =
                 TurnRecord.presentedToolResponse(
-                        ++turnNumber, result, presented, toolResultPresentation));
+                        ++turnNumber, result, presented, toolResultPresentation);
+        String responseCallId = result.callId();
+        Map<String, Object> receipt =
+                responseCallId == null ? null : approvalReceipts.remove(responseCallId);
+        if (receipt != null) {
+            Map<String, Object> payload = new HashMap<>(turn.payload());
+            payload.put("approval", receipt);
+            turn = new TurnRecord(turn.turnNumber(), turn.type(), payload, turn.timestamp());
+        }
+        appendTurn(turn);
     }
 
     private void appendTurn(@NonNull TurnRecord turn) {
@@ -1746,12 +1910,15 @@ public class AgentRunner {
             int highWater = history.isEmpty() ? 0 : history.get(history.size() - 1).turnNumber();
             numbered = turn.turnNumber() <= highWater ? turn.withTurnNumber(highWater + 1) : turn;
             turnNumber = numbered.turnNumber();
+            if (numbered.type() == TurnType.MONITOR_EVENT && turnLogService != null) {
+                turnLogService.logRequired(numbered, sessionId, userId, agentId);
+            }
             history.add(numbered);
         }
         // Persist the turn to the raw-turn audit/replay log (session resume, Leader
         // reconstruction). Best-effort — done outside the history lock so a DB write doesn't
         // block history readers, and the service swallows failures so the loop is never affected.
-        if (turnLogService != null) {
+        if (turnLogService != null && numbered.type() != TurnType.MONITOR_EVENT) {
             try {
                 turnLogService.log(numbered, sessionId, userId, agentId);
             } catch (RuntimeException e) {
@@ -1889,9 +2056,6 @@ public class AgentRunner {
         for (TurnRecord t : replayed) {
             if (t.turnNumber() > max) {
                 max = t.turnNumber();
-            }
-            if (t.type() == TurnType.AGENT_INIT) {
-                agentInitPresent = true;
             }
         }
         turnNumber = max;
@@ -2229,10 +2393,10 @@ public class AgentRunner {
      * prior standalone turns.
      *
      * <p>Append sequence (each its own turn, monotonic counter): REWIND to 0 (drop the compiled
-     * view), AGENT_INIT (Leader role-segment marker - maps to no message), COMPACTION_SUMMARY (the
-     * essence of the prior standalone session, carried forward), USER_PROMPT (the brief). The
-     * persona, Leader tool set, top-tier model binding, and group are applied before AGENT_INIT is
-     * recorded, so that record describes the agent that will actually receive the next request.
+     * view), AGENT_INIT (the new Leader system message), COMPACTION_SUMMARY (the essence of the
+     * prior standalone session, carried forward), USER_PROMPT (the brief). The persona, Leader tool
+     * set, top-tier model binding, and group are applied before AGENT_INIT is recorded, so that
+     * record describes the agent that will actually receive the next request.
      */
     private void transformToLeader(ToolCallContextHolder.@NonNull TransformDirective directive) {
         // Compaction summary of the prior standalone turns (defensive: a compactor failure yields
@@ -2292,8 +2456,8 @@ public class AgentRunner {
     /**
      * The reverse delegation transform: the Leader becomes STANDALONE again (the group was
      * disbanded). Run on the loop thread inside the tool-call drain pass (after the {@code
-     * disband_group} tool response is appended). Append sequence: REWIND to 0, AGENT_INIT
-     * (STANDALONE role-segment marker), COMPACTION_SUMMARY (the essence of the Leader session),
+     * disband_group} tool response is appended). Append sequence: REWIND to 0, AGENT_INIT (the
+     * restored STANDALONE system message), COMPACTION_SUMMARY (the essence of the Leader session),
      * USER_PROMPT (the outcome brief). The stashed STANDALONE persona + binding are restored and
      * the group stamp is cleared before AGENT_INIT is recorded, so the durable definition and the
      * next provider request cannot disagree.

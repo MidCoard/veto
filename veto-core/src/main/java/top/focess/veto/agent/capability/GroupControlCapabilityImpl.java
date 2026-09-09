@@ -55,6 +55,14 @@ public final class GroupControlCapabilityImpl implements GroupControlCapability 
     }
 
     @Override
+    public GroupOrchestrator.Inspection inspect(long since) {
+        var ctx = CapabilityAccess.require(ToolCapability.GROUP_CONTROL, "inspect_group");
+        requireLeader(ctx);
+        UUID id = ctx.groupId();
+        return id == null ? null : orchestrator.inspect(id, since);
+    }
+
+    @Override
     public @NonNull List<@NonNull BlackboardMessage> messages(long since) {
         var ctx = CapabilityAccess.require(ToolCapability.GROUP_CONTROL, "inspect_group");
         requireLeader(ctx);
@@ -93,10 +101,18 @@ public final class GroupControlCapabilityImpl implements GroupControlCapability 
     public void post(@NonNull String receiver, @NonNull MessageType type, @NonNull String payload) {
         var ctx = CapabilityAccess.require(ToolCapability.GROUP_CONTROL, "post_message");
         requireLeader(ctx);
+        if (type == MessageType.TASK_DISPATCH || type == MessageType.ACCEPT) {
+            throw new SecurityException(
+                    "Task dispatch and completion belong to the DAG execution flow; use create_node for work.");
+        }
+        if (!"LEADER".equals(receiver)) {
+            throw new SecurityException(
+                    "Mate instructions must be tracked tasks; use create_node with mateId.");
+        }
         UUID id = ctx.groupId();
         Group group = id == null ? null : registry.get(id);
         if (group == null
-                || !group.isActive()
+                || group.state() == GroupState.DISBANDED
                 || (!"LEADER".equals(receiver) && !group.mates().containsKey(receiver)))
             throw new SecurityException("Receiver is unavailable in your active group");
         blackboard.post(
@@ -111,16 +127,46 @@ public final class GroupControlCapabilityImpl implements GroupControlCapability 
     }
 
     @Override
+    public @NonNull String createMate(@NonNull String name, @NonNull String responsibility) {
+        var ctx = CapabilityAccess.require(ToolCapability.GROUP_CONTROL, "create_mate");
+        requireLeader(ctx);
+        UUID id = ctx.groupId();
+        if (id == null) throw new SecurityException("No active group");
+        return orchestrator.createMate(id, name, responsibility, spawner);
+    }
+
+    @Override
+    public @NonNull NodeEdit createTask(
+            @NonNull String id,
+            @NonNull String description,
+            @NonNull String mateId,
+            @NonNull Set<String> dependencies) {
+        var ctx = CapabilityAccess.require(ToolCapability.GROUP_CONTROL, "create_task");
+        requireLeader(ctx);
+        UUID groupId = ctx.groupId();
+        Group group = groupId == null ? null : registry.get(groupId);
+        if (group == null) throw new SecurityException("No active group");
+        String responsibility = group.mates().get(mateId);
+        if (responsibility == null)
+            return new NodeEdit.Rejected("Unknown Mate in this group: " + mateId);
+        return orchestrator.addNode(
+                group.groupId(), id, description, responsibility, dependencies, mateId, false);
+    }
+
+    @Override
     public @NonNull NodeEdit addNode(
             @NonNull String id,
             @NonNull String description,
             @NonNull String skillset,
-            @NonNull Set<String> dependencies) {
+            @NonNull Set<String> dependencies,
+            String mateId,
+            boolean newMate) {
         var ctx = CapabilityAccess.require(ToolCapability.GROUP_CONTROL, "create_node");
         requireLeader(ctx);
         UUID groupId = ctx.groupId();
         if (groupId == null) throw new SecurityException("No active group");
-        return orchestrator.addNode(groupId, id, description, skillset, dependencies);
+        return orchestrator.addNode(
+                groupId, id, description, skillset, dependencies, mateId, newMate);
     }
 
     @Override

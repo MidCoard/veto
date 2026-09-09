@@ -30,13 +30,13 @@ import top.focess.veto.agent.web.FetchedPage;
 import top.focess.veto.agent.web.SearchOptions;
 import top.focess.veto.agent.web.SearchProvider;
 import top.focess.veto.agent.web.SearchResult;
+import top.focess.veto.agent.web.WebFetchExecutor;
 import top.focess.veto.agent.web.WebProxySelector;
-import top.focess.veto.agent.web.WebReader;
 
 @Component
 public final class NetworkEgressCapabilityImpl implements NetworkEgressCapability {
     private final @NonNull SearchProvider provider;
-    private final @NonNull WebReader reader;
+    private final @NonNull WebFetchExecutor reader;
 
     private static final int MAX_REDIRECTS = 5;
 
@@ -52,7 +52,7 @@ public final class NetworkEgressCapabilityImpl implements NetworkEgressCapabilit
     @Autowired
     public NetworkEgressCapabilityImpl(
             @NonNull SearchProvider provider,
-            @NonNull WebReader reader,
+            @NonNull WebFetchExecutor reader,
             @Value("${veto.webfetch.fetch.timeout-seconds}") int timeoutSeconds,
             @Value("${veto.webfetch.fetch.max-chars}") int maxChars,
             @Value("${veto.webfetch.fetch.allow-private-addresses}")

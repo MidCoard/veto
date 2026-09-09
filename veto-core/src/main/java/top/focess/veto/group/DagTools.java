@@ -33,7 +33,6 @@ public final class DagTools {
     private DagTools() {}
 
     /** {@code create_node} — add a node to the group's execution plan. */
-    @Component
     @ToolDoc(
             resultFormats = {ToolResultFormat.PLAINTEXT},
             description =
@@ -43,18 +42,25 @@ public final class DagTools {
                     """
                     Adds one node to the execution plan. `dependsOn` may reference only existing, \
                     live nodes - the plan stays acyclic by construction. The node starts PENDING. \
-                    On an orchestration tick after its dependencies are verified, the engine may \
+                    On an orchestration tick after its dependencies complete, the engine may \
                     reuse a Mate whose skillset label is exactly equal, or provision one and then \
                     dispatch the node. Skillsets are free-form scheduling labels; an unconfigured \
                     label uses the deployer's default Mate binding. Each plan \
-                    mutation is validated atomically before it takes effect.
+                    mutation is validated atomically before it takes effect. Set `mateId` to an \
+                    existing Mate id from `inspect_group` to assign that specific collaborator; \
+                    it waits if that Mate is busy and never substitutes another Mate. Without it, \
+                    skillset selects any matching available Mate. Set `newMate` to true when the \
+                    task requires a different, independent collaborator; this creates a new member \
+                    even if an existing Mate has the same skillset. Do not combine it with `mateId`. Direct dependency reports are \
+                    included in the dispatched task; the Mate does not receive other agents' histories.
                     """,
             whenToUse =
                     """
                     Use `create_node` to build your plan node by node: one call per discrete \
                     task. Create dependencies before the nodes that need them - you author the \
                     plan from its foundations up. Also use it to extend the plan while the group \
-                    is running.
+                    is running or after its previous tasks have completed. When the user names a \
+                    previous collaborator, resolve its actual Mate id from the earlier node and set `mateId`.
                     """,
             whenNotToUse =
                     """
@@ -112,7 +118,15 @@ public final class DagTools {
                         @Doc(
                                 "Ids of existing nodes that must verify before this one dispatches; "
                                         + "omit for a root node.")
-                        List<String> dependsOn) {}
+                        List<String> dependsOn,
+                @SecurityHint(ParamCategory.GENERIC)
+                        @Doc(
+                                "Optional existing Mate id from inspect_group. Pins this task to that collaborator; omit for automatic assignment.")
+                        String mateId,
+                @SecurityHint(ParamCategory.GENERIC)
+                        @Doc(
+                                "Set true to create a distinct collaborator for this task, even if another Mate is idle. Cannot be combined with mateId.")
+                        Boolean newMate) {}
 
         @Override
         public @NonNull String getName() {
@@ -143,7 +157,14 @@ public final class DagTools {
                     requestedDependencies == null
                             ? Set.of()
                             : new LinkedHashSet<>(requestedDependencies);
-            NodeEdit edit = capability.addNode(nodeId, description, skillset, deps);
+            NodeEdit edit =
+                    capability.addNode(
+                            nodeId,
+                            description,
+                            skillset,
+                            deps,
+                            args.mateId(),
+                            Boolean.TRUE.equals(args.newMate()));
             if (edit instanceof NodeEdit.Rejected r) {
                 return ToolErrors.failure("Node not created: " + r.reason());
             }
@@ -175,7 +196,8 @@ public final class DagTools {
                     """
                     Marks the node STALE and keeps it in the plan record for audit. New nodes cannot \
                     depend on it, and live dependents must be removed or re-planned first. This call \
-                    does not stop a running Mate or clear the recorded assignment.
+                    refuses running nodes so execution cannot disappear from the plan. Wait for \
+                    their result before retiring them. Recorded assignments remain available.
                     """,
             whenToUse =
                     """
@@ -185,11 +207,11 @@ public final class DagTools {
                     """,
             whenNotToUse =
                     """
-                    - Do not remove a VERIFIED node; verified work is checkpointed and stays.
+                    - Do not remove a COMPLETED node; completed work is checkpointed and stays.
                     - Do not remove a node others still depend on; re-plan or remove the \
                     dependents first (the error names them).
-                    - Do not remove a node as a reaction to a single failure - the engine already \
-                    routes retries; removal is for plan-level changes.
+                    - Read a failed node's report before deciding how to replace it; failures are \
+                    retained for the Leader to assess rather than automatically retried forever.
                     """,
             resultContract =
                     """
@@ -202,7 +224,8 @@ public final class DagTools {
                     """
                     - Unknown `nodeId` -> `Node not removed: node not found: <id>`.
                     - Live dependents exist -> refused, naming the dependents.
-                    - Already stale or VERIFIED -> not removed; verified work remains checkpointed.
+                    - Already stale or COMPLETED -> not removed; completed work remains checkpointed.
+                    - RUNNING -> refused; removing a node is not cancellation.
                     """,
             security = "Only the group coordinator can remove task nodes.",
             examples = {"{\"nodeId\": \"node-2\"}", "{\"nodeId\": \"node-1\"}"},

@@ -58,6 +58,7 @@ public final class ToolContractValidator {
                     case MEMORY_WRITE -> tool instanceof MemoryWriteTool<?>;
                     case DELEGATION -> tool instanceof DelegationTool<?>;
                     case GROUP_CONTROL -> tool instanceof GroupControlTool<?>;
+                    case MONITOR_CONTROL -> tool instanceof MonitorTool<?>;
                     case LOOP_CONTROL -> tool instanceof LoopControlTool<?>;
                     case SKILL_READ -> tool instanceof SkillReadTool<?>;
                     case USER_INTERACTION -> tool instanceof UserInteractionTool<?>;
@@ -82,6 +83,7 @@ public final class ToolContractValidator {
                     case MEMORY_WRITE -> ToolDocs.nonNullClass(MemoryWriteCapability.class);
                     case DELEGATION -> ToolDocs.nonNullClass(DelegationCapability.class);
                     case GROUP_CONTROL -> ToolDocs.nonNullClass(GroupControlCapability.class);
+                    case MONITOR_CONTROL -> ToolDocs.nonNullClass(MonitorCapability.class);
                     case LOOP_CONTROL -> ToolDocs.nonNullClass(LoopControlCapability.class);
                     case SKILL_READ -> ToolDocs.nonNullClass(SkillReadCapability.class);
                     case USER_INTERACTION -> ToolDocs.nonNullClass(UserInteractionCapability.class);
@@ -178,6 +180,7 @@ public final class ToolContractValidator {
                     LOOP_CONTROL,
                     DELEGATION,
                     GROUP_CONTROL,
+                    MONITOR_CONTROL,
                     USER_INTERACTION,
                     AGENT_CONTROL,
                     REMOTE_UNKNOWN ->
@@ -208,6 +211,7 @@ public final class ToolContractValidator {
                     LOOP_CONTROL,
                     DELEGATION,
                     GROUP_CONTROL,
+                    MONITOR_CONTROL,
                     USER_INTERACTION -> {
                 // These capabilities execute through typed, caller-scoped runtime services.
             }

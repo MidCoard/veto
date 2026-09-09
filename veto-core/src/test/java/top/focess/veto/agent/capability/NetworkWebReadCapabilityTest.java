@@ -25,11 +25,12 @@ import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.tool.ToolExecutionException;
 import top.focess.veto.agent.tool.ToolSchemaCompiler;
 import top.focess.veto.agent.web.SearchProvider;
+import top.focess.veto.agent.web.WebFetchExecutor;
 import top.focess.veto.agent.web.WebFetchTool;
-import top.focess.veto.agent.web.WebReader;
 
 class NetworkWebReadCapabilityTest {
-    private final @NonNull WebReader reader = mock(ToolDocs.nonNullClass(WebReader.class));
+    private final @NonNull WebFetchExecutor reader =
+            mock(ToolDocs.nonNullClass(WebFetchExecutor.class));
 
     @Test
     void publicToolPassesRestrictedDependencyRegistrationContract() {

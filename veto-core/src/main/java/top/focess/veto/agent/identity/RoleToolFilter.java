@@ -47,6 +47,7 @@ public class RoleToolFilter {
                     ToolCapability.MEMORY_WRITE,
                     ToolCapability.LOOP_CONTROL,
                     ToolCapability.DELEGATION,
+                    ToolCapability.MONITOR_CONTROL,
                     ToolCapability.USER_INTERACTION,
                     ToolCapability.REMOTE_UNKNOWN);
 
@@ -67,7 +68,8 @@ public class RoleToolFilter {
                     ToolCapability.SKILL_READ,
                     ToolCapability.LOOP_CONTROL,
                     ToolCapability.USER_INTERACTION,
-                    ToolCapability.GROUP_CONTROL);
+                    ToolCapability.GROUP_CONTROL,
+                    ToolCapability.MONITOR_CONTROL);
 
     private final @NonNull ToolEngine toolEngine;
 

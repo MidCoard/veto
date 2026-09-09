@@ -174,6 +174,10 @@ public class BackgroundTaskManager {
         void onTaskStarted(@NonNull TaskInfo info);
 
         void onTaskExited(@NonNull TaskInfo info);
+
+        default void onTaskExited(@NonNull TaskInfo info, @NonNull ExitCause cause) {
+            onTaskExited(info);
+        }
     }
 
     private volatile TaskListener taskListener;
@@ -193,11 +197,11 @@ public class BackgroundTaskManager {
         }
     }
 
-    private void notifyExited(@NonNull TaskInfo info) {
+    private void notifyExited(@NonNull TaskInfo info, @NonNull ExitCause cause) {
         TaskListener l = taskListener;
         if (l == null) return;
         try {
-            l.onTaskExited(info);
+            l.onTaskExited(info, cause);
         } catch (RuntimeException e) {
             log.debug("Background task {} exit-listener failed", info.taskId(), e);
         }
@@ -286,7 +290,7 @@ public class BackgroundTaskManager {
                 task.taskId,
                 safe(task.exitCode),
                 task.cause);
-        notifyExited(task.toInfo());
+        notifyExited(task.toInfo(), task.cause);
         // Queue an exit notice so the owning agent is actively told about it on its next turn
         // (the UI already got TASK_EXITED above). exitCode is set just above, so it is non-null.
         Integer recordedExitCode = task.exitCode;

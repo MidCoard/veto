@@ -191,6 +191,7 @@ public class Gateway {
                     LOOP_CONTROL,
                     DELEGATION,
                     GROUP_CONTROL,
+                    MONITOR_CONTROL,
                     USER_INTERACTION,
                     AGENT_CONTROL ->
                     VetoScenario.GENERIC;

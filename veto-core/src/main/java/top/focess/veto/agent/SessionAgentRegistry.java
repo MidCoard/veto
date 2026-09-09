@@ -12,18 +12,27 @@ import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.Role;
 import top.focess.veto.memory.TurnRecordRepository;
 import top.focess.veto.model.AgentEntity;
 import top.focess.veto.model.AgentInstanceRepository;
+import top.focess.veto.monitor.MonitorService;
 
 /** Owns live agents and invocation dependencies independently of group membership. */
 @Component
 public final class SessionAgentRegistry {
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.agent.SessionAgentRegistry");
+
+    private MonitorService monitorService;
+
+    @Autowired
+    public void attachMonitor(@Lazy @NonNull MonitorService service) {
+        this.monitorService = service;
+    }
 
     public record Entry(
             @NonNull UUID sessionId,
@@ -59,7 +68,8 @@ public final class SessionAgentRegistry {
             boolean live,
             Instant createdAt,
             Instant startedAt,
-            Instant endedAt) {}
+            Instant endedAt,
+            String responsibility) {}
 
     /** Session membership survives runtime cleanup; histories remain in their own streams. */
     public synchronized @NonNull List<@NonNull AgentSummary> records(@NonNull UUID sessionId) {
@@ -79,7 +89,8 @@ public final class SessionAgentRegistry {
                                 false,
                                 entity.getCreatedAt(),
                                 entity.getStartedAt(),
-                                entity.getEndedAt()));
+                                entity.getEndedAt(),
+                                entity.getResponsibility()));
             }
         }
         if (turns != null) {
@@ -88,7 +99,7 @@ public final class SessionAgentRegistry {
                     result.putIfAbsent(
                             id,
                             new AgentSummary(
-                                    id, id, null, null, null, null, false, null, null, null));
+                                    id, id, null, null, null, null, false, null, null, null, null));
                 }
             }
         }
@@ -107,7 +118,8 @@ public final class SessionAgentRegistry {
                             true,
                             saved == null ? null : saved.createdAt(),
                             saved == null ? null : saved.startedAt(),
-                            null));
+                            null,
+                            agent.persona().description()));
         }
         return result.values().stream().sorted(Comparator.comparing(AgentSummary::id)).toList();
     }
@@ -138,6 +150,7 @@ public final class SessionAgentRegistry {
     }
 
     private void register(@NonNull Entry entry) {
+        if (monitorService != null) entry.agent().attachMonitor(monitorService);
         if (closed || live.containsKey(entry.agent().id())) {
             throw new IllegalStateException(
                     "Agent registry is closed or agent is already registered");
@@ -205,6 +218,7 @@ public final class SessionAgentRegistry {
                         .toList();
         children.forEach(this::stop);
         entry.agent().terminate();
+        if (monitorService != null && !closed) monitorService.cancelForAgent(agentId);
         var store = repository;
         if (store != null) {
             try {

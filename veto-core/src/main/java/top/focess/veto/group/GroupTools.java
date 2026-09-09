@@ -41,10 +41,11 @@ public final class GroupTools {
     @ToolDoc(
             resultFormats = {ToolResultFormat.PLAINTEXT},
             description = "Request delegation for a task.",
-            behavior = "Creates a delegation group using the supplied task brief.",
+            behavior =
+                    "Starts real collaboration using the supplied brief. Participants and work are arranged in the next stage.",
             whenToUse = "Use when the task meets the Delegation Rules in the system message.",
             whenNotToUse =
-                    "Do not use for small, tightly coupled, or sequential work that can be completed directly.",
+                    "Unless the user explicitly requests collaborators, prefer direct execution for small or tightly coupled work.",
             resultContract =
                     "Success returns empty text. Refusal returns: Group not created: <reason and what to do next>.",
             errorsAndEdgeCases = "A blank task is refused; supply a concise, concrete brief.",
@@ -108,13 +109,14 @@ public final class GroupTools {
                     """,
             whenToUse =
                     """
-                    Use `disband_group` when the delegated work is complete or the user explicitly \
-                    requests it. Reverses the transform and returns you to standalone operation.
+                    Use `disband_group` only when the user explicitly requests that the group be \
+                    disbanded or asks to return to single-agent operation.
                     """,
             whenNotToUse =
                     """
                     - Prefer waiting for Mate status when practical; disbanding stops any remaining Mates.
-                    - Do not disband without user request unless all DAG nodes are VERIFIED.
+                    - Do not disband merely because all DAG nodes are COMPLETED. Answer the user \
+                      as Leader and retain the group for follow-up work.
                     """,
             resultContract =
                     """
@@ -191,13 +193,13 @@ public final class GroupTools {
                     """,
             whenToUse =
                     """
-                    Use `inspect_group` after creating nodes to observe dispatch, wait for Mate outcomes, \
-                    read failure reports, and confirm that all nodes are VERIFIED before disbanding.
+                    Use `inspect_group` for an on-demand state or report lookup, \
+                    read failure reports, and gather completed reports before answering the user.
                     """,
             whenNotToUse =
                     """
-                    - Do not guess node completion from elapsed time; inspect the group.
-                    - Do not repeatedly request the same messages; carry forward `nextSinceSeq`.
+                    - Do not use it to wait for outcomes; Monitor observations deliver those automatically.
+                    - Do not inspect a newly created empty group instead of creating its members.
                     - Do not use it outside a Leader context.
                     """,
             resultContract =
@@ -210,7 +212,7 @@ public final class GroupTools {
             errorsAndEdgeCases =
                     """
                     `sinceSeq` must be non-negative. `waitSeconds` is clamped to 0..30. A completed group \
-                    remains inspectable until `disband_group` performs the reverse transform.
+                    remains available for inspection and new tasks. Completion does not require disbanding.
                     """,
             security =
                     """
@@ -274,60 +276,28 @@ public final class GroupTools {
                 Thread.currentThread().interrupt();
                 return ToolErrors.failure("Group not inspected: wait interrupted.");
             }
-            GroupSnapshot group = capability.snapshot();
-            if (group == null) {
+            var inspection = capability.inspect(since);
+            if (inspection == null)
                 return ToolErrors.failure("Group not inspected: group record disappeared.");
-            }
-            List<BlackboardMessage> messages = capability.messages(since);
-            return render(group, messages, since);
+            return render(inspection.group(), inspection.messages(), since);
         }
     }
 
     @ToolDoc(
             resultFormats = {ToolResultFormat.PLAINTEXT},
-            description =
-                    "Post a typed message to your group's Blackboard (Leader -> Mate, or a self-note).",
+            description = "Record a Leader note in the group's Blackboard.",
             behavior =
-                    """
-                    Posts a message as `LEADER` to `receiver`. Omit `receiver` to default to `LEADER` \
-                    for a self-note; otherwise use an active Mate id. Unknown receivers are rejected. \
-                    Message types are TASK_DISPATCH, ARTIFACT_REF, LOG_REF, FEEDBACK, STATUS, and \
-                    ACCEPT. The group is resolved from your context. Payloads must be non-blank and \
-                    at most 4096 characters. Use paths rather than full file contents for artifacts/logs.
-                    """,
+                    "Records a note for the Leader. Does not deliver instructions to Mates or execute work.",
             whenToUse =
-                    """
-                    Use `post_message` to communicate via the Blackboard - dispatch an ad-hoc \
-                    instruction to a Mate, post a status note, or record feedback. The Leader reasons \
-                    over Mate reports, then writes its own message (not a pass-through).
-                    """,
+                    "Record a short status, feedback, artifact reference or log reference for your own coordination.",
             whenNotToUse =
-                    """
-                    - Do not echo Mate messages back - decide, don't pass-through.
-                    - Do not post full file contents - only paths / short payloads.
-                    - Do not use it for ordinary DAG dispatch - `create_node` dispatches automatically \
-                    as dependencies verify.
-                    """,
-            resultContract =
-                    """
-                    On success - `posted`.
-                    On refusal:
-                      Not posted: <reason and what to do next>
-                    """,
+                    "For Mate work, use create_task with mateId. TASK_DISPATCH and ACCEPT are reserved for task execution and completion.",
+            resultContract = "On success: posted. Otherwise: Not posted followed by the reason.",
             errorsAndEdgeCases =
-                    """
-                    Type names are case-sensitive enum values, and a Mate receiver must already belong to the \
-                    active group. No active group indicates a role/context mismatch; do not retry until the \
-                    Leader context is restored.
-                    """,
-            security =
-                    """
-                    Operate only on your current group; respect requests to stop ongoing work. \
-                    Hub-and-spoke: the Leader addresses a single Mate by id.
-                    """,
+                    "Only receiver LEADER is accepted. Disbanded groups, blank payloads and payloads over 4096 characters are rejected.",
+            security = "Notes cannot create tasks or mark work completed.",
             examples = {
-                "{\"type\": \"TASK_DISPATCH\", \"receiver\": \"mate-coder\", \"payload\": \"node-5: Revise the JWT validation to check expiry\"}",
-                "{\"type\": \"STATUS\", \"receiver\": \"LEADER\", \"payload\": \"node-5 re-planned; new node node-5b created\"}"
+                "{\"type\":\"STATUS\",\"payload\":\"Review the failed node before scheduling replacement work.\"}"
             },
             returnExamples = {"posted"})
     @Component
@@ -341,11 +311,10 @@ public final class GroupTools {
 
         public record Args(
                 @SecurityHint(ParamCategory.GENERIC)
-                        @Doc(
-                                "Message type: TASK_DISPATCH, ARTIFACT_REF, LOG_REF, FEEDBACK, STATUS, ACCEPT.")
+                        @Doc("Note type: ARTIFACT_REF, LOG_REF, FEEDBACK or STATUS.")
                         BlackboardMessage.@NonNull MessageType type,
                 @SecurityHint(ParamCategory.GENERIC)
-                        @Doc("Receiver id (a Mate id, or 'LEADER' for a self-note).")
+                        @Doc("Omit or use LEADER; Mate work must use create_task.")
                         String receiver,
                 @SecurityHint(ParamCategory.GENERIC)
                         @Doc(
@@ -380,7 +349,13 @@ public final class GroupTools {
             // + the orchestrator's ingest both key on it), so the Leader posts as "LEADER".
             String requestedReceiver = args.receiver();
             String receiver = requestedReceiver == null ? "LEADER" : requestedReceiver;
-            if (group.state() != Group.GroupState.ACTIVE) {
+            if (!"LEADER".equals(receiver)
+                    || args.type() == BlackboardMessage.MessageType.TASK_DISPATCH
+                    || args.type() == BlackboardMessage.MessageType.ACCEPT) {
+                return ToolErrors.failure(
+                        "Not posted: use create_task with mateId for tracked Mate work. post_message only records Leader notes.");
+            }
+            if (group.state() == Group.GroupState.DISBANDED) {
                 return ToolErrors.failure("Not posted: group is no longer active.");
             }
             if (!"LEADER".equals(receiver) && !group.mates().containsKey(receiver)) {
@@ -411,7 +386,10 @@ public final class GroupTools {
                 .append('\n');
         sb.append("Node outcomes:\n");
         for (DagNode n : g.nodes()) {
-            sb.append("  - ").append(n.nodeId()).append(" (").append(n.state());
+            sb.append("  - ")
+                    .append(n.nodeId())
+                    .append(" (")
+                    .append(n.state() == DagNode.NodeState.VERIFIED ? "COMPLETED" : n.state());
             if (n.assignedMateId() != null) {
                 sb.append(", mate: ").append(n.assignedMateId());
             }
@@ -439,7 +417,18 @@ public final class GroupTools {
             long since) {
         StringBuilder result = new StringBuilder();
         result.append("Group state: ").append(group.state()).append('\n');
-        result.append("Nodes:\n");
+        result.append(
+                "Completed means the assigned Mate returned a report; it does not imply independent verification.\n");
+        result.append("Members:\n");
+        group.mates()
+                .forEach(
+                        (id, responsibility) ->
+                                result.append("- ")
+                                        .append(id)
+                                        .append(": ")
+                                        .append(responsibility)
+                                        .append('\n'));
+        result.append("Tasks:\n");
         if (group.nodes().isEmpty()) {
             result.append("- (none)\n");
         }
@@ -447,11 +436,13 @@ public final class GroupTools {
             result.append("- ")
                     .append(node.nodeId())
                     .append(" [")
-                    .append(node.state())
+                    .append(node.state() == DagNode.NodeState.VERIFIED ? "COMPLETED" : node.state())
                     .append("] mate=")
                     .append(node.assignedMateId() == null ? "(unassigned)" : node.assignedMateId())
                     .append(" skillset=")
                     .append(node.requiredSkillset())
+                    .append(" dependsOn=")
+                    .append(node.dependsOn())
                     .append('\n');
             if (node.result() instanceof DagNode.ResultSuccess success) {
                 result.append("  report: ").append(oneLine(success.summary())).append('\n');
@@ -486,6 +477,6 @@ public final class GroupTools {
     }
 
     private static @NonNull String oneLine(@NonNull String value) {
-        return value.replace("\r", "\\r").replace("\n", "\\n");
+        return value.replace("\r\n", "\n").replace("\n", "\n    ");
     }
 }

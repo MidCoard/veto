@@ -24,7 +24,18 @@ final class ToolUsageProjector {
         int orphanResponses = 0;
         int malformedCalls = 0;
 
+        Map<String, SessionRecord> executions = new LinkedHashMap<>();
         for (SessionRecord record : records) {
+            Object origin = record.payload().get("restored_from_turn");
+            executions.put(
+                    record.agentId()
+                            + ":"
+                            + (origin instanceof Number number
+                                    ? number.intValue()
+                                    : record.turnNumber()),
+                    record);
+        }
+        for (SessionRecord record : executions.values()) {
             if ("TOOL_CALL".equals(record.type())) {
                 String callId = nonBlankString(record.payload().get("call_id"));
                 String toolName = nonBlankString(record.payload().get("tool_name"));

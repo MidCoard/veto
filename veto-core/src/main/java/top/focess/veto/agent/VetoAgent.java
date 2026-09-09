@@ -13,6 +13,7 @@ import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.intercept.VetoPrompt;
 import top.focess.veto.agent.tool.ToolDefinition;
+import top.focess.veto.monitor.MonitorService;
 
 /**
  * The {@link Agent} implementation. Owns its {@link AgentRunner} internally on a virtual thread;
@@ -29,6 +30,14 @@ public class VetoAgent implements Agent {
         this.id = persona.id();
         this.runner = runner;
         Thread.ofVirtual().name("agent-" + id).start(runner::run);
+    }
+
+    public void attachMonitor(@NonNull MonitorService service) {
+        runner.attachMonitor(service);
+    }
+
+    public void signalMonitor() {
+        runner.signalMonitor();
     }
 
     @Override

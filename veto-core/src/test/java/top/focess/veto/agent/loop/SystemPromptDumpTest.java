@@ -28,6 +28,7 @@ import top.focess.veto.agent.tool.ToolEngine;
 import top.focess.veto.agent.translation.CapabilityTranslator;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.ToolDefinition;
+import top.focess.veto.llm.core.ToolResultPresentationMode;
 
 /**
  * Diagnostic dump: compiles the full system prompt for each role under the active deployer policy
@@ -109,7 +110,17 @@ class SystemPromptDumpTest {
                                     personaFor(role),
                                     renderedWorkspace,
                                     baseFor(role),
-                                    List.of(),
+                                    List.of(
+                                            TurnRecord.agentInit(
+                                                    1,
+                                                    role.name(),
+                                                    promptCompiler.linkSystemMessage(
+                                                            personaFor(role),
+                                                            renderedWorkspace,
+                                                            baseFor(role),
+                                                            ToolResultPresentationMode.BASIC),
+                                                    "test",
+                                                    "test")),
                                     false,
                                     1.0)
                             .systemMessage());
@@ -118,7 +129,23 @@ class SystemPromptDumpTest {
         }
         var enabled =
                 promptCompiler.compile(
-                        personaFor(Role.STANDALONE), renderedWorkspace, null, List.of(), true, 1.0);
+                        personaFor(Role.STANDALONE),
+                        renderedWorkspace,
+                        null,
+                        List.of(
+                                TurnRecord.agentInit(
+                                        1,
+                                        "standalone",
+                                        promptCompiler.linkSystemMessage(
+                                                personaFor(Role.STANDALONE),
+                                                renderedWorkspace,
+                                                null,
+                                                ToolResultPresentationMode.BASIC,
+                                                true),
+                                        "test",
+                                        "test")),
+                        true,
+                        1.0);
         var disabled =
                 promptCompiler.compile(
                         personaFor(Role.STANDALONE),
@@ -126,7 +153,16 @@ class SystemPromptDumpTest {
                         null,
                         List.of(
                                 TurnRecord.agentInit(
-                                        0, "STANDALONE", enabled.systemMessage(), "test", "test")),
+                                        0,
+                                        "STANDALONE",
+                                        promptCompiler.linkSystemMessage(
+                                                personaFor(Role.STANDALONE),
+                                                renderedWorkspace,
+                                                null,
+                                                ToolResultPresentationMode.BASIC,
+                                                false),
+                                        "test",
+                                        "test")),
                         false,
                         1.0);
         write("STANDALONE-guided-enabled.md", enabled.systemMessage());

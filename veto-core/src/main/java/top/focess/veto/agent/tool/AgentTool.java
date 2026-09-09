@@ -13,6 +13,7 @@ public sealed interface AgentTool<T> extends CapabilityTool<T>
                 MemoryWriteTool,
                 DelegationTool,
                 GroupControlTool,
+                MonitorTool,
                 LoopControlTool,
                 SkillReadTool,
                 UserInteractionTool {}

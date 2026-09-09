@@ -21,6 +21,28 @@ public record ExecutionDag(@NonNull UUID groupId, @NonNull List<DagNode> nodes) 
         nodes = List.copyOf(nodes);
     }
 
+    /** Work that can still progress; failed dependencies block all downstream descendants. */
+    public boolean hasUnfinishedWork() {
+        Map<String, DagNode> byId = index();
+        return nodes.stream()
+                .anyMatch(
+                        n ->
+                                n.state() == DagNode.NodeState.RUNNING
+                                        || (n.state() == DagNode.NodeState.PENDING
+                                                && !blocked(n, byId)));
+    }
+
+    private static boolean blocked(@NonNull DagNode node, @NonNull Map<String, DagNode> byId) {
+        for (String id : node.dependsOn()) {
+            DagNode dependency = byId.get(id);
+            if (dependency == null
+                    || dependency.state() == DagNode.NodeState.FAILED
+                    || dependency.state() == DagNode.NodeState.STALE
+                    || blocked(dependency, byId)) return true;
+        }
+        return false;
+    }
+
     /**
      * Return the nodes currently dispatchable (all deps VERIFIED) and not yet dispatched or
      * terminal. A node is dispatchable when every node in {@code dependsOn} is VERIFIED.

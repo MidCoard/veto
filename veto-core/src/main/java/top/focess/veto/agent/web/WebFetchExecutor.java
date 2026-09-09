@@ -50,9 +50,9 @@ import top.focess.veto.vault.UserContext;
 
 /** Starts a single-document AgentRunner and collects its validated terminal result. */
 @Component
-public final class WebReader {
+public final class WebFetchExecutor {
     private static final @NonNull Logger log =
-            LoggerFactory.getLogger("top.focess.veto.agent.web.WebReader");
+            LoggerFactory.getLogger("top.focess.veto.agent.web.WebFetchExecutor");
     private static final int MAX_EVIDENCE = 8;
     private static final int MAX_ANSWER_CHARS = 4000;
     private static final int PROVIDER_FRAMING_RESERVE = 2048;
@@ -70,7 +70,7 @@ public final class WebReader {
     private final int maxInputTokens;
     private final int maxOutputTokens;
 
-    public WebReader(
+    public WebFetchExecutor(
             @Qualifier(LlmJacksonConfig.LLM_OBJECT_MAPPER) @NonNull ObjectMapper mapper,
             @NonNull UniformLLMCaller caller,
             @NonNull ModelTierRegistry models,
@@ -96,18 +96,6 @@ public final class WebReader {
         this.maxInputTokens = maxInputTokens;
         this.maxOutputTokens = maxOutputTokens;
     }
-
-    public record Fetch() {}
-
-    public record Read(@NonNull List<@NonNull String> ids) {}
-
-    public record Find(@NonNull String query) {}
-
-    public record Finish(
-            @NonNull String outcome,
-            @NonNull String answer,
-            @NonNull List<@NonNull String> evidenceIds,
-            @NonNull List<@NonNull String> limitations) {}
 
     public record Execution(
             @NonNull String id,
@@ -348,7 +336,7 @@ public final class WebReader {
     }
 
     static @NonNull Result finish(
-            @NonNull Finish value,
+            FinishReadTool.@NonNull Args value,
             @NonNull WebReadDocument document,
             @NonNull Execution execution) {
         if (!List.of("complete", "partial", "not_found").contains(value.outcome())
