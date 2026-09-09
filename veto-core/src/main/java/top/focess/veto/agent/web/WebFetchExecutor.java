@@ -175,7 +175,8 @@ public final class WebFetchExecutor {
                             model.temperature(),
                             null,
                             Math.min(maxOutputTokens, model.maxOutputTokens()),
-                            Duration.ofSeconds(timeoutSeconds));
+                            Duration.ofSeconds(timeoutSeconds),
+                            model.contextWindowTokens());
             // Instrument the shared loop's calls; scheduling, repair, dispatch and history stay in
             // AgentRunner.
             UniformLLMCaller measured =

@@ -77,7 +77,8 @@ public class GroupAgentFactory implements GroupSpawner.AgentFactory {
                         resolved.temperature(),
                         null,
                         resolved.maxOutputTokens(),
-                        LlmOptions.defaults().timeout()),
+                        LlmOptions.defaults().timeout(),
+                        resolved.contextWindowTokens()),
                 mateBinding.systemPromptBase(),
                 resolved.baseUrl());
     }

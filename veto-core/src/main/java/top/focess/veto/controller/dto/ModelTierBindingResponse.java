@@ -11,4 +11,5 @@ public record ModelTierBindingResponse(
         String model,
         String credKey,
         Double temp,
-        Integer max) {}
+        Integer max,
+        Integer contextWindow) {}

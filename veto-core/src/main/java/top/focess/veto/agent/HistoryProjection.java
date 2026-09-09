@@ -58,7 +58,7 @@ public final class HistoryProjection {
             TurnRecord turn = entries.get(active.get(i)).record();
             boolean emits =
                     switch (turn.type()) {
-                        case AGENT_INIT, ASSISTANT_THOUGHT -> false;
+                        case AGENT_INIT, ASSISTANT_THOUGHT, TOKEN_USAGE -> false;
                         case REWIND ->
                                 turn.payload().get("content") instanceof String content
                                         && !content.isBlank();
@@ -101,7 +101,7 @@ public final class HistoryProjection {
                 TurnRecord.agentInit(
                         ++number, role.toLowerCase(Locale.ROOT), system, provider, model));
         for (TurnRecord turn : effective) {
-            if (turn.type() == TurnType.AGENT_INIT) continue;
+            if (turn.type() == TurnType.AGENT_INIT || turn.type() == TurnType.TOKEN_USAGE) continue;
             if (turn.type() == TurnType.REWIND) {
                 if (turn.payload().get("content") instanceof String content && !content.isBlank())
                     additions.add(TurnRecord.userPrompt(++number, content));

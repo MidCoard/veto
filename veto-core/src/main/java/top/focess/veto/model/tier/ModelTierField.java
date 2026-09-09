@@ -19,7 +19,8 @@ public enum ModelTierField {
     MODEL("model"),
     CREDENTIAL_KEY("credKey"),
     TEMPERATURE("temp"),
-    MAX_OUTPUT_TOKENS("max");
+    MAX_OUTPUT_TOKENS("max"),
+    CONTEXT_WINDOW_TOKENS("contextWindow");
 
     private final @NonNull String field;
 

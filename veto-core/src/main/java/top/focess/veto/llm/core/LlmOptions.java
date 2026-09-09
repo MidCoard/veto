@@ -14,7 +14,27 @@ import org.jspecify.annotations.NonNull;
  * @param maxTokens the maximum number of tokens to generate
  * @param timeout the timeout duration for the call
  */
-public record LlmOptions(Double temperature, Double topP, Integer maxTokens, Duration timeout) {
+public record LlmOptions(
+        Double temperature,
+        Double topP,
+        Integer maxTokens,
+        Duration timeout,
+        Integer contextWindowTokens) {
+    public LlmOptions(Double temperature, Double topP, Integer maxTokens, Duration timeout) {
+        this(temperature, topP, maxTokens, timeout, null);
+    }
+
+    public int contextWindowOrDefault() {
+        return contextWindowTokens != null ? contextWindowTokens : 128000;
+    }
+
+    public long inputBudget() {
+        long available = contextWindowOrDefault() - (long) maxTokensOrDefault();
+        if (available <= 0)
+            throw new IllegalStateException("Output allowance exceeds context window");
+        return (long) (available * 0.9);
+    }
+
     private static final @NonNull LlmOptions DEFAULTS =
             new LlmOptions(null, null, 4096, Duration.ofSeconds(60));
 

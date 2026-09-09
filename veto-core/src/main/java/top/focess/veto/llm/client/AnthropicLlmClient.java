@@ -95,7 +95,11 @@ final class AnthropicLlmClient extends LlmClient {
         }
 
         Message message = sdkClient.messages().create(builder.build());
-        LlmSystemUsage.set(message.usage().inputTokens(), message.usage().outputTokens());
+        LlmSystemUsage.set(
+                message.usage().inputTokens()
+                        + message.usage().cacheReadInputTokens().orElse(0L)
+                        + message.usage().cacheCreationInputTokens().orElse(0L),
+                message.usage().outputTokens());
         if (log.isDebugEnabled()) {
             log.debug("Anthropic raw response blocks: {}", describeBlocks(message));
         }

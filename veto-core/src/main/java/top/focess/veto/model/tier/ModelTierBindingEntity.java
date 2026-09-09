@@ -52,6 +52,17 @@ public class ModelTierBindingEntity {
     @Column(name = "max_output_tokens")
     private Integer maxOutputTokens;
 
+    @Column(name = "context_window_tokens")
+    private Integer contextWindowTokens;
+
+    public Integer getContextWindowTokens() {
+        return contextWindowTokens;
+    }
+
+    public void setContextWindowTokens(Integer value) {
+        contextWindowTokens = value;
+    }
+
     protected ModelTierBindingEntity() {}
 
     public ModelTierBindingEntity(@NonNull String profileId, @NonNull ModelTier tier) {

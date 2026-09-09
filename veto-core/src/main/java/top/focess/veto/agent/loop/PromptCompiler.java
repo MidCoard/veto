@@ -172,7 +172,9 @@ public class PromptCompiler {
                     request.tools(),
                     request.responseSchema(),
                     correctionFactor,
-                    inputBudget(request.providerType().name(), request.modelName()));
+                    request.options().contextWindowTokens() != null
+                            ? request.options().inputBudget()
+                            : inputBudget(request.providerType().name(), request.modelName()));
             return request;
         }
         List<ChatMessage> conversation = request.messages();
@@ -230,6 +232,26 @@ public class PromptCompiler {
             boolean guidedEnabled,
             double correctionFactor,
             @NonNull ToolResultPresentationMode toolResultPresentation) {
+        return compile(
+                persona,
+                sessionWorkspace,
+                systemPromptBase,
+                history,
+                guidedEnabled,
+                correctionFactor,
+                toolResultPresentation,
+                null);
+    }
+
+    public @NonNull CompiledPrompt compile(
+            @NonNull AgentPersona persona,
+            @NonNull Workspace sessionWorkspace,
+            String systemPromptBase,
+            List<TurnRecord> history,
+            boolean guidedEnabled,
+            double correctionFactor,
+            @NonNull ToolResultPresentationMode toolResultPresentation,
+            Long inputBudgetOverride) {
 
         List<ToolDefinition> flatTools =
                 translator.translateTools(
@@ -271,7 +293,9 @@ public class PromptCompiler {
                         flatTools,
                         responseSchema,
                         correctionFactor,
-                        inputBudget(provider, model));
+                        inputBudgetOverride != null
+                                ? inputBudgetOverride
+                                : inputBudget(provider, model));
         return new CompiledPrompt(systemMessage, messages, flatTools, responseSchema, 0, estimate);
     }
 
@@ -500,7 +524,7 @@ public class PromptCompiler {
             case TOOL_RESPONSE -> mapPresentedToolResponse(turn, toolResultPresentation);
             case AGENT_INIT -> null; // handled before role mapping
             case COMPACTION_SUMMARY -> ChatMessage.user(str(turn.payload(), "content"));
-            case REWIND -> null;
+            case REWIND, TOKEN_USAGE -> null;
         };
     }
 

@@ -74,7 +74,15 @@ public class DefaultModelTierService implements ModelTierRegistry, ModelTierProf
                         ? DEFAULT_MAX_OUTPUT_TOKENS
                         : configuredMaxOutputTokens;
         return new ModelBinding(
-                provider, model, credentialKey, temperature, maxOutputTokens, binding.getBaseUrl());
+                provider,
+                model,
+                credentialKey,
+                temperature,
+                maxOutputTokens,
+                binding.getBaseUrl(),
+                binding.getContextWindowTokens() == null
+                        ? 128000
+                        : binding.getContextWindowTokens());
     }
 
     @Override
@@ -151,6 +159,17 @@ public class DefaultModelTierService implements ModelTierRegistry, ModelTierProf
                         e);
             }
         }
+        int context =
+                binding.getContextWindowTokens() == null
+                        ? 128000
+                        : binding.getContextWindowTokens();
+        int output =
+                binding.getMaxOutputTokens() == null
+                        ? DEFAULT_MAX_OUTPUT_TOKENS
+                        : binding.getMaxOutputTokens();
+        if (output <= 0 || output >= context)
+            throw new IllegalArgumentException(
+                    "Output tokens must be positive and smaller than the context window");
         bindingRepo.save(binding);
     }
 
@@ -236,6 +255,12 @@ public class DefaultModelTierService implements ModelTierRegistry, ModelTierProf
                     throw new IllegalArgumentException(
                             Msg.get("error.tier.invalidTemperature", value));
                 }
+            }
+            case CONTEXT_WINDOW_TOKENS -> {
+                Integer tokens = value.isBlank() ? null : Integer.valueOf(value.trim());
+                if (tokens != null && tokens <= 0)
+                    throw new IllegalArgumentException("Context window must be positive");
+                binding.setContextWindowTokens(tokens);
             }
             case MAX_OUTPUT_TOKENS -> {
                 try {

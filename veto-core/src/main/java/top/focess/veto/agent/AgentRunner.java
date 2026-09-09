@@ -9,6 +9,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -196,6 +197,7 @@ public class AgentRunner {
     private Consumer<AgentResult> callback;
     private volatile boolean sessionAlive = true;
     private double correctionFactor = 1.0;
+    private final @NonNull ContextUsageTracker contextUsage = new ContextUsageTracker();
     // Set only when the model-call ceiling trips. The next exact "continue" prompt consumes it and
     // carries the prior task into a self-contained resume turn; any other prompt starts a new task.
     private boolean awaitingBreakerContinuation = false;
@@ -766,7 +768,18 @@ public class AgentRunner {
                         messages,
                         null,
                         binding.baseUrl());
-        VetoResponse response = caller.call(request);
+        VetoResponse response;
+        LlmSystemUsage.begin();
+        try {
+            response = caller.call(request);
+        } finally {
+            for (LlmSystemUsage.Usage measured : LlmSystemUsage.drain()) {
+                Map<String, Object> data = new ContextUsageTracker().measure(request, measured);
+                data.put("affectsContext", false);
+                data.put("purpose", "compaction");
+                appendTurn(new TurnRecord(++turnNumber, TurnType.TOKEN_USAGE, data, null));
+            }
+        }
         String message = response.message();
         if (message == null || message.isBlank()) return "{}";
         try {
@@ -1014,6 +1027,7 @@ public class AgentRunner {
             compiled = compilePrompt(List.copyOf(history), allowGuided);
         }
         long estimatedTokens = compiled.estimatedTokens();
+        double estimateFactor = correctionFactor;
         VetoRequest request = buildRequest(compiled);
         if (generation != null) request = generationRequest(request, generation);
         for (int attempt = 0; ; attempt++) {
@@ -1032,16 +1046,26 @@ public class AgentRunner {
                         request.messages().size(),
                         estimatedTokens,
                         correctionFactor);
-                response = caller.call(request);
+                int requestThroughTurn = turnNumber;
+                LlmSystemUsage.begin();
+                try {
+                    response = caller.call(request);
+                } finally {
+                    List<LlmSystemUsage.Usage> measurements = LlmSystemUsage.drain();
+                    for (LlmSystemUsage.Usage measured : measurements) {
+                        Map<String, Object> measurement = contextUsage.measure(request, measured);
+                        measurement.put("throughTurn", requestThroughTurn);
+                        appendTurn(new TurnRecord(++turnNumber, TurnType.TOKEN_USAGE, measurement, null));
+                    }
+                    if (!measurements.isEmpty() && estimatedTokens > 0 && measurements.getLast().promptTokens() > 0) {
+                        double rawRatio = measurements.getLast().promptTokens() * estimateFactor / estimatedTokens;
+                        this.correctionFactor = 0.9 * correctionFactor + 0.1 * rawRatio;
+                    }
+                }
                 // Capture the provider's reasoning content (DeepSeek thinking mode) so it can be
                 // stored in the ASSISTANT_THOUGHT turn and echoed back on the next request's
                 // assistant message. Cleared immediately (one-shot per model call).
                 lastReasoningContent = ReasoningContentHolder.getAndClear();
-                LlmSystemUsage.Usage usage = LlmSystemUsage.getAndClear();
-                if (usage != null && estimatedTokens > 0) {
-                    double ratio = (double) usage.promptTokens() / estimatedTokens;
-                    this.correctionFactor = this.correctionFactor * (0.9 + ratio * 0.1);
-                }
                 VetoResponse checked =
                         ResponseEnforcer.enforce(response, allowGuided, whitelistedTools);
                 validateResponseMode(checked, generation);
@@ -1110,7 +1134,8 @@ public class AgentRunner {
                                     model.temperature(),
                                     null,
                                     model.maxOutputTokens(),
-                                    binding.options().timeout()),
+                                    binding.options().timeout(),
+                                    model.contextWindowTokens()),
                             binding.systemPromptBase(),
                             model.baseUrl());
         }
@@ -1119,7 +1144,11 @@ public class AgentRunner {
         if (temperature != null)
             options =
                     new LlmOptions(
-                            temperature, options.topP(), options.maxTokens(), options.timeout());
+                            temperature,
+                            options.topP(),
+                            options.maxTokens(),
+                            options.timeout(),
+                            options.contextWindowTokens());
         var schema =
                 objectMapper
                         .createObjectNode()
@@ -1158,7 +1187,10 @@ public class AgentRunner {
                 sourceHistory,
                 allowGuided,
                 this.correctionFactor,
-                toolResultPresentation);
+                toolResultPresentation,
+                binding.options().contextWindowTokens() != null
+                        ? binding.options().inputBudget()
+                        : null);
     }
 
     private @NonNull String linkCurrentSystemMessage() {
@@ -1901,6 +1933,13 @@ public class AgentRunner {
     }
 
     private void appendTurn(@NonNull TurnRecord turn) {
+        if (turn.type() == TurnType.REWIND || turn.type() == TurnType.AGENT_INIT)
+            contextUsage.reset();
+        if (turn.type() == TurnType.AGENT_INIT) {
+            Map<String, Object> metadata = new LinkedHashMap<>(turn.payload());
+            metadata.put("contextMaxTokens", binding.options().contextWindowOrDefault());
+            turn = new TurnRecord(turn.turnNumber(), turn.type(), metadata, turn.timestamp());
+        }
         TurnRecord numbered;
         synchronized (this) {
             // turn_number is the durable unique key (uk_turn_records_agent_turn on
@@ -1936,6 +1975,13 @@ public class AgentRunner {
         // representation carries call/result fields are routed; other types (USER_PROMPT,
         // ASSISTANT_THOUGHT, ASSISTANT_RESPONSE) are already handled by the message/thought seams.
         switch (numbered.type()) {
+            case TOKEN_USAGE ->
+                    publishFrame(
+                            DeltaFrame.builder()
+                                    .sessionId(sessionId)
+                                    .kind(DeltaFrame.Kind.TOKEN_USAGE)
+                                    .attr("turnNumber", numbered.turnNumber())
+                                    .build());
             case TOOL_CALL -> {
                 Object name = numbered.payload().get("tool_name");
                 Object args = numbered.payload().get("args");

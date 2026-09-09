@@ -49,6 +49,7 @@ public record DeltaFrame(
         TOOL_CALL,
         TOOL_RESULT,
         COMPACTION,
+        TOKEN_USAGE,
         BREAKER_TRIPPED,
         ERROR,
         /** A HITL veto was raised and is waiting for the user's decision. */

@@ -173,7 +173,8 @@ public class ModelTierController {
                 binding.getModel(),
                 binding.getCredentialKey(),
                 binding.getTemperature(),
-                binding.getMaxOutputTokens());
+                binding.getMaxOutputTokens(),
+                binding.getContextWindowTokens());
     }
 
     private @NonNull String requireUser() {

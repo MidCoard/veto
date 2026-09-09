@@ -31,7 +31,18 @@ public record ModelBinding(
         @NonNull String credentialKey,
         double temperature,
         int maxOutputTokens,
-        String baseUrl) {
+        String baseUrl,
+        int contextWindowTokens) {
+
+    public ModelBinding(
+            @NonNull ProviderType provider,
+            @NonNull String model,
+            @NonNull String credentialKey,
+            double temperature,
+            int maxOutputTokens,
+            String baseUrl) {
+        this(provider, model, credentialKey, temperature, maxOutputTokens, baseUrl, 128000);
+    }
 
     /** Convenience constructor for callers that do not override the base URL (null -> default). */
     public ModelBinding(

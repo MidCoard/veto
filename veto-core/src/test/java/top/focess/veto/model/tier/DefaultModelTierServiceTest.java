@@ -61,6 +61,19 @@ class DefaultModelTierServiceTest {
         }
     }
 
+    @Test
+    void contextWindowPersistsAndValidatesOutputReservation() {
+        service.createProfile("context-user", "default");
+        service.setFields("context-user", "default", ModelTier.TOP, Map.of(
+                ModelTierField.PROVIDER, "DEEPSEEK", ModelTierField.MODEL, "test", ModelTierField.CREDENTIAL_KEY, "key"));
+        assertEquals(128000, service.resolve("context-user", ModelTier.TOP).contextWindowTokens());
+        service.setField("context-user", "default", ModelTier.TOP, ModelTierField.CONTEXT_WINDOW_TOKENS, "64000");
+        assertEquals(64000, service.resolve("context-user", ModelTier.TOP).contextWindowTokens());
+        assertThrows(IllegalArgumentException.class, () -> service.setField("context-user", "default", ModelTier.TOP, ModelTierField.CONTEXT_WINDOW_TOKENS, "0"));
+        assertThrows(IllegalArgumentException.class, () -> service.setFields("context-user", "default", ModelTier.TOP,
+                Map.of(ModelTierField.CONTEXT_WINDOW_TOKENS, "4000", ModelTierField.MAX_OUTPUT_TOKENS, "4096")));
+    }
+
     @BeforeEach
     void assumeCredentialsExist() {
         // Happy-path tests set CREDENTIAL_KEY to arbitrary keys ("deepseek-default", "k", ...);
