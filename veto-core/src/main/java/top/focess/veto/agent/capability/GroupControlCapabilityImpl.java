@@ -111,9 +111,7 @@ public final class GroupControlCapabilityImpl implements GroupControlCapability 
         }
         UUID id = ctx.groupId();
         Group group = id == null ? null : registry.get(id);
-        if (group == null
-                || group.state() == GroupState.DISBANDED
-                || (!"LEADER".equals(receiver) && !group.mates().containsKey(receiver)))
+        if (group == null || group.state() == GroupState.DISBANDED)
             throw new SecurityException("Receiver is unavailable in your active group");
         blackboard.post(
                 new BlackboardMessage(

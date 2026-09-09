@@ -10,8 +10,8 @@ import top.focess.veto.session.SessionRecord;
 
 /** Best-effort reading of old tool evidence, never a claim that missing lifecycle data exists. */
 public final class LegacyGroupHistory {
-    private static final Pattern NODE =
-            Pattern.compile("(?m)^- ([^\\s]+) \\[([A-Z]+)] mate=([^\\s]+) skillset=([^\\s]+)");
+    private static final @NonNull Pattern NODE =
+            Pattern.compile("(?m)^- (\\S+) \\[([A-Z]+)] mate=(\\S+) skillset=(\\S+)");
 
     private LegacyGroupHistory() {}
 

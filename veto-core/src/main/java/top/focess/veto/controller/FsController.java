@@ -121,8 +121,6 @@ public class FsController {
         if (name == null
                 || name.isBlank()
                 || name.length() > 255
-                || name.equals(".")
-                || name.equals("..")
                 || !name.equals(name.strip())
                 || name.endsWith(".")
                 || name.chars().anyMatch(c -> c < 32 || "/\\:<>\"|?*".indexOf(c) >= 0)) {

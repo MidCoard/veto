@@ -33,7 +33,7 @@ public class MonitorService {
     private final @NonNull SessionAgentRegistry agents;
     private final @NonNull Map<String, MonitorRecord> records = new LinkedHashMap<>();
 
-    private final Set<String> terminatedAgents = new HashSet<>();
+    private final @NonNull Set<String> terminatedAgents = new HashSet<>();
 
     public MonitorService(
             @NonNull MonitorRepository repository,
@@ -311,7 +311,7 @@ public class MonitorService {
                             Instant.now());
         if (r.state().equals("CANCELLED")) return;
         if (group.state() == Group.GroupState.DISBANDED) {
-            if (!r.state().equals("CANCELLED")) save(r.update("CANCELLED", r.seen(), List.of()));
+            save(r.update("CANCELLED", r.seen(), List.of()));
             return;
         }
         Map<String, String> seen = new LinkedHashMap<>(r.seen());

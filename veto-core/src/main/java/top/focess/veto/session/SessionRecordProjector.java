@@ -33,9 +33,9 @@ final class SessionRecordProjector {
         return List.copyOf(result);
     }
 
+    // Generated enum valueOf returns a constant or throws; it never returns null.
+    @SuppressWarnings("nullness:return")
     private static @NonNull TurnType type(@NonNull String name) {
-        TurnType type = TurnType.valueOf(name);
-        if (type == null) throw new IllegalArgumentException("Unknown turn type: " + name);
-        return type;
+        return TurnType.valueOf(name);
     }
 }

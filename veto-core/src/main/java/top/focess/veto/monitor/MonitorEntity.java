@@ -21,6 +21,10 @@ public class MonitorEntity {
         this.payload = payload;
     }
 
+    public @NonNull String getId() {
+        return id;
+    }
+
     public @NonNull String getPayload() {
         return payload;
     }

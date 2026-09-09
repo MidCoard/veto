@@ -358,9 +358,6 @@ public final class GroupTools {
             if (group.state() == Group.GroupState.DISBANDED) {
                 return ToolErrors.failure("Not posted: group is no longer active.");
             }
-            if (!"LEADER".equals(receiver) && !group.mates().containsKey(receiver)) {
-                return ToolErrors.failure("Not posted: unknown receiver '" + receiver + "'.");
-            }
             String payload = args.payload();
             if (payload.isBlank()) {
                 return ToolErrors.failure("Not posted: payload must not be blank.");

@@ -698,22 +698,25 @@ public class GroupOrchestrator {
                     for (DagNode node : group.dag().nodes()) {
                         if (!node.nodeId().equals(nodeId)
                                 || node.state() != DagNode.NodeState.FAILED) continue;
-                        DagNode retry =
-                                new DagNode(
-                                        node.nodeId(),
-                                        node.description(),
-                                        node.assignedMateId(),
-                                        node.requiredSkillset(),
-                                        node.dependsOn(),
-                                        DagNode.NodeState.PENDING,
-                                        node.result(),
-                                        node.retryCount() + 1);
-                        Group updated = group.withDag(group.dag().withNode(nodeId, retry));
+                        Group updated =
+                                group.withDag(group.dag().withNode(nodeId, retryNode(node)));
                         registry.put(updated);
                         return updated;
                     }
                     return group;
                 });
+    }
+
+    private static @NonNull DagNode retryNode(@NonNull DagNode node) {
+        return new DagNode(
+                node.nodeId(),
+                node.description(),
+                node.assignedMateId(),
+                node.requiredSkillset(),
+                node.dependsOn(),
+                DagNode.NodeState.PENDING,
+                node.result(),
+                node.retryCount() + 1);
     }
 
     private @NonNull Group maybeComplete(@NonNull Group group) {

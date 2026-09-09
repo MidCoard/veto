@@ -39,6 +39,14 @@ public class GroupHistoryEntity {
         return recordedAt;
     }
 
+    public @NonNull String getId() {
+        return id;
+    }
+
+    public @NonNull String getSessionId() {
+        return sessionId;
+    }
+
     public @NonNull String getPayload() {
         return payload;
     }

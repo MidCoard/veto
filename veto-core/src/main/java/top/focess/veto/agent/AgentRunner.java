@@ -305,7 +305,7 @@ public class AgentRunner {
 
     private MonitorService monitorService;
     private volatile boolean waitingForMonitor;
-    private final AtomicBoolean monitorQueued = new AtomicBoolean();
+    private final @NonNull AtomicBoolean monitorQueued = new AtomicBoolean();
 
     public void attachMonitor(@NonNull MonitorService service) {
         this.monitorService = service;
@@ -339,7 +339,6 @@ public class AgentRunner {
                                         "content",
                                         event.content()),
                                 event.occurredAt()));
-                inserted = true;
             }
             service.acknowledge(agentId, event);
             // A retried acknowledgement still needs reasoning, even if the history already exists.
@@ -1196,8 +1195,7 @@ public class AgentRunner {
     }
 
     private @NonNull VetoRequest buildRequest(@NonNull CompiledPrompt compiled) {
-        List<ChatMessage> messages = new ArrayList<>();
-        messages.addAll(compiled.messages());
+        List<ChatMessage> messages = new ArrayList<>(compiled.messages());
         LlmBinding b = binding;
         return new VetoRequest(
                 compiled.systemMessage(),
@@ -1582,7 +1580,7 @@ public class AgentRunner {
      * DeltaFrame.Kind#VETO_RESOLVED} so subscribers can drop the prompt without polling. The single
      * wait-and-announce point shared by every veto await site.
      */
-    private final Map<String, Map<String, Object>> approvalReceipts = new HashMap<>();
+    private final @NonNull Map<String, Map<String, Object>> approvalReceipts = new HashMap<>();
 
     private @NonNull InterceptResolution awaitResolution(@NonNull String callId) {
         InterceptResolution resolution = hitlRegistry.await(agentId, callId);

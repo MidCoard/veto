@@ -26,12 +26,10 @@ public final class MonitorCapabilityImpl implements MonitorCapability {
     @Override
     public @NonNull String create(@NonNull String purpose, Long afterSeconds, String at) {
         var ctx = context("create_monitor");
-        if ((afterSeconds == null) == (at == null))
-            throw new IllegalArgumentException("Supply exactly one of afterSeconds or at");
         Instant due;
-        if (afterSeconds != null) due = Instant.now().plusSeconds(afterSeconds);
-        else if (at != null) due = Instant.parse(at);
-        else throw new IllegalArgumentException("A wake-up time is required");
+        if (afterSeconds != null && at == null) due = Instant.now().plusSeconds(afterSeconds);
+        else if (at != null && afterSeconds == null) due = Instant.parse(at);
+        else throw new IllegalArgumentException("Supply exactly one of afterSeconds or at");
         String owner = ctx.owner();
         var session = ctx.sessionId();
         if (owner == null || session == null) throw new SecurityException("No active Session");
