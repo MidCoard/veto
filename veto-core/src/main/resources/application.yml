@@ -59,8 +59,15 @@ veto:
     max_calls_per_episode: 50
 
   context:
+    # Local input budget, not a provider-advertised context window. Reserve output separately
+    # when choosing this value. Overflow is reported without dropping conversation history.
     max_input_tokens: 32000
     context_fill_ratio: 0.9
+    # Exact PROVIDER/model overrides; these are local budgets, not API discovery results.
+    # DeepSeek documents a 1M context window; leave ample space for output and overhead.
+    # Check or override this budget when using a proxy with a lower limit.
+    model-input-tokens:
+      "[DEEPSEEK/deepseek-v4-flash]": 128000
 
   skills:
     project-dir: ""

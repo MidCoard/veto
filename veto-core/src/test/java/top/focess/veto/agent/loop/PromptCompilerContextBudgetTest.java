@@ -3,17 +3,52 @@ package top.focess.veto.agent.loop;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
+import top.focess.veto.agent.TurnRecord;
+import top.focess.veto.agent.identity.AgentPersona;
+import top.focess.veto.agent.identity.Role;
 import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.translation.VetoCapabilityTranslator;
+import top.focess.veto.agent.workspace.PathMode;
+import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.*;
 
 class PromptCompilerContextBudgetTest {
     private final @NonNull ObjectMapper mapper = new ObjectMapper();
+
+    @Test
+    void compilationKeepsThePriorTopicWithTheConfiguredModelBudget() {
+        var compiler = compiler(32000);
+        var config = new ContextBudgetConfiguration();
+        config.setModelInputTokens(Map.of("DEEPSEEK/test-model", 128000));
+        compiler.configureContextBudgets(config);
+        var history =
+                List.of(
+                        TurnRecord.agentInit(
+                                1, "standalone", "s".repeat(83423), "DEEPSEEK", "test-model"),
+                        TurnRecord.userPrompt(2, "Explain TCP"),
+                        TurnRecord.assistantResponse(3, "TCP handshake " + "a".repeat(2124)),
+                        TurnRecord.userPrompt(4, "Can you draw a diagram?"));
+        var persona =
+                new AgentPersona("test", "test", "test", Set.of(), List.of(), Role.STANDALONE);
+        var workspace =
+                Workspace.single(Path.of(System.getProperty("user.dir", ".")), PathMode.REAL);
+        var compiled = compiler.compile(persona, workspace, null, history, false, 1.1);
+        assertEquals(0, compiled.trimmedTurns());
+        assertEquals(4, compiled.messages().size());
+        assertEquals("Explain TCP", compiled.messages().get(1).content());
+        assertTrue(compiled.messages().get(2).content().startsWith("TCP handshake"));
+        assertThrows(
+                IllegalStateException.class,
+                () -> compiler(32000).compile(persona, workspace, null, history, false, 1.1));
+        assertEquals(4, history.size());
+    }
 
     private @NonNull PromptCompiler compiler(int limit) {
         var compiler =
@@ -52,10 +87,11 @@ class PromptCompilerContextBudgetTest {
                         ChatMessage.assistant("a".repeat(500)),
                         ChatMessage.user("Can you draw a diagram?"));
         var request = request(messages.getFirst().content(), messages);
-        assertSame(request, compiler.fitRequest(request, 0.8));
+        assertSame(request, compiler.fitRequest(request, 0.5));
         var error =
                 assertThrows(IllegalStateException.class, () -> compiler.fitRequest(request, 1.2));
-        assertTrue(error.getMessage().contains("No conversation history was removed"));
+        assertTrue(
+                String.valueOf(error.getMessage()).contains("No conversation history was removed"));
         assertEquals(messages, request.messages());
     }
 

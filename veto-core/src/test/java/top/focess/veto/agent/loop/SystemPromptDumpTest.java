@@ -52,7 +52,7 @@ import top.focess.veto.llm.core.ToolResultPresentationMode;
  * execution/delegation capabilities; LEADER sees investigation + group control; MATE sees execution
  * capabilities without delegation or memory mutation.
  */
-@SpringBootTest
+@SpringBootTest(properties = "veto.context.model-input-tokens[test/test]=128000")
 @SuppressWarnings("initialization.field.uninitialized")
 class SystemPromptDumpTest {
 

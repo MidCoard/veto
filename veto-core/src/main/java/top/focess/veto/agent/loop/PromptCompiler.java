@@ -45,11 +45,11 @@ import top.focess.veto.llm.core.VetoRequest;
  *       SAME flat tools that build {@code tools[]}), {@code {{BOUNDARIES}}} (deployer-policy
  *       "not-do" fence), {@code {{SKILLS}}} (name+desc catalog). See {@link PromptTemplate} +
  *       {@link PromptBlocks}.
- *   <li><b>messages[]</b> - role-mapped, REWIND-resolved, token-budgeted (pair-safe truncation,
- *       system never trimmed), emitted oldest->newest and passed through {@link #wellFormed} so the
- *       result is the conversation every strict provider accepts (opens on a user message; every
- *       tool_call is answered by a tool_result immediately after it — unanswered calls get a
- *       synthesized "interrupted" result).
+ *   <li><b>messages[]</b> - role-mapped, REWIND-resolved, and checked against the input budget
+ *       without silently removing conversation history, emitted oldest->newest and passed through
+ *       {@link #wellFormed} so the result is the conversation every strict provider accepts (opens
+ *       on a user message; every tool_call is answered by a tool_result immediately after it —
+ *       unanswered calls get a synthesized "interrupted" result).
  *   <li><b>tools[]</b> + <b>response_schema</b> - via the {@link CapabilityTranslator} (flat tools
  *       + the per-turn {@code veto_pulse} schema variant).
  * </ol>

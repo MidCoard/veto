@@ -20,7 +20,8 @@ import top.focess.veto.llm.core.VetoRequest;
  * @param tools the flat, provider-translated tool list (full whitelist, every cycle)
  * @param responseSchema the per-turn {@code veto_pulse} schema variant ({@code null} → provider
  *     default)
- * @param trimmedTurns how many oldest turns were dropped to fit the token budget
+ * @param trimmedTurns removed messages for isolated readers; standard conversations retain all
+ *     effective messages and reject input-budget overflow
  */
 public record CompiledPrompt(
         @NonNull String systemMessage,
