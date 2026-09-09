@@ -17,6 +17,22 @@ subprocesses (same pattern as `LlamaCppBridge` → `llama-server`).
 
 ## Prerequisites
 
+### Disposable files
+
+Training scripts default to repository-root `work/tmp/training/` for Hugging Face
+downloads (`hf-cache/`) and training/conversion JSONL logs. Existing `HF_HOME` and
+`PIP_CACHE_DIR` environment settings and explicit `--log-file` arguments take precedence.
+Model checkpoints, datasets, and evaluation reports remain in their existing locations.
+
+When installing dependencies from the repository root in PowerShell, also direct pip's
+cache to this location:
+
+```powershell
+$env:PIP_CACHE_DIR = Join-Path (Get-Location) 'work/tmp/training/pip-cache'
+```
+
+Set this before invoking pip with the training virtual environment's Python interpreter.
+
 | Requirement | Minimum |
 |---|---|
 | Python | 3.10+ |

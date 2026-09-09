@@ -35,6 +35,8 @@ python veto_agentdojo_benchmark.py --user-tasks all --injection-tasks all --outp
 The complete v1.2.2 workspace matrix contains 40 user tasks and 14 injection tasks (560 attacked
 combinations), so it consumes substantially more model time and API quota than the default subset.
 
-`runs/`, `workspace/`, and `.venv/` are local generated state and are intentionally ignored. Paths
+`runs/` and `.venv/` are local generated state and are intentionally ignored. The disposable
+workspace defaults to repository-root `work/tmp/agentdojo/workspace`; override it with
+`--workspace` when needed. Saved reports and traces remain in `runs/`. Paths
 written into reports are relative to the report file and use `/`, so reports remain portable when
 the directory is moved to another machine.

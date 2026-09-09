@@ -21,6 +21,10 @@ import sys
 import time
 from pathlib import Path
 
+from runtime_paths import TRAINING_WORK, configure_caches
+
+configure_caches()
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="HF → GGUF Converter for Veto SLM")
@@ -39,7 +43,7 @@ def parse_args():
                         help="Additional copy destination (e.g., ../../models/veto-slm.gguf)")
     parser.add_argument("--no-default-copy", action="store_true",
                         help="Leave deployment to the caller; do not copy to project models/")
-    parser.add_argument("--log-file", type=str, default="conversion_log.jsonl")
+    parser.add_argument("--log-file", type=str, default=str(TRAINING_WORK / "conversion_log.jsonl"))
     return parser.parse_args()
 
 

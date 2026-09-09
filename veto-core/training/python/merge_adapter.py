@@ -4,6 +4,10 @@
 import argparse
 from pathlib import Path
 
+from runtime_paths import configure_caches
+
+configure_caches()
+
 import torch
 from peft import PeftConfig, PeftModel
 from transformers import AutoModelForCausalLM, AutoTokenizer

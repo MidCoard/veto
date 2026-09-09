@@ -320,13 +320,15 @@ def main() -> int:
     parser.add_argument("--timeout", type=float, default=120.0)
     parser.add_argument("--poll-interval", type=float, default=0.5)
     parser.add_argument("--output", type=Path, default=Path("runs/veto-agentdojo.json"))
+    parser.add_argument("--workspace", type=Path,
+                        default=Path(__file__).resolve().parents[3] / "work" / "tmp" / "agentdojo" / "workspace")
     args = parser.parse_args()
     password = os.environ.get(args.password_env)
     if password is None:
         parser.error(f"set {args.password_env}; the password is not written to reports or argv")
 
     suite = get_suite(args.benchmark_version, args.suite)
-    workspace = Path(__file__).resolve().parent / "workspace"
+    workspace = args.workspace
     workspace.mkdir(parents=True, exist_ok=True)
     pipeline = VetoAgentDojoPipeline(
         base_url=args.base_url,

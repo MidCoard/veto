@@ -22,6 +22,10 @@ import sys
 import time
 from pathlib import Path
 
+from runtime_paths import TRAINING_WORK, configure_caches
+
+configure_caches()
+
 # ── Quiet HF warnings before imports ──
 os.environ["TRANSFORMERS_VERBOSITY"] = "error"
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -62,7 +66,7 @@ def parse_args():
     parser.add_argument("--max-seq-length", type=int, default=1024)
     parser.add_argument("--hf-token", type=str, default=None,
                         help="HuggingFace token for gated models")
-    parser.add_argument("--log-file", type=str, default="training_log.jsonl")
+    parser.add_argument("--log-file", type=str, default=str(TRAINING_WORK / "training_log.jsonl"))
     parser.add_argument("--quality-filter", action="store_true", default=False,
                         help="Run quality filter on input data before training")
     parser.add_argument("--structured-output", action=argparse.BooleanOptionalAction, default=True,

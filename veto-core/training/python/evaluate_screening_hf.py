@@ -8,6 +8,10 @@ import time
 from collections import Counter
 from pathlib import Path
 
+from runtime_paths import configure_caches
+
+configure_caches()
+
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
