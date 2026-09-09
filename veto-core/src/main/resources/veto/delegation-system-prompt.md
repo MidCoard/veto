@@ -1,10 +1,10 @@
-## Delegation Rules
+## How to Delegate
 
-When the user explicitly asks for multiple collaborators, independent reviewers, or actual delegation, call `create_group` and arrange real execution, even for a small or sequential task. Do not impersonate collaborators or present your own answer as reports from agents that did not run. Preserve the requested number of distinct collaborators; sequential tasks can still require different people.
+When the user explicitly requests multiple collaborators, independent reviewers, or delegated work, call `create_group` and arrange actual execution. Honor the requested number of distinct collaborators, even for a small task or work that must happen in sequence. Do not impersonate collaborators or present your own answer as reports from agents that did not run.
 
-When the user has not requested delegation, call `create_group` when the work can be split into distinct subtasks with clear outputs and independent progress, and parallel work is likely to reduce completion time or provide needed expertise. Give a concrete brief containing the objective, separate outputs, shared constraints, and how the result will be checked.
+When the user has not requested collaborators, delegate only when the work has distinct subtasks with clear outputs and independent progress, and parallel work is likely to save time or provide needed expertise. Give the group a concrete brief with the objective, separate outputs, shared constraints, and verification requirements.
 
-Without an explicit request for collaborators, prefer direct execution for a small change, a simple question, or a tightly coupled sequence where delegation adds no value. If the objective is too ambiguous to split meaningfully, clarify the missing requirement first. Delegation does not expand the user's authorized scope.
+Work directly on small changes, simple questions, and tightly connected steps when delegation would not help. If the objective is too unclear to divide into meaningful tasks, ask for the missing requirement first. Delegation does not expand the scope authorized by the user.
 
 ### Example: independent review areas
 

@@ -120,7 +120,7 @@ class SystemPromptDumpTest {
                         ToolResultPresentationMode.BASIC,
                         false);
         assertTrue(baseline.contains(resolver.answerStyle()));
-        assertTrue(baseline.contains("## Diagram Rendering"));
+        assertTrue(baseline.contains("## How to Include Diagrams"));
     }
 
     @Test
@@ -231,8 +231,8 @@ class SystemPromptDumpTest {
         assertFalse(
                 Pattern.compile("(?i)\\b(leader|mates?)\\b").matcher(standalone).find(),
                 "Standalone instructions and its actual tool catalog must not describe other roles");
-        assertTrue(standalone.contains("## Delegation Rules"));
-        assertEquals(1, count(standalone, "## Delegation Rules"));
+        assertTrue(standalone.contains("## How to Delegate"));
+        assertEquals(1, count(standalone, "## How to Delegate"));
         assertTrue(standalone.contains("### Example: independent review areas"));
         for (Role role : roles) {
             String linked = Files.readString(DUMP_DIR.resolve(role + ".md"));
@@ -241,7 +241,7 @@ class SystemPromptDumpTest {
                             .anyMatch(tool -> "create_group".equals(tool.name()));
             assertEquals(
                     canDelegate,
-                    linked.contains("## Delegation Rules"),
+                    linked.contains("## How to Delegate"),
                     "delegation guidance requires an available create_group tool: " + role);
             assertFalse(linked.contains("{{DELEGATION_RULES}}"));
             for (String internal :
@@ -257,7 +257,7 @@ class SystemPromptDumpTest {
             }
         }
 
-        assertTrue(standalone.contains("## Operating Contract"));
+        assertTrue(standalone.contains("## How to Work"));
         assertFalse(standalone.contains("system/runtime contract"));
         assertTrue(
                 Files.readString(DUMP_DIR.resolve("MATE.md"))

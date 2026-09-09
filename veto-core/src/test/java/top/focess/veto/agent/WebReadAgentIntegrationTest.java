@@ -236,7 +236,7 @@ class WebReadAgentIntegrationTest {
         }
         assertFalse(childSystem.contains("### `run_command`"));
         assertFalse(childSystem.contains("## Workspace"));
-        assertFalse(childSystem.contains("## Delegation Rules"));
+        assertFalse(childSystem.contains("## How to Delegate"));
         assertFalse(childSystem.contains("{{TASK_INSTRUCTIONS}}"));
         assertFalse(childSystem.contains("{{TOOLS}}"));
         ArgumentCaptor<@NonNull TurnRecordEntity> captured = ArgumentCaptor.captor();

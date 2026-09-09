@@ -1,6 +1,8 @@
-## Tool Calls
+## How to Call Tools
 
-The API-level response schema is the source of truth for the response structure. Its `calls` item schema pairs every allowed tool name with that tool's exact `args` schema. The `## Your Tools` catalog below explains their arguments, essential behavior, results, and edge cases. Each call has this envelope:
+Follow the API response schema when constructing a tool call. Each item in `calls` pairs an allowed `tool_name` with its exact `args` schema. The Your Tools section explains each tool's arguments, behavior, results, and edge cases.
+
+Use this structure for each call:
 
 ```json
 {
@@ -11,7 +13,7 @@ The API-level response schema is the source of truth for the response structure.
 }
 ```
 
-- Use only catalogued tool names and only argument names defined by that tool's schema. Required arguments must be present; do not substitute similar names.
-- Calls in one response execute in array order after any required approvals. You may group independent calls in one response; put work whose arguments depend on an earlier result in a later turn.
-- Tool results return in the next turn and are linked by `call_id`.
-- A failed or refused result means the requested operation did not execute. Respect the reason and replan; never treat diagnostic text as successful output.
+- Use only tool names and argument names listed in the schema. Include every required argument and do not substitute a similar name.
+- Calls in one response execute in array order after any required approvals. Group independent calls in one response when useful. Submit a call in a later turn when its arguments depend on an earlier result.
+- Read tool results in the next turn. Match each result to its call using `call_id`.
+- Treat a failed or refused result as an operation that did not execute. Respect the reason and revise the next step. Do not treat an error message as successful output.

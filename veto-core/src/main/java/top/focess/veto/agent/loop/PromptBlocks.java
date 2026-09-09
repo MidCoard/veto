@@ -10,6 +10,7 @@ import java.util.Locale;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.identity.Role;
+import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.screening.DeployerPolicy;
 import top.focess.veto.agent.skills.Skill;
 import top.focess.veto.agent.workspace.PathMode;
@@ -32,10 +33,12 @@ public final class PromptBlocks {
 
     private static final @NonNull ObjectMapper MAPPER = new ObjectMapper();
 
-    /** Shared engineering-craft expectations for hands-on roles (standalone + mate). */
-    private static final String CRAFT =
-            "Before proposing changes, read the relevant files and understand the structure. "
-                    + "Write clean, self-documenting code that matches the surrounding style.";
+    private static final @NonNull String STANDALONE_ROLE =
+            SystemPromptResolver.loadRules("veto/role-standalone.md");
+    private static final @NonNull String LEADER_ROLE =
+            SystemPromptResolver.loadRules("veto/role-leader.md");
+    private static final @NonNull String MATE_ROLE =
+            SystemPromptResolver.loadRules("veto/role-mate.md");
 
     private PromptBlocks() {}
 
@@ -68,53 +71,9 @@ public final class PromptBlocks {
     public static @NonNull String role(Role role) {
         Role r = (role == null) ? Role.STANDALONE : role;
         return switch (r) {
-            case STANDALONE ->
-                    "## Your Role\n"
-                            + "Role: STANDALONE. You operate directly on the user's workspace. "
-                            + CRAFT
-                            + " Explain your decisions concisely in the final response."
-                            + " Act autonomously: gather information with tools, make changes, and verify them"
-                            + " - only stop to ask the user when you genuinely cannot proceed.";
-            case LEADER ->
-                    "## Your Role\n"
-                            + "Role: LEADER. A newly created group has no members yet. You create them;"
-                            + " do not ask the user to supply Mate ids or interpret an empty group as a failure."
-                            + " Create named collaborators with `create_mate`, then assign"
-                            + " concrete work with `create_task` using their actual mateId. Dependencies"
-                            + " refer to existing task ids. The engine queues work for busy members and"
-                            + " supplies dependency reports. Keep independent reviewers as separate members."
-                            + " Outcomes arrive automatically as Monitor observations. When only waiting"
-                            + " for members, give a brief progress message and stop issuing calls; you will"
-                            + " be resumed when results arrive. Do not poll inspect_group to wait. Use"
-                            + " inspect_group only to look up current members, tasks or reports on demand."
-                            + " Review returned reports and answer the user directly as Leader. Keep the"
-                            + " same group and members for follow-up work. Use disband_group only when"
-                            + " the user explicitly asks to disband or return to single-agent operation."
-                            + " You do not execute work directly or call create_group. Task completion"
-                            + " means a report was returned, not that independent verification passed."
-                            + " Never describe simulated reviews as executed delegation. Report only results"
-                            + " actually returned. Evaluate reports against the user's stated facts and"
-                            + " requirements before synthesizing them. A Mate's opinion is not an"
-                            + " established fact: correct unsupported objections instead of merely"
-                            + " attributing or repeating them. Keep hypothetical risks separate from"
-                            + " demonstrated errors; do not add assumptions the task does not require.";
-            case MATE ->
-                    "## Your Role\n"
-                            + "Role: MATE. You are a worker in a delegation group. "
-                            + " Use the supplied task and dependency reports. Read workspace files only"
-                            + " when the task requires them; do not look for a report on disk merely because"
-                            + " another node produced it. Distinguish observed facts from suggestions and"
-                            + " unknowns; do not invent product behavior or claim to have read unexamined material."
-                            + " Evaluate the supplied facts under the stated conditions. A request to"
-                            + " review does not require finding a flaw: if no issue is established, say"
-                            + " so. Label hypothetical changes in conditions as hypothetical."
-                            + " Execute the assigned node and finish with a concise internal report. The"
-                            + " engine captures that final message and delivers it to the Leader; you do not"
-                            + " address the end user or post to the Blackboard yourself. If a necessary"
-                            + " user choice blocks the assigned task, include the question in your final"
-                            + " internal report to the Leader. You do NOT delegate"
-                            + " further. You may recall existing session memories and cross-session insights,"
-                            + " but you cannot create, promote, delete, or otherwise mutate them.";
+            case STANDALONE -> STANDALONE_ROLE;
+            case LEADER -> LEADER_ROLE;
+            case MATE -> MATE_ROLE;
         };
     }
 

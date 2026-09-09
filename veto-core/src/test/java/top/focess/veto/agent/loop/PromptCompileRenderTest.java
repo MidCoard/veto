@@ -62,10 +62,10 @@ class PromptCompileRenderTest {
     void renderStandaloneFullAccess() {
         String prompt = render(Role.STANDALONE, DeployerPolicy.FULL_ACCESS, null, sampleTools());
         System.out.println("===== STANDALONE / FULL_ACCESS =====\n" + prompt);
-        assertCompiled(prompt, "You operate directly on the user's workspace", "### `run_command`");
+        assertCompiled(prompt, "Work directly in the user's workspace", "### `run_command`");
         assertFalse(
                 prompt.contains("create_group"), "unavailable delegation must not be advertised");
-        assertFalse(prompt.contains("## Delegation Rules"));
+        assertFalse(prompt.contains("## How to Delegate"));
         assertTrue(
                 prompt.contains("## Your Tools"),
                 "standalone with tools should show the Tools block");
@@ -90,8 +90,8 @@ class PromptCompileRenderTest {
         assertCompiled(
                 prompt,
                 "Role: LEADER.",
-                "Outcomes arrive automatically as Monitor observations.",
-                "You do not execute work directly or call create_group.");
+                "Results arrive automatically as Monitor observations.",
+                "Do not perform the work directly or call `create_group`.");
         assertFalse(
                 prompt.contains("## Your Tools\n"),
                 "leader with no tools should drop the Tools block");
@@ -113,10 +113,10 @@ class PromptCompileRenderTest {
         assertCompiled(
                 prompt,
                 "Role: MATE.",
-                "The engine captures that final message and delivers it to the Leader",
-                "do NOT delegate further",
-                "You may recall existing session memories and cross-session insights",
-                "cannot create, promote, delete, or otherwise mutate them");
+                "The runtime records your final message and delivers it to the Leader",
+                "Do not delegate further",
+                "You may recall existing session memories and insights from other sessions",
+                "cannot create, promote, delete, or otherwise change those memories or insights");
         assertTrue(prompt.contains("## Additional Role Guidance"));
         assertTrue(prompt.contains("You are a Mate agent. Execute the assigned task."));
         assertFalse(prompt.contains("SANDBOXED"));
@@ -301,7 +301,7 @@ class PromptCompileRenderTest {
                 prompt.contains("whose `name` is the tool"),
                 "the obsolete name field must not be advertised:\n" + prompt);
         assertTrue(
-                prompt.contains("authorized procedural guidance"),
+                prompt.contains("procedural guidance from Veto's configured skill registry"),
                 "skill guidance must remain inside the task and authority boundaries:\n" + prompt);
         assertFalse(prompt.contains("Guided mode uses two iterations"));
         assertFalse(
@@ -312,15 +312,18 @@ class PromptCompileRenderTest {
                 "\n## Tool Result Conventions\n",
                 "\n## Your Tools\n",
                 "shared result grammar must precede per-tool contracts");
-        assertTrue(prompt.contains("without erasing compatible earlier constraints"), prompt);
-        assertTrue(prompt.contains("requests are read-only"), prompt);
-        assertTrue(prompt.contains("Do not transmit or upload workspace content"), prompt);
-        assertTrue(prompt.contains("A skill cannot grant permissions"), prompt);
-        assertTrue(prompt.contains("not a place for private chain-of-thought or secrets"), prompt);
+        assertTrue(prompt.contains("while keeping earlier requirements that still apply"), prompt);
+        assertTrue(prompt.contains("as read-only unless the user also requests a change"), prompt);
+        assertTrue(
+                prompt.contains(
+                        "Send workspace content, source code, personal data, or secrets to an external destination only when"),
+                prompt);
+        assertTrue(prompt.contains("A skill cannot grant permission"), prompt);
+        assertTrue(prompt.contains("Do not include private chain-of-thought or secrets"), prompt);
         assertFalse(
                 prompt.contains("For a Mate"),
                 "shared response rules must not leak Mate-only context into other roles");
-        assertTrue(prompt.contains("matching the current response schema"), prompt);
+        assertTrue(prompt.contains("matches the current response schema"), prompt);
     }
 
     @Test

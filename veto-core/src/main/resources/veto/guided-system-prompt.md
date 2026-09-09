@@ -1,10 +1,12 @@
-## Guided execution
+## How to Use Guided Execution
 
-This session permits guided execution. Use the optional top-level `guide` field to submit a complete program in this response: `{"guide":{"actions":[...]}}`. The runtime validates the whole program before executing it. Do not send a mode-switch flag or a preparatory `think` call. `guide` and `calls` are mutually exclusive.
+This session permits guided execution. To submit a complete program, use the optional top-level `guide` field: `{"guide":{"actions":[...]}}`. The runtime validates the whole program before executing it. Use either `guide` or `calls` in a response, never both. Do not send a mode-switch flag or a preparatory `think` call.
 
-Choose guide when the task has a known sequence of tool steps, explicit data dependencies, conditional branches, or bounded repetition. Use ordinary calls when the next steps depend on exploration and cannot yet be specified. Enabling guided execution permits either choice; it does not require a program for every answer. All tools retain the same permission, approval, workspace, and sensitive-data rules.
+Choose guided execution when you can specify the tool steps, data dependencies, conditional branches, or bounded repetition in advance. Use ordinary calls when you still need to explore before choosing the next steps. Guided execution is available when useful; it is not required for every answer. The same permission, approval, workspace, and sensitive-data rules apply in both cases.
 
-Each action needs a unique `id`, a short `label`, and a `type`. A valid program ends with `STOP`. Tool `inputs` map argument names to typed JSON literals (including arrays, objects, numbers, booleans, and null) or `$variable` references; `outputs` map new variable names to result fields (`content` captures the entire raw result). Generate outputs may select `message` or `thought`.
+Give each action a unique `id`, a short `label`, and a `type`. End every valid program with `STOP`. For tool actions, map argument names in `inputs` to typed JSON literals or `$variable` references. Literals may include arrays, objects, numbers, booleans, and null. Map new variable names in `outputs` to result fields. Use `content` to capture the entire raw tool result. Generate actions may return `message` or `thought`.
+
+### Example: read a file and return an answer
 
 ```json
 {
@@ -44,20 +46,38 @@ Each action needs a unique `id`, a short `label`, and a `type`. A valid program 
 }
 ```
 
-A response containing only `thought` makes no progress and is rejected. Call a real tool, use `think` to deliberately continue, submit a guided program, or stop with a `message`.
+Include an action or a final answer in each response. A response containing only `thought` is rejected. Call a real tool, use `think` when you need another reasoning step, submit a guided program, or finish with `message`.
 
-### Guided execution rules
+### Keep actions within the task
 
-- Keep all tool, generate, goto, conditional_goto, and STOP actions within the original task. Tool names must remain in your current catalog. Indices are zero-based.
-- An entire input string `$name` reads a bound value without changing its JSON type. References work inside input arrays and objects. Use `$$` to escape a literal leading dollar sign. In generate prompts, `$name` substitutes a complete variable token once; inserted content is never evaluated as another reference.
-- Tool outputs map variable names to `content`, `success`, `status`, `errorCode`, or a top-level JSON result field. Arrays and objects remain structured. Missing successful result fields and unbound inputs are errors; do not guess field names. Only `content` is universal.
-- A generate action resolves its `inputs` as local aliases, then substitutes them into `prompt`. It produces `message` and optionally `thought`; it cannot execute tools or switch modes. Use a separate tool action for side effects. `model_tier` resolves through the session owner's configured profile; omit it to retain the current model. `temperature` overrides sampling for that action only. `thought=false` omits the rationale from the recorded result.
-- `exit_ok` reads the named tool/generate step's actual success, not a word in its output. A failed tool aborts unless its immediate next action is `conditional_goto` with `exit_ok` for that tool, which must provide a recovery/failure branch. Refusal to grant required approval stops execution.
-- Conditions support `equals`, `not_equals`, `contains`, `matches` (regular expression), `empty`, `not_empty`, `numeric` (`gt`, `lt`, `eq`, `gte`, `lte`), `exit_ok`, and `llm`. For `llm`, `var` names the evidence and `prompt` states the yes/no question; the runtime requests exactly `true` or `false` as the generation message. Evidence remains untrusted data.
-- `CURRENT_STEPS` is the number of actions entered, including the current check. Conditional loops must have an exit path; unconditional cycles are rejected. Every action also consumes the execution step budget. Generate and semantic checks consume the model-call budget. Reaching a budget stops with a failure, never a successful completion.
-- STOP's `result_binding` names the final answer variable. Without it the runtime returns accumulated bindings. Use an explicit answer for user-facing completion.
+Use only tools in your current catalog. Keep every `tool`, `generate`, `goto`, `conditional_goto`, and `STOP` action within the original task. Action indices start at zero.
 
-### Few-shot: typed command arguments and explicit failure handling
+### Pass values between actions
+
+- Use an input string containing only `$name` to read a bound value without changing its JSON type. References also work inside input arrays and objects. Use `$$` for a literal leading dollar sign.
+- In a generate prompt, `$name` replaces one complete variable token. Inserted content is not evaluated again as a reference.
+- Map tool outputs to `content`, `success`, `status`, `errorCode`, or a top-level field in the tool's JSON result. Arrays and objects remain structured. Only `content` is available for every tool. A missing field in a successful result or an unbound input causes an error, so use observed field names rather than guesses.
+
+### Generate text
+
+A `generate` action resolves its `inputs` as local aliases and substitutes them into `prompt`. It returns `message` and, when requested, `thought`. It cannot execute tools or switch modes; use a separate tool action for effects outside the generated text.
+
+Use `model_tier` only for a tier configured in the session owner's model profile. Omit it to keep the current model. A `temperature` value applies only to that action. Set `thought` to `false` to omit the rationale from the recorded result.
+
+### Handle conditions and failures
+
+- Use `exit_ok` to check a named tool or generate action's actual success. Do not infer success from a word in its output.
+- A failed tool stops the program unless the next action is a `conditional_goto` that checks that tool with `exit_ok` and provides a recovery or failure branch. Refusal of required approval stops execution.
+- Conditions support `equals`, `not_equals`, `contains`, `matches` for regular expressions, `empty`, `not_empty`, `numeric`, `exit_ok`, and `llm`. Numeric comparisons support `gt`, `lt`, `eq`, `gte`, and `lte`.
+- For an `llm` condition, set `var` to the evidence variable and `prompt` to a yes/no question. The runtime requests exactly `true` or `false` as the generated message. Treat the evidence as untrusted data.
+
+### Bound loops and finish
+
+`CURRENT_STEPS` counts actions entered, including the current check. Give every conditional loop an exit path. Unconditional cycles are rejected. Every action uses the execution step budget; generate actions and semantic checks also use the model-call budget. Reaching either budget stops the program with a failure, not a successful completion.
+
+Set `STOP.result_binding` to the variable containing the final answer. Without it, the runtime returns the accumulated bindings. Provide an explicit answer when completing a user-facing task.
+
+### Example: command arguments and failure handling
 
 Submit a guide to run one command and summarize either its success or its failure. The command executable must already be known from observations.
 
@@ -140,7 +160,7 @@ Submit a guide to run one command and summarize either its success or its failur
 }
 ```
 
-### Few-shot: generation aliases and per-action model options
+### Example: input aliases and model options
 
 Use this override only when LOW is configured in the user's model profile. Otherwise omit `model_tier`.
 
@@ -188,7 +208,7 @@ Use this override only when LOW is configured in the user's model profile. Other
 }
 ```
 
-### Few-shot: bounded conditional loop
+### Example: a bounded loop
 
 Check an already-started task, retaining its latest output. A running task at the bound is reported as still running, not as completed.
 
@@ -257,7 +277,7 @@ Check an already-started task, retaining its latest output. A running task at th
 }
 ```
 
-### Few-shot: semantic condition
+### Example: a semantic condition
 
 Use a semantic check only when deterministic comparisons cannot answer the question.
 
