@@ -48,6 +48,25 @@ public class TurnLogService {
         return enabled;
     }
 
+    /** Enrich an existing record after provider usage arrives; never creates a history event. */
+    public void updateMetadata(
+            @NonNull TurnRecord turn,
+            @NonNull UUID sessionId,
+            @NonNull UUID userId,
+            @NonNull String agentId) {
+        if (!enabled || turnRecordRepository == null) return;
+        try {
+            turnRecordRepository.updateRecordMetadata(
+                    sessionId.toString(),
+                    userId.toString(),
+                    agentId,
+                    turn.turnNumber(),
+                    mapper.writeValueAsString(turn.payload()));
+        } catch (Exception e) {
+            log.warn("Could not persist record usage for turn {}", turn.turnNumber(), e);
+        }
+    }
+
     /**
      * Persist one turn to the raw-turn log. No-op for non-loggable turn types and when disabled.
      * Best-effort — a DB failure never breaks the loop.

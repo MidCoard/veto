@@ -127,20 +127,22 @@ public class SessionController {
         String owner = vault.currentUser();
         if (owner == null) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
         String agentId = service.primaryAgentIdFor(name, owner).orElse(null);
-        List<Map<String, Object>> turns = new ArrayList<>();
+        List<Map<String, @org.jspecify.annotations.Nullable Object>> turns = new ArrayList<>();
         // The conversation ledger has no agent IDs; keep child streams in /records only.
         if (agentId == null) return ResponseEntity.ok(turns);
-        for (TurnRecord turn : historyLoader.load(cfg.sessionId(), agentId)) {
-            turns.add(
-                    Map.of(
-                            "turnNumber",
-                            turn.turnNumber(),
-                            "type",
-                            turn.type().name(),
-                            "payload",
-                            turn.payload(),
-                            "timestamp",
-                            turn.timestamp().toString()));
+        for (TurnRecord turn :
+                top.focess.veto.agent.RecordUsage.contentRecords(
+                        historyLoader.load(cfg.sessionId(), agentId))) {
+            Map<String, @org.jspecify.annotations.Nullable Object> item =
+                    new java.util.LinkedHashMap<>();
+            item.put("turnNumber", turn.turnNumber());
+            item.put("type", turn.type().name());
+            item.put("payload", turn.payload());
+            item.put("timestamp", turn.timestamp().toString());
+            item.put("tokenCount", top.focess.veto.agent.RecordTokenCounter.count(turn.payload()));
+            item.put("usedTokens", top.focess.veto.agent.RecordTokenCounter.count(turn.payload()));
+            item.put("tokenCountSource", turn.payload().get("tokenCountSource"));
+            turns.add(item);
         }
         return ResponseEntity.ok(turns);
     }

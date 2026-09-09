@@ -73,6 +73,7 @@ public class DefaultModelTierService implements ModelTierRegistry, ModelTierProf
                 configuredMaxOutputTokens == null
                         ? DEFAULT_MAX_OUTPUT_TOKENS
                         : configuredMaxOutputTokens;
+        Integer configuredContext = binding.getContextWindowTokens();
         return new ModelBinding(
                 provider,
                 model,
@@ -80,9 +81,7 @@ public class DefaultModelTierService implements ModelTierRegistry, ModelTierProf
                 temperature,
                 maxOutputTokens,
                 binding.getBaseUrl(),
-                binding.getContextWindowTokens() == null
-                        ? 128000
-                        : binding.getContextWindowTokens());
+                configuredContext == null ? 128000 : configuredContext);
     }
 
     @Override
@@ -159,14 +158,10 @@ public class DefaultModelTierService implements ModelTierRegistry, ModelTierProf
                         e);
             }
         }
-        int context =
-                binding.getContextWindowTokens() == null
-                        ? 128000
-                        : binding.getContextWindowTokens();
-        int output =
-                binding.getMaxOutputTokens() == null
-                        ? DEFAULT_MAX_OUTPUT_TOKENS
-                        : binding.getMaxOutputTokens();
+        Integer window = binding.getContextWindowTokens();
+        Integer maximumOutput = binding.getMaxOutputTokens();
+        int context = window == null ? 128000 : window;
+        int output = maximumOutput == null ? DEFAULT_MAX_OUTPUT_TOKENS : maximumOutput;
         if (output <= 0 || output >= context)
             throw new IllegalArgumentException(
                     "Output tokens must be positive and smaller than the context window");

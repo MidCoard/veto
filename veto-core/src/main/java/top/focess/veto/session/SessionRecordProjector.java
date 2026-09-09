@@ -30,7 +30,26 @@ final class SessionRecordProjector {
             SessionRecord record = raw.get(i).withRewoundRecords(entry.removedCount());
             result.add(entry.active() ? record : record.inactiveAfter(entry.removedBy()));
         }
-        return List.copyOf(result);
+        List<TurnRecord> normalized = top.focess.veto.agent.RecordUsage.contentRecords(turns);
+        List<SessionRecord> content = new ArrayList<>();
+        for (TurnRecord turn : normalized) {
+            for (SessionRecord record : result) {
+                if (record.turnNumber() == turn.turnNumber()) {
+                    content.add(
+                            new SessionRecord(
+                                    record.agentId(),
+                                    record.turnNumber(),
+                                    record.type(),
+                                    turn.payload(),
+                                    record.timestamp(),
+                                    record.active(),
+                                    record.rewoundByTurnNumber(),
+                                    record.rewoundRecords()));
+                    break;
+                }
+            }
+        }
+        return List.copyOf(content);
     }
 
     // Generated enum valueOf returns a constant or throws; it never returns null.

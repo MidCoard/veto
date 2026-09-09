@@ -674,7 +674,7 @@ public class AgentRunner {
         }
         StringBuilder sb = new StringBuilder();
         for (TurnRecord turn : HistoryProjection.effective(workTurns)) {
-            if (turn.type() == TurnType.AGENT_INIT) {
+            if (turn.type() == TurnType.AGENT_INIT || turn.type() == TurnType.TOKEN_USAGE) {
                 continue;
             }
             sb.append("Turn ")
@@ -777,7 +777,7 @@ public class AgentRunner {
                 Map<String, Object> data = new ContextUsageTracker().measure(request, measured);
                 data.put("affectsContext", false);
                 data.put("purpose", "compaction");
-                appendTurn(new TurnRecord(++turnNumber, TurnType.TOKEN_USAGE, data, null));
+                recordUsage(turnNumber, data);
             }
         }
         String message = response.message();
@@ -1055,10 +1055,15 @@ public class AgentRunner {
                     for (LlmSystemUsage.Usage measured : measurements) {
                         Map<String, Object> measurement = contextUsage.measure(request, measured);
                         measurement.put("throughTurn", requestThroughTurn);
-                        appendTurn(new TurnRecord(++turnNumber, TurnType.TOKEN_USAGE, measurement, null));
+                        recordUsage(requestThroughTurn, measurement);
                     }
-                    if (!measurements.isEmpty() && estimatedTokens > 0 && measurements.getLast().promptTokens() > 0) {
-                        double rawRatio = measurements.getLast().promptTokens() * estimateFactor / estimatedTokens;
+                    if (!measurements.isEmpty()
+                            && estimatedTokens > 0
+                            && measurements.getLast().promptTokens() > 0) {
+                        double rawRatio =
+                                measurements.getLast().promptTokens()
+                                        * estimateFactor
+                                        / estimatedTokens;
                         this.correctionFactor = 0.9 * correctionFactor + 0.1 * rawRatio;
                     }
                 }
@@ -1932,6 +1937,30 @@ public class AgentRunner {
         appendTurn(turn);
     }
 
+    private void recordUsage(int throughTurn, @NonNull Map<String, Object> measurement) {
+        TurnRecord updated = null;
+        synchronized (this) {
+            for (int i = history.size() - 1; i >= 0; i--) {
+                TurnRecord candidate = history.get(i);
+                if (candidate.turnNumber() <= throughTurn
+                        && candidate.type() != TurnType.TOKEN_USAGE) {
+                    updated = RecordUsage.add(candidate, measurement);
+                    history.set(i, updated);
+                    break;
+                }
+            }
+        }
+        if (updated == null) return;
+        if (turnLogService != null)
+            turnLogService.updateMetadata(updated, sessionId, userId, agentId);
+        publishFrame(
+                DeltaFrame.builder()
+                        .sessionId(sessionId)
+                        .kind(DeltaFrame.Kind.RECORD_UPDATED)
+                        .attr("turnNumber", updated.turnNumber())
+                        .build());
+    }
+
     private void appendTurn(@NonNull TurnRecord turn) {
         if (turn.type() == TurnType.REWIND || turn.type() == TurnType.AGENT_INIT)
             contextUsage.reset();
@@ -1940,6 +1969,7 @@ public class AgentRunner {
             metadata.put("contextMaxTokens", binding.options().contextWindowOrDefault());
             turn = new TurnRecord(turn.turnNumber(), turn.type(), metadata, turn.timestamp());
         }
+        turn = RecordTokenCounter.annotate(turn, objectMapper, correctionFactor);
         TurnRecord numbered;
         synchronized (this) {
             // turn_number is the durable unique key (uk_turn_records_agent_turn on
@@ -1975,13 +2005,6 @@ public class AgentRunner {
         // representation carries call/result fields are routed; other types (USER_PROMPT,
         // ASSISTANT_THOUGHT, ASSISTANT_RESPONSE) are already handled by the message/thought seams.
         switch (numbered.type()) {
-            case TOKEN_USAGE ->
-                    publishFrame(
-                            DeltaFrame.builder()
-                                    .sessionId(sessionId)
-                                    .kind(DeltaFrame.Kind.TOKEN_USAGE)
-                                    .attr("turnNumber", numbered.turnNumber())
-                                    .build());
             case TOOL_CALL -> {
                 Object name = numbered.payload().get("tool_name");
                 Object args = numbered.payload().get("args");

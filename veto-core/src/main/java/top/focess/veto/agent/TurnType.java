@@ -7,7 +7,7 @@ package top.focess.veto.agent;
 public enum TurnType {
     /** A user prompt — the start of a fresh reasoning episode. */
     USER_PROMPT,
-    /** Provider-measured usage; never sent back to the model. */
+    /** Legacy read compatibility only. New usage is metadata on an existing record. */
     TOKEN_USAGE,
     /** A user interrupt/feedback mid-episode. */
     USER_INTERRUPT,

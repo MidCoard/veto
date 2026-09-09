@@ -12,6 +12,16 @@ import org.springframework.stereotype.Repository;
  */
 @Repository
 public interface TurnRecordRepository extends JpaRepository<TurnRecordEntity, String> {
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.transaction.annotation.Transactional
+    @Query(
+            "update TurnRecordEntity t set t.payload = :payload where t.sessionId = :sessionId and t.userId = :userId and t.agentId = :agentId and t.turnNumber = :turn")
+    int updateRecordMetadata(
+            @Param("sessionId") String sessionId,
+            @Param("userId") String userId,
+            @Param("agentId") String agentId,
+            @Param("turn") int turn,
+            @Param("payload") String payload);
 
     @Query(
             "select distinct t.agentId from TurnRecordEntity t where t.sessionId = :sessionId and t.agentId is not null")

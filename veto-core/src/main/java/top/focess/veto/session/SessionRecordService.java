@@ -69,7 +69,7 @@ public class SessionRecordService {
         return new SessionRecordsView(
                 sessionId,
                 sessionName,
-                rows.size(),
+                records.size(),
                 visible,
                 rewound,
                 toolResultPresentation,

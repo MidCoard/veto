@@ -55,6 +55,8 @@ class ContextUsageTrackerTest {
         LlmSystemUsage.begin();
         LlmSystemUsage.set(100, 10);
         LlmSystemUsage.set(100, 20);
+        assertEquals(2, LlmSystemUsage.snapshot().size());
+        assertEquals(2, LlmSystemUsage.snapshot().size());
         assertEquals(
                 List.of(new LlmSystemUsage.Usage(100, 10), new LlmSystemUsage.Usage(100, 20)),
                 LlmSystemUsage.drain());

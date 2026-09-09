@@ -1,10 +1,13 @@
 package top.focess.veto.session;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.agent.RecordTokenCounter;
 
 /** One append-only event annotated with its effective-history state for the records UI. */
 public record SessionRecord(
@@ -19,6 +22,25 @@ public record SessionRecord(
 
     public SessionRecord {
         payload = Collections.unmodifiableMap(new LinkedHashMap<>(payload));
+    }
+
+    @JsonProperty("tokenCount")
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public Long tokenCount() {
+        return RecordTokenCounter.count(payload);
+    }
+
+    @JsonProperty("usedTokens")
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public Long usedTokens() {
+        return RecordTokenCounter.count(payload);
+    }
+
+    @JsonProperty("tokenCountSource")
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public String tokenCountSource() {
+        Object value = payload.get("tokenCountSource");
+        return value instanceof String text ? text : null;
     }
 
     public @NonNull SessionRecord withRewoundRecords(int count) {

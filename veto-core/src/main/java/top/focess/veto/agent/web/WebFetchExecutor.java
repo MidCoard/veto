@@ -197,8 +197,8 @@ public final class WebFetchExecutor {
                                         options.temperature(),
                                         options.topP(),
                                         options.maxTokens(),
-                                        Duration.ofNanos(
-                                                Math.max(1, deadline - System.nanoTime())));
+                                        Duration.ofNanos(Math.max(1, deadline - System.nanoTime())),
+                                        options.contextWindowTokens());
                         var bounded =
                                 new VetoRequest(
                                         request.systemPrompt(),
@@ -214,8 +214,7 @@ public final class WebFetchExecutor {
                         try {
                             return caller.call(bounded);
                         } finally {
-                            var usage = LlmSystemUsage.getAndClear();
-                            if (usage != null) {
+                            for (var usage : LlmSystemUsage.snapshot()) {
                                 input.addAndGet(usage.promptTokens());
                                 output.addAndGet(usage.completionTokens());
                             }

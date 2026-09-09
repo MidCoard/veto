@@ -13,7 +13,11 @@ public final class LlmSystemUsage {
             new ConcurrentHashMap<>();
 
     private static final @NonNull Set<Thread> CAPTURING = ConcurrentHashMap.newKeySet();
-    public static void begin() { drain(); CAPTURING.add(Thread.currentThread()); }
+
+    public static void begin() {
+        drain();
+        CAPTURING.add(Thread.currentThread());
+    }
 
     public record Usage(long promptTokens, long completionTokens) {}
 
@@ -21,15 +25,26 @@ public final class LlmSystemUsage {
 
     public static void set(long prompt, long completion) {
         if (prompt < 0 || completion < 0) return;
-        if (!CAPTURING.contains(Thread.currentThread())) CURRENT_USAGE.remove(Thread.currentThread());
-        CURRENT_USAGE
-                .computeIfAbsent(Thread.currentThread(), ignored -> new ArrayList<>())
-                .add(new Usage(prompt, completion));
+        if (!CAPTURING.contains(Thread.currentThread()))
+            CURRENT_USAGE.remove(Thread.currentThread());
+        Thread thread = Thread.currentThread();
+        List<Usage> values = CURRENT_USAGE.get(thread);
+        if (values == null) {
+            values = new ArrayList<Usage>();
+            CURRENT_USAGE.put(thread, values);
+        }
+        values.add(new Usage(prompt, completion));
     }
 
     public static @NonNull List<Usage> drain() {
         CAPTURING.remove(Thread.currentThread());
         List<Usage> values = CURRENT_USAGE.remove(Thread.currentThread());
+        return values == null ? List.of() : List.copyOf(values);
+    }
+
+    /** Observe this request without consuming the runner's durable accounting data. */
+    public static @NonNull List<Usage> snapshot() {
+        List<Usage> values = CURRENT_USAGE.get(Thread.currentThread());
         return values == null ? List.of() : List.copyOf(values);
     }
 
