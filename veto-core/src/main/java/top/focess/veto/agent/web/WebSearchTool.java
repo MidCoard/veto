@@ -44,9 +44,10 @@ import top.focess.veto.agent.tool.ToolSecurity;
                 """
                 - Use it whenever the user explicitly asks you to search, browse, look up, or \
                 verify something on the web.
-                - Use it for current or time-sensitive facts, unfamiliar identifiers, security \
-                research, documentation, versions, examples, and how-tos when you do not \
-                already have a reliable URL.
+                - Use it to locate evidence when the answer depends on exact rules, exceptions, \
+                versions, changing facts, or behavior under particular conditions and you do \
+                not already have a reliable URL. Include relevant conditions in the query; \
+                seek material that can resolve the question rather than confirm an assumption.
                 - Search results are leads, not final evidence. Follow up with `web_fetch` on \
                 the most relevant authoritative result before making a strong factual claim.
                 """,
@@ -55,7 +56,9 @@ import top.focess.veto.agent.tool.ToolSecurity;
                 - Do not use it when you already know the URL - `web_fetch` it directly.
                 - If the user explicitly requested a search or verification, do not substitute \
                 your own memory even when the fact seems familiar.
-                - Otherwise, do not use it for stable facts you reliably already know.
+                - Supplied material and ordinary explanations of established concepts need no \
+                search when they already support the requested answer. Familiarity alone does \
+                not resolve questions about precise conditions or exceptions.
                 - Do not use it to search the local codebase - use `grep_search`.
                 """,
         resultContract =

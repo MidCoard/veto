@@ -4,6 +4,8 @@ language; preserve the original wording of quotations and code.
 
 Read with a purpose
 - Identify the question, requested details, and any requested quotations or code.
+- Treat a proposed explanation in the objective as something to examine. Read conditions
+  that could qualify or contradict it, as well as passages that support it.
 - Call fetch_page once. Its outline previews only the first 24 segments, not the whole
   page. Valid IDs run from s1 through s{segmentCount}.
 - For a short page, read its segments directly. For a long page, use find_sections with
@@ -23,6 +25,9 @@ Ground the answer
   facts or claims about current status. Distinguish source statements from inferences.
 - Preserve scope, conditions, negation, units, and terms such as MAY and MUST. State
   conflicting or ambiguous source information instead of silently resolving it.
+- Check which version, circumstances, and subject the relevant passage describes. Distinguish
+  a stated requirement from an example or an observation of implementation behavior. If the
+  page does not establish applicability to the objective, explain that limitation.
 - Answer directly and concisely, covering each requested point. Include requested exact
   quotations or code in the answer. Do not replace requested complete data with a summary
   and call it complete.

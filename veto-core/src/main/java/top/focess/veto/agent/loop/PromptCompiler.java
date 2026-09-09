@@ -81,6 +81,13 @@ public class PromptCompiler {
     private final @NonNull DeployerPolicy deployerPolicy;
     private final String isolatedInstructions;
 
+    private @NonNull Map<String, Integer> modelInputTokens = Map.of();
+
+    @Autowired
+    void configureContextBudgets(@NonNull ContextBudgetConfiguration configuration) {
+        modelInputTokens = configuration.getModelInputTokens();
+    }
+
     public PromptCompiler(
             @NonNull CapabilityTranslator translator,
             @NonNull SystemPromptResolver systemPromptResolver,
@@ -125,7 +132,17 @@ public class PromptCompiler {
         this.isolatedInstructions =
                 PromptTemplate.render(
                         SystemPromptResolver.loadRules("veto/default-tool-agent-system-prompt.md"),
-                        Map.of("TASK_INSTRUCTIONS", instructions));
+                        Map.of(
+                                "OPERATING_CONTRACT",
+                                        SystemPromptResolver.loadRules(
+                                                "veto/tool-agent-operating-contract.md"),
+                                "TASK_INSTRUCTIONS", "## Task Instructions\n\n" + instructions,
+                                "TOOL_CALLS",
+                                        SystemPromptResolver.loadRules(
+                                                "veto/tool-agent-tool-calls.md"),
+                                "RESPONSE_PROTOCOL",
+                                        SystemPromptResolver.loadRules(
+                                                "veto/tool-agent-response-protocol.md")));
         this.maxInputTokens = maxInputTokens;
         this.contextFillRatio = 1;
     }
@@ -144,7 +161,20 @@ public class PromptCompiler {
 
     /** Reapplies isolated budgeting after transient schema-repair observations are appended. */
     public @NonNull VetoRequest fitRequest(@NonNull VetoRequest request) {
-        if (isolatedInstructions == null) return request;
+        return fitRequest(request, 1.0);
+    }
+
+    public @NonNull VetoRequest fitRequest(@NonNull VetoRequest request, double correctionFactor) {
+        if (isolatedInstructions == null) {
+            requireBudget(
+                    request.systemPrompt(),
+                    request.messages(),
+                    request.tools(),
+                    request.responseSchema(),
+                    correctionFactor,
+                    inputBudget(request.providerType().name(), request.modelName()));
+            return request;
+        }
         List<ChatMessage> conversation = request.messages();
         List<ChatMessage> messages =
                 new ArrayList<>(
@@ -222,19 +252,27 @@ public class PromptCompiler {
                     Math.max(0, conversation.size() - messages.size()),
                     isolatedSize(messages, flatTools, schema));
         }
-        List<ChatMessage> budgeted = fitBudget(systemMessage, conversation, correctionFactor);
-        List<ChatMessage> messages = wellFormed(conversation, budgeted);
+        List<ChatMessage> messages = wellFormed(conversation, conversation);
 
         var responseSchema = translator.vetoResponseSchema(guidedEnabled, flatTools);
 
-        int trimmed = conversation.size() - budgeted.size();
-        long estimate = Math.round(ceilChars(systemMessage.length()) * correctionFactor);
-        for (ChatMessage msg : messages) {
-            if (!"system".equals(msg.role()))
-                estimate += Math.round(ceilChars(msg.content().length()) * correctionFactor);
+        String provider = "";
+        String model = "";
+        for (TurnRecord turn : HistoryProjection.effective(history != null ? history : List.of())) {
+            if (turn.type() == TurnType.AGENT_INIT) {
+                provider = str(turn.payload(), "provider");
+                model = str(turn.payload(), "model");
+            }
         }
-        return new CompiledPrompt(
-                systemMessage, messages, flatTools, responseSchema, trimmed, estimate);
+        long estimate =
+                requireBudget(
+                        systemMessage,
+                        messages,
+                        flatTools,
+                        responseSchema,
+                        correctionFactor,
+                        inputBudget(provider, model));
+        return new CompiledPrompt(systemMessage, messages, flatTools, responseSchema, 0, estimate);
     }
 
     /** Builds the system prompt stored in a newly created AGENT_INIT record. */
@@ -541,69 +579,58 @@ public class PromptCompiler {
 
     // ── Token budget ──────────────────────────────────────────────────
 
-    /**
-     * Walks newest->oldest, keeping turns until the budget is exceeded (system never trimmed).
-     *
-     * <p><b>Pair-safe:</b> a {@code tool} role message is never kept without its preceding {@code
-     * assistant} message (the tool-call that produced it). When the truncator encounters a tool
-     * message, it includes the preceding assistant message as part of the same unit - both are kept
-     * or both are dropped. This prevents a malformed conversation where a tool result appears with
-     * no associated tool call, which most provider APIs reject.
-     */
-    private @NonNull List<ChatMessage> fitBudget(
-            @NonNull String systemMessage,
-            @NonNull List<ChatMessage> conversation,
-            double correctionFactor) {
-        long budget = (long) (maxInputTokens * contextFillRatio);
-        long estimate = Math.round(ceilChars(systemMessage.length()) * correctionFactor);
-        List<ChatMessage> kept = new ArrayList<>();
-        int i = conversation.size() - 1;
-        boolean exhausted = false;
-        while (i >= 0) {
-            ChatMessage msg = conversation.get(i);
-            if ("system".equals(msg.role())) {
-                kept.add(0, msg);
-                i--;
-                continue;
-            }
-            if (exhausted) {
-                i--;
-                continue;
-            }
-            // Pair-safety: a tool message must not be kept without its preceding assistant
-            // tool_call message. Treat the (assistant, tool) pair as a single budget unit.
-            if ("tool".equals(msg.role())
-                    && i > 0
-                    && "assistant".equals(conversation.get(i - 1).role())) {
-                ChatMessage paired = conversation.get(i - 1);
-                long pairEstimate =
-                        Math.round(
-                                (ceilChars(contentLen(msg)) + ceilChars(contentLen(paired)))
-                                        * correctionFactor);
-                if (estimate + pairEstimate > budget && !kept.isEmpty()) {
-                    exhausted = true;
-                    i -= 2;
-                    continue;
-                }
-                kept.add(0, msg); // tool first (so it ends up after assistant)
-                kept.add(0, paired); // assistant before tool
-                estimate += pairEstimate;
-                i -= 2; // consumed both messages
-                continue;
-            }
-            // Non-tool message, or a tool message with no preceding assistant (synthetic
-            // observation from llm_error / guided_program_rejected - safe to keep alone).
-            long turnEstimate = Math.round(ceilChars(contentLen(msg)) * correctionFactor);
-            if (estimate + turnEstimate > budget && !kept.isEmpty()) {
-                exhausted = true;
-                i--;
-                continue;
-            }
-            kept.add(0, msg);
-            estimate += turnEstimate;
-            i--;
+    private long inputBudget(@NonNull String provider, @NonNull String model) {
+        Integer configured = modelInputTokens.get(provider + "/" + model);
+        int limit = configured != null ? configured : maxInputTokens;
+        if (limit <= 0 || contextFillRatio <= 0 || contextFillRatio > 1) {
+            throw new IllegalStateException("Invalid context input budget configuration");
         }
-        return kept;
+        return (long) (limit * contextFillRatio);
+    }
+
+    /** Preserve complete context or stop explicitly; never silently remove earlier conversation. */
+    private long requireBudget(
+            @NonNull String system,
+            @NonNull List<ChatMessage> messages,
+            @NonNull List<ToolDefinition> tools,
+            JsonNode schema,
+            double factor,
+            long budget) {
+        if (!Double.isFinite(factor) || factor <= 0) {
+            throw new IllegalArgumentException("Invalid context token correction factor");
+        }
+        long bytes;
+        try {
+            // Count the system once; include tool arguments, reasoning, catalog, schema and
+            // framing.
+            bytes =
+                    objectMapper.writeValueAsBytes(
+                                    Map.of(
+                                            "system",
+                                            system,
+                                            "messages",
+                                            messages.stream()
+                                                    .filter(m -> !"system".equals(m.role()))
+                                                    .toList(),
+                                            "tools",
+                                            tools,
+                                            "schema",
+                                            schema != null ? schema : objectMapper.nullNode()))
+                            .length;
+        } catch (Exception error) {
+            throw new IllegalStateException("Could not measure model input", error);
+        }
+        long estimate = (long) Math.ceil((bytes / 3.0 + 256) * factor);
+        if (estimate > budget) {
+            throw new IllegalStateException(
+                    "Context input budget exceeded: estimated "
+                            + estimate
+                            + " tokens, budget "
+                            + budget
+                            + ". No conversation history was removed. Compact the session or "
+                            + "configure a larger input budget supported by this model.");
+        }
+        return estimate;
     }
 
     /**
@@ -691,13 +718,5 @@ public class PromptCompiler {
             }
         }
         return null;
-    }
-
-    private static int contentLen(@NonNull ChatMessage msg) {
-        return msg.content().length();
-    }
-
-    private static long ceilChars(int chars) {
-        return (long) Math.ceil(chars / 3.0);
     }
 }

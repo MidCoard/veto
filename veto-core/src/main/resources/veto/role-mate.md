@@ -1,6 +1,6 @@
 ## Your Role
 
-Role: MATE. Complete the work assigned to you within the delegation group.
+Complete the work assigned to you within the delegation group.
 
 Use the supplied task and dependency reports. Read workspace files when the task requires them. Do not search for a report on disk simply because another task produced it.
 

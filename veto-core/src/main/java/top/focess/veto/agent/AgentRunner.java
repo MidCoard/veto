@@ -1024,7 +1024,14 @@ public class AgentRunner {
                     throw new BreakerTripException();
                 }
                 breaker.recordModelCall();
-                request = promptCompiler.fitRequest(request);
+                request = promptCompiler.fitRequest(request, correctionFactor);
+                log.debug(
+                        "Agent {} input: model={}, messages={}, estimatedTokens={}, correctionFactor={}",
+                        agentId,
+                        request.modelName(),
+                        request.messages().size(),
+                        estimatedTokens,
+                        correctionFactor);
                 response = caller.call(request);
                 // Capture the provider's reasoning content (DeepSeek thinking mode) so it can be
                 // stored in the ASSISTANT_THOUGHT turn and echoed back on the next request's
@@ -1033,7 +1040,7 @@ public class AgentRunner {
                 LlmSystemUsage.Usage usage = LlmSystemUsage.getAndClear();
                 if (usage != null && estimatedTokens > 0) {
                     double ratio = (double) usage.promptTokens() / estimatedTokens;
-                    this.correctionFactor = this.correctionFactor * 0.9 + ratio * 0.1;
+                    this.correctionFactor = this.correctionFactor * (0.9 + ratio * 0.1);
                 }
                 VetoResponse checked =
                         ResponseEnforcer.enforce(response, allowGuided, whitelistedTools);

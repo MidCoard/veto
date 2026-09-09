@@ -89,7 +89,7 @@ class PromptCompileRenderTest {
         System.out.println("===== LEADER / PROTECTED =====\n" + prompt);
         assertCompiled(
                 prompt,
-                "Role: LEADER.",
+                "Coordinate the group, review its results, and answer the user.",
                 "Results arrive automatically as Monitor observations.",
                 "Do not perform the work directly or call `create_group`.");
         assertFalse(
@@ -112,7 +112,7 @@ class PromptCompileRenderTest {
         System.out.println("===== MATE / SANDBOXED (custom base) =====\n" + prompt);
         assertCompiled(
                 prompt,
-                "Role: MATE.",
+                "Complete the work assigned to you within the delegation group.",
                 "The runtime records your final message and delivers it to the Leader",
                 "Do not delegate further",
                 "You may recall existing session memories and insights from other sessions",
@@ -151,7 +151,8 @@ class PromptCompileRenderTest {
                             DeployerPolicy.SANDBOXED,
                             DeployerPolicy.TENANT)) {
                 String prompt = render(role, policy, null, List.of());
-                assertCompiled(prompt, "Role: " + role + ".", "## Boundaries");
+                assertCompiled(prompt, "## Your Role", "## Boundaries");
+                assertFalse(prompt.contains("Role: " + role + "."), prompt);
                 assertFalse(prompt.contains(policy.name()), prompt);
                 for (String internalName :
                         List.of(

@@ -1,6 +1,6 @@
 ## Your Role
 
-Role: LEADER. Coordinate the group, review its results, and answer the user.
+Coordinate the group, review its results, and answer the user.
 
 ### Assign work
 
