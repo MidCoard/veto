@@ -25,11 +25,32 @@ public class VetoAgent implements Agent {
 
     private final @NonNull String id;
     private final @NonNull AgentRunner runner;
+    private final boolean userInteractionEnabled;
 
     public VetoAgent(@NonNull AgentPersona persona, @NonNull AgentRunner runner) {
+        this(persona, runner, true);
+    }
+
+    public VetoAgent(
+            @NonNull AgentPersona persona,
+            @NonNull AgentRunner runner,
+            boolean userInteractionEnabled) {
         this.id = persona.id();
         this.runner = runner;
+        this.userInteractionEnabled = userInteractionEnabled;
         Thread.ofVirtual().name("agent-" + id).start(runner::run);
+    }
+
+    public boolean userInteractionEnabled() {
+        return userInteractionEnabled;
+    }
+
+    /** User commands are queued independently of a workflow's submit/await handoff. */
+    public void submitUserPrompt(@NonNull String prompt) {
+        if (!userInteractionEnabled) throw new IllegalStateException("Agent is read-only");
+        if (state() == AgentState.TERMINATED)
+            throw new IllegalStateException("Agent has terminated");
+        runner.enqueue(new AgentAction.DirectUserPromptAction(prompt));
     }
 
     public void attachMonitor(@NonNull MonitorService service) {

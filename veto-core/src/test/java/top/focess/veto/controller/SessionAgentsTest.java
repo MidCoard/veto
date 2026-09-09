@@ -71,13 +71,15 @@ class SessionAgentsTest {
                                         null,
                                         null,
                                         null,
-                                        null)));
+                                        null,
+                                        false)));
         mvc.perform(get("/api/sessions/session/agents"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].parentAgentId").value("mate"))
                 .andExpect(jsonPath("$[0].parentCallId").value("read-call"))
                 .andExpect(jsonPath("$[0].role").value("STANDALONE"))
                 .andExpect(jsonPath("$[0].state").value("TERMINATED"))
+                .andExpect(jsonPath("$[0].userInteractionEnabled").value(false))
                 .andExpect(jsonPath("$[0].history").doesNotExist());
         when(registry.records(sessionId)).thenReturn(List.of());
         mvc.perform(get("/api/sessions/session/agents")).andExpect(jsonPath("$.length()").value(0));

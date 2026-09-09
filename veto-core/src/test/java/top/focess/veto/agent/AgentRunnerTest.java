@@ -47,6 +47,126 @@ import top.focess.veto.sandbox.TestSandboxFactory;
  */
 class AgentRunnerTest {
 
+    @Test
+    void directPromptWaitsForGroupMonitorCompletion() throws Exception {
+        var calls = new AtomicInteger();
+        var parked = new CountDownLatch(1);
+        var directDone = new CountDownLatch(1);
+        var groupWork = new AtomicBoolean(true);
+        var eventPending = new AtomicBoolean(false);
+        var service =
+                serviceWith(
+                        request -> {
+                            int call = calls.incrementAndGet();
+                            return new VetoResponse(null, null, "result-" + call, null);
+                        });
+        try {
+            service.submit("direct-monitor", "Initial task", binding("System"), EPISODE_TIMEOUT);
+            var agent = requireAgent(service.agent("direct-monitor"));
+            @NonNull MonitorService monitors = Mockito.mock();
+            var event =
+                    new MonitorRecord.Event(
+                            "done", "group", "RESOURCE_EVENT", "Group finished", Instant.now());
+            Mockito.when(monitors.hasGroupWork(agent.id()))
+                    .thenAnswer(
+                            invocation -> {
+                                boolean work = groupWork.get();
+                                if (work) parked.countDown();
+                                return work;
+                            });
+            Mockito.when(monitors.pending(agent.id(), agent.sessionId().toString()))
+                    .thenAnswer(invocation -> eventPending.get() ? List.of(event) : List.of());
+            Mockito.doAnswer(
+                            invocation -> {
+                                eventPending.set(false);
+                                return null;
+                            })
+                    .when(monitors)
+                    .acknowledge(agent.id(), event);
+            agent.attachMonitor(monitors);
+            agent.addMessageListener(
+                    message -> {
+                        if (message.equals("result-4")) directDone.countDown();
+                    });
+            agent.submit("Wait for group");
+            var workflow = agent.result();
+            assertTrue(parked.await(5, TimeUnit.SECONDS));
+            agent.submitUserPrompt("User follow-up");
+            assertSame(workflow, agent.result());
+            groupWork.set(false);
+            eventPending.set(true);
+            agent.signalMonitor();
+            assertEquals("result-3", workflow.get(5, TimeUnit.SECONDS).message());
+            assertTrue(directDone.await(5, TimeUnit.SECONDS));
+        } finally {
+            service.remove("direct-monitor");
+        }
+    }
+
+    @Test
+    void directPromptQueuesWithoutReplacingWorkflowResultOrCallback() throws Exception {
+        var firstEntered = new CountDownLatch(1);
+        var releaseFirst = new CountDownLatch(1);
+        var directEntered = new CountDownLatch(1);
+        var releaseDirect = new CountDownLatch(1);
+        var thirdDone = new CountDownLatch(1);
+        var callbacks = new AtomicInteger();
+        var calls = new AtomicInteger();
+        var service =
+                serviceWith(
+                        request -> {
+                            int call = calls.incrementAndGet();
+                            try {
+                                if (call == 1) {
+                                    firstEntered.countDown();
+                                    assertTrue(releaseFirst.await(5, TimeUnit.SECONDS));
+                                }
+                                if (call == 2) {
+                                    directEntered.countDown();
+                                    assertTrue(releaseDirect.await(5, TimeUnit.SECONDS));
+                                }
+                            } catch (InterruptedException error) {
+                                throw new AssertionError(error);
+                            }
+                            return new VetoResponse(null, null, "result-" + call, null);
+                        });
+        try {
+            service.submitNow("direct-user", "Group task", binding("System"));
+            var agent = requireAgent(service.agent("direct-user"));
+            assertTrue(firstEntered.await(5, TimeUnit.SECONDS));
+            var workflow = agent.result();
+            agent.submitUserPrompt("User follow-up");
+            assertSame(workflow, agent.result());
+            releaseFirst.countDown();
+            assertEquals("result-1", workflow.get(5, TimeUnit.SECONDS).message());
+            assertTrue(directEntered.await(5, TimeUnit.SECONDS));
+            agent.submit(
+                    "Next group task",
+                    result -> {
+                        callbacks.incrementAndGet();
+                        thirdDone.countDown();
+                    });
+            var nextWorkflow = agent.result();
+            releaseDirect.countDown();
+            assertTrue(thirdDone.await(5, TimeUnit.SECONDS));
+            assertEquals("result-3", nextWorkflow.get(5, TimeUnit.SECONDS).message());
+            assertEquals(1, callbacks.get());
+            assertTrue(
+                    agent.history().stream()
+                            .anyMatch(
+                                    turn ->
+                                            turn.type() == TurnType.USER_PROMPT
+                                                    && "User follow-up"
+                                                            .equals(
+                                                                    turn.payload()
+                                                                            .get("content"))));
+        } finally {
+            releaseFirst.countDown();
+            releaseDirect.countDown();
+            service.remove("direct-user");
+        }
+    }
+
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
     void monitorWakeUsesObservationAndSameRunnerWithoutFakeUserPrompt(boolean retryAcknowledgement)

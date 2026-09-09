@@ -65,6 +65,7 @@ class WebReadAgentIntegrationTest {
         SessionAgentRegistry registry = new SessionAgentRegistry();
         UUID sessionId = UUID.randomUUID();
         List<VetoRequest> childRequests = new ArrayList<>();
+        List<VetoAgent> childAgents = new ArrayList<>();
         AtomicInteger childTurn = new AtomicInteger();
         UniformLLMCaller childCaller =
                 request -> {
@@ -85,6 +86,8 @@ class WebReadAgentIntegrationTest {
                                     .findFirst()
                                     .orElseThrow();
                     assertTrue(child.parentCallId() != null);
+                    if (childAgents.isEmpty()) childAgents.add(child.agent());
+                    assertFalse(child.agent().userInteractionEnabled());
                     return switch (childTurn.getAndIncrement()) {
                         case 0 -> call("fetch_page", Map.of());
                         case 1 -> call("read_sections", Map.of("ids", List.of("s1", "s2")));
@@ -226,6 +229,26 @@ class WebReadAgentIntegrationTest {
         assertTrue(result.success(), result.message());
         assertEquals("Timeout is 30 seconds.", result.message());
         assertEquals(3, childRequests.size());
+        var childHistory = childAgents.getFirst().history();
+        assertFalse(
+                childHistory.stream().anyMatch(turn -> turn.type() == TurnType.ASSISTANT_RESPONSE));
+        var finishCall =
+                childHistory.stream()
+                        .filter(
+                                turn ->
+                                        turn.type() == TurnType.TOOL_CALL
+                                                && "finish_read"
+                                                        .equals(turn.payload().get("tool_name")))
+                        .findFirst()
+                        .orElseThrow();
+        assertTrue(
+                childHistory.stream()
+                        .anyMatch(
+                                turn ->
+                                        turn.type() == TurnType.TOOL_RESPONSE
+                                                && java.util.Objects.equals(
+                                                        finishCall.payload().get("call_id"),
+                                                        turn.payload().get("call_id"))));
         String childSystem = childRequests.getFirst().systemPrompt();
         assertTrue(childSystem.contains("## Operating Contract"));
         assertTrue(childSystem.contains("## Task Instructions"));

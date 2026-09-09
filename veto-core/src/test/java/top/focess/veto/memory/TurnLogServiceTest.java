@@ -9,8 +9,10 @@ import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.llm.core.ToolCall;
 
 /**
@@ -19,6 +21,64 @@ import top.focess.veto.llm.core.ToolCall;
  * only, via {@code write_memory}).
  */
 class TurnLogServiceTest {
+
+    @Test
+    void publishesOnlyAfterCommitAndNotOnRollback() {
+        @NonNull TurnRecordRepository repo = mock();
+        @NonNull DeltaBroker broker = mock();
+        var service = new TurnLogService(repo, new ObjectMapper());
+        service.setDeltaBroker(broker);
+        TransactionSynchronizationManager.initSynchronization();
+        TransactionSynchronizationManager.setActualTransactionActive(true);
+        try {
+            service.log(
+                    TurnRecord.userPrompt(1, "hello"),
+                    UUID.randomUUID(),
+                    UUID.randomUUID(),
+                    "agent");
+            verifyNoInteractions(broker);
+            for (var callback : TransactionSynchronizationManager.getSynchronizations())
+                callback.afterCommit();
+            verify(broker).publish(any());
+        } finally {
+            TransactionSynchronizationManager.clear();
+        }
+        reset(broker);
+        TransactionSynchronizationManager.initSynchronization();
+        TransactionSynchronizationManager.setActualTransactionActive(true);
+        try {
+            service.logRequired(
+                    TurnRecord.userPrompt(2, "notice"),
+                    UUID.randomUUID(),
+                    UUID.randomUUID(),
+                    "agent");
+            for (var callback : TransactionSynchronizationManager.getSynchronizations())
+                callback.afterCompletion(1);
+            verifyNoInteractions(broker);
+        } finally {
+            TransactionSynchronizationManager.clear();
+        }
+    }
+
+    @Test
+    void failedWritesAndUnchangedMetadataDoNotNotify() {
+        @NonNull TurnRecordRepository repo = mock();
+        @NonNull DeltaBroker broker = mock();
+        var service = new TurnLogService(repo, new ObjectMapper());
+        service.setDeltaBroker(broker);
+        when(repo.save(any())).thenThrow(new IllegalStateException("offline"));
+        service.log(
+                TurnRecord.userPrompt(1, "hello"), UUID.randomUUID(), UUID.randomUUID(), "agent");
+        service.updateMetadata(
+                TurnRecord.userPrompt(1, "hello"), UUID.randomUUID(), UUID.randomUUID(), "agent");
+        verifyNoInteractions(broker);
+        when(repo.updateRecordMetadata(
+                        anyString(), anyString(), anyString(), anyInt(), anyString()))
+                .thenReturn(1);
+        service.updateMetadata(
+                TurnRecord.userPrompt(1, "hello"), UUID.randomUUID(), UUID.randomUUID(), "agent");
+        verify(broker).publish(any());
+    }
 
     @Test
     void requiredLoggingPropagatesStorageFailure() {

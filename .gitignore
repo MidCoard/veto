@@ -5,7 +5,6 @@
 # - platform/macos
 # - platform/windows
 # - editor/jetbrains
-# - editor/vscode
 # - editor/temporary-files
 # - local/env-secrets
 # - local/logs
@@ -14,7 +13,6 @@
 # - build/gradle
 # - language/python
 # - local/ai-claude
-# - local/assistant-artifacts
 # Edit ignorekit.json or shared definitions, then regenerate.
 
 # macOS files
@@ -40,10 +38,6 @@ $RECYCLE.BIN/
 *.iml
 *.ipr
 *.iws
-
-# VS Code workspace files
-.vscode/
-*.vsix
 
 # Editor temporary files
 *.suo
@@ -124,15 +118,8 @@ __pycache__/
 .claude/
 CLAUDE.local.md
 
-# Local assistant and analysis artifacts
-.superpowers/
-.veto_history
-
 # Project-specific ignores
-target/
-/vault/
 /work/
-/audit/
 /models/
 /release/
 /veto-core/audit/
@@ -150,13 +137,8 @@ veto-core/benchmarks/agentdojo/workspace/
 veto-core/benchmarks/agentdojo/runs/
 /conversion_log.jsonl
 /training_log.jsonl
-/veto.log
 plans/
+/AGENTS.md
 scripts/
-docs/
 ARCHITECTURE.md
-/.gradle-veto/
-/.test-tmp/
-/.tmp/
-.playwright-mcp/
-prompt-dump/
+.veto_history

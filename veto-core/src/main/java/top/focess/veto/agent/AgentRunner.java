@@ -170,6 +170,8 @@ public class AgentRunner {
 
     // --- loop state (mutated only by the runner's virtual thread) ---
     private final @NonNull BlockingQueue<AgentAction> actionQueue = new LinkedBlockingQueue<>();
+    private final @NonNull List<AgentAction.@NonNull DirectUserPromptAction> deferredUserPrompts =
+            new ArrayList<>();
     private volatile @NonNull AgentState state = AgentState.IDLE;
     private final @NonNull List<TurnRecord> history = new ArrayList<>();
     private int turnNumber = 0;
@@ -368,7 +370,8 @@ public class AgentRunner {
                 || !sessionAlive) return;
         var events = service.pending(agentId, sessionId.toString());
         if (events.isEmpty()) return;
-        if (resultFuture.isDone()) {
+        if (!waitingForMonitor) handlingDirectUserPrompt = false;
+        if (resultFuture.isDone() && !handlingDirectUserPrompt) {
             resultFuture = new CompletableFuture<>();
             callback = null;
         }
@@ -457,11 +460,23 @@ public class AgentRunner {
                         }
                         continue;
                     }
-                    if (action instanceof AgentAction.UserPromptAction upa) {
+                    if (action instanceof AgentAction.UserPromptAction
+                            || action instanceof AgentAction.DirectUserPromptAction) {
+                        if (waitingForMonitor
+                                && action instanceof AgentAction.DirectUserPromptAction direct) {
+                            deferredUserPrompts.add(direct);
+                            continue;
+                        }
+                        handlingDirectUserPrompt =
+                                action instanceof AgentAction.DirectUserPromptAction;
+                        String prompt =
+                                action instanceof AgentAction.UserPromptAction upa
+                                        ? upa.prompt()
+                                        : ((AgentAction.DirectUserPromptAction) action).prompt();
                         transitionTo(AgentState.RUNNING);
                         try {
                             waitingForMonitor = false;
-                            processUserPrompt(upa.prompt());
+                            processUserPrompt(prompt);
                             completeOrWaitForMonitor();
                         } catch (BreakerTripException e) {
                             completeBreaker();
@@ -469,6 +484,7 @@ public class AgentRunner {
                             log.error("Agent {} task failed", agentId, e);
                             completeFailure(failureMessage(e));
                         } finally {
+                            if (!waitingForMonitor) handlingDirectUserPrompt = false;
                             // A stray mid-round interrupt (external interference tripping the LLM
                             // HTTP call, a DB socket dying on interrupt) leaves the thread's
                             // interrupt flag SET. If it survives to the next actionQueue.take()
@@ -1439,7 +1455,7 @@ public class AgentRunner {
                     AgentPersona callPersona = persona;
                     ToolResult result = executeOneConfirmedCall(call, executionPermits.get(i));
                     if (result.success() && call.toolName().equals(completionTool)) {
-                        emitMessage(result.content());
+                        lastMessage = result.content();
                         completionToolFinished = true;
                         return;
                     }
@@ -1954,12 +1970,6 @@ public class AgentRunner {
         if (updated == null) return;
         if (turnLogService != null)
             turnLogService.updateMetadata(updated, sessionId, userId, agentId);
-        publishFrame(
-                DeltaFrame.builder()
-                        .sessionId(sessionId)
-                        .kind(DeltaFrame.Kind.RECORD_UPDATED)
-                        .attr("turnNumber", updated.turnNumber())
-                        .build());
     }
 
     private void appendTurn(@NonNull TurnRecord turn) {
@@ -2139,6 +2149,7 @@ public class AgentRunner {
     // ── completion ──────────────────────────────────────────────────────────
 
     private volatile @NonNull String lastMessage = "";
+    private boolean handlingDirectUserPrompt;
 
     private void completeSuccess() {
         Map<String, Object> meta = new HashMap<>();
@@ -2218,6 +2229,7 @@ public class AgentRunner {
     }
 
     private void complete(@NonNull AgentResult result) {
+        waitingForMonitor = false;
         // Domain event: the episode finished. Carries the authoritative success flag so subscribers
         // (the web UI, the terminal adapter) can stop waiting on the episode without blocking on
         // the
@@ -2231,10 +2243,13 @@ public class AgentRunner {
                         .attr("success", result.success())
                         .text(result.message())
                         .build());
+        actionQueue.addAll(deferredUserPrompts);
+        deferredUserPrompts.clear();
         // Complete the in-place handoff future installed by startTask. Completing the field
         // (rather than reassigning it to a fresh completed future) means an await that already
         // snapshotted resultFuture blocks on the right future and wakes here — a reassignment
         // would leave await holding a stale (already-completed-null) snapshot that returned null.
+        if (handlingDirectUserPrompt) return;
         resultFuture.complete(result);
         Consumer<AgentResult> cb = callback;
         if (cb != null) {

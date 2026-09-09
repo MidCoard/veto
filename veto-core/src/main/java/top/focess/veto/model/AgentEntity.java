@@ -73,6 +73,15 @@ public class AgentEntity {
     private String parentCallId;
     private Instant startedAt;
     private Instant endedAt;
+    private Boolean userInteractionEnabled;
+
+    public boolean isUserInteractionEnabled() {
+        return userInteractionEnabled != null ? userInteractionEnabled : parentCallId == null;
+    }
+
+    public void setUserInteractionEnabled(boolean enabled) {
+        userInteractionEnabled = enabled;
+    }
 
     protected AgentEntity() {}
 

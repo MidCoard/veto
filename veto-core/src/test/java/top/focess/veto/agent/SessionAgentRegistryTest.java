@@ -93,6 +93,18 @@ class SessionAgentRegistryTest {
         assertEquals("main", entry.parentAgentId());
         assertEquals("read-call", entry.parentCallId());
         assertEquals(Role.STANDALONE, reader.persona().role());
+        assertTrue(mate.userInteractionEnabled());
+        assertFalse(reader.userInteractionEnabled());
+        assertThrows(IllegalStateException.class, () -> reader.submitUserPrompt("Change the task"));
+        verify(readerRunner, never()).enqueue(any());
+        mate.submitUserPrompt("Review the result");
+        verify(mateRunner).enqueue(new AgentAction.DirectUserPromptAction("Review the result"));
+        assertFalse(
+                registry.records(session).stream()
+                        .filter(summary -> summary.id().equals("reader"))
+                        .findFirst()
+                        .orElseThrow()
+                        .userInteractionEnabled());
         when(parentRunner.personaView()).thenReturn(persona("main", Role.LEADER));
         assertEquals(Role.STANDALONE, reader.persona().role());
         assertEquals(5, registry.agents(session).size());

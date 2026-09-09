@@ -69,7 +69,8 @@ public final class SessionAgentRegistry {
             Instant createdAt,
             Instant startedAt,
             Instant endedAt,
-            String responsibility) {}
+            String responsibility,
+            boolean userInteractionEnabled) {}
 
     /** Session membership survives runtime cleanup; histories remain in their own streams. */
     public synchronized @NonNull List<@NonNull AgentSummary> records(@NonNull UUID sessionId) {
@@ -90,7 +91,8 @@ public final class SessionAgentRegistry {
                                 entity.getCreatedAt(),
                                 entity.getStartedAt(),
                                 entity.getEndedAt(),
-                                entity.getResponsibility()));
+                                entity.getResponsibility(),
+                                entity.isUserInteractionEnabled()));
             }
         }
         if (turns != null) {
@@ -99,7 +101,8 @@ public final class SessionAgentRegistry {
                     result.putIfAbsent(
                             id,
                             new AgentSummary(
-                                    id, id, null, null, null, null, false, null, null, null, null));
+                                    id, id, null, null, null, null, false, null, null, null, null,
+                                    false));
                 }
             }
         }
@@ -119,7 +122,8 @@ public final class SessionAgentRegistry {
                             saved == null ? null : saved.createdAt(),
                             saved == null ? null : saved.startedAt(),
                             null,
-                            agent.persona().description()));
+                            agent.persona().description(),
+                            agent.userInteractionEnabled()));
         }
         return result.values().stream().sorted(Comparator.comparing(AgentSummary::id)).toList();
     }
@@ -171,6 +175,7 @@ public final class SessionAgentRegistry {
                 }
                 entity.started(
                         entry.agent().persona(), entry.parentAgentId(), entry.parentCallId());
+                entity.setUserInteractionEnabled(entry.agent().userInteractionEnabled());
                 repository.save(entity);
             } catch (RuntimeException error) {
                 entry.agent().terminate();
@@ -189,6 +194,16 @@ public final class SessionAgentRegistry {
             @NonNull String parentCallId,
             @NonNull AgentPersona persona,
             @NonNull AgentRunner runner) {
+        return startChild(sessionId, parentAgentId, parentCallId, persona, runner, false);
+    }
+
+    public synchronized @NonNull VetoAgent startChild(
+            @NonNull UUID sessionId,
+            @NonNull String parentAgentId,
+            @NonNull String parentCallId,
+            @NonNull AgentPersona persona,
+            @NonNull AgentRunner runner,
+            boolean userInteractionEnabled) {
         Entry parent = live.get(parentAgentId);
         if (closed
                 || parent == null
@@ -198,7 +213,7 @@ public final class SessionAgentRegistry {
         }
         if (live.containsKey(persona.id())) throw new IllegalStateException("Duplicate agent id");
         runner.setSessionId(sessionId);
-        VetoAgent child = new VetoAgent(persona, runner);
+        VetoAgent child = new VetoAgent(persona, runner, userInteractionEnabled);
         register(new Entry(sessionId, parentAgentId, parentCallId, child));
         return child;
     }

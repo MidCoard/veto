@@ -70,6 +70,7 @@ class SessionAgentHistoryTest {
         when(parent.name()).thenReturn("Main");
         when(parent.persona()).thenReturn(parentPersona);
         when(parent.state()).thenReturn(AgentState.IDLE);
+        when(parent.userInteractionEnabled()).thenReturn(true);
         registry.register(sessionId, parent);
         assertEquals(AgentState.IDLE, registry.records(sessionId).getFirst().state());
         assertEquals("My assistant", registry.records(sessionId).getFirst().name());
@@ -91,12 +92,25 @@ class SessionAgentHistoryTest {
         assertEquals("fetch-1", stopped.parentCallId());
         assertTrue(stopped.endedAt() != null);
         assertFalse(stopped.live());
+        assertFalse(stopped.userInteractionEnabled());
         assertTrue(registry.records(UUID.randomUUID()).isEmpty());
 
         registry.close();
         repository.flush();
         SessionAgentRegistry restarted = new SessionAgentRegistry(repository, turns);
         assertEquals(2, restarted.records(sessionId).size());
+        assertTrue(
+                restarted.records(sessionId).stream()
+                        .filter(agent -> agent.id().equals(primary.getId()))
+                        .findFirst()
+                        .orElseThrow()
+                        .userInteractionEnabled());
+        assertFalse(
+                restarted.records(sessionId).stream()
+                        .filter(agent -> agent.id().equals("reader"))
+                        .findFirst()
+                        .orElseThrow()
+                        .userInteractionEnabled());
         assertTrue(
                 restarted.records(sessionId).stream()
                         .noneMatch(SessionAgentRegistry.AgentSummary::live));
