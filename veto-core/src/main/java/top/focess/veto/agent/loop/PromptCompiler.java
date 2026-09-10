@@ -446,20 +446,16 @@ public class PromptCompiler {
         // tool call as a single assistant turn, matching the standard tool-calling format.
         String pendingThought = null;
         String pendingReasoning = null;
-        Integer pendingTurn = null;
+        List<Integer> pendingTurns = List.of();
         for (TurnRecord turn : HistoryProjection.effective(history)) {
             if (turn.type() == TurnType.AGENT_INIT) {
                 if (pendingThought != null && !pendingThought.isBlank()) {
                     compiled.add(
-                            ChatMessage.assistant(pendingThought)
-                                    .withSourceTurns(
-                                            pendingTurn == null
-                                                    ? List.of()
-                                                    : List.of(pendingTurn)));
+                            ChatMessage.assistant(pendingThought).withSourceTurns(pendingTurns));
                 }
                 pendingThought = null;
                 pendingReasoning = null;
-                pendingTurn = null;
+                pendingTurns = List.of();
                 compiled.add(ChatMessage.system(str(turn.payload(), "system_prompt")));
                 continue;
             }
@@ -472,7 +468,7 @@ public class PromptCompiler {
                 }
                 pendingThought = null;
                 pendingReasoning = null;
-                pendingTurn = null;
+                pendingTurns = List.of();
                 continue;
             }
             if (turn.type() == TurnType.ASSISTANT_THOUGHT) {
@@ -480,7 +476,7 @@ public class PromptCompiler {
                 // ASSISTANT_RESPONSE. Not emitted as a standalone message (saves tokens and
                 // avoids DeepSeek's reasoning_content echo requirement on thought-only messages).
                 pendingThought = str(turn.payload(), "response");
-                pendingTurn = turn.turnNumber();
+                pendingTurns = List.of(turn.turnNumber());
                 pendingReasoning = str(turn.payload(), "reasoning_content");
                 if (pendingReasoning.isBlank()) {
                     pendingReasoning = null;
@@ -492,20 +488,17 @@ public class PromptCompiler {
             if (msg != null) {
                 compiled.add(
                         msg.withSourceTurns(
-                                pendingTurn != null && turn.type() == TurnType.TOOL_CALL
-                                        ? List.of(pendingTurn, turn.turnNumber())
+                                !pendingTurns.isEmpty() && turn.type() == TurnType.TOOL_CALL
+                                        ? List.of(pendingTurns.getFirst(), turn.turnNumber())
                                         : List.of(turn.turnNumber())));
             }
             pendingThought = null;
             pendingReasoning = null;
-            pendingTurn = null;
+            pendingTurns = List.of();
         }
         // A trailing thought with no following turn (e.g. thought + STOP) - emit as assistant.
         if (pendingThought != null && !pendingThought.isBlank()) {
-            compiled.add(
-                    ChatMessage.assistant(pendingThought)
-                            .withSourceTurns(
-                                    pendingTurn == null ? List.of() : List.of(pendingTurn)));
+            compiled.add(ChatMessage.assistant(pendingThought).withSourceTurns(pendingTurns));
         }
         return compiled;
     }

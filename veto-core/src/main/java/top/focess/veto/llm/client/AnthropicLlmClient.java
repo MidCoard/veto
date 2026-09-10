@@ -290,11 +290,10 @@ final class AnthropicLlmClient extends LlmClient {
                                             TextBlockParam.builder().text(m.content()).build()));
                         }
                     }
-                    default -> {
-                        blocks.add(
-                                ContentBlockParam.ofText(
-                                        TextBlockParam.builder().text(m.content()).build()));
-                    }
+                    default ->
+                            blocks.add(
+                                    ContentBlockParam.ofText(
+                                            TextBlockParam.builder().text(m.content()).build()));
                 }
                 groupBlocks.addAll(blocks);
             }

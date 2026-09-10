@@ -22,6 +22,44 @@ import top.focess.veto.llm.core.VetoResponse;
 
 class MessageCitationsTest {
     @Test
+    void pendingThoughtSourcesSurviveFlushMergeAndTrailingEmission() {
+        var compiler =
+                PromptCompiler.isolated(
+                        new VetoCapabilityTranslator(), new ObjectMapper(), "Read", 8000);
+        var messages =
+                compiler.resolveRewinds(
+                        List.of(
+                                TurnRecord.assistantThought(1, "before init"),
+                                new TurnRecord(
+                                        2,
+                                        TurnType.AGENT_INIT,
+                                        Map.of("system_prompt", "system"),
+                                        null),
+                                TurnRecord.assistantThought(3, "before tool"),
+                                new TurnRecord(
+                                        4,
+                                        TurnType.TOOL_CALL,
+                                        Map.of(
+                                                "call_id",
+                                                "call",
+                                                "tool_name",
+                                                "view_file",
+                                                "args",
+                                                Map.of()),
+                                        null),
+                                TurnRecord.toolResponse(5, "call", "result", true),
+                                TurnRecord.assistantThought(6, "trailing")),
+                        ToolResultPresentationMode.BASIC);
+
+        assertEquals(
+                List.of(List.of(1), List.of(), List.of(3, 4), List.of(5), List.of(6)),
+                messages.stream().map(ChatMessage::sourceTurns).toList());
+        assertEquals("before init", messages.getFirst().content());
+        assertEquals("before tool", messages.get(2).content());
+        assertEquals("trailing", messages.getLast().content());
+    }
+
+    @Test
     void decodedToolTextAndCallArgumentsHaveNavigableJsonPaths() {
         String text = "{\"text/#\":\"line one\\nline two\"}";
         var request =
