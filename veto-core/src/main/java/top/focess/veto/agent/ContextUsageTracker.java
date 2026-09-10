@@ -33,6 +33,7 @@ public final class ContextUsageTracker {
         data.put("provider", request.providerType().name());
         data.put("messageCount", request.messages().size());
         VetoRequest before = previous;
+        int previousMessageCount = before == null ? 0 : before.messages().size();
         boolean comparable =
                 before != null
                         && before.providerType() == request.providerType()
@@ -41,18 +42,18 @@ public final class ContextUsageTracker {
                         && before.systemPrompt().equals(request.systemPrompt())
                         && before.tools().equals(request.tools())
                         && Objects.equals(before.responseSchema(), request.responseSchema())
-                        && before.messages().size() <= request.messages().size()
+                        && previousMessageCount <= request.messages().size()
                         && request.messages()
-                                .subList(0, before.messages().size())
+                                .subList(0, previousMessageCount)
                                 .equals(before.messages());
         data.put("baselineReset", !comparable);
-        if (comparable && before != null) {
+        if (comparable) {
             data.put("contextDeltaTokens", usage.promptTokens() - previousTokens);
-            data.put("fromMessageIndex", before.messages().size());
-            data.put("appendedMessages", request.messages().size() - before.messages().size());
+            data.put("fromMessageIndex", previousMessageCount);
+            data.put("appendedMessages", request.messages().size() - previousMessageCount);
             if (previousThroughTurn >= 0
                     && throughTurn > previousThroughTurn
-                    && request.messages().size() > before.messages().size()
+                    && request.messages().size() > previousMessageCount
                     && usage.promptTokens() >= previousTokens) {
                 data.put("recordDelta", true);
                 data.put("fromRecordTurn", previousThroughTurn + 1);

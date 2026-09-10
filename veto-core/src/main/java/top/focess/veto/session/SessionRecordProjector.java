@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.HistoryProjection;
+import top.focess.veto.agent.RecordUsage;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.TurnType;
 
@@ -30,7 +31,12 @@ final class SessionRecordProjector {
             SessionRecord record = raw.get(i).withRewoundRecords(entry.removedCount());
             result.add(entry.active() ? record : record.inactiveAfter(entry.removedBy()));
         }
-        List<TurnRecord> normalized = top.focess.veto.agent.RecordUsage.contentRecords(turns);
+        return projectContent(RecordUsage.contentRecords(turns), result);
+    }
+
+    private static @NonNull List<@NonNull SessionRecord> projectContent(
+            @NonNull List<@NonNull TurnRecord> normalized,
+            @NonNull List<@NonNull SessionRecord> result) {
         List<SessionRecord> content = new ArrayList<>();
         for (TurnRecord turn : normalized) {
             for (SessionRecord record : result) {
