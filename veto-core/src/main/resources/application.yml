@@ -177,7 +177,7 @@ veto:
     #   credential-key: openai-embeddings  # vault SECURE_NOTE title
 
   observability:
-    audit-log-path: ./audit/
+    audit-log-path: ${VETO_AUDIT_DIR}
     encryption-enabled: true
 
   training:

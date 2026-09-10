@@ -12,6 +12,7 @@ import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Service;
 import top.focess.veto.agent.tool.ToolDefinition;
+import top.focess.veto.llm.core.CitationSchema;
 import top.focess.veto.llm.core.VetoResponse;
 
 /**
@@ -87,6 +88,7 @@ public class VetoCapabilityTranslator implements CapabilityTranslator {
         properties.set("calls", calls);
         properties.set(
                 "message", stringNode("Final answer, or a progress message accompanying work."));
+        properties.set("citations", CitationSchema.create(MAPPER));
         if (guidedEnabled) {
             ObjectNode guide = MAPPER.createObjectNode();
             guide.put("type", "object");

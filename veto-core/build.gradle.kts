@@ -1,3 +1,5 @@
+import org.springframework.boot.gradle.tasks.run.BootRun
+
 plugins {
     java
     id("org.springframework.boot") version "3.5.16"
@@ -192,7 +194,9 @@ graalvmNative {
     }
 }
 
-tasks.named<org.springframework.boot.gradle.tasks.run.BootRun>("bootRun") {
+tasks.named<BootRun>("bootRun") {
+    workingDir(rootProject.projectDir)
+    systemProperty("veto.observability.audit-log-path", rootProject.file("audit").absolutePath)
     jvmArgs("--enable-native-access=ALL-UNNAMED")
 }
 
@@ -204,6 +208,7 @@ tasks.withType<JavaCompile> {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+    systemProperty("veto.observability.audit-log-path", rootProject.file("work/tmp/audit-path/tests").absolutePath)
     // Mockito instruments bootstrap classes, so class-data sharing cannot apply to test JVMs.
     jvmArgs("--enable-native-access=ALL-UNNAMED", "-Xshare:off")
 }

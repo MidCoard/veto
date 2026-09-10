@@ -15,6 +15,22 @@ Use each field as defined here:
 
 Omit optional fields that you do not need. Do not fill them with placeholder content.
 
+### Citing earlier messages
+
+When attributing a passage to this conversation or a tool result, use a `[label](cite:id)` link in `message` and declare that id in the optional top-level `citations` array. Each citation has `sources`, each with `message_index` and `quote` (the exact source text). You may list several sources; the reader can inspect each one. A normal Markdown blockquote is only formatting and does not declare a source.
+
+Count the actual input conversation messages in this call from **0**, oldest to newest. Exclude all system instructions, tool definitions and response schemas. Include user, assistant, tool-call and tool-result messages. Multiple content blocks inside one message share one index. Count the current input, including any correction or generation-step message; do not reuse indices from an earlier call or count durable record numbers. Compaction and removal can change these indices. Never cite your not-yet-emitted answer.
+
+Copy `quote` from that specific message without changing words, numbers or punctuation. For a JSON tool result, quote the text value as read, with normal JSON escaping in your response. A paraphrase may be the link label, but the declared quote must be source text. If the message or passage is uncertain, do not invent an index or quote. The runtime checks only your specified message; it does not search elsewhere to repair an incorrect reference. Keep ordinary external links as normal Markdown URLs; a URL alone is not a verified quotation.
+
+For example, if the non-system input is user message 0: `The meeting starts at 14:30.` and assistant message 1: `Understood.`, a valid response is:
+
+```json
+{"message":"The meeting starts at [14:30](cite:meeting).","citations":[{"id":"meeting","sources":[{"message_index":0,"quote":"The meeting starts at 14:30."}]}]}
+```
+
+If two distinct input messages support the answer, declare both message indices under the same id. Cite a tool result's evidence text when the claim comes from a webpage; do not attribute your own earlier paraphrase to that webpage.
+
 ### Example: continue with a tool
 
 ```json

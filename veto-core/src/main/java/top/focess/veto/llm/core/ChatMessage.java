@@ -1,5 +1,7 @@
 package top.focess.veto.llm.core;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import java.util.List;
 import org.jspecify.annotations.NonNull;
 
 /**
@@ -26,7 +28,29 @@ public record ChatMessage(
         String toolName,
         String toolArgs,
         String reasoningContent,
-        Boolean toolSuccess) {
+        Boolean toolSuccess,
+        @JsonIgnore @NonNull List<Integer> sourceTurns) {
+
+    public ChatMessage {
+        sourceTurns = List.copyOf(sourceTurns);
+    }
+
+    public ChatMessage(
+            @NonNull String role,
+            @NonNull String content,
+            String callId,
+            String toolName,
+            String toolArgs,
+            String reasoningContent,
+            Boolean toolSuccess) {
+        this(role, content, callId, toolName, toolArgs, reasoningContent, toolSuccess, List.of());
+    }
+
+    /** Internal provenance; never rendered into provider message bodies. */
+    public @NonNull ChatMessage withSourceTurns(@NonNull List<Integer> turns) {
+        return new ChatMessage(
+                role, content, callId, toolName, toolArgs, reasoningContent, toolSuccess, turns);
+    }
 
     // ── Backward-compatible factories (structured fields = null) ────────────
 

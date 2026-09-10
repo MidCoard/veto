@@ -446,23 +446,33 @@ public class PromptCompiler {
         // tool call as a single assistant turn, matching the standard tool-calling format.
         String pendingThought = null;
         String pendingReasoning = null;
+        Integer pendingTurn = null;
         for (TurnRecord turn : HistoryProjection.effective(history)) {
             if (turn.type() == TurnType.AGENT_INIT) {
                 if (pendingThought != null && !pendingThought.isBlank()) {
-                    compiled.add(ChatMessage.assistant(pendingThought));
+                    compiled.add(
+                            ChatMessage.assistant(pendingThought)
+                                    .withSourceTurns(
+                                            pendingTurn == null
+                                                    ? List.of()
+                                                    : List.of(pendingTurn)));
                 }
                 pendingThought = null;
                 pendingReasoning = null;
+                pendingTurn = null;
                 compiled.add(ChatMessage.system(str(turn.payload(), "system_prompt")));
                 continue;
             }
             if (turn.type() == TurnType.REWIND) {
                 String recalledContent = str(turn.payload(), "content");
                 if (!recalledContent.isBlank()) {
-                    compiled.add(ChatMessage.user(recalledContent));
+                    compiled.add(
+                            ChatMessage.user(recalledContent)
+                                    .withSourceTurns(List.of(turn.turnNumber())));
                 }
                 pendingThought = null;
                 pendingReasoning = null;
+                pendingTurn = null;
                 continue;
             }
             if (turn.type() == TurnType.ASSISTANT_THOUGHT) {
@@ -470,6 +480,7 @@ public class PromptCompiler {
                 // ASSISTANT_RESPONSE. Not emitted as a standalone message (saves tokens and
                 // avoids DeepSeek's reasoning_content echo requirement on thought-only messages).
                 pendingThought = str(turn.payload(), "response");
+                pendingTurn = turn.turnNumber();
                 pendingReasoning = str(turn.payload(), "reasoning_content");
                 if (pendingReasoning.isBlank()) {
                     pendingReasoning = null;
@@ -479,14 +490,22 @@ public class PromptCompiler {
             ChatMessage msg =
                     mapRole(turn, pendingThought, pendingReasoning, toolResultPresentation);
             if (msg != null) {
-                compiled.add(msg);
+                compiled.add(
+                        msg.withSourceTurns(
+                                pendingTurn != null && turn.type() == TurnType.TOOL_CALL
+                                        ? List.of(pendingTurn, turn.turnNumber())
+                                        : List.of(turn.turnNumber())));
             }
             pendingThought = null;
             pendingReasoning = null;
+            pendingTurn = null;
         }
         // A trailing thought with no following turn (e.g. thought + STOP) - emit as assistant.
         if (pendingThought != null && !pendingThought.isBlank()) {
-            compiled.add(ChatMessage.assistant(pendingThought));
+            compiled.add(
+                    ChatMessage.assistant(pendingThought)
+                            .withSourceTurns(
+                                    pendingTurn == null ? List.of() : List.of(pendingTurn)));
         }
         return compiled;
     }
@@ -706,7 +725,7 @@ public class PromptCompiler {
                                 && callId != null
                                 && callId.equals(prev.callId());
                 if (!paired) {
-                    out.add(ChatMessage.user(m.content()));
+                    out.add(ChatMessage.user(m.content()).withSourceTurns(m.sourceTurns()));
                     continue;
                 }
             }
@@ -718,8 +737,8 @@ public class PromptCompiler {
         while (firstConversation < out.size() && "system".equals(out.get(firstConversation).role()))
             firstConversation++;
         if (firstConversation == out.size() || !"user".equals(out.get(firstConversation).role())) {
-            String anchor = lastUserContent(full);
-            out.add(firstConversation, ChatMessage.user(anchor != null ? anchor : "(continued)"));
+            ChatMessage anchor = lastUserMessage(full);
+            out.add(firstConversation, anchor != null ? anchor : ChatMessage.user("(continued)"));
         }
         return out;
     }
@@ -733,12 +752,12 @@ public class PromptCompiler {
                 && Objects.equals(call.callId(), next.callId());
     }
 
-    /** The content of the last user-role message (the episode's opening prompt), or null. */
-    private static String lastUserContent(@NonNull List<ChatMessage> messages) {
+    /** The last user-role message, including provenance when re-anchoring a trimmed window. */
+    private static ChatMessage lastUserMessage(@NonNull List<ChatMessage> messages) {
         for (int i = messages.size() - 1; i >= 0; i--) {
             ChatMessage m = messages.get(i);
             if ("user".equals(m.role()) && !m.content().isBlank()) {
-                return m.content();
+                return m;
             }
         }
         return null;

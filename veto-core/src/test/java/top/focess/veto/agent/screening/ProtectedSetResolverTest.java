@@ -69,7 +69,7 @@ class ProtectedSetResolverTest {
     private @NonNull ProtectedSetResolver resolver(
             @NonNull DeployerPolicyConfiguration configuration) {
         ObservabilityConfiguration observability = new ObservabilityConfiguration();
-        observability.setAuditLogPath("audit-data");
+        observability.setAuditLogPath(root.resolve("launch/audit-data").toString());
         CredentialVaultConfiguration vault = new CredentialVaultConfiguration();
         vault.setVaultHome("vault-data");
         return new ProtectedSetResolver(

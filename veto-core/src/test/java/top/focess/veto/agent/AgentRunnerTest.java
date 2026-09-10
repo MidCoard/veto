@@ -48,6 +48,74 @@ import top.focess.veto.sandbox.TestSandboxFactory;
 class AgentRunnerTest {
 
     @Test
+    void activeCitationBindsToSuccessfulRetryAndDoesNotLeakIntoLaterAnswers() throws Exception {
+        var calls = new AtomicInteger();
+        var mapper = new ObjectMapper();
+        var service =
+                serviceWith(
+                        request -> {
+                            if (calls.incrementAndGet() == 1)
+                                throw new ModelSchemaException("try again");
+                            if (calls.get() == 3)
+                                return new VetoResponse(null, null, "No citation", null);
+                            return new VetoResponse(
+                                    null,
+                                    null,
+                                    "[Meeting](cite:meeting)",
+                                    null,
+                                    List.of(
+                                            new VetoResponse.Citation(
+                                                    "meeting",
+                                                    List.of(new VetoResponse.Source(0, "14:30")))));
+                        });
+        assertTrue(
+                service.submit(
+                                "citation-retry",
+                                "Meeting at 14:30",
+                                binding("System"),
+                                EPISODE_TIMEOUT)
+                        .success());
+        var agent = requireAgent(service.agent("citation-retry"));
+        var answer =
+                agent.history().stream()
+                        .filter(turn -> turn.type() == TurnType.ASSISTANT_RESPONSE)
+                        .findFirst()
+                        .orElseThrow();
+        var saved = mapper.valueToTree(answer.payload()).path("citation_context");
+        assertEquals(2, saved.path("messageCount").asInt());
+        assertEquals("matched", saved.path("checks").get(0).path("status").asText());
+        int sourceTurn = saved.path("checks").get(0).path("matches").get(0).path("turn").asInt();
+        assertTrue(
+                agent.history().stream()
+                        .anyMatch(
+                                turn ->
+                                        turn.turnNumber() == sourceTurn
+                                                && turn.type() == TurnType.USER_PROMPT));
+        assertTrue(
+                service.submit("citation-retry", "Continue", binding("System"), EPISODE_TIMEOUT)
+                        .success());
+        var latest =
+                agent.history().stream()
+                        .filter(turn -> turn.type() == TurnType.ASSISTANT_RESPONSE)
+                        .toList()
+                        .getLast();
+        assertFalse(latest.payload().containsKey("citation_context"));
+    }
+
+    @Test
+    void linkageFailureCompletesTheEpisode() throws Exception {
+        var service =
+                serviceWith(
+                        request -> {
+                            throw new NoClassDefFoundError("ToolErrors");
+                        });
+        var result =
+                service.submit("linkage-failure", "Answer", binding("System"), EPISODE_TIMEOUT);
+        assertFalse(result.success());
+        assertTrue(result.message().contains("ToolErrors"));
+    }
+
+    @Test
     void directPromptWaitsForGroupMonitorCompletion() throws Exception {
         var calls = new AtomicInteger();
         var parked = new CountDownLatch(1);

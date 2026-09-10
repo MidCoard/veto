@@ -13,6 +13,8 @@ spring:
         dialect: org.hibernate.dialect.H2Dialect
 
 veto:
+  observability:
+    audit-log-path: ${java.io.tmpdir}/veto-test-audit
   guided:
     max-steps: 1000
 

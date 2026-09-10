@@ -168,9 +168,25 @@ strategy.
 
 ### 2. Start the backend
 
+Run from the repository root. `bootRun` fixes its working directory to that root
+and writes audit data and audit logs to its `audit` directory. Tests use separate
+audit output under `work/tmp/audit-path/tests`.
+
+To launch a built JAR in the background on Windows, use
+`./start-backend.ps1 -Jar ./veto-core/build/libs/veto-core-1.0.100.jar`.
+On macOS/Linux, use
+`sh ./start-backend.sh ./veto-core/build/libs/veto-core-1.0.100.jar`.
+Both launchers use Java from `JAVA_HOME`, or from `PATH` when unset.
+The launchers use the repository root even when called from another directory,
+and copy the JAR to an isolated runtime file so later builds cannot replace it.
+Check its startup log for readiness. Direct JAR launches must explicitly set an
+absolute `VETO_AUDIT_DIR` or `veto.observability.audit-log-path` property.
+
 ```powershell
 .\gradlew.bat :veto-core:bootRun
 ```
+
+On macOS/Linux, the equivalent development command is `sh ./gradlew :veto-core:bootRun`.
 
 Default listeners:
 

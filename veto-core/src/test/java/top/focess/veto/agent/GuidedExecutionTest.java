@@ -30,6 +30,56 @@ import top.focess.veto.sandbox.*;
 import top.focess.veto.sandbox.BackgroundTaskManager;
 
 class GuidedExecutionTest {
+    @Test
+    void generatedCitationsFollowTheOutputBindingToStop(@TempDir @NonNull Path root)
+            throws Exception {
+        var calls = new AtomicInteger();
+        var service =
+                service(
+                        request -> {
+                            if (calls.incrementAndGet() == 1)
+                                return actions(
+                                        """
+                [{"id":"answer","label":"Answer","type":"generate","prompt":"Quote the meeting time","outputs":{"answer":"message"}},
+                 {"id":"stop","label":"Finish","type":"STOP","result_binding":"answer"}]
+                """);
+                            var schema = request.responseSchema();
+                            if (schema == null)
+                                throw new AssertionError("Expected generation schema");
+                            assertTrue(schema.path("properties").has("citations"));
+                            return new VetoResponse(
+                                    null,
+                                    null,
+                                    "[14:30](cite:meeting)",
+                                    null,
+                                    List.of(
+                                            new VetoResponse.Citation(
+                                                    "meeting",
+                                                    List.of(new VetoResponse.Source(0, "14:30")))));
+                        },
+                        new HitlRegistry(),
+                        root);
+        var result =
+                service.submit(
+                        "read-guided",
+                        "Meeting starts at 14:30",
+                        binding(),
+                        Duration.ofSeconds(10));
+        assertTrue(result.success());
+        var agent = service.agent("read-guided");
+        if (agent == null) throw new AssertionError("Expected guided agent");
+        var answer =
+                agent.history().stream()
+                        .filter(turn -> turn.type() == TurnType.ASSISTANT_RESPONSE)
+                        .toList()
+                        .getLast();
+        var payload = new ObjectMapper().valueToTree(answer.payload());
+        assertEquals(
+                "matched",
+                payload.path("citation_context").path("checks").get(0).path("status").asText());
+        assertEquals("[14:30](cite:meeting)", result.message());
+    }
+
     private static AgentRunner.@NonNull LlmBinding binding() {
         return new AgentRunner.LlmBinding(
                 ProviderType.DEEPSEEK, "scripted", "key", LlmOptions.defaults(), null);

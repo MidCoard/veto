@@ -12,12 +12,47 @@ import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.translation.VetoCapabilityTranslator;
 import top.focess.veto.llm.core.*;
 import top.focess.veto.llm.exceptions.ModelSchemaException;
 
 class AnthropicLlmClientTest {
+    @Test
+    void actualMessageParamsUseCitationMessageBoundaries() {
+        @NonNull AnthropicClient sdk = mock();
+        var request =
+                new VetoRequest(
+                        "system",
+                        "fallback",
+                        List.of(),
+                        ProviderType.ANTHROPIC,
+                        "model",
+                        "key",
+                        LlmOptions.defaults(),
+                        List.of(
+                                ChatMessage.system("system"),
+                                ChatMessage.user("first"),
+                                ChatMessage.user("second"),
+                                ChatMessage.assistant(""),
+                                ChatMessage.assistant("answer"),
+                                ChatMessage.toolResult("call", "result")),
+                        null,
+                        null);
+        Object actual =
+                ReflectionTestUtils.invokeMethod(
+                        new AnthropicLlmClient(sdk, new ObjectMapper()),
+                        "toMessageParams",
+                        request);
+        if (!(actual instanceof List<?> parameters))
+            throw new AssertionError("Expected provider messages");
+        assertEquals(ProviderMessages.groups(request).size(), parameters.size());
+        assertEquals(3, parameters.size());
+        assertTrue(String.valueOf(parameters.getFirst()).contains("first"));
+        assertTrue(String.valueOf(parameters.getFirst()).contains("second"));
+    }
+
     private static final @NonNull String GUIDE =
             "{\"guide\":{\"actions\":[{\"id\":\"done\",\"label\":\"Finish\",\"type\":\"STOP\"}]}}";
 

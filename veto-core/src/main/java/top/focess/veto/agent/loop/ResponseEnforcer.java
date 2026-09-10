@@ -1,5 +1,6 @@
 package top.focess.veto.agent.loop;
 
+import java.util.HashSet;
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.llm.core.VetoResponse;
@@ -42,6 +43,16 @@ public final class ResponseEnforcer {
             }
         }
         String message = response.message();
+        var citations = response.citations();
+        if (citations != null) {
+            if (citations.size() > 32)
+                throw new ModelSchemaException("At most 32 citations are allowed");
+            var ids = new HashSet<String>();
+            for (var citation : citations) {
+                if (!ids.add(citation.id()))
+                    throw new ModelSchemaException("Citations need unique ids");
+            }
+        }
         if (calls == null && guide == null && (message == null || message.isBlank()))
             throw new ModelSchemaException("message required (no tool calls or guide to execute)");
         return response;

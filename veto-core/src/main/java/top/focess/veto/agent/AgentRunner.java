@@ -52,6 +52,7 @@ import top.focess.veto.agent.loop.ConditionalGotoAction;
 import top.focess.veto.agent.loop.GenerateAction;
 import top.focess.veto.agent.loop.GotoAction;
 import top.focess.veto.agent.loop.LoopBreaker;
+import top.focess.veto.agent.loop.MessageCitations;
 import top.focess.veto.agent.loop.ProgramValidator;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.loop.ResponseEnforcer;
@@ -70,6 +71,7 @@ import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.bus.DeltaFrame;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.llm.core.ChatMessage;
+import top.focess.veto.llm.core.CitationSchema;
 import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.llm.core.LlmSystemUsage;
 import top.focess.veto.llm.core.ProviderType;
@@ -505,10 +507,18 @@ public class AgentRunner {
                     break;
                 }
             }
+        } catch (LinkageError error) {
+            // A broken runtime cannot accept another episode. Release the current caller with a
+            // failure before lifecycle cleanup, rather than leaving the UI waiting indefinitely.
+            log.error("Agent {} runtime linkage failed", agentId, error);
+            completeFailure(failureMessage(error));
         } finally {
             runningThread = null;
-            notifyTermination();
-            UserContext.clear();
+            try {
+                terminate();
+            } finally {
+                UserContext.clear();
+            }
         }
     }
 
@@ -831,7 +841,7 @@ public class AgentRunner {
                     appendThought(response);
                     String message = response.message();
                     if (message != null && !message.isBlank()) {
-                        emitMessage(message);
+                        emitMessage(message, lastCitations);
                     }
                     AgentPersona programPersona = persona;
                     runGuided();
@@ -850,7 +860,7 @@ public class AgentRunner {
             appendThought(response);
             String message = response.message();
             if (message != null && !message.isBlank()) {
-                emitMessage(message);
+                emitMessage(message, lastCitations);
             }
             List<ToolCall> responseCalls = response.calls();
             if (responseCalls != null && !responseCalls.isEmpty()) {
@@ -900,6 +910,8 @@ public class AgentRunner {
                     }
                     scope.put("step_ok:" + tool.id(), result.success());
                     scope.bindTool(tool.outputs(), result);
+                    if (tool.outputs() != null)
+                        tool.outputs().keySet().forEach(generatedCitations::remove);
                     programCounter++;
                     if (!result.success() && state == AgentState.RUNNING) {
                         boolean handled =
@@ -920,6 +932,20 @@ public class AgentRunner {
                     }
                     VetoResponse response = callGenerate(gen);
                     scope.bindGenerate(gen.outputs(), response);
+                    String generatedMessage = response.message();
+                    var generatedSources = lastCitations;
+                    if (gen.outputs() != null) {
+                        for (var output : gen.outputs().entrySet()) {
+                            generatedCitations.remove(output.getKey());
+                            if ("message".equals(output.getValue())
+                                    && generatedMessage != null
+                                    && generatedSources != null)
+                                generatedCitations.put(
+                                        output.getKey(),
+                                        new GeneratedCitation(
+                                                scope, generatedMessage, generatedSources));
+                        }
+                    }
                     scope.put("step_ok:" + gen.id(), true);
                     programCounter++;
                 }
@@ -962,7 +988,16 @@ public class AgentRunner {
                                                                     "Unbound STOP result: "
                                                                             + resultBinding))
                                     : scope.synthesize();
-                    emitMessage(result);
+                    var citation =
+                            resultBinding == null ? null : generatedCitations.get(resultBinding);
+                    emitMessage(
+                            result,
+                            citation != null
+                                            && citation.scope() == scope
+                                            && citation.message().equals(result)
+                                    ? citation.bound()
+                                    : null);
+                    generatedCitations.clear();
                     activeProgram = null;
                     programCounter = 0;
                     guided = false;
@@ -1036,6 +1071,7 @@ public class AgentRunner {
     }
 
     private @NonNull VetoResponse callModel(boolean allowGuided, GenerateAction generation) {
+        lastCitations = null;
         CompiledPrompt compiled = preparedFirstPrompt;
         preparedFirstPrompt = null;
         if (compiled == null) {
@@ -1091,6 +1127,9 @@ public class AgentRunner {
                 VetoResponse checked =
                         ResponseEnforcer.enforce(response, allowGuided, whitelistedTools);
                 validateResponseMode(checked, generation);
+                var declaredCitations = checked.citations();
+                if (declaredCitations != null && !declaredCitations.isEmpty())
+                    lastCitations = MessageCitations.bind(request, checked, List.copyOf(history));
                 return checked;
             } catch (ModelSchemaException e) {
                 log.warn(
@@ -1179,6 +1218,7 @@ public class AgentRunner {
         var properties = schema.putObject("properties");
         properties.putObject("message").put("type", "string").put("minLength", 1);
         properties.putObject("thought").put("type", "string");
+        properties.set("citations", CitationSchema.create(objectMapper));
         schema.putArray("required").add("message");
         List<ChatMessage> messages = new ArrayList<>(original.messages());
         String prompt =
@@ -1840,8 +1880,22 @@ public class AgentRunner {
         if (thought != null) emitThought(thought);
     }
 
+    private MessageCitations.Bound lastCitations;
+    private final @NonNull Map<String, GeneratedCitation> generatedCitations = new HashMap<>();
+
+    private record GeneratedCitation(
+            @NonNull Scope scope, @NonNull String message, MessageCitations.@NonNull Bound bound) {}
+
     private void emitMessage(@NonNull String message) {
-        appendTurn(TurnRecord.assistantResponse(++turnNumber, message));
+        emitMessage(message, null);
+    }
+
+    private void emitMessage(@NonNull String message, MessageCitations.Bound citations) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("content", message);
+        if (citations != null && !citations.checks().isEmpty())
+            payload.put("citation_context", citations);
+        appendTurn(new TurnRecord(++turnNumber, TurnType.ASSISTANT_RESPONSE, payload, null));
         lastMessage = message;
         // emission seam: forward each user-facing message to subscribed transports so they
         // stream it while the loop runs (the terminal PromptHandler forwards as a Delta). Part

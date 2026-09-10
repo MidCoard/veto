@@ -25,6 +25,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.llm.core.ChatMessage;
 import top.focess.veto.llm.core.LlmSystemUsage;
+import top.focess.veto.llm.core.ProviderMessages;
 import top.focess.veto.llm.core.ResolvedRequest;
 import top.focess.veto.llm.core.ToolDefinition;
 import top.focess.veto.llm.core.VetoRequest;
@@ -242,73 +243,62 @@ final class AnthropicLlmClient extends LlmClient {
                             .build());
         }
         List<MessageParam> out = new ArrayList<>();
-        MessageParam.Role pendingRole = null;
-        List<ContentBlockParam> pendingBlocks = new ArrayList<>();
-        for (ChatMessage m : history) {
-            MessageParam.Role role;
-            List<ContentBlockParam> blocks = new ArrayList<>();
-            switch (m.role()) {
-                case "system" -> {
-                    continue;
-                }
-                case "assistant" -> {
-                    role = MessageParam.Role.ASSISTANT;
-                    if (!m.content().isEmpty()) {
+        for (var group : ProviderMessages.groups(request)) {
+            MessageParam.Role groupRole =
+                    group.getFirst().role().equals("assistant")
+                            ? MessageParam.Role.ASSISTANT
+                            : MessageParam.Role.USER;
+            List<ContentBlockParam> groupBlocks = new ArrayList<>();
+            for (ChatMessage m : group) {
+
+                List<ContentBlockParam> blocks = new ArrayList<>();
+                switch (m.role()) {
+                    case "system" -> {
+                        continue;
+                    }
+                    case "assistant" -> {
+                        if (!m.content().isEmpty()) {
+                            blocks.add(
+                                    ContentBlockParam.ofText(
+                                            TextBlockParam.builder().text(m.content()).build()));
+                        }
+                        String toolName = m.toolName();
+                        String callId = m.callId();
+                        if (toolName != null && callId != null) {
+                            blocks.add(
+                                    ContentBlockParam.ofToolUse(
+                                            ToolUseBlockParam.builder()
+                                                    .id(callId)
+                                                    .name(toolName)
+                                                    .input(toolInputParam(m.toolArgs()))
+                                                    .build()));
+                        }
+                    }
+                    case "tool" -> {
+                        String callId = m.callId();
+                        if (callId != null && !callId.isBlank()) {
+                            blocks.add(
+                                    ContentBlockParam.ofToolResult(
+                                            ToolResultBlockParam.builder()
+                                                    .toolUseId(callId)
+                                                    .content(m.content())
+                                                    .isError(Boolean.FALSE.equals(m.toolSuccess()))
+                                                    .build()));
+                        } else {
+                            blocks.add(
+                                    ContentBlockParam.ofText(
+                                            TextBlockParam.builder().text(m.content()).build()));
+                        }
+                    }
+                    default -> {
                         blocks.add(
                                 ContentBlockParam.ofText(
                                         TextBlockParam.builder().text(m.content()).build()));
                     }
-                    String toolName = m.toolName();
-                    String callId = m.callId();
-                    if (toolName != null && callId != null) {
-                        blocks.add(
-                                ContentBlockParam.ofToolUse(
-                                        ToolUseBlockParam.builder()
-                                                .id(callId)
-                                                .name(toolName)
-                                                .input(toolInputParam(m.toolArgs()))
-                                                .build()));
-                    }
                 }
-                case "tool" -> {
-                    role = MessageParam.Role.USER;
-                    String callId = m.callId();
-                    if (callId != null && !callId.isBlank()) {
-                        blocks.add(
-                                ContentBlockParam.ofToolResult(
-                                        ToolResultBlockParam.builder()
-                                                .toolUseId(callId)
-                                                .content(m.content())
-                                                .isError(Boolean.FALSE.equals(m.toolSuccess()))
-                                                .build()));
-                    } else {
-                        blocks.add(
-                                ContentBlockParam.ofText(
-                                        TextBlockParam.builder().text(m.content()).build()));
-                    }
-                }
-                default -> {
-                    role = MessageParam.Role.USER;
-                    blocks.add(
-                            ContentBlockParam.ofText(
-                                    TextBlockParam.builder().text(m.content()).build()));
-                }
+                groupBlocks.addAll(blocks);
             }
-            if (blocks.isEmpty()) {
-                continue;
-            }
-            if (pendingRole == role) {
-                pendingBlocks.addAll(blocks);
-            } else {
-                if (pendingRole != null) {
-                    out.add(buildParam(pendingRole, pendingBlocks));
-                }
-                pendingRole = role;
-                pendingBlocks = blocks;
-            }
-        }
-        if (pendingRole != null) {
-            out.add(buildParam(pendingRole, pendingBlocks));
+            out.add(buildParam(groupRole, groupBlocks));
         }
         return out;
     }
