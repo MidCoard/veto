@@ -327,6 +327,7 @@ class WebReadAgentIntegrationTest {
         SessionAgentRegistry registry = new SessionAgentRegistry();
         CountDownLatch entered = new CountDownLatch(1);
         CountDownLatch interrupted = new CountDownLatch(1);
+        CountDownLatch accessClosed = new CountDownLatch(1);
         AtomicReference<Thread> readerThread = new AtomicReference<>();
         UniformLLMCaller childCaller =
                 request -> {
@@ -366,6 +367,13 @@ class WebReadAgentIntegrationTest {
                             if (objective == null) throw new AssertionError("Missing objective");
                             return reader.read(objective, access);
                         });
+        doAnswer(
+                        invocation -> {
+                            accessClosed.countDown();
+                            return null;
+                        })
+                .when(access)
+                .close();
         var network = mock(ToolDocs.nonNullClass(NetworkEgressCapabilityImpl.class));
         when(network.openReader(any())).thenReturn(access);
         var context = mock(ToolDocs.nonNullClass(ApplicationContext.class));
@@ -455,6 +463,8 @@ class WebReadAgentIntegrationTest {
             assertTrue(registry.agents(sessionId).isEmpty());
             assertNull(service.agent(session));
             assertNull(failure.get());
+            // Cancellation completes the submission future before the parent tool unwinds.
+            assertTrue(accessClosed.await(3, TimeUnit.SECONDS), "Reader capability was not closed");
             verify(access).close();
         } finally {
             service.remove(session);
