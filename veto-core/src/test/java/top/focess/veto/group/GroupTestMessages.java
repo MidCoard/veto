@@ -28,7 +28,8 @@ final class GroupTestMessages {
                         "LEADER",
                         BlackboardMessage.MessageType.ACCEPT,
                         payload,
-                        0));
+                        0,
+                        dispatchId(blackboard, groupId, nodeId)));
     }
 
     static void feedback(
@@ -45,6 +46,19 @@ final class GroupTestMessages {
                         "LEADER",
                         BlackboardMessage.MessageType.FEEDBACK,
                         nodeId + ":feedback:" + feedback,
-                        0));
+                        0,
+                        dispatchId(blackboard, groupId, nodeId)));
+    }
+
+    static String dispatchId(
+            @NonNull Blackboard blackboard, @NonNull UUID groupId, @NonNull String nodeId) {
+        String dispatchId = null;
+        for (BlackboardMessage message : blackboard.readAll(groupId)) {
+            if (message.type() == BlackboardMessage.MessageType.TASK_DISPATCH
+                    && message.payload().startsWith(nodeId + ":")) {
+                dispatchId = message.dispatchId();
+            }
+        }
+        return dispatchId;
     }
 }

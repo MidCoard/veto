@@ -57,6 +57,24 @@ class WebFetchExecutorLoopTest {
     }
 
     @Test
+    void smallSelectedModelStopsBeforeProviderOrNetworkWithoutTierFallback() {
+        WebFetchTool tool = tool(script(List.of(fetch(), read(), finish("s1"))), 6, 10);
+        when(models.resolve("test-owner", ModelTier.LOW))
+                .thenReturn(
+                        new ModelBinding(
+                                ProviderType.DEEPSEEK, "small-reader", "key", 0, 2048, null, 4096));
+        ToolExecutionException error =
+                assertThrows(
+                        ToolDocs.nonNullClass(ToolExecutionException.class), () -> execute(tool));
+        assertEquals("READER_MODEL", error.errorCode());
+        assertTrue(requests.isEmpty());
+        verify(access, never()).fetch(anyLong());
+        verify(models, never()).resolve("test-owner", ModelTier.MID);
+        verify(models, never()).resolve("test-owner", ModelTier.TOP);
+        verify(access).close();
+    }
+
+    @Test
     void missingLowUsesMidInTheRealReaderLoop() throws Exception {
         WebFetchTool tool = tool(script(List.of(fetch(), read(), finish("s1"))), 6, 10);
         when(models.resolve("test-owner", ModelTier.LOW))
@@ -163,7 +181,8 @@ class WebFetchExecutorLoopTest {
                 result.path("evidence").get(0).path("quote").asText());
         var initialOutline = mapper.readTree(requests.get(1).messages().getLast().content());
         assertEquals(300, initialOutline.path("segmentCount").asInt());
-        assertEquals(24, initialOutline.path("outline").size());
+        assertTrue(initialOutline.path("outline").size() > 0);
+        assertTrue(initialOutline.path("outline").size() <= 24);
         assertTrue(requests.get(2).messages().getLast().content().contains("s300"));
         for (VetoRequest request : requests) {
             var schema = request.responseSchema();

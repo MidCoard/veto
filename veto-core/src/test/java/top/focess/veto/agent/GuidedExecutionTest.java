@@ -11,10 +11,13 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.context.ApplicationContext;
 import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.agent.capability.LoopControlCapabilityImpl;
 import top.focess.veto.agent.capability.ProcessExecutionCapabilityImpl;
+import top.focess.veto.agent.capability.ProtectedWorkspaceReadCapabilityImpl;
 import top.focess.veto.agent.identity.*;
 import top.focess.veto.agent.intercept.*;
 import top.focess.veto.agent.loop.PromptCompiler;
@@ -28,8 +31,142 @@ import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierRegistry;
 import top.focess.veto.sandbox.*;
 import top.focess.veto.sandbox.BackgroundTaskManager;
+import top.focess.veto.vault.SecretCandidateStore;
 
 class GuidedExecutionTest {
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void protectedFileReferenceReachesTheModelWithoutRawSecret(
+            boolean guided, @TempDir @NonNull Path root) throws Exception {
+        String secret = "ghp_" + "A1".repeat(18);
+        Path file =
+                Files.writeString(root.resolve("config.txt"), "token=" + secret + "\nnext line\n");
+        String pathJson = new ObjectMapper().writeValueAsString(file.toString());
+        AtomicInteger calls = new AtomicInteger();
+        var service =
+                service(
+                        request -> {
+                            assertTrue(
+                                    request.messages().stream()
+                                            .noneMatch(m -> m.content().contains(secret)));
+                            if (calls.getAndIncrement() == 0) {
+                                if (!guided)
+                                    return new VetoResponse(
+                                            null,
+                                            List.of(
+                                                    new ToolCall(
+                                                            "view_file",
+                                                            Map.of("absolutePath", file.toString()),
+                                                            "read-secret")),
+                                            null,
+                                            null);
+                                return actions(
+                                        """
+                    [{"id":"read","label":"Read","type":"tool","tool":"view_file","inputs":{"absolutePath":PATH},"outputs":{"text":"content"}},
+                     {"id":"answer","label":"Report","type":"generate","prompt":"Report the safe reference in $text","inputs":{"text":"$text"},"outputs":{"answer":"message"}},
+                     {"id":"stop","label":"Finish","type":"STOP","result_binding":"answer"}]
+                    """
+                                                .replace("PATH", pathJson));
+                            }
+                            assertTrue(
+                                    request.messages().stream()
+                                            .anyMatch(m -> m.content().contains("[SECRET_REF:s_")));
+                            return message("Reference received");
+                        },
+                        new HitlRegistry(),
+                        root);
+        String session = UUID.randomUUID().toString();
+        var agent =
+                service.getOrCreateAgent(
+                        session,
+                        UUID.randomUUID().toString(),
+                        binding(),
+                        List.of(),
+                        UUID.randomUUID(),
+                        "owner",
+                        root.toString(),
+                        0,
+                        ToolResultPresentationMode.BASIC,
+                        guided);
+        try {
+            agent.submit("Read the configuration");
+            var result = agent.await(Duration.ofSeconds(10));
+            assertTrue(result.success(), result.message());
+            assertEquals("Reference received", result.message());
+            assertEquals(2, calls.get());
+            assertTrue(
+                    agent.history().stream()
+                            .noneMatch(turn -> turn.payload().toString().contains(secret)));
+            assertTrue(
+                    agent.history().stream()
+                            .anyMatch(
+                                    turn ->
+                                            turn.type() == TurnType.TOOL_RESPONSE
+                                                    && turn.payload()
+                                                            .toString()
+                                                            .contains("[SECRET_REF:s_")));
+        } finally {
+            service.remove(session);
+        }
+    }
+
+    @Test
+    void recoveryObservationReachesGuidedGenerationWithoutStartingWork(@TempDir @NonNull Path root)
+            throws Exception {
+        AtomicInteger calls = new AtomicInteger();
+        var service =
+                service(
+                        request -> {
+                            int index = calls.getAndIncrement();
+                            if (index == 0) return message("ready");
+                            var observations =
+                                    request.messages().stream()
+                                            .filter(
+                                                    value ->
+                                                            value.content()
+                                                                    .startsWith(
+                                                                            "[Runtime recovery observation]"))
+                                            .toList();
+                            assertEquals(1, observations.size());
+                            assertTrue(
+                                    observations
+                                            .getFirst()
+                                            .content()
+                                            .contains("interrupted-attempt"));
+                            if (index == 1)
+                                return actions(
+                                        """
+                    [{"id":"answer","label":"Answer","type":"generate","prompt":"Answer the new request","outputs":{"answer":"message"}},
+                     {"id":"stop","label":"Finish","type":"STOP","result_binding":"answer"}]
+                    """);
+                            return message("new answer");
+                        },
+                        new HitlRegistry(),
+                        root);
+        try {
+            service.submit("recovered-guided", "Initialize", binding(), Duration.ofSeconds(10));
+            var agent = service.agent("recovered-guided");
+            if (!(agent instanceof VetoAgent restored)) throw new AssertionError("Agent missing");
+            var tasks =
+                    List.of(
+                            new RecoveredTask(
+                                    "group", "old-node", "interrupted-attempt", "old-request"));
+            int historySize = restored.history().size();
+            restored.setRecoveredTasks(tasks);
+            restored.setRecoveredTasks(tasks);
+            assertEquals(historySize, restored.history().size());
+            assertEquals(1, calls.get());
+            var result =
+                    service.submit(
+                            "recovered-guided", "New request", binding(), Duration.ofSeconds(10));
+            assertTrue(result.success(), result.message());
+            assertEquals("new answer", result.message());
+            assertEquals(3, calls.get());
+        } finally {
+            service.remove("recovered-guided");
+        }
+    }
+
     @Test
     void generatedCitationsFollowTheOutputBindingToStop(@TempDir @NonNull Path root)
             throws Exception {
@@ -88,6 +225,7 @@ class GuidedExecutionTest {
     private static @NonNull AgentService service(
             @NonNull UniformLLMCaller caller, @NonNull HitlRegistry hitl, @NonNull Path root) {
         ObjectMapper mapper = new ObjectMapper();
+        var candidates = new SecretCandidateStore();
         var context = mock(ToolDocs.nonNullClass(ApplicationContext.class));
         when(context.getBeansOfType(AgentTool.class))
                 .thenReturn(Map.of("think", new ThinkTool(new LoopControlCapabilityImpl())));
@@ -96,7 +234,8 @@ class GuidedExecutionTest {
                 new ToolEngineImpl(
                         mapper,
                         List.of(
-                                new ViewFileTool(),
+                                new ViewFileTool(
+                                        new ProtectedWorkspaceReadCapabilityImpl(candidates)),
                                 new RunCommandTool(
                                         new ProcessExecutionCapabilityImpl(
                                                 sandbox, new BackgroundTaskManager(sandbox)))),
@@ -128,6 +267,7 @@ class GuidedExecutionTest {
                         null,
                         null,
                         new BackgroundTaskManager(sandbox));
+        service.attachSecretCandidates(candidates);
         service.setConfiguredDefaultWorkspace(Workspace.single(root, PathMode.REAL));
         for (String id :
                 List.of(
@@ -136,18 +276,32 @@ class GuidedExecutionTest {
                         "bounded-guided",
                         "failed-guided",
                         "tier-guided",
-                        "recover-guided")) {
+                        "recover-guided",
+                        "recovered-guided")) {
             service.getOrCreateAgent(
                     id,
                     null,
                     binding(),
                     List.of(),
                     UUID.randomUUID(),
-                    null,
+                    "owner",
                     root.toString(),
                     0,
                     ToolResultPresentationMode.BASIC,
                     true);
+        }
+        for (String id : List.of("ordinary-comparison", "disabled-guide")) {
+            service.getOrCreateAgent(
+                    id,
+                    null,
+                    binding(),
+                    List.of(),
+                    UUID.randomUUID(),
+                    "owner",
+                    root.toString(),
+                    0,
+                    ToolResultPresentationMode.BASIC,
+                    false);
         }
         return service;
     }
@@ -216,8 +370,10 @@ class GuidedExecutionTest {
                 "Normal STOP must not be recorded as a failed tool");
     }
 
-    @Test
-    void approvalResumesTypedCommandThenStop(@TempDir @NonNull Path root) throws Exception {
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void approvalResumesTypedCommandThenStop(boolean approve, @TempDir @NonNull Path root)
+            throws Exception {
         Path java = Path.of(System.getProperty("java.home"), "bin", "java");
         if (!Files.isExecutable(java)) java = java.resolveSibling("java.exe");
         String executable = new ObjectMapper().writeValueAsString(java.toString());
@@ -249,15 +405,26 @@ class GuidedExecutionTest {
                             approvals.incrementAndGet();
                             VetoOption option =
                                     prompt.options().stream()
-                                            .filter(o -> !o.isRefusal())
+                                            .filter(
+                                                    o ->
+                                                            approve
+                                                                    ? !o.isRefusal()
+                                                                    : o.isRefusal()
+                                                                            && !o
+                                                                                    .isDeclineAndContinue())
                                             .findFirst()
                                             .orElseThrow();
                             assertTrue(
                                     hitl.resolveOption(
                                             prompt.agentId(), prompt.callId(), option.name()));
                         });
-        assertTrue(result.success(), result.message());
-        assertTrue(result.message().contains("version"), result.message());
+        assertEquals(approve, result.success(), result.message());
+        if (approve) assertTrue(result.message().contains("version"), result.message());
+        else {
+            assertTrue(result.message().contains("Approval was requested"), result.message());
+            assertTrue(result.message().contains("The tool was not executed"), result.message());
+            assertEquals(1, calls.get(), "Rejected GUIDE must not regenerate or retry");
+        }
         assertTrue(approvals.get() > 0, "exercise the actual approval/resume path");
     }
 

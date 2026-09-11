@@ -26,6 +26,35 @@ import top.focess.veto.monitor.MonitorService;
 @Component
 public final class SessionAgentRegistry {
     private SessionInvalidations invalidations;
+    private AgentPauseStore pauseStore;
+
+    @Autowired
+    public void attachPauseStore(@NonNull AgentPauseStore store) {
+        pauseStore = store;
+    }
+
+    /** Serializes offline controls with the last pause read before a runner starts. */
+    public synchronized void controlPause(
+            @NonNull UUID sessionId, @NonNull String agentId, boolean paused) {
+        AgentPauseStore store = pauseStore;
+        if (repository == null || store == null)
+            throw new IllegalStateException("Persistent pause control is unavailable");
+        AgentEntity entity =
+                repository
+                        .findById(agentId)
+                        .filter(row -> row.getSessionId().equals(sessionId.toString()))
+                        .orElseThrow(() -> new IllegalArgumentException("Agent is unavailable"));
+        Entry entry = live.get(agentId);
+        if (entry != null && !entry.sessionId().equals(sessionId))
+            throw new IllegalArgumentException("Agent is unavailable");
+        if (entity.getEndedAt() != null
+                || (entry != null && entry.agent().state() == AgentState.TERMINATED))
+            throw new IllegalStateException("Agent has terminated");
+        if (entry == null) store.save(sessionId, agentId, paused);
+        else if (paused) entry.agent().pause();
+        else entry.agent().resume();
+        if (invalidations != null) invalidations.changed(sessionId, "agents", "execution");
+    }
 
     @Autowired
     public void attachInvalidations(@NonNull SessionInvalidations invalidations) {
@@ -78,7 +107,8 @@ public final class SessionAgentRegistry {
             Instant startedAt,
             Instant endedAt,
             String responsibility,
-            boolean userInteractionEnabled) {}
+            boolean userInteractionEnabled,
+            String executionWait) {}
 
     /** Session membership survives runtime cleanup; histories remain in their own streams. */
     public synchronized @NonNull List<@NonNull AgentSummary> records(@NonNull UUID sessionId) {
@@ -92,7 +122,13 @@ public final class SessionAgentRegistry {
                                 entity.getId(),
                                 entity.getName(),
                                 role == null ? null : Role.valueOf(role),
-                                entity.getEndedAt() == null ? null : AgentState.TERMINATED,
+                                entity.isUserPaused()
+                                        ? AgentState.PAUSED
+                                        : entity.getExecutionWait() != null
+                                                ? AgentState.WAITING
+                                                : entity.getEndedAt() == null
+                                                        ? null
+                                                        : AgentState.TERMINATED,
                                 entity.getParentAgentId(),
                                 entity.getParentCallId(),
                                 false,
@@ -100,7 +136,8 @@ public final class SessionAgentRegistry {
                                 entity.getStartedAt(),
                                 entity.getEndedAt(),
                                 entity.getResponsibility(),
-                                entity.isUserInteractionEnabled()));
+                                entity.isUserInteractionEnabled(),
+                                entity.getExecutionWait()));
             }
         }
         if (turns != null) {
@@ -110,7 +147,7 @@ public final class SessionAgentRegistry {
                             id,
                             new AgentSummary(
                                     id, id, null, null, null, null, false, null, null, null, null,
-                                    false));
+                                    false, null));
                 }
             }
         }
@@ -131,7 +168,8 @@ public final class SessionAgentRegistry {
                             saved == null ? null : saved.startedAt(),
                             null,
                             agent.persona().description(),
-                            agent.userInteractionEnabled()));
+                            agent.userInteractionEnabled(),
+                            agent.executionWaitReason()));
         }
         return result.values().stream().sorted(Comparator.comparing(AgentSummary::id)).toList();
     }
@@ -142,6 +180,7 @@ public final class SessionAgentRegistry {
             throw new IllegalStateException(
                     "Agent registry is closed or agent is already registered");
         }
+        if (pauseStore != null) runner.attachPauseStore(pauseStore);
         VetoAgent agent = new VetoAgent(persona, runner);
         register(new Entry(runner.sessionId(), null, null, agent));
         return agent;
@@ -222,6 +261,7 @@ public final class SessionAgentRegistry {
         }
         if (live.containsKey(persona.id())) throw new IllegalStateException("Duplicate agent id");
         runner.setSessionId(sessionId);
+        if (pauseStore != null) runner.attachPauseStore(pauseStore);
         VetoAgent child = new VetoAgent(persona, runner, userInteractionEnabled);
         register(new Entry(sessionId, parentAgentId, parentCallId, child));
         return child;

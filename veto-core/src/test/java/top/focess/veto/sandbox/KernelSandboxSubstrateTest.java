@@ -11,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -49,6 +50,72 @@ class KernelSandboxSubstrateTest {
                 "plain \"two words\" \"say\\\"hello\" \"C:\\path with space\\\\\"",
                 SandboxBootstrap.windowsCommandLine(
                         List.of("plain", "two words", "say\"hello", "C:\\path with space\\")));
+    }
+
+    @Test
+    @EnabledOnOs(OS.WINDOWS)
+    void windowsBootstrapPreservesActualChildArguments(@TempDir @NonNull Path temp)
+            throws Exception {
+        Path source = temp.resolve("ArgvProbe.java");
+        Files.writeString(
+                source,
+                "class ArgvProbe { public static void main(String[] args) {"
+                        + " System.out.print(java.util.Arrays.toString(args)); } }");
+        List<String> arguments =
+                List.of(
+                        "plain",
+                        "",
+                        "two words",
+                        "say\"hello",
+                        "C:\\path with space\\",
+                        "[Console]::Out.WriteLine(\"QUOTE_DOUBLE\")");
+        List<String> command = new ArrayList<>();
+        command.add(Path.of(System.getProperty("java.home"), "bin", "java.exe").toString());
+        command.add("-Djava.io.tmpdir=" + temp);
+        command.add(source.toString());
+        command.addAll(SandboxBootstrap.windowsBootstrapArguments(arguments));
+        Process child =
+                new ProcessBuilder(command).redirectError(ProcessBuilder.Redirect.INHERIT).start();
+        try {
+            assertTrue(child.waitFor(20, TimeUnit.SECONDS));
+            String output =
+                    new String(child.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            assertEquals(0, child.exitValue(), output);
+            assertEquals(arguments.toString(), output);
+        } finally {
+            if (child.isAlive()) {
+                child.destroy();
+            }
+        }
+    }
+
+    @Test
+    @EnabledOnOs(OS.WINDOWS)
+    void productionSubstratePreservesPowerShellDoubleQuotes(@TempDir @NonNull Path workspace)
+            throws Exception {
+        ConstrainedSubprocessSubstrate substrate =
+                new ConstrainedSubprocessSubstrate(new KernelSandboxSubstrate());
+        SandboxHandle handle =
+                substrate.provision(
+                        new SandboxProfile(workspace, 512, 100, 8, Duration.ofSeconds(30)));
+        CommandResult result =
+                substrate.runCommands(
+                        handle,
+                        List.of(
+                                new Command(
+                                        "powershell.exe",
+                                        List.of(
+                                                "-NoProfile",
+                                                "-NonInteractive",
+                                                "-Command",
+                                                "[Console]::Out.WriteLine(\"QUOTE_OUT\");"
+                                                        + " [Console]::Error.WriteLine(\"QUOTE_ERR\")"))),
+                        Path.of("."),
+                        ChainMode.STOP_ON_FAILURE,
+                        Duration.ofSeconds(20));
+        assertEquals(0, result.exitCode(), result.stdout() + result.stderr());
+        assertTrue(result.stdout().contains("QUOTE_OUT"), result.stdout());
+        assertTrue(result.stderr().contains("QUOTE_ERR"), result.stderr());
     }
 
     @Test

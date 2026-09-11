@@ -54,7 +54,8 @@ public final class ProcessExecutionCapabilityImpl implements ProcessExecutionCap
                 permit.requireExecutionRoot(),
                 timeoutSeconds,
                 context.sessionId(),
-                profile(permit, network));
+                profile(permit, network),
+                context.requestId());
     }
 
     @Override

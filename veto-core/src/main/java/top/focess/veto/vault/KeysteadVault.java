@@ -14,6 +14,7 @@ import java.util.Arrays;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
@@ -234,7 +235,74 @@ public class KeysteadVault {
         return !handles.isEmpty();
     }
 
+    /** Owner-specific readiness; never falls back to another logged-in user. */
+    public boolean isUnlocked(@NonNull String owner) {
+        VaultHandle handle = handles.get(owner);
+        return handle != null && !handle.isClosed();
+    }
+
     // ── flat key->string helpers (a credential is a SECURE_NOTE titled by its key) ──
+
+    /** Trusted import storage seam; the caller must already hold approval for this binding. */
+    public @NonNull String createImportedCredential(
+            @NonNull String owner,
+            @NonNull String importId,
+            @NonNull String service,
+            @NonNull String label,
+            @NonNull String value) {
+        if (!importId.matches("s_[a-f0-9]{32}")
+                || !service.equals("github")
+                || label.isBlank()
+                || label.length() > 80
+                || !label.equals(label.trim())
+                || value.isEmpty()
+                || label.contains(value))
+            throw new IllegalArgumentException("Invalid credential import binding");
+        VaultHandle handle = handles.get(owner);
+        if (handle == null || handle.isClosed())
+            throw new VaultLockedException("Credential owner vault is locked");
+        String title = "veto.import." + importId;
+        char[] chars = value.toCharArray();
+        try {
+            synchronized (handle) {
+                var existing =
+                        handle.listSecrets().stream()
+                                .filter(metadata -> title.equals(metadata.profile().title()))
+                                .findFirst();
+                if (existing.isPresent()) {
+                    SecretMetadata metadata = existing.get();
+                    var attributes = metadata.profile().attributes();
+                    if (metadata.type() != SecretType.SECURE_NOTE
+                            || !importId.equals(attributes.get("veto.import.id"))
+                            || !service.equals(attributes.get("veto.import.service"))
+                            || !label.equals(attributes.get("veto.import.label")))
+                        throw new IllegalArgumentException(
+                                "Credential import binding does not match");
+                    boolean[] same = {false};
+                    handle.withSecureNote(
+                            metadata.id(),
+                            note -> note.withBody(body -> same[0] = Arrays.equals(chars, body)));
+                    if (!same[0])
+                        throw new IllegalArgumentException(
+                                "Credential import binding does not match");
+                    return "cred_" + metadata.id().value();
+                }
+                try (SecretBuffer body = SecretBuffer.fromChars(chars)) {
+                    SecretId id =
+                            handle.saveSecureNote(
+                                    draft ->
+                                            draft.title(title)
+                                                    .attribute("veto.import.id", importId)
+                                                    .attribute("veto.import.service", service)
+                                                    .attribute("veto.import.label", label)
+                                                    .body(body));
+                    return "cred_" + id.value();
+                }
+            }
+        } finally {
+            wipe(chars);
+        }
+    }
 
     /**
      * Stores (upserts) a credential: deletes any existing note with the title, then saves a new
@@ -253,6 +321,42 @@ public class KeysteadVault {
             }
         }
         log.debug("KeysteadVault: stored credential '{}'", title);
+    }
+
+    /**
+     * Trusted operation seam; the caller must independently authorize the fixed service request.
+     */
+    public void withImportedCredential(
+            @NonNull String owner,
+            @NonNull String credentialRef,
+            @NonNull String service,
+            @NonNull Consumer<char @NonNull []> operation) {
+        if (!service.equals("github")
+                || !credentialRef.matches(
+                        "cred_[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}"))
+            throw new IllegalArgumentException("Invalid credential binding");
+        VaultHandle handle = handles.get(owner);
+        if (handle == null || handle.isClosed())
+            throw new VaultLockedException("Credential owner vault is locked");
+        synchronized (handle) {
+            SecretMetadata metadata =
+                    handle.listSecrets().stream()
+                            .filter(item -> credentialRef.equals("cred_" + item.id().value()))
+                            .findFirst()
+                            .orElseThrow(
+                                    () ->
+                                            new IllegalArgumentException(
+                                                    "Credential is unavailable"));
+            var attributes = metadata.profile().attributes();
+            String importId = attributes.get("veto.import.id");
+            if (metadata.type() != SecretType.SECURE_NOTE
+                    || !service.equals(attributes.get("veto.import.service"))
+                    || importId == null
+                    || !importId.matches("s_[a-f0-9]{32}")
+                    || !metadata.profile().title().equals("veto.import." + importId))
+                throw new IllegalArgumentException("Credential service binding does not match");
+            handle.withSecureNote(metadata.id(), note -> note.withBody(operation::accept));
+        }
     }
 
     /** Retrieves a credential by its title (key). */

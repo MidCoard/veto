@@ -6,7 +6,6 @@ import org.springframework.stereotype.Component;
 import top.focess.veto.agent.AgentRunner;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.tool.ToolCallContext;
-import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierRegistry;
@@ -52,7 +51,7 @@ public class LeaderBinding {
                 resolved.provider(),
                 resolved.model(),
                 resolved.credentialKey(),
-                LlmOptions.defaults(),
+                resolved.llmOptions(),
                 systemPromptBase,
                 resolved.baseUrl());
     }

@@ -1,6 +1,7 @@
 package top.focess.veto.session;
 
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.llm.core.ProviderType;
 
 /**
@@ -16,7 +17,16 @@ public record LlmConfig(
         @NonNull ProviderType provider,
         @NonNull String model,
         @NonNull String credKey,
-        String baseUrl) {
+        String baseUrl,
+        @NonNull LlmOptions options) {
+
+    public LlmConfig(
+            @NonNull ProviderType provider,
+            @NonNull String model,
+            @NonNull String credKey,
+            String baseUrl) {
+        this(provider, model, credKey, baseUrl, LlmOptions.defaults());
+    }
 
     /** Convenience constructor for configs that do not override the base URL (null -> default). */
     public LlmConfig(

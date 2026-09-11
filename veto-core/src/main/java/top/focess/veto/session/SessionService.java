@@ -6,6 +6,7 @@ import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import org.jspecify.annotations.NonNull;
@@ -20,7 +21,6 @@ import top.focess.veto.agent.workspace.PathResolver;
 import top.focess.veto.agent.workspace.WorkspaceAdmissionPolicy;
 import top.focess.veto.controller.SessionController;
 import top.focess.veto.i18n.Msg;
-import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
 import top.focess.veto.model.AgentEntity;
 import top.focess.veto.model.AgentInstanceRepository;
@@ -30,7 +30,9 @@ import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTierRegistry;
+import top.focess.veto.monitor.RequestContinuationStore;
 import top.focess.veto.security.UserAdminService;
+import top.focess.veto.vault.SecretCandidateStore;
 
 /**
  * Owns the session lifecycle: create/list/activate/deactivate, plus the per-terminal active-session
@@ -44,6 +46,19 @@ import top.focess.veto.security.UserAdminService;
  */
 @Service
 public class SessionService {
+    private SecretCandidateStore candidates;
+
+    @Autowired
+    public void attachCandidates(@NonNull SecretCandidateStore store) {
+        candidates = store;
+    }
+
+    private RequestContinuationStore continuations;
+
+    @Autowired
+    public void attachContinuations(@NonNull RequestContinuationStore store) {
+        continuations = store;
+    }
 
     private final @NonNull SessionRepository sessions;
     private final @NonNull AgentInstanceRepository agents;
@@ -444,8 +459,11 @@ public class SessionService {
         }
         for (SessionEntity session : matches) {
             String sessionId = session.getId();
+            if (candidates != null) candidates.retireSession(owner, sessionId);
             activeSessions.entrySet().removeIf(e -> sessionId.equals(e.getValue()));
             agentService.remove(sessionId);
+            RequestContinuationStore store = continuations;
+            if (store != null) store.deleteSession(sessionId);
             agents.deleteBySessionId(sessionId);
             sessions.delete(session);
         }
@@ -535,6 +553,41 @@ public class SessionService {
                         session.getGuidedEnabled()));
     }
 
+    /** Restores the exact primary/team identity for an already-authorized Monitor observation. */
+    public boolean activateForMonitor(
+            @NonNull UUID sessionId, @NonNull String owner, @NonNull String targetId) {
+        SessionEntity session = sessions.findById(sessionId.toString()).orElse(null);
+        if (session == null || !session.getOwner().equals(owner)) return false;
+        AgentEntity primary = primaryAgent(session);
+        AgentEntity target = agents.findById(targetId).orElse(null);
+        if (primary == null
+                || target == null
+                || !primary.getSessionId().equals(session.getId())
+                || !target.getSessionId().equals(session.getId())
+                || !primary.supportsMonitorRecovery()
+                || !target.supportsMonitorRecovery()
+                || primary.isUserPaused()
+                || target.isUserPaused()
+                || primary.getExecutionWait() != null
+                || target.getExecutionWait() != null) return false;
+        if (!target.getId().equals(primary.getId())
+                && (!"MATE".equals(target.getRuntimeRole()) || target.getParentCallId() != null))
+            return false;
+        ModelBinding resolved = tierRegistry.resolve(owner, primary.getTier());
+        agentService.getOrCreateAgent(
+                session.getId(),
+                primary.getId(),
+                standaloneBinding(resolved),
+                historyLoader.load(session.getId(), primary.getId()),
+                agentService.userIdForOwner(owner),
+                owner,
+                session.getWorkspaceRoots(),
+                session.getCurrentWorkspaceRootIndex(),
+                session.getToolResultPresentation(),
+                session.getGuidedEnabled());
+        return true;
+    }
+
     /**
      * The session's primary agent id - the key the HITL registry parks vetoes under. Resolved
      * duplicate-tolerantly (most-recently-active wins), same as {@link #resolveByName}. Empty when
@@ -559,12 +612,7 @@ public class SessionService {
                 resolved.provider(),
                 resolved.model(),
                 resolved.credentialKey(),
-                new LlmOptions(
-                        resolved.temperature(),
-                        null,
-                        resolved.maxOutputTokens(),
-                        LlmOptions.defaults().timeout(),
-                        resolved.contextWindowTokens()),
+                resolved.llmOptions(),
                 null,
                 resolved.baseUrl());
     }
@@ -574,7 +622,8 @@ public class SessionService {
                 resolved.provider(),
                 resolved.model(),
                 resolved.credentialKey(),
-                resolved.baseUrl());
+                resolved.baseUrl(),
+                resolved.llmOptions());
     }
 
     public @NonNull Optional<Agent> activeAgent(@NonNull String terminalId) {

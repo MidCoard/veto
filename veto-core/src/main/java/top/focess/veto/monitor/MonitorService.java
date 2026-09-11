@@ -10,10 +10,14 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import top.focess.veto.agent.SessionAgentRegistry;
@@ -21,12 +25,26 @@ import top.focess.veto.bus.SessionInvalidations;
 import top.focess.veto.group.DagNode;
 import top.focess.veto.group.Group;
 import top.focess.veto.group.GroupRegistry;
+import top.focess.veto.monitor.MonitorRecord.ActivationState;
 import top.focess.veto.monitor.MonitorRecord.Event;
 import top.focess.veto.sandbox.BackgroundTaskManager;
 
 /** Domain observations and time triggers share persistence and a single runner delivery path. */
 @Service
 public class MonitorService {
+    private MonitorAgentActivator activator;
+
+    @Autowired
+    public void attachActivator(@Lazy @NonNull MonitorAgentActivator activator) {
+        this.activator = activator;
+    }
+
+    private static final @NonNull Logger log =
+            LoggerFactory.getLogger("top.focess.veto.monitor.MonitorService");
+
+    private record Completion(@NonNull String agentId, @NonNull Event event, boolean success) {}
+
+    private final @NonNull Map<String, Completion> completionWrites = new LinkedHashMap<>();
     private SessionInvalidations invalidations;
 
     @Autowired
@@ -61,11 +79,14 @@ public class MonitorService {
             try {
                 MonitorRecord record = mapper.readValue(row.getPayload(), RECORD_TYPE);
                 if (record != null) {
+                    MonitorRecord original = record;
+                    record = record.interruptedActivations();
                     if ((record.kind().equals("RESOURCE_EVENT")
                                     || record.kind().equals("PROCESS_EVENT"))
                             && record.state().equals("ACTIVE"))
                         record = record.update("INTERRUPTED", record.seen(), record.pending());
-                    records.put(record.id(), record);
+                    if (!record.equals(original)) save(record);
+                    else records.put(record.id(), record);
                 }
             } catch (JsonProcessingException error) {
                 throw new IllegalStateException("Cannot restore Monitor", error);
@@ -79,6 +100,16 @@ public class MonitorService {
             @NonNull String agentId,
             @NonNull String purpose,
             @NonNull Instant dueAt) {
+        return createTimer(owner, sessionId, agentId, purpose, dueAt, null);
+    }
+
+    public synchronized @NonNull MonitorRecord createTimer(
+            @NonNull String owner,
+            @NonNull String sessionId,
+            @NonNull String agentId,
+            @NonNull String purpose,
+            @NonNull Instant dueAt,
+            String requestId) {
         Instant now = Instant.now();
         if (purpose.isBlank()) throw new IllegalArgumentException("A wake-up purpose is required");
         if (!dueAt.isAfter(now) || dueAt.isAfter(now.plusSeconds(30L * 24 * 3600)))
@@ -106,7 +137,10 @@ public class MonitorService {
                         "ACTIVE",
                         Map.of(),
                         List.of(),
-                        now);
+                        now,
+                        List.of(),
+                        Map.of(),
+                        requestId);
         save(record);
         return record;
     }
@@ -160,7 +194,7 @@ public class MonitorService {
                                         && r.sessionId().equals(sessionId)
                                         && (r.state().equals("ACTIVE")
                                                 || r.state().equals("COMPLETED")))
-                .flatMap(r -> r.pending().stream())
+                .flatMap(r -> r.readyEvents().stream())
                 .toList();
     }
 
@@ -169,6 +203,64 @@ public class MonitorService {
         if (r == null || !r.agentId().equals(agentId)) return;
         if (r.pending().stream().noneMatch(e -> e.id().equals(event.id()))) return;
         save(r.acknowledge(event));
+    }
+
+    /** Retain the observation without claiming that a cancelled request processed it. */
+    public synchronized void activationCancelled(
+            @NonNull String agentId, @NonNull String sessionId, @NonNull Event event) {
+        MonitorRecord record = records.get(event.monitorId());
+        if (record == null
+                || !record.agentId().equals(agentId)
+                || !record.sessionId().equals(sessionId)
+                || !record.readyEvents().contains(event)) return;
+        save(record.acknowledge(event).withActivation(event.id(), ActivationState.CANCELLED));
+    }
+
+    /** A durable claim before reasoning; a receipt alone is not a claim or a result. */
+    public synchronized void activationStarted(@NonNull String agentId, @NonNull Event event) {
+        MonitorRecord record = records.get(event.monitorId());
+        if (record == null
+                || !record.agentId().equals(agentId)
+                || !(record.state().equals("ACTIVE") || record.state().equals("COMPLETED")))
+            throw new IllegalStateException("Monitor is not available for activation");
+        var activation = record.activationStates().get(event.id());
+        if (activation == null
+                || (activation.state() != ActivationState.APPENDED
+                        && activation.state() != ActivationState.RUNNING))
+            throw new IllegalStateException("Monitor event has no pending activation");
+        if (activation.state() == ActivationState.APPENDED)
+            save(record.withActivation(event.id(), ActivationState.RUNNING));
+    }
+
+    /** Retry receipt persistence without repeating the episode's model or tool calls. */
+    public synchronized void activationCompleted(
+            @NonNull String agentId, @NonNull Event event, boolean success) {
+        completionWrites.putIfAbsent(event.id(), new Completion(agentId, event, success));
+        flushCompletion(event.id());
+    }
+
+    private void flushCompletion(@NonNull String eventId) {
+        Completion write = completionWrites.get(eventId);
+        if (write == null) return;
+        MonitorRecord record = records.get(write.event().monitorId());
+        if (record == null || !record.agentId().equals(write.agentId())) {
+            completionWrites.remove(eventId);
+            return;
+        }
+        var state = record.activationStates().get(eventId);
+        if (state == null || state.state() != ActivationState.RUNNING) {
+            completionWrites.remove(eventId);
+            return;
+        }
+        try {
+            save(
+                    record.withActivation(
+                            eventId,
+                            write.success() ? ActivationState.COMPLETED : ActivationState.FAILED));
+            completionWrites.remove(eventId);
+        } catch (RuntimeException error) {
+            log.warn("Monitor activation {} result persistence awaits retry", eventId, error);
+        }
     }
 
     public synchronized void cancelForAgent(@NonNull String agentId) {
@@ -181,6 +273,10 @@ public class MonitorService {
 
     /** Capture committed outcomes before deciding that a request has finished. */
     public synchronized boolean hasUndeliveredGroup(@NonNull String agentId) {
+        return hasUndeliveredGroup(agentId, null);
+    }
+
+    public synchronized boolean hasUndeliveredGroup(@NonNull String agentId, String requestId) {
         for (Group group : groups.snapshot().values()) {
             if (group.leaderId().equals(agentId)) observeGroup(group);
         }
@@ -189,17 +285,25 @@ public class MonitorService {
                         r ->
                                 r.agentId().equals(agentId)
                                         && r.kind().equals("RESOURCE_EVENT")
-                                        && !r.pending().isEmpty()
+                                        && r.readyEvents().stream()
+                                                .anyMatch(
+                                                        e ->
+                                                                Objects.equals(
+                                                                        requestId, e.requestId()))
                                         && r.state().equals("ACTIVE"));
     }
 
     public boolean hasGroupWork(@NonNull String agentId) {
+        return hasGroupWork(agentId, null);
+    }
+
+    public boolean hasGroupWork(@NonNull String agentId, String requestId) {
         return groups.snapshot().values().stream()
                 .filter(
                         g ->
                                 g.leaderId().equals(agentId)
                                         && g.state() != Group.GroupState.DISBANDED)
-                .anyMatch(g -> g.dag().hasUnfinishedWork());
+                .anyMatch(g -> g.dag().hasUnfinishedWork(requestId));
     }
 
     @Scheduled(fixedDelay = 1000)
@@ -210,6 +314,7 @@ public class MonitorService {
     void tickAt(@NonNull Instant now) {
         List<MonitorRecord> snapshot;
         synchronized (this) {
+            for (String eventId : List.copyOf(completionWrites.keySet())) flushCompletion(eventId);
             for (Group group : groups.snapshot().values()) observeGroup(group);
             for (MonitorRecord r : List.copyOf(records.values())) {
                 Instant due = r.dueAt();
@@ -230,7 +335,9 @@ public class MonitorService {
                                                             + " (due "
                                                             + due
                                                             + ")",
-                                                    Instant.now()))
+                                                    Instant.now(),
+                                                    r.requestId(),
+                                                    null))
                                     : r.pending();
                     save(r.update("COMPLETED", Map.of("fired", "true"), events));
                 }
@@ -239,8 +346,27 @@ public class MonitorService {
         }
         // Never acquire the Agent registry while holding the Monitor lock.
         for (MonitorRecord r : snapshot) {
-            if (r.pending().isEmpty()
+            MonitorAgentActivator activation = activator;
+            if (activation != null
+                    && r.kind().equals("RESOURCE_EVENT")
+                    && r.state().equals("INTERRUPTED")) {
+                try {
+                    activation.wake(r);
+                } catch (RuntimeException error) {
+                    log.debug("Monitor {} awaits agent recovery", r.id(), error);
+                }
+                continue;
+            }
+            if (r.readyEvents().isEmpty()
                     || !(r.state().equals("ACTIVE") || r.state().equals("COMPLETED"))) continue;
+            if (activation != null) {
+                try {
+                    activation.wake(r);
+                } catch (RuntimeException error) {
+                    log.debug("Monitor {} awaits agent recovery", r.id(), error);
+                }
+                continue;
+            }
             for (SessionAgentRegistry.Entry entry : agents.agents(UUID.fromString(r.sessionId()))) {
                 if (entry.agent().id().equals(r.agentId())) entry.agent().signalMonitor();
             }
@@ -290,10 +416,15 @@ public class MonitorService {
                                 + cause
                                 + "; exit code: "
                                 + info.exitCode()
-                                + ". Command (reference material): "
+                                + ". If the original request needs output, read this task once with view_task (taskId="
+                                + info.taskId()
+                                + ") under the existing tool permissions, then finish that request. This is result retrieval, not polling. Do not infer captured output from the command."
+                                + " Command (reference material): "
                                 + info.command()
                                 + ". This notification does not authorize restarting the process.",
-                        ended != null ? ended : Instant.now());
+                        ended != null ? ended : Instant.now(),
+                        info.requestId(),
+                        info.taskInstanceId().toString());
         save(record.update("COMPLETED", Map.of("exited", "true"), List.of(event)));
     }
 
@@ -301,6 +432,7 @@ public class MonitorService {
         UUID session = group.sessionId();
         String owner = group.owner();
         if (session == null || owner == null) return;
+        if (group.state() == Group.GroupState.RECOVERING) return;
         String id = "group:" + group.groupId();
         MonitorRecord r = records.get(id);
         if (r == null)
@@ -329,7 +461,9 @@ public class MonitorService {
             String state = node.state().name();
             if (node.state() != DagNode.NodeState.VERIFIED
                     && node.state() != DagNode.NodeState.FAILED
-                    && node.state() != DagNode.NodeState.STALE) continue;
+                    && node.state() != DagNode.NodeState.STALE
+                    && node.state() != DagNode.NodeState.INTERRUPTED
+                    && node.state() != DagNode.NodeState.CANCELLED) continue;
             String version = state + ":" + node.retryCount();
             if (version.equals(seen.get(node.nodeId()))) continue;
             seen.put(node.nodeId(), version);
@@ -338,7 +472,9 @@ public class MonitorService {
                             ? result.summary()
                             : node.result() instanceof DagNode.ResultFailure result
                                     ? result.feedback()
-                                    : "Task retired";
+                                    : node.state() == DagNode.NodeState.INTERRUPTED
+                                            ? "Execution interrupted; outcome is unknown. No task was replayed."
+                                            : "Task retired";
             pending.add(
                     new Event(
                             id + ":" + node.nodeId() + ":" + version,
@@ -354,9 +490,11 @@ public class MonitorService {
                                             : state)
                                     + "\nReport (reference material):\n"
                                     + report,
-                            Instant.now()));
+                            Instant.now(),
+                            node.requestId(),
+                            node.dispatchId()));
         }
-        if (!records.containsKey(id) || !seen.equals(r.seen()))
+        if (!records.containsKey(id) || !seen.equals(r.seen()) || r.state().equals("INTERRUPTED"))
             save(r.update("ACTIVE", seen, pending));
     }
 

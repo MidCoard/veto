@@ -15,7 +15,20 @@ public record BlackboardMessage(
         @NonNull String receiverId, // "LEADER" for Mate posts; a Mate id for Leader dispatches
         @NonNull MessageType type,
         @NonNull String payload,
-        long turnSeq) {
+        long turnSeq,
+        String dispatchId) {
+
+    /** Legacy messages have no authority to finish a correlated dispatch. */
+    public BlackboardMessage(
+            @NonNull String messageId,
+            @NonNull UUID groupId,
+            @NonNull String senderId,
+            @NonNull String receiverId,
+            @NonNull MessageType type,
+            @NonNull String payload,
+            long turnSeq) {
+        this(messageId, groupId, senderId, receiverId, type, payload, turnSeq, null);
+    }
 
     public enum MessageType {
         /** Leader → Mate: a task or revision instruction (the Leader's authored text). */

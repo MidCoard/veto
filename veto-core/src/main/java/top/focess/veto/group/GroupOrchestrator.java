@@ -1,6 +1,7 @@
 package top.focess.veto.group;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -61,6 +62,10 @@ public class GroupOrchestrator {
 
     /** Per-group ledger of last-seen turnSeq so each tick only processes new messages. */
     private final @NonNull ConcurrentMap<UUID, Long> lastSeenSeq = new ConcurrentHashMap<>();
+
+    private final @NonNull ConcurrentMap<UUID, GroupSpawner> cancellationSpawners =
+            new ConcurrentHashMap<>();
+    private final @NonNull Set<String> retiringMates = ConcurrentHashMap.newKeySet();
 
     /**
      * Per-group tick lock (F4). Serializes concurrent {@link #tick} calls on the same groupId so
@@ -174,6 +179,18 @@ public class GroupOrchestrator {
             @NonNull Set<String> dependsOn,
             String mateId,
             boolean newMate) {
+        return addNode(groupId, nodeId, description, skillset, dependsOn, mateId, newMate, null);
+    }
+
+    public @NonNull NodeEdit addNode(
+            @NonNull UUID groupId,
+            @NonNull String nodeId,
+            @NonNull String description,
+            @NonNull String skillset,
+            @NonNull Set<String> dependsOn,
+            String mateId,
+            boolean newMate,
+            String requestId) {
         return withGroupLock(
                 groupId,
                 () -> {
@@ -181,7 +198,8 @@ public class GroupOrchestrator {
                     if (group == null) {
                         return new NodeEdit.Rejected("group not found: " + groupId);
                     }
-                    if (group.state() == Group.GroupState.DISBANDED) {
+                    if (group.state() == Group.GroupState.DISBANDED
+                            || group.state() == Group.GroupState.RECOVERING) {
                         return new NodeEdit.Rejected("group is no longer active");
                     }
                     if (nodeId.isBlank()) {
@@ -192,6 +210,10 @@ public class GroupOrchestrator {
                     }
                     if (mateId != null && !group.mates().containsKey(mateId)) {
                         return new NodeEdit.Rejected("unknown Mate in this group: " + mateId);
+                    }
+                    if (mateId != null && retiringMates.contains(groupId + ":" + mateId)) {
+                        return new NodeEdit.Rejected(
+                                "Mate is stopping; retry remove_mate to confirm exit: " + mateId);
                     }
                     if (newMate && mateId != null) {
                         return new NodeEdit.Rejected("choose either mateId or newMate, not both");
@@ -222,11 +244,13 @@ public class GroupOrchestrator {
                                             + ". Create dependencies before the nodes that need"
                                             + " them.");
                         }
-                        if (d.state() == DagNode.NodeState.STALE) {
+                        if (d.state() == DagNode.NodeState.STALE
+                                || d.state() == DagNode.NodeState.CANCELLED
+                                || d.state() == DagNode.NodeState.INTERRUPTED) {
                             return new NodeEdit.Rejected(
                                     "dependency "
                                             + dep
-                                            + " was retired (stale). Re-plan around it.");
+                                            + " was retired (stale) or cancelled, or interrupted. Re-plan around it.");
                         }
                     }
                     String assignee = mateId;
@@ -245,7 +269,10 @@ public class GroupOrchestrator {
                                     skillset,
                                     dependsOn,
                                     DagNode.NodeState.PENDING,
-                                    new DagNode.ResultNone());
+                                    new DagNode.ResultNone(),
+                                    0,
+                                    null,
+                                    requestId);
                     List<DagNode> next = new ArrayList<>(dag.nodes());
                     next.add(node);
                     registry.put(
@@ -265,7 +292,9 @@ public class GroupOrchestrator {
                 groupId,
                 () -> {
                     Group group = registry.get(groupId);
-                    if (group == null || group.state() == Group.GroupState.DISBANDED)
+                    if (group == null
+                            || group.state() == Group.GroupState.DISBANDED
+                            || group.state() == Group.GroupState.RECOVERING)
                         throw new IllegalStateException("Group is no longer available");
                     if (name.isBlank() || responsibility.isBlank())
                         throw new IllegalArgumentException(
@@ -274,6 +303,131 @@ public class GroupOrchestrator {
                             spawner.createNamedMate(groupId, name.strip(), responsibility.strip());
                     registry.put(group.withMate(mateId, responsibility.strip()));
                     return mateId;
+                });
+    }
+
+    public @NonNull NodeEdit cancelTask(
+            @NonNull UUID groupId, @NonNull String taskId, @NonNull GroupSpawner spawner) {
+        return withGroupLock(
+                groupId,
+                () -> {
+                    Group group = registry.get(groupId);
+                    if (group == null
+                            || group.state() == Group.GroupState.DISBANDED
+                            || group.state() == Group.GroupState.RECOVERING)
+                        return new NodeEdit.Rejected("Group unavailable");
+                    DagNode node =
+                            group.dag().nodes().stream()
+                                    .filter(n -> n.nodeId().equals(taskId))
+                                    .findFirst()
+                                    .orElse(null);
+                    if (node == null) return new NodeEdit.Rejected("Unknown task: " + taskId);
+                    if (node.state() == DagNode.NodeState.CANCELLED) return new NodeEdit.Applied();
+                    if (node.state() == DagNode.NodeState.VERIFIED
+                            || node.state() == DagNode.NodeState.STALE)
+                        return new NodeEdit.Rejected("Task is already terminal: " + node.state());
+                    boolean running =
+                            node.state() == DagNode.NodeState.RUNNING
+                                    || node.state() == DagNode.NodeState.CANCEL_REQUESTED;
+                    DagNode updated =
+                            cancellationState(
+                                    node,
+                                    running
+                                            ? DagNode.NodeState.CANCEL_REQUESTED
+                                            : DagNode.NodeState.CANCELLED);
+                    group = group.withDag(group.dag().withNode(taskId, updated));
+                    registry.put(group);
+                    cancellationSpawners.put(groupId, spawner);
+                    group = advanceCancellations(group, Duration.ofSeconds(2));
+                    registry.put(group);
+                    boolean confirmed =
+                            group.dag().nodes().stream()
+                                    .anyMatch(
+                                            n ->
+                                                    n.nodeId().equals(taskId)
+                                                            && n.state()
+                                                                    == DagNode.NodeState.CANCELLED);
+                    return confirmed
+                            ? new NodeEdit.Applied()
+                            : new NodeEdit.Rejected(
+                                    "Cancellation requested; execution exit is not confirmed. The task still occupies its Mate. Inspect or retry for confirmation.");
+                });
+    }
+
+    private static @NonNull DagNode cancellationState(
+            @NonNull DagNode node, DagNode.@NonNull NodeState state) {
+        return new DagNode(
+                node.nodeId(),
+                node.description(),
+                node.assignedMateId(),
+                node.requiredSkillset(),
+                node.dependsOn(),
+                state,
+                new DagNode.ResultFailure(
+                        state == DagNode.NodeState.CANCELLED
+                                ? "Task cancelled; dependent tasks remain blocked until explicitly replanned or cancelled. Independent background processes are not stopped."
+                                : "Cancellation requested; awaiting execution exit.",
+                        List.of()),
+                node.retryCount(),
+                node.dispatchId(),
+                node.requestId());
+    }
+
+    private @NonNull Group advanceCancellations(@NonNull Group group, @NonNull Duration timeout) {
+        GroupSpawner spawner = cancellationSpawners.get(group.groupId());
+        if (spawner == null) return group;
+        ExecutionDag dag = group.dag();
+        for (DagNode node : dag.nodes()) {
+            String mate = node.assignedMateId();
+            String dispatch = node.dispatchId();
+            if (node.state() == DagNode.NodeState.CANCEL_REQUESTED
+                    && mate != null
+                    && dispatch != null
+                    && spawner.cancelDispatch(group.groupId(), mate, dispatch, timeout))
+                dag =
+                        dag.withNode(
+                                node.nodeId(),
+                                cancellationState(node, DagNode.NodeState.CANCELLED));
+        }
+        return group.withDag(dag);
+    }
+
+    public @NonNull NodeEdit removeMate(
+            @NonNull UUID groupId, @NonNull String mateId, @NonNull GroupSpawner spawner) {
+        return withGroupLock(
+                groupId,
+                () -> {
+                    Group group = registry.get(groupId);
+                    if (group == null
+                            || group.state() == Group.GroupState.DISBANDED
+                            || group.state() == Group.GroupState.RECOVERING)
+                        return new NodeEdit.Rejected("Group is unavailable");
+                    if (!group.mates().containsKey(mateId))
+                        return new NodeEdit.Rejected("Unknown Mate in this group: " + mateId);
+                    List<String> blockers =
+                            group.dag().nodes().stream()
+                                    .filter(node -> mateId.equals(node.assignedMateId()))
+                                    .filter(
+                                            node ->
+                                                    node.state() != DagNode.NodeState.VERIFIED
+                                                            && node.state()
+                                                                    != DagNode.NodeState.CANCELLED
+                                                            && node.state()
+                                                                    != DagNode.NodeState.STALE)
+                                    .map(DagNode::nodeId)
+                                    .toList();
+                    if (!blockers.isEmpty())
+                        return new NodeEdit.Rejected(
+                                "Mate has unfinished tasks: " + String.join(", ", blockers));
+                    String key = groupId + ":" + mateId;
+                    retiringMates.add(key);
+                    if (!spawner.stopMateAndConfirm(groupId, mateId))
+                        return new NodeEdit.Rejected(
+                                "Stop requested but execution exit is not confirmed. Member retained; retry remove_mate. Independent background processes are not stopped.");
+                    registry.put(group.withoutMate(mateId));
+                    spawner.forgetStoppedMate(groupId, mateId);
+                    retiringMates.remove(key);
+                    return new NodeEdit.Applied();
                 });
     }
 
@@ -311,7 +465,8 @@ public class GroupOrchestrator {
                     if (target.state() == DagNode.NodeState.STALE) {
                         return new NodeEdit.Rejected(nodeId + " is already retired (stale).");
                     }
-                    if (target.state() == DagNode.NodeState.RUNNING) {
+                    if (target.state() == DagNode.NodeState.RUNNING
+                            || target.state() == DagNode.NodeState.CANCEL_REQUESTED) {
                         return new NodeEdit.Rejected(
                                 nodeId
                                         + " is still running. Wait for its result before retiring it.");
@@ -336,7 +491,9 @@ public class GroupOrchestrator {
                                     target.dependsOn(),
                                     DagNode.NodeState.STALE,
                                     target.result(),
-                                    target.retryCount());
+                                    target.retryCount(),
+                                    target.dispatchId(),
+                                    target.requestId());
                     registry.put(group.withDag(dag.withNode(nodeId, stale)));
                     return new NodeEdit.Applied();
                 });
@@ -362,6 +519,7 @@ public class GroupOrchestrator {
                 () -> {
                     Group group = registry.get(groupId);
                     if (group == null) return null;
+                    group = advanceCancellations(group, Duration.ZERO);
                     List<BlackboardMessage> captured = blackboard.readAll(groupId);
                     long seen = lastSeenSeq.getOrDefault(groupId, 0L);
                     for (BlackboardMessage message : captured) {
@@ -411,6 +569,7 @@ public class GroupOrchestrator {
             return group;
         }
 
+        group = advanceCancellations(group, Duration.ZERO);
         // 0. Leader's "reasoning" step: assign Mates to PENDING nodes that have no Mate yet. Only
         //    used when no lazy provisioner is wired (the test path) - the HeuristicLeader assigns
         // at
@@ -500,11 +659,14 @@ public class GroupOrchestrator {
                 continue;
             }
             String assignedMateId = node.assignedMateId();
+            String dispatchId = node.dispatchId();
             if (node.state() != DagNode.NodeState.RUNNING
                     || assignedMateId == null
-                    || !assignedMateId.equals(message.senderId())) {
+                    || !assignedMateId.equals(message.senderId())
+                    || dispatchId == null
+                    || !dispatchId.equals(message.dispatchId())) {
                 log.warn(
-                        "Ignored {} for node {} from unassigned sender {}",
+                        "Ignored stale or unassigned {} for node {} from sender {}",
                         message.type(),
                         nodeId,
                         message.senderId());
@@ -522,7 +684,9 @@ public class GroupOrchestrator {
                                     ? DagNode.NodeState.FAILED
                                     : newState,
                             result,
-                            node.retryCount());
+                            node.retryCount(),
+                            node.dispatchId(),
+                            node.requestId());
             return group.withDag(dag.withNode(nodeId, updated));
         }
         return group;
@@ -571,9 +735,14 @@ public class GroupOrchestrator {
     private @NonNull Group dispatch(@NonNull Group group) {
         ExecutionDag dag = group.dag();
         Set<String> busyMates = new HashSet<>();
+        for (String mateId : group.mates().keySet()) {
+            if (retiringMates.contains(group.groupId() + ":" + mateId)) busyMates.add(mateId);
+        }
         for (DagNode node : dag.nodes()) {
             String assigned = node.assignedMateId();
-            if (node.state() == DagNode.NodeState.RUNNING && assigned != null) {
+            if ((node.state() == DagNode.NodeState.RUNNING
+                            || node.state() == DagNode.NodeState.CANCEL_REQUESTED)
+                    && assigned != null) {
                 busyMates.add(assigned);
             }
         }
@@ -603,6 +772,7 @@ public class GroupOrchestrator {
             busyMates.add(mateId);
             String task = taskInstruction(group, n);
             String dispatchPayload = n.nodeId() + ":" + task;
+            String dispatchId = UUID.randomUUID().toString();
             BlackboardMessage msg =
                     new BlackboardMessage(
                             UUID.randomUUID().toString(),
@@ -611,7 +781,8 @@ public class GroupOrchestrator {
                             mateId,
                             BlackboardMessage.MessageType.TASK_DISPATCH,
                             dispatchPayload,
-                            0);
+                            0,
+                            dispatchId);
             blackboard.post(msg);
             ExecutionDag next =
                     dag.withNode(
@@ -624,7 +795,9 @@ public class GroupOrchestrator {
                                     n.dependsOn(),
                                     DagNode.NodeState.RUNNING,
                                     new DagNode.ResultNone(),
-                                    n.retryCount()));
+                                    n.retryCount(),
+                                    dispatchId,
+                                    n.requestId()));
             group = group.withDag(next);
             dag = next;
         }
@@ -716,7 +889,9 @@ public class GroupOrchestrator {
                 node.dependsOn(),
                 DagNode.NodeState.PENDING,
                 node.result(),
-                node.retryCount() + 1);
+                node.retryCount() + 1,
+                null,
+                node.requestId());
     }
 
     private @NonNull Group maybeComplete(@NonNull Group group) {
@@ -730,7 +905,8 @@ public class GroupOrchestrator {
         }
         boolean anyInFlight = false;
         for (DagNode n : group.dag().nodes()) {
-            if (n.state() == DagNode.NodeState.RUNNING) {
+            if (n.state() == DagNode.NodeState.RUNNING
+                    || n.state() == DagNode.NodeState.CANCEL_REQUESTED) {
                 anyInFlight = true;
                 break;
             }
@@ -740,7 +916,9 @@ public class GroupOrchestrator {
         }
         boolean anyOpen = false;
         for (DagNode n : group.dag().nodes()) {
-            if (n.state() == DagNode.NodeState.PENDING || n.state() == DagNode.NodeState.FAILED) {
+            if (n.state() == DagNode.NodeState.PENDING
+                    || n.state() == DagNode.NodeState.FAILED
+                    || n.state() == DagNode.NodeState.INTERRUPTED) {
                 anyOpen = true;
                 break;
             }
@@ -755,6 +933,8 @@ public class GroupOrchestrator {
 
     /** Records completion of an explicitly disbanded group. */
     public void onGroupDisbanded(@NonNull UUID groupId) {
+        retiringMates.removeIf(key -> key.startsWith(groupId + ":"));
+        cancellationSpawners.remove(groupId);
         log.info("GroupOrchestrator: group {} disbanded", groupId);
     }
 }

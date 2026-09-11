@@ -2,12 +2,15 @@ package top.focess.veto.agent.tool.builtin;
 
 import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
+import java.io.StringReader;
+import java.nio.ByteBuffer;
 import java.nio.charset.MalformedInputException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.NoSuchFileException;
 import org.jspecify.annotations.NonNull;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import top.focess.veto.agent.capability.ProtectedWorkspaceReadCapabilityImpl;
 import top.focess.veto.agent.capability.WorkspaceFile;
 import top.focess.veto.agent.capability.WorkspaceReadCapability;
 import top.focess.veto.agent.screening.Danger;
@@ -21,6 +24,7 @@ import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolResultFormat;
 import top.focess.veto.agent.tool.ToolSecurity;
 import top.focess.veto.agent.tool.WorkspaceReadTool;
+import top.focess.veto.vault.SecretCandidateStore;
 
 /** {@code view_file} — read lines of a text file from the local filesystem. */
 @Component
@@ -29,35 +33,16 @@ import top.focess.veto.agent.tool.WorkspaceReadTool;
         resultFormats = {ToolResultFormat.PLAINTEXT},
         description = "Read lines of a text file from the local filesystem.",
         behavior =
-                """
-                    Reads the file at `absolutePath` as UTF-8 and returns the requested line range. `startLine` \
-                    and `endLine` are 1-indexed and inclusive. When `startLine` is omitted, reading starts at \
-                    line 1; when `endLine` is omitted, it runs to the last line. Ranges are clamped: `startLine` \
-                    is floored at 1, `endLine` is capped at the file's line count. Passing neither returns the \
-                    whole file. Lines are decoded sequentially until the requested range ends. \
-                    Files larger than 16 MiB (16,777,216 bytes) are rejected before UTF-8 decoding because the \
-                    input size is bounded; requesting a line range therefore does not bypass this \
-                    per-call input limit. \
-                    Output is capped at 5000 lines or 1000000 characters and then ends with \
-                    `[truncated; request a narrower line range]`.
-                    """,
+                "Read UTF-8, replacing detected secrets with session references before selecting lines. "
+                        + "startLine/endLine are inclusive, 1-indexed; omitted bounds mean first/last line. "
+                        + "Bounds clamp to the file; reversed or out-of-file ranges are empty. "
+                        + "The whole input must fit 16 MiB (16,777,216 bytes), even for a line range. "
+                        + "Output stops at 5000 lines or 1000000 characters with "
+                        + "`[truncated; request a narrower line range]`.",
         whenToUse =
-                """
-                    Use `view_file` to read the contents of a text file from the local filesystem - to inspect \
-                    source before editing, understand a module's structure, read a config file, or check the \
-                    current state of a file you plan to patch. It returns lines prefixed with their 1-indexed \
-                    line numbers, which you can quote back when composing a `replace_file_content` call.
-
-                    If your role has write tools, inspect the current file before changing it. Read-only roles \
-                    use this tool for investigation and planning.
-                    """,
+                "Inspect text or read current source before editing; numbered lines support replace_file_content.",
         whenNotToUse =
-                """
-                    - Do not use `view_file` to search for a pattern across many files - use `grep_search`.
-                    - Do not use it to discover what files exist - use `list_dir`.
-                    - Do not use it on binary or non-text files; it accepts UTF-8 text only.
-                    - Do not use it to create or modify a file - it is strictly read-only.
-                    """,
+                "Use grep_search for cross-file patterns and list_dir for discovery. UTF-8 text only; read-only.",
         resultContract =
                 """
                     - Success: one output line per source line as \
@@ -83,14 +68,21 @@ import top.focess.veto.agent.tool.WorkspaceReadTool;
         examples = {
             "{\"absolutePath\": \"/abs/src/Main.java\"}",
             "{\"absolutePath\": \"/abs/src/Main.java\", \"startLine\": 10, \"endLine\": 20}",
-            "{\"absolutePath\": \"/abs/README.md\"}",
-            "{\"absolutePath\": \"/abs/src/Main.java\", \"startLine\": 1, \"endLine\": 50}",
-            "{\"absolutePath\": \"/abs/build.gradle.kts\"}",
             "{\"absolutePath\": \"/abs/src/Main.java\", \"startLine\": 100}",
             "{\"absolutePath\": \"/abs/config/app.yml\", \"endLine\": 30}"
         },
         returnExamples = {"1: package com.example;\n2: \n3: public class Main {"})
 public final class ViewFileTool implements WorkspaceReadTool<ViewFileTool.Args> {
+    private final @NonNull WorkspaceReadCapability protectedFiles;
+
+    @Autowired
+    public ViewFileTool(@NonNull WorkspaceReadCapability protectedFiles) {
+        this.protectedFiles = protectedFiles;
+    }
+
+    public ViewFileTool() {
+        this(new ProtectedWorkspaceReadCapabilityImpl(new SecretCandidateStore()));
+    }
 
     /** Parameter container for {@code view_file}. */
     public record Args(
@@ -130,10 +122,26 @@ public final class ViewFileTool implements WorkspaceReadTool<ViewFileTool.Args> 
             if (until < from) return "";
             StringBuilder output = new StringBuilder();
             int emitted = 0;
-            try (var reader =
-                    new BufferedReader(
-                            new InputStreamReader(
-                                    file.openRead(), StandardCharsets.UTF_8.newDecoder()))) {
+            byte[] bytes;
+            try (var input = file.openRead()) {
+                bytes = input.readNBytes(16 * 1024 * 1024 + 1);
+            }
+            if (bytes.length > 16 * 1024 * 1024) {
+                return ToolErrors.failure(
+                        "FILE_TOO_LARGE",
+                        "File exceeds 16 MiB (16,777,216 bytes); request a smaller artifact");
+            }
+            String original =
+                    StandardCharsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(bytes)).toString();
+            String protectedText;
+            try {
+                protectedText = protectedFiles.captureFileText(original);
+            } catch (RuntimeException failure) {
+                return ToolErrors.failure(
+                        "PROTECTED_INPUT_UNAVAILABLE",
+                        "Protected file content could not be processed; retry or use credential settings");
+            }
+            try (var reader = new BufferedReader(new StringReader(protectedText))) {
                 String line;
                 int number = 0;
                 while ((line = reader.readLine()) != null) {

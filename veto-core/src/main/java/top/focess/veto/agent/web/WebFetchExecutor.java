@@ -160,7 +160,6 @@ public final class WebFetchExecutor {
                             "Read one approved webpage.",
                             Set.copyOf(engine.getActiveTools(null)),
                             List.of());
-            var compiler = PromptCompiler.isolated(translator, mapper, SYSTEM, maxInputTokens);
             var workspace = Workspace.fromConfig("", "", "REAL");
             var gateway =
                     new Gateway(
@@ -177,6 +176,8 @@ public final class WebFetchExecutor {
                             Math.min(maxOutputTokens, model.maxOutputTokens()),
                             Duration.ofSeconds(timeoutSeconds),
                             model.contextWindowTokens());
+            int inputBudget = (int) Math.min(maxInputTokens, options.inputBudget());
+            var compiler = PromptCompiler.isolated(translator, mapper, SYSTEM, inputBudget);
             // Instrument the shared loop's calls; scheduling, repair, dispatch and history stay in
             // AgentRunner.
             UniformLLMCaller measured =
@@ -190,7 +191,7 @@ public final class WebFetchExecutor {
                                         + bytes(json(request.tools()))
                                         + bytes(json(request.responseSchema()))
                                         + PROVIDER_FRAMING_RESERVE;
-                        document.setObservationBudget(maxInputTokens - overhead);
+                        document.setObservationBudget(inputBudget - overhead);
                         calls.incrementAndGet();
                         var remaining =
                                 new LlmOptions(
@@ -286,7 +287,24 @@ public final class WebFetchExecutor {
             } catch (TimeoutException error) {
                 return ToolErrors.failure("READER_TIMEOUT", "Web reader exceeded its time budget.");
             } finally {
-                sessionAgents.stop(id);
+                // A terminal result/state is set before the child thread actually unwinds.
+                // Keep the parent operation occupied until its child can no longer execute.
+                boolean interrupted = Thread.interrupted();
+                try {
+                    // stop also persists the child's lifecycle; an interrupt would close its
+                    // database socket before the actual termination wait even begins.
+                    sessionAgents.stop(id);
+                    boolean exited = false;
+                    while (!exited) {
+                        try {
+                            exited = agent.awaitTermination(Duration.ofMillis(100));
+                        } catch (InterruptedException error) {
+                            interrupted = true;
+                        }
+                    }
+                } finally {
+                    if (interrupted) Thread.currentThread().interrupt();
+                }
             }
         }
     }

@@ -11,6 +11,7 @@ import top.focess.veto.llm.egress.EgressEndpoint;
 import top.focess.veto.llm.egress.LlmEgress;
 import top.focess.veto.llm.exceptions.LlmException;
 import top.focess.veto.llm.exceptions.ModelCapabilityException;
+import top.focess.veto.llm.exceptions.ModelSchemaException;
 import top.focess.veto.llm.exceptions.PlainTextResponseException;
 import top.focess.veto.llm.provider.LLMProviderStrategy;
 import top.focess.veto.util.Nullness;
@@ -68,20 +69,15 @@ public class DefaultUniformLLMCaller implements UniformLLMCaller {
             try {
                 return provider.execute(resolved);
             } catch (LlmException e) {
+                if (e instanceof PlainTextResponseException) {
+                    throw new ModelSchemaException(
+                            "The response was plain text. Return one JSON object with the answer in"
+                                    + " message. When quoting source messages or tool evidence, include"
+                                    + " citations and matching cite: links as specified in the response protocol.",
+                            e);
+                }
                 last = e;
                 if (!e.isRetryable() || attempt == MAX_ATTEMPTS) {
-                    // Graceful degradation: a persistently non-JSON answer becomes the agent's
-                    // plain-text message (a stopping turn) rather than an episode failure.
-                    if (e instanceof PlainTextResponseException plainText) {
-                        log.warn(
-                                "Plain-text LLM response after {} attempts - surfacing as message",
-                                attempt);
-                        return new VetoResponse(
-                                null, // thought
-                                null, // calls
-                                plainText.text(), // message
-                                null); // guide
-                    }
                     throw e;
                 }
                 backoff(attempt, e);

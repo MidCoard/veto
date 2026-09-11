@@ -58,6 +58,8 @@ Use only tools in your current catalog. Keep every `tool`, `generate`, `goto`, `
 - In a generate prompt, `$name` replaces one complete variable token. Inserted content is not evaluated again as a reference.
 - Map tool outputs to `content`, `success`, `status`, `errorCode`, or a top-level field in the tool's JSON result. Arrays and objects remain structured. Only `content` is available for every tool. A missing field in a successful result or an unbound input causes an error, so use observed field names rather than guesses.
 
+Output bindings map **new variable name to result field name**, not the reverse. For `run_task`, use `"outputs":{"background_task":"taskId","start_result":"content"}` to keep the task ID separate from the full result. Then `view_task` can use `"inputs":{"taskId":"$background_task","waitForExit":true}` to wait for completion. `$start_result` contains the entire result text; passing it as `taskId` does not extract the ID.
+
 ### Generate text
 
 A `generate` action resolves its `inputs` as local aliases and substitutes them into `prompt`. It returns `message` and, when requested, `thought`. It cannot execute tools or switch modes; use a separate tool action for effects outside the generated text.
@@ -208,9 +210,9 @@ Use this override only when LOW is configured in the user's model profile. Other
 }
 ```
 
-### Example: a bounded loop
+### Example: inspect a background task once
 
-Check an already-started task, retaining its latest output. A running task at the bound is reported as still running, not as completed.
+After an exit notification, retrieve the task's captured output once when the original request needs it. This example also supports an explicitly requested progress check: if the task is still running, report that fact and return rather than looping. Do not use repeated status calls merely to wait for a process to exit; its exit notification resumes the originating request.
 
 ```json
 {
@@ -218,47 +220,21 @@ Check an already-started task, retaining its latest output. A running task at th
     "actions": [
       {
         "id": "inspect",
-        "label": "Inspect background task",
+        "label": "Read observed task state",
         "type": "tool",
         "tool": "view_task",
         "inputs": {
           "taskId": "<observed-task-id>"
         },
         "outputs": {
-          "alive": "alive",
           "latest": "content"
         }
       },
       {
-        "id": "running",
-        "label": "Check whether task is running",
-        "type": "conditional_goto",
-        "check": {
-          "kind": "equals",
-          "var": "alive",
-          "value": "true"
-        },
-        "true_goto": 2,
-        "false_goto": 3
-      },
-      {
-        "id": "budget",
-        "label": "Bound the polling loop",
-        "type": "conditional_goto",
-        "check": {
-          "kind": "numeric",
-          "var": "CURRENT_STEPS",
-          "op": "lt",
-          "value": "9"
-        },
-        "true_goto": 0,
-        "false_goto": 3
-      },
-      {
         "id": "report",
-        "label": "Report observed task state",
+        "label": "Report actual task state and output",
         "type": "generate",
-        "prompt": "Report this observed task state. If alive is true, say it is still running: $state",
+        "prompt": "Report only this observed state and captured output. If alive is true, say it is still running, not completed. Do not infer output from the command: $state",
         "inputs": {
           "state": "$latest"
         },
@@ -268,7 +244,7 @@ Check an already-started task, retaining its latest output. A running task at th
       },
       {
         "id": "finish",
-        "label": "Return task state",
+        "label": "Return observed result",
         "type": "STOP",
         "result_binding": "answer"
       }

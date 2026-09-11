@@ -19,9 +19,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.NonNull;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.context.ApplicationContext;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -321,26 +321,43 @@ class WebReadAgentIntegrationTest {
         verify(access).close();
     }
 
-    @Test
-    void removingSessionInterruptsItsBlockedReaderAndClosesItsCapability() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {"session", "task", "approval", "stubborn"})
+    void cancellationClosesReaderAndPreservesParentWhenRequested(@NonNull String mode)
+            throws Exception {
         ObjectMapper mapper = new ObjectMapper();
-        SessionAgentRegistry registry = new SessionAgentRegistry();
+        SessionAgentRegistry registry = spy(new SessionAgentRegistry());
+        doAnswer(
+                        invocation -> {
+                            assertFalse(
+                                    Thread.currentThread().isInterrupted(),
+                                    "Reader stop must be able to persist its lifecycle without closing DB sockets");
+                            return invocation.callRealMethod();
+                        })
+                .when(registry)
+                .stop(anyString());
         CountDownLatch entered = new CountDownLatch(1);
         CountDownLatch interrupted = new CountDownLatch(1);
         CountDownLatch accessClosed = new CountDownLatch(1);
+        CountDownLatch approval = new CountDownLatch(1);
+        CountDownLatch releaseChild = new CountDownLatch(1);
         AtomicReference<Thread> readerThread = new AtomicReference<>();
         UniformLLMCaller childCaller =
                 request -> {
                     readerThread.set(Thread.currentThread());
                     entered.countDown();
-                    try {
-                        new CountDownLatch(1).await();
-                    } catch (InterruptedException error) {
-                        interrupted.countDown();
-                        Thread.currentThread().interrupt();
-                        throw new IllegalStateException("Reader canceled", error);
+                    while (releaseChild.getCount() != 0) {
+                        try {
+                            releaseChild.await();
+                        } catch (InterruptedException error) {
+                            interrupted.countDown();
+                            if (!mode.equals("stubborn")) {
+                                Thread.currentThread().interrupt();
+                                throw new IllegalStateException("Reader canceled", error);
+                            }
+                        }
                     }
-                    throw new AssertionError("Blocking reader unexpectedly resumed");
+                    throw new IllegalStateException("Reader released");
                 };
         var models = mock(ToolDocs.nonNullClass(ModelTierRegistry.class));
         when(models.resolve("test-owner", ModelTier.LOW))
@@ -381,18 +398,37 @@ class WebReadAgentIntegrationTest {
         ToolEngineImpl engine =
                 new ToolEngineImpl(mapper, List.of(new WebFetchTool(network)), context);
         engine.afterSingletonsInstantiated();
+        AtomicInteger parentCalls = new AtomicInteger();
         UniformLLMCaller parentCaller =
                 request ->
-                        call(
-                                "web_fetch",
-                                Map.of(
-                                        "url",
-                                        "https://example.com/docs",
-                                        "objective",
-                                        "Find timeout."));
+                        parentCalls.incrementAndGet() > 1
+                                ? new VetoResponse(null, null, "Next task complete", null)
+                                : call(
+                                        "web_fetch",
+                                        Map.of(
+                                                "url",
+                                                "https://example.com/docs",
+                                                "objective",
+                                                "Find timeout."));
         HitlRegistry hitl = new HitlRegistry();
         AgentService service = service(engine, parentCaller, mapper, hitl);
         ReflectionTestUtils.setField(service, "sessionAgents", registry);
+        AtomicInteger persistedCancellations = new AtomicInteger();
+        @NonNull TurnLogService parentLog = mock();
+        doAnswer(
+                        invocation -> {
+                            TurnRecord turn = invocation.getArgument(0);
+                            if (turn != null && "CANCELLED".equals(turn.payload().get("outcome"))) {
+                                assertFalse(
+                                        Thread.currentThread().isInterrupted(),
+                                        "Cancellation history must be written without a pending interrupt");
+                                persistedCancellations.incrementAndGet();
+                            }
+                            return null;
+                        })
+                .when(parentLog)
+                .log(any(), any(), any(), anyString());
+        ReflectionTestUtils.setField(service, "turnLogService", parentLog);
         UUID sessionId = UUID.randomUUID();
         String session = sessionId.toString();
         AgentRunner.LlmBinding binding =
@@ -422,6 +458,8 @@ class WebReadAgentIntegrationTest {
                                                 Duration.ofSeconds(20),
                                                 null,
                                                 prompt -> {
+                                                    approval.countDown();
+                                                    if (mode.equals("approval")) return;
                                                     VetoOption option =
                                                             prompt.options().stream()
                                                                     .filter(
@@ -441,6 +479,21 @@ class WebReadAgentIntegrationTest {
                                     }
                                 });
         try {
+            assertTrue(approval.await(5, TimeUnit.SECONDS));
+            var parent = service.agent(session);
+            if (parent == null) throw new AssertionError("Parent missing");
+            if (mode.equals("approval")) {
+                assertTrue(parent.cancelTask(parent.result(), Duration.ofSeconds(3)));
+                submission.join(3000);
+                assertFalse(submission.isAlive());
+                assertFalse(parent.result().get().success());
+                assertTrue(hitl.pendingFor(parent.id()).isEmpty());
+                assertEquals(1, entered.getCount(), "Unapproved reader must never start");
+                verify(network, never()).openReader(any());
+                parent.submit("Next task");
+                assertTrue(parent.await(Duration.ofSeconds(3)).success());
+                return;
+            }
             assertTrue(entered.await(5, TimeUnit.SECONDS));
             assertEquals(2, registry.agents(sessionId).size());
             var child =
@@ -449,7 +502,22 @@ class WebReadAgentIntegrationTest {
                             .findFirst()
                             .orElseThrow()
                             .agent();
-            service.remove(session);
+            if (mode.equals("session")) service.remove(session);
+            else {
+                var task = parent.result();
+                if (mode.equals("stubborn")) {
+                    assertFalse(parent.cancelTask(task, Duration.ofMillis(100)));
+                    assertTrue(interrupted.await(3, TimeUnit.SECONDS));
+                    assertEquals(
+                            1,
+                            accessClosed.getCount(),
+                            "Reader capability remains owned while child executes");
+                    releaseChild.countDown();
+                }
+                assertTrue(parent.cancelTask(task, Duration.ofSeconds(3)));
+                assertFalse(task.get().success());
+                assertEquals(1, persistedCancellations.get());
+            }
             assertTrue(interrupted.await(3, TimeUnit.SECONDS));
             submission.join(3000);
             assertFalse(submission.isAlive());
@@ -460,13 +528,20 @@ class WebReadAgentIntegrationTest {
             assertEquals(AgentState.TERMINATED, child.state());
             assertFalse(child.result().get(1, TimeUnit.SECONDS).success());
             assertThrows(IllegalStateException.class, () -> child.submit("Must not restart"));
-            assertTrue(registry.agents(sessionId).isEmpty());
-            assertNull(service.agent(session));
+            if (mode.equals("session")) {
+                assertTrue(registry.agents(sessionId).isEmpty());
+                assertNull(service.agent(session));
+            } else {
+                assertNotEquals(AgentState.TERMINATED, parent.state());
+                parent.submit("Next task");
+                assertTrue(parent.await(Duration.ofSeconds(3)).success());
+            }
             assertNull(failure.get());
             // Cancellation completes the submission future before the parent tool unwinds.
             assertTrue(accessClosed.await(3, TimeUnit.SECONDS), "Reader capability was not closed");
             verify(access).close();
         } finally {
+            releaseChild.countDown();
             service.remove(session);
             submission.interrupt();
             submission.join(3000);

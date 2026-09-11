@@ -7,8 +7,8 @@ import top.focess.veto.agent.screening.Relevance;
 
 /**
  * The {@link HitlRegistry}'s decision for one tool call, computed from the {@link GatewayResult}
- * via the screening-mode matrix plus Session Rules. Only on {@link Prompt} does a veto pause
- * happen.
+ * via the screening-mode matrix plus Session Rules. {@link Prompt} offers a user decision; ordinary
+ * execution also holds a {@link Refused} batch for acknowledgement without approval.
  *
  * <p>Sealed:
  *
@@ -17,6 +17,8 @@ import top.focess.veto.agent.screening.Relevance;
  *   <li>{@link Prompt} — park the virtual thread; the user must resolve (carries the scenario +
  *       offered options).
  *   <li>{@link AutoBlock} — refuse outright (synthesized error observation; continue to next call).
+ *   <li>{@link Refused} — refuse without an approval path; ordinary execution holds the batch until
+ *       declined, while GUIDE execution fails immediately.
  * </ul>
  */
 public sealed interface ApprovalDecision
@@ -31,7 +33,7 @@ public sealed interface ApprovalDecision
     /** Proceed with the call, no HITL round-trip. */
     record AutoApprove() implements ApprovalDecision {}
 
-    /** Refuse outright with a refusal notice. */
+    /** Refuse with a notice and no approval path, regardless of the execution mode. */
     record Refused(@NonNull String reason) implements ApprovalDecision {}
 
     /**

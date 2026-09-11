@@ -8,6 +8,11 @@ import top.focess.veto.agent.web.SearchResult;
 
 public sealed interface NetworkEgressCapability extends Capability
         permits NetworkEgressCapabilityImpl {
+    @NonNull String readGitHubRepository(
+            @NonNull String credentialRef,
+            @NonNull String repositoryOwner,
+            @NonNull String repositoryName);
+
     @NonNull String searchProviderName();
 
     @NonNull List<SearchResult> search(@NonNull String query, @NonNull SearchOptions options)

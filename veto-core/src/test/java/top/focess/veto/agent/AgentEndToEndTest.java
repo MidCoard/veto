@@ -16,6 +16,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.Role;
@@ -467,6 +468,10 @@ class AgentEndToEndTest {
         UUID sessionId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
         var service = serviceWith(scripted(thoughtOn("Report", "Mate finished.")));
+        @NonNull AgentPauseStore pauses = Mockito.mock();
+        @NonNull AgentWaitStore waits = Mockito.mock();
+        service.attachPauseStore(pauses);
+        service.attachWaitStore(waits);
         service.getOrCreateAgent(
                 sessionId.toString(),
                 UUID.randomUUID().toString(),
@@ -503,6 +508,8 @@ class AgentEndToEndTest {
                             requireField(ReflectionTestUtils.getField(mate, "runner")));
             assertEquals(sessionId, ReflectionTestUtils.getField(runner, "sessionId"));
             assertNotEquals(persona.id(), sessionId.toString());
+            Mockito.verify(pauses).load(sessionId, persona.id());
+            Mockito.verify(waits).load(sessionId, persona.id());
             mate.submit("Execute assigned work");
             assertTrue(mate.await(EPISODE_TIMEOUT).success());
             assertFalse(mate.history().isEmpty());
@@ -603,6 +610,10 @@ class AgentEndToEndTest {
         assertReturnsToIdle(requireAgent(service.agent("batch-transform")));
     }
 
+    public record CreateGroupArgs(@NonNull String task) {}
+
+    public record DisbandGroupArgs() {}
+
     @SuppressWarnings("type.arguments.not.inferred")
     private static @NonNull ToolDefinition transformDefinition(@NonNull String name) {
         return new AgentToolDefinition(
@@ -613,7 +624,9 @@ class AgentEndToEndTest {
                         : ToolCapability.GROUP_CONTROL,
                 Danger.SAFE,
                 Object.class,
-                ToolDocs.nonNullClass(Void.class),
+                "create_group".equals(name)
+                        ? ToolDocs.nonNullClass(CreateGroupArgs.class)
+                        : ToolDocs.nonNullClass(DisbandGroupArgs.class),
                 Map.of());
     }
 

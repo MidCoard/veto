@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -15,8 +16,73 @@ import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.Role;
 import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.memory.TurnRecordRepository;
+import top.focess.veto.model.AgentEntity;
+import top.focess.veto.model.AgentInstanceRepository;
 
 class SessionAgentRegistryTest {
+    @Test
+    void offlinePauseIsReloadedBeforeRunnerThreadStarts() throws Exception {
+        @NonNull AgentInstanceRepository repository = mock();
+        @NonNull TurnRecordRepository turns = mock();
+        @NonNull AgentPauseStore store = mock();
+        SessionAgentRegistry registry = new SessionAgentRegistry(repository, turns);
+        registry.attachPauseStore(store);
+        UUID session = UUID.randomUUID();
+        AgentPersona persona = persona("paused-worker", Role.STANDALONE);
+        AgentRunner runner = runner(persona);
+        when(runner.sessionId()).thenReturn(session);
+        var entity = AgentEntity.spawned(persona.id(), session.toString(), "Worker");
+        when(repository.findById(persona.id())).thenReturn(Optional.of(entity));
+        CountDownLatch ran = new CountDownLatch(1);
+        doAnswer(
+                        invocation -> {
+                            ran.countDown();
+                            return null;
+                        })
+                .when(runner)
+                .run();
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        CountDownLatch starting = new CountDownLatch(1);
+        Thread starter;
+        synchronized (registry) {
+            starter =
+                    Thread.ofVirtual()
+                            .start(
+                                    () -> {
+                                        starting.countDown();
+                                        try {
+                                            registry.start(persona, runner);
+                                        } catch (Throwable error) {
+                                            failure.set(error);
+                                        }
+                                    });
+            assertTrue(starting.await(3, TimeUnit.SECONDS));
+            registry.controlPause(session, persona.id(), true);
+            verify(store).save(session, persona.id(), true);
+            verify(runner, never()).run();
+        }
+        try {
+            starter.join(3000);
+            assertFalse(starter.isAlive());
+            assertNull(failure.get());
+            assertTrue(ran.await(3, TimeUnit.SECONDS));
+            var order = inOrder(store, runner);
+            order.verify(store).save(session, persona.id(), true);
+            order.verify(runner).attachPauseStore(store);
+            order.verify(runner).run();
+            registry.controlPause(session, persona.id(), false);
+            verify(runner).enqueue(any(ToolDocs.nonNullClass(AgentAction.ResumeAction.class)));
+            verify(store, never()).save(session, persona.id(), false);
+            assertThrows(
+                    IllegalArgumentException.class,
+                    () -> registry.controlPause(UUID.randomUUID(), persona.id(), false));
+        } finally {
+            starter.interrupt();
+            registry.close();
+        }
+    }
+
     @Test
     void independentAgentJoinsActiveSessionButCannotRestartRemovedSession() {
         SessionAgentRegistry registry = new SessionAgentRegistry();

@@ -74,7 +74,11 @@ final class AnthropicLlmClient extends LlmClient {
         if (temperature != null) {
             builder.putAdditionalBodyProperty("temperature", JsonValue.from(temperature));
         }
-        // The manifest as native tools; no forced tool_choice (the clones ignore it anyway).
+        if (usesJsonProgramChannel(request)) {
+            builder.putAdditionalBodyProperty(
+                    "tool_choice", JsonValue.from(Map.of("type", "none")));
+        }
+        // Retain tool contracts and native history while choosing the response channel.
         for (ToolDefinition t : request.tools()) {
             builder.addTool(
                     Tool.builder()
@@ -124,6 +128,10 @@ final class AnthropicLlmClient extends LlmClient {
                 throw new ModelSchemaException(
                         "Anthropic response mixed native tool calls with a guided program");
             }
+            if (usesJsonProgramChannel(request)) {
+                throw new ModelSchemaException(
+                        "This turn requires JSON calls or guide, not native tool calls");
+            }
             var pulse = objectMapper.createObjectNode();
             var calls = pulse.putArray("calls");
             for (ToolUseBlock tu : toolUses) {
@@ -148,6 +156,11 @@ final class AnthropicLlmClient extends LlmClient {
                     || candidate.stripLeading().startsWith("[")) {
                 rawInput = candidate;
             } else {
+                if (text.contains("]<]minimax[>[")) {
+                    throw new ModelSchemaException(
+                            "Response contains internal tool markers instead of an executable response;"
+                                    + " return JSON calls or guide, or a final message");
+                }
                 var pulse = objectMapper.createObjectNode();
                 pulse.put("message", text);
                 rawInput = pulse.toString();
@@ -168,15 +181,20 @@ final class AnthropicLlmClient extends LlmClient {
                         + "\n\nResponse schema for this turn:\n"
                         + schema
                         + "\nEmit one JSON object matching this schema.";
-        if (!request.tools().isEmpty()) {
+        if (!request.tools().isEmpty() && !usesJsonProgramChannel(request)) {
             prompt += " Direct tool execution may instead use native tool calls.";
         }
         if (schema.path("properties").has("guide")) {
             prompt +=
-                    " A guided program must be emitted as JSON text in the guide field."
+                    " Emit JSON text only: use calls for ordinary execution or guide for a program."
                             + " Never combine a guided program with native tool calls in the same response.";
         }
         return prompt;
+    }
+
+    private boolean usesJsonProgramChannel(@NonNull VetoRequest request) {
+        JsonNode schema = request.responseSchema();
+        return schema != null && schema.path("properties").has("guide");
     }
 
     private boolean hasGuide(@NonNull String candidate) {

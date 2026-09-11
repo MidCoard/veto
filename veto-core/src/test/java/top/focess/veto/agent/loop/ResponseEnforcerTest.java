@@ -14,6 +14,41 @@ import top.focess.veto.llm.core.VetoResponse;
 import top.focess.veto.llm.exceptions.ModelSchemaException;
 
 class ResponseEnforcerTest {
+    @Test
+    void citationDeclarationsRequireClickableLinks() {
+        var citations =
+                List.of(
+                        new VetoResponse.Citation(
+                                "source", List.of(new VetoResponse.Source(0, "Original"))));
+        assertDoesNotThrow(
+                () ->
+                        ResponseEnforcer.enforce(
+                                new VetoResponse(
+                                        null, null, "[Original](cite:source)", null, citations),
+                                false));
+        for (String message :
+                List.of("Original [citation:source]", "Original", "[Original](cite:other)")) {
+            try {
+                ResponseEnforcer.enforce(
+                        new VetoResponse(null, null, message, null, citations), false);
+                fail("Declared source must have a corresponding clickable link");
+            } catch (ModelSchemaException error) {
+                assertTrue(String.valueOf(error.getMessage()).contains("[label](cite:"));
+            }
+        }
+        assertDoesNotThrow(
+                () ->
+                        ResponseEnforcer.enforce(
+                                new VetoResponse(null, null, "> Unattributed formatting", null),
+                                false));
+        try {
+            ResponseEnforcer.enforce(
+                    new VetoResponse(null, null, "Original [citation:source]", null), false);
+            fail("A bare citation marker must not silently bypass source declarations");
+        } catch (ModelSchemaException error) {
+            assertTrue(String.valueOf(error.getMessage()).contains("message_index"));
+        }
+    }
 
     @Test
     void rejectsResponseFieldMasqueradingAsToolName() {

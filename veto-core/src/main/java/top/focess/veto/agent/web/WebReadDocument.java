@@ -13,7 +13,7 @@ import top.focess.veto.agent.tool.ToolErrors;
 /** Bounded source segments owned by one reader invocation, never a filesystem resource. */
 final class WebReadDocument {
     private static final int SEGMENT_CHARS = 1200;
-    private static final int MAX_SEGMENTS = 300;
+    private static final int MAX_SEGMENTS = 10000;
     private static final int MAX_READ_SEGMENTS = 8;
     private static final @NonNull Set<@NonNull String> TEXT_BLOCKS =
             Set.of("h1", "h2", "h3", "h4", "h5", "h6", "p", "pre", "table", "li", "a");
@@ -76,17 +76,15 @@ final class WebReadDocument {
 
     private void add(@NonNull String section, @NonNull String text) {
         String content = text.strip();
+        String heading = section.substring(0, Math.min(section.length(), 120));
         for (int offset = 0; offset < content.length(); offset += SEGMENT_CHARS) {
+            String piece =
+                    content.substring(offset, Math.min(content.length(), offset + SEGMENT_CHARS));
             if (segments.size() == MAX_SEGMENTS) {
                 truncated = true;
                 return;
             }
-            segments.add(
-                    new Segment(
-                            "s" + (segments.size() + 1),
-                            section.substring(0, Math.min(section.length(), 120)),
-                            content.substring(
-                                    offset, Math.min(content.length(), offset + SEGMENT_CHARS))));
+            segments.add(new Segment("s" + (segments.size() + 1), heading, piece));
         }
     }
 

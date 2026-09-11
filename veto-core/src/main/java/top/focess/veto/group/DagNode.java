@@ -16,7 +16,32 @@ public record DagNode(
         @NonNull Set<String> dependsOn, // nodeIds
         @NonNull NodeState state,
         @NonNull NodeResult result,
-        int retryCount) { // number of FAILED → retry cycles
+        int retryCount, // number of FAILED → retry cycles
+        String dispatchId,
+        String requestId) {
+
+    public DagNode(
+            @NonNull String nodeId,
+            @NonNull String description,
+            String assignedMateId,
+            @NonNull String requiredSkillset,
+            @NonNull Set<String> dependsOn,
+            @NonNull NodeState state,
+            @NonNull NodeResult result,
+            int retryCount,
+            String dispatchId) {
+        this(
+                nodeId,
+                description,
+                assignedMateId,
+                requiredSkillset,
+                dependsOn,
+                state,
+                result,
+                retryCount,
+                dispatchId,
+                null);
+    }
 
     public DagNode {
         dependsOn = Set.copyOf(dependsOn);
@@ -25,9 +50,34 @@ public record DagNode(
         }
     }
 
+    /** Compatibility for nodes which have not been assigned a dispatch identity. */
+    public DagNode(
+            @NonNull String nodeId,
+            @NonNull String description,
+            String assignedMateId,
+            @NonNull String requiredSkillset,
+            @NonNull Set<String> dependsOn,
+            @NonNull NodeState state,
+            @NonNull NodeResult result,
+            int retryCount) {
+        this(
+                nodeId,
+                description,
+                assignedMateId,
+                requiredSkillset,
+                dependsOn,
+                state,
+                result,
+                retryCount,
+                null);
+    }
+
     public enum NodeState {
         PENDING, // not yet dispatched
         RUNNING, // dispatched to a Mate
+        CANCEL_REQUESTED, // cancellation requested; execution exit not yet confirmed
+        CANCELLED, // execution exit confirmed, never satisfies a successful dependency
+        INTERRUPTED, // runtime lost; explicit replan required, never automatically replayed
         VERIFIED, // legacy internal name: the assigned Mate returned successfully, not independent
         // review
         FAILED, // verifier rejected; awaits Leader re-plan

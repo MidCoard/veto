@@ -45,7 +45,8 @@ public class GroupHistoryStore {
                         GroupHistoryView.nodes(group),
                         false,
                         true,
-                        List.of());
+                        List.of(),
+                        group.mates());
         try {
             repository.save(
                     new GroupHistoryEntity(session.toString(), mapper.writeValueAsString(view)));
@@ -75,15 +76,31 @@ public class GroupHistoryStore {
                 .map(
                         v ->
                                 new GroupHistoryView(
-                                        v.id(),
-                                        v.leaderId(),
-                                        v.brief(),
-                                        v.state(),
-                                        v.createdAt(),
-                                        v.nodes(),
-                                        false,
-                                        registry.get(UUID.fromString(v.id())) != null,
-                                        List.copyOf(changes.getOrDefault(v.id(), List.of()))))
+                                                v.id(),
+                                                v.leaderId(),
+                                                v.brief(),
+                                                v.state(),
+                                                v.createdAt(),
+                                                v.nodes(),
+                                                false,
+                                                registry.get(UUID.fromString(v.id())) != null,
+                                                List.copyOf(
+                                                        changes.getOrDefault(v.id(), List.of())),
+                                                v.mates())
+                                        .withoutRuntime())
                 .toList();
+    }
+
+    public @NonNull List<GroupHistoryView> latestSnapshots(@NonNull String sessionId) {
+        var latest = new LinkedHashMap<String, GroupHistoryView>();
+        for (var row : repository.findBySessionIdOrderByRecordedAtAsc(sessionId)) {
+            try {
+                var view = mapper.readValue(row.getPayload(), VIEW_TYPE);
+                latest.put(view.id(), view);
+            } catch (JsonProcessingException error) {
+                throw new IllegalStateException("Cannot read recovery snapshot", error);
+            }
+        }
+        return List.copyOf(latest.values());
     }
 }

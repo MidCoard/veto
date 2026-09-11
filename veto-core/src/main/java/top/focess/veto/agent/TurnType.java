@@ -17,6 +17,8 @@ public enum TurnType {
     ASSISTANT_THOUGHT,
     /** A user-facing message the agent emitted ({@code response.message}). */
     ASSISTANT_RESPONSE,
+    /** Execution failure; request-bound cancellation also supplies a runtime context boundary. */
+    EXECUTION_ERROR,
     /** A tool call the agent issued ({@code calls[]} entry). */
     TOOL_CALL,
     /** The (framed) observation returned for a tool call. */

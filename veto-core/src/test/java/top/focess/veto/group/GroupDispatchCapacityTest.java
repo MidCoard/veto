@@ -81,7 +81,8 @@ class GroupDispatchCapacityTest {
                         "LEADER",
                         BlackboardMessage.MessageType.ACCEPT,
                         "one:accept-base64:ZG9uZQ==",
-                        0));
+                        0,
+                        running.dag().nodes().get(0).dispatchId()));
         Group advanced = Nullness.requireNonNull(orchestrator.tick(group.groupId()));
         assertEquals(DagNode.NodeState.VERIFIED, advanced.dag().nodes().get(0).state());
         assertEquals(DagNode.NodeState.RUNNING, advanced.dag().nodes().get(1).state());

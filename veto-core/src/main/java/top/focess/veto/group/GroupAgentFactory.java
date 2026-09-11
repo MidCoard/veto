@@ -9,7 +9,6 @@ import top.focess.veto.agent.AgentRunner;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.workspace.Workspace;
-import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTierRegistry;
 
@@ -73,12 +72,7 @@ public class GroupAgentFactory implements GroupSpawner.AgentFactory {
                 resolved.provider(),
                 resolved.model(),
                 resolved.credentialKey(),
-                new LlmOptions(
-                        resolved.temperature(),
-                        null,
-                        resolved.maxOutputTokens(),
-                        LlmOptions.defaults().timeout(),
-                        resolved.contextWindowTokens()),
+                resolved.llmOptions(),
                 mateBinding.systemPromptBase(),
                 resolved.baseUrl());
     }

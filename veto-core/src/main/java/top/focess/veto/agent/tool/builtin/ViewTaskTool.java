@@ -3,6 +3,8 @@ package top.focess.veto.agent.tool.builtin;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.CancellationException;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.capability.TaskControlCapability;
@@ -40,11 +42,11 @@ import top.focess.veto.sandbox.BackgroundTaskManager;
                 """,
         whenToUse =
                 """
-                Use `view_task` to check on a background task you launched with `run_task` - \
-                whether it is still alive, its exit code once it ends, and its recent output. \
-                Call it with a `taskId` for one task, or with no `taskId` to list every task you \
-                own. You are also told automatically when a task ends (and why - user stop, \
-                your own stop_task, timeout, or its own exit), so you rarely need to poll.
+                Set `waitForExit=true` with `taskId` when the assigned task needs the final result: \
+                one cancellable call waits for exit and drained output, keeping the assignment open. \
+                Leave it false for an immediate progress check or long-lived server inspection. \
+                Without `taskId`, list your tasks. After an exit notification, read the result once \
+                if needed; the notification does not contain output. Do not poll to pass time.
                 """,
         whenNotToUse =
                 """
@@ -55,7 +57,7 @@ import top.focess.veto.sandbox.BackgroundTaskManager;
                 """
                 - Single-task success: `taskId`, `alive`, optional `exitCode`, \
                 `pid`, `startedAt`, `uptimeSeconds`, `command`, `cwd`, `recentOutput`, and \
-                `inputFailures`.
+                `outputCapture` (merged-stream limitation), and `inputFailures`.
                 - List success: `count` and `tasks`; each task contains only `taskId`, \
                 `command`, `alive`, and optional `exitCode`.
                 - Unknown task (failure): \
@@ -85,7 +87,14 @@ public final class ViewTaskTool implements TaskControlTool<ViewTaskTool.Args> {
 
     public record Args(
             @Doc("The task id (from run_task). Omit to list every task the calling agent owns.")
-                    String taskId) {}
+                    String taskId,
+            @Doc(
+                            "Wait for exit and drained output. Requires taskId. Default false returns immediately.")
+                    Boolean waitForExit) {
+        public Args(String taskId) {
+            this(taskId, false);
+        }
+    }
 
     @Override
     public @NonNull String getName() {
@@ -107,12 +116,17 @@ public final class ViewTaskTool implements TaskControlTool<ViewTaskTool.Args> {
         String taskId = args.taskId();
         Map<String, Object> result = new LinkedHashMap<>();
         if (taskId == null || taskId.isBlank()) {
+            if (Boolean.TRUE.equals(args.waitForExit()))
+                return ToolErrors.failure("waitForExit requires taskId");
             var all = capability.list();
             result.put("count", all.size());
             List<Map<String, Object>> tasks = all.stream().map(ViewTaskTool::summary).toList();
             result.put("tasks", tasks);
         } else {
-            var found = capability.status(taskId);
+            var found =
+                    Boolean.TRUE.equals(args.waitForExit())
+                            ? awaitExit(capability, taskId)
+                            : capability.status(taskId);
             if (found.isEmpty()) return ToolErrors.failure("task not found: " + taskId);
             var task = found.get();
             result.putAll(summary(task));
@@ -121,9 +135,23 @@ public final class ViewTaskTool implements TaskControlTool<ViewTaskTool.Args> {
             result.put("uptimeSeconds", task.uptimeSeconds());
             result.put("cwd", task.cwd());
             result.put("recentOutput", capability.output(taskId, 50).orElse(""));
+            result.put(
+                    "outputCapture",
+                    "recentOutput merges stdout and stderr without stream labels. Report it as combined output;"
+                            + " it cannot establish that either stream was empty.");
             result.put("inputFailures", capability.inputFailures(taskId));
         }
         return ToolJson.object(result);
+    }
+
+    private static @NonNull Optional<BackgroundTaskManager.TaskInfo> awaitExit(
+            @NonNull TaskControlCapability capability, @NonNull String taskId) {
+        try {
+            return capability.awaitExit(taskId);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new CancellationException("Task result wait interrupted");
+        }
     }
 
     private static @NonNull Map<String, Object> summary(

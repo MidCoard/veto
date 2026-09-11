@@ -5,6 +5,8 @@ import org.jspecify.annotations.NonNull;
 
 /** Resolves approved resources into restricted read handles. */
 public sealed interface WorkspaceReadCapability extends Capability
-        permits WorkspaceReadCapabilityImpl {
+        permits WorkspaceReadCapabilityImpl, ProtectedWorkspaceReadCapabilityImpl {
+    @NonNull String captureFileText(@NonNull String input);
+
     @NonNull WorkspaceFile file(@NonNull String path) throws IOException;
 }

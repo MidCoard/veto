@@ -9,10 +9,12 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.agent.Agent;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.TurnRecord;
@@ -27,8 +29,68 @@ import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTierRegistry;
+import top.focess.veto.vault.SecretCandidateStore;
 
 class SessionServiceTest {
+    @Test
+    void monitorActivationUsesExactIdentityAndRejectsMissingRecoveryEvidence() {
+        @NonNull SessionRepository sessions = mock();
+        @NonNull AgentInstanceRepository agents = mock();
+        @NonNull AgentPatternRepository patterns = mock();
+        @NonNull AgentService runtime = mock();
+        @NonNull SessionHistoryLoader history = mock();
+        var session = new SessionEntity("alice", "duplicate-name");
+        var primary =
+                new AgentEntity(
+                        session.getId(),
+                        null,
+                        AgentEntity.Role.PRIMARY,
+                        "Primary",
+                        "DEEPSEEK",
+                        "model",
+                        "key");
+        session.setPrimaryAgentId(primary.getId());
+        when(sessions.findById(session.getId())).thenReturn(Optional.of(session));
+        when(agents.findById(primary.getId())).thenReturn(Optional.of(primary));
+        var replay = List.of(TurnRecord.userPrompt(1, "Original task"));
+        when(history.load(session.getId(), primary.getId())).thenReturn(replay);
+        UUID user = UUID.randomUUID();
+        when(runtime.userIdForOwner("alice")).thenReturn(user);
+        var service =
+                new SessionService(sessions, agents, patterns, runtime, history, tierRegistry);
+        UUID id = UUID.fromString(session.getId());
+        assertFalse(service.activateForMonitor(id, "bob", primary.getId()));
+        assertFalse(service.activateForMonitor(id, "alice", primary.getId()));
+        ReflectionTestUtils.setField(primary, "monitorRecoveryVersion", 1);
+        ReflectionTestUtils.setField(primary, "userPaused", true);
+        assertFalse(service.activateForMonitor(id, "alice", primary.getId()));
+        ReflectionTestUtils.setField(primary, "userPaused", false);
+        ReflectionTestUtils.setField(primary, "executionWait", "QUESTION");
+        assertFalse(service.activateForMonitor(id, "alice", primary.getId()));
+        ReflectionTestUtils.setField(primary, "executionWait", null);
+        var reader = AgentEntity.spawned("reader", session.getId(), "Reader");
+        ReflectionTestUtils.setField(reader, "monitorRecoveryVersion", 1);
+        ReflectionTestUtils.setField(reader, "runtimeRole", "STANDALONE");
+        ReflectionTestUtils.setField(reader, "parentCallId", "read-call");
+        when(agents.findById("reader")).thenReturn(Optional.of(reader));
+        assertFalse(service.activateForMonitor(id, "alice", "reader"));
+        assertTrue(service.activateForMonitor(id, "alice", primary.getId()));
+        verify(runtime)
+                .getOrCreateAgent(
+                        eq(session.getId()),
+                        eq(primary.getId()),
+                        any(),
+                        eq(replay),
+                        eq(user),
+                        eq("alice"),
+                        any(),
+                        anyInt(),
+                        any(),
+                        anyBoolean());
+        verify(sessions, never())
+                .findFirstByNameAndOwnerOrderByLastActiveAtDesc(anyString(), anyString());
+        verify(sessions, never()).save(any());
+    }
 
     private final @NonNull ModelTierRegistry tierRegistry =
             mock(ToolDocs.nonNullClass(ModelTierRegistry.class));
@@ -196,6 +258,9 @@ class SessionServiceTest {
         assertEquals(ProviderType.DEEPSEEK, cfg.get().provider());
         // The agent's tier (TOP) resolves live via the model-tier registry (mocked here).
         assertEquals("deepseek-chat", cfg.get().model());
+        assertEquals(Integer.valueOf(128000), cfg.get().options().contextWindowTokens());
+        assertEquals(Integer.valueOf(4096), cfg.get().options().maxTokens());
+        assertEquals(Double.valueOf(0.7), cfg.get().options().temperature());
         assertEquals(Optional.of(session.getId()), service.activeSession("term-1"));
     }
 
@@ -417,7 +482,22 @@ class SessionServiceTest {
         service.activate("term-1", "coder", "alice", CWD);
         assertTrue(service.activeSession("term-1").isPresent());
 
+        var candidates = new SecretCandidateStore();
+        service.attachCandidates(candidates);
+        var scope = new SecretCandidateStore.Scope("alice", session.getId(), agent.getId());
+        String secret =
+                candidates
+                        .capture(scope, "source", "password=alpha")
+                        .candidates()
+                        .getFirst()
+                        .reference();
         boolean removed = service.delete("alice", "coder");
+        assertEquals(
+                SecretCandidateStore.State.DISCARDED,
+                candidates.describe(scope, secret).orElseThrow().state());
+        assertThrows(
+                IllegalStateException.class,
+                () -> candidates.capture(scope, "late", "password=alpha"));
         assertTrue(removed, "delete should report the session removed");
 
         verify(agentService).remove(session.getId());

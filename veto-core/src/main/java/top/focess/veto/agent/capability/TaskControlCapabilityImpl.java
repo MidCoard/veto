@@ -29,6 +29,13 @@ public final class TaskControlCapabilityImpl implements TaskControlCapability {
     }
 
     @Override
+    public @NonNull Optional<BackgroundTaskManager.TaskInfo> awaitExit(@NonNull String taskId)
+            throws InterruptedException {
+        var context = CapabilityAccess.require(ToolCapability.TASK_CONTROL, "view_task");
+        return taskManager.awaitExit(context.agentId(), taskId);
+    }
+
+    @Override
     public @NonNull Optional<String> output(@NonNull String taskId, int lines) {
         var context = CapabilityAccess.require(ToolCapability.TASK_CONTROL, "view_task");
         return taskManager.output(context.agentId(), taskId, Math.min(50, Math.max(0, lines)));

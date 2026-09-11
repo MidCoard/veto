@@ -45,7 +45,8 @@ public class Blackboard {
                         message.receiverId(),
                         message.type(),
                         message.payload(),
-                        seq);
+                        seq,
+                        message.dispatchId());
         messages.computeIfAbsent(message.groupId(), k -> new CopyOnWriteArrayList<>()).add(stamped);
         signalChange();
         return stamped;

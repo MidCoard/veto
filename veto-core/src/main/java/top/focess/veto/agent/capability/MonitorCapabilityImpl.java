@@ -33,7 +33,9 @@ public final class MonitorCapabilityImpl implements MonitorCapability {
         String owner = ctx.owner();
         var session = ctx.sessionId();
         if (owner == null || session == null) throw new SecurityException("No active Session");
-        return json(service.createTimer(owner, session.toString(), ctx.agentId(), purpose, due));
+        return json(
+                service.createTimer(
+                        owner, session.toString(), ctx.agentId(), purpose, due, ctx.requestId()));
     }
 
     @Override

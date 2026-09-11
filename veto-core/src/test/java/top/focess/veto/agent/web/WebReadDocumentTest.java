@@ -14,6 +14,45 @@ import top.focess.veto.agent.tool.ToolExecutionException;
 
 class WebReadDocumentTest {
     @Test
+    void preservesShortBlocksAndLateTextWithoutCrossingParagraphBoundaries() {
+        var document =
+                document(
+                        "text/html",
+                        "<main><h1>Reference</h1>"
+                                + "<p>Small paragraph.</p>".repeat(2500)
+                                + "<pre>  code\n    indentation</pre><h2>Contacts</h2><p>author@example.org</p></main>",
+                        false);
+        assertFalse(document.truncated());
+        assertEquals(2504, document.outline().size());
+        var matches = document.find("author@example.org");
+        assertEquals(1, matches.size());
+        assertEquals(
+                "author@example.org",
+                document.read(List.of(matches.getFirst().id())).getFirst().text());
+        var code = document.find("indentation").getFirst();
+        assertEquals("code\n    indentation", document.read(List.of(code.id())).getFirst().text());
+    }
+
+    @Test
+    void longHtmlKeepsAddressAtTheEndAvailableWithoutReadingThePrefix() {
+        String html =
+                "<main><h1>Reference</h1>"
+                        + ("<p>" + "Unrelated specification text. ".repeat(30) + "</p>").repeat(600)
+                        + "<h2>Authors' Addresses</h2><p>Mark Example: author@example.org</p></main>";
+        var document = document("text/html", html, false);
+        var matches = document.find("author@example.org");
+        assertEquals(1, matches.size());
+        String id = matches.getFirst().id();
+        assertEquals(
+                "Mark Example: author@example.org", document.read(List.of(id)).getFirst().text());
+        assertTrue(document.inspected().isEmpty());
+        document.recordInspection(List.of(id));
+        assertEquals("Authors' Addresses", document.evidence(id).section());
+        assertFalse(document.truncated());
+        assertFalse(document.fullyRead());
+    }
+
+    @Test
     void preservesDivTextAndResolvedHrefBesideHeadings() {
         WebReadDocument document =
                 document(
@@ -124,8 +163,8 @@ class WebReadDocumentTest {
 
     @Test
     void capsOversizedSourcesAndNeverClaimsFullCoverageForTruncatedInput() {
-        WebReadDocument document = document("text/plain", "x".repeat(361000), false);
-        assertEquals(300, document.outline().size());
+        WebReadDocument document = document("text/plain", "x".repeat(12001000), false);
+        assertEquals(10000, document.outline().size());
         assertTrue(document.truncated());
         List<String> ids = document.outline().stream().map(WebReadDocument.Entry::id).toList();
         for (int index = 0; index < ids.size(); index += 8) {

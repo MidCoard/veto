@@ -23,8 +23,6 @@ import top.focess.veto.agent.identity.RoleToolFilter;
 import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
-import top.focess.veto.agent.intercept.InterceptResolution;
-import top.focess.veto.agent.intercept.VetoOption;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.screening.Danger;
 import top.focess.veto.agent.screening.DangerComputation;
@@ -47,6 +45,7 @@ import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.llm.core.VetoResponse;
 import top.focess.veto.llm.exceptions.LlmException;
 import top.focess.veto.sandbox.BackgroundTaskManager;
+import top.focess.veto.sandbox.Command;
 import top.focess.veto.sandbox.SandboxManager;
 
 @SuppressWarnings("initialization.field.uninitialized")
@@ -83,12 +82,13 @@ class NewRequirementsTest {
                 Map.of("path", ParamCategory.FILESYSTEM_PATH));
     }
 
-    public record ExecArgs(Map<String, Object> commands, String cwd) {}
+    public record ExecArgs(List<Command> commands, String cwd) {}
 
     public record ReadArgs(String path) {}
 
     private static class TestToolEngine implements ToolEngine {
         private final @NonNull Map<String, ToolDefinition> tools = new HashMap<>();
+        private final @NonNull List<String> executed = new ArrayList<>();
 
         public void register(@NonNull ToolDefinition def) {
             tools.put(def.name(), def);
@@ -106,6 +106,7 @@ class NewRequirementsTest {
 
         @Override
         public @NonNull ToolResult execute(@NonNull ToolCall call, @NonNull ToolDefinition def) {
+            executed.add(call.callId());
             return new ToolResult(call.toolName(), call.callId(), true, "success");
         }
     }
@@ -122,15 +123,11 @@ class NewRequirementsTest {
         };
     }
 
-    private static @NonNull VetoResponse thoughtOnWithCall(
-            String thought, String message, @NonNull ToolCall call) {
-        return new VetoResponse(thought, List.of(call), message, null);
-    }
-
     @Test
     void refusedHoldsBatchAndDisplaysNotice() throws Exception {
         TestToolEngine mcpEngine = new TestToolEngine();
         mcpEngine.register(execDef());
+        mcpEngine.register(readDef());
 
         AtomicReference<String> streamedMessage = new AtomicReference<>();
         HitlRegistry hitlRegistry = new HitlRegistry();
@@ -145,7 +142,19 @@ class NewRequirementsTest {
                         "call-nc");
 
         UniformLLMCaller caller =
-                scripted(thoughtOnWithCall("I will start netcat.", "Starting...", ncCall));
+                scripted(
+                        new VetoResponse(
+                                "I will start netcat.",
+                                List.of(
+                                        ncCall,
+                                        new ToolCall(
+                                                "view_file",
+                                                Map.of(
+                                                        "path",
+                                                        root.resolve("after.txt").toString()),
+                                                "call-after")),
+                                "Starting...",
+                                null));
 
         ObjectMapper mapper = new ObjectMapper();
         PromptCompiler compiler =
@@ -228,42 +237,21 @@ class NewRequirementsTest {
         if (streamed == null) throw new AssertionError("streamed message should not be null");
         assertTrue(streamed.contains("CRITICAL"));
 
-        // Resolve the HITL hold (retrying in case of race with register)
-        boolean resolved = false;
-        long resolveDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-        String resolvedAgentId = null;
-        String resolvedCallId = null;
-        while (System.nanoTime() < resolveDeadline) {
-            Object pendingValue = ReflectionTestUtils.getField(hitlRegistry, "pending");
-            if (pendingValue instanceof Map<?, ?> pending && !pending.isEmpty()) {
-                for (Object pendingKey : pending.keySet()) {
-                    if (!(pendingKey instanceof String key)) {
-                        continue;
-                    }
-                    int idx = key.indexOf('|');
-                    if (idx > 0) {
-                        resolvedAgentId = key.substring(0, idx);
-                        resolvedCallId = key.substring(idx + 1);
-                        break;
-                    }
-                }
-            }
-            if (resolvedAgentId != null && resolvedCallId != null) {
-                if (hitlRegistry.resolve(
-                        resolvedAgentId,
-                        resolvedCallId,
-                        new InterceptResolution(VetoOption.EXEC_DECLINE, null))) {
-                    resolved = true;
-                    break;
-                }
-            }
+        long pendingDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
+        while (hitlRegistry.pendingFor(agent.id()).isEmpty() && System.nanoTime() < pendingDeadline)
             Thread.sleep(10);
-        }
-        assertTrue(resolved, "veto should be successfully resolved");
-
+        var pending = hitlRegistry.pendingFor(agent.id());
+        assertEquals(1, pending.size());
+        assertEquals("call-nc", pending.getFirst().get("callId"));
+        assertEquals("CRITICAL", pending.getFirst().get("danger"));
+        assertEquals(List.of("EXEC_DECLINE"), pending.getFirst().get("options"));
+        // An unoffered approval must only end the hold as refusal, never authorize execution.
+        assertTrue(hitlRegistry.resolveOption(agent.id(), "call-nc", "ACCEPT_COMMAND"));
         AgentResult result = resultFuture.get(5, TimeUnit.SECONDS);
         assertFalse(result.success());
         assertEquals(AgentState.IDLE, agent.state());
+        assertTrue(mcpEngine.executed.isEmpty(), "Refusal must prevent every call in the batch");
+        assertTrue(hitlRegistry.pendingFor(agent.id()).isEmpty());
     }
 
     @Test

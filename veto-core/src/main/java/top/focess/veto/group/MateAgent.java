@@ -4,9 +4,12 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -65,6 +68,34 @@ public class MateAgent {
     private final @NonNull AtomicBoolean running = new AtomicBoolean(false);
     private final @NonNull ScheduledExecutorService scheduler;
     private ScheduledFuture<?> pollTask;
+    private final @NonNull Set<String> cancelledDispatches = ConcurrentHashMap.newKeySet();
+    private String activeDispatch;
+    private CompletableFuture<AgentResult> activeResult;
+    private @NonNull CompletableFuture<Boolean> dispatchExited =
+            CompletableFuture.completedFuture(true);
+
+    public boolean cancelDispatch(@NonNull String dispatchId, @NonNull Duration timeout)
+            throws InterruptedException {
+        CompletableFuture<AgentResult> task;
+        CompletableFuture<Boolean> exited;
+        synchronized (this) {
+            cancelledDispatches.add(dispatchId);
+            if (!dispatchId.equals(activeDispatch)) return true;
+            task = activeResult;
+            exited = dispatchExited;
+        }
+        if (task == null) return false;
+        long started = System.nanoTime();
+        if (!agent.cancelTask(task, timeout)) return false;
+        long remaining = Math.max(0, timeout.toNanos() - (System.nanoTime() - started));
+        try {
+            return exited.get(remaining, TimeUnit.NANOSECONDS);
+        } catch (TimeoutException e) {
+            return false;
+        } catch (ExecutionException e) {
+            throw new IllegalStateException(e.getCause());
+        }
+    }
 
     public MateAgent(
             @NonNull String mateId,
@@ -160,6 +191,16 @@ public class MateAgent {
         }
     }
 
+    /** Confirm both the dispatch waiter and underlying execution have exited. */
+    public boolean awaitTermination(@NonNull Duration timeout) throws InterruptedException {
+        if (timeout.isNegative()) throw new IllegalArgumentException("Negative timeout");
+        long started = System.nanoTime();
+        long nanos = timeout.toNanos();
+        if (!scheduler.awaitTermination(nanos, TimeUnit.NANOSECONDS)) return false;
+        long remaining = Math.max(0, nanos - (System.nanoTime() - started));
+        return agent.awaitTermination(Duration.ofNanos(remaining));
+    }
+
     private void poll() {
         try {
             String key = lastSeenSeqKey();
@@ -191,7 +232,7 @@ public class MateAgent {
         String payload = dispatch.payload();
         int colon = payload.indexOf(':');
         if (colon < 0) {
-            postFeedback(dispatch.payload(), "malformed dispatch payload");
+            postFeedback(dispatch.payload(), "malformed dispatch payload", dispatch.dispatchId());
             return;
         }
         String nodeId = payload.substring(0, colon).strip();
@@ -200,48 +241,64 @@ public class MateAgent {
         // 2. Check the Mate's per-episode breaker.
         if (breakers.shouldTrip(groupId, mateId)) {
             log.warn("MateAgent[{}] breaker tripped on dispatch of node {}", mateId, nodeId);
-            postTerminalStatus(nodeId, "breaker-tripped");
+            postTerminalStatus(nodeId, "breaker-tripped", dispatch.dispatchId());
             return;
         }
 
         // 3. Reset the breaker for the new episode and submit the task.
         breakers.newEpisode(groupId, mateId);
         log.info("MateAgent[{}] dispatching node {}: {}", mateId, nodeId, instruction);
-        agent.submit(instruction);
-
-        // Await the actual task result. A polling deadline is not a task failure: a Mate
-        // can legitimately need several model calls, tool waits, or user approvals.
-        while (running.get()) {
-            try {
-                AgentResult result = agent.await(Duration.ofMillis(resultPollIntervalMs));
-                if (!running.get()) {
+        String dispatchId = dispatch.dispatchId();
+        synchronized (this) {
+            if (dispatchId != null && cancelledDispatches.contains(dispatchId)) return;
+            agent.submit(instruction);
+            activeDispatch = dispatchId;
+            activeResult = agent.result();
+            dispatchExited = new CompletableFuture<>();
+        }
+        try {
+            // Await the actual task result. A polling deadline is not a task failure: a Mate
+            // can legitimately need several model calls, tool waits, or user approvals.
+            while (running.get()) {
+                try {
+                    AgentResult result = agent.await(Duration.ofMillis(resultPollIntervalMs));
+                    if (!running.get()
+                            || (dispatchId != null && cancelledDispatches.contains(dispatchId))) {
+                        return;
+                    }
+                    breakers.recordModelCall(groupId, mateId);
+                    if (result.success()) {
+                        postAccept(nodeId, result.message(), dispatch.dispatchId());
+                    } else {
+                        postFeedback(nodeId, result.message(), dispatch.dispatchId());
+                    }
+                    return;
+                } catch (TimeoutException e) {
+                    // Check lifecycle state, then continue waiting for this same task.
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    if (running.get()) {
+                        postFeedback(nodeId, "result wait interrupted", dispatch.dispatchId());
+                    }
+                    return;
+                } catch (RuntimeException e) {
+                    if (running.get()) {
+                        postFeedback(
+                                nodeId,
+                                "result wait failed: " + e.getMessage(),
+                                dispatch.dispatchId());
+                    }
                     return;
                 }
-                breakers.recordModelCall(groupId, mateId);
-                if (result.success()) {
-                    postAccept(nodeId, result.message());
-                } else {
-                    postFeedback(nodeId, result.message());
-                }
-                return;
-            } catch (TimeoutException e) {
-                // Check lifecycle state, then continue waiting for this same task.
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                if (running.get()) {
-                    postFeedback(nodeId, "result wait interrupted");
-                }
-                return;
-            } catch (RuntimeException e) {
-                if (running.get()) {
-                    postFeedback(nodeId, "result wait failed: " + e.getMessage());
-                }
-                return;
+            }
+        } finally {
+            synchronized (this) {
+                dispatchExited.complete(true);
             }
         }
     }
 
-    private void postAccept(@NonNull String nodeId, @NonNull String summary) {
+    private void postAccept(@NonNull String nodeId, @NonNull String summary, String dispatchId) {
         String encoded =
                 Base64.getEncoder()
                         .encodeToString(summary.strip().getBytes(StandardCharsets.UTF_8));
@@ -254,10 +311,11 @@ public class MateAgent {
                         "LEADER",
                         BlackboardMessage.MessageType.ACCEPT,
                         payload,
-                        0));
+                        0,
+                        dispatchId));
     }
 
-    private void postFeedback(@NonNull String nodeId, String reason) {
+    private void postFeedback(@NonNull String nodeId, String reason, String dispatchId) {
         blackboard.post(
                 new BlackboardMessage(
                         UUID.randomUUID().toString(),
@@ -266,10 +324,12 @@ public class MateAgent {
                         "LEADER",
                         BlackboardMessage.MessageType.FEEDBACK,
                         nodeId + ":feedback:" + (reason == null ? "unknown" : reason),
-                        0));
+                        0,
+                        dispatchId));
     }
 
-    private void postTerminalStatus(@NonNull String nodeId, @NonNull String reason) {
+    private void postTerminalStatus(
+            @NonNull String nodeId, @NonNull String reason, String dispatchId) {
         blackboard.post(
                 new BlackboardMessage(
                         UUID.randomUUID().toString(),
@@ -278,7 +338,8 @@ public class MateAgent {
                         "LEADER",
                         BlackboardMessage.MessageType.STATUS,
                         "terminal:" + nodeId + ":" + reason,
-                        0));
+                        0,
+                        dispatchId));
     }
 
     private static @NonNull String lastSeenSeqKey() {

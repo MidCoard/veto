@@ -1,6 +1,9 @@
 package top.focess.veto.agent.intercept;
 
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -66,6 +69,44 @@ public final class SecretMasker {
     }
 
     private SecretMasker() {}
+
+    /** Original UTF-16 range; deliberately contains no captured secret value. */
+    public record SecretMatch(int start, int end, @NonNull String category) {}
+
+    /**
+     * Finds non-overlapping ranges in the original input, before any replacement changes offsets.
+     * Assignment patterns capture only the value. This exposes the existing deterministic rules,
+     * not a guarantee that arbitrary secrets or encodings will be detected.
+     */
+    public static @NonNull List<SecretMatch> matches(@NonNull String input) {
+        List<SecretMatch> candidates = new ArrayList<>();
+        for (var rule : PATTERNS.entrySet()) {
+            Matcher matcher = rule.getKey().matcher(input);
+            while (matcher.find()) {
+                int start = matcher.start();
+                if (rule.getValue().equals("[REDACTED_PASSWORD]")
+                        || rule.getValue().equals("[REDACTED_TOKEN]")) {
+                    start = matcher.end(1);
+                    while (start < matcher.end() && Character.isWhitespace(input.charAt(start)))
+                        start++;
+                    start++; // '=' or ':' between the key and its value
+                    while (start < matcher.end() && Character.isWhitespace(input.charAt(start)))
+                        start++;
+                }
+                if (start < matcher.end())
+                    candidates.add(new SecretMatch(start, matcher.end(), rule.getValue()));
+            }
+        }
+        candidates.sort(
+                Comparator.comparingInt(SecretMatch::start)
+                        .thenComparing(Comparator.comparingInt(SecretMatch::end).reversed()));
+        List<SecretMatch> result = new ArrayList<>();
+        for (SecretMatch candidate : candidates) {
+            if (result.isEmpty() || candidate.start() >= result.getLast().end())
+                result.add(candidate);
+        }
+        return List.copyOf(result);
+    }
 
     /**
      * Scrubs secret patterns in the input. Each pattern's first match is replaced with its {@code

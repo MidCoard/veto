@@ -42,6 +42,7 @@ public class RoleToolFilter {
                     ToolCapability.PROCESS_EXECUTION,
                     ToolCapability.TASK_CONTROL,
                     ToolCapability.NETWORK_EGRESS,
+                    ToolCapability.CREDENTIAL_IMPORT,
                     ToolCapability.SKILL_READ,
                     ToolCapability.MEMORY_READ,
                     ToolCapability.MEMORY_WRITE,
@@ -58,6 +59,7 @@ public class RoleToolFilter {
                     ToolCapability.PROCESS_EXECUTION,
                     ToolCapability.TASK_CONTROL,
                     ToolCapability.NETWORK_EGRESS,
+                    ToolCapability.CREDENTIAL_IMPORT,
                     ToolCapability.SKILL_READ,
                     ToolCapability.MEMORY_READ,
                     ToolCapability.LOOP_CONTROL);

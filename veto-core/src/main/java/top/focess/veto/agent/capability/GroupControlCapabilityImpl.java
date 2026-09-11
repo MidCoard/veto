@@ -148,7 +148,14 @@ public final class GroupControlCapabilityImpl implements GroupControlCapability 
         if (responsibility == null)
             return new NodeEdit.Rejected("Unknown Mate in this group: " + mateId);
         return orchestrator.addNode(
-                group.groupId(), id, description, responsibility, dependencies, mateId, false);
+                group.groupId(),
+                id,
+                description,
+                responsibility,
+                dependencies,
+                mateId,
+                false,
+                ctx.requestId());
     }
 
     @Override
@@ -164,7 +171,7 @@ public final class GroupControlCapabilityImpl implements GroupControlCapability 
         UUID groupId = ctx.groupId();
         if (groupId == null) throw new SecurityException("No active group");
         return orchestrator.addNode(
-                groupId, id, description, skillset, dependencies, mateId, newMate);
+                groupId, id, description, skillset, dependencies, mateId, newMate, ctx.requestId());
     }
 
     @Override
@@ -174,6 +181,24 @@ public final class GroupControlCapabilityImpl implements GroupControlCapability 
         UUID groupId = ctx.groupId();
         if (groupId == null) throw new SecurityException("No active group");
         return orchestrator.removeNode(groupId, id);
+    }
+
+    @Override
+    public @NonNull NodeEdit removeMate(@NonNull String id) {
+        var ctx = CapabilityAccess.require(ToolCapability.GROUP_CONTROL, "remove_mate");
+        requireLeader(ctx);
+        UUID groupId = ctx.groupId();
+        if (groupId == null) throw new SecurityException("No active group");
+        return orchestrator.removeMate(groupId, id, spawner);
+    }
+
+    @Override
+    public @NonNull NodeEdit cancelTask(@NonNull String id) {
+        var ctx = CapabilityAccess.require(ToolCapability.GROUP_CONTROL, "cancel_group_task");
+        requireLeader(ctx);
+        UUID groupId = ctx.groupId();
+        if (groupId == null) throw new SecurityException("No active group");
+        return orchestrator.cancelTask(groupId, id, spawner);
     }
 
     private @NonNull List<@NonNull BlackboardMessage> newMessages(
@@ -196,8 +221,11 @@ public final class GroupControlCapabilityImpl implements GroupControlCapability 
         if (groupId == null) return;
         Group group = registry.get(groupId);
         String owner = group == null ? null : group.owner();
+        UUID sessionId = group == null ? null : group.sessionId();
         if (group == null
+                || group.state() == GroupState.RECOVERING
                 || !group.leaderId().equals(ctx.agentId())
+                || (sessionId != null && !sessionId.equals(ctx.sessionId()))
                 || (owner != null && !owner.equals(ctx.owner()))) {
             throw new SecurityException("This operation is unavailable outside your own group.");
         }

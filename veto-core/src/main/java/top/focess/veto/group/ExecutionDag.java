@@ -4,8 +4,10 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Predicate;
 import org.jspecify.annotations.NonNull;
 
 /**
@@ -23,11 +25,21 @@ public record ExecutionDag(@NonNull UUID groupId, @NonNull List<DagNode> nodes) 
 
     /** Work that can still progress; failed dependencies block all downstream descendants. */
     public boolean hasUnfinishedWork() {
+        return hasUnfinishedWork(node -> true);
+    }
+
+    public boolean hasUnfinishedWork(String requestId) {
+        return hasUnfinishedWork(node -> Objects.equals(requestId, node.requestId()));
+    }
+
+    private boolean hasUnfinishedWork(@NonNull Predicate<DagNode> matchesRequest) {
         Map<String, DagNode> byId = index();
         return nodes.stream()
+                .filter(matchesRequest)
                 .anyMatch(
                         n ->
                                 n.state() == DagNode.NodeState.RUNNING
+                                        || n.state() == DagNode.NodeState.CANCEL_REQUESTED
                                         || (n.state() == DagNode.NodeState.PENDING
                                                 && !blocked(n, byId)));
     }
@@ -38,6 +50,8 @@ public record ExecutionDag(@NonNull UUID groupId, @NonNull List<DagNode> nodes) 
             if (dependency == null
                     || dependency.state() == DagNode.NodeState.FAILED
                     || dependency.state() == DagNode.NodeState.STALE
+                    || dependency.state() == DagNode.NodeState.CANCELLED
+                    || dependency.state() == DagNode.NodeState.INTERRUPTED
                     || blocked(dependency, byId)) return true;
         }
         return false;

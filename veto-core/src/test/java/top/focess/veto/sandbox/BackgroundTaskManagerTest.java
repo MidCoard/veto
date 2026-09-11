@@ -6,6 +6,10 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
@@ -36,6 +40,44 @@ class BackgroundTaskManagerTest {
         return win
                 ? new Command("ping", List.of("-n", "60", "127.0.0.1"))
                 : new Command("sleep", List.of("60"));
+    }
+
+    @Test
+    void awaitingExitIsOwnedInterruptibleAndDoesNotStopTheProcess(@TempDir @NonNull Path tempDir)
+            throws Exception {
+        BackgroundTaskManager manager = newManager();
+        try {
+            var task = manager.start("owner", longRunning(), tempDir, 30, null);
+            assertTrue(manager.awaitExit("other", task.taskId()).isEmpty());
+            assertTrue(manager.awaitExit("owner", "missing").isEmpty());
+            var waiting =
+                    new FutureTask<Optional<BackgroundTaskManager.TaskInfo>>(
+                            () -> manager.awaitExit("owner", task.taskId()));
+            Thread thread = Thread.ofVirtual().start(waiting);
+            try {
+                assertThrows(TimeoutException.class, () -> waiting.get(100, TimeUnit.MILLISECONDS));
+                assertTrue(manager.status("owner", task.taskId()).orElseThrow().alive());
+                thread.interrupt();
+                var failure =
+                        assertThrows(
+                                ExecutionException.class, () -> waiting.get(5, TimeUnit.SECONDS));
+                assertTrue(failure.getCause() instanceof InterruptedException);
+                assertTrue(manager.status("owner", task.taskId()).orElseThrow().alive());
+                manager.stop("owner", task.taskId(), BackgroundTaskManager.ExitCause.USER_STOP);
+                assertFalse(manager.awaitExit("owner", task.taskId()).orElseThrow().alive());
+            } finally {
+                thread.interrupt();
+                thread.join(5000);
+            }
+            var quick = manager.start("owner", javaVersion(), tempDir, 20, null);
+            assertEquals(
+                    0,
+                    requireExitCode(
+                            manager.awaitExit("owner", quick.taskId()).orElseThrow().exitCode()));
+            assertFalse(manager.output("owner", quick.taskId(), 50).orElseThrow().isBlank());
+        } finally {
+            manager.shutdown();
+        }
     }
 
     @Test

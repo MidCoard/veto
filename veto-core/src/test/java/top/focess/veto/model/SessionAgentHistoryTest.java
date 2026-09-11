@@ -5,27 +5,101 @@ import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import top.focess.veto.agent.AgentRunner;
 import top.focess.veto.agent.AgentState;
 import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.agent.TurnRecord;
+import top.focess.veto.agent.TurnType;
 import top.focess.veto.agent.VetoAgent;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.Role;
+import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.memory.TurnRecordEntity;
 import top.focess.veto.memory.TurnRecordRepository;
+import top.focess.veto.session.SessionHistoryLoader;
 
 @DataJpaTest
 @SuppressWarnings("initialization.field.uninitialized")
 class SessionAgentHistoryTest {
     @Autowired private @NonNull AgentInstanceRepository repository;
     @Autowired private @NonNull TurnRecordRepository turns;
+
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    void committedFailuresReloadInTheirOriginalAgentAndSessionStreams() {
+        UUID session = UUID.randomUUID();
+        UUID otherSession = UUID.randomUUID();
+        UUID owner = UUID.randomUUID();
+        String primary = UUID.randomUUID().toString();
+        String mate = UUID.randomUUID().toString();
+        var mapper = new ObjectMapper();
+        var writer = new TurnLogService(turns, mapper);
+        try {
+            writer.log(TurnRecord.userPrompt(1, "Original request"), session, owner, primary);
+            writer.log(
+                    new TurnRecord(
+                            2,
+                            TurnType.EXECUTION_ERROR,
+                            Map.of("content", "Primary failure", "requestId", "request-a"),
+                            null),
+                    session,
+                    owner,
+                    primary);
+            writer.log(
+                    new TurnRecord(
+                            2,
+                            TurnType.EXECUTION_ERROR,
+                            Map.of("content", "Mate failure", "requestId", "request-b"),
+                            null),
+                    session,
+                    owner,
+                    mate);
+            writer.log(
+                    new TurnRecord(
+                            2,
+                            TurnType.EXECUTION_ERROR,
+                            Map.of("content", "Other session failure"),
+                            null),
+                    otherSession,
+                    owner,
+                    primary);
+
+            var reader = new SessionHistoryLoader(turns, new ObjectMapper());
+            var restored = reader.load(session.toString(), primary);
+            assertEquals(
+                    List.of(TurnType.USER_PROMPT, TurnType.EXECUTION_ERROR),
+                    restored.stream().map(TurnRecord::type).toList());
+            assertEquals("Primary failure", restored.getLast().payload().get("content"));
+            assertEquals("request-a", restored.getLast().payload().get("requestId"));
+            assertEquals(
+                    "Mate failure",
+                    reader.load(session.toString(), mate).getFirst().payload().get("content"));
+            assertEquals(
+                    "Other session failure",
+                    reader.load(otherSession.toString(), primary)
+                            .getFirst()
+                            .payload()
+                            .get("content"));
+            assertTrue(reader.load(otherSession.toString(), mate).isEmpty());
+            var row =
+                    turns.findBySessionIdAndAgentIdAndTurnNumber(session.toString(), primary, 2)
+                            .orElseThrow();
+            assertEquals(owner.toString(), row.getUserId());
+            assertEquals(restored.getLast().timestamp(), row.getTimestamp());
+        } finally {
+            turns.deleteAll(turns.findBySessionIdOrderByTurnNumberAsc(session.toString()));
+            turns.deleteAll(turns.findBySessionIdOrderByTurnNumberAsc(otherSession.toString()));
+        }
+    }
 
     @Test
     void olderTurnStreamsRemainVisibleWithoutInventingMetadata() {

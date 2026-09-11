@@ -9,6 +9,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -30,11 +31,20 @@ public class SkillRegistry {
     private final @NonNull MarkdownSkillLoader loader = new MarkdownSkillLoader();
     private final @NonNull ConcurrentHashMap<String, Skill> skills = new ConcurrentHashMap<>();
 
-    @SuppressWarnings("method.invocation")
+    @Autowired
     public SkillRegistry(@Value("${veto.skills.project-dir}") String projectSkillsDir) {
-        register(loadSkillsFrom(homeSkillsDir(), SkillSourceType.PERSONAL));
-        if (projectSkillsDir != null && !projectSkillsDir.isBlank()) {
-            register(loadSkillsFrom(Path.of(projectSkillsDir), SkillSourceType.PROJECT));
+        this(
+                homeSkillsDir(),
+                projectSkillsDir == null || projectSkillsDir.isBlank()
+                        ? null
+                        : Path.of(projectSkillsDir));
+    }
+
+    @SuppressWarnings("method.invocation")
+    SkillRegistry(@NonNull Path personalSkillsDir, Path projectSkillsDir) {
+        register(loadSkillsFrom(personalSkillsDir, SkillSourceType.PERSONAL));
+        if (projectSkillsDir != null) {
+            register(loadSkillsFrom(projectSkillsDir, SkillSourceType.PROJECT));
         }
         log.info("SkillRegistry: loaded {} skill(s).", skills.size());
     }
@@ -76,7 +86,16 @@ public class SkillRegistry {
     }
 
     private void register(@NonNull Map<String, Skill> loaded) {
-        loaded.forEach((k, v) -> skills.merge(k, v, (a, b) -> a));
+        loaded.forEach((name, skill) -> skills.merge(name, skill, SkillRegistry::selectPreferred));
+    }
+
+    private static @NonNull Skill selectPreferred(
+            @NonNull Skill registered, @NonNull Skill candidate) {
+        if (registered.sourceType() == SkillSourceType.PERSONAL
+                && candidate.sourceType() == SkillSourceType.PROJECT) {
+            return candidate;
+        }
+        return registered;
     }
 
     private @NonNull Map<String, Skill> loadSkillsFrom(

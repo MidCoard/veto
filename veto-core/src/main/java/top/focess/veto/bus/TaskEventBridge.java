@@ -1,10 +1,13 @@
 package top.focess.veto.bus;
 
 import jakarta.annotation.PostConstruct;
+import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import top.focess.veto.model.SessionRepository;
 import top.focess.veto.monitor.MonitorService;
@@ -26,6 +29,13 @@ public class TaskEventBridge implements BackgroundTaskManager.TaskListener {
     private final @NonNull DeltaBroker broker;
     private final @NonNull SessionRepository sessions;
     private final @NonNull MonitorService monitors;
+
+    private record Observation(
+            BackgroundTaskManager.@NonNull TaskInfo info,
+            BackgroundTaskManager.@NonNull ExitCause cause) {}
+
+    private final @NonNull ConcurrentHashMap<UUID, Observation> observations =
+            new ConcurrentHashMap<>();
 
     public TaskEventBridge(
             @NonNull BackgroundTaskManager taskManager,
@@ -83,8 +93,37 @@ public class TaskEventBridge implements BackgroundTaskManager.TaskListener {
             BackgroundTaskManager.@NonNull ExitCause cause) {
         UUID session = info.sessionId();
         if (session == null) return;
-        sessions.findById(session.toString())
-                .ifPresent(row -> monitors.observeProcess(row.getOwner(), info, cause));
+        observations.compute(
+                info.taskInstanceId(),
+                (id, previous) ->
+                        previous != null && !previous.info().alive() && info.alive()
+                                ? previous
+                                : new Observation(info, cause));
+        flushObservation(info.taskInstanceId());
+    }
+
+    @Scheduled(fixedDelay = 1000)
+    void retryObservations() {
+        for (UUID id : List.copyOf(observations.keySet())) flushObservation(id);
+    }
+
+    private void flushObservation(@NonNull UUID id) {
+        Observation observation = observations.get(id);
+        if (observation == null) return;
+        UUID session = observation.info().sessionId();
+        if (session == null) return;
+        try {
+            sessions.findById(session.toString())
+                    .ifPresent(
+                            row ->
+                                    monitors.observeProcess(
+                                            row.getOwner(),
+                                            observation.info(),
+                                            observation.cause()));
+            observations.remove(id, observation);
+        } catch (RuntimeException error) {
+            log.debug("Task observation {} awaits persistence retry", id, error);
+        }
     }
 
     private void publish(
@@ -102,11 +141,14 @@ public class TaskEventBridge implements BackgroundTaskManager.TaskListener {
                             .kind(kind)
                             .attr("taskId", info.taskId())
                             .attr("agentId", info.agentId())
+                            .attr("taskInstanceId", info.taskInstanceId().toString())
                             .attr("command", info.command())
                             .attr("cwd", info.cwd())
                             .attr("pid", info.pid())
                             .attr("alive", info.alive())
                             .text(info.command());
+            String requestId = info.requestId();
+            if (requestId != null) b.attr("requestId", requestId);
             Integer exitCode = info.exitCode();
             if (exitCode != null) {
                 b.attr("exitCode", exitCode);

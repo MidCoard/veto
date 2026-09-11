@@ -27,7 +27,7 @@ import top.focess.veto.agent.tool.ToolSecurity;
         whenNotToUse =
                 "Use web_search to discover URLs. This tool cannot browse interactive pages, follow unrelated links, or return complete large datasets.",
         resultContract =
-                "JSON with outcome (complete, partial, not_found), answer, evidence (url, section, quote), limitations, and execution metadata. Complete reports that the reader answered its objective, not that the entire page was read. Check excerpts and limitations against your intended claim. Cite returned URLs and section labels; do not invent section anchors. Partial identifies missing coverage; not_found concerns only the inspected document.",
+                "JSON with outcome (complete, partial, not_found), answer, evidence (url, section, quote), limitations, and execution metadata. Complete reports that the reader answered its objective, not that the entire page was read. Check excerpts and limitations against your intended claim. A stated purpose or example does not establish an exclusive restriction. Quote evidence.quote directly, not the reader answer or a paraphrase. Cite returned URLs and section labels; do not invent section anchors. Partial identifies missing coverage; not_found concerns only the inspected document.",
         errorsAndEdgeCases =
                 "Destination denial, unsupported content, network/model errors, cancellation, and exhausted budgets are tool failures. A cross-origin redirect needs a fresh call. Failed retrieval never means information was absent.",
         security =

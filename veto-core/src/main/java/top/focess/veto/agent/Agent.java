@@ -50,7 +50,19 @@ public interface Agent {
 
     void resume(); // → RUNNING
 
-    void terminate(); // → TERMINATED, virtual thread stopped
+    void terminate(); // Request termination; completion is confirmed separately.
+
+    /** Confirm actual execution exit. Implementations without confirmation return false. */
+    default boolean awaitTermination(@NonNull Duration timeout) throws InterruptedException {
+        return false;
+    }
+
+    /** Cancel only the task identified by its result handle and confirm its execution exit. */
+    default boolean cancelTask(
+            @NonNull CompletableFuture<AgentResult> task, @NonNull Duration timeout)
+            throws InterruptedException {
+        return false;
+    }
 
     // --- History ---
     @NonNull List<TurnRecord> history();

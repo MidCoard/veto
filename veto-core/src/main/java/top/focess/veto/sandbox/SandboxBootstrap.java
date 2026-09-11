@@ -119,6 +119,12 @@ public final class SandboxBootstrap {
         return Path.of(entry).toAbsolutePath().normalize().toString();
     }
 
+    /** Preserve target argv across the intermediate Windows ProcessBuilder launch. */
+    static @NonNull List<@NonNull String> windowsBootstrapArguments(
+            @NonNull List<@NonNull String> arguments) {
+        return arguments.stream().map(argument -> windowsCommandLine(List.of(argument))).toList();
+    }
+
     static @NonNull String windowsCommandLine(@NonNull List<@NonNull String> arguments) {
         StringBuilder result = new StringBuilder();
         for (String argument : arguments) {

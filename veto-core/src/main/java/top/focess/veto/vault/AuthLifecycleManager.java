@@ -3,6 +3,7 @@ package top.focess.veto.vault;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import top.focess.veto.command.PromptHandler;
 
@@ -16,6 +17,12 @@ import top.focess.veto.command.PromptHandler;
  */
 @Service
 public class AuthLifecycleManager {
+    private SecretCandidateStore candidates;
+
+    @Autowired
+    public void attachCandidates(@NonNull SecretCandidateStore store) {
+        candidates = store;
+    }
 
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.vault.AuthLifecycleManager");
@@ -38,6 +45,7 @@ public class AuthLifecycleManager {
     public synchronized void signup(@NonNull String username, @NonNull String password) {
         log.info("AuthLifecycleManager: Signing up user '{}'", username);
         vault.signup(username, password);
+        if (candidates != null) candidates.openOwner(username);
     }
 
     /**
@@ -49,6 +57,7 @@ public class AuthLifecycleManager {
     public synchronized void login(@NonNull String username, @NonNull String password) {
         log.info("AuthLifecycleManager: Logging in user '{}'", username);
         vault.login(username, password);
+        if (candidates != null) candidates.openOwner(username);
     }
 
     /**
@@ -59,6 +68,7 @@ public class AuthLifecycleManager {
      */
     public synchronized void logout(@NonNull String username) {
         log.info("AuthLifecycleManager: Logging out user '{}'", username);
+        if (candidates != null) candidates.closeOwner(username);
         try {
             promptHandler.deactivateUser(username);
         } catch (Exception e) {

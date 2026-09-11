@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
@@ -11,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 import top.focess.veto.agent.AgentState;
+import top.focess.veto.agent.ProtectedInputException;
 import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.agent.VetoAgent;
 import top.focess.veto.controller.dto.SubmitPromptRequest;
@@ -28,6 +30,20 @@ class AgentPromptControllerTest {
     private final @NonNull UUID sessionId = UUID.randomUUID();
     private final @NonNull AgentPromptController controller =
             new AgentPromptController(sessions, agents, vault);
+
+    @Test
+    void protectedInputFailureIsRejectedBeforeAcknowledgement() {
+        ownedSession();
+        when(mate.userInteractionEnabled()).thenReturn(true);
+        doThrow(new ProtectedInputException()).when(mate).submitUserPrompt(anyString());
+        var response =
+                controller.prompt("session", "mate", new SubmitPromptRequest("synthetic-secret"));
+        assertEquals(422, response.getStatusCode().value());
+        if (!(response.getBody() instanceof Map<?, ?> body))
+            throw new AssertionError("Missing error body");
+        assertEquals("PROTECTED_INPUT_UNAVAILABLE", body.get("code"));
+        assertFalse(String.valueOf(response.getBody()).contains("synthetic-secret"));
+    }
 
     private void ownedSession() {
         when(vault.currentUser()).thenReturn("owner");

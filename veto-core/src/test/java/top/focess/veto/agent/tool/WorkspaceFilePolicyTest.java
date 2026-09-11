@@ -3,6 +3,7 @@ package top.focess.veto.agent.tool;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -16,6 +17,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import top.focess.veto.agent.capability.CapabilityResolver;
+import top.focess.veto.agent.capability.ProtectedWorkspaceReadCapabilityImpl;
 import top.focess.veto.agent.capability.WorkspaceReadCapability;
 import top.focess.veto.agent.capability.WorkspaceWriteCapability;
 import top.focess.veto.agent.intercept.ToolExecutionPermit;
@@ -28,9 +30,41 @@ import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
+import top.focess.veto.vault.SecretCandidateStore;
 
 class WorkspaceFilePolicyTest {
     private static final @NonNull UUID USER = UUID.randomUUID();
+    private static final @NonNull UUID SESSION = UUID.randomUUID();
+
+    @Test
+    void viewFileCapturesBeforeLineRendering(@TempDir @NonNull Path root) throws Exception {
+        String key =
+                "-----BEGIN PRIVATE KEY-----\r\nsynthetic-material\r\n-----END PRIVATE KEY-----";
+        Path file =
+                Files.writeString(
+                        root.resolve("credential.txt"), "first\r\n" + key + "\r\nlast\r\n");
+        var candidates = new SecretCandidateStore();
+        var tool = new ViewFileTool(new ProtectedWorkspaceReadCapabilityImpl(candidates));
+        bind(tool, Map.of("absolutePath", file.toString()), root, Set.of());
+        var capability =
+                CapabilityResolver.require(ToolDocs.nonNullClass(WorkspaceReadCapability.class));
+        String result =
+                tool.execute(new ViewFileTool.Args(file.toString(), null, null), capability);
+        assertTrue(result.startsWith("1: first\n2: [SECRET_REF:s_"), result);
+        assertTrue(result.endsWith("3: \n4: \n5: last\n"), result);
+        assertFalse(result.contains("synthetic-material"));
+        String reference = result.substring(result.indexOf("s_"), result.indexOf(']'));
+        var descriptor =
+                candidates
+                        .describe(
+                                new SecretCandidateStore.Scope(
+                                        "owner", SESSION.toString(), "agent"),
+                                reference)
+                        .orElseThrow();
+        assertEquals(7, descriptor.start());
+        assertEquals(7 + key.length(), descriptor.end());
+        assertEquals("first\r\n" + key + "\r\nlast\r\n", Files.readString(file));
+    }
 
     @AfterEach
     void clearContext() {
@@ -171,14 +205,14 @@ class WorkspaceFilePolicyTest {
                                 Workspace.single(root, PathMode.REAL),
                                 DeployerPolicy.PROTECTED,
                                 new ProtectedSet(protectedPaths))
-                        .withCaller("agent", USER, null, "owner", null);
+                        .withCaller("agent", USER, null, "owner", SESSION);
         ToolCallContextHolder.set(
                 new ToolCallContext(
                         "agent",
                         USER,
                         null,
                         "owner",
-                        null,
+                        SESSION,
                         ToolResultPresentationMode.BASIC,
                         false,
                         permit));

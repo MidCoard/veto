@@ -18,6 +18,108 @@ public final class CollaborationTools {
     @Component
     @ToolDoc(
             resultFormats = {ToolResultFormat.PLAINTEXT},
+            description = "Cancel one group task and confirm execution exit.",
+            behavior =
+                    "Cancels queued work before dispatch or interrupts the exact running attempt. Keeps the collaborator and history. Pending cancellation continues to occupy the Mate until execution and the result waiter exit.",
+            whenToUse = "Use when the user asks to stop assigned work.",
+            whenNotToUse =
+                    "Not for removing a collaborator or stopping independent background processes.",
+            resultContract =
+                    "Success means CANCELLED with execution exit confirmed. A pending response means CANCEL_REQUESTED; inspect_group or retry can confirm later. Dependents remain blocked, other work can continue.",
+            errorsAndEdgeCases =
+                    "Unknown or already successful tasks are rejected. Cancelled tasks are idempotent. Cancellation does not undo completed side effects or satisfy dependencies.",
+            security = "Caller must lead the current owner and Session scoped group.",
+            examples = "{\"taskId\":\"analysis\"}",
+            returnExamples =
+                    "Task cancelled; execution exit confirmed. Dependent tasks remain blocked.")
+    public static final class CancelTask implements GroupControlTool<CancelTask.Args> {
+        private final @NonNull GroupControlCapability capability;
+
+        public CancelTask(@NonNull GroupControlCapability capability) {
+            this.capability = capability;
+        }
+
+        public record Args(@Doc("Existing task id.") @NonNull String taskId) {}
+
+        @Override
+        public @NonNull String getName() {
+            return "cancel_group_task";
+        }
+
+        @Override
+        @SuppressWarnings("nullness:return")
+        public @NonNull Class<Args> getArgsClass() {
+            return Args.class;
+        }
+
+        @Override
+        public @NonNull GroupControlCapability groupControlCapability() {
+            return capability;
+        }
+
+        @Override
+        public @NonNull String execute(
+                @NonNull Args args, @NonNull GroupControlCapability capability) {
+            var result = capability.cancelTask(args.taskId());
+            if (result instanceof GroupOrchestrator.NodeEdit.Rejected rejected)
+                return ToolErrors.failure(rejected.reason());
+            return "Task cancelled; execution exit confirmed. Dependent tasks remain blocked; explicitly replan or cancel them. Mate identity and history retained. Independent background processes are not stopped.";
+        }
+    }
+
+    @Component
+    @ToolDoc(
+            resultFormats = {ToolResultFormat.PLAINTEXT},
+            description = "Remove an idle collaborator from your group.",
+            behavior =
+                    "Rejects unfinished assigned tasks. Requests member shutdown and confirms actual execution exit before removing membership. Keeps task and Agent history.",
+            whenToUse = "Use when the user no longer needs this collaborator in the team.",
+            whenNotToUse = "Not a task cancellation tool. Finish or cancel assigned work first.",
+            resultContract =
+                    "Success confirms member execution and dispatch waiter stopped. A timeout retains membership; retry to confirm exit.",
+            errorsAndEdgeCases =
+                    "Unfinished task ids are listed. A stopping member cannot receive new work. Independent background processes are not stopped.",
+            security = "Caller must lead the current owner and Session scoped group.",
+            examples = "{\"mateId\":\"<mate-id>\"}",
+            returnExamples = "Mate removed; execution exit confirmed. History retained.")
+    public static final class RemoveMate implements GroupControlTool<RemoveMate.Args> {
+        private final @NonNull GroupControlCapability capability;
+
+        public RemoveMate(@NonNull GroupControlCapability capability) {
+            this.capability = capability;
+        }
+
+        public record Args(@Doc("Existing collaborator id.") @NonNull String mateId) {}
+
+        @Override
+        public @NonNull String getName() {
+            return "remove_mate";
+        }
+
+        @Override
+        @SuppressWarnings("nullness:return")
+        public @NonNull Class<Args> getArgsClass() {
+            return Args.class;
+        }
+
+        @Override
+        public @NonNull GroupControlCapability groupControlCapability() {
+            return capability;
+        }
+
+        @Override
+        public @NonNull String execute(
+                @NonNull Args args, @NonNull GroupControlCapability capability) {
+            var result = capability.removeMate(args.mateId());
+            if (result instanceof GroupOrchestrator.NodeEdit.Rejected rejected)
+                return ToolErrors.failure("Mate not removed: " + rejected.reason());
+            return "Mate removed; execution exit confirmed. History retained. Independent background processes are not stopped.";
+        }
+    }
+
+    @Component
+    @ToolDoc(
+            resultFormats = {ToolResultFormat.PLAINTEXT},
             description = "Create a named collaborator in your group.",
             behavior =
                     "Creates an idle Mate with an independent history. Responsibility describes its work, not resource permissions. The returned Mate id identifies the same collaborator for future tasks.",

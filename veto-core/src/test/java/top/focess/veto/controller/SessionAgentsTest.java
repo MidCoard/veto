@@ -93,7 +93,8 @@ class SessionAgentsTest {
                                         null,
                                         null,
                                         null,
-                                        false)));
+                                        false,
+                                        null)));
         mvc.perform(get("/api/sessions/session/agents"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].parentAgentId").value("mate"))

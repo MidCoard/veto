@@ -254,7 +254,7 @@ public class KernelSandboxSubstrate {
         wrapped.add(appContainerName);
         wrapped.add(profile.networkAllowed() ? "allow-network" : "deny-network");
         wrapped.add("--");
-        wrapped.addAll(targetCommand);
+        wrapped.addAll(SandboxBootstrap.windowsBootstrapArguments(targetCommand));
         return new PreparedCommand(wrapped, gate, ready, true);
     }
 

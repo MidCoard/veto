@@ -45,8 +45,10 @@ public class GroupRegistry {
                         || previous.state() != group.state())) store.save(group);
         groups.put(group.groupId(), group);
         group.blackboard().signalChange();
-        if (invalidations != null && group.sessionId() != null && previous != group)
-            invalidations.changed(group.sessionId(), "groups");
+        SessionInvalidations events = invalidations;
+        UUID sessionId = group.sessionId();
+        if (events != null && sessionId != null && previous != group)
+            events.changed(sessionId, "groups");
     }
 
     public Group get(@NonNull UUID groupId) {
@@ -65,8 +67,9 @@ public class GroupRegistry {
         Group removed = groups.remove(groupId);
         if (removed == null) return false;
         removed.blackboard().signalChange();
-        if (invalidations != null && removed.sessionId() != null)
-            invalidations.changed(removed.sessionId(), "groups");
+        SessionInvalidations events = invalidations;
+        UUID sessionId = removed.sessionId();
+        if (events != null && sessionId != null) events.changed(sessionId, "groups");
         return true;
     }
 

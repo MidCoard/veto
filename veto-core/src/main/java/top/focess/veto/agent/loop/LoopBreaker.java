@@ -33,6 +33,12 @@ public final class LoopBreaker {
         count = 0;
     }
 
+    /** Restore the consumption of a live request when switching back from another request. */
+    public void restoreCount(long consumedCalls) {
+        if (consumedCalls < 0) throw new IllegalArgumentException("Negative model-call usage");
+        count = consumedCalls;
+    }
+
     /** Whether the per-episode ceiling has been reached (checked at the top of each iteration). */
     public boolean shouldTrip() {
         return maxCallsPerEpisode >= 0 && count >= maxCallsPerEpisode;

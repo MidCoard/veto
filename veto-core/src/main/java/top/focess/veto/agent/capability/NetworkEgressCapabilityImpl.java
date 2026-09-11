@@ -27,6 +27,7 @@ import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolExecutionException;
 import top.focess.veto.agent.web.FetchedPage;
+import top.focess.veto.agent.web.GitHubRepositoryReader;
 import top.focess.veto.agent.web.SearchOptions;
 import top.focess.veto.agent.web.SearchProvider;
 import top.focess.veto.agent.web.SearchResult;
@@ -75,6 +76,24 @@ public final class NetworkEgressCapabilityImpl implements NetworkEgressCapabilit
             builder.proxy(proxySelector);
         }
         this.httpClient = builder.build();
+    }
+
+    private GitHubRepositoryReader repositoryReader;
+
+    @Autowired
+    public void attachRepositoryReader(@NonNull GitHubRepositoryReader repositoryReader) {
+        this.repositoryReader = repositoryReader;
+    }
+
+    @Override
+    public @NonNull String readGitHubRepository(
+            @NonNull String credentialRef,
+            @NonNull String repositoryOwner,
+            @NonNull String repositoryName) {
+        GitHubRepositoryReader reader = repositoryReader;
+        if (reader == null)
+            throw new IllegalStateException("Authenticated repository reading is unavailable");
+        return reader.read(credentialRef, repositoryOwner, repositoryName);
     }
 
     @Override

@@ -387,6 +387,7 @@ class ToolEngineImplTest {
             @NonNull ToolCall call,
             @NonNull ToolDefinition definition,
             @NonNull Path workspaceRoot) {
+        UUID sessionId = UUID.randomUUID();
         ToolExecutionPermit permit =
                 ToolExecutionPermit.capture(
                         call, definition, Workspace.single(workspaceRoot, PathMode.REAL));
@@ -395,11 +396,11 @@ class ToolEngineImplTest {
                         "test-agent",
                         TEST_USER,
                         null,
-                        null,
-                        null,
+                        "test-owner",
+                        sessionId,
                         ToolResultPresentationMode.BASIC,
                         false,
-                        permit.withCaller("test-agent", TEST_USER, null, null, null)));
+                        permit.withCaller("test-agent", TEST_USER, null, "test-owner", sessionId)));
         try {
             ToolResult result = engine.execute(call, definition);
             return result;

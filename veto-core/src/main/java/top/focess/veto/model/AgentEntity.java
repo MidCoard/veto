@@ -75,6 +75,35 @@ public class AgentEntity {
     private Instant endedAt;
     private Boolean userInteractionEnabled;
 
+    // These controls are committed independently through the scoped repository updates.
+    // Saving an older lifecycle snapshot must not overwrite a newer control decision.
+    @Column(updatable = false)
+    private Boolean userPaused;
+
+    @Column(updatable = false)
+    private String executionWait;
+
+    @Column(updatable = false)
+    private String waitRequestId;
+
+    private Integer monitorRecoveryVersion;
+
+    public boolean supportsMonitorRecovery() {
+        return monitorRecoveryVersion != null && monitorRecoveryVersion >= 1;
+    }
+
+    public String getExecutionWait() {
+        return executionWait;
+    }
+
+    public String getWaitRequestId() {
+        return waitRequestId;
+    }
+
+    public boolean isUserPaused() {
+        return Boolean.TRUE.equals(userPaused);
+    }
+
     public boolean isUserInteractionEnabled() {
         return userInteractionEnabled != null ? userInteractionEnabled : parentCallId == null;
     }
@@ -98,6 +127,7 @@ public class AgentEntity {
     }
 
     public void started(@NonNull AgentPersona persona, String parentAgentId, String parentCallId) {
+        monitorRecoveryVersion = 1;
         this.runtimeRole = persona.role().name();
         this.responsibility = persona.description();
         this.parentAgentId = parentAgentId;

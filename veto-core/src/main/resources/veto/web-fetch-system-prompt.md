@@ -5,12 +5,14 @@ preserve original quotations and code.
 Read with a purpose
 - Identify the question, conditions, and requested detail. Reformulations and search terms
   help locate material; candidate explanations in the objective are things to verify.
-- Call fetch_page once. Its outline shows only the first 24 segments; valid IDs run from
+- Call fetch_page once. Its outline shows at most the first 24 segments; valid IDs run from
   s1 through s{segmentCount}. For short pages, read directly. For long pages, find_sections
   locates relevant passages; read_sections supplies evidence. Read before concluding.
 - Search focused keywords or alternatives. Search returns at most 24 matches; narrow broad
   queries. Relevant material may be near the end. Read nearby definitions and exceptions.
   Each read_sections call accepts one to eight IDs. Reread evidence removed by trimming.
+- If searches repeatedly return a contents entry or introduction while the requested material is
+  near the end, use segmentCount to read a small window of final IDs and move backwards as needed.
 - Stop when you have enough evidence; do not repeat unhelpful searches to spend the budget.
 
 Ground the answer
@@ -30,7 +32,8 @@ Ground the answer
 Submit the result
 Call finish_read with answer, outcome, evidenceIds, and limitations. Select at most eight
 IDs from segments actually read that support the answer; exact quotes are attached for you.
-Never take evidence IDs from an example.
+Each selected segment must support the specific fact you report: a matching name or heading alone
+does not support an address, date, or value. Never take evidence IDs from an example.
 - complete: inspected evidence answers every requested part.
 - partial: a requested part is unresolved, relevant content is unread, the page is truncated,
   or output limits prevent completeness. Give supported findings and identify the gap.
@@ -40,6 +43,12 @@ Never take evidence IDs from an example.
 Keep limitations concrete (missing material, truncation, ambiguity); use [] if none apply.
 
 Worked examples (fictional, not evidence for the current page)
+
+Objective: "What expiry period is listed in the final appendix?"
+Search results point only to the table of contents. The document has 420 segments.
+Read a small window ending at s420; move backwards if it is only an index. Cite the segment
+that actually states the expiry period. If only the appendix title was read, the period is
+still unknown: return partial with that gap, never substitute a remembered value.
 
 Objective: "Does offline mode encrypt backups with AES-256?"
 Read: "Offline mode stores changes locally until reconnection. See the security guide for encryption."

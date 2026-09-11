@@ -8,6 +8,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -19,6 +20,92 @@ import top.focess.veto.agent.tool.ToolDocs;
 
 @Timeout(10)
 class MateAgentLifecycleTest {
+    @Test
+    void dispatchedResultStillRequiresAgentExitConfirmation() throws Exception {
+        UUID groupId = UUID.randomUUID();
+        Blackboard board = new Blackboard();
+        Agent agent = mock(ToolDocs.nonNullClass(Agent.class));
+        var result = CompletableFuture.completedFuture(AgentResult.success("report", Map.of()));
+        CountDownLatch awaited = new CountDownLatch(1);
+        when(agent.result()).thenReturn(result);
+        when(agent.await(any(ToolDocs.nonNullClass(Duration.class))))
+                .thenAnswer(
+                        invocation -> {
+                            awaited.countDown();
+                            return result.get();
+                        });
+        when(agent.cancelTask(eq(result), any(ToolDocs.nonNullClass(Duration.class))))
+                .thenReturn(false, true);
+        MateAgent mate =
+                new MateAgent(
+                        "mate",
+                        groupId,
+                        "review",
+                        agent,
+                        board,
+                        new MateBreakerRegistry(),
+                        50,
+                        5,
+                        10);
+        board.post(
+                new BlackboardMessage(
+                        "dispatch",
+                        groupId,
+                        "LEADER",
+                        "mate",
+                        BlackboardMessage.MessageType.TASK_DISPATCH,
+                        "node:work",
+                        0,
+                        "attempt"));
+        mate.start();
+        try {
+            assertTrue(awaited.await(2, TimeUnit.SECONDS));
+            assertFalse(mate.cancelDispatch("attempt", Duration.ofSeconds(2)));
+            assertTrue(mate.cancelDispatch("attempt", Duration.ofSeconds(2)));
+            verify(agent, times(2))
+                    .cancelTask(eq(result), any(ToolDocs.nonNullClass(Duration.class)));
+            verify(agent, never()).terminate();
+        } finally {
+            mate.stop();
+        }
+    }
+
+    @Test
+    void cancellationBeforeDispatchPreventsSubmission() throws Exception {
+        UUID groupId = UUID.randomUUID();
+        Blackboard board = new Blackboard();
+        Agent agent = mock(ToolDocs.nonNullClass(Agent.class));
+        MateAgent mate =
+                new MateAgent(
+                        "mate",
+                        groupId,
+                        "review",
+                        agent,
+                        board,
+                        new MateBreakerRegistry(),
+                        50,
+                        5,
+                        10);
+        assertTrue(mate.cancelDispatch("attempt", Duration.ZERO));
+        board.post(
+                new BlackboardMessage(
+                        "dispatch",
+                        groupId,
+                        "LEADER",
+                        "mate",
+                        BlackboardMessage.MessageType.TASK_DISPATCH,
+                        "node:work",
+                        0,
+                        "attempt"));
+        mate.start();
+        try {
+            Thread.sleep(50);
+            verify(agent, never()).submit(anyString());
+        } finally {
+            mate.stop();
+        }
+    }
+
     @Test
     void pollingTimeoutDoesNotFailLongRunningTask() throws Exception {
         UUID groupId = UUID.randomUUID();
@@ -53,7 +140,8 @@ class MateAgentLifecycleTest {
                         "mate",
                         BlackboardMessage.MessageType.TASK_DISPATCH,
                         "node:work",
-                        0));
+                        0,
+                        "attempt-one"));
         mate.start();
         try {
             assertTrue(secondWait.await(2, TimeUnit.SECONDS));
@@ -67,6 +155,7 @@ class MateAgentLifecycleTest {
             assertEquals(
                     BlackboardMessage.MessageType.ACCEPT,
                     blackboard.readAll(groupId).get(1).type());
+            assertEquals("attempt-one", blackboard.readAll(groupId).get(1).dispatchId());
             verify(agent, times(1)).submit("work");
         } finally {
             finish.countDown();
@@ -123,6 +212,12 @@ class MateAgentLifecycleTest {
             assertEquals(2, blackboard.readAll(groupId).size());
             verify(agent, times(1)).submit("work");
             verify(agent, times(1)).terminate();
+            assertFalse(
+                    mate.awaitTermination(Duration.ofMillis(20)),
+                    "stopped waiter alone does not prove agent execution stopped");
+            when(agent.awaitTermination(any(ToolDocs.nonNullClass(Duration.class))))
+                    .thenReturn(true);
+            assertTrue(mate.awaitTermination(Duration.ofMillis(20)));
         } finally {
             mate.stop();
         }

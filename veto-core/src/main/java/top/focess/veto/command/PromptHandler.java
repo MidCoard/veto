@@ -14,7 +14,6 @@ import top.focess.veto.agent.AgentRunner;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.contract.IpcFrame;
 import top.focess.veto.contract.IpcMeta;
-import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.session.LlmConfig;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.vault.KeysteadVault;
@@ -132,7 +131,7 @@ public class PromptHandler {
                         config.provider(),
                         config.model(),
                         config.credKey(),
-                        LlmOptions.defaults(),
+                        config.options(),
                         null, // systemPromptBase - persona-derived in PromptCompiler
                         config.baseUrl());
 

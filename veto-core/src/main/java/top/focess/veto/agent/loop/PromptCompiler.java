@@ -18,6 +18,8 @@ import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.TurnType;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.SystemPromptResolver;
+import top.focess.veto.agent.intercept.InterceptResolution;
+import top.focess.veto.agent.intercept.VetoOption;
 import top.focess.veto.agent.screening.DeployerPolicy;
 import top.focess.veto.agent.tool.ToolResultFormat;
 import top.focess.veto.agent.tool.ToolResultStatus;
@@ -180,7 +182,14 @@ public class PromptCompiler {
         List<ChatMessage> conversation = request.messages();
         List<ChatMessage> messages =
                 new ArrayList<>(
-                        fitIsolatedBudget(conversation, request.tools(), request.responseSchema()));
+                        fitIsolatedBudget(
+                                conversation,
+                                request.tools(),
+                                request.responseSchema(),
+                                request.options().contextWindowTokens() == null
+                                        ? maxInputTokens
+                                        : Math.min(
+                                                maxInputTokens, request.options().inputBudget())));
         return new VetoRequest(
                 request.systemPrompt(),
                 request.userPrompt(),
@@ -252,12 +261,38 @@ public class PromptCompiler {
             double correctionFactor,
             @NonNull ToolResultPresentationMode toolResultPresentation,
             Long inputBudgetOverride) {
+        return compile(
+                persona,
+                sessionWorkspace,
+                systemPromptBase,
+                history,
+                guidedEnabled,
+                correctionFactor,
+                toolResultPresentation,
+                inputBudgetOverride,
+                "");
+    }
+
+    public @NonNull CompiledPrompt compile(
+            @NonNull AgentPersona persona,
+            @NonNull Workspace sessionWorkspace,
+            String systemPromptBase,
+            List<TurnRecord> history,
+            boolean guidedEnabled,
+            double correctionFactor,
+            @NonNull ToolResultPresentationMode toolResultPresentation,
+            Long inputBudgetOverride,
+            @NonNull String recoveryContext) {
 
         List<ToolDefinition> flatTools =
                 translator.translateTools(
                         availableTools(
                                 persona.whitelistedTools(), persona.registeredSkills().isEmpty()));
         List<ChatMessage> conversation = resolveRewinds(history, toolResultPresentation);
+        if (!recoveryContext.isBlank()) {
+            conversation = new ArrayList<>(conversation);
+            conversation.add(ChatMessage.user(recoveryContext));
+        }
         String systemMessage =
                 conversation.stream()
                         .filter(message -> "system".equals(message.role()))
@@ -392,10 +427,18 @@ public class PromptCompiler {
             @NonNull List<ChatMessage> conversation,
             @NonNull List<ToolDefinition> tools,
             JsonNode schema) {
+        return fitIsolatedBudget(conversation, tools, schema, maxInputTokens);
+    }
+
+    private @NonNull List<ChatMessage> fitIsolatedBudget(
+            @NonNull List<ChatMessage> conversation,
+            @NonNull List<ToolDefinition> tools,
+            JsonNode schema,
+            long budget) {
         List<ChatMessage> messages = new ArrayList<>(wellFormed(conversation, conversation));
         // The opening user message is the invocation's objective. Always retain it while removing
         // old call/result pairs; never substitute a later tool error as the task anchor.
-        while (isolatedSize(messages, tools, schema) > maxInputTokens) {
+        while (isolatedSize(messages, tools, schema) > budget) {
             if (messages.size() <= 3)
                 throw new IllegalStateException(
                         "Isolated agent's latest observation exceeds its input budget");
@@ -492,6 +535,8 @@ public class PromptCompiler {
                                         ? List.of(pendingTurns.getFirst(), turn.turnNumber())
                                         : List.of(turn.turnNumber())));
             }
+            ChatMessage approval = approvalObservation(turn);
+            if (approval != null) compiled.add(approval);
             pendingThought = null;
             pendingReasoning = null;
             pendingTurns = List.of();
@@ -536,8 +581,50 @@ public class PromptCompiler {
             case TOOL_RESPONSE -> mapPresentedToolResponse(turn, toolResultPresentation);
             case AGENT_INIT -> null; // handled before role mapping
             case COMPACTION_SUMMARY -> ChatMessage.user(str(turn.payload(), "content"));
+            case EXECUTION_ERROR ->
+                    "CANCELLED".equals(turn.payload().get("outcome"))
+                                    && turn.payload().get("requestId") instanceof String
+                            ? ChatMessage.user(
+                                    "[Runtime cancellation] At this point in the recorded history, "
+                                            + "the immediately preceding request was cancelled. "
+                                            + "This record does not describe any later request or "
+                                            + "establish why a later request stopped. "
+                                            + "Its unfinished work is no longer pending. Do not resume "
+                                            + "or complete it unless a new request explicitly asks you to. "
+                                            + "Handle the next request independently; retained history "
+                                            + "does not authorize continuing cancelled work.")
+                            : null;
             case REWIND, TOKEN_USAGE -> null;
         };
+    }
+
+    private ChatMessage approvalObservation(@NonNull TurnRecord turn) {
+        String callId = str(turn.payload(), "call_id");
+        if (turn.type() != TurnType.TOOL_RESPONSE
+                || callId.isBlank()
+                || !(turn.payload().get("approval") instanceof Map<?, ?> receipt)) return null;
+        Object decision = receipt.get("decision");
+        Object source = receipt.get("decisionSource");
+        if (!(decision instanceof String option) || !(source instanceof String origin)) return null;
+        try {
+            VetoOption.valueOf(option);
+            InterceptResolution.Source.valueOf(origin);
+        } catch (IllegalArgumentException invalidReceipt) {
+            return null;
+        }
+        return ChatMessage.user(
+                        "[Runtime approval observation] Recorded resolution for this call only: "
+                                + serializeArgs(
+                                        Map.of(
+                                                "call_id",
+                                                callId,
+                                                "decision",
+                                                option,
+                                                "decisionSource",
+                                                origin))
+                                + ". CLIENT_RESPONSE means the client answered the approval request; "
+                                + "this receipt is not the result of any later call.")
+                .withSourceTurns(List.of(turn.turnNumber()));
     }
 
     static @NonNull ChatMessage mapToolResponse(@NonNull TurnRecord turn) {

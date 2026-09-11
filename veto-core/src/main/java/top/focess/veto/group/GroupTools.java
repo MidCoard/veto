@@ -1,6 +1,7 @@
 package top.focess.veto.group;
 
 import java.util.List;
+import java.util.Objects;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.capability.DelegationCapability;
@@ -447,6 +448,9 @@ public final class GroupTools {
                 result.append("  failure: ").append(oneLine(failure.feedback())).append('\n');
             }
         }
+        result.append(
+                "Messages are historical observations; task state above is authoritative. "
+                        + "A completed task means a report was received, not independently verified.\n");
         result.append("New Mate messages:\n");
         if (messages.isEmpty()) {
             result.append("- (none)\n");
@@ -465,6 +469,17 @@ public final class GroupTools {
                     .append(message.senderId())
                     .append(" type=")
                     .append(message.type())
+                    .append(" dispatch=")
+                    .append(message.dispatchId() == null ? "(uncorrelated)" : message.dispatchId())
+                    .append(" currentDispatch=")
+                    .append(
+                            message.dispatchId() != null
+                                    && group.nodes().stream()
+                                            .anyMatch(
+                                                    node ->
+                                                            Objects.equals(
+                                                                    message.dispatchId(),
+                                                                    node.dispatchId())))
                     .append(" payload=")
                     .append(oneLine(payload))
                     .append('\n');

@@ -6,12 +6,14 @@ import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import top.focess.veto.model.AgentInstanceRepository;
 import top.focess.veto.model.AgentPatternRepository;
 import top.focess.veto.model.SessionEntity;
 import top.focess.veto.model.SessionRepository;
+import top.focess.veto.monitor.RequestContinuationStore;
 import top.focess.veto.vault.AuthLifecycleManager;
 import top.focess.veto.vault.KeysteadVault;
 import top.focess.veto.vault.UserEntity;
@@ -27,6 +29,12 @@ import top.focess.veto.vault.UserRegistry;
  */
 @Service
 public class UserAdminService {
+    private RequestContinuationStore continuations;
+
+    @Autowired
+    public void attachContinuations(@NonNull RequestContinuationStore store) {
+        continuations = store;
+    }
 
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.security.UserAdminService");
@@ -79,6 +87,8 @@ public class UserAdminService {
                     safe(e.getMessage()));
         }
         for (SessionEntity s : sessions.findByOwner(username)) {
+            RequestContinuationStore store = continuations;
+            if (store != null) store.deleteSession(s.getId());
             agents.deleteBySessionId(s.getId());
         }
         sessions.deleteByOwner(username);

@@ -15,6 +15,7 @@ public sealed interface NativeTool<T> extends CapabilityTool<T>
                 ProcessExecutionTool,
                 TaskControlTool,
                 NetworkEgressTool,
+                CredentialImportTool,
                 WebDocumentTool {
 
     @Override

@@ -10,6 +10,9 @@ public sealed interface TaskControlCapability extends Capability permits TaskCon
 
     @NonNull Optional<BackgroundTaskManager.TaskInfo> status(@NonNull String taskId);
 
+    @NonNull Optional<BackgroundTaskManager.TaskInfo> awaitExit(@NonNull String taskId)
+            throws InterruptedException;
+
     @NonNull Optional<String> output(@NonNull String taskId, int lines);
 
     @NonNull List<@NonNull String> inputFailures(@NonNull String taskId);

@@ -2,12 +2,15 @@ package top.focess.veto.agent.loop;
 
 import java.util.HashSet;
 import java.util.Set;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.llm.core.VetoResponse;
 import top.focess.veto.llm.exceptions.ModelSchemaException;
 
 /** Runtime enforcement of the response contract, independent of provider schema support. */
 public final class ResponseEnforcer {
+    private static final Pattern BARE_CITATION = Pattern.compile("\\[citation:([A-Za-z0-9_-]+)]");
+
     private ResponseEnforcer() {}
 
     public static @NonNull VetoResponse enforce(
@@ -43,6 +46,11 @@ public final class ResponseEnforcer {
             }
         }
         String message = response.message();
+        if (message != null && BARE_CITATION.matcher(message).find())
+            throw new ModelSchemaException(
+                    "Bare [citation:id] markers cannot identify a source. Use [label](cite:id)"
+                            + " in message and declare the same id in citations with sources"
+                            + " containing message_index and an exact quote from that message.");
         var citations = response.citations();
         if (citations != null) {
             if (citations.size() > 32)
@@ -51,6 +59,12 @@ public final class ResponseEnforcer {
             for (var citation : citations) {
                 if (!ids.add(citation.id()))
                     throw new ModelSchemaException("Citations need unique ids");
+                if (message == null || !message.contains("](cite:" + citation.id() + ")"))
+                    throw new ModelSchemaException(
+                            "Each declared citation must be linked in message using [label](cite:"
+                                    + citation.id()
+                                    + "). Bare [citation:id] markers are not links. Preserve the"
+                                    + " source declarations and use the required Markdown link syntax.");
             }
         }
         if (calls == null && guide == null && (message == null || message.isBlank()))

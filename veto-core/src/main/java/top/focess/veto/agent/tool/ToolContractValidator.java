@@ -5,6 +5,7 @@ import java.util.stream.Stream;
 import org.jspecify.annotations.NonNull;
 import org.springframework.aop.support.AopUtils;
 import top.focess.veto.agent.capability.*;
+import top.focess.veto.agent.screening.Danger;
 
 /**
  * Validates that tool flavour, capability, danger, and parameter hints describe one coherent tool.
@@ -55,6 +56,7 @@ public final class ToolContractValidator {
                             tool instanceof NetworkEgressTool<?>
                                     || tool instanceof WebDocumentTool<?>;
                     case MEMORY_READ -> tool instanceof MemoryReadTool<?>;
+                    case CREDENTIAL_IMPORT -> tool instanceof CredentialImportTool<?>;
                     case MEMORY_WRITE -> tool instanceof MemoryWriteTool<?>;
                     case DELEGATION -> tool instanceof DelegationTool<?>;
                     case GROUP_CONTROL -> tool instanceof GroupControlTool<?>;
@@ -80,6 +82,8 @@ public final class ToolContractValidator {
                                     ? ToolDocs.nonNullClass(WebDocumentCapability.class)
                                     : ToolDocs.nonNullClass(NetworkEgressCapability.class);
                     case MEMORY_READ -> ToolDocs.nonNullClass(MemoryReadCapability.class);
+                    case CREDENTIAL_IMPORT ->
+                            ToolDocs.nonNullClass(CredentialImportCapability.class);
                     case MEMORY_WRITE -> ToolDocs.nonNullClass(MemoryWriteCapability.class);
                     case DELEGATION -> ToolDocs.nonNullClass(DelegationCapability.class);
                     case GROUP_CONTROL -> ToolDocs.nonNullClass(GroupControlCapability.class);
@@ -174,6 +178,15 @@ public final class ToolContractValidator {
             case NETWORK_EGRESS -> {
                 // URL arguments are optional because some network tools use deployer-fixed hosts.
             }
+            case CREDENTIAL_IMPORT ->
+                    require(
+                            definition,
+                            !hasPath
+                                    && !hasCommand
+                                    && !definition.paramHints().containsValue(ParamCategory.URL)
+                                    && definition.defaultDanger().ordinal()
+                                            >= Danger.DANGEROUS.ordinal(),
+                            "CREDENTIAL_IMPORT requires approval-level danger and no path/command/URL arguments");
             case SKILL_READ,
                     MEMORY_READ,
                     MEMORY_WRITE,
@@ -223,6 +236,7 @@ public final class ToolContractValidator {
                     PROCESS_EXECUTION,
                     TASK_CONTROL,
                     NETWORK_EGRESS,
+                    CREDENTIAL_IMPORT,
                     REMOTE_UNKNOWN ->
                     throw invalid(
                             definition,

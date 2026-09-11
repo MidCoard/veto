@@ -32,4 +32,26 @@ public record ToolCallContext(
         UUID sessionId,
         @NonNull ToolResultPresentationMode toolResultPresentation,
         boolean guidedEnabled,
-        @NonNull ToolExecutionPermit executionPermit) {}
+        @NonNull ToolExecutionPermit executionPermit,
+        String requestId) {
+    public ToolCallContext(
+            @NonNull String agentId,
+            @NonNull UUID userId,
+            UUID groupId,
+            String owner,
+            UUID sessionId,
+            @NonNull ToolResultPresentationMode toolResultPresentation,
+            boolean guidedEnabled,
+            @NonNull ToolExecutionPermit executionPermit) {
+        this(
+                agentId,
+                userId,
+                groupId,
+                owner,
+                sessionId,
+                toolResultPresentation,
+                guidedEnabled,
+                executionPermit,
+                null);
+    }
+}

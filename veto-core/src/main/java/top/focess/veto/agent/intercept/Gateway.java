@@ -185,6 +185,7 @@ public class Gateway {
             case PROCESS_EXECUTION, NETWORK_EGRESS, REMOTE_UNKNOWN ->
                     VetoScenario.EXEC_FIRST_TIME; // E3 first-time pattern
             case TASK_CONTROL,
+                    CREDENTIAL_IMPORT,
                     SKILL_READ,
                     MEMORY_READ,
                     MEMORY_WRITE,

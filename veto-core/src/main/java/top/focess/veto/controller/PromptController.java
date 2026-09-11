@@ -14,9 +14,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import top.focess.veto.agent.AgentRunner;
 import top.focess.veto.agent.AgentService;
+import top.focess.veto.agent.ProtectedInputException;
 import top.focess.veto.controller.dto.SubmitPromptRequest;
 import top.focess.veto.i18n.Msg;
-import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.session.SessionService;
 import top.focess.veto.session.SessionService.SessionConfig;
 import top.focess.veto.vault.KeysteadVault;
@@ -86,7 +86,7 @@ public class PromptController {
                         cfg.config().provider(),
                         cfg.config().model(),
                         cfg.config().credKey(),
-                        LlmOptions.defaults(),
+                        cfg.config().options(),
                         null,
                         cfg.config().baseUrl());
 
@@ -95,6 +95,14 @@ public class PromptController {
             log.info("Prompt accepted for session {} (agent {})", name, cfg.sessionId());
             return ResponseEntity.status(HttpStatus.ACCEPTED)
                     .body(Map.of("status", "started", "sessionId", cfg.sessionId()));
+        } catch (ProtectedInputException rejected) {
+            return ResponseEntity.unprocessableEntity()
+                    .body(
+                            Map.of(
+                                    "code",
+                                    "PROTECTED_INPUT_UNAVAILABLE",
+                                    "error",
+                                    "Protected input could not be processed; retry or use credential settings"));
         } catch (Exception e) {
             log.warn("Prompt submit failed for session {}", name, e);
             return ResponseEntity.internalServerError()

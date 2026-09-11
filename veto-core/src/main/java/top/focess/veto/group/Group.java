@@ -46,6 +46,7 @@ public record Group(
     }
 
     public enum GroupState {
+        RECOVERING,
         ACTIVE,
         COMPLETED,
         DISBANDED

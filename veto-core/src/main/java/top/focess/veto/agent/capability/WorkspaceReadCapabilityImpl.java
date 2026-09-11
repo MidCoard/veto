@@ -12,6 +12,11 @@ final class WorkspaceReadCapabilityImpl implements WorkspaceReadCapability {
     }
 
     @Override
+    public @NonNull String captureFileText(@NonNull String input) {
+        throw new IllegalStateException("Protected file capture is unavailable");
+    }
+
+    @Override
     public @NonNull WorkspaceFile file(@NonNull String path) throws IOException {
         return new ReadOnlyWorkspaceFile(WorkspaceFileAccess.resolve(permit, path, false));
     }

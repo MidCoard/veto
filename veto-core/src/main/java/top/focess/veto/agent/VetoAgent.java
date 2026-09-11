@@ -26,6 +26,7 @@ public class VetoAgent implements Agent {
     private final @NonNull String id;
     private final @NonNull AgentRunner runner;
     private final boolean userInteractionEnabled;
+    private final @NonNull Thread executionThread;
 
     public VetoAgent(@NonNull AgentPersona persona, @NonNull AgentRunner runner) {
         this(persona, runner, true);
@@ -38,7 +39,7 @@ public class VetoAgent implements Agent {
         this.id = persona.id();
         this.runner = runner;
         this.userInteractionEnabled = userInteractionEnabled;
-        Thread.ofVirtual().name("agent-" + id).start(runner::run);
+        executionThread = Thread.ofVirtual().name("agent-" + id).start(runner::run);
     }
 
     public boolean hasPendingWork() {
@@ -90,6 +91,10 @@ public class VetoAgent implements Agent {
         return runner.state();
     }
 
+    public String executionWaitReason() {
+        return runner.executionWaitReason();
+    }
+
     @Override
     public void submit(@NonNull String prompt) {
         runner.startTask(null, new AgentAction.UserPromptAction(prompt));
@@ -136,6 +141,19 @@ public class VetoAgent implements Agent {
     }
 
     @Override
+    public boolean awaitTermination(@NonNull Duration timeout) throws InterruptedException {
+        if (Thread.currentThread() == executionThread) return false;
+        return executionThread.join(timeout);
+    }
+
+    @Override
+    public boolean cancelTask(
+            @NonNull CompletableFuture<AgentResult> task, @NonNull Duration timeout)
+            throws InterruptedException {
+        return runner.cancelTask(task, timeout);
+    }
+
+    @Override
     public @NonNull List<TurnRecord> history() {
         return runner.history();
     }
@@ -174,8 +192,19 @@ public class VetoAgent implements Agent {
      * Seeds replayed history (from the durable turn log) into the runner on session activate.
      * Idempotent; see {@link AgentRunner#seedHistory}.
      */
+    public void setRecoveredTasks(@NonNull List<RecoveredTask> tasks) {
+        runner.setRecoveredTasks(tasks);
+    }
+
     public void seedHistory(@NonNull List<TurnRecord> history) {
         runner.seedHistory(history);
+    }
+
+    public void restoreLeader(
+            @NonNull UUID groupId,
+            AgentRunner.@NonNull LlmBinding binding,
+            @NonNull Set<ToolDefinition> tools) {
+        runner.restoreLeader(groupId, binding, tools);
     }
 
     /**

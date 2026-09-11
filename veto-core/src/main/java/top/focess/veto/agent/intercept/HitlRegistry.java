@@ -353,8 +353,8 @@ public class HitlRegistry {
 
     /**
      * Registers a pending veto future keyed by {@code (agentId, callId)} and returns it. The
-     * agent's virtual thread parks on it. No call/def/options are stashed (the Refused-park path
-     * uses this - it is resolved via {@link #declineAll}, never builds a grant).
+     * agent's virtual thread parks on it. No call/def/options are stashed, so this registration is
+     * not exposed to transport pickers and never builds a grant.
      */
     public @NonNull CompletableFuture<@NonNull InterceptResolution> register(
             @NonNull String agentId, @NonNull String callId) {
@@ -658,8 +658,8 @@ public class HitlRegistry {
 
     /**
      * A transport-facing view of the agent's pending vetoes: the parked call + the option names
-     * offered to the user. Entries without a stashed call (the Refused-park path) are skipped -
-     * they resolve via {@link #declineAll}, never through a picker.
+     * offered to the user. Entries without a stashed call are skipped. CRITICAL refusals expose
+     * only the option to decline and end the hold; they cannot be approved.
      */
     public @NonNull List<@NonNull Map<@NonNull String, Object>> pendingFor(
             @NonNull String agentId) {
@@ -676,7 +676,11 @@ public class HitlRegistry {
                     view.put("callId", call.callId());
                     view.put("toolName", call.toolName());
                     view.put("args", call.args());
-                    view.put("options", transportOptions(p.options()));
+                    view.put(
+                            "options",
+                            p.danger() == Danger.CRITICAL
+                                    ? List.of(VetoOption.EXEC_DECLINE.name())
+                                    : transportOptions(p.options()));
                     // Danger level so the UI can warn prominently on DANGEROUS/CRITICAL calls.
                     if (p.danger() != null) {
                         view.put("danger", p.danger().name());

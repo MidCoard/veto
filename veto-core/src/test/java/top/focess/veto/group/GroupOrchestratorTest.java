@@ -159,6 +159,16 @@ class GroupOrchestratorTest {
         assertEquals(group.mates(), resumed.mates());
         assertEquals(DagNode.NodeState.VERIFIED, findNode(resumed, "n2").state());
         assertEquals(DagNode.NodeState.RUNNING, findNode(resumed, "follow-up").state());
+        String followUpMate = findNode(resumed, "follow-up").assignedMateId();
+        if (followUpMate == null) throw new AssertionError("Follow-up task must have a Mate");
+        GroupTestMessages.accept(blackboard, group.groupId(), "Mate-A", "n1");
+        Group afterLateReport = requireGroup(orchestrator.tick(group.groupId()));
+        assertEquals(Group.GroupState.ACTIVE, afterLateReport.state());
+        assertEquals(DagNode.NodeState.RUNNING, findNode(afterLateReport, "follow-up").state());
+        GroupTestMessages.accept(blackboard, group.groupId(), followUpMate, "follow-up");
+        assertEquals(
+                Group.GroupState.COMPLETED,
+                requireGroup(orchestrator.tick(group.groupId())).state());
 
         registry.disband(group.groupId(), Instant.now());
         assertTrue(
@@ -318,7 +328,8 @@ class GroupOrchestratorTest {
                         "LEADER",
                         BlackboardMessage.MessageType.ACCEPT,
                         "n1:accept-base64:!!!",
-                        0));
+                        0,
+                        GroupTestMessages.dispatchId(blackboard, group.groupId(), "n1")));
         Group result = requireGroup(orchestrator.tick(group.groupId()));
         assertEquals(DagNode.NodeState.FAILED, findNode(result, "n1").state());
         assertEquals(DagNode.NodeState.PENDING, findNode(result, "n2").state());
@@ -365,7 +376,8 @@ class GroupOrchestratorTest {
                         "LEADER",
                         BlackboardMessage.MessageType.STATUS,
                         "terminal:n1:breaker-trip",
-                        0));
+                        0,
+                        GroupTestMessages.dispatchId(blackboard, group.groupId(), "n1")));
         Group ticked = requireGroup(orchestrator.tick(group.groupId()));
         assertEquals(DagNode.NodeState.FAILED, findNode(ticked, "n1").state());
         assertEquals(
@@ -431,6 +443,63 @@ class GroupOrchestratorTest {
         Group ticked = requireGroup(orchestrator.tick(g.groupId()));
 
         assertEquals(DagNode.NodeState.RUNNING, findNode(ticked, "n1").state());
+    }
+
+    @Test
+    void staleReportsCannotFinishOrFailARetriedTask() {
+        Group group = setupGroup();
+        registry.put(group);
+        orchestrator.tick(group.groupId());
+        String firstDispatch = GroupTestMessages.dispatchId(blackboard, group.groupId(), "n1");
+        GroupTestMessages.feedback(blackboard, group.groupId(), "Mate-A", "n1", "retry");
+        orchestrator.tick(group.groupId());
+        orchestrator.replanFailed(group.groupId(), "n1");
+        Group retried = requireGroup(orchestrator.tick(group.groupId()));
+        String secondDispatch = findNode(retried, "n1").dispatchId();
+        assertTrue(secondDispatch != null && !secondDispatch.equals(firstDispatch));
+
+        for (BlackboardMessage.MessageType type :
+                List.of(
+                        BlackboardMessage.MessageType.ACCEPT,
+                        BlackboardMessage.MessageType.FEEDBACK,
+                        BlackboardMessage.MessageType.STATUS)) {
+            String payload =
+                    switch (type) {
+                        case ACCEPT -> "n1:accept-base64:ZG9uZQ==";
+                        case FEEDBACK -> "n1:feedback:old failure";
+                        default -> "terminal:n1:old terminal";
+                    };
+            blackboard.post(
+                    new BlackboardMessage(
+                            UUID.randomUUID().toString(),
+                            group.groupId(),
+                            "Mate-A",
+                            "LEADER",
+                            type,
+                            payload,
+                            0,
+                            firstDispatch));
+            Group current = requireGroup(orchestrator.tick(group.groupId()));
+            assertEquals(DagNode.NodeState.RUNNING, findNode(current, "n1").state());
+            assertEquals(DagNode.NodeState.PENDING, findNode(current, "n2").state());
+            assertEquals(secondDispatch, findNode(current, "n1").dispatchId());
+        }
+        blackboard.post(
+                new BlackboardMessage(
+                        UUID.randomUUID().toString(),
+                        group.groupId(),
+                        "Mate-A",
+                        "LEADER",
+                        BlackboardMessage.MessageType.ACCEPT,
+                        "n1:accept-base64:ZG9uZQ==",
+                        0));
+        assertEquals(
+                DagNode.NodeState.RUNNING,
+                findNode(requireGroup(orchestrator.tick(group.groupId())), "n1").state());
+        GroupTestMessages.accept(blackboard, group.groupId(), "Mate-A", "n1");
+        Group completed = requireGroup(orchestrator.tick(group.groupId()));
+        assertEquals(DagNode.NodeState.VERIFIED, findNode(completed, "n1").state());
+        assertEquals(DagNode.NodeState.RUNNING, findNode(completed, "n2").state());
     }
 
     private @NonNull Group setupGroup() {

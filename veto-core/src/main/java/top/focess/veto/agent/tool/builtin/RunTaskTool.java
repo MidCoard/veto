@@ -43,13 +43,13 @@ import top.focess.veto.sandbox.Command;
                         + "Returns a taskId immediately; the process keeps running across turns.",
         behavior =
                 """
-                Starts the single `commands[0]` entry and returns immediately. The executable and arguments \
-                follow the same direct-execution rules as `run_command`. It runs from the session workspace \
-                root. Output (stdout+stderr merged) is captured for `view_task`. \
-                `timeout` (seconds; 0 selects the configured maximum) bounds the task's total \
-                lifetime - it is auto-killed after it elapses. When the task ends you are told \
-                about it on your next turn; you can also inspect it any time with `view_task` \
-                or end it with `stop_task`.
+                Starts `commands[0]` from the session workspace using `run_command` direct-execution rules. \
+                Merged stdout/stderr is captured for `view_task`. `timeout` bounds total lifetime \
+                (0 selects the configured maximum); expiration stops the process. \
+                When only the completed result is needed, call `view_task` once with `waitForExit=true`, not repeated \
+                status calls. This keeps the assignment open until its result is available. Read output \
+                once if needed. Use `view_task` for concrete progress/interaction needs and `stop_task` \
+                to end it. Started does not mean completed.
                 """,
         whenToUse =
                 """
@@ -72,7 +72,7 @@ import top.focess.veto.sandbox.Command;
                 """
                 A JSON outcome: `{"status":"started","taskId":"bg-3","pid":1234, \
                 "command":"npm run dev","cwd":"...","requestedTimeoutSeconds":0, \
-                "effectiveTimeoutSeconds":600}`.
+                "effectiveTimeoutSeconds":600}` plus `nextStep` waiting guidance.
                 """,
         errorsAndEdgeCases =
                 """
@@ -158,6 +158,12 @@ public final class RunTaskTool implements ProcessExecutionTool<RunTaskTool.Args>
             BackgroundTaskManager.@NonNull TaskInfo info, int timeout, long maximumTimeout) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("status", "started");
+        result.put(
+                "nextStep",
+                "If the assignment needs the final result, call view_task once with this taskId and waitForExit=true."
+                        + " Do not finish the assignment with a waiting message or poll."
+                        + " If only starting a long-lived service was requested, report that it started without waiting for exit."
+                        + " Answer in the user's language.");
         result.put("taskId", info.taskId());
         result.put("pid", info.pid());
         result.put("command", info.command());

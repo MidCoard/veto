@@ -93,6 +93,48 @@ class GroupToolsWiringTest {
     }
 
     @Test
+    void taskRequestComesFromTrustedContextAndSurvivesRetry() throws Exception {
+        Group group = spawner.registerEmptyGroup("leader", "default", null, "brief");
+        registry.put(group.withMate("mate", "review"));
+        var tool =
+                new CollaborationTools.CreateTask(
+                        new GroupControlCapabilityImpl(
+                                spawner, registry, blackboard, orchestrator));
+        ToolCallContextHolder.set(
+                new ToolCallContext(
+                        "leader",
+                        UUID.randomUUID(),
+                        group.groupId(),
+                        null,
+                        null,
+                        ToolResultPresentationMode.BASIC,
+                        false,
+                        ToolExecutionPermit.empty(),
+                        "request-one"));
+        try {
+            String reply =
+                    CapabilityTestCalls.execute(
+                            tool,
+                            new CollaborationTools.CreateTask.Args(
+                                    "task", "Review", "mate", List.of()));
+            assertTrue(reply.contains("Task registered"));
+            Group running = Nullness.requireNonNull(orchestrator.tick(group.groupId()));
+            assertEquals("request-one", running.dag().nodes().getFirst().requestId());
+            GroupTestMessages.feedback(blackboard, group.groupId(), "mate", "task", "retry");
+            orchestrator.tick(group.groupId());
+            orchestrator.replanFailed(group.groupId(), "task");
+            Group retried = Nullness.requireNonNull(orchestrator.tick(group.groupId()));
+            assertEquals("request-one", retried.dag().nodes().getFirst().requestId());
+            assertNotEquals(
+                    running.dag().nodes().getFirst().dispatchId(),
+                    retried.dag().nodes().getFirst().dispatchId());
+        } finally {
+            ToolCallContextHolder.clear();
+            spawner.disband(group.groupId());
+        }
+    }
+
+    @Test
     void validCallerPermitCannotDisbandAnotherAgentsGroup() throws Exception {
         Group group = spawner.registerEmptyGroup("leader", "default", null, "brief");
         DisbandGroup tool =
@@ -460,6 +502,8 @@ class GroupToolsWiringTest {
         try {
             String first = CapabilityTestCalls.execute(inspect, new InspectGroup.Args(0L, 0));
             assertTrue(first.contains("sender=mate-1 type=ACCEPT"));
+            assertTrue(first.contains("dispatch=(uncorrelated) currentDispatch=false"));
+            assertTrue(first.contains("not independently verified"));
             assertTrue(first.contains("nextSinceSeq: 1"));
             assertTrue(first.contains("Report: tests passed."));
             assertFalse(first.contains("accept-base64"));
@@ -469,6 +513,107 @@ class GroupToolsWiringTest {
         } finally {
             ToolCallContextHolder.clear();
             spawner.disband(g.groupId());
+        }
+    }
+
+    @Test
+    void removeMateToolRejectsUnfinishedWorkAndNonLeader() {
+        Group group = spawner.registerEmptyGroup("leader", "user", null, "brief");
+        group = group.withMate("mate", "review");
+        registry.put(group);
+        orchestrator.addNode(
+                group.groupId(), "pending-task", "review", "review", Set.of(), "mate", false);
+        var tool =
+                new CollaborationTools.RemoveMate(
+                        new GroupControlCapabilityImpl(
+                                spawner, registry, blackboard, orchestrator));
+        try {
+            ToolCallContextHolder.set(
+                    new ToolCallContext(
+                            "leader",
+                            UUID.randomUUID(),
+                            group.groupId(),
+                            null,
+                            null,
+                            ToolResultPresentationMode.BASIC,
+                            false,
+                            ToolExecutionPermit.empty()));
+            var failure =
+                    assertThrows(
+                            ToolDocs.nonNullClass(ToolExecutionException.class),
+                            () ->
+                                    CapabilityTestCalls.execute(
+                                            tool, new CollaborationTools.RemoveMate.Args("mate")));
+            assertTrue(Nullness.requireNonNull(failure.getMessage()).contains("pending-task"));
+            ToolCallContextHolder.set(
+                    new ToolCallContext(
+                            "mate",
+                            UUID.randomUUID(),
+                            group.groupId(),
+                            null,
+                            null,
+                            ToolResultPresentationMode.BASIC,
+                            false,
+                            ToolExecutionPermit.empty()));
+            assertThrows(
+                    SecurityException.class,
+                    () ->
+                            CapabilityTestCalls.execute(
+                                    tool, new CollaborationTools.RemoveMate.Args("mate")));
+        } finally {
+            ToolCallContextHolder.clear();
+            spawner.disband(group.groupId());
+        }
+    }
+
+    @Test
+    void removeMateRejectsForeignOwnerAndSession() {
+        UUID session = UUID.randomUUID();
+        Group group =
+                spawner.registerEmptyGroup(
+                        "leader",
+                        "user",
+                        "owner",
+                        "brief",
+                        null,
+                        ToolResultPresentationMode.BASIC,
+                        false,
+                        session);
+        var tool =
+                new CollaborationTools.RemoveMate(
+                        new GroupControlCapabilityImpl(
+                                spawner, registry, blackboard, orchestrator));
+        try {
+            for (ToolCallContext context :
+                    List.of(
+                            new ToolCallContext(
+                                    "leader",
+                                    session,
+                                    group.groupId(),
+                                    "other",
+                                    null,
+                                    ToolResultPresentationMode.BASIC,
+                                    false,
+                                    ToolExecutionPermit.empty()),
+                            new ToolCallContext(
+                                    "leader",
+                                    UUID.randomUUID(),
+                                    group.groupId(),
+                                    "owner",
+                                    null,
+                                    ToolResultPresentationMode.BASIC,
+                                    false,
+                                    ToolExecutionPermit.empty()))) {
+                ToolCallContextHolder.set(context);
+                assertThrows(
+                        ToolDocs.nonNullClass(SecurityException.class),
+                        () ->
+                                CapabilityTestCalls.execute(
+                                        tool, new CollaborationTools.RemoveMate.Args("mate")));
+            }
+        } finally {
+            ToolCallContextHolder.clear();
+            spawner.disband(group.groupId());
         }
     }
 

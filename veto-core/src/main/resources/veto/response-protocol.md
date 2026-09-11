@@ -29,6 +29,20 @@ For example, if the non-system input is user message 0: `The meeting starts at 1
 {"message":"The meeting starts at [14:30](cite:meeting).","citations":[{"id":"meeting","sources":[{"message_index":0,"quote":"The meeting starts at 14:30."}]}]}
 ```
 
+Tool exchanges also occupy message positions: user question = 0, assistant tool call = 1,
+tool result = 2. The assistant tool call counts even when it has no prose. For example,
+if message 2 contains `{"answer":"Access is restricted.","evidence":[{"quote":"Visitors must sign in."}]}`,
+the response can be:
+
+```json
+{"message":"Visitors [must sign in](cite:access).","citations":[{"id":"access","sources":[{"message_index":2,"quote":"Visitors must sign in."}]}]}
+```
+
+Use the actual positions in your current input, not the numbers from these examples.
+Copy a short contiguous passage verbatim. Do not remove embedded URLs, change line breaks,
+or reconstruct a longer paragraph from memory. Keep the citation declaration and its Markdown
+link together in the same response; `[citation:id]` alone is not a citation link.
+
 If two distinct input messages support the answer, declare both message indices under the same id. Cite a tool result's evidence text when the claim comes from a webpage; do not attribute your own earlier paraphrase to that webpage.
 
 ### Example: continue with a tool

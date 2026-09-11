@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 import top.focess.veto.agent.AgentState;
+import top.focess.veto.agent.ProtectedInputException;
 import top.focess.veto.agent.SessionAgentRegistry;
 import top.focess.veto.controller.dto.SubmitPromptRequest;
 import top.focess.veto.session.SessionService;
@@ -59,6 +60,14 @@ public class AgentPromptController {
                     .body(Map.of("error", "Agent has terminated"));
         try {
             agent.submitUserPrompt(prompt);
+        } catch (ProtectedInputException rejected) {
+            return ResponseEntity.unprocessableEntity()
+                    .body(
+                            Map.of(
+                                    "code",
+                                    "PROTECTED_INPUT_UNAVAILABLE",
+                                    "error",
+                                    "Protected input could not be processed; retry or use credential settings"));
         } catch (IllegalStateException error) {
             return ResponseEntity.status(HttpStatus.CONFLICT)
                     .body(Map.of("error", "Agent is no longer available"));

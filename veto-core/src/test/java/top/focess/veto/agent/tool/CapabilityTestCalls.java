@@ -61,7 +61,8 @@ public final class CapabilityTestCalls {
                         previous.sessionId(),
                         previous.toolResultPresentation(),
                         previous.guidedEnabled(),
-                        permit));
+                        permit,
+                        previous.requestId()));
         ToolCallContextHolder.setCurrentCallId(callId);
         try {
             return tool.execute(args);

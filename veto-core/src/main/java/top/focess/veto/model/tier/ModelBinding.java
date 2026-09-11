@@ -1,6 +1,7 @@
 package top.focess.veto.model.tier;
 
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.llm.core.ProviderType;
 import top.focess.veto.vault.KeysteadVault;
 
@@ -33,6 +34,15 @@ public record ModelBinding(
         int maxOutputTokens,
         String baseUrl,
         int contextWindowTokens) {
+
+    public @NonNull LlmOptions llmOptions() {
+        return new LlmOptions(
+                temperature,
+                null,
+                maxOutputTokens,
+                LlmOptions.defaults().timeout(),
+                contextWindowTokens);
+    }
 
     public ModelBinding(
             @NonNull ProviderType provider,

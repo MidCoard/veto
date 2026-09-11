@@ -75,7 +75,7 @@ veto:
   webfetch:
     fetch:
       timeout-seconds: 30
-      max-chars: 40000
+      max-chars: 524288
       allow-private-addresses: false
     model-tier: LOW
     max-rounds: 12

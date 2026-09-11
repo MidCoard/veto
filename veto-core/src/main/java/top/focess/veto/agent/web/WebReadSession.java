@@ -73,14 +73,21 @@ final class WebReadSession implements WebDocumentCapability, AutoCloseable {
                 document = current;
             }
             var outline = current.outline();
-            return json(
-                    Map.of(
-                            "outline",
-                            outline.stream().limit(OUTLINE_ENTRIES).toList(),
-                            "segmentCount",
-                            outline.size(),
-                            "truncated",
-                            current.truncated()));
+            int count = Math.min(OUTLINE_ENTRIES, outline.size());
+            while (true) {
+                String observation =
+                        json(
+                                Map.of(
+                                        "outline", outline.subList(0, count),
+                                        "segmentCount", outline.size(),
+                                        "truncated", current.truncated()));
+                if (observation.getBytes(StandardCharsets.UTF_8).length <= observationBudget)
+                    return observation;
+                if (count == 0)
+                    return ToolErrors.failure(
+                            "READER_OBSERVATION", "No budget remains for the page outline.");
+                count--;
+            }
         } catch (ToolExecutionException error) {
             failure = error;
             throw error;

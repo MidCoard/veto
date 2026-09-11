@@ -59,6 +59,9 @@ public final class HistoryProjection {
             boolean emits =
                     switch (turn.type()) {
                         case AGENT_INIT, ASSISTANT_THOUGHT, TOKEN_USAGE -> false;
+                        case EXECUTION_ERROR ->
+                                "CANCELLED".equals(turn.payload().get("outcome"))
+                                        && turn.payload().get("requestId") instanceof String;
                         case REWIND ->
                                 turn.payload().get("content") instanceof String content
                                         && !content.isBlank();

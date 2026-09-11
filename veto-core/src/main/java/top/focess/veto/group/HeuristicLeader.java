@@ -78,7 +78,9 @@ public class HeuristicLeader {
                             n.dependsOn(),
                             n.state(),
                             n.result(),
-                            n.retryCount());
+                            n.retryCount(),
+                            n.dispatchId(),
+                            n.requestId());
             next.add(updated);
             changed = true;
         }
@@ -137,7 +139,9 @@ public class HeuristicLeader {
                                 n.dependsOn(),
                                 DagNode.NodeState.STALE,
                                 new DagNode.ResultFailure(feedback, List.of()),
-                                retries + 1);
+                                retries + 1,
+                                null,
+                                n.requestId());
                 return group.withDag(dag.withNode(nodeId, updated));
             }
             // Re-dispatch: PENDING with the feedback in the result so the engine + Mate
@@ -151,7 +155,9 @@ public class HeuristicLeader {
                             n.dependsOn(),
                             DagNode.NodeState.PENDING,
                             new DagNode.ResultFailure(feedback, List.of()),
-                            retries + 1);
+                            retries + 1,
+                            null,
+                            n.requestId());
             return group.withDag(dag.withNode(nodeId, updated));
         }
         return group;
@@ -179,7 +185,10 @@ public class HeuristicLeader {
                                 n.requiredSkillset(),
                                 n.dependsOn(),
                                 DagNode.NodeState.PENDING,
-                                new DagNode.ResultNone()));
+                                new DagNode.ResultNone(),
+                                n.retryCount(),
+                                null,
+                                n.requestId()));
             } else {
                 next.add(n);
             }

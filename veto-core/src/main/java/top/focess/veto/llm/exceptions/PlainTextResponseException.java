@@ -5,9 +5,8 @@ import org.jspecify.annotations.NonNull;
 /**
  * The provider returned plain text where the veto_pulse protocol requires a JSON object (DeepSeek's
  * {@code text.format: json_schema} enforcement is probabilistic - the model sometimes answers in
- * prose). Retryable: a re-prompt usually recovers. Once the orchestrator's attempts are exhausted
- * it converts this back into a graceful plain-text {@code VetoResponse} via {@link #text()}, so a
- * persistently non-JSON answer still surfaces as the agent's message instead of an episode error.
+ * prose). The orchestrator routes this to the runner's bounded schema correction path instead of
+ * repeating an unchanged request or accepting an unstructured answer as success.
  */
 public class PlainTextResponseException extends LlmException {
 
@@ -24,7 +23,7 @@ public class PlainTextResponseException extends LlmException {
         this.text = text;
     }
 
-    /** The raw response text, for the graceful plain-text fallback after retries are exhausted. */
+    /** The rejected raw response text, retained for diagnostics. */
     public @NonNull String text() {
         return text;
     }

@@ -17,6 +17,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.stereotype.Service;
 import top.focess.veto.agent.drift.ReadHistory;
@@ -45,16 +46,20 @@ import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.bus.DeltaFrame;
 import top.focess.veto.group.GroupAgentFactory;
+import top.focess.veto.group.GroupRecoveryService;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.llm.config.LlmJacksonConfig;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
 import top.focess.veto.llm.core.UniformLLMCaller;
 import top.focess.veto.memory.TurnLogService;
 import top.focess.veto.model.tier.ModelTierRegistry;
+import top.focess.veto.monitor.RequestContinuationStore;
 import top.focess.veto.observability.ObservabilityConfiguration;
 import top.focess.veto.sandbox.BackgroundTaskManager;
 import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.CredentialVaultConfiguration;
+import top.focess.veto.vault.KeysteadVault;
+import top.focess.veto.vault.SecretCandidateStore;
 
 /**
  * The shared agent service ("Multi-Client Unification"). Both the ZMQ terminal ({@code
@@ -69,6 +74,63 @@ import top.focess.veto.vault.CredentialVaultConfiguration;
 @SuppressWarnings(
         "DuplicatedCode") // Standalone and group-agent factories intentionally mirror setup.
 public class AgentService {
+    private GroupRecoveryService groupRecovery;
+
+    private RequestContinuationStore continuationStore;
+    private AgentPauseStore pauseStore;
+    private AgentWaitStore waitStore;
+    private KeysteadVault monitorVault;
+
+    @Autowired
+    public void attachMonitorVault(@NonNull KeysteadVault vault) {
+        monitorVault = vault;
+    }
+
+    @Autowired
+    public void attachWaitStore(@NonNull AgentWaitStore store) {
+        waitStore = store;
+    }
+
+    @Autowired
+    public void attachPauseStore(@NonNull AgentPauseStore store) {
+        pauseStore = store;
+    }
+
+    @Autowired
+    public void attachContinuationStore(@NonNull RequestContinuationStore store) {
+        continuationStore = store;
+    }
+
+    private void configureContinuations(@NonNull AgentRunner runner) {
+        SecretCandidateStore candidates = secretCandidates;
+        if (candidates != null) runner.attachSecretCandidates(candidates);
+        KeysteadVault vault = monitorVault;
+        if (vault != null) runner.attachMonitorVault(vault);
+        AgentPauseStore pauses = pauseStore;
+        if (pauses != null) runner.attachPauseStore(pauses);
+        RequestContinuationStore store = continuationStore;
+        if (store != null) runner.attachContinuationStore(store);
+        AgentWaitStore waits = waitStore;
+        if (waits != null) runner.attachWaitStore(waits);
+    }
+
+    private SecretCandidateStore secretCandidates;
+
+    @Autowired
+    public void attachSecretCandidates(@NonNull SecretCandidateStore store) {
+        secretCandidates = store;
+    }
+
+    @Autowired
+    public void attachGroupRecovery(@Lazy @NonNull GroupRecoveryService recovery) {
+        groupRecovery = recovery;
+    }
+
+    private void bindForSubmission(
+            @NonNull VetoAgent agent, AgentRunner.@NonNull LlmBinding binding) {
+        GroupRecoveryService recovery = groupRecovery;
+        if (recovery == null || !recovery.refreshLeaderBinding(agent)) agent.bind(binding);
+    }
 
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.agent.AgentService");
@@ -232,7 +294,7 @@ public class AgentService {
             @NonNull String prompt,
             AgentRunner.@NonNull LlmBinding binding) {
         VetoAgent agent = agents.computeIfAbsent(agentKey, k -> createAgent(k, binding));
-        agent.bind(binding);
+        bindForSubmission(agent, binding);
         agent.setLocale(LocaleContextHolder.getLocale());
         agent.submit(prompt);
         try {
@@ -260,7 +322,7 @@ public class AgentService {
             @NonNull String prompt,
             AgentRunner.@NonNull LlmBinding binding) {
         VetoAgent agent = agents.computeIfAbsent(agentKey, k -> createAgent(k, binding));
-        agent.bind(binding);
+        bindForSubmission(agent, binding);
         agent.setLocale(LocaleContextHolder.getLocale());
         agent.submit(prompt);
     }
@@ -273,7 +335,7 @@ public class AgentService {
             @NonNull Duration timeout)
             throws TimeoutException, InterruptedException {
         VetoAgent agent = agents.computeIfAbsent(agentKey, k -> createAgent(k, binding));
-        agent.bind(binding);
+        bindForSubmission(agent, binding);
         agent.setLocale(LocaleContextHolder.getLocale());
         agent.submit(prompt);
         return agent.await(timeout);
@@ -355,7 +417,7 @@ public class AgentService {
             Consumer<AgentRunner.ToolResultEvent> toolResultSink)
             throws TimeoutException, InterruptedException {
         VetoAgent agent = agents.computeIfAbsent(agentKey, k -> createAgent(k, binding));
-        agent.bind(binding);
+        bindForSubmission(agent, binding);
         agent.setLocale(LocaleContextHolder.getLocale());
         if (messageSink != null) {
             agent.addMessageListener(messageSink);
@@ -414,7 +476,7 @@ public class AgentService {
             @NonNull UUID userId)
             throws TimeoutException, InterruptedException {
         VetoAgent agent = agents.computeIfAbsent(agentKey, k -> createAgent(k, binding, userId));
-        agent.bind(binding);
+        bindForSubmission(agent, binding);
         agent.setLocale(LocaleContextHolder.getLocale());
         agent.submit(prompt);
         return agent.await(timeout);
@@ -557,10 +619,20 @@ public class AgentService {
                                     toolResultPresentation,
                                     guidedEnabled);
                         });
-        agent.bind(binding);
+        bindForSubmission(agent, binding);
         if (created[0] && !history.isEmpty()) {
             agent.seedHistory(history);
         }
+        GroupRecoveryService recovery = groupRecovery;
+        if (recovery != null && owner != null && workspace != null)
+            recovery.restore(
+                    agent,
+                    agent.sessionId(),
+                    userId,
+                    owner,
+                    workspace,
+                    toolResultPresentation,
+                    guidedEnabled);
         return agent;
     }
 
@@ -708,6 +780,7 @@ public class AgentService {
         if (primaryAgentId != null) {
             runner.setSessionId(UUID.fromString(agentKey));
         }
+        configureContinuations(runner);
         return sessionAgents.start(persona, runner);
     }
 
@@ -850,6 +923,8 @@ public class AgentService {
                         backgroundTaskManager);
         // Stamp the session owner so the Mate (or one-shot Leader) resolves its tier against the
         // user's active model-tier profile via the ToolCallContext.
+        if (sessionId != null) runner.setSessionId(sessionId);
+        configureContinuations(runner);
         runner.configureGuided(guidedTierRegistry, maxGuidedSteps);
         runner.setOwner(owner);
         runner.setToolResultPresentation(toolResultPresentation);

@@ -1,8 +1,10 @@
 package top.focess.veto.group;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -15,11 +17,15 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import top.focess.veto.agent.Agent;
+import top.focess.veto.agent.RecoveredTask;
+import top.focess.veto.agent.SessionAgentRegistry;
+import top.focess.veto.agent.VetoAgent;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.Role;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
 import top.focess.veto.model.tier.ModelTier;
+import top.focess.veto.session.SessionHistoryLoader;
 import top.focess.veto.util.Nullness;
 
 /**
@@ -354,6 +360,62 @@ public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
         return mate;
     }
 
+    public synchronized void restoreMates(
+            @NonNull Group group,
+            @NonNull SessionHistoryLoader history,
+            @NonNull Map<String, SessionAgentRegistry.AgentSummary> identities) {
+        AgentFactory factory = agentFactory;
+        UUID session = group.sessionId();
+        if (factory == null || session == null)
+            throw new IllegalStateException("Recovery factory/session unavailable");
+        for (var member : group.mates().entrySet()) {
+            if (liveMates.getOrDefault(group.groupId(), List.of()).stream()
+                    .anyMatch(m -> m.mateId().equals(member.getKey()))) continue;
+            var identity = identities.get(member.getKey());
+            String name = identity == null ? member.getKey() : identity.name();
+            var turns = history.load(session.toString(), member.getKey());
+            startMate(
+                    group.groupId(),
+                    member.getKey(),
+                    member.getValue(),
+                    (persona, binding) -> {
+                        Agent restored =
+                                factory.create(
+                                        new AgentPersona(
+                                                persona.id(),
+                                                name,
+                                                member.getValue(),
+                                                persona.whitelistedTools(),
+                                                persona.registeredSkills(),
+                                                Role.MATE),
+                                        binding);
+                        if (!(restored instanceof VetoAgent agent))
+                            throw new IllegalStateException("Recovery requires a VetoAgent");
+                        agent.seedHistory(turns);
+                        agent.setRecoveredTasks(
+                                group.dag().nodes().stream()
+                                        .filter(
+                                                node ->
+                                                        member.getKey()
+                                                                        .equals(
+                                                                                node
+                                                                                        .assignedMateId())
+                                                                && node.state()
+                                                                        == DagNode.NodeState
+                                                                                .INTERRUPTED)
+                                        .map(
+                                                node ->
+                                                        new RecoveredTask(
+                                                                group.groupId().toString(),
+                                                                node.nodeId(),
+                                                                node.dispatchId(),
+                                                                node.requestId()))
+                                        .toList());
+                        return agent;
+                    });
+        }
+    }
+
     /**
      * {@link GroupOrchestrator.MateProvisioner} entry point: lazily provision a Mate for a
      * dispatchable DAG node that no existing Mate can serve. Generates a fresh mate id, starts the
@@ -411,26 +473,50 @@ public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
         return id;
     }
 
-    /**
-     * Remove a Mate from a group: stop its polling scheduler and drop it from the group + the live
-     * tracker. In-flight nodes the Mate owned go back to PENDING on the next tick for
-     * re-assignment.
-     */
-    public void removeMate(@NonNull UUID groupId, @NonNull String mateId) {
+    /** Remove only an idle member after its execution has actually stopped. */
+    public GroupOrchestrator.@NonNull NodeEdit removeMate(
+            @NonNull UUID groupId, @NonNull String mateId) {
+        return orchestrator.removeMate(groupId, mateId, this);
+    }
+
+    boolean stopMateAndConfirm(@NonNull UUID groupId, @NonNull String mateId) {
         List<MateAgent> mates = liveMates.get(groupId);
-        if (mates != null) {
-            for (MateAgent m : mates) {
-                if (m.mateId().equals(mateId)) {
-                    m.stop();
-                }
+        if (mates == null) return false;
+        MateAgent target =
+                mates.stream().filter(m -> m.mateId().equals(mateId)).findFirst().orElse(null);
+        if (target == null) return false;
+        target.stop();
+        try {
+            if (!target.awaitTermination(Duration.ofSeconds(2))) return false;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+        return true;
+    }
+
+    boolean cancelDispatch(
+            @NonNull UUID groupId,
+            @NonNull String mateId,
+            @NonNull String dispatchId,
+            @NonNull Duration timeout) {
+        List<MateAgent> mates = liveMates.get(groupId);
+        if (mates == null) return false;
+        for (MateAgent mate : mates) {
+            if (!mate.mateId().equals(mateId)) continue;
+            try {
+                return mate.cancelDispatch(dispatchId, timeout);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
             }
-            mates.removeIf(m -> m.mateId().equals(mateId));
         }
-        Group g = registry.get(groupId);
-        if (g != null) {
-            registry.put(g.withoutMate(mateId));
-        }
-        log.info("GroupSpawner: removed Mate {} from group {}", mateId, groupId);
+        return false;
+    }
+
+    void forgetStoppedMate(@NonNull UUID groupId, @NonNull String mateId) {
+        List<MateAgent> mates = liveMates.get(groupId);
+        if (mates != null) mates.removeIf(mate -> mate.mateId().equals(mateId));
     }
 
     /**

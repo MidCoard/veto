@@ -20,6 +20,7 @@ import java.util.Queue;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -110,6 +111,17 @@ public class BackgroundTaskManager {
             int timeoutSeconds,
             UUID sessionId,
             @NonNull SandboxProfile profile) {
+        return start(agentId, cmd, cwd, timeoutSeconds, sessionId, profile, null);
+    }
+
+    public @NonNull TaskInfo start(
+            @NonNull String agentId,
+            @NonNull Command cmd,
+            @NonNull Path cwd,
+            int timeoutSeconds,
+            UUID sessionId,
+            @NonNull SandboxProfile profile,
+            String requestId) {
         String taskId = "bg-" + idSeq.incrementAndGet();
         SandboxHandle handle = sandboxManager.provision(taskId, profile);
         Process process;
@@ -131,12 +143,20 @@ public class BackgroundTaskManager {
                         Instant.now(),
                         process.pid(),
                         sessionId,
-                        UUID.randomUUID());
+                        UUID.randomUUID(),
+                        requestId);
         tasks.put(taskId, task);
 
         // Drain merged stdout+stderr into the ring buffer, then record exit. A virtual thread keeps
         // this cheap; there is one per running task.
-        Thread.startVirtualThread(() -> drain(task));
+        Thread.startVirtualThread(
+                () -> {
+                    try {
+                        drain(task);
+                    } finally {
+                        task.drained.countDown();
+                    }
+                });
 
         // Schedule auto-kill when a positive cap is set; cancelled on natural exit / explicit stop.
         long profileTimeoutSeconds = Math.max(1L, handle.profile().maxWallClock().toSeconds());
@@ -306,6 +326,17 @@ public class BackgroundTaskManager {
     public @NonNull Optional<TaskInfo> status(@NonNull String agentId, @NonNull String taskId) {
         ManagedTask t = owned(agentId, taskId);
         return Optional.ofNullable(t).map(ManagedTask::toInfo);
+    }
+
+    /** Waits for this owned process and its output drain without polling or stopping it. */
+    public @NonNull Optional<TaskInfo> awaitExit(@NonNull String agentId, @NonNull String taskId)
+            throws InterruptedException {
+        ManagedTask task = owned(agentId, taskId);
+        if (task == null) return Optional.empty();
+        task.drained.await();
+        if (task.alive)
+            throw new IllegalStateException("Task exit could not be confirmed: " + taskId);
+        return Optional.of(task.toInfo());
     }
 
     /** Stable process context captured before semantic screening of an input_task call. */
@@ -545,6 +576,7 @@ public class BackgroundTaskManager {
         final long pid;
         final UUID sessionId;
         final @NonNull UUID taskInstanceId;
+        final String requestId;
         final @NonNull Object lifecycleLock = new Object();
         final @NonNull LineBuffer buffer = new LineBuffer(MAX_LINES);
         final @NonNull Object inputLock = new Object();
@@ -554,6 +586,7 @@ public class BackgroundTaskManager {
         boolean stdinCloseQueued;
         boolean stdinClosed;
         boolean inputWriterRunning;
+        final @NonNull CountDownLatch drained = new CountDownLatch(1);
         volatile boolean alive = true;
         volatile Integer exitCode = null;
         volatile Instant finishedAt = null;
@@ -573,7 +606,8 @@ public class BackgroundTaskManager {
                 @NonNull Instant startedAt,
                 long pid,
                 UUID sessionId,
-                @NonNull UUID taskInstanceId) {
+                @NonNull UUID taskInstanceId,
+                String requestId) {
             this.taskId = taskId;
             this.agentId = agentId;
             this.process = process;
@@ -585,6 +619,7 @@ public class BackgroundTaskManager {
             this.pid = pid;
             this.sessionId = sessionId;
             this.taskInstanceId = taskInstanceId;
+            this.requestId = requestId;
         }
 
         @NonNull TaskInfo toInfo() {
@@ -599,7 +634,8 @@ public class BackgroundTaskManager {
                     pid,
                     finishedAt,
                     sessionId,
-                    taskInstanceId);
+                    taskInstanceId,
+                    requestId);
         }
     }
 
@@ -642,7 +678,35 @@ public class BackgroundTaskManager {
             long pid,
             Instant finishedAt,
             UUID sessionId,
-            @NonNull UUID taskInstanceId) {
+            @NonNull UUID taskInstanceId,
+            String requestId) {
+
+        public TaskInfo(
+                @NonNull String taskId,
+                @NonNull String agentId,
+                @NonNull String command,
+                @NonNull String cwd,
+                @NonNull Instant startedAt,
+                boolean alive,
+                Integer exitCode,
+                long pid,
+                Instant finishedAt,
+                UUID sessionId,
+                @NonNull UUID taskInstanceId) {
+            this(
+                    taskId,
+                    agentId,
+                    command,
+                    cwd,
+                    startedAt,
+                    alive,
+                    exitCode,
+                    pid,
+                    finishedAt,
+                    sessionId,
+                    taskInstanceId,
+                    null);
+        }
 
         /** Convenience: elapsed seconds since start (0 if somehow negative). */
         public long uptimeSeconds() {

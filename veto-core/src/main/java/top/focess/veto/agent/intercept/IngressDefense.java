@@ -15,6 +15,7 @@ import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.agent.tool.ToolResult;
 import top.focess.veto.llm.core.ToolCall;
+import top.focess.veto.vault.SecretCandidateStore;
 
 /**
  * Deterministic ingress defense. Frames every observation as untrusted <b>data</b> with an explicit
@@ -141,6 +142,46 @@ public class IngressDefense {
             @NonNull ReadHistory readHistory) {
         boolean mask = true;
         return maskAndFrame(call, def, result, mask, readHistory);
+    }
+
+    /**
+     * Preserve only scoped runtime references while applying ordinary masking to all other text.
+     */
+    public @NonNull String maskProtectedFileAndFrame(
+            @NonNull ToolCall call,
+            @NonNull ToolDefinition def,
+            @NonNull ToolResult result,
+            boolean maskObservation,
+            @NonNull ReadHistory readHistory,
+            @NonNull SecretCandidateStore candidates,
+            SecretCandidateStore.@NonNull Scope scope) {
+        if (!(def instanceof NativeToolDefinition)
+                || !def.name().equals("view_file")
+                || def.capability() != ToolCapability.WORKSPACE_READ)
+            throw new IllegalArgumentException(
+                    "Protected reference rendering requires native file reading");
+        StringBuilder output = new StringBuilder();
+        for (var segment : candidates.referenceSegments(scope, result.content())) {
+            output.append(
+                    segment.reference() || !maskObservation
+                            ? segment.text()
+                            : SecretMasker.mask(segment.text()));
+        }
+        String maskedText = output.toString();
+        if (maskObservation && semanticMasker != null) {
+            var assessed =
+                    semanticMasker.maskWithSignal(
+                            result.content(), call, def, ignored -> maskedText);
+            var highRisk = assessed.highRisk();
+            if (highRisk != null) {
+                log.warn(
+                        "SemanticMasker flagged high-risk exfiltration for tool {}: {}",
+                        highRisk.toolName(),
+                        highRisk.reason());
+            }
+            return RefusalObservation.neutralize(assessed.masked());
+        }
+        return RefusalObservation.neutralize(maskedText);
     }
 
     private void invalidateWritePath(

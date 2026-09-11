@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+import top.focess.veto.agent.capability.ProtectedWorkspaceReadCapabilityImpl;
 import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.screening.Danger;
 import top.focess.veto.agent.tool.NativeToolDefinition;
@@ -14,7 +15,10 @@ import top.focess.veto.agent.tool.ParamCategory;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.tool.ToolResult;
+import top.focess.veto.agent.tool.ToolSchemaCompiler;
+import top.focess.veto.agent.tool.builtin.ViewFileTool;
 import top.focess.veto.llm.core.ToolCall;
+import top.focess.veto.vault.SecretCandidateStore;
 import top.focess.veto.veto.LlamaCppBridge;
 
 /**
@@ -24,6 +28,70 @@ import top.focess.veto.veto.LlamaCppBridge;
  * regardless of SLM availability.
  */
 class IngressDefenseMaskingTest {
+    @Test
+    void protectedFileReferencesSurviveMaskingOnlyWithinTheirLiveScope() {
+        var candidates = new SecretCandidateStore();
+        var scope = new SecretCandidateStore.Scope("owner", "session", "agent");
+        String captured = candidates.captureFile(scope, "file", "token=synthetic-token").text();
+        var definition =
+                ToolSchemaCompiler.compileNative(
+                        new ViewFileTool(new ProtectedWorkspaceReadCapabilityImpl(candidates)));
+        var fileCall = new ToolCall("view_file", Map.of("absolutePath", "/fixture"), "file-call");
+        var fileResult =
+                new ToolResult(
+                        "view_file", "file-call", true, captured + "\npassword=extra-secret");
+        LlamaCppBridge bridge = mock(ToolDocs.nonNullClass(LlamaCppBridge.class));
+        when(bridge.isAvailable()).thenReturn(true);
+        when(bridge.infer(anyString(), anyString()))
+                .thenReturn(CompletableFuture.completedFuture("{\"risk\":\"high\"}"));
+        var defense = new IngressDefense(new SemanticMasker(bridge));
+        String masked =
+                defense.maskProtectedFileAndFrame(
+                        fileCall,
+                        definition,
+                        fileResult,
+                        true,
+                        new ReadHistory(),
+                        candidates,
+                        scope);
+        assertTrue(masked.startsWith(captured + "\n"), masked);
+        assertFalse(masked.contains("extra-secret"));
+        assertFalse(masked.contains("synthetic-token"));
+        verify(bridge, times(1)).infer(anyString(), anyString());
+        assertEquals(
+                fileResult.content(),
+                defense.maskProtectedFileAndFrame(
+                        fileCall,
+                        definition,
+                        fileResult,
+                        false,
+                        new ReadHistory(),
+                        candidates,
+                        scope));
+        assertThrows(
+                IllegalStateException.class,
+                () ->
+                        defense.maskProtectedFileAndFrame(
+                                fileCall,
+                                definition,
+                                fileResult,
+                                true,
+                                new ReadHistory(),
+                                candidates,
+                                new SecretCandidateStore.Scope("owner", "session", "other-agent")));
+        candidates.discardOwner("owner");
+        assertThrows(
+                IllegalStateException.class,
+                () ->
+                        defense.maskProtectedFileAndFrame(
+                                fileCall,
+                                definition,
+                                fileResult,
+                                false,
+                                new ReadHistory(),
+                                candidates,
+                                scope));
+    }
 
     @SuppressWarnings("type.arguments.not.inferred")
     private static @NonNull NativeToolDefinition readToolDef() {

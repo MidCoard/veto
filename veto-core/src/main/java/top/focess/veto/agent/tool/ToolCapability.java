@@ -12,6 +12,7 @@ public enum ToolCapability {
     PROCESS_EXECUTION,
     TASK_CONTROL,
     NETWORK_EGRESS,
+    CREDENTIAL_IMPORT,
     SKILL_READ,
     MEMORY_READ,
     MEMORY_WRITE,

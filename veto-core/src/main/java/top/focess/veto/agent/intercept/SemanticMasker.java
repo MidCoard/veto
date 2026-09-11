@@ -3,6 +3,7 @@ package top.focess.veto.agent.intercept;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.UnaryOperator;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
@@ -71,16 +72,24 @@ public class SemanticMasker {
      */
     public @NonNull MaskResult maskWithSignal(
             @NonNull String observation, @NonNull ToolCall call, @NonNull ToolDefinition def) {
+        return maskWithSignal(observation, call, def, SecretMasker::mask);
+    }
+
+    @NonNull MaskResult maskWithSignal(
+            @NonNull String observation,
+            @NonNull ToolCall call,
+            @NonNull ToolDefinition def,
+            @NonNull UnaryOperator<@NonNull String> deterministicMask) {
         if (observation.isBlank()) {
             return new MaskResult(observation, null);
         }
         // 1. Fast path: no obvious secret keywords → skip the SLM call.
         if (!EXFIL_PATTERN.matcher(observation).find()) {
-            return new MaskResult(SecretMasker.mask(observation), null);
+            return new MaskResult(deterministicMask.apply(observation), null);
         }
         // 2. SLM unavailable → fall back to deterministic masking.
         if (bridge == null || !bridge.isAvailable()) {
-            return new MaskResult(SecretMasker.mask(observation), null);
+            return new MaskResult(deterministicMask.apply(observation), null);
         }
         try {
             String prompt = buildPrompt(observation, call, def);
@@ -92,11 +101,11 @@ public class SemanticMasker {
                             .get(SLM_TIMEOUT_MS, TimeUnit.MILLISECONDS);
             Matcher m = RISK_PATTERN.matcher(response);
             if (!m.find()) {
-                return new MaskResult(SecretMasker.mask(observation), null);
+                return new MaskResult(deterministicMask.apply(observation), null);
             }
             String riskGroup = m.group(1);
             if (riskGroup == null) {
-                return new MaskResult(SecretMasker.mask(observation), null);
+                return new MaskResult(deterministicMask.apply(observation), null);
             }
             String risk = riskGroup.toLowerCase();
             if ("high".equals(risk)) {
@@ -107,29 +116,29 @@ public class SemanticMasker {
                 // Redact the observation AND surface the signal. The previous version returned
                 // the original unmasked text here, leaking the secret to the agent's context.
                 return new MaskResult(
-                        SecretMasker.mask(observation),
+                        deterministicMask.apply(observation),
                         new HighRiskSignal(call.toolName(), "slm-rated-high"));
             }
-            return new MaskResult(SecretMasker.mask(observation), null);
+            return new MaskResult(deterministicMask.apply(observation), null);
         } catch (TimeoutException e) {
             log.warn(
                     "SemanticMasker: SLM exceeded {}ms — falling back to deterministic masking",
                     SLM_TIMEOUT_MS);
-            return new MaskResult(SecretMasker.mask(observation), null);
+            return new MaskResult(deterministicMask.apply(observation), null);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             log.warn(
                     "SemanticMasker: SLM call interrupted — falling back to deterministic masking");
-            return new MaskResult(SecretMasker.mask(observation), null);
+            return new MaskResult(deterministicMask.apply(observation), null);
         } catch (ExecutionException e) {
             log.debug(
                     "SemanticMasker: SLM inference failed ({}), falling back",
                     safe(e.getCause() == null ? e.getMessage() : e.getCause().getMessage()));
-            return new MaskResult(SecretMasker.mask(observation), null);
+            return new MaskResult(deterministicMask.apply(observation), null);
         } catch (Exception e) {
             log.debug(
                     "SemanticMasker: SLM inference failed, falling back: {}", safe(e.getMessage()));
-            return new MaskResult(SecretMasker.mask(observation), null);
+            return new MaskResult(deterministicMask.apply(observation), null);
         }
     }
 

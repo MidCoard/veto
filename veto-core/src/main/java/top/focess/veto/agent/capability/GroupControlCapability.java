@@ -42,4 +42,8 @@ public sealed interface GroupControlCapability extends Capability
             boolean newMate);
 
     @NonNull NodeEdit removeNode(@NonNull String id);
+
+    @NonNull NodeEdit cancelTask(@NonNull String id);
+
+    @NonNull NodeEdit removeMate(@NonNull String id);
 }
