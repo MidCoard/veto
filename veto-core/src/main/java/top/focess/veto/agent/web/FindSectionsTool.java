@@ -15,7 +15,7 @@ import top.focess.veto.agent.tool.WebDocumentTool;
 @ToolDoc(
         description = "Find up to 24 section IDs containing a keyword in the current document.",
         behavior =
-                "Matches a case-insensitive literal keyword against section titles and text across the retained document. Returns at most 24 matches without reading their bodies.",
+                "Matches a case-insensitive literal keyword with whitespace normalized against section titles and text across the retained document. Matching titles come before body-only mentions, in document order within each group. Returns at most 24 matches without reading their bodies.",
         whenToUse =
                 "After fetch_page, locate relevant sections beyond the initial outline before reading their text.",
         whenNotToUse = "Do not use for another URL, workspace resources, or unrelated operations.",
@@ -30,7 +30,8 @@ import top.focess.veto.agent.tool.WebDocumentTool;
         examples = {"{\"query\":\"timeout\"}"})
 public final class FindSectionsTool implements WebDocumentTool<FindSectionsTool.Args> {
     public record Args(
-            @Doc("Nonblank literal keyword, at most 200 characters; case-insensitive.")
+            @Doc(
+                            "Nonblank literal keyword, at most 200 characters; case-insensitive with normalized whitespace.")
                     @NonNull String query) {}
 
     private final @NonNull WebDocumentCapability document;

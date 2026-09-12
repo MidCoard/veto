@@ -1,10 +1,12 @@
 package top.focess.veto.agent.web;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.regex.Pattern;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Element;
 import org.jspecify.annotations.NonNull;
@@ -15,6 +17,7 @@ final class WebReadDocument {
     private static final int SEGMENT_CHARS = 1200;
     private static final int MAX_SEGMENTS = 10000;
     private static final int MAX_READ_SEGMENTS = 8;
+    private static final Pattern SEARCH_WHITESPACE = Pattern.compile("(?U)\\s+");
     private static final @NonNull Set<@NonNull String> TEXT_BLOCKS =
             Set.of("h1", "h2", "h3", "h4", "h5", "h6", "p", "pre", "table", "li", "a");
     private final @NonNull List<@NonNull Segment> segments = new ArrayList<>();
@@ -96,16 +99,25 @@ final class WebReadDocument {
         if (query.isBlank() || query.length() > 200)
             throw new IllegalArgumentException(
                     "Use a non-blank keyword of at most 200 characters.");
-        String needle = query.toLowerCase(Locale.ROOT);
+        String needle = searchText(query);
+        if (needle.isEmpty())
+            throw new IllegalArgumentException(
+                    "Use a non-blank keyword of at most 200 characters.");
         return segments.stream()
                 .filter(
                         s ->
-                                (s.section() + "\n" + s.text())
-                                        .toLowerCase(Locale.ROOT)
-                                        .contains(needle))
+                                searchText(s.section()).contains(needle)
+                                        || searchText(s.text()).contains(needle))
+                .sorted(
+                        Comparator.comparingInt(
+                                s -> searchText(s.section()).contains(needle) ? 0 : 1))
                 .limit(24)
                 .map(s -> new Entry(s.id(), s.section()))
                 .toList();
+    }
+
+    private static @NonNull String searchText(@NonNull String text) {
+        return SEARCH_WHITESPACE.matcher(text.toLowerCase(Locale.ROOT)).replaceAll(" ").strip();
     }
 
     @NonNull List<@NonNull Segment> read(@NonNull List<@NonNull String> ids) {

@@ -8,8 +8,11 @@ Read with a purpose
 - Call fetch_page once. Its outline shows at most the first 24 segments; valid IDs run from
   s1 through s{segmentCount}. For short pages, read directly. For long pages, find_sections
   locates relevant passages; read_sections supplies evidence. Read before concluding.
-- Search focused keywords or alternatives. Search returns at most 24 matches; narrow broad
-  queries. Relevant material may be near the end. Read nearby definitions and exceptions.
+- Search the requested subsection names or focused keywords, one search per turn. Matching
+  section titles precede incidental mentions; results still contain at most 24 entries.
+  If a broad chapter contains many unrelated subsections, search for the requested ones rather
+  than reading sequentially from the chapter's beginning. Narrow broad queries or try alternative
+  terms. Read nearby definitions and exceptions once the relevant passage is located.
   Each read_sections call accepts one to eight IDs. Reread evidence removed by trimming.
 - If searches repeatedly return a contents entry or introduction while the requested material is
   near the end, use segmentCount to read a small window of final IDs and move backwards as needed.
@@ -32,6 +35,8 @@ Ground the answer
 Submit the result
 Call finish_read with answer, outcome, evidenceIds, and limitations. Select at most eight
 IDs from segments actually read that support the answer; exact quotes are attached for you.
+Choose these supporting passages before drafting; keep the answer within their coverage and
+4000 characters. Combine related gaps into at most eight limitations of 500 characters each.
 Each selected segment must support the specific fact you report: a matching name or heading alone
 does not support an address, date, or value. Never take evidence IDs from an example.
 - complete: inspected evidence answers every requested part.

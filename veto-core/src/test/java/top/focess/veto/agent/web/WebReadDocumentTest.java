@@ -14,6 +14,38 @@ import top.focess.veto.agent.tool.ToolExecutionException;
 
 class WebReadDocumentTest {
     @Test
+    void searchFindsMatchingTitlesBeyondEarlierMentionsWithoutChangingEvidence() {
+        var document =
+                document(
+                        "text/html",
+                        "<main><h1>Introduction</h1>"
+                                + "<p>See retry rules later.</p>".repeat(30)
+                                + "<h2>Retry Rules</h2><pre>Retry\t rules:\n  preserve this spacing.</pre></main>",
+                        false);
+        var matches = document.find("  RETRY\u00a0\tRULES  ");
+        assertEquals(24, matches.size());
+        assertEquals("Retry Rules", matches.get(0).section());
+        assertEquals("Retry Rules", matches.get(1).section());
+        assertEquals("Introduction", matches.get(2).section());
+        assertEquals("s2", matches.get(2).id());
+        assertTrue(document.inspected().isEmpty());
+        String body = matches.get(1).id();
+        assertThrows(
+                ToolDocs.nonNullClass(IllegalArgumentException.class),
+                () -> document.evidence(body));
+        var read = document.read(List.of(body)).getFirst();
+        document.recordInspection(List.of(body));
+        assertEquals("Retry\t rules:\n  preserve this spacing.", read.text());
+        assertEquals(read.text(), document.evidence(body).quote());
+        assertThrows(
+                ToolDocs.nonNullClass(IllegalArgumentException.class),
+                () -> document.find("\u00a0\t"));
+        assertThrows(
+                ToolDocs.nonNullClass(IllegalArgumentException.class),
+                () -> document.find("x".repeat(201)));
+    }
+
+    @Test
     void preservesShortBlocksAndLateTextWithoutCrossingParagraphBoundaries() {
         var document =
                 document(

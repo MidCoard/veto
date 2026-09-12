@@ -23,6 +23,7 @@ import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mockito;
 import org.springframework.context.ApplicationContext;
@@ -39,6 +40,7 @@ import top.focess.veto.agent.intercept.VetoScenario;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.screening.Danger;
 import top.focess.veto.agent.tool.AgentTool;
+import top.focess.veto.agent.tool.AgentToolDefinition;
 import top.focess.veto.agent.tool.NativeToolDefinition;
 import top.focess.veto.agent.tool.RemoteToolDefinition;
 import top.focess.veto.agent.tool.ToolCapability;
@@ -48,6 +50,7 @@ import top.focess.veto.agent.tool.ToolEngineImpl;
 import top.focess.veto.agent.tool.ToolResult;
 import top.focess.veto.agent.tool.builtin.AskUserTool;
 import top.focess.veto.agent.tool.builtin.RunTaskTool;
+import top.focess.veto.agent.tool.builtin.ThinkTool;
 import top.focess.veto.agent.tool.builtin.UserQuestionRegistry;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.group.Blackboard;
@@ -112,6 +115,114 @@ import top.focess.veto.vault.UserContext;
  * history.
  */
 class AgentRunnerTest {
+    @ParameterizedTest
+    @CsvSource({
+        "0,false,true",
+        "1,false,true",
+        "1,false,false",
+        "2,true,true",
+        "2,true,false",
+        "4,true,true",
+        "4,true,false",
+        "-1,false,true"
+    })
+    void completionReserveRespectsCeilingAndSchemaRepair(long limit, boolean repair, boolean obey)
+            throws Exception {
+        var think =
+                AgentToolDefinition.from(
+                        "think",
+                        ToolDocs.nonNullClass(ThinkTool.class),
+                        ToolDocs.nonNullClass(ThinkTool.Args.class),
+                        ToolCapability.LOOP_CONTROL);
+        var finish =
+                AgentToolDefinition.from(
+                        "finish",
+                        ToolDocs.nonNullClass(ThinkTool.class),
+                        ToolDocs.nonNullClass(ThinkTool.Args.class),
+                        ToolCapability.LOOP_CONTROL);
+        @NonNull ToolEngine engine = Mockito.mock();
+        Mockito.when(engine.getActiveTools(Mockito.any())).thenReturn(List.of(think, finish));
+        Mockito.when(engine.resolveDefinition("think")).thenReturn(think);
+        Mockito.when(engine.resolveDefinition("finish")).thenReturn(finish);
+        List<String> executed = new CopyOnWriteArrayList<>();
+        Mockito.when(engine.execute(Mockito.any(), Mockito.any()))
+                .thenAnswer(
+                        invocation -> {
+                            ToolCall call = invocation.getArgument(0);
+                            if (call == null) throw new AssertionError("Missing call");
+                            executed.add(call.toolName());
+                            return new ToolResult(call.toolName(), call.callId(), true, "done");
+                        });
+        List<VetoRequest> requests = new CopyOnWriteArrayList<>();
+        var service =
+                serviceWith(
+                        request -> {
+                            requests.add(request);
+                            if (repair && limit != 4 && requests.size() == 1)
+                                return new VetoResponse(null, null, null, null);
+                            String tool =
+                                    !obey
+                                                    || (limit == 4 && requests.size() <= 3)
+                                                    || (limit < 0 && requests.size() == 1)
+                                            ? "think"
+                                            : "finish";
+                            return new VetoResponse(
+                                    null, List.of(new ToolCall(tool, Map.of())), null, null);
+                        },
+                        limit,
+                        engine,
+                        new HitlRegistry());
+        String session = UUID.randomUUID().toString();
+        var agent =
+                service.getOrCreateAgent(
+                        session,
+                        UUID.randomUUID().toString(),
+                        binding("System"),
+                        List.of(),
+                        UUID.randomUUID(),
+                        "owner",
+                        null,
+                        0,
+                        ToolResultPresentationMode.BASIC,
+                        false);
+        Object owned = ReflectionTestUtils.getField(agent, "runner");
+        if (!(owned instanceof AgentRunner runner)) throw new AssertionError("Missing runner");
+        runner.setCompletionTool("finish");
+        try {
+            agent.submit("Complete within the configured budget.");
+            var result = agent.await(EPISODE_TIMEOUT);
+            assertEquals(limit != 0 && obey, result.success());
+            assertEquals(limit < 0 ? 2 : limit, requests.size());
+            assertEquals(
+                    limit == 4
+                            ? obey ? List.of("think", "think", "finish") : List.of("think", "think")
+                            : limit < 0
+                                    ? List.of("think", "finish")
+                                    : limit != 0 && obey ? List.of("finish") : List.of(),
+                    executed);
+            if (limit > 0) {
+                var last = requests.getLast();
+                assertEquals(
+                        List.of("finish"), last.tools().stream().map(tool -> tool.name()).toList());
+                assertTrue(
+                        last.messages().getLast().content().contains("final allowed model call"));
+                if (repair)
+                    assertTrue(
+                            last.messages().stream()
+                                    .anyMatch(
+                                            message ->
+                                                    message.content()
+                                                            .contains("schema violation")));
+            }
+            assertTrue(
+                    agent.history().stream()
+                            .noneMatch(
+                                    turn -> turn.payload().toString().contains("Runtime budget:")));
+        } finally {
+            service.remove(session);
+        }
+    }
+
     @Test
     void ordinaryProviderFailureRetainsItsDiagnosticObservation() throws Exception {
         var service =
@@ -847,6 +958,61 @@ class AgentRunnerTest {
             agent.resume();
             assertTrue(agent.await(EPISODE_TIMEOUT).success());
             assertEquals(1, calls.get());
+        } finally {
+            service.remove(session.toString());
+            assertTrue(agent.awaitTermination(Duration.ofSeconds(5)));
+        }
+    }
+
+    @Test
+    void restoredPauseResumePreservesBreakerUntilExplicitUserRequest() throws Exception {
+        AtomicInteger calls = new AtomicInteger();
+        var service =
+                serviceWith(
+                        request -> {
+                            calls.incrementAndGet();
+                            return new VetoResponse(null, null, "continued", null);
+                        });
+        @NonNull AgentPauseStore pauses = Mockito.mock();
+        @NonNull AgentWaitStore waits = Mockito.mock();
+        Mockito.when(pauses.load(Mockito.any(), Mockito.anyString())).thenReturn(true);
+        Mockito.when(waits.load(Mockito.any(), Mockito.anyString()))
+                .thenReturn(
+                        Optional.of(
+                                new AgentWaitStore.Wait(
+                                        AgentWaitStore.Reason.BREAKER, "old-request")));
+        service.attachPauseStore(pauses);
+        service.attachWaitStore(waits);
+        UUID session = UUID.randomUUID();
+        String id = UUID.randomUUID().toString();
+        var agent =
+                (VetoAgent)
+                        service.getOrCreateAgent(
+                                session.toString(),
+                                id,
+                                binding("System"),
+                                List.of(TurnRecord.userPrompt(1, "Original request")),
+                                UUID.randomUUID(),
+                                null,
+                                "D:/IdeaProjects/veto/work/tmp/unfinished-group",
+                                0,
+                                ToolResultPresentationMode.BASIC,
+                                false);
+        try {
+            assertEquals(AgentState.PAUSED, agent.state());
+            assertEquals("BREAKER", agent.executionWaitReason());
+            agent.resume();
+            assertEquals(AgentState.WAITING, agent.state());
+            assertEquals("BREAKER", agent.executionWaitReason());
+            assertEquals(0, calls.get());
+            Mockito.verify(pauses).save(session, id, false);
+            Mockito.verify(waits, Mockito.never()).save(session, id, null);
+
+            agent.submit("Continue explicitly");
+            assertTrue(agent.await(EPISODE_TIMEOUT).success());
+            assertEquals(1, calls.get());
+            assertTrue(agent.executionWaitReason() == null);
+            Mockito.verify(waits).save(session, id, null);
         } finally {
             service.remove(session.toString());
             assertTrue(agent.awaitTermination(Duration.ofSeconds(5)));

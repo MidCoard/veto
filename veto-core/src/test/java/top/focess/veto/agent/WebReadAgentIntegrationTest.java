@@ -11,6 +11,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import java.net.URI;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -57,9 +58,19 @@ import top.focess.veto.sandbox.BackgroundTaskManager;
 
 class WebReadAgentIntegrationTest {
     @ParameterizedTest
-    @CsvSource({"BASIC,false", "DETAILED,false", "BASIC,true", "DETAILED,true"})
+    @CsvSource({
+        "BASIC,false,5",
+        "DETAILED,false,5",
+        "BASIC,true,5",
+        "DETAILED,true,5",
+        "BASIC,false,3",
+        "DETAILED,true,3",
+        "BASIC,false,4",
+        "DETAILED,true,4"
+    })
     void parentContextAndReplayedHistoryContainOnlyTerminalEvidence(
-            @NonNull ToolResultPresentationMode presentation, boolean guided) throws Exception {
+            @NonNull ToolResultPresentationMode presentation, boolean guided, int maxRounds)
+            throws Exception {
         ObjectMapper mapper = new ObjectMapper();
         mapper.registerModule(new JavaTimeModule());
         SessionAgentRegistry registry = new SessionAgentRegistry();
@@ -91,18 +102,29 @@ class WebReadAgentIntegrationTest {
                     return switch (childTurn.getAndIncrement()) {
                         case 0 -> call("fetch_page", Map.of());
                         case 1 -> call("read_sections", Map.of("ids", List.of("s1", "s2")));
-                        case 2 ->
+                        case 2, 3 ->
                                 call(
                                         "finish_read",
                                         Map.of(
                                                 "outcome",
-                                                "complete",
+                                                maxRounds == 3 ? "partial" : "complete",
                                                 "answer",
-                                                "Timeout is 30 seconds.",
+                                                maxRounds == 4 && childTurn.get() == 3 && !guided
+                                                        ? "x".repeat(4001)
+                                                        : "Timeout is 30 seconds.",
                                                 "evidenceIds",
-                                                List.of("s1"),
+                                                maxRounds == 4 && childTurn.get() == 3 && !guided
+                                                        ? Collections.nCopies(15, "s1")
+                                                        : List.of("s1"),
                                                 "limitations",
-                                                List.of()));
+                                                maxRounds == 4 && childTurn.get() == 3 && guided
+                                                        ? List.of(List.of("Malformed nested entry"))
+                                                        : maxRounds == 4 && childTurn.get() == 3
+                                                                ? Collections.nCopies(9, "Gap")
+                                                                : maxRounds == 3
+                                                                        ? List.of(
+                                                                                "Other timeout behavior is not established by the inspected evidence.")
+                                                                        : List.of()));
                         default -> throw new AssertionError("Reader unexpectedly restarted");
                     };
                 };
@@ -121,7 +143,7 @@ class WebReadAgentIntegrationTest {
                         registry,
                         new TurnLogService(turnRepository, mapper),
                         ModelTier.LOW,
-                        5,
+                        maxRounds,
                         15,
                         32000,
                         2048);
@@ -228,7 +250,34 @@ class WebReadAgentIntegrationTest {
                         });
         assertTrue(result.success(), result.message());
         assertEquals("Timeout is 30 seconds.", result.message());
-        assertEquals(3, childRequests.size());
+        assertEquals(maxRounds == 4 ? 4 : 3, childRequests.size());
+        var finalRequest = childRequests.getLast();
+        assertEquals(maxRounds <= 4 ? 1 : 4, finalRequest.tools().size());
+        if (maxRounds <= 4) {
+            assertEquals("finish_read", finalRequest.tools().getFirst().name());
+            assertTrue(
+                    finalRequest
+                            .messages()
+                            .getLast()
+                            .content()
+                            .contains("final allowed model call"));
+        }
+        if (maxRounds == 4) {
+            assertEquals(
+                    List.of("finish_read"),
+                    childRequests.get(2).tools().stream().map(tool -> tool.name()).toList());
+            assertTrue(
+                    mapper.writeValueAsString(finalRequest)
+                            .contains(
+                                    guided
+                                            ? "schema violation"
+                                            : "answer exceeds 4000 characters"));
+            if (!guided) {
+                String correction = mapper.writeValueAsString(finalRequest);
+                assertTrue(correction.contains("evidenceIds must contain at most 8"));
+                assertTrue(correction.contains("limitations must contain at most 8"));
+            }
+        }
         var childHistory = childAgents.getFirst().history();
         assertFalse(
                 childHistory.stream().anyMatch(turn -> turn.type() == TurnType.ASSISTANT_RESPONSE));
@@ -283,6 +332,11 @@ class WebReadAgentIntegrationTest {
         assertTrue(afterRead.contains("https://example.com/docs"));
         assertFalse(afterRead.contains("RAW_CHILD_PAGE_SENTINEL"));
         assertFalse(afterRead.contains("CHILD_THOUGHT_SENTINEL"));
+        assertFalse(afterRead.contains("Runtime budget:"));
+        if (maxRounds == 3) {
+            assertTrue(afterRead.contains("partial"));
+            assertTrue(afterRead.contains("Other timeout behavior is not established"));
+        }
         assertFalse(afterRead.contains("\"toolName\":\"read_sections\""));
         var agent = service.agent(session);
         if (agent == null) throw new AssertionError("Missing parent agent");
@@ -313,7 +367,7 @@ class WebReadAgentIntegrationTest {
         assertTrue(replayed.contains("Timeout is 30 seconds."));
         assertFalse(replayed.contains("RAW_CHILD_PAGE_SENTINEL"));
         assertFalse(replayed.contains("CHILD_THOUGHT_SENTINEL"));
-        assertEquals(3, childRequests.size());
+        assertEquals(maxRounds == 4 ? 4 : 3, childRequests.size());
         assertEquals(1, registry.agents(sessionId).size());
         service.remove(session);
         resumed.remove(resumedSession);

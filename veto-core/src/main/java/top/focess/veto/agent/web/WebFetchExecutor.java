@@ -357,13 +357,29 @@ public final class WebFetchExecutor {
             FinishReadTool.@NonNull Args value,
             @NonNull WebReadDocument document,
             @NonNull Execution execution) {
-        if (!List.of("complete", "partial", "not_found").contains(value.outcome())
-                || value.answer().isBlank()
-                || value.answer().length() > MAX_ANSWER_CHARS
-                || value.evidenceIds().size() > MAX_EVIDENCE
-                || value.limitations().size() > 8
-                || value.limitations().stream().anyMatch(s -> s.length() > 500))
-            throw new IllegalArgumentException("Invalid result shape or output limits.");
+        List<String> errors = new ArrayList<>();
+        if (!List.of("complete", "partial", "not_found").contains(value.outcome()))
+            errors.add("outcome must be complete, partial, or not_found.");
+        if (value.answer().isBlank()) errors.add("answer must be nonblank.");
+        if (value.answer().length() > MAX_ANSWER_CHARS)
+            errors.add(
+                    "answer exceeds 4000 characters (received " + value.answer().length() + ").");
+        if (value.evidenceIds().size() > MAX_EVIDENCE)
+            errors.add(
+                    "evidenceIds must contain at most 8 IDs (received "
+                            + value.evidenceIds().size()
+                            + ").");
+        if (value.limitations().size() > 8)
+            errors.add(
+                    "limitations must contain at most 8 entries (received "
+                            + value.limitations().size()
+                            + ").");
+        if (value.limitations().stream().anyMatch(s -> s.length() > 500))
+            errors.add("Each limitations entry must be at most 500 characters.");
+        if (!errors.isEmpty())
+            throw new IllegalArgumentException(
+                    String.join(" ", errors)
+                            + " Correct all listed fields together. Choose supporting evidence and keep the answer within its scope; exact quotations are attached from evidenceIds. Combine related limitations.");
         var evidence = value.evidenceIds().stream().distinct().map(document::evidence).toList();
         if (value.outcome().equals("complete") && evidence.isEmpty())
             throw new IllegalArgumentException("Complete answers need read evidence.");

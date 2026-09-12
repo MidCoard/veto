@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.net.URI;
+import java.util.Collections;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
@@ -121,6 +122,39 @@ class WebFetchExecutorResultTest {
                     IllegalArgumentException.class,
                     () -> WebFetchExecutor.finish(invalid, document, EXECUTION));
         }
+    }
+
+    @Test
+    void reportsAllOutputViolationsTogetherWithoutEchoingContents() {
+        WebReadDocument document = document("Source", false);
+        var invalid =
+                new FinishReadTool.Args(
+                        "invented",
+                        "z".repeat(4001),
+                        Collections.nCopies(15, "untrusted-id"),
+                        Collections.nCopies(9, "q".repeat(501)));
+        var error =
+                assertThrows(
+                        IllegalArgumentException.class,
+                        () -> WebFetchExecutor.finish(invalid, document, EXECUTION));
+        String message = error.getMessage();
+        if (message == null) throw new AssertionError("Missing correction diagnostics");
+        for (String field :
+                List.of(
+                        "outcome must",
+                        "answer exceeds 4000",
+                        "received 4001",
+                        "evidenceIds must contain at most 8",
+                        "received 15",
+                        "limitations must contain at most 8",
+                        "received 9",
+                        "at most 500")) {
+            assertTrue(message.contains(field), field);
+        }
+        assertFalse(message.contains("untrusted-id"));
+        assertFalse(message.contains("zzzz"));
+        assertFalse(message.contains("qqqq"));
+        assertFalse(message.contains("invented"));
     }
 
     private static @NonNull WebReadDocument document(@NonNull String content, boolean truncated) {

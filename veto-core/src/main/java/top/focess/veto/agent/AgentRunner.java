@@ -1435,6 +1435,9 @@ public class AgentRunner {
                     throw new BreakerTripException();
                 }
                 awaitUserResume();
+                if (completionOnly(breaker.count())) {
+                    request = completionRequest(request);
+                }
                 reserveRequestCall();
                 request = promptCompiler.fitRequest(request, correctionFactor);
                 log.debug(
@@ -1578,11 +1581,57 @@ public class AgentRunner {
                     "This agent requires exactly one tool call per turn and must complete through "
                             + completionTool
                             + "; freeform answers and guide are not accepted");
+        if (completionTool != null
+                && completionOnly(breaker.count() - 1)
+                && generatedCalls != null
+                && !generatedCalls.getFirst().toolName().equals(completionTool)) {
+            throw new ModelSchemaException("The remaining model calls must use " + completionTool);
+        }
         if (generation != null
                 && ((generatedCalls != null && !generatedCalls.isEmpty())
                         || checked.guide() != null))
             throw new ModelSchemaException(
                     "generate requires message output and no calls or guide");
+    }
+
+    private boolean completionOnly(long completedCalls) {
+        long limit = breaker.maxCallsPerEpisode();
+        return completionTool != null
+                && limit > 0
+                && completedCalls >= limit - (limit >= 4 ? 2 : 1);
+    }
+
+    /** Finalization and its optional correction consume the existing call budget. */
+    private @NonNull VetoRequest completionRequest(@NonNull VetoRequest request) {
+        String tool = completionTool;
+        if (tool == null) return request;
+        List<ChatMessage> messages = new ArrayList<>(request.messages());
+        messages.add(
+                ChatMessage.user(
+                        "Runtime budget: "
+                                + (breaker.maxCallsPerEpisode() - breaker.count() == 1
+                                        ? "this is your final allowed model call. "
+                                        : "two model calls remain, reserved for completion and any necessary correction. ")
+                                + "Call "
+                                + tool
+                                + " now using only evidence already inspected. If coverage is"
+                                + " incomplete, return a partial result with supported findings and"
+                                + " concrete limitations. Do not invent evidence or claim completion"
+                                + " of unread material. No further reading is available. Keep the result"
+                                + " concise and within the tool's output limits."));
+        return new VetoRequest(
+                request.systemPrompt(),
+                request.userPrompt(),
+                request.tools().stream()
+                        .filter(definition -> definition.name().equals(tool))
+                        .toList(),
+                request.providerType(),
+                request.modelName(),
+                request.credentialKey(),
+                request.options(),
+                messages,
+                request.responseSchema(),
+                request.baseUrl());
     }
 
     private @NonNull VetoRequest generationRequest(
