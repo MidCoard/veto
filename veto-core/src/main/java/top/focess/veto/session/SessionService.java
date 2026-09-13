@@ -16,7 +16,9 @@ import org.springframework.transaction.annotation.Transactional;
 import top.focess.veto.agent.Agent;
 import top.focess.veto.agent.AgentRunner;
 import top.focess.veto.agent.AgentService;
+import top.focess.veto.agent.RecordRecovery;
 import top.focess.veto.agent.TurnRecord;
+import top.focess.veto.agent.intercept.HitlRecordRepository;
 import top.focess.veto.agent.workspace.PathResolver;
 import top.focess.veto.agent.workspace.WorkspaceAdmissionPolicy;
 import top.focess.veto.controller.SessionController;
@@ -46,6 +48,13 @@ import top.focess.veto.vault.SecretCandidateStore;
  */
 @Service
 public class SessionService {
+    private HitlRecordRepository hitlRecords;
+
+    @Autowired
+    public void attachHitlRecords(@NonNull HitlRecordRepository records) {
+        hitlRecords = records;
+    }
+
     private SecretCandidateStore candidates;
 
     @Autowired
@@ -464,6 +473,7 @@ public class SessionService {
             agentService.remove(sessionId);
             RequestContinuationStore store = continuations;
             if (store != null) store.deleteSession(sessionId);
+            if (hitlRecords != null) hitlRecords.deleteBySessionId(sessionId);
             agents.deleteBySessionId(sessionId);
             sessions.delete(session);
         }
@@ -566,10 +576,10 @@ public class SessionService {
                 || !target.getSessionId().equals(session.getId())
                 || !primary.supportsMonitorRecovery()
                 || !target.supportsMonitorRecovery()
-                || primary.isUserPaused()
-                || target.isUserPaused()
-                || primary.getExecutionWait() != null
-                || target.getExecutionWait() != null) return false;
+                || RecordRecovery.requiresExplicitContinuation(
+                        historyLoader.load(session.getId(), primary.getId()))
+                || RecordRecovery.requiresExplicitContinuation(
+                        historyLoader.load(session.getId(), target.getId()))) return false;
         if (!target.getId().equals(primary.getId())
                 && (!"MATE".equals(target.getRuntimeRole()) || target.getParentCallId() != null))
             return false;

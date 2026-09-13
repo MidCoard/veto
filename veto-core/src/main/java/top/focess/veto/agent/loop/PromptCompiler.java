@@ -62,12 +62,12 @@ public class PromptCompiler {
     /**
      * The tool_result content synthesized for a tool_call the episode never answered (the run was
      * interrupted or the backend stopped between the call and its result). The message is
-     * model-facing: it tells the model the call is known-but-unanswered so it can reissue it
-     * instead of assuming it ran.
+     * model-facing: it tells the model the call is known-but-unanswered without assuming either
+     * completion or absence of side effects.
      */
     static final @NonNull String INTERRUPTED_TOOL_RESULT =
-            "(tool call interrupted — no result was recorded; reissue the call if its result is"
-                    + " still needed)";
+            "(tool call interrupted — no result was recorded; execution and side effects are"
+                    + " unknown. Verify actual state before considering another call.)";
 
     private final @NonNull CapabilityTranslator translator;
     private final SystemPromptResolver systemPromptResolver;
@@ -602,18 +602,25 @@ public class PromptCompiler {
             case AGENT_INIT -> null; // handled before role mapping
             case COMPACTION_SUMMARY -> ChatMessage.user(str(turn.payload(), "content"));
             case EXECUTION_ERROR ->
-                    "CANCELLED".equals(turn.payload().get("outcome"))
-                                    && turn.payload().get("requestId") instanceof String
+                    "INTERRUPTED".equals(turn.payload().get("outcome"))
                             ? ChatMessage.user(
-                                    "[Runtime cancellation] At this point in the recorded history, "
-                                            + "the immediately preceding request was cancelled. "
-                                            + "This record does not describe any later request or "
-                                            + "establish why a later request stopped. "
-                                            + "Its unfinished work is no longer pending. Do not resume "
-                                            + "or complete it unless a new request explicitly asks you to. "
-                                            + "Handle the next request independently; retained history "
-                                            + "does not authorize continuing cancelled work.")
-                            : null;
+                                    "[Runtime interruption] The preceding execution was interrupted by a backend restart. "
+                                            + "Its GUIDE program and uncompleted tool calls are no longer pending. "
+                                            + "Do not replay them or carry their steps into the next request. "
+                                            + "Retain completed results as history; missing results mean unknown effects. "
+                                            + "Follow the new user request independently, and only perform old work if it explicitly asks for that work.")
+                            : "CANCELLED".equals(turn.payload().get("outcome"))
+                                            && turn.payload().get("requestId") instanceof String
+                                    ? ChatMessage.user(
+                                            "[Runtime cancellation] At this point in the recorded history, "
+                                                    + "the immediately preceding request was cancelled. "
+                                                    + "This record does not describe any later request or "
+                                                    + "establish why a later request stopped. "
+                                                    + "Its unfinished work is no longer pending. Do not resume "
+                                                    + "or complete it unless a new request explicitly asks you to. "
+                                                    + "Handle the next request independently; retained history "
+                                                    + "does not authorize continuing cancelled work.")
+                                    : null;
             case REWIND, TOKEN_USAGE -> null;
         };
     }

@@ -26,19 +26,11 @@ import top.focess.veto.monitor.MonitorService;
 @Component
 public final class SessionAgentRegistry {
     private SessionInvalidations invalidations;
-    private AgentPauseStore pauseStore;
 
-    @Autowired
-    public void attachPauseStore(@NonNull AgentPauseStore store) {
-        pauseStore = store;
-    }
-
-    /** Serializes offline controls with the last pause read before a runner starts. */
+    /** Serializes live pause controls with runner registration and removal. */
     public synchronized void controlPause(
             @NonNull UUID sessionId, @NonNull String agentId, boolean paused) {
-        AgentPauseStore store = pauseStore;
-        if (repository == null || store == null)
-            throw new IllegalStateException("Persistent pause control is unavailable");
+        if (repository == null) throw new IllegalStateException("Agent control is unavailable");
         AgentEntity entity =
                 repository
                         .findById(agentId)
@@ -50,8 +42,8 @@ public final class SessionAgentRegistry {
         if (entity.getEndedAt() != null
                 || (entry != null && entry.agent().state() == AgentState.TERMINATED))
             throw new IllegalStateException("Agent has terminated");
-        if (entry == null) store.save(sessionId, agentId, paused);
-        else if (paused) entry.agent().pause();
+        if (entry == null) throw new IllegalStateException("Agent is not running");
+        if (paused) entry.agent().pause();
         else entry.agent().resume();
         if (invalidations != null) invalidations.changed(sessionId, "agents", "execution");
     }
@@ -122,13 +114,7 @@ public final class SessionAgentRegistry {
                                 entity.getId(),
                                 entity.getName(),
                                 role == null ? null : Role.valueOf(role),
-                                entity.isUserPaused()
-                                        ? AgentState.PAUSED
-                                        : entity.getExecutionWait() != null
-                                                ? AgentState.WAITING
-                                                : entity.getEndedAt() == null
-                                                        ? null
-                                                        : AgentState.TERMINATED,
+                                entity.getEndedAt() == null ? null : AgentState.TERMINATED,
                                 entity.getParentAgentId(),
                                 entity.getParentCallId(),
                                 false,
@@ -137,7 +123,7 @@ public final class SessionAgentRegistry {
                                 entity.getEndedAt(),
                                 entity.getResponsibility(),
                                 entity.isUserInteractionEnabled(),
-                                entity.getExecutionWait()));
+                                null));
             }
         }
         if (turns != null) {
@@ -180,7 +166,6 @@ public final class SessionAgentRegistry {
             throw new IllegalStateException(
                     "Agent registry is closed or agent is already registered");
         }
-        if (pauseStore != null) runner.attachPauseStore(pauseStore);
         VetoAgent agent = new VetoAgent(persona, runner);
         register(new Entry(runner.sessionId(), null, null, agent));
         return agent;
@@ -261,7 +246,6 @@ public final class SessionAgentRegistry {
         }
         if (live.containsKey(persona.id())) throw new IllegalStateException("Duplicate agent id");
         runner.setSessionId(sessionId);
-        if (pauseStore != null) runner.attachPauseStore(pauseStore);
         VetoAgent child = new VetoAgent(persona, runner, userInteractionEnabled);
         register(new Entry(sessionId, parentAgentId, parentCallId, child));
         return child;

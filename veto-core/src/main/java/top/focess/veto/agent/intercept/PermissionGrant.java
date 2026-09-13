@@ -1,5 +1,7 @@
 package top.focess.veto.agent.intercept;
 
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -33,6 +35,13 @@ import org.jspecify.annotations.NonNull;
  * {@link #matches(ToolCallSpec)}; equality + hashCode are not used for matching (identical-match is
  * structural, not record-equal).
  */
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "kind")
+@JsonSubTypes({
+    @JsonSubTypes.Type(value = PermissionGrant.ReadGrant.class, name = "read-v1"),
+    @JsonSubTypes.Type(value = PermissionGrant.WriteGrant.class, name = "write-v1"),
+    @JsonSubTypes.Type(value = PermissionGrant.CommandGrant.class, name = "command-v1"),
+    @JsonSubTypes.Type(value = PermissionGrant.ExactToolGrant.class, name = "exact-v1")
+})
 public sealed interface PermissionGrant
         permits PermissionGrant.ReadGrant,
                 PermissionGrant.WriteGrant,

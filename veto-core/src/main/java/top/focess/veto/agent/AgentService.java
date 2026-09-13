@@ -77,23 +77,11 @@ public class AgentService {
     private GroupRecoveryService groupRecovery;
 
     private RequestContinuationStore continuationStore;
-    private AgentPauseStore pauseStore;
-    private AgentWaitStore waitStore;
     private KeysteadVault monitorVault;
 
     @Autowired
     public void attachMonitorVault(@NonNull KeysteadVault vault) {
         monitorVault = vault;
-    }
-
-    @Autowired
-    public void attachWaitStore(@NonNull AgentWaitStore store) {
-        waitStore = store;
-    }
-
-    @Autowired
-    public void attachPauseStore(@NonNull AgentPauseStore store) {
-        pauseStore = store;
     }
 
     @Autowired
@@ -106,12 +94,8 @@ public class AgentService {
         if (candidates != null) runner.attachSecretCandidates(candidates);
         KeysteadVault vault = monitorVault;
         if (vault != null) runner.attachMonitorVault(vault);
-        AgentPauseStore pauses = pauseStore;
-        if (pauses != null) runner.attachPauseStore(pauses);
         RequestContinuationStore store = continuationStore;
         if (store != null) runner.attachContinuationStore(store);
-        AgentWaitStore waits = waitStore;
-        if (waits != null) runner.attachWaitStore(waits);
     }
 
     private SecretCandidateStore secretCandidates;

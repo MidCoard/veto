@@ -108,7 +108,44 @@ public class HitlRegistry {
             new ConcurrentHashMap<>();
 
     public void setSession(@NonNull String agentId, @NonNull UUID sessionId) {
-        sessions.put(agentId, sessionId);
+        UUID previous = sessions.put(agentId, sessionId);
+        HitlHistory history = durableHistory;
+        if (history != null && !sessionId.equals(previous)) {
+            Set<PermissionGrant> restored = ConcurrentHashMap.newKeySet();
+            restored.addAll(history.grants(sessionId, agentId));
+            grants.put(agentId, restored);
+            grantLog.put(agentId, new CopyOnWriteArrayList<>(restored));
+        }
+    }
+
+    private HitlHistory durableHistory;
+
+    public @NonNull List<HitlHistory.Decision> decisions(@NonNull String agent) {
+        HitlHistory history = durableHistory;
+        return history == null ? List.of() : history.decisions(agent);
+    }
+
+    public void recordInternalApproval(@NonNull String agent, @NonNull ToolCall call) {
+        record(agent, call.callId(), "AUTO", "APPROVE", "AGENT_TOOL_CAPABILITY", null);
+    }
+
+    @Autowired
+    public void attachHistory(@NonNull HitlHistory history) {
+        durableHistory = history;
+    }
+
+    private void record(
+            @NonNull String agent,
+            @NonNull String call,
+            @NonNull String event,
+            @NonNull String decision,
+            @NonNull String source,
+            PermissionGrant grant) {
+        HitlHistory history = durableHistory;
+        if (history == null) return; // Embedded runners without persistence.
+        UUID session = sessions.get(agent);
+        if (session == null) throw new IllegalStateException("Approval session is unavailable");
+        history.append(session, agent, call, event, decision, source, grant);
     }
 
     /** Runtime members of the already-authorized primary agent's session. */
@@ -158,6 +195,7 @@ public class HitlRegistry {
             ToolDefinition def,
             @NonNull GatewayResult result) {
         if (result instanceof GatewayResult.NotScreened) {
+            record(agentId, call.callId(), "AUTO", "APPROVE", "NOT_SCREENED", null);
             return ApprovalDecision.AUTO_APPROVE;
         }
         if (result instanceof GatewayResult.DriftResult d) {
@@ -167,7 +205,10 @@ public class HitlRegistry {
         Screening screening = s.screening();
         ScreeningOutcome outcome = screeningMode.cell(screening.relevance(), screening.danger());
         return switch (outcome) {
-            case APPROVE -> ApprovalDecision.AUTO_APPROVE;
+            case APPROVE -> {
+                record(agentId, call.callId(), "AUTO", "APPROVE", "SCREENING_POLICY", null);
+                yield ApprovalDecision.AUTO_APPROVE;
+            }
             case REFUSED ->
                     new ApprovalDecision.Refused(
                             Msg.get(
@@ -343,6 +384,7 @@ public class HitlRegistry {
                 MatchKeyExtractor.extract(call, def, workspace(agentId));
         for (PermissionGrant g : agentGrants) {
             if (g.matches(spec)) {
+                record(agentId, call.callId(), "AUTO", "APPROVE", "MATCHING_GRANT", g);
                 return true;
             }
         }
@@ -387,6 +429,7 @@ public class HitlRegistry {
             Danger danger,
             Relevance relevance) {
         CompletableFuture<@NonNull InterceptResolution> future = new CompletableFuture<>();
+        record(agentId, callId, "OPENED", "", "SCREENING", null);
         pending.put(
                 key(agentId, callId), new Pending(future, call, def, options, danger, relevance));
         if (invalidations != null) invalidations.agentChanged(agentId, "interactions");
@@ -426,8 +469,19 @@ public class HitlRegistry {
         }
         synchronized (p) {
             if (p.future().isDone()) return false;
+            PermissionGrant approvedGrant =
+                    resolution.createsGrant() && p.call() != null && p.def() != null
+                            ? buildGrant(agentId, p.call(), p.def(), resolution)
+                            : null;
+            record(
+                    agentId,
+                    callId,
+                    "RESOLVED",
+                    resolution.option().name(),
+                    resolution.source().name(),
+                    approvedGrant);
             if (resolution.createsGrant() && p.call() != null && p.def() != null) {
-                PermissionGrant grant = buildGrant(agentId, p.call(), p.def(), resolution);
+                PermissionGrant grant = approvedGrant;
                 if (grant != null) {
                     grants.computeIfAbsent(agentId, k -> ConcurrentHashMap.newKeySet()).add(grant);
                     grantLog.computeIfAbsent(agentId, k -> new CopyOnWriteArrayList<>()).add(grant);
@@ -550,7 +604,10 @@ public class HitlRegistry {
         if (def.capability() == ToolCapability.PROCESS_EXECUTION
                 || def.capability() == ToolCapability.NETWORK_EGRESS
                 || def.capability() == ToolCapability.REMOTE_UNKNOWN) {
-            return buildCommandGrant(agentId, call);
+            if ("run_command".equals(call.toolName())) return buildCommandGrant(agentId, call);
+            var editedArgs = resolution.editedArgs();
+            return new PermissionGrant.ExactToolGrant(
+                    call.toolName(), editedArgs != null ? editedArgs : call.args());
         }
         return null;
     }
@@ -745,7 +802,11 @@ public class HitlRegistry {
         if (agentGrants == null) {
             return false;
         }
-        return agentGrants.remove(grant);
+        synchronized (agentGrants) {
+            if (!agentGrants.contains(grant)) return false;
+            record(agentId, "", "REVOKED", "", "CLIENT_RESPONSE", grant);
+            return agentGrants.remove(grant);
+        }
     }
 
     /** Returns the audit log of grants created for the agent. */

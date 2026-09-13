@@ -22,65 +22,16 @@ import top.focess.veto.model.AgentInstanceRepository;
 
 class SessionAgentRegistryTest {
     @Test
-    void offlinePauseIsReloadedBeforeRunnerThreadStarts() throws Exception {
+    void offlinePauseDoesNotCreatePersistentControlState() {
         @NonNull AgentInstanceRepository repository = mock();
         @NonNull TurnRecordRepository turns = mock();
-        @NonNull AgentPauseStore store = mock();
-        SessionAgentRegistry registry = new SessionAgentRegistry(repository, turns);
-        registry.attachPauseStore(store);
+        var registry = new SessionAgentRegistry(repository, turns);
         UUID session = UUID.randomUUID();
-        AgentPersona persona = persona("paused-worker", Role.STANDALONE);
-        AgentRunner runner = runner(persona);
-        when(runner.sessionId()).thenReturn(session);
-        var entity = AgentEntity.spawned(persona.id(), session.toString(), "Worker");
-        when(repository.findById(persona.id())).thenReturn(Optional.of(entity));
-        CountDownLatch ran = new CountDownLatch(1);
-        doAnswer(
-                        invocation -> {
-                            ran.countDown();
-                            return null;
-                        })
-                .when(runner)
-                .run();
-        AtomicReference<Throwable> failure = new AtomicReference<>();
-        CountDownLatch starting = new CountDownLatch(1);
-        Thread starter;
-        synchronized (registry) {
-            starter =
-                    Thread.ofVirtual()
-                            .start(
-                                    () -> {
-                                        starting.countDown();
-                                        try {
-                                            registry.start(persona, runner);
-                                        } catch (Throwable error) {
-                                            failure.set(error);
-                                        }
-                                    });
-            assertTrue(starting.await(3, TimeUnit.SECONDS));
-            registry.controlPause(session, persona.id(), true);
-            verify(store).save(session, persona.id(), true);
-            verify(runner, never()).run();
-        }
-        try {
-            starter.join(3000);
-            assertFalse(starter.isAlive());
-            assertNull(failure.get());
-            assertTrue(ran.await(3, TimeUnit.SECONDS));
-            var order = inOrder(store, runner);
-            order.verify(store).save(session, persona.id(), true);
-            order.verify(runner).attachPauseStore(store);
-            order.verify(runner).run();
-            registry.controlPause(session, persona.id(), false);
-            verify(runner).enqueue(any(ToolDocs.nonNullClass(AgentAction.ResumeAction.class)));
-            verify(store, never()).save(session, persona.id(), false);
-            assertThrows(
-                    IllegalArgumentException.class,
-                    () -> registry.controlPause(UUID.randomUUID(), persona.id(), false));
-        } finally {
-            starter.interrupt();
-            registry.close();
-        }
+        String id = UUID.randomUUID().toString();
+        when(repository.findById(id))
+                .thenReturn(Optional.of(AgentEntity.spawned(id, session.toString(), "Worker")));
+        assertThrows(IllegalStateException.class, () -> registry.controlPause(session, id, true));
+        verify(repository, never()).save(any());
     }
 
     @Test

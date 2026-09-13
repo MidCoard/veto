@@ -18,9 +18,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -32,17 +30,13 @@ import top.focess.veto.agent.capability.UserInteractionCapabilityImpl;
 import top.focess.veto.agent.identity.Role;
 import top.focess.veto.agent.identity.RoleToolFilter;
 import top.focess.veto.agent.identity.SystemPromptResolver;
-import top.focess.veto.agent.intercept.ApprovalDecision;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
-import top.focess.veto.agent.intercept.VetoOption;
-import top.focess.veto.agent.intercept.VetoScenario;
 import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.screening.Danger;
 import top.focess.veto.agent.tool.AgentTool;
 import top.focess.veto.agent.tool.AgentToolDefinition;
 import top.focess.veto.agent.tool.NativeToolDefinition;
-import top.focess.veto.agent.tool.RemoteToolDefinition;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.tool.ToolEngine;
@@ -434,8 +428,10 @@ class AgentRunnerTest {
         }
     }
 
-    @Test
-    void dueNotificationRecreatesOriginalRunnerOnlyAfterItsOwnerUnlocks() throws Exception {
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void dueNotificationRecoversOnlyCompletedHistoryAfterOwnerUnlocks(boolean completed)
+            throws Exception {
         AtomicInteger calls = new AtomicInteger();
         CountDownLatch called = new CountDownLatch(1);
         var runtime =
@@ -474,7 +470,16 @@ class AgentRunnerTest {
         Mockito.when(sessions.findById(session.getId())).thenReturn(Optional.of(session));
         Mockito.when(agents.findById(identity.getId())).thenReturn(Optional.of(identity));
         Mockito.when(history.load(session.getId(), identity.getId()))
-                .thenReturn(List.of(TurnRecord.userPrompt(1, "Earlier conversation")));
+                .thenReturn(
+                        completed
+                                ? List.of(
+                                        TurnRecord.userPrompt(1, "Earlier conversation"),
+                                        new TurnRecord(
+                                                2,
+                                                TurnType.ASSISTANT_RESPONSE,
+                                                Map.of("content", "Done"),
+                                                null))
+                                : List.of(TurnRecord.userPrompt(1, "Earlier conversation")));
         Mockito.when(tiers.resolve("alice", ModelTier.TOP))
                 .thenReturn(
                         new ModelBinding(ProviderType.DEEPSEEK, "model", "key", 0.7, 4096, null));
@@ -497,6 +502,12 @@ class AgentRunnerTest {
             assertEquals(1, monitors.pending(identity.getId(), session.getId()).size());
             Mockito.when(vault.isUnlocked("alice")).thenReturn(true);
             ReflectionTestUtils.invokeMethod(monitors, "tickAt", due.plusSeconds(2));
+            if (!completed) {
+                assertNull(runtime.agent(session.getId()));
+                assertEquals(0, calls.get());
+                assertEquals(1, monitors.pending(identity.getId(), session.getId()).size());
+                return;
+            }
             var restored = requireAgent(runtime.agent(session.getId()));
             assertEquals(identity.getId(), restored.id());
             assertEquals(UUID.fromString(session.getId()), restored.sessionId());
@@ -552,7 +563,7 @@ class AgentRunnerTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"ANSWER", "CANCEL", "INTERRUPT", "HISTORY_FAIL"})
-    void actualQuestionWaitPersistsUntilAnswerOrCancellation(@NonNull String action)
+    void actualQuestionWaitRequiresDurableAnswerBeforeContinuing(@NonNull String action)
             throws Exception {
         var questions = new UserQuestionRegistry();
         AtomicInteger calls = new AtomicInteger();
@@ -569,17 +580,6 @@ class AgentRunnerTest {
                         5,
                         questionEngine(questions),
                         new HitlRegistry());
-        @NonNull AgentWaitStore waits = Mockito.mock();
-        AtomicReference<AgentWaitStore.@Nullable Wait> saved = new AtomicReference<>();
-        Mockito.when(waits.load(Mockito.any(), Mockito.anyString())).thenReturn(Optional.empty());
-        Mockito.doAnswer(
-                        invocation -> {
-                            saved.set(invocation.getArgument(2));
-                            return null;
-                        })
-                .when(waits)
-                .save(Mockito.any(), Mockito.anyString(), Mockito.any());
-        service.attachWaitStore(waits);
         if (action.equals("HISTORY_FAIL")) {
             @NonNull TurnLogService turns = Mockito.mock();
             Mockito.doThrow(new IllegalStateException("Answer log unavailable"))
@@ -594,15 +594,12 @@ class AgentRunnerTest {
             while (questions.pendingFor(agent.id()).isEmpty() && System.nanoTime() < deadline)
                 Thread.sleep(10);
             assertEquals(1, questions.pendingFor(agent.id()).size());
-            assertEquals(
-                    AgentWaitStore.Reason.QUESTION, Nullness.requireNonNull(saved.get()).reason());
+            assertEquals("QUESTION", agent.executionWaitReason());
             assertFalse(agent.result().isDone());
             if (action.equals("INTERRUPT")) {
                 assertTrue(agent.cancelTask(agent.result(), Duration.ofSeconds(5)));
                 assertFalse(agent.await(EPISODE_TIMEOUT).success());
-                assertEquals(
-                        AgentWaitStore.Reason.QUESTION,
-                        Nullness.requireNonNull(saved.get()).reason());
+                assertEquals("QUESTION", agent.executionWaitReason());
                 assertEquals(1, calls.get());
             } else {
                 if (!action.equals("CANCEL"))
@@ -612,13 +609,11 @@ class AgentRunnerTest {
                 else assertTrue(questions.cancel(agent.id(), "question-call"));
                 if (action.equals("HISTORY_FAIL")) {
                     assertFalse(agent.await(EPISODE_TIMEOUT).success());
-                    assertEquals(
-                            AgentWaitStore.Reason.QUESTION,
-                            Nullness.requireNonNull(saved.get()).reason());
+                    assertEquals("QUESTION", agent.executionWaitReason());
                     assertEquals(1, calls.get());
                 } else {
                     assertTrue(agent.await(EPISODE_TIMEOUT).success());
-                    assertTrue(saved.get() == null);
+                    assertNull(agent.executionWaitReason());
                     assertEquals(2, calls.get());
                 }
             }
@@ -630,225 +625,8 @@ class AgentRunnerTest {
     }
 
     @ParameterizedTest
-    @ValueSource(booleans = {false, true})
-    void taskCancellationClearsResolvedApprovalUnlessCheckpointFails(boolean failSave)
-            throws Exception {
-        @NonNull ToolEngine engine = Mockito.mock();
-        var definition =
-                new RemoteToolDefinition(
-                        "external_test",
-                        "Test external action",
-                        "test",
-                        new ObjectMapper().createObjectNode().put("type", "object"));
-        Mockito.when(engine.getActiveTools(Mockito.any())).thenReturn(List.of(definition));
-        Mockito.when(engine.resolveDefinition("external_test")).thenReturn(definition);
-        AtomicInteger executions = new AtomicInteger();
-        Mockito.when(engine.execute(Mockito.any(), Mockito.any()))
-                .thenAnswer(
-                        invocation -> {
-                            executions.incrementAndGet();
-                            return new ToolResult("external_test", "approval-call", true, "Done");
-                        });
-        AtomicInteger calls = new AtomicInteger();
-        var hitl = Mockito.spy(new HitlRegistry());
-        Mockito.doReturn(
-                        new ApprovalDecision.Prompt(
-                                VetoScenario.GENERIC,
-                                List.of(VetoOption.ACCEPT_GENERIC, VetoOption.GENERIC_DECLINE),
-                                null,
-                                null))
-                .when(hitl)
-                .decide(Mockito.anyString(), Mockito.any(), Mockito.any(), Mockito.any());
-        var service =
-                serviceWith(
-                        request ->
-                                calls.getAndIncrement() == 0
-                                        ? new VetoResponse(
-                                                "Act",
-                                                List.of(
-                                                        new ToolCall(
-                                                                "external_test",
-                                                                Map.of(),
-                                                                "approval-call")),
-                                                null,
-                                                null)
-                                        : new VetoResponse(null, null, "Done", null),
-                        2,
-                        engine,
-                        hitl);
-        @NonNull AgentWaitStore waits = Mockito.mock();
-        Mockito.when(waits.load(Mockito.any(), Mockito.anyString())).thenReturn(Optional.empty());
-        AtomicReference<AgentWaitStore.@Nullable Wait> saved = new AtomicReference<>();
-        Mockito.doAnswer(
-                        invocation -> {
-                            AgentWaitStore.Wait value = invocation.getArgument(2);
-                            if (failSave && value == null)
-                                throw new IllegalStateException("checkpoint unavailable");
-                            if (value == null) assertFalse(Thread.currentThread().isInterrupted());
-                            saved.set(value);
-                            return null;
-                        })
-                .when(waits)
-                .save(Mockito.any(), Mockito.anyString(), Mockito.any());
-        service.attachWaitStore(waits);
-        CountDownLatch awaiting = new CountDownLatch(1);
-        Mockito.doAnswer(
-                        invocation -> {
-                            awaiting.countDown();
-                            return invocation.callRealMethod();
-                        })
-                .when(hitl)
-                .await(Mockito.anyString(), Mockito.anyString());
-        service.submitNow("cancel-approval-wait", "Ask me", binding("System"));
-        var agent = requireAgent(service.agent("cancel-approval-wait"));
-        try {
-            assertTrue(awaiting.await(5, TimeUnit.SECONDS));
-            assertEquals("APPROVAL", agent.executionWaitReason());
-            assertTrue(agent.cancelTask(agent.result(), Duration.ofSeconds(5)));
-            assertFalse(agent.result().get().success());
-            assertEquals(0, executions.get());
-            assertEquals(1, calls.get());
-            assertTrue(hitl.pendingFor(agent.id()).isEmpty());
-            if (failSave) {
-                assertEquals("APPROVAL", agent.executionWaitReason());
-                assertTrue(saved.get() != null);
-            } else {
-                assertNull(agent.executionWaitReason());
-                assertNull(saved.get());
-            }
-            assertTrue(
-                    agent.history().stream()
-                            .anyMatch(
-                                    turn ->
-                                            turn.type() == TurnType.EXECUTION_ERROR
-                                                    && "CANCELLED"
-                                                            .equals(
-                                                                    turn.payload()
-                                                                            .get("outcome"))));
-        } finally {
-            service.remove("cancel-approval-wait");
-        }
-    }
-
-    @ParameterizedTest
-    @ValueSource(strings = {"APPROVAL_SAVE", "RESOLUTION_SAVE", "NONE", "DECLINED", "POLICY"})
-    void approvalCheckpointControlsActualToolExecution(@NonNull String failure) throws Exception {
-        @NonNull ToolEngine engine = Mockito.mock();
-        var definition =
-                new RemoteToolDefinition(
-                        "external_test",
-                        "Test external action",
-                        "test",
-                        new ObjectMapper().createObjectNode().put("type", "object"));
-        Mockito.when(engine.getActiveTools(Mockito.any())).thenReturn(List.of(definition));
-        Mockito.when(engine.resolveDefinition("external_test")).thenReturn(definition);
-        AtomicInteger executions = new AtomicInteger();
-        Mockito.when(engine.execute(Mockito.any(), Mockito.any()))
-                .thenAnswer(
-                        invocation -> {
-                            executions.incrementAndGet();
-                            return new ToolResult("external_test", "approval-call", true, "Done");
-                        });
-        AtomicInteger calls = new AtomicInteger();
-        var hitl = Mockito.spy(new HitlRegistry());
-        Mockito.doReturn(
-                        new ApprovalDecision.Prompt(
-                                VetoScenario.GENERIC,
-                                List.of(VetoOption.ACCEPT_GENERIC, VetoOption.GENERIC_DECLINE),
-                                null,
-                                null))
-                .when(hitl)
-                .decide(Mockito.anyString(), Mockito.any(), Mockito.any(), Mockito.any());
-        var service =
-                serviceWith(
-                        request ->
-                                calls.getAndIncrement() == 0
-                                        ? new VetoResponse(
-                                                "Act",
-                                                List.of(
-                                                        new ToolCall(
-                                                                "external_test",
-                                                                Map.of(),
-                                                                "approval-call")),
-                                                null,
-                                                null)
-                                        : new VetoResponse(null, null, "Done", null),
-                        2,
-                        engine,
-                        hitl);
-        @NonNull AgentWaitStore waits = Mockito.mock();
-        Mockito.when(waits.load(Mockito.any(), Mockito.anyString())).thenReturn(Optional.empty());
-        AtomicReference<AgentWaitStore.@Nullable Wait> saved = new AtomicReference<>();
-        Mockito.doAnswer(
-                        invocation -> {
-                            AgentWaitStore.Wait value = invocation.getArgument(2);
-                            if ((failure.equals("APPROVAL_SAVE") && value != null)
-                                    || (failure.equals("RESOLUTION_SAVE") && value == null))
-                                throw new IllegalStateException("checkpoint unavailable");
-                            saved.set(value);
-                            return null;
-                        })
-                .when(waits)
-                .save(Mockito.any(), Mockito.anyString(), Mockito.any());
-        service.attachWaitStore(waits);
-        if (failure.equals("POLICY"))
-            Mockito.doReturn(new ApprovalDecision.Refused("Test policy denial"))
-                    .when(hitl)
-                    .decide(Mockito.anyString(), Mockito.any(), Mockito.any(), Mockito.any());
-        AtomicInteger prompts = new AtomicInteger();
-        try {
-            var result =
-                    service.submit(
-                            "approval-checkpoint",
-                            "Ask me",
-                            binding("System"),
-                            EPISODE_TIMEOUT,
-                            null,
-                            prompt -> {
-                                prompts.incrementAndGet();
-                                assertEquals(
-                                        AgentWaitStore.Reason.APPROVAL,
-                                        Nullness.requireNonNull(saved.get()).reason());
-                                if (failure.equals("POLICY")) {
-                                    assertEquals(Danger.CRITICAL, prompt.danger());
-                                    assertEquals(
-                                            List.of(VetoOption.EXEC_DECLINE), prompt.options());
-                                }
-                                assertTrue(
-                                        hitl.resolveOption(
-                                                prompt.agentId(),
-                                                prompt.callId(),
-                                                (failure.equals("DECLINED")
-                                                                ? VetoOption.GENERIC_DECLINE
-                                                                : VetoOption.ACCEPT_GENERIC)
-                                                        .name()));
-                            },
-                            null,
-                            null,
-                            null);
-            assertEquals(failure.equals("NONE"), result.success(), result.message());
-            assertEquals(failure.equals("NONE") ? 1 : 0, executions.get());
-            assertEquals(failure.equals("APPROVAL_SAVE") ? 0 : 1, prompts.get());
-            if (failure.equals("DECLINED") || failure.equals("POLICY")) {
-                assertEquals(1, calls.get(), "Refusal must not automatically retry");
-                assertEquals(
-                        failure.equals("DECLINED"),
-                        result.message().contains("Approval was requested"),
-                        result.message());
-            }
-            if (failure.equals("RESOLUTION_SAVE"))
-                assertEquals(
-                        AgentWaitStore.Reason.APPROVAL,
-                        Nullness.requireNonNull(saved.get()).reason());
-        } finally {
-            service.remove("approval-checkpoint");
-        }
-    }
-
-    @ParameterizedTest
     @ValueSource(strings = {"APPROVAL", "BREAKER", "QUESTION"})
-    void recoveredExecutionWaitBlocksNotificationsAndNeedsExplicitUserInput(@NonNull String reason)
-            throws Exception {
+    void recordedUnfinishedRequestBlocksNotificationsUntilExplicitInput() throws Exception {
         CountDownLatch called = new CountDownLatch(1);
         List<VetoRequest> requests = new CopyOnWriteArrayList<>();
         var service =
@@ -858,15 +636,6 @@ class AgentRunnerTest {
                             called.countDown();
                             return new VetoResponse(null, null, "Handled", null);
                         });
-        @NonNull AgentWaitStore waits = Mockito.mock();
-        Mockito.when(waits.load(Mockito.any(), Mockito.anyString()))
-                .thenReturn(
-                        Optional.of(
-                                new AgentWaitStore.Wait(
-                                        Nullness.requireNonNull(
-                                                AgentWaitStore.Reason.valueOf(reason)),
-                                        "old-request")));
-        service.attachWaitStore(waits);
         UUID session = UUID.randomUUID();
         String id = UUID.randomUUID().toString();
         var agent =
@@ -886,198 +655,20 @@ class AgentRunnerTest {
         agent.attachMonitor(monitor);
         try {
             assertEquals(AgentState.WAITING, agent.state());
-            Mockito.verify(waits).load(session, id);
-            assertEquals(reason, agent.executionWaitReason());
             agent.resume();
             agent.signalMonitor();
             assertFalse(called.await(150, TimeUnit.MILLISECONDS));
             Mockito.verify(monitor, Mockito.never())
                     .pending(Mockito.anyString(), Mockito.anyString());
-            Mockito.doThrow(new IllegalStateException("save failed"))
-                    .when(waits)
-                    .save(session, id, null);
-            agent.submit("continue");
-            assertFalse(agent.await(EPISODE_TIMEOUT).success());
-            assertEquals(0, requests.size());
-            assertEquals(reason, agent.executionWaitReason());
-            Mockito.doNothing().when(waits).save(session, id, null);
             agent.submit("continue");
             assertTrue(agent.await(EPISODE_TIMEOUT).success());
             assertEquals(1, requests.size());
             assertTrue(agent.executionWaitReason() == null);
-            if (reason.equals("BREAKER"))
-                assertTrue(requests.get(0).messages().toString().contains("Explain TCP"));
-        } finally {
-            service.remove(session.toString());
-            assertTrue(agent.awaitTermination(Duration.ofSeconds(5)));
-        }
-    }
-
-    @Test
-    void restoredPauseKeepsNotificationPendingUntilExplicitResume() throws Exception {
-        CountDownLatch called = new CountDownLatch(1);
-        var service =
-                serviceWith(
-                        request -> {
-                            called.countDown();
-                            return new VetoResponse(null, null, "Notification handled", null);
-                        });
-        @NonNull AgentPauseStore pauses = Mockito.mock();
-        Mockito.when(pauses.load(Mockito.any(), Mockito.anyString())).thenReturn(true);
-        service.attachPauseStore(pauses);
-        @NonNull KeysteadVault vault = Mockito.mock();
-        service.attachMonitorVault(vault);
-        UUID session = UUID.randomUUID();
-        String id = UUID.randomUUID().toString();
-        var agent =
-                (VetoAgent)
-                        service.getOrCreateAgent(
-                                session.toString(),
-                                id,
-                                binding("System"),
-                                List.of(),
-                                UUID.randomUUID(),
-                                "owner",
-                                "D:/IdeaProjects/veto/work/tmp/unfinished-group",
-                                0,
-                                ToolResultPresentationMode.BASIC,
-                                false);
-        var event =
-                new MonitorRecord.Event(
-                        "paused:timer", "timer", "TIME_ONCE", "Review", Instant.now());
-        List<MonitorRecord.@NonNull Event> pending = new CopyOnWriteArrayList<>(List.of(event));
-        @NonNull MonitorService monitor = Mockito.mock();
-        Mockito.when(monitor.pending(id, session.toString()))
-                .thenAnswer(invocation -> List.copyOf(pending));
-        Mockito.doAnswer(
-                        invocation -> {
-                            pending.clear();
-                            return null;
-                        })
-                .when(monitor)
-                .acknowledge(id, event);
-        agent.attachMonitor(monitor);
-        try {
-            agent.signalMonitor();
-            assertFalse(called.await(150, TimeUnit.MILLISECONDS));
-            assertEquals(List.of(event), pending);
-            Mockito.verify(monitor, Mockito.never()).activationStarted(id, event);
-            agent.resume();
-            assertFalse(called.await(150, TimeUnit.MILLISECONDS));
-            assertEquals(List.of(event), pending);
-            Mockito.when(vault.isUnlocked("owner")).thenReturn(true);
-            agent.signalMonitor();
-            assertTrue(called.await(5, TimeUnit.SECONDS));
-            assertTrue(agent.await(EPISODE_TIMEOUT).success());
-            Mockito.verify(monitor).activationStarted(id, event);
-            assertTrue(pending.isEmpty());
-        } finally {
-            service.remove(session.toString());
-            assertTrue(agent.awaitTermination(Duration.ofSeconds(5)));
-        }
-    }
-
-    @Test
-    void restoredPauseHoldsWorkUntilResumeIsSaved() throws Exception {
-        AtomicInteger calls = new AtomicInteger();
-        var service =
-                serviceWith(
-                        request -> {
-                            calls.incrementAndGet();
-                            return new VetoResponse(null, null, "done", null);
-                        });
-        @NonNull AgentPauseStore pauses = Mockito.mock();
-        Mockito.when(pauses.load(Mockito.any(), Mockito.anyString())).thenReturn(true);
-        service.attachPauseStore(pauses);
-        UUID session = UUID.randomUUID();
-        String id = UUID.randomUUID().toString();
-        var agent =
-                (VetoAgent)
-                        service.getOrCreateAgent(
-                                session.toString(),
-                                id,
-                                binding("System"),
-                                List.of(),
-                                UUID.randomUUID(),
-                                null,
-                                "D:/IdeaProjects/veto/work/tmp/unfinished-group",
-                                0,
-                                ToolResultPresentationMode.BASIC,
-                                false);
-        try {
-            assertEquals(AgentState.PAUSED, agent.state());
-            Mockito.verify(pauses).load(session, id);
-            agent.submit("Review");
-            assertThrows(
-                    ToolDocs.nonNullClass(TimeoutException.class),
-                    () -> agent.result().get(150, TimeUnit.MILLISECONDS));
-            assertEquals(0, calls.get());
-            Mockito.doThrow(new IllegalStateException("storage unavailable"))
-                    .when(pauses)
-                    .save(session, id, false);
-            assertThrows(IllegalStateException.class, agent::resume);
-            assertEquals(AgentState.PAUSED, agent.state());
-            assertFalse(agent.result().isDone());
-            assertEquals(0, calls.get());
-            Mockito.doNothing().when(pauses).save(session, id, false);
-            agent.resume();
-            assertTrue(agent.await(EPISODE_TIMEOUT).success());
-            assertEquals(1, calls.get());
-        } finally {
-            service.remove(session.toString());
-            assertTrue(agent.awaitTermination(Duration.ofSeconds(5)));
-        }
-    }
-
-    @Test
-    void restoredPauseResumePreservesBreakerUntilExplicitUserRequest() throws Exception {
-        AtomicInteger calls = new AtomicInteger();
-        var service =
-                serviceWith(
-                        request -> {
-                            calls.incrementAndGet();
-                            return new VetoResponse(null, null, "continued", null);
-                        });
-        @NonNull AgentPauseStore pauses = Mockito.mock();
-        @NonNull AgentWaitStore waits = Mockito.mock();
-        Mockito.when(pauses.load(Mockito.any(), Mockito.anyString())).thenReturn(true);
-        Mockito.when(waits.load(Mockito.any(), Mockito.anyString()))
-                .thenReturn(
-                        Optional.of(
-                                new AgentWaitStore.Wait(
-                                        AgentWaitStore.Reason.BREAKER, "old-request")));
-        service.attachPauseStore(pauses);
-        service.attachWaitStore(waits);
-        UUID session = UUID.randomUUID();
-        String id = UUID.randomUUID().toString();
-        var agent =
-                (VetoAgent)
-                        service.getOrCreateAgent(
-                                session.toString(),
-                                id,
-                                binding("System"),
-                                List.of(TurnRecord.userPrompt(1, "Original request")),
-                                UUID.randomUUID(),
-                                null,
-                                "D:/IdeaProjects/veto/work/tmp/unfinished-group",
-                                0,
-                                ToolResultPresentationMode.BASIC,
-                                false);
-        try {
-            assertEquals(AgentState.PAUSED, agent.state());
-            assertEquals("BREAKER", agent.executionWaitReason());
-            agent.resume();
-            assertEquals(AgentState.WAITING, agent.state());
-            assertEquals("BREAKER", agent.executionWaitReason());
-            assertEquals(0, calls.get());
-            Mockito.verify(pauses).save(session, id, false);
-            Mockito.verify(waits, Mockito.never()).save(session, id, null);
-
-            agent.submit("Continue explicitly");
-            assertTrue(agent.await(EPISODE_TIMEOUT).success());
-            assertEquals(1, calls.get());
-            assertTrue(agent.executionWaitReason() == null);
-            Mockito.verify(waits).save(session, id, null);
+            assertTrue(requests.get(0).messages().toString().contains("Explain TCP"));
+            assertTrue(requests.get(0).messages().toString().contains("[Runtime interruption]"));
+            assertTrue(
+                    agent.history().stream()
+                            .anyMatch(turn -> "INTERRUPTED".equals(turn.payload().get("outcome"))));
         } finally {
             service.remove(session.toString());
             assertTrue(agent.awaitTermination(Duration.ofSeconds(5)));
@@ -2708,9 +2299,6 @@ class AgentRunnerTest {
                 };
 
         AgentService service = serviceWith(caller, 1L);
-        @NonNull AgentWaitStore waits = Mockito.mock();
-        Mockito.when(waits.load(Mockito.any(), Mockito.anyString())).thenReturn(Optional.empty());
-        service.attachWaitStore(waits);
         AgentResult tripped =
                 service.submit(
                         "breaker-continue",
@@ -2718,15 +2306,6 @@ class AgentRunnerTest {
                         binding("You are a helpful assistant."),
                         EPISODE_TIMEOUT);
         assertFalse(tripped.success(), "the first episode must trip at the one-call ceiling");
-        Mockito.verify(waits)
-                .save(
-                        Mockito.any(),
-                        Mockito.anyString(),
-                        Mockito.argThat(
-                                value ->
-                                        value != null
-                                                && value.reason()
-                                                        == AgentWaitStore.Reason.BREAKER));
         assertEquals(Boolean.TRUE, tripped.metadata().get("breakerTrip"));
 
         AgentResult resumed =

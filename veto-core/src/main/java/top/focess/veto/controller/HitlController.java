@@ -61,6 +61,13 @@ public class HitlController {
                         .toList());
     }
 
+    /** Recorded decisions, excluding credential-bearing matching arguments. */
+    @GetMapping("/{name}/veto-history")
+    public @NonNull ResponseEntity<?> history(@PathVariable @NonNull String name) {
+        String agentId = RequestAuthorization.requireAgentId(name, sessionService, vault);
+        return ResponseEntity.ok(hitlRegistry.decisions(agentId));
+    }
+
     /**
      * POST /api/sessions/{name}/vetoes/{callId} - resolve a parked veto with {@code {option}}, one
      * of the offered option names. 404 when no veto is parked under that callId (already resolved,

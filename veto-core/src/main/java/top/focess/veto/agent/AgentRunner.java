@@ -192,53 +192,35 @@ public class AgentRunner {
     private volatile @NonNull AgentState state = AgentState.IDLE;
     private final @NonNull Object pauseLock = new Object();
     private volatile boolean userPaused;
-    private AgentPauseStore pauseStore;
     private KeysteadVault monitorVault;
 
     public void attachMonitorVault(@NonNull KeysteadVault vault) {
         monitorVault = vault;
     }
 
-    private AgentWaitStore waitStore;
-    private volatile AgentWaitStore.Wait executionWait;
-    private volatile boolean recoveredWait;
-
-    public void attachWaitStore(@NonNull AgentWaitStore store) {
-        executionWait = store.load(sessionId, agentId).orElse(null);
-        waitStore = store;
-        AgentWaitStore.Wait saved = executionWait;
-        if (saved != null) {
-            recoveredWait = true;
-            activeRequestId = saved.requestId();
-            awaitingBreakerContinuation = saved.reason() == AgentWaitStore.Reason.BREAKER;
-        }
+    private enum WaitReason {
+        APPROVAL,
+        QUESTION,
+        BREAKER
     }
 
-    private void saveExecutionWait(AgentWaitStore.Reason reason) {
-        AgentWaitStore.Wait value =
-                reason == null ? null : new AgentWaitStore.Wait(reason, activeRequestId);
-        AgentWaitStore store = waitStore;
-        if (store != null) store.save(sessionId, agentId, value);
-        executionWait = value;
-        if (value == null) recoveredWait = false;
+    private volatile WaitReason executionWait;
+    private volatile boolean recoveredWait;
+
+    private void saveExecutionWait(WaitReason reason) {
+        executionWait = reason;
+        if (reason == null) recoveredWait = false;
         notifyExecutionChanged();
     }
 
     public String executionWaitReason() {
-        AgentWaitStore.Wait saved = executionWait;
-        return saved == null ? null : saved.reason().name();
-    }
-
-    public void attachPauseStore(@NonNull AgentPauseStore store) {
-        userPaused = store.load(sessionId, agentId);
-        pauseStore = store;
+        WaitReason reason = executionWait;
+        return reason == null ? null : reason.name();
     }
 
     public void setUserPaused(boolean paused) {
         synchronized (pauseLock) {
             if (!sessionAlive) throw new IllegalStateException("Agent has terminated");
-            AgentPauseStore store = pauseStore;
-            if (store != null) store.save(sessionId, agentId, paused);
             userPaused = paused;
             pauseLock.notifyAll();
         }
@@ -612,6 +594,7 @@ public class AgentRunner {
         MonitorService service = monitorService;
         if (service == null
                 || userPaused
+                || recoveredWait
                 || executionWait != null
                 || awaitingBreakerContinuation
                 || state == AgentState.PAUSED
@@ -844,6 +827,18 @@ public class AgentRunner {
 
     private void processUserPrompt(@NonNull String prompt) {
         prompt = captureUserPrompt(prompt);
+        if (recoveredWait) {
+            appendTurn(
+                    new TurnRecord(
+                            ++turnNumber,
+                            TurnType.EXECUTION_ERROR,
+                            Map.of(
+                                    "outcome",
+                                    "INTERRUPTED",
+                                    "content",
+                                    "The previous execution was interrupted by a backend restart. Its uncompleted plans are not pending; tool effects without recorded results remain unknown."),
+                            null));
+        }
         completionToolFinished = false;
         declinedCallSignatures.clear();
         // Actively tell the agent about background tasks that ended since it last ran — drained
@@ -864,7 +859,7 @@ public class AgentRunner {
         if (resumeContext == null || activeRequestId == null)
             activeRequestId = UUID.randomUUID().toString();
         this.activeUserTask = resumeContext != null ? resumeContext : prompt;
-        if (executionWait != null) saveExecutionWait(null);
+        saveExecutionWait(null);
         injectMonitorEvents();
         awaitingBreakerContinuation = false;
         refreshSystemHistory();
@@ -1898,6 +1893,7 @@ public class AgentRunner {
             for (ToolCall call : calls) {
                 ToolDefinition def = toolEngine.resolveDefinition(call.toolName());
                 if (def == null || def instanceof AgentToolDefinition) {
+                    if (def != null) hitlRegistry.recordInternalApproval(agentId, call);
                     decisions.add(ApprovalDecision.AUTO_APPROVE);
                     executionPermits.add(ToolExecutionPermit.empty());
                 } else {
@@ -2079,7 +2075,7 @@ public class AgentRunner {
             // (e) plugin postAction chain
             checkTaskCancellation();
             boolean waitsForAnswer = def.capability() == ToolCapability.USER_INTERACTION;
-            if (waitsForAnswer) saveExecutionWait(AgentWaitStore.Reason.QUESTION);
+            if (waitsForAnswer) saveExecutionWait(WaitReason.QUESTION);
             ToolResult transformed = toolEngine.execute(call, def);
             checkTaskCancellation();
             for (LoopInterceptor plugin : interceptors) {
@@ -2161,6 +2157,7 @@ public class AgentRunner {
         // (a) early-route agent tools past the Gateway + HITL.
         ApprovalDecision decision = ApprovalDecision.AUTO_APPROVE;
         ToolExecutionPermit executionPermit = ToolExecutionPermit.empty();
+        if (def instanceof AgentToolDefinition) hitlRegistry.recordInternalApproval(agentId, call);
         if (!(def instanceof AgentToolDefinition)) {
             var result = screenToolCall(call, def, null);
             executionPermit = result.executionPermit();
@@ -2547,7 +2544,7 @@ public class AgentRunner {
      * message. The caller still throws {@code BreakerTripException} to end the episode.
      */
     private void tripBreaker() {
-        saveExecutionWait(AgentWaitStore.Reason.BREAKER);
+        saveExecutionWait(WaitReason.BREAKER);
         awaitingBreakerContinuation = true;
         String notice = LoopBreaker.tripNotice(locale);
         emitMessage(notice);
@@ -2617,12 +2614,12 @@ public class AgentRunner {
     }
 
     private void appendTurn(@NonNull TurnRecord turn) {
-        AgentWaitStore.Wait waiting = executionWait;
+        WaitReason waiting = executionWait;
         boolean required =
                 turn.type() == TurnType.MONITOR_EVENT
                         || (turn.type() == TurnType.TOOL_RESPONSE
                                 && waiting != null
-                                && waiting.reason() == AgentWaitStore.Reason.QUESTION);
+                                && waiting == WaitReason.QUESTION);
         if (turn.type() == TurnType.REWIND || turn.type() == TurnType.AGENT_INIT)
             contextUsage.reset();
         if (turn.type() == TurnType.AGENT_INIT) {
@@ -2825,6 +2822,7 @@ public class AgentRunner {
             }
         }
         turnNumber = max;
+        recoveredWait = RecordRecovery.requiresExplicitContinuation(replayed);
     }
 
     // ── completion ──────────────────────────────────────────────────────────
@@ -2978,7 +2976,7 @@ public class AgentRunner {
     // ── state + API ops (called by VetoAgent / transport) ────────────────────
 
     private void transitionTo(@NonNull AgentState next) {
-        if (next == AgentState.INTERCEPTED) saveExecutionWait(AgentWaitStore.Reason.APPROVAL);
+        if (next == AgentState.INTERCEPTED) saveExecutionWait(WaitReason.APPROVAL);
         if (this.state == next) return;
         this.state = next;
         notifyExecutionChanged();

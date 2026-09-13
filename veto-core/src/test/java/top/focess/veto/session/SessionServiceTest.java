@@ -7,6 +7,7 @@ import java.lang.reflect.Field;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -18,6 +19,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.agent.Agent;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.TurnRecord;
+import top.focess.veto.agent.TurnType;
 import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.llm.core.ProviderType;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
@@ -62,12 +64,13 @@ class SessionServiceTest {
         assertFalse(service.activateForMonitor(id, "bob", primary.getId()));
         assertFalse(service.activateForMonitor(id, "alice", primary.getId()));
         ReflectionTestUtils.setField(primary, "monitorRecoveryVersion", 1);
-        ReflectionTestUtils.setField(primary, "userPaused", true);
         assertFalse(service.activateForMonitor(id, "alice", primary.getId()));
-        ReflectionTestUtils.setField(primary, "userPaused", false);
-        ReflectionTestUtils.setField(primary, "executionWait", "QUESTION");
-        assertFalse(service.activateForMonitor(id, "alice", primary.getId()));
-        ReflectionTestUtils.setField(primary, "executionWait", null);
+        replay =
+                List.of(
+                        TurnRecord.userPrompt(1, "Original task"),
+                        new TurnRecord(
+                                2, TurnType.ASSISTANT_RESPONSE, Map.of("content", "Done"), null));
+        when(history.load(session.getId(), primary.getId())).thenReturn(replay);
         var reader = AgentEntity.spawned("reader", session.getId(), "Reader");
         ReflectionTestUtils.setField(reader, "monitorRecoveryVersion", 1);
         ReflectionTestUtils.setField(reader, "runtimeRole", "STANDALONE");

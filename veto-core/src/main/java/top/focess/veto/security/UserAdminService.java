@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import top.focess.veto.agent.intercept.HitlRecordRepository;
 import top.focess.veto.model.AgentInstanceRepository;
 import top.focess.veto.model.AgentPatternRepository;
 import top.focess.veto.model.SessionEntity;
@@ -29,6 +30,13 @@ import top.focess.veto.vault.UserRegistry;
  */
 @Service
 public class UserAdminService {
+    private HitlRecordRepository hitlRecords;
+
+    @Autowired
+    public void attachHitlRecords(@NonNull HitlRecordRepository records) {
+        hitlRecords = records;
+    }
+
     private RequestContinuationStore continuations;
 
     @Autowired
@@ -89,6 +97,7 @@ public class UserAdminService {
         for (SessionEntity s : sessions.findByOwner(username)) {
             RequestContinuationStore store = continuations;
             if (store != null) store.deleteSession(s.getId());
+            if (hitlRecords != null) hitlRecords.deleteBySessionId(s.getId());
             agents.deleteBySessionId(s.getId());
         }
         sessions.deleteByOwner(username);

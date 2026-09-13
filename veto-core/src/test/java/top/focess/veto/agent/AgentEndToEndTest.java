@@ -16,7 +16,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
 import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.Role;
@@ -468,10 +467,6 @@ class AgentEndToEndTest {
         UUID sessionId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
         var service = serviceWith(scripted(thoughtOn("Report", "Mate finished.")));
-        @NonNull AgentPauseStore pauses = Mockito.mock();
-        @NonNull AgentWaitStore waits = Mockito.mock();
-        service.attachPauseStore(pauses);
-        service.attachWaitStore(waits);
         service.getOrCreateAgent(
                 sessionId.toString(),
                 UUID.randomUUID().toString(),
@@ -508,8 +503,6 @@ class AgentEndToEndTest {
                             requireField(ReflectionTestUtils.getField(mate, "runner")));
             assertEquals(sessionId, ReflectionTestUtils.getField(runner, "sessionId"));
             assertNotEquals(persona.id(), sessionId.toString());
-            Mockito.verify(pauses).load(sessionId, persona.id());
-            Mockito.verify(waits).load(sessionId, persona.id());
             mate.submit("Execute assigned work");
             assertTrue(mate.await(EPISODE_TIMEOUT).success());
             assertFalse(mate.history().isEmpty());
