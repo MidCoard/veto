@@ -7,6 +7,25 @@ import org.junit.jupiter.api.Test;
 
 class SecretMaskerSpanTest {
     @Test
+    void chinesePunctuationDoesNotConsumeTheFollowingUserInstruction() {
+        String value = "ghp_SYNTHETIC0913INVALIDUSER00000000000000000";
+        for (String separator : List.of("。", "，", "；", "：", "、")) {
+            String input = "token=" + value + separator + "请用 GUIDE";
+            var matches = SecretMasker.matches(input);
+            assertEquals(1, matches.size());
+            assertEquals(
+                    value, input.substring(matches.getFirst().start(), matches.getFirst().end()));
+            assertTrue(SecretMasker.mask(input).endsWith(separator + "请用 GUIDE"));
+        }
+    }
+
+    @Test
+    void generatedUuidReproducesTheReaderMetadataFalsePositive() {
+        String input = "{\"id\":\"12345678-abcd-4abc-8abc-123456789abc\",\"modelCalls\":4}";
+        assertEquals("{\"id\":\"[REDACTED_API_KEY]\",\"modelCalls\":4}", SecretMasker.mask(input));
+    }
+
+    @Test
     void originalOffsetsSurviveUnicodeAndRepeatedAssignments() {
         String input = "😀 password = alpha-secret; token: beta-secret token=beta-secret";
         var matches = SecretMasker.matches(input);

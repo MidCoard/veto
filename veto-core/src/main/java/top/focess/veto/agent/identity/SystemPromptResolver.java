@@ -9,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
+import top.focess.veto.agent.loop.PromptSource;
 
 /**
  * Resolves the agent's base system prompt (Layer 1 of the {@code PromptCompiler} assembly) from the
@@ -35,6 +36,7 @@ public class SystemPromptResolver {
             "General-purpose engineering assistant for workspace and code automation.";
 
     private final @NonNull String defaultPrompt;
+    private final @NonNull String standardSource = loadRules("veto/default-system-prompt.mdc");
     private final @NonNull String guidedPrompt;
     private final @NonNull String delegationPrompt;
     private final @NonNull String answerStyle = loadRules("veto/answer-style.md");
@@ -68,6 +70,17 @@ public class SystemPromptResolver {
      */
     public @NonNull String defaultPrompt() {
         return defaultPrompt;
+    }
+
+    /** Compile the versioned standard source; the legacy Markdown remains available separately. */
+    public PromptSource.@NonNull Rendered compileStandard(
+            @NonNull Map<String, String> blocks, boolean guidedEnabled) {
+        return PromptSource.compile(
+                "default-system-prompt.mdc",
+                standardSource,
+                blocks,
+                Map.of("guidedEnabled", guidedEnabled),
+                Map.of("common-answer", loadRules("veto/prompt-common-answer.md")));
     }
 
     /** Rules and examples included only when the session enables guided execution. */

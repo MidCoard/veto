@@ -350,6 +350,21 @@ public class PromptCompiler {
             String systemPromptBase,
             @NonNull ToolResultPresentationMode toolResultPresentation,
             boolean guidedEnabled) {
+        return linkSystemSource(
+                        persona,
+                        sessionWorkspace,
+                        systemPromptBase,
+                        toolResultPresentation,
+                        guidedEnabled)
+                .text();
+    }
+
+    public PromptSource.@NonNull Rendered linkSystemSource(
+            @NonNull AgentPersona persona,
+            @NonNull Workspace sessionWorkspace,
+            String systemPromptBase,
+            @NonNull ToolResultPresentationMode toolResultPresentation,
+            boolean guidedEnabled) {
         List<ToolDefinition> flatTools =
                 translator.translateTools(
                         availableTools(
@@ -374,7 +389,7 @@ public class PromptCompiler {
 
     // ── System message (compile/link) ───────────────────────────────────────────
 
-    private @NonNull String buildSystemMessage(
+    private PromptSource.@NonNull Rendered buildSystemMessage(
             @NonNull AgentPersona persona,
             @NonNull Workspace sessionWorkspace,
             String base,
@@ -383,14 +398,19 @@ public class PromptCompiler {
             boolean guidedEnabled) {
         String fixed = isolatedInstructions;
         if (fixed != null) {
-            return PromptTemplate.render(
-                    fixed,
-                    Map.of(
-                            "IDENTITY",
-                                    PromptBlocks.identity(persona.name(), persona.description()),
-                            "TOOLS", PromptBlocks.tools(flatTools),
-                            "RESULT_CONVENTIONS",
-                                    PromptBlocks.resultConventions(toolResultPresentation)));
+            return new PromptSource.Rendered(
+                    "legacy",
+                    PromptTemplate.render(
+                            fixed,
+                            Map.of(
+                                    "IDENTITY",
+                                            PromptBlocks.identity(
+                                                    persona.name(), persona.description()),
+                                    "TOOLS", PromptBlocks.tools(flatTools),
+                                    "RESULT_CONVENTIONS",
+                                            PromptBlocks.resultConventions(
+                                                    toolResultPresentation))),
+                    List.of());
         }
         SystemPromptResolver resolver = systemPromptResolver;
         if (resolver == null) throw new IllegalStateException("Missing standard prompt resolver");
@@ -420,7 +440,7 @@ public class PromptCompiler {
         blocks.put(
                 "BOUNDARIES", PromptBlocks.boundaries(deployerPolicy, sessionWorkspace.pathMode()));
         blocks.put("SKILLS", PromptBlocks.skills(persona.registeredSkills()));
-        return PromptTemplate.render(resolver.defaultPrompt(), blocks);
+        return resolver.compileStandard(blocks, guidedEnabled);
     }
 
     private @NonNull List<ChatMessage> fitIsolatedBudget(

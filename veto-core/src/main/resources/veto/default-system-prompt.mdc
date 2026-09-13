@@ -1,0 +1,48 @@
+---
+version: 1
+id: standard
+requires: [LAW, IDENTITY, ROLE, DELEGATION_RULES, WORKSPACE, ENVIRONMENT, BOUNDARIES, INSTRUCTION_PROVENANCE, OPERATING_CONTRACT, EXTERNAL_SOURCES, ANSWER_STYLE, PRESENTATION_CAPABILITIES, TOOL_CALLS, SKILLS, RESULT_CONVENTIONS, TOOLS, RESPONSE_PROTOCOL, GUIDED_PROTOCOL, guidedEnabled]
+---
+{{LAW}}
+
+@block identity priority=100 required
+{{IDENTITY}}
+@end
+
+{{ROLE}}
+
+{{DELEGATION_RULES}}
+
+{{WORKSPACE}}
+
+{{ENVIRONMENT}}
+
+@block boundaries priority=100 required
+{{BOUNDARIES}}
+@end
+
+{{INSTRUCTION_PROVENANCE}}
+
+{{OPERATING_CONTRACT}}
+
+{{EXTERNAL_SOURCES}}
+
+@include common-answer
+
+{{TOOL_CALLS}}
+
+{{SKILLS}}
+
+{{RESULT_CONVENTIONS}}
+
+{{TOOLS}}
+
+@block response priority=100 required
+{{RESPONSE_PROTOCOL}}
+@end
+
+@if guidedEnabled
+@block guided priority=80 required
+{{GUIDED_PROTOCOL}}
+@end
+@endif

@@ -59,6 +59,7 @@ import top.focess.veto.agent.loop.LoopBreaker;
 import top.focess.veto.agent.loop.MessageCitations;
 import top.focess.veto.agent.loop.ProgramValidator;
 import top.focess.veto.agent.loop.PromptCompiler;
+import top.focess.veto.agent.loop.PromptSource;
 import top.focess.veto.agent.loop.ResponseEnforcer;
 import top.focess.veto.agent.loop.Scope;
 import top.focess.veto.agent.loop.StopAction;
@@ -1181,7 +1182,7 @@ public class AgentRunner {
                     appendThought(response);
                     String message = response.message();
                     if (message != null && !message.isBlank()) {
-                        emitMessage(message, lastCitations);
+                        emitMessage(message, lastCitations, lastModelCallId);
                     }
                     AgentPersona programPersona = persona;
                     runGuided();
@@ -1200,7 +1201,7 @@ public class AgentRunner {
             appendThought(response);
             String message = response.message();
             if (message != null && !message.isBlank()) {
-                emitMessage(message, lastCitations);
+                emitMessage(message, lastCitations, lastModelCallId);
             }
             List<ToolCall> responseCalls = response.calls();
             if (responseCalls != null && !responseCalls.isEmpty()) {
@@ -1245,7 +1246,13 @@ public class AgentRunner {
             switch (action) {
                 case ToolAction tool -> {
                     ToolCall call = new ToolCall(tool.tool(), tool.resolveInputs(scope));
-                    ToolResult result = executeOneCall(call);
+                    ToolResult result;
+                    currentToolModelCallId = programModelCallId;
+                    try {
+                        result = executeOneCall(call);
+                    } finally {
+                        currentToolModelCallId = null;
+                    }
                     if (activeProgram != program) {
                         return; // The tool replaced the role and cleared this program and scope.
                     }
@@ -1274,17 +1281,18 @@ public class AgentRunner {
                     VetoResponse response = callGenerate(gen);
                     scope.bindGenerate(gen.outputs(), response);
                     String generatedMessage = response.message();
-                    var generatedSources = lastCitations;
+                    MessageCitations.Bound generatedSources = lastCitations;
                     if (gen.outputs() != null) {
-                        for (var output : gen.outputs().entrySet()) {
+                        for (Map.Entry<String, String> output : gen.outputs().entrySet()) {
                             generatedCitations.remove(output.getKey());
-                            if ("message".equals(output.getValue())
-                                    && generatedMessage != null
-                                    && generatedSources != null)
+                            if ("message".equals(output.getValue()) && generatedMessage != null)
                                 generatedCitations.put(
                                         output.getKey(),
                                         new GeneratedCitation(
-                                                scope, generatedMessage, generatedSources));
+                                                scope,
+                                                generatedMessage,
+                                                generatedSources,
+                                                lastModelCallId));
                         }
                     }
                     scope.put("step_ok:" + gen.id(), true);
@@ -1329,7 +1337,7 @@ public class AgentRunner {
                                                                     "Unbound STOP result: "
                                                                             + resultBinding))
                                     : scope.synthesize();
-                    var citation =
+                    GeneratedCitation citation =
                             resultBinding == null ? null : generatedCitations.get(resultBinding);
                     emitMessage(
                             result,
@@ -1337,6 +1345,11 @@ public class AgentRunner {
                                             && citation.scope() == scope
                                             && citation.message().equals(result)
                                     ? citation.bound()
+                                    : null,
+                            citation != null
+                                            && citation.scope() == scope
+                                            && citation.message().equals(result)
+                                    ? citation.modelCallId()
                                     : null);
                     generatedCitations.clear();
                     activeProgram = null;
@@ -1379,6 +1392,7 @@ public class AgentRunner {
                             "Tool is not available in this role: " + tool.tool());
             }
             this.activeProgram = program;
+            this.programModelCallId = lastModelCallId;
             this.programCounter = 0;
             this.currentSteps = 0;
             return true;
@@ -1426,6 +1440,7 @@ public class AgentRunner {
         int schemaRetries = 0;
         int citationRetries = 0;
         VetoResponse citationCandidate = null;
+        String candidateModelCallId = null;
         MessageCitations.Bound candidateSources = null;
         for (; ; ) {
             VetoResponse response;
@@ -1448,6 +1463,7 @@ public class AgentRunner {
                         estimatedTokens,
                         correctionFactor);
                 int requestThroughTurn = turnNumber;
+                lastModelCallId = null;
                 LlmSystemUsage.begin();
                 try {
                     checkTaskCancellation();
@@ -1459,6 +1475,8 @@ public class AgentRunner {
                         Map<String, Object> measurement =
                                 contextUsage.measure(request, measured, requestThroughTurn);
                         measurement.put("throughTurn", requestThroughTurn);
+                        lastModelCallId = UUID.randomUUID().toString();
+                        measurement.put("modelCallId", lastModelCallId);
                         recordUsage(requestThroughTurn, measurement);
                     }
                     if (!measurements.isEmpty()
@@ -1522,6 +1540,7 @@ public class AgentRunner {
                         }
                         citationError += order;
                         citationCandidate = checked;
+                        candidateModelCallId = lastModelCallId;
                         candidateSources = bound;
                         citationRetries++;
                         log.warn(
@@ -1546,6 +1565,7 @@ public class AgentRunner {
                 if (schemaRetries == MAX_SCHEMA_RETRIES) {
                     if (citationCandidate != null) {
                         lastCitations = candidateSources;
+                        lastModelCallId = candidateModelCallId;
                         return citationCandidate;
                     }
                     throw e;
@@ -1716,13 +1736,18 @@ public class AgentRunner {
                 recoveryContext);
     }
 
+    private PromptSource.Rendered currentSystemSource;
+
     private @NonNull String linkCurrentSystemMessage() {
-        return promptCompiler.linkSystemMessage(
-                persona,
-                gateway.workspace(),
-                binding.systemPromptBase(),
-                toolResultPresentation,
-                guidedEnabled);
+        PromptSource.Rendered source =
+                promptCompiler.linkSystemSource(
+                        persona,
+                        gateway.workspace(),
+                        binding.systemPromptBase(),
+                        toolResultPresentation,
+                        guidedEnabled);
+        currentSystemSource = source;
+        return source.text();
     }
 
     /** Record configuration changes explicitly rather than silently recompiling an old init. */
@@ -1840,12 +1865,13 @@ public class AgentRunner {
 
     private void executeToolCalls(@NonNull List<ToolCall> calls, String thought) {
         transitionTo(AgentState.WAITING);
+        currentToolModelCallId = lastModelCallId;
         try {
 
             List<ToolCall> callsNeedingDecision = new ArrayList<>(calls.size());
             for (ToolCall call : calls) {
                 if (declinedCallSignatures.contains(toolCallSignature(call))) {
-                    appendTurn(TurnRecord.toolCall(++turnNumber, call));
+                    appendToolCall(call);
                     appendToolResponse(
                             call.toolName(),
                             call.callId(),
@@ -1954,7 +1980,7 @@ public class AgentRunner {
                 if (!batchApproved) {
                     // Synthesize ToolResponse(status=REFUSED) for all calls, no execution, go IDLE
                     for (ToolCall call : calls) {
-                        appendTurn(TurnRecord.toolCall(++turnNumber, call));
+                        appendToolCall(call);
                         appendToolResponse(
                                 call.toolName(),
                                 call.callId(),
@@ -1971,7 +1997,7 @@ public class AgentRunner {
             for (int i = 0; i < calls.size(); i++) {
                 ToolCall call = calls.get(i);
                 if (skippedCalls.contains(call)) {
-                    appendTurn(TurnRecord.toolCall(++turnNumber, call));
+                    appendToolCall(call);
                     appendToolResponse(
                             call.toolName(),
                             call.callId(),
@@ -1995,6 +2021,7 @@ public class AgentRunner {
             }
 
         } finally {
+            currentToolModelCallId = null;
             if (state == AgentState.WAITING || state == AgentState.INTERCEPTED) {
                 transitionTo(AgentState.RUNNING);
             }
@@ -2016,7 +2043,7 @@ public class AgentRunner {
             @NonNull ApprovalDecision decision,
             @NonNull ToolExecutionPermit screenedPermit) {
         awaitUserResume();
-        appendTurn(TurnRecord.toolCall(++turnNumber, call));
+        appendToolCall(call);
 
         ToolExecutionPermit executionPermit;
         try {
@@ -2139,13 +2166,13 @@ public class AgentRunner {
             executionPermit = result.executionPermit();
             decision = hitlRegistry.decide(agentId, call, def, result);
             if (decision instanceof ApprovalDecision.AutoBlock ab) {
-                appendTurn(TurnRecord.toolCall(++turnNumber, call));
+                appendToolCall(call);
                 appendObservation(call.toolName(), "Blocked: " + ab.reason());
                 return new ToolResult(
                         call.toolName(), call.callId(), false, "blocked: " + ab.reason());
             }
             if (decision instanceof ApprovalDecision.Refused r) {
-                appendTurn(TurnRecord.toolCall(++turnNumber, call));
+                appendToolCall(call);
                 appendToolResponse(
                         call.toolName(), call.callId(), refusedObservation(r.reason()), false);
                 throw new VetoRefusedException();
@@ -2171,7 +2198,7 @@ public class AgentRunner {
 
     private @NonNull ToolResult toolNotFound(@NonNull ToolCall call) {
         String observation = "Tool not found: " + call.toolName();
-        appendTurn(TurnRecord.toolCall(++turnNumber, call));
+        appendToolCall(call);
         appendObservation(call.toolName(), observation);
         return new ToolResult(call.toolName(), call.callId(), false, observation);
     }
@@ -2251,7 +2278,7 @@ public class AgentRunner {
         InterceptResolution resolution = awaitResolution(callId);
         transitionTo(AgentState.WAITING);
         if (resolution.isRefusal()) {
-            appendTurn(TurnRecord.toolCall(++turnNumber, call));
+            appendToolCall(call);
             appendToolResponse(
                     call.toolName(),
                     call.callId(),
@@ -2397,6 +2424,7 @@ public class AgentRunner {
         } else {
             return;
         }
+        if (lastModelCallId != null) payload.put("model_call_id", lastModelCallId);
         if (lastReasoningContent != null && !lastReasoningContent.isBlank()) {
             payload.put("reasoning_content", lastReasoningContent);
         }
@@ -2409,18 +2437,30 @@ public class AgentRunner {
     }
 
     private MessageCitations.Bound lastCitations;
+    private String lastModelCallId;
+    private String currentToolModelCallId;
+    private String programModelCallId;
     private final @NonNull Map<String, GeneratedCitation> generatedCitations = new HashMap<>();
 
     private record GeneratedCitation(
-            @NonNull Scope scope, @NonNull String message, MessageCitations.@NonNull Bound bound) {}
+            @NonNull Scope scope,
+            @NonNull String message,
+            MessageCitations.Bound bound,
+            String modelCallId) {}
 
     private void emitMessage(@NonNull String message) {
         emitMessage(message, null);
     }
 
     private void emitMessage(@NonNull String message, MessageCitations.Bound citations) {
+        emitMessage(message, citations, null);
+    }
+
+    private void emitMessage(
+            @NonNull String message, MessageCitations.Bound citations, String modelCallId) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("content", message);
+        if (modelCallId != null) payload.put("model_call_id", modelCallId);
         if (citations != null && !citations.checks().isEmpty())
             payload.put("citation_context", citations);
         appendTurn(new TurnRecord(++turnNumber, TurnType.ASSISTANT_RESPONSE, payload, null));
@@ -2565,6 +2605,17 @@ public class AgentRunner {
             turnLogService.updateMetadata(updated, sessionId, userId, agentId);
     }
 
+    private void appendToolCall(@NonNull ToolCall call) {
+        TurnRecord turn = TurnRecord.toolCall(++turnNumber, call);
+        String origin = currentToolModelCallId;
+        if (origin != null) {
+            Map<String, Object> payload = new LinkedHashMap<>(turn.payload());
+            payload.put("model_call_id", origin);
+            turn = new TurnRecord(turn.turnNumber(), turn.type(), payload, turn.timestamp());
+        }
+        appendTurn(turn);
+    }
+
     private void appendTurn(@NonNull TurnRecord turn) {
         AgentWaitStore.Wait waiting = executionWait;
         boolean required =
@@ -2577,6 +2628,22 @@ public class AgentRunner {
         if (turn.type() == TurnType.AGENT_INIT) {
             Map<String, Object> metadata = new LinkedHashMap<>(turn.payload());
             metadata.put("contextMaxTokens", binding.options().contextWindowOrDefault());
+            PromptSource.Rendered source = currentSystemSource;
+            if (source != null
+                    && !source.sources().isEmpty()
+                    && source.text().equals(metadata.get("system_prompt"))) {
+                metadata.put(
+                        "prompt_source",
+                        Map.of(
+                                "id",
+                                source.id(),
+                                "version",
+                                1,
+                                "message",
+                                "system",
+                                "spans",
+                                source.sources()));
+            }
             turn = new TurnRecord(turn.turnNumber(), turn.type(), metadata, turn.timestamp());
         }
         turn = RecordTokenCounter.unmeasured(turn);

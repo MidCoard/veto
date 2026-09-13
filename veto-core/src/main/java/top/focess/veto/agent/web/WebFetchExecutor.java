@@ -31,6 +31,7 @@ import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.screening.DangerComputation;
 import top.focess.veto.agent.screening.ProtectedSet;
 import top.focess.veto.agent.screening.SlmScreeningProvider;
+import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolEngineImpl;
 import top.focess.veto.agent.tool.ToolErrors;
@@ -280,6 +281,7 @@ public final class WebFetchExecutor {
                         calls.get(),
                         input.get(),
                         output.get());
+                ToolCallContextHolder.registerReaderExecution(UUID.fromString(id));
                 return json(result);
             } catch (InterruptedException error) {
                 Thread.currentThread().interrupt();

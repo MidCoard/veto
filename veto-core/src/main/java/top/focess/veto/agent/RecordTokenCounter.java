@@ -1,5 +1,6 @@
 package top.focess.veto.agent;
 
+import com.fasterxml.jackson.databind.node.NullNode;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
@@ -14,11 +15,17 @@ public final class RecordTokenCounter {
         payload.remove("tokenCount");
         payload.remove("tokenCountSource");
         payload.remove("tokenDeltaFromTurn");
+        // Keep an explicit JSON null without violating the payload's non-null value contract.
+        if (turn.type() == TurnType.ASSISTANT_THOUGHT)
+            payload.put("usedTokens", NullNode.getInstance());
         return new TurnRecord(turn.turnNumber(), turn.type(), payload, turn.timestamp());
     }
 
     public static @NonNull TurnRecord withoutEstimate(@NonNull TurnRecord turn) {
-        return "estimated".equals(turn.payload().get("tokenCountSource")) ? unmeasured(turn) : turn;
+        return turn.type() == TurnType.ASSISTANT_THOUGHT
+                        || "estimated".equals(turn.payload().get("tokenCountSource"))
+                ? unmeasured(turn)
+                : turn;
     }
 
     public static Long count(@NonNull Map<String, Object> payload) {

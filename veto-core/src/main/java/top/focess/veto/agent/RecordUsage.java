@@ -27,7 +27,11 @@ public final class RecordUsage {
             if (measurement.get("fromRecordTurn") instanceof Number fromTurn)
                 payload.put("tokenDeltaFromTurn", fromTurn);
         }
-        return new TurnRecord(turn.turnNumber(), turn.type(), payload, turn.timestamp());
+        TurnRecord updated =
+                new TurnRecord(turn.turnNumber(), turn.type(), payload, turn.timestamp());
+        return turn.type() == TurnType.ASSISTANT_THOUGHT
+                ? RecordTokenCounter.unmeasured(updated)
+                : updated;
     }
 
     /**

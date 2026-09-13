@@ -46,11 +46,11 @@ public final class SecretMasker {
                 "[REDACTED_DB_URL]");
         // password=... or pwd=...
         m.put(
-                Pattern.compile("(?i)(password|passwd|pwd)\\s*[=:]\\s*[^\\s,'\"}]+"),
+                Pattern.compile("(?i)(password|passwd|pwd)\\s*[=:]\\s*[^\\s,'\"}。，；：、]+"),
                 "[REDACTED_PASSWORD]");
         // token=... (bearer / oauth)
         m.put(
-                Pattern.compile("(?i)(token|bearer|api[_-]?key)\\s*[=:]\\s*[^\\s,'\"}]+"),
+                Pattern.compile("(?i)(token|bearer|api[_-]?key)\\s*[=:]\\s*[^\\s,'\"}。，；：、]+"),
                 "[REDACTED_TOKEN]");
         // GitHub personal access token (ghp_)
         m.put(Pattern.compile("\\bghp_[A-Za-z0-9]{30,}\\b"), "[REDACTED_GH_TOKEN]");

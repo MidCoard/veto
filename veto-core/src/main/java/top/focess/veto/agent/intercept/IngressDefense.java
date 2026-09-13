@@ -1,6 +1,10 @@
 package top.focess.veto.agent.intercept;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.Map;
+import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -11,6 +15,7 @@ import top.focess.veto.agent.tool.AgentToolDefinition;
 import top.focess.veto.agent.tool.NativeToolDefinition;
 import top.focess.veto.agent.tool.ParamCategory;
 import top.focess.veto.agent.tool.RemoteToolDefinition;
+import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.agent.tool.ToolResult;
@@ -30,6 +35,7 @@ import top.focess.veto.vault.SecretCandidateStore;
  */
 @Component
 public class IngressDefense {
+    private static final @NonNull ObjectMapper JSON = new ObjectMapper();
 
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.agent.intercept.IngressDefense");
@@ -75,6 +81,26 @@ public class IngressDefense {
             boolean maskObservation,
             @NonNull ReadHistory readHistory) {
         String body = result.content();
+        UUID readerId = ToolCallContextHolder.readerExecutionId(call.callId());
+        boolean preserveReaderId = false;
+        if (readerId != null
+                && result.success()
+                && def instanceof NativeToolDefinition
+                && def.name().equals("web_fetch")
+                && def.capability() == ToolCapability.NETWORK_EGRESS) {
+            try {
+                var root = JSON.readTree(body);
+                if (root != null
+                        && root.path("execution") instanceof ObjectNode execution
+                        && readerId.toString().equals(execution.path("id").asText())) {
+                    execution.remove("id");
+                    body = JSON.writeValueAsString(root);
+                    preserveReaderId = true;
+                }
+            } catch (JsonProcessingException ignored) {
+                // Unrecognized output keeps the ordinary masking path.
+            }
+        }
 
         // On a successful write, the recorded read-snapshot is now stale — invalidate it.
         if (result.success() && def.capability() == ToolCapability.WORKSPACE_WRITE) {
@@ -114,6 +140,17 @@ public class IngressDefense {
         // as this body. A tool result that happens to open with the reserved prefix (e.g. a
         // command's stdout) would read as a veto decision - quote its leading REFUSED so the
         // grammar stays exclusive to real refusals.
+        if (preserveReaderId && readerId != null) {
+            try {
+                var root = JSON.readTree(body);
+                if (root != null && root.path("execution") instanceof ObjectNode execution) {
+                    execution.put("id", readerId.toString());
+                    body = JSON.writeValueAsString(root);
+                }
+            } catch (JsonProcessingException ignored) {
+                // Never restore unmasked content if masking produced non-JSON output.
+            }
+        }
         body = RefusalObservation.neutralize(body);
 
         // Minimal framing for a text-based ReAct loop: the tool name + args in the header makes

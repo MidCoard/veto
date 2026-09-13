@@ -69,6 +69,7 @@ import top.focess.veto.group.MateBreakerRegistry;
 import top.focess.veto.group.SkillsetProperties;
 import top.focess.veto.llm.core.ChatMessage;
 import top.focess.veto.llm.core.LlmOptions;
+import top.focess.veto.llm.core.LlmSystemUsage;
 import top.focess.veto.llm.core.ProviderType;
 import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
@@ -220,6 +221,70 @@ class AgentRunnerTest {
                                     turn -> turn.payload().toString().contains("Runtime budget:")));
         } finally {
             service.remove(session);
+        }
+    }
+
+    @Test
+    void responseAndThoughtReferenceAcceptedUsageAfterSchemaRetry() throws Exception {
+        var attempts = new AtomicInteger();
+        var service =
+                serviceWith(
+                        request -> {
+                            LlmSystemUsage.set(100, 7);
+                            int attempt = attempts.incrementAndGet();
+                            if (attempt == 1) throw new ModelSchemaException("synthetic retry");
+                            if (attempt == 2)
+                                return new VetoResponse(
+                                        null,
+                                        List.of(
+                                                new ToolCall(
+                                                        "missing_tool", Map.of(), "usage-tool")),
+                                        null,
+                                        null);
+                            return new VetoResponse("thinking", null, "answer", null);
+                        });
+        try {
+            service.submitNow("usage-reference", "New request", binding("System"));
+            var agent = requireAgent(service.agent("usage-reference"));
+            assertTrue(agent.await(EPISODE_TIMEOUT).success());
+            List<Object> ids = new ArrayList<>();
+            assertTrue(
+                    agent.history().stream()
+                            .anyMatch(
+                                    turn ->
+                                            turn.type() == TurnType.AGENT_INIT
+                                                    && turn.payload().get("prompt_source")
+                                                            instanceof Map<?, ?> source
+                                                    && "standard".equals(source.get("id"))));
+            for (TurnRecord turn : agent.history()) {
+                if (turn.payload().get("llmUsage") instanceof List<?> measurements) {
+                    for (Object value : measurements) {
+                        if (value instanceof Map<?, ?> usage
+                                && usage.get("modelCallId") instanceof String id) ids.add(id);
+                    }
+                }
+            }
+            assertEquals(3, ids.size());
+            assertNotNull(ids.getFirst());
+            assertNotEquals(ids.getFirst(), ids.getLast());
+            TurnRecord toolCall =
+                    agent.history().stream()
+                            .filter(turn -> turn.type() == TurnType.TOOL_CALL)
+                            .findFirst()
+                            .orElseThrow();
+            assertEquals(ids.get(1), toolCall.payload().get("model_call_id"));
+            var outputs =
+                    agent.history().stream()
+                            .filter(
+                                    turn ->
+                                            turn.type() == TurnType.ASSISTANT_THOUGHT
+                                                    || turn.type() == TurnType.ASSISTANT_RESPONSE)
+                            .toList();
+            assertEquals(2, outputs.size());
+            for (TurnRecord output : outputs)
+                assertEquals(ids.getLast(), output.payload().get("model_call_id"));
+        } finally {
+            service.remove("usage-reference");
         }
     }
 
