@@ -89,9 +89,10 @@ public final class SecretMasker {
                     start = matcher.end(1);
                     while (start < matcher.end() && Character.isWhitespace(input.charAt(start)))
                         start++;
-                    start++; // '=' or ':' between the key and its value
-                    while (start < matcher.end() && Character.isWhitespace(input.charAt(start)))
+                    // Skip '=' or ':' and any whitespace before the value.
+                    do {
                         start++;
+                    } while (start < matcher.end() && Character.isWhitespace(input.charAt(start)));
                 }
                 if (start < matcher.end())
                     candidates.add(new SecretMatch(start, matcher.end(), rule.getValue()));

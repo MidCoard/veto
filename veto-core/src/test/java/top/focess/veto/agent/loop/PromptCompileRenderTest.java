@@ -39,6 +39,39 @@ import top.focess.veto.memory.MemoryTools;
  * default-system-prompt.md} with dynamic blocks substituted per role + policy.
  */
 class PromptCompileRenderTest {
+    @Test
+    void catalogPreservesArrayElementTypesFromTheCodeSchema() {
+        var tool =
+                new ToolDefinition(
+                        "sample",
+                        "Sample tool",
+                        Map.of(
+                                "type",
+                                "object",
+                                "properties",
+                                Map.of(
+                                        "words",
+                                                Map.of(
+                                                        "type",
+                                                        "array",
+                                                        "items",
+                                                        Map.of("type", "string")),
+                                        "rows",
+                                                Map.of(
+                                                        "type",
+                                                        "array",
+                                                        "items",
+                                                        Map.of("type", "object"))),
+                                "required",
+                                List.of("words")),
+                        List.of(),
+                        ToolDocumentation.empty(),
+                        List.of(),
+                        List.of());
+        String rendered = PromptBlocks.tools(List.of(tool));
+        assertTrue(rendered.contains("`words` (array<string>, required)"));
+        assertTrue(rendered.contains("`rows` (array<object>, optional)"));
+    }
 
     private final @NonNull SystemPromptResolver resolver = new SystemPromptResolver();
 

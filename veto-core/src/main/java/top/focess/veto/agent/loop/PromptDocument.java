@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -81,10 +82,10 @@ public final class PromptDocument {
                                 cursor++;
                             if (cursor == lines.length)
                                 throw error(name, number, "E_UNCLOSED_VERBATIM");
-                            List<String> literalLines = new ArrayList<>();
-                            for (int i = begin; i < cursor; i++) literalLines.add(lines[i]);
+                            String literal =
+                                    String.join("\n", Arrays.asList(lines).subList(begin, cursor));
                             cursor++;
-                            argument = String.join("\n", literalLines);
+                            argument = literal;
                         }
                         case "if", "for", "message", "block" -> {
                             String close = kind.equals("block") ? "@end" : "@end" + kind;
@@ -298,7 +299,7 @@ public final class PromptDocument {
                     for (JsonNode value : values) {
                         if (++steps > 100_000)
                             throw error(node.source(), node.line(), "E_EXPANSION_LIMIT");
-                        ObjectNode scope = (ObjectNode) data.deepCopy();
+                        ObjectNode scope = data.deepCopy();
                         scope.set(parts[0], value);
                         scope.set(
                                 "loop",

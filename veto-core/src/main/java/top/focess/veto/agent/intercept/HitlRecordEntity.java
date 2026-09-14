@@ -49,6 +49,18 @@ public class HitlRecordEntity {
         return event;
     }
 
+    public @NonNull String getSessionId() {
+        return sessionId;
+    }
+
+    public @NonNull String getAgentId() {
+        return agentId;
+    }
+
+    public void setCreatedAt(@NonNull Instant createdAt) {
+        this.createdAt = createdAt;
+    }
+
     public @NonNull String getGrantJson() {
         return grantJson;
     }

@@ -295,7 +295,7 @@ public class AgentRunner {
         if (task != null && task.cancelled) {
             // Cancellation remains recorded on the task; cleanup must not inherit the signal
             // and close database sockets while persisting the cancelled outcome.
-            Thread.interrupted();
+            clearTaskInterrupt();
             throw new CancellationException("Task cancelled");
         }
     }
@@ -768,7 +768,7 @@ public class AgentRunner {
                             if (taskCancellation != null && taskCancellation.cancelled) {
                                 synchronized (this) {
                                     // Wait for cancelTask to finish sending the one interrupt.
-                                    Thread.interrupted();
+                                    clearTaskInterrupt();
                                 }
                                 completeFailure(
                                         Msg.get(locale, "error.agent.taskCancelled"),
@@ -795,7 +795,7 @@ public class AgentRunner {
                             if (sessionAlive && !waitingForMonitor) transitionTo(AgentState.IDLE);
                             synchronized (this) {
                                 activeCancellation = null;
-                                Thread.interrupted();
+                                clearTaskInterrupt();
                                 if (taskCancellation != null) {
                                     cancellableTasks.remove(taskCancellation.result);
                                     lastExitedTask = taskCancellation.result;
@@ -1077,21 +1077,30 @@ public class AgentRunner {
                 PromptLibrary.message("runtime-compaction-input", Map.of("summaries", summaries)));
     }
 
+    private static void clearTaskInterrupt() {
+        if (Thread.interrupted()) {
+            log.debug("Cleared task interrupt before lifecycle cleanup");
+        }
+    }
+
+    private @NonNull VetoRequest compactionRequest(
+            @NonNull ChatMessage systemPrompt, @NonNull ChatMessage userPrompt) {
+        return new VetoRequest(
+                systemPrompt.content(),
+                userPrompt.content(),
+                List.of(),
+                binding.provider(),
+                binding.model(),
+                binding.credentialKey(),
+                binding.options(),
+                List.of(systemPrompt, userPrompt),
+                null,
+                binding.baseUrl());
+    }
+
     private @NonNull String callCompactor(
             @NonNull ChatMessage systemPrompt, @NonNull ChatMessage userPrompt) {
-        List<ChatMessage> messages = List.of(systemPrompt, userPrompt);
-        VetoRequest request =
-                new VetoRequest(
-                        systemPrompt.content(),
-                        userPrompt.content(),
-                        List.of(),
-                        binding.provider(),
-                        binding.model(),
-                        binding.credentialKey(),
-                        binding.options(),
-                        messages,
-                        null,
-                        binding.baseUrl());
+        VetoRequest request = compactionRequest(systemPrompt, userPrompt);
         VetoResponse response;
         LlmSystemUsage.begin();
         try {
@@ -1558,28 +1567,31 @@ public class AgentRunner {
     }
 
     private void validateResponseMode(@NonNull VetoResponse checked, GenerateAction generation) {
+        validateCompletionResponse(checked);
         var generatedCalls = checked.calls();
-        String checkedMessage = checked.message();
-        if (completionTool != null
-                && (checked.guide() != null
-                        || generatedCalls == null
-                        || generatedCalls.size() != 1
-                        || (checkedMessage != null && !checkedMessage.isBlank())))
-            throw new ModelSchemaException(
-                    "This agent requires exactly one tool call per turn and must complete through "
-                            + completionTool
-                            + "; freeform answers and guide are not accepted");
-        if (completionTool != null
-                && completionOnly(breaker.count() - 1)
-                && generatedCalls != null
-                && !generatedCalls.getFirst().toolName().equals(completionTool)) {
-            throw new ModelSchemaException("The remaining model calls must use " + completionTool);
-        }
         if (generation != null
                 && ((generatedCalls != null && !generatedCalls.isEmpty())
                         || checked.guide() != null))
             throw new ModelSchemaException(
                     "generate requires message output and no calls or guide");
+    }
+
+    private void validateCompletionResponse(@NonNull VetoResponse checked) {
+        if (completionTool == null) return;
+        var generatedCalls = checked.calls();
+        String checkedMessage = checked.message();
+        if (checked.guide() != null
+                || generatedCalls == null
+                || generatedCalls.size() != 1
+                || (checkedMessage != null && !checkedMessage.isBlank()))
+            throw new ModelSchemaException(
+                    "This agent requires exactly one tool call per turn and must complete through "
+                            + completionTool
+                            + "; freeform answers and guide are not accepted");
+        if (completionOnly(breaker.count() - 1)
+                && !generatedCalls.getFirst().toolName().equals(completionTool)) {
+            throw new ModelSchemaException("The remaining model calls must use " + completionTool);
+        }
     }
 
     private boolean completionOnly(long completedCalls) {
@@ -2574,7 +2586,6 @@ public class AgentRunner {
         boolean required =
                 turn.type() == TurnType.MONITOR_EVENT
                         || (turn.type() == TurnType.TOOL_RESPONSE
-                                && waiting != null
                                 && waiting == WaitReason.QUESTION);
         if (turn.type() == TurnType.REWIND || turn.type() == TurnType.AGENT_INIT)
             contextUsage.reset();

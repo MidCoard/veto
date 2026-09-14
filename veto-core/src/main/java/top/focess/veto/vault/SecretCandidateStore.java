@@ -62,7 +62,7 @@ public final class SecretCandidateStore {
 
     private final @NonNull Set<String> closedOwners = new HashSet<>();
     private final @NonNull Set<SessionKey> retiredSessions = new HashSet<>();
-    private static final @NonNull Pattern REFERENCE = Pattern.compile("\\[SECRET_REF:([^\\]]+)\\]");
+    private static final @NonNull Pattern REFERENCE = Pattern.compile("\\[SECRET_REF:([^]]+)]");
 
     public record Scope(@NonNull String owner, @NonNull String session, @NonNull String agent) {}
 

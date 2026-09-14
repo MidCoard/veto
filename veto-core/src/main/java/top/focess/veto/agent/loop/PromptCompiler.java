@@ -477,8 +477,6 @@ public class PromptCompiler {
                 pendingTurns = List.of();
             }
             if (turn.type() == TurnType.AGENT_INIT) {
-                pendingThought = null;
-                pendingReasoning = null;
                 pendingTurns = List.of();
                 compiled.add(
                         restoreSource(
@@ -512,7 +510,7 @@ public class PromptCompiler {
             if (msg != null) {
                 compiled.add(
                         msg.withSourceTurns(
-                                !pendingTurns.isEmpty() && turn.type() == TurnType.TOOL_CALL
+                                !pendingTurns.isEmpty()
                                         ? List.of(pendingTurns.getFirst(), turn.turnNumber())
                                         : List.of(turn.turnNumber())));
             }

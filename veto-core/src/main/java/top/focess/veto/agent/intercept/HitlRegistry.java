@@ -481,10 +481,11 @@ public class HitlRegistry {
                     resolution.source().name(),
                     approvedGrant);
             if (resolution.createsGrant() && p.call() != null && p.def() != null) {
-                PermissionGrant grant = approvedGrant;
-                if (grant != null) {
-                    grants.computeIfAbsent(agentId, k -> ConcurrentHashMap.newKeySet()).add(grant);
-                    grantLog.computeIfAbsent(agentId, k -> new CopyOnWriteArrayList<>()).add(grant);
+                if (approvedGrant != null) {
+                    grants.computeIfAbsent(agentId, k -> ConcurrentHashMap.newKeySet())
+                            .add(approvedGrant);
+                    grantLog.computeIfAbsent(agentId, k -> new CopyOnWriteArrayList<>())
+                            .add(approvedGrant);
                 }
             }
             p.future().complete(resolution);

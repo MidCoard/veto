@@ -39,7 +39,7 @@ public final class PromptInputs {
                         persona.role().name()));
         data.put("workspace", workspace(workspace));
         String law = workspace.vetoMdResolver().resolve();
-        data.put("law", law == null ? "" : law);
+        data.put("law", law);
         data.put("guidance", guidance == null ? "" : guidance);
         data.put("environment", environment());
         data.put("policy", policy.name());
@@ -136,12 +136,20 @@ public final class PromptInputs {
                     if (!(value instanceof Map<?, ?> property)) return;
                     String name = prefix + key;
                     String type = property.get("type") instanceof String text ? text : "any";
+                    Object rawItems = property.get("items");
+                    String itemType =
+                            rawItems instanceof Map<?, ?> itemSchema
+                                            && itemSchema.get("type") instanceof String text
+                                    ? text
+                                    : "";
                     result.add(
                             Map.of(
                                     "name",
                                     name,
                                     "type",
                                     type,
+                                    "itemType",
+                                    itemType,
                                     "required",
                                     required.contains(key),
                                     "description",
