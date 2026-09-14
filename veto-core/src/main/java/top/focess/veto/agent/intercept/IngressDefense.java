@@ -20,6 +20,7 @@ import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.agent.tool.ToolResult;
 import top.focess.veto.llm.core.ToolCall;
+import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.SecretCandidateStore;
 
 /**
@@ -125,10 +126,7 @@ public class IngressDefense {
                     // The observation is already redacted; the signal is advisory — the caller
                     // (AgentRunner) cannot reject post-execution, so it is surfaced for
                     // observability/alerting rather than gating the call.
-                    log.warn(
-                            "SemanticMasker flagged high-risk exfiltration for tool {}: {}",
-                            highRisk.toolName(),
-                            highRisk.reason());
+                    reportHighRisk(highRisk);
                 }
             } else {
                 body = SecretMasker.mask(body);
@@ -140,11 +138,11 @@ public class IngressDefense {
         // as this body. A tool result that happens to open with the reserved prefix (e.g. a
         // command's stdout) would read as a veto decision - quote its leading REFUSED so the
         // grammar stays exclusive to real refusals.
-        if (preserveReaderId && readerId != null) {
+        if (preserveReaderId) {
             try {
                 var root = JSON.readTree(body);
                 if (root != null && root.path("execution") instanceof ObjectNode execution) {
-                    execution.put("id", readerId.toString());
+                    execution.put("id", Nullness.requireNonNull(readerId).toString());
                     body = JSON.writeValueAsString(root);
                 }
             } catch (JsonProcessingException ignored) {
@@ -211,10 +209,7 @@ public class IngressDefense {
                             result.content(), call, def, ignored -> maskedText);
             var highRisk = assessed.highRisk();
             if (highRisk != null) {
-                log.warn(
-                        "SemanticMasker flagged high-risk exfiltration for tool {}: {}",
-                        highRisk.toolName(),
-                        highRisk.reason());
+                reportHighRisk(highRisk);
             }
             return RefusalObservation.neutralize(assessed.masked());
         }
@@ -237,5 +232,12 @@ public class IngressDefense {
                 }
             }
         }
+    }
+
+    private static void reportHighRisk(SemanticMasker.@NonNull HighRiskSignal signal) {
+        log.warn(
+                "SemanticMasker flagged high-risk exfiltration for tool {}: {}",
+                signal.toolName(),
+                signal.reason());
     }
 }

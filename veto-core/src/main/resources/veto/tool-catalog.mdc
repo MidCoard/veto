@@ -12,10 +12,18 @@ These are the tools available to YOU. Call them by populating the `calls` array 
 #### Args
 @if nonempty(tool.arguments)
 @for argument in tool.arguments
+@if nonempty(argument.itemType)
+@if argument.required
+- `{{argument.name}}` ({{argument.type}}<{{argument.itemType}}>, required): {{argument.description}}
+@else
+- `{{argument.name}}` ({{argument.type}}<{{argument.itemType}}>, optional): {{argument.description}}
+@endif
+@else
 @if argument.required
 - `{{argument.name}}` ({{argument.type}}, required): {{argument.description}}
 @else
 - `{{argument.name}}` ({{argument.type}}, optional): {{argument.description}}
+@endif
 @endif
 @endfor
 @else

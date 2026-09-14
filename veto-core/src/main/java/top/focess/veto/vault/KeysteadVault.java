@@ -255,7 +255,6 @@ public class KeysteadVault {
                 || label.isBlank()
                 || label.length() > 80
                 || !label.equals(label.trim())
-                || value.isEmpty()
                 || label.contains(value))
             throw new IllegalArgumentException("Invalid credential import binding");
         VaultHandle handle = handles.get(owner);
@@ -355,7 +354,7 @@ public class KeysteadVault {
                     || !importId.matches("s_[a-f0-9]{32}")
                     || !metadata.profile().title().equals("veto.import." + importId))
                 throw new IllegalArgumentException("Credential service binding does not match");
-            handle.withSecureNote(metadata.id(), note -> note.withBody(operation::accept));
+            handle.withSecureNote(metadata.id(), note -> note.withBody(operation));
         }
     }
 

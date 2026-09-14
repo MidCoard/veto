@@ -608,7 +608,7 @@ public class AgentService {
             agent.seedHistory(history);
         }
         GroupRecoveryService recovery = groupRecovery;
-        if (recovery != null && owner != null && workspace != null)
+        if (recovery != null && owner != null)
             recovery.restore(
                     agent,
                     agent.sessionId(),

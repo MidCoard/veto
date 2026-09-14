@@ -9,7 +9,8 @@ import top.focess.veto.llm.exceptions.ModelSchemaException;
 
 /** Runtime enforcement of the response contract, independent of provider schema support. */
 public final class ResponseEnforcer {
-    private static final Pattern BARE_CITATION = Pattern.compile("\\[citation:([A-Za-z0-9_-]+)]");
+    private static final @NonNull Pattern BARE_CITATION =
+            Pattern.compile("\\[citation:([A-Za-z0-9_-]+)]");
 
     private ResponseEnforcer() {}
 

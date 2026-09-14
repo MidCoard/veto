@@ -17,7 +17,7 @@ final class WebReadDocument {
     private static final int SEGMENT_CHARS = 1200;
     private static final int MAX_SEGMENTS = 10000;
     private static final int MAX_READ_SEGMENTS = 8;
-    private static final Pattern SEARCH_WHITESPACE = Pattern.compile("(?U)\\s+");
+    private static final @NonNull Pattern SEARCH_WHITESPACE = Pattern.compile("(?U)\\s+");
     private static final @NonNull Set<@NonNull String> TEXT_BLOCKS =
             Set.of("h1", "h2", "h3", "h4", "h5", "h6", "p", "pre", "table", "li", "a");
     private final @NonNull List<@NonNull Segment> segments = new ArrayList<>();

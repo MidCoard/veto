@@ -54,7 +54,7 @@ public class GroupSpawner implements GroupOrchestrator.MateProvisioner {
     private static final @NonNull Logger log =
             LoggerFactory.getLogger("top.focess.veto.group.GroupSpawner");
 
-    private static final String DEFAULT_MATE_SYSTEM_PROMPT_BASE =
+    private static final @NonNull String DEFAULT_MATE_SYSTEM_PROMPT_BASE =
             PromptLibrary.text("mate-default-guidance");
 
     private final @NonNull Blackboard blackboard;
