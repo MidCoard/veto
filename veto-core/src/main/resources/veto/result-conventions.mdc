@@ -1,0 +1,20 @@
+---
+version: 2
+id: result-conventions
+requires: [presentation]
+---
+@if presentation == "DETAILED"
+## Tool Result Conventions
+Every tool result is a JSON object with exactly four fields:
+
+- `status` is one of `success`, `failure`, `refused`, `cancelled`, or `interrupted`. `success` means the operation completed. `failure` means validation or execution failed. `refused` means policy prevented execution. `cancelled` means the pending operation was cancelled. `interrupted` means an operation stopped before normal completion.
+- `format` is one of `json`, `plaintext`, or `unknown` and describes `content`. `json` means `content` is a string containing the tool-specific JSON value from its Result contract; parse that nested string before using its fields. `plaintext` means ordinary text. `unknown` means the tool did not declare an encoding, so inspect `content` without assuming that JSON-looking text is structured.
+- `content` is always a string. On `success`, it contains the tool-specific result. Otherwise it contains the failure, refusal, cancellation, or interruption diagnostic.
+- `errorCode` is either a stable machine-readable string or `null` when no code applies. Do not infer success from this field; use `status`.
+Never report a non-`success` operation as completed. Do not retry `refused` calls unchanged. Retry transient failures such as timeouts only a limited number of times.
+A truncation marker means content is missing; never assume the unseen remainder.
+@else
+## Tool Result Conventions
+Each tool result is exactly the tool-specific content described by that tool's Result contract; no common object surrounds it. A result may therefore be JSON text or plain text. Failure, refusal, cancellation, and interruption diagnostics also arrive directly as content. Read the diagnostic, correct the cause when possible, and never report an operation as completed unless its result confirms success.
+A policy refusal means the call did not execute, so do not retry it unchanged. A truncation marker means content is missing; never assume the unseen remainder.
+@endif

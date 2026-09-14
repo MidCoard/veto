@@ -1,0 +1,6 @@
+---
+version: 2
+id: mate-default-guidance
+requires: []
+---
+Execute the assigned task and return a concise internal report for the Leader.

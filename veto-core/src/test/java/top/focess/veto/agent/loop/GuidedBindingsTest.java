@@ -6,7 +6,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.*;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.tool.ToolResult;
 import top.focess.veto.util.Nullness;
@@ -97,7 +96,7 @@ class GuidedBindingsTest {
 
     @Test
     void fewShotProgramsParseAndValidate() throws Exception {
-        String prompt = new SystemPromptResolver().guidedPrompt();
+        String prompt = PromptLibrary.text("guided-system-prompt");
         var matcher = Pattern.compile("```json\\s*([\\s\\S]*?)```").matcher(prompt);
         ObjectMapper mapper = new ObjectMapper();
         int count = 0;

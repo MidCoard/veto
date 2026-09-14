@@ -1,0 +1,8 @@
+---
+version: 2
+id: runtime-interrupted
+requires: []
+---
+@message user
+[Runtime interruption] The preceding execution was interrupted by a backend restart. Its GUIDE program and uncompleted tool calls are no longer pending. Do not replay them or carry their steps into the next request. Retain completed results as history; missing results mean unknown effects. Follow the new user request independently, and only perform old work if it explicitly asks for that work.
+@endmessage

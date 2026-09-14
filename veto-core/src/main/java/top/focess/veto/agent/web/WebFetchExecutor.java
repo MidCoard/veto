@@ -23,11 +23,11 @@ import top.focess.veto.agent.capability.CapabilityAccess;
 import top.focess.veto.agent.capability.WebReadCapability;
 import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.identity.AgentPersona;
-import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.intercept.Gateway;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.loop.PromptCompiler;
+import top.focess.veto.agent.loop.PromptLibrary;
 import top.focess.veto.agent.screening.DangerComputation;
 import top.focess.veto.agent.screening.ProtectedSet;
 import top.focess.veto.agent.screening.SlmScreeningProvider;
@@ -57,8 +57,7 @@ public final class WebFetchExecutor {
     private static final int MAX_EVIDENCE = 8;
     private static final int MAX_ANSWER_CHARS = 4000;
     private static final int PROVIDER_FRAMING_RESERVE = 2048;
-    private static final @NonNull String SYSTEM =
-            SystemPromptResolver.loadRules("veto/web-fetch-system-prompt.md");
+    private static final @NonNull String SYSTEM = PromptLibrary.text("web-fetch-system-prompt");
     private final @NonNull SessionAgentRegistry sessionAgents;
     private final @NonNull TurnLogService turnLogService;
     private final @NonNull ObjectMapper mapper;
@@ -158,7 +157,7 @@ public final class WebFetchExecutor {
                     new AgentPersona(
                             id,
                             "web_fetch · 网页阅读",
-                            "Read one approved webpage.",
+                            PromptLibrary.text("reader-persona-description"),
                             Set.copyOf(engine.getActiveTools(null)),
                             List.of());
             var workspace = Workspace.fromConfig("", "", "REAL");

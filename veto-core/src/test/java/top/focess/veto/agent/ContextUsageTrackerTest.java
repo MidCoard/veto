@@ -8,6 +8,27 @@ import org.junit.jupiter.api.Test;
 import top.focess.veto.llm.core.*;
 
 class ContextUsageTrackerTest {
+    @Test
+    void persistsReportedCacheCountsAndKeepsMissingOrInvalidCountsUnknown() {
+        var tracker = new ContextUsageTracker();
+        var req = request("system", List.of(ChatMessage.user("one")));
+        var known = tracker.measure(req, new LlmSystemUsage.Usage(1000, 5, 800L, 100L));
+        var persisted = RecordUsage.add(TurnRecord.userPrompt(1, "one"), known);
+        assertTrue(persisted.payload().get("llmUsage") instanceof List<?>);
+        assertEquals(800L, known.get("cacheReadInputTokens"));
+        assertEquals(100L, known.get("cacheCreationInputTokens"));
+        assertFalse(
+                tracker.measure(req, new LlmSystemUsage.Usage(1000, 5))
+                        .containsKey("cacheReadInputTokens"));
+        assertEquals(
+                0L,
+                tracker.measure(req, new LlmSystemUsage.Usage(1000, 5, 0L, null))
+                        .get("cacheReadInputTokens"));
+        assertFalse(
+                tracker.measure(req, new LlmSystemUsage.Usage(1000, 5, 900L, 200L))
+                        .containsKey("cacheReadInputTokens"));
+    }
+
     private @NonNull VetoRequest request(
             @NonNull String system, @NonNull List<ChatMessage> messages) {
         return new VetoRequest(

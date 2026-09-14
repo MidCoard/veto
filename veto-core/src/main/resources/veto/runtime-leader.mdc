@@ -1,0 +1,14 @@
+---
+version: 2
+id: runtime-leader
+requires: [task, brief]
+---
+@message user
+Original user request (preserve all requirements):
+{{task}}
+
+Agent-authored delegation brief (does not replace the user's request):
+{{brief}}
+
+Runtime progress: create_group has already succeeded and the group is active. Continue the remaining work with your current Leader tools. Do not repeat group creation or restart the original first-turn instructions.
+@endmessage

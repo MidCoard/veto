@@ -19,11 +19,38 @@ public final class LlmSystemUsage {
         CAPTURING.add(Thread.currentThread());
     }
 
-    public record Usage(long promptTokens, long completionTokens) {}
+    public record Usage(
+            long promptTokens,
+            long completionTokens,
+            Long cacheReadInputTokens,
+            Long cacheCreationInputTokens) {
+        public Usage(long promptTokens, long completionTokens) {
+            this(promptTokens, completionTokens, null, null);
+        }
+
+        public Usage {
+            if (cacheReadInputTokens != null
+                    && (cacheReadInputTokens < 0 || cacheReadInputTokens > promptTokens))
+                cacheReadInputTokens = null;
+            if (cacheCreationInputTokens != null
+                    && (cacheCreationInputTokens < 0 || cacheCreationInputTokens > promptTokens))
+                cacheCreationInputTokens = null;
+            if (cacheReadInputTokens != null
+                    && cacheCreationInputTokens != null
+                    && cacheReadInputTokens > promptTokens - cacheCreationInputTokens) {
+                cacheReadInputTokens = null;
+                cacheCreationInputTokens = null;
+            }
+        }
+    }
 
     private LlmSystemUsage() {}
 
     public static void set(long prompt, long completion) {
+        set(prompt, completion, null, null);
+    }
+
+    public static void set(long prompt, long completion, Long cacheRead, Long cacheCreation) {
         if (prompt < 0 || completion < 0) return;
         if (!CAPTURING.contains(Thread.currentThread()))
             CURRENT_USAGE.remove(Thread.currentThread());
@@ -33,7 +60,7 @@ public final class LlmSystemUsage {
             values = new ArrayList<Usage>();
             CURRENT_USAGE.put(thread, values);
         }
-        values.add(new Usage(prompt, completion));
+        values.add(new Usage(prompt, completion, cacheRead, cacheCreation));
     }
 
     public static @NonNull List<Usage> drain() {

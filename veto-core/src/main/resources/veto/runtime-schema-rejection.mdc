@@ -1,0 +1,10 @@
+---
+version: 2
+id: runtime-schema-rejection
+requires: [error, expected]
+---
+@message user
+Your previous response was rejected due to a schema violation: {{error}}.
+Expected: {{expected}}.
+Please regenerate valid JSON matching the supplied response schema.
+@endmessage

@@ -1,7 +1,10 @@
 package top.focess.veto.llm.core;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.tool.ToolDocumentation;
 import top.focess.veto.agent.tool.ToolResultFormat;
@@ -33,9 +36,33 @@ public record ToolDefinition(
         @NonNull List<ToolResultFormat> resultFormats) {
 
     public ToolDefinition {
-        inputSchema = Map.copyOf(inputSchema);
+        inputSchema = ordered(inputSchema);
         examples = List.copyOf(examples);
         returnExamples = List.copyOf(returnExamples);
         resultFormats = List.copyOf(resultFormats);
+    }
+
+    private static @NonNull Map<String, Object> ordered(@NonNull Map<?, ?> source) {
+        Map<String, Object> result = new TreeMap<>();
+        source.forEach(
+                (key, value) -> {
+                    if (!(key instanceof String name) || value == null)
+                        throw new IllegalArgumentException("Invalid schema entry");
+                    result.put(name, orderedValue(value));
+                });
+        return Collections.unmodifiableMap(result);
+    }
+
+    private static @NonNull Object orderedValue(@NonNull Object value) {
+        if (value instanceof Map<?, ?> map) return ordered(map);
+        if (value instanceof List<?> list) {
+            List<Object> result = new ArrayList<>();
+            for (Object item : list) {
+                if (item == null) throw new IllegalArgumentException("Null schema array entry");
+                result.add(orderedValue(item));
+            }
+            return List.copyOf(result);
+        }
+        return value;
     }
 }

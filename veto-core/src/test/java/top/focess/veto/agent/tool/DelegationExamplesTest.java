@@ -9,7 +9,7 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.agent.identity.SystemPromptResolver;
+import top.focess.veto.agent.loop.PromptLibrary;
 import top.focess.veto.agent.loop.ResponseEnforcer;
 import top.focess.veto.group.GroupTools.CreateGroup.Args;
 import top.focess.veto.llm.core.VetoResponse;
@@ -18,7 +18,7 @@ import top.focess.veto.util.Nullness;
 class DelegationExamplesTest {
     @Test
     void examplesValidateRealDelegationArgumentsAndDirectAnswers() throws Exception {
-        String prompt = new SystemPromptResolver().delegationPrompt();
+        String prompt = PromptLibrary.text("delegation-system-prompt");
         assertFalse(
                 Pattern.compile("(?i)\\b(leader|mates?)\\b").matcher(prompt).find(),
                 "delegation guidance must not introduce later roles");

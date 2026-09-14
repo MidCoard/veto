@@ -1,0 +1,69 @@
+---
+version: 2
+id: tool-catalog
+requires: [tools]
+---
+@if nonempty(tools)
+## Your Tools
+These are the tools available to YOU. Call them by populating the `calls` array with an entry whose `tool_name` is the tool and whose `args` matches the schema below.
+@for tool in tools
+### `{{tool.name}}`
+{{tool.description}}
+#### Args
+@if nonempty(tool.arguments)
+@for argument in tool.arguments
+@if argument.required
+- `{{argument.name}}` ({{argument.type}}, required): {{argument.description}}
+@else
+- `{{argument.name}}` ({{argument.type}}, optional): {{argument.description}}
+@endif
+@endfor
+@else
+Pass an empty JSON object: `{}`.
+@endif
+#### Result formats
+@for format in tool.formats
+- `{{format.id}}`: {{format.description}}.
+@endfor
+@if nonempty(tool.documentation.behavior)
+#### Behavior
+{{tool.documentation.behavior}}
+@endif
+@if nonempty(tool.documentation.whenToUse)
+#### When to use
+{{tool.documentation.whenToUse}}
+@endif
+@if nonempty(tool.documentation.whenNotToUse)
+#### When not to use
+{{tool.documentation.whenNotToUse}}
+@endif
+@for example in tool.examples
+@if loop.first
+#### Call examples
+```json
+{{example}}
+```
+@endif
+@endfor
+@if nonempty(tool.documentation.resultContract)
+#### Result contract
+{{tool.documentation.resultContract}}
+@endif
+@for example in tool.returnExamples
+@if loop.first
+#### Result examples
+@if isjson(example)
+```json
+@else
+```text
+@endif
+{{example}}
+```
+@endif
+@endfor
+@if nonempty(tool.documentation.errorsAndEdgeCases)
+#### Errors and edge cases
+{{tool.documentation.errorsAndEdgeCases}}
+@endif
+@endfor
+@endif

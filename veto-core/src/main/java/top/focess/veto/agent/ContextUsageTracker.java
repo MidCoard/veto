@@ -7,27 +7,24 @@ import org.jspecify.annotations.NonNull;
 import top.focess.veto.llm.core.LlmSystemUsage;
 import top.focess.veto.llm.core.VetoRequest;
 
-/** Request-boundary measurements. Only unchanged prefixes have an attributable token delta. */
+/** Request-boundary measurements. Context deltas are diagnostics, not per-record counts. */
 public final class ContextUsageTracker {
     private VetoRequest previous;
     private long previousTokens;
-    private int previousThroughTurn = -1;
 
     public void reset() {
         previous = null;
-        previousThroughTurn = -1;
     }
 
     public @NonNull Map<String, Object> measure(
             @NonNull VetoRequest request, LlmSystemUsage.@NonNull Usage usage) {
-        return measure(request, usage, -1);
-    }
-
-    public @NonNull Map<String, Object> measure(
-            @NonNull VetoRequest request, LlmSystemUsage.@NonNull Usage usage, int throughTurn) {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("inputTokens", usage.promptTokens());
         data.put("outputTokens", usage.completionTokens());
+        Long cacheRead = usage.cacheReadInputTokens();
+        Long cacheCreation = usage.cacheCreationInputTokens();
+        if (cacheRead != null) data.put("cacheReadInputTokens", cacheRead);
+        if (cacheCreation != null) data.put("cacheCreationInputTokens", cacheCreation);
         data.put("contextMaxTokens", request.options().contextWindowOrDefault());
         data.put("model", request.modelName());
         data.put("provider", request.providerType().name());
@@ -51,17 +48,9 @@ public final class ContextUsageTracker {
             data.put("contextDeltaTokens", usage.promptTokens() - previousTokens);
             data.put("fromMessageIndex", previousMessageCount);
             data.put("appendedMessages", request.messages().size() - previousMessageCount);
-            if (previousThroughTurn >= 0
-                    && throughTurn > previousThroughTurn
-                    && request.messages().size() > previousMessageCount
-                    && usage.promptTokens() >= previousTokens) {
-                data.put("recordDelta", true);
-                data.put("fromRecordTurn", previousThroughTurn + 1);
-            }
         }
         previous = request;
         previousTokens = usage.promptTokens();
-        previousThroughTurn = throughTurn;
         return data;
     }
 }

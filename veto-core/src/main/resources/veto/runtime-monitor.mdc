@@ -1,0 +1,8 @@
+---
+version: 2
+id: runtime-monitor
+requires: [content]
+---
+@message user
+[Monitor observation] {{content}}
+@endmessage

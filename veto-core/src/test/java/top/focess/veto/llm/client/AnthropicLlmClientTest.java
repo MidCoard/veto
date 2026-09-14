@@ -11,6 +11,7 @@ import com.anthropic.models.messages.MessageParam;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -21,8 +22,35 @@ import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.translation.VetoCapabilityTranslator;
 import top.focess.veto.llm.core.*;
 import top.focess.veto.llm.exceptions.ModelSchemaException;
+import top.focess.veto.util.Nullness;
 
 class AnthropicLlmClientTest {
+    @Test
+    void preservesCacheBreakdownWithoutDoubleCountingInput() {
+        var sdk = mock(ToolDocs.nonNullClass(AnthropicClient.class), RETURNS_DEEP_STUBS);
+        var response = mock(ToolDocs.nonNullClass(Message.class), RETURNS_DEEP_STUBS);
+        var block = text("{\"message\":\"ok\"}");
+        when(response.content()).thenReturn(List.of(block));
+        when(response.usage().inputTokens()).thenReturn(100L);
+        when(response.usage().outputTokens()).thenReturn(5L);
+        when(response.usage().cacheReadInputTokens()).thenReturn(Optional.of(800L));
+        when(response.usage().cacheCreationInputTokens()).thenReturn(Optional.of(100L));
+        when(sdk.messages().create(any(ToolDocs.nonNullClass(MessageCreateParams.class))))
+                .thenReturn(response);
+        LlmSystemUsage.begin();
+        try {
+            new AnthropicLlmClient(sdk, new ObjectMapper())
+                    .complete(new ResolvedRequest(request(), null, "unused"));
+            var usage = LlmSystemUsage.snapshot().getFirst();
+            assertEquals(1000L, usage.promptTokens());
+            assertEquals(800L, Nullness.requireNonNull(usage.cacheReadInputTokens()).longValue());
+            assertEquals(
+                    100L, Nullness.requireNonNull(usage.cacheCreationInputTokens()).longValue());
+        } finally {
+            LlmSystemUsage.drain();
+        }
+    }
+
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
     void responseChannelPreservesContractsHistoryAndText(boolean guided) throws Exception {

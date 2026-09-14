@@ -1,0 +1,8 @@
+---
+version: 2
+id: runtime-approval
+requires: [receipt]
+---
+@message user
+[Runtime approval observation] Recorded resolution for this call only: {{json(receipt)}}. CLIENT_RESPONSE means the client answered the approval request; this receipt is not the result of any later call.
+@endmessage

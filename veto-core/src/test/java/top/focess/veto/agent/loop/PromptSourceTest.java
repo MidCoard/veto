@@ -2,10 +2,8 @@ package top.focess.veto.agent.loop;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import java.util.HashMap;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
-import top.focess.veto.agent.identity.SystemPromptResolver;
 
 class PromptSourceTest {
     private static final String HEADER =
@@ -70,35 +68,5 @@ class PromptSourceTest {
                                 Map.of("VALUE", "x"),
                                 Map.of("enabled", true),
                                 Map.of("shared", "@include shared")));
-    }
-
-    @Test
-    void standardTemplatePreservesLegacyContentForBothModes() {
-        var resolver = new SystemPromptResolver();
-        Map<String, String> blocks = new HashMap<>(resolver.commonBlocks());
-        for (String key :
-                new String[] {
-                    "LAW",
-                    "IDENTITY",
-                    "ROLE",
-                    "DELEGATION_RULES",
-                    "WORKSPACE",
-                    "ENVIRONMENT",
-                    "BOUNDARIES",
-                    "SKILLS",
-                    "RESULT_CONVENTIONS",
-                    "TOOLS",
-                    "GUIDED_PROTOCOL"
-                }) blocks.put(key, "Block " + key);
-        for (boolean guided : new boolean[] {false, true}) {
-            blocks.put("GUIDED_PROTOCOL", guided ? resolver.guidedPrompt() : "");
-            var result = resolver.compileStandard(blocks, guided);
-            assertEquals(
-                    PromptTemplate.render(resolver.defaultPrompt(), blocks),
-                    result.text().replaceAll("\\n{3,}", "\n\n").strip());
-            assertTrue(
-                    result.sources().stream()
-                            .anyMatch(span -> span.source().equals("common-answer")));
-        }
     }
 }

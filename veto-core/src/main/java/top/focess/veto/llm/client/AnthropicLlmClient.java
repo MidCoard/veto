@@ -23,6 +23,7 @@ import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import top.focess.veto.agent.loop.PromptLibrary;
 import top.focess.veto.llm.core.ChatMessage;
 import top.focess.veto.llm.core.LlmSystemUsage;
 import top.focess.veto.llm.core.ProviderMessages;
@@ -104,7 +105,9 @@ final class AnthropicLlmClient extends LlmClient {
                 message.usage().inputTokens()
                         + message.usage().cacheReadInputTokens().orElse(0L)
                         + message.usage().cacheCreationInputTokens().orElse(0L),
-                message.usage().outputTokens());
+                message.usage().outputTokens(),
+                message.usage().cacheReadInputTokens().orElse(null),
+                message.usage().cacheCreationInputTokens().orElse(null));
         if (log.isDebugEnabled()) {
             log.debug("Anthropic raw response blocks: {}", describeBlocks(message));
         }
@@ -176,20 +179,18 @@ final class AnthropicLlmClient extends LlmClient {
         if (schema == null) {
             return request.systemPrompt();
         }
-        String prompt =
-                request.systemPrompt()
-                        + "\n\nResponse schema for this turn:\n"
-                        + schema
-                        + "\nEmit one JSON object matching this schema.";
-        if (!request.tools().isEmpty() && !usesJsonProgramChannel(request)) {
-            prompt += " Direct tool execution may instead use native tool calls.";
-        }
-        if (schema.path("properties").has("guide")) {
-            prompt +=
-                    " Emit JSON text only: use calls for ordinary execution or guide for a program."
-                            + " Never combine a guided program with native tool calls in the same response.";
-        }
-        return prompt;
+        return PromptLibrary.compile(
+                        "provider-anthropic",
+                        Map.of(
+                                "system",
+                                request.systemPrompt(),
+                                "schema",
+                                schema,
+                                "nativeCalls",
+                                !request.tools().isEmpty() && !usesJsonProgramChannel(request),
+                                "guide",
+                                schema.path("properties").has("guide")))
+                .text();
     }
 
     private boolean usesJsonProgramChannel(@NonNull VetoRequest request) {

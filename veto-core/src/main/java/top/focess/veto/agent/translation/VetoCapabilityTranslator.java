@@ -59,6 +59,7 @@ public class VetoCapabilityTranslator implements CapabilityTranslator {
                             def.returnExamples(),
                             def.resultFormats()));
         }
+        flat.sort(Comparator.comparing(top.focess.veto.llm.core.ToolDefinition::name));
         return flat;
     }
 

@@ -1,0 +1,9 @@
+---
+version: 2
+id: runtime-resume
+requires: [context]
+---
+Continue the unfinished task from the prior episode. The prior episode stopped only because the model-call limit was reached; do not repeat the limit notice. Resume from the existing observations and progress.
+
+Original user request:
+{{context}}

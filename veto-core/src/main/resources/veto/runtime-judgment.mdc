@@ -1,0 +1,7 @@
+---
+version: 2
+id: runtime-judgment
+requires: [prompt]
+---
+{{prompt}}
+Return exactly true or false in message. Evaluate this input: $judgment_input

@@ -24,7 +24,7 @@ class RecordTokenCounterTest {
     }
 
     @Test
-    void assignsTheBatchDeltaOnlyToItsLastRecordAndPreservesItOnRetry() {
+    void retainsContextDeltaAsDiagnosticWithoutAssigningItToAnyRecord() {
         ContextUsageTracker tracker = new ContextUsageTracker();
         var first = request(List.of(ChatMessage.user("one")));
         var second =
@@ -34,21 +34,24 @@ class RecordTokenCounterTest {
                                 ChatMessage.assistant("answer"),
                                 ChatMessage.user("two")));
         assertFalse(
-                tracker.measure(first, new LlmSystemUsage.Usage(100, 10), 2)
+                tracker.measure(first, new LlmSystemUsage.Usage(100, 10))
                         .containsKey("recordDelta"));
         TurnRecord last = TurnRecord.userPrompt(4, "two");
-        var measurement = tracker.measure(second, new LlmSystemUsage.Usage(125, 8), 4);
+        var measurement = tracker.measure(second, new LlmSystemUsage.Usage(125, 8));
+        assertEquals(25L, measurement.get("contextDeltaTokens"));
+        assertFalse(measurement.containsKey("recordDelta"));
+        assertFalse(measurement.containsKey("fromRecordTurn"));
         TurnRecord updated = RecordUsage.add(last, measurement);
-        assertEquals(Long.valueOf(25), (Object) RecordTokenCounter.count(updated.payload()));
-        assertEquals(3, updated.payload().get("tokenDeltaFromTurn"));
+        assertNull(RecordTokenCounter.count(updated.payload()));
+        assertFalse(updated.payload().containsKey("tokenDeltaFromTurn"));
         assertNull(RecordTokenCounter.count(TurnRecord.assistantResponse(3, "answer").payload()));
         updated =
-                RecordUsage.add(
-                        updated, tracker.measure(second, new LlmSystemUsage.Usage(125, 9), 4));
-        assertEquals(Long.valueOf(25), (Object) RecordTokenCounter.count(updated.payload()));
+                RecordUsage.add(updated, tracker.measure(second, new LlmSystemUsage.Usage(125, 9)));
+        assertNull(RecordTokenCounter.count(updated.payload()));
+        assertTrue(updated.payload().get("llmUsage") instanceof List<?> calls && calls.size() == 2);
         tracker.reset();
         assertFalse(
-                tracker.measure(second, new LlmSystemUsage.Usage(80, 1), 7)
+                tracker.measure(second, new LlmSystemUsage.Usage(80, 1))
                         .containsKey("recordDelta"));
     }
 

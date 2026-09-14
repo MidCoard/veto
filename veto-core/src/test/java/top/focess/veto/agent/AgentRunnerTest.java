@@ -249,7 +249,8 @@ class AgentRunnerTest {
                                             turn.type() == TurnType.AGENT_INIT
                                                     && turn.payload().get("prompt_source")
                                                             instanceof Map<?, ?> source
-                                                    && "standard".equals(source.get("id"))));
+                                                    && "default-system-prompt"
+                                                            .equals(source.get("id"))));
             for (TurnRecord turn : agent.history()) {
                 if (turn.payload().get("llmUsage") instanceof List<?> measurements) {
                     for (Object value : measurements) {

@@ -1,11 +1,14 @@
 package top.focess.veto.group;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.capability.DelegationCapability;
 import top.focess.veto.agent.capability.GroupControlCapability;
+import top.focess.veto.agent.loop.PromptLibrary;
 import top.focess.veto.agent.tool.DelegationTool;
 import top.focess.veto.agent.tool.Doc;
 import top.focess.veto.agent.tool.GroupControlTool;
@@ -372,89 +375,15 @@ public final class GroupTools {
     }
 
     private static @NonNull String buildDisbandBrief(GroupSnapshot g) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("Delegation complete. You led a group to the following outcome.\n");
-        if (g == null) {
-            sb.append("(group record no longer available)\n");
-            return sb.toString();
-        }
-        sb.append("Group id: ").append(g.groupId()).append('\n');
-        sb.append("Original brief: ")
-                .append(g.contextBrief().isBlank() ? "(unspecified)" : g.contextBrief())
-                .append('\n');
-        sb.append("Node outcomes:\n");
-        for (DagNode n : g.nodes()) {
-            sb.append("  - ")
-                    .append(n.nodeId())
-                    .append(" (")
-                    .append(n.state() == DagNode.NodeState.VERIFIED ? "COMPLETED" : n.state());
-            if (n.assignedMateId() != null) {
-                sb.append(", mate: ").append(n.assignedMateId());
-            }
-            sb.append("): ").append(n.description()).append('\n');
-            if (n.result() instanceof DagNode.ResultArtifact artifact) {
-                sb.append("    Artifact: ").append(artifact.artifactPath()).append('\n');
-            } else if (n.result() instanceof DagNode.ResultSuccess success) {
-                sb.append("    Mate report: ").append(success.summary()).append('\n');
-            } else if (n.result() instanceof DagNode.ResultFailure failure) {
-                sb.append("    Failure: ").append(failure.feedback()).append('\n');
-                if (!failure.logRefs().isEmpty()) {
-                    sb.append("    Logs: ")
-                            .append(String.join(", ", failure.logRefs()))
-                            .append('\n');
-                }
-            }
-        }
-        sb.append("You are back in single-agent autonomous mode. Continue from here.");
-        return sb.toString();
+        return PromptLibrary.text(
+                "group-disband-brief", Map.of("group", GroupPromptInputs.snapshot(g)));
     }
 
     private static @NonNull String render(
             @NonNull GroupSnapshot group,
             @NonNull List<@NonNull BlackboardMessage> messages,
             long since) {
-        StringBuilder result = new StringBuilder();
-        result.append("Group state: ").append(group.state()).append('\n');
-        result.append(
-                "Completed means the assigned Mate returned a report; it does not imply independent verification.\n");
-        result.append("Members:\n");
-        group.mates()
-                .forEach(
-                        (id, responsibility) ->
-                                result.append("- ")
-                                        .append(id)
-                                        .append(": ")
-                                        .append(responsibility)
-                                        .append('\n'));
-        result.append("Tasks:\n");
-        if (group.nodes().isEmpty()) {
-            result.append("- (none)\n");
-        }
-        for (DagNode node : group.nodes()) {
-            result.append("- ")
-                    .append(node.nodeId())
-                    .append(" [")
-                    .append(node.state() == DagNode.NodeState.VERIFIED ? "COMPLETED" : node.state())
-                    .append("] mate=")
-                    .append(node.assignedMateId() == null ? "(unassigned)" : node.assignedMateId())
-                    .append(" skillset=")
-                    .append(node.requiredSkillset())
-                    .append(" dependsOn=")
-                    .append(node.dependsOn())
-                    .append('\n');
-            if (node.result() instanceof DagNode.ResultSuccess success) {
-                result.append("  report: ").append(oneLine(success.summary())).append('\n');
-            } else if (node.result() instanceof DagNode.ResultFailure failure) {
-                result.append("  failure: ").append(oneLine(failure.feedback())).append('\n');
-            }
-        }
-        result.append(
-                "Messages are historical observations; task state above is authoritative. "
-                        + "A completed task means a report was received, not independently verified.\n");
-        result.append("New Mate messages:\n");
-        if (messages.isEmpty()) {
-            result.append("- (none)\n");
-        }
+        List<Map<String, Object>> observations = new ArrayList<>();
         long next = since;
         for (BlackboardMessage message : messages) {
             next = Math.max(next, message.turnSeq());
@@ -463,32 +392,35 @@ public final class GroupTools {
                     report instanceof DagNode.ResultSuccess success
                             ? success.summary()
                             : message.payload();
-            result.append("- seq=")
-                    .append(message.turnSeq())
-                    .append(" sender=")
-                    .append(message.senderId())
-                    .append(" type=")
-                    .append(message.type())
-                    .append(" dispatch=")
-                    .append(message.dispatchId() == null ? "(uncorrelated)" : message.dispatchId())
-                    .append(" currentDispatch=")
-                    .append(
-                            message.dispatchId() != null
+            String dispatch = message.dispatchId();
+            observations.add(
+                    Map.of(
+                            "sequence",
+                            message.turnSeq(),
+                            "sender",
+                            message.senderId(),
+                            "type",
+                            message.type(),
+                            "dispatch",
+                            dispatch == null ? "" : dispatch,
+                            "current",
+                            dispatch != null
                                     && group.nodes().stream()
                                             .anyMatch(
                                                     node ->
                                                             Objects.equals(
-                                                                    message.dispatchId(),
-                                                                    node.dispatchId())))
-                    .append(" payload=")
-                    .append(oneLine(payload))
-                    .append('\n');
+                                                                    dispatch, node.dispatchId())),
+                            "payload",
+                            payload));
         }
-        result.append("nextSinceSeq: ").append(next);
-        return result.toString();
-    }
-
-    private static @NonNull String oneLine(@NonNull String value) {
-        return value.replace("\r\n", "\n").replace("\n", "\n    ");
+        return PromptLibrary.text(
+                "group-inspect",
+                Map.of(
+                        "group",
+                        GroupPromptInputs.snapshot(group),
+                        "messages",
+                        observations,
+                        "next",
+                        next));
     }
 }

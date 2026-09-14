@@ -9,9 +9,11 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.Role;
 import top.focess.veto.agent.identity.SystemPromptResolver;
 import top.focess.veto.agent.screening.DeployerPolicy;
@@ -210,35 +212,25 @@ class PromptCompileRenderTest {
             @NonNull DeployerPolicy policy,
             String base,
             @NonNull List<@NonNull ToolDefinition> tools) {
-        Map<String, String> blocks = new LinkedHashMap<>();
-        blocks.putAll(resolver.commonBlocks());
-        blocks.put("GUIDED_PROTOCOL", "");
-        blocks.put(
-                "DELEGATION_RULES",
-                tools.stream().anyMatch(tool -> "create_group".equals(tool.name()))
-                        ? resolver.delegationPrompt()
-                        : "");
-        blocks.put("LAW", PromptBlocks.law(""));
-        String identity =
-                PromptBlocks.identity(
+        var persona =
+                new AgentPersona(
+                        "test",
                         "VetoCoreAgent",
-                        "General-purpose engineering assistant for workspace and code automation.");
-        if (base != null && !base.isBlank()) {
-            identity += "\n\n## Additional Role Guidance\n" + base.strip();
-        }
-        blocks.put("IDENTITY", identity);
-        blocks.put("ROLE", PromptBlocks.role(role));
-        blocks.put(
-                "WORKSPACE",
-                PromptBlocks.workspace(
+                        SystemPromptResolver.DESCRIPTION,
+                        Set.of(),
+                        List.of(),
+                        role);
+        return PromptLibrary.text(
+                "default-system-prompt",
+                PromptInputs.standard(
+                        persona,
                         Workspace.single(
-                                Path.of(System.getProperty("user.dir", ".")), PathMode.REAL)));
-        blocks.put("ENVIRONMENT", PromptBlocks.environment());
-        blocks.put("RESULT_CONVENTIONS", tools.isEmpty() ? "" : PromptBlocks.resultConventions());
-        blocks.put("TOOLS", PromptBlocks.tools(tools));
-        blocks.put("BOUNDARIES", PromptBlocks.boundaries(policy, PathMode.REAL));
-        blocks.put("SKILLS", PromptBlocks.skills(List.of()));
-        return PromptTemplate.render(resolver.defaultPrompt(), blocks);
+                                Path.of(System.getProperty("user.dir", ".")), PathMode.REAL),
+                        base,
+                        tools,
+                        policy,
+                        ToolResultPresentationMode.BASIC,
+                        false));
     }
 
     @Test
@@ -387,7 +379,9 @@ class PromptCompileRenderTest {
         assertFalse(block.contains("Example output only; no tool call was made."));
         assertTrue(block.contains("```json\n{\"absolutePath\":"));
         assertTrue(block.contains("```text\n1: class Main {}"));
-        assertTrue(block.contains("<workspace-root>"));
+        assertTrue(
+                block.contains("/abs/project/Main.java"),
+                "External examples remain literal data; owned examples are authored in MDC.");
         assertTrue(block.contains("project"));
     }
 

@@ -1,0 +1,12 @@
+---
+version: 2
+id: runtime-compaction-input
+requires: [summaries]
+---
+@message user
+@for summary in summaries
+Summary {{loop.index}}:
+{{summary}}
+
+@endfor
+@endmessage

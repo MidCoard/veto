@@ -1,0 +1,6 @@
+---
+version: 2
+id: default-persona-description
+requires: []
+---
+General-purpose engineering assistant for workspace and code automation.

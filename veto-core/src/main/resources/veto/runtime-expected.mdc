@@ -1,0 +1,14 @@
+---
+version: 2
+id: runtime-expected
+requires: [error]
+---
+@if contains(error, "message required")
+message field is required when stopping (no tool calls or guide)
+@else
+@if contains(error, "mutually exclusive")
+either calls or guide, not both
+@else
+valid JSON matching the supplied response schema
+@endif
+@endif

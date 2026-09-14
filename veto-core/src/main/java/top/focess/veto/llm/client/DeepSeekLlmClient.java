@@ -150,7 +150,14 @@ final class DeepSeekLlmClient extends LlmClient {
                 Number prompt = (Number) usage.get("input_tokens");
                 Number completion = (Number) usage.get("output_tokens");
                 if (prompt != null && completion != null) {
-                    LlmSystemUsage.set(prompt.longValue(), completion.longValue());
+                    Object details = usage.get("input_tokens_details");
+                    Long cached =
+                            details instanceof Map<?, ?> breakdown
+                                            && breakdown.get("cached_tokens")
+                                                    instanceof Number value
+                                    ? value.longValue()
+                                    : null;
+                    LlmSystemUsage.set(prompt.longValue(), completion.longValue(), cached, null);
                 }
             }
 

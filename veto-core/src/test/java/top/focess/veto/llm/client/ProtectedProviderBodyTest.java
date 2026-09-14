@@ -12,7 +12,7 @@ import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import top.focess.veto.agent.loop.PromptSource;
+import top.focess.veto.agent.loop.PromptDocument;
 import top.focess.veto.agent.translation.VetoCapabilityTranslator;
 import top.focess.veto.llm.core.ChatMessage;
 import top.focess.veto.llm.core.LlmOptions;
@@ -34,12 +34,12 @@ class ProtectedProviderBodyTest {
         String user = store.capture(scope, "browser-substitute", "token=" + userValue).text();
         String file = store.captureFile(scope, "file-substitute", "token=" + fileValue).text();
         var source =
-                PromptSource.compile(
-                        "wire-test.mdc",
-                        "---\nversion: 1\nid: wire\nrequires: [VALUE, guided]\n---\n{{VALUE}}\n@if guided\nGuided\n@endif",
-                        Map.of("VALUE", "System {{literal-data}}"),
-                        Map.of("guided", guided),
-                        Map.of());
+                PromptDocument.compile(
+                        "wire-test",
+                        Map.of("VALUE", "System {{literal-data}}", "guided", guided),
+                        Map.of(
+                                "wire-test",
+                                "---\nversion: 2\nid: wire\nrequires: [VALUE, guided]\n---\n{{VALUE}}\n@if guided\nGuided\n@endif"));
         List<String> bodies = new CopyOnWriteArrayList<>();
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext(

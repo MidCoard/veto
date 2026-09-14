@@ -1,0 +1,35 @@
+---
+version: 2
+id: group-inspect
+requires: [group, messages, next]
+---
+Group state: {{group.state}}
+Completed means the assigned Mate returned a report; it does not imply independent verification.
+Members:
+@for mate in group.mates
+- {{mate.id}}: {{mate.responsibility}}
+@endfor
+Tasks:
+@if nonempty(group.nodes)
+@for node in group.nodes
+@include group-node
+@endfor
+@else
+- (none)
+@endif
+Messages are historical observations; task state above is authoritative. A completed task means a report was received, not independently verified.
+New Mate messages:
+@if nonempty(messages)
+@for message in messages
+- seq={{message.sequence}} sender={{message.sender}} type={{message.type}}
+@if nonempty(message.dispatch)
+dispatch={{message.dispatch}} currentDispatch={{message.current}}
+@else
+dispatch=(uncorrelated) currentDispatch={{message.current}}
+@endif
+payload={{message.payload}}
+@endfor
+@else
+- (none)
+@endif
+nextSinceSeq: {{next}}

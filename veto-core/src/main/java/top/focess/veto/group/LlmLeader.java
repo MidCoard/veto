@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
@@ -18,6 +19,7 @@ import org.springframework.stereotype.Component;
 import top.focess.veto.agent.Agent;
 import top.focess.veto.agent.AgentResult;
 import top.focess.veto.agent.identity.AgentPersona;
+import top.focess.veto.agent.loop.PromptLibrary;
 
 /**
  * LLM-backed Leader that wraps an {@link Agent}. It authors the DAG, assigns Mates, reasons over
@@ -198,94 +200,27 @@ public class LlmLeader {
 
     /** Heuristic prompt: "investigate + author a DAG from this contextBrief." */
     private static @NonNull String buildAuthorPrompt(@NonNull UUID groupId, String contextBrief) {
-        return "You are the Group Leader (a Top-Tier reasoning model) for group "
-                + groupId
-                + ". The Leader authors an Execution DAG for the work, then dispatches it to"
-                + " Mates via the Blackboard. The DAG drives the group's plan.\n\n"
-                + "## Context brief\n"
-                + (contextBrief == null
-                        ? "(none — read the codebase to learn what to do)"
-                        : contextBrief)
-                + "\n\n"
-                + "## What to do\n"
-                + "1. Investigate the codebase (use the `view_file` / `grep_search` tools).\n"
-                + "2. Decompose the work into DAG nodes. Each node is a unit of work assigned"
-                + " to one Mate.\n"
-                + "3. Express dependencies as `dependsOn` (the node ids that must complete"
-                + " before this one can start).\n\n"
-                + "## Output schema (REQUIRED — no prose, just JSON)\n"
-                + "```\n"
-                + "{\n"
-                + "  \"nodes\": [\n"
-                + "    {\"nodeId\": \"n1\", \"description\": \"...\", \"skillset\": \"coding|testing|graphql|...\","
-                + " \"dependsOn\": []},\n"
-                + "    {\"nodeId\": \"n2\", \"description\": \"...\", \"skillset\": \"...\", \"dependsOn\": [\"n1\"]}\n"
-                + "  ]\n"
-                + "}\n"
-                + "```\n\n"
-                + "## Rules\n"
-                + "- Use short, descriptive nodeIds (n1, n2, ...).\n"
-                + "- Each node's description is the instruction the assigned Mate receives — be"
-                + " specific and self-contained (the Mate has no other context).\n"
-                + "- `dependsOn` must form a DAG (no cycles); a node starts only after its deps"
-                + " VERIFY.\n"
-                + "- Size each node so a single Mate can complete it; split larger work into"
-                + " dependent nodes.\n"
-                + "- Prefer parallelism: independent work → sibling nodes with no shared"
-                + " `dependsOn`.\n"
-                + "- If the context brief is empty/unknown, make the first node a read-only"
-                + " investigation (skillset `research`) that later nodes depend on.\n"
-                + "- `skillset` picks the Mate: one of `coding`, `testing`, `research`, `writing`,"
-                + " or a domain label matching a spawned Mate's skillset.\n"
-                + "- Keep the DAG minimal — 1-3 nodes for simple work, more for parallel builds.\n\n"
-                + "Begin with the JSON only. No surrounding prose.";
+        return PromptLibrary.text(
+                "leader-author",
+                Map.of("groupId", groupId, "brief", contextBrief == null ? "" : contextBrief));
     }
 
     /** Heuristic prompt: "should we pivot?" */
     private static @NonNull String buildPivotPrompt(
             @NonNull Group group, int perMateMessageCount, double saturation) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("You are the Group Leader (a Top-Tier reasoning model) for group ")
-                .append(group.groupId())
-                .append(".\n\n");
-        sb.append("## Current state\n");
-        sb.append("- Per-Mate message count (without ACCEPT): ")
-                .append(perMateMessageCount)
-                .append("\n");
-        sb.append("- Reasoning-buffer saturation: ")
-                .append(String.format("%.2f", saturation))
-                .append("\n");
-        sb.append("- Mates: ").append(group.mates()).append("\n");
-        sb.append("- DAG nodes:\n");
-        for (DagNode n : group.dag().nodes()) {
-            sb.append("  - ")
-                    .append(n.nodeId())
-                    .append(" (")
-                    .append(n.state())
-                    .append(")")
-                    .append(" assigned=")
-                    .append(n.assignedMateId() == null ? "?" : n.assignedMateId())
-                    .append(" skillset=")
-                    .append(n.requiredSkillset())
-                    .append("\n");
-        }
-        sb.append("\n## Question\n");
-        sb.append("Should we Strategic Pivot (mark some nodes STALE, re-plan, re-assign)?\n");
-        sb.append("Reply with EXACTLY this JSON (no prose):\n");
-        sb.append("```\n");
-        sb.append(
-                "{\"pivot\": true|false, \"staleNodeIds\": [\"n1\", \"n2\"], \"reason\":"
-                        + " \"...\"}\n");
-        sb.append("```\n\n");
-        sb.append(
-                "Guidance: pivot when (a) per-Mate message count > 5 (Progress Deadlock)"
-                        + " or (b) reasoning-buffer saturation > 0.8 (Context Saturation)."
-                        + " Otherwise HOLD.\n");
-        sb.append(
-                "`staleNodeIds` may only contain PENDING / RUNNING / FAILED node ids — never"
-                        + " VERIFIED nodes (those are done). When pivoting, the listed nodes go"
-                        + " STALE for re-plan + re-assignment; non-listed nodes are untouched.");
-        return sb.toString();
+        return PromptLibrary.text(
+                "leader-pivot",
+                Map.of(
+                        "groupId",
+                        group.groupId(),
+                        "messageCount",
+                        perMateMessageCount,
+                        "saturation",
+                        saturation,
+                        "mates",
+                        group.mates(),
+                        "nodes",
+                        group.dag().nodes().stream().map(GroupPromptInputs::node).toList()));
     }
 
     /**

@@ -1,0 +1,30 @@
+---
+version: 2
+id: group-node
+requires: [node]
+---
+- {{node.id}}
+@if node.state == "VERIFIED"
+[COMPLETED]
+@else
+[{{node.state}}]
+@endif
+@if nonempty(node.assigned)
+mate={{node.assigned}}
+@else
+mate=(unassigned)
+@endif
+skillset={{node.skillset}} dependsOn={{json(node.dependencies)}}
+{{node.description}}
+@if nonempty(node.artifact)
+Artifact: {{node.artifact}}
+@endif
+@if nonempty(node.report)
+report: {{node.report}}
+@endif
+@if nonempty(node.failure)
+failure: {{node.failure}}
+@endif
+@if nonempty(node.logs)
+Logs: {{json(node.logs)}}
+@endif

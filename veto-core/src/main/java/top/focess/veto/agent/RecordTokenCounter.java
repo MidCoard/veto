@@ -2,6 +2,7 @@ package top.focess.veto.agent;
 
 import com.fasterxml.jackson.databind.node.NullNode;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
 
@@ -24,15 +25,27 @@ public final class RecordTokenCounter {
     public static @NonNull TurnRecord withoutEstimate(@NonNull TurnRecord turn) {
         return turn.type() == TurnType.ASSISTANT_THOUGHT
                         || "estimated".equals(turn.payload().get("tokenCountSource"))
+                        || hasRequestDelta(turn.payload())
                 ? unmeasured(turn)
                 : turn;
     }
 
     public static Long count(@NonNull Map<String, Object> payload) {
+        if (hasRequestDelta(payload)) return null;
         if (!"measured".equals(payload.get("tokenCountSource"))) return null;
         Object value = payload.get("usedTokens");
         return value instanceof Number number && number.longValue() >= 0
                 ? number.longValue()
                 : null;
+    }
+
+    private static boolean hasRequestDelta(@NonNull Map<String, Object> payload) {
+        if (payload.containsKey("tokenDeltaFromTurn")) return true;
+        return payload.get("llmUsage") instanceof List<?> measurements
+                && measurements.stream()
+                        .anyMatch(
+                                value ->
+                                        value instanceof Map<?, ?> usage
+                                                && Boolean.TRUE.equals(usage.get("recordDelta")));
     }
 }

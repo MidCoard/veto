@@ -1,0 +1,6 @@
+---
+version: 2
+id: runtime-refusal
+requires: [prefix, detail]
+---
+{{prefix}}{{detail}}. The call was not executed.

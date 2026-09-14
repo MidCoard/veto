@@ -1,0 +1,6 @@
+---
+version: 2
+id: runtime-refused-duplicate
+requires: []
+---
+this identical tool call was already declined by the user in the current task; it was not offered again and was not executed. Do not retry it unchanged

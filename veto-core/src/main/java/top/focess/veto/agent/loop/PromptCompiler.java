@@ -1,5 +1,6 @@
 package top.focess.veto.agent.loop;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
@@ -38,15 +39,9 @@ import top.focess.veto.llm.core.VetoRequest;
  * <p>Three responsibilities:
  *
  * <ol>
- *   <li><b>System message</b> - compiled ("linked") by substituting dynamic blocks into the
- *       template at {@code default-system-prompt.md}. Blocks: {@code {{LAW}}} (VETO.md, resolved
- *       per-root + cross-root), {@code {{IDENTITY}}} (persona name+description plus optional
- *       deployer role guidance), {@code {{ROLE}}} (STANDALONE/LEADER/MATE - drives the tool set),
- *       {@code {{WORKSPACE}}} (session roots + usable path syntax), {@code {{ENVIRONMENT}}} (host
- *       OS/arch + no-shell run_command semantics), {@code {{TOOLS}}} (role-scoped catalog, from the
- *       SAME flat tools that build {@code tools[]}), {@code {{BOUNDARIES}}} (deployer-policy
- *       "not-do" fence), {@code {{SKILLS}}} (name+desc catalog). See {@link PromptTemplate} +
- *       {@link PromptBlocks}.
+ *   <li><b>System message</b> - bind execution facts with {@link PromptInputs} and compile the
+ *       registered MDC entry using {@link PromptDocument}. Sources own all prose and presentation
+ *       conditions; capability filtering and budget enforcement remain here.
  *   <li><b>messages[]</b> - role-mapped, REWIND-resolved, and checked against the input budget
  *       without silently removing conversation history, emitted oldest->newest and passed through
  *       {@link #wellFormed} so the result is the conversation every strict provider accepts (opens
@@ -66,8 +61,7 @@ public class PromptCompiler {
      * completion or absence of side effects.
      */
     static final @NonNull String INTERRUPTED_TOOL_RESULT =
-            "(tool call interrupted — no result was recorded; execution and side effects are"
-                    + " unknown. Verify actual state before considering another call.)";
+            PromptLibrary.text("runtime-missing-tool-result");
 
     private final @NonNull CapabilityTranslator translator;
     private final SystemPromptResolver systemPromptResolver;
@@ -131,20 +125,7 @@ public class PromptCompiler {
         this.objectMapper = mapper;
         this.toolResultPresenter = new ToolResultPresenter(mapper);
         this.deployerPolicy = DeployerPolicy.PROTECTED;
-        this.isolatedInstructions =
-                PromptTemplate.render(
-                        SystemPromptResolver.loadRules("veto/default-tool-agent-system-prompt.md"),
-                        Map.of(
-                                "OPERATING_CONTRACT",
-                                        SystemPromptResolver.loadRules(
-                                                "veto/tool-agent-operating-contract.md"),
-                                "TASK_INSTRUCTIONS", "## Task Instructions\n\n" + instructions,
-                                "TOOL_CALLS",
-                                        SystemPromptResolver.loadRules(
-                                                "veto/tool-agent-tool-calls.md"),
-                                "RESPONSE_PROTOCOL",
-                                        SystemPromptResolver.loadRules(
-                                                "veto/tool-agent-response-protocol.md")));
+        this.isolatedInstructions = instructions;
         this.maxInputTokens = maxInputTokens;
         this.contextFillRatio = 1;
     }
@@ -270,7 +251,7 @@ public class PromptCompiler {
                 correctionFactor,
                 toolResultPresentation,
                 inputBudgetOverride,
-                "");
+                ChatMessage.user(""));
     }
 
     public @NonNull CompiledPrompt compile(
@@ -282,16 +263,16 @@ public class PromptCompiler {
             double correctionFactor,
             @NonNull ToolResultPresentationMode toolResultPresentation,
             Long inputBudgetOverride,
-            @NonNull String recoveryContext) {
+            @NonNull ChatMessage recoveryContext) {
 
         List<ToolDefinition> flatTools =
                 translator.translateTools(
                         availableTools(
                                 persona.whitelistedTools(), persona.registeredSkills().isEmpty()));
         List<ChatMessage> conversation = resolveRewinds(history, toolResultPresentation);
-        if (!recoveryContext.isBlank()) {
+        if (!recoveryContext.content().isBlank()) {
             conversation = new ArrayList<>(conversation);
-            conversation.add(ChatMessage.user(recoveryContext));
+            conversation.add(recoveryContext);
         }
         String systemMessage =
                 conversation.stream()
@@ -397,50 +378,22 @@ public class PromptCompiler {
             @NonNull ToolResultPresentationMode toolResultPresentation,
             boolean guidedEnabled) {
         String fixed = isolatedInstructions;
+        Map<String, Object> data =
+                PromptInputs.standard(
+                        persona,
+                        sessionWorkspace,
+                        base,
+                        flatTools,
+                        deployerPolicy,
+                        toolResultPresentation,
+                        guidedEnabled);
+        String entry = "default-system-prompt";
         if (fixed != null) {
-            return new PromptSource.Rendered(
-                    "legacy",
-                    PromptTemplate.render(
-                            fixed,
-                            Map.of(
-                                    "IDENTITY",
-                                            PromptBlocks.identity(
-                                                    persona.name(), persona.description()),
-                                    "TOOLS", PromptBlocks.tools(flatTools),
-                                    "RESULT_CONVENTIONS",
-                                            PromptBlocks.resultConventions(
-                                                    toolResultPresentation))),
-                    List.of());
+            entry = "default-tool-agent-system-prompt";
+            data.put("instructions", fixed);
         }
-        SystemPromptResolver resolver = systemPromptResolver;
-        if (resolver == null) throw new IllegalStateException("Missing standard prompt resolver");
-        String law = sessionWorkspace.vetoMdResolver().resolve();
-        // Persona identity is always retained. A deployer-supplied role base is additional trusted
-        // guidance, not an identity replacement; otherwise Mate id/skillset context disappears.
-        String identity = PromptBlocks.identity(persona.name(), persona.description());
-        if (base != null && !base.isBlank()) {
-            identity += "\n\n## Additional Role Guidance\n" + base.strip();
-        }
-        Map<String, String> blocks = new LinkedHashMap<>(resolver.commonBlocks());
-        blocks.put("LAW", PromptBlocks.law(law));
-        blocks.put("IDENTITY", identity);
-        blocks.put("ROLE", PromptBlocks.role(persona.role()));
-        blocks.put(
-                "DELEGATION_RULES",
-                flatTools.stream().anyMatch(tool -> "create_group".equals(tool.name()))
-                        ? resolver.delegationPrompt()
-                        : "");
-        blocks.put("WORKSPACE", PromptBlocks.workspace(sessionWorkspace));
-        blocks.put("ENVIRONMENT", PromptBlocks.environment());
-        blocks.put(
-                "RESULT_CONVENTIONS",
-                flatTools.isEmpty() ? "" : PromptBlocks.resultConventions(toolResultPresentation));
-        blocks.put("TOOLS", PromptBlocks.tools(flatTools));
-        blocks.put("GUIDED_PROTOCOL", guidedEnabled ? resolver.guidedPrompt() : "");
-        blocks.put(
-                "BOUNDARIES", PromptBlocks.boundaries(deployerPolicy, sessionWorkspace.pathMode()));
-        blocks.put("SKILLS", PromptBlocks.skills(persona.registeredSkills()));
-        return resolver.compileStandard(blocks, guidedEnabled);
+        var compiled = PromptLibrary.compile(entry, data);
+        return new PromptSource.Rendered(entry, compiled.text(), compiled.sources());
     }
 
     private @NonNull List<ChatMessage> fitIsolatedBudget(
@@ -511,15 +464,25 @@ public class PromptCompiler {
         String pendingReasoning = null;
         List<Integer> pendingTurns = List.of();
         for (TurnRecord turn : HistoryProjection.effective(history)) {
-            if (turn.type() == TurnType.AGENT_INIT) {
-                if (pendingThought != null && !pendingThought.isBlank()) {
+            if (turn.type() == TurnType.TOKEN_USAGE) continue;
+            if (pendingThought != null
+                    && turn.type() != TurnType.TOOL_CALL
+                    && turn.type() != TurnType.REWIND) {
+                // Retained plans are history even when execution ended before a tool call.
+                if (!pendingThought.isBlank())
                     compiled.add(
                             ChatMessage.assistant(pendingThought).withSourceTurns(pendingTurns));
-                }
                 pendingThought = null;
                 pendingReasoning = null;
                 pendingTurns = List.of();
-                compiled.add(ChatMessage.system(str(turn.payload(), "system_prompt")));
+            }
+            if (turn.type() == TurnType.AGENT_INIT) {
+                pendingThought = null;
+                pendingReasoning = null;
+                pendingTurns = List.of();
+                compiled.add(
+                        restoreSource(
+                                turn, ChatMessage.system(str(turn.payload(), "system_prompt"))));
                 continue;
             }
             if (turn.type() == TurnType.REWIND) {
@@ -535,9 +498,7 @@ public class PromptCompiler {
                 continue;
             }
             if (turn.type() == TurnType.ASSISTANT_THOUGHT) {
-                // Buffer the thought + reasoning_content; merge into the next TOOL_CALL or
-                // ASSISTANT_RESPONSE. Not emitted as a standalone message (saves tokens and
-                // avoids DeepSeek's reasoning_content echo requirement on thought-only messages).
+                // Merge into the next tool call; other boundaries retain the content separately.
                 pendingThought = str(turn.payload(), "response");
                 pendingTurns = List.of(turn.turnNumber());
                 pendingReasoning = str(turn.payload(), "reasoning_content");
@@ -568,23 +529,81 @@ public class PromptCompiler {
         return compiled;
     }
 
+    /** Persist the exact authored observation and its provenance inside Records. */
+    public @NonNull TurnRecord recordRuntimeSource(@NonNull TurnRecord turn) {
+        if (turn.payload().containsKey("compiled_observation")
+                || !List.of(
+                                TurnType.MONITOR_EVENT,
+                                TurnType.USER_INTERRUPT,
+                                TurnType.EXECUTION_ERROR)
+                        .contains(turn.type())) return turn;
+        ChatMessage message = mapRole(turn, null, null, ToolResultPresentationMode.BASIC);
+        if (message == null || message.promptSources().isEmpty()) return turn;
+        return withRecordedSource(turn, message, true);
+    }
+
+    public static @NonNull TurnRecord sourcedUserPrompt(
+            int number, @NonNull String entry, @NonNull Map<String, ?> data) {
+        ChatMessage message = PromptLibrary.message(entry, data);
+        return withRecordedSource(TurnRecord.userPrompt(number, message.content()), message, false);
+    }
+
+    private static @NonNull TurnRecord withRecordedSource(
+            @NonNull TurnRecord turn, @NonNull ChatMessage message, boolean observation) {
+        Map<String, Object> payload = new LinkedHashMap<>(turn.payload());
+        if (observation) payload.put("compiled_observation", message.content());
+        payload.put(
+                "prompt_source",
+                Map.of("version", 2, "message", message.role(), "spans", message.promptSources()));
+        return new TurnRecord(turn.turnNumber(), turn.type(), payload, turn.timestamp());
+    }
+
+    private @NonNull ChatMessage restoreSource(
+            @NonNull TurnRecord turn, @NonNull ChatMessage message) {
+        if (!(turn.payload().get("prompt_source") instanceof Map<?, ?> source)) return message;
+        Object spans = source.get("spans");
+        if (spans == null) return message;
+        try {
+            List<PromptSource.Span> decoded =
+                    objectMapper.convertValue(
+                            spans, new TypeReference<List<PromptSource.Span>>() {});
+            if (decoded == null
+                    || decoded.stream()
+                            .anyMatch(
+                                    span ->
+                                            span.start() < 0
+                                                    || span.end() < span.start()
+                                                    || span.end() > message.content().length()))
+                return message;
+            return message.withPromptSources(decoded);
+        } catch (IllegalArgumentException invalidMetadata) {
+            return message;
+        }
+    }
+
     /**
      * Role mapping. ASSISTANT_THOUGHT is handled by the caller (resolveRewinds buffers it and
-     * merges into the next TOOL_CALL or ASSISTANT_RESPONSE). The pending thought/reasoning are
-     * passed so the merged assistant message carries both content and reasoning_content.
+     * merges into the next TOOL_CALL). The pending thought/reasoning are passed so the merged
+     * assistant message carries both content and reasoning_content.
      */
     private ChatMessage mapRole(
             @NonNull TurnRecord turn,
             String pendingThought,
             String pendingReasoning,
             @NonNull ToolResultPresentationMode toolResultPresentation) {
+        if (turn.payload().get("compiled_observation") instanceof String content)
+            return restoreSource(turn, ChatMessage.user(content));
         String thoughtContent = pendingThought != null ? pendingThought : "";
         return switch (turn.type()) {
             case MONITOR_EVENT ->
-                    ChatMessage.user("[Monitor observation] " + str(turn.payload(), "content"));
-            case USER_PROMPT -> ChatMessage.user(renderUserPrompt(turn.payload()));
+                    PromptLibrary.message(
+                            "runtime-monitor", Map.of("content", str(turn.payload(), "content")));
+            case USER_PROMPT ->
+                    restoreSource(turn, ChatMessage.user(renderUserPrompt(turn.payload())));
             case USER_INTERRUPT ->
-                    ChatMessage.user("[User feedback]: " + str(turn.payload(), "feedback"));
+                    PromptLibrary.message(
+                            "runtime-feedback",
+                            Map.of("feedback", str(turn.payload(), "feedback")));
             case ASSISTANT_THOUGHT -> null; // handled by resolveRewinds
             case ASSISTANT_RESPONSE -> ChatMessage.assistant(str(turn.payload(), "content"));
             case TOOL_CALL -> {
@@ -603,23 +622,10 @@ public class PromptCompiler {
             case COMPACTION_SUMMARY -> ChatMessage.user(str(turn.payload(), "content"));
             case EXECUTION_ERROR ->
                     "INTERRUPTED".equals(turn.payload().get("outcome"))
-                            ? ChatMessage.user(
-                                    "[Runtime interruption] The preceding execution was interrupted by a backend restart. "
-                                            + "Its GUIDE program and uncompleted tool calls are no longer pending. "
-                                            + "Do not replay them or carry their steps into the next request. "
-                                            + "Retain completed results as history; missing results mean unknown effects. "
-                                            + "Follow the new user request independently, and only perform old work if it explicitly asks for that work.")
+                            ? PromptLibrary.message("runtime-interrupted", Map.of())
                             : "CANCELLED".equals(turn.payload().get("outcome"))
                                             && turn.payload().get("requestId") instanceof String
-                                    ? ChatMessage.user(
-                                            "[Runtime cancellation] At this point in the recorded history, "
-                                                    + "the immediately preceding request was cancelled. "
-                                                    + "This record does not describe any later request or "
-                                                    + "establish why a later request stopped. "
-                                                    + "Its unfinished work is no longer pending. Do not resume "
-                                                    + "or complete it unless a new request explicitly asks you to. "
-                                                    + "Handle the next request independently; retained history "
-                                                    + "does not authorize continuing cancelled work.")
+                                    ? PromptLibrary.message("runtime-cancelled", Map.of())
                                     : null;
             case REWIND, TOKEN_USAGE -> null;
         };
@@ -639,18 +645,17 @@ public class PromptCompiler {
         } catch (IllegalArgumentException invalidReceipt) {
             return null;
         }
-        return ChatMessage.user(
-                        "[Runtime approval observation] Recorded resolution for this call only: "
-                                + serializeArgs(
-                                        Map.of(
-                                                "call_id",
-                                                callId,
-                                                "decision",
-                                                option,
-                                                "decisionSource",
-                                                origin))
-                                + ". CLIENT_RESPONSE means the client answered the approval request; "
-                                + "this receipt is not the result of any later call.")
+        return PromptLibrary.message(
+                        "runtime-approval",
+                        Map.of(
+                                "receipt",
+                                Map.of(
+                                        "call_id",
+                                        callId,
+                                        "decision",
+                                        option,
+                                        "decisionSource",
+                                        origin)))
                 .withSourceTurns(List.of(turn.turnNumber()));
     }
 
@@ -721,10 +726,7 @@ public class PromptCompiler {
         if (resumeContext.isBlank()) {
             return str(payload, "content");
         }
-        return "Continue the unfinished task from the prior episode. The prior episode stopped "
-                + "only because the model-call limit was reached; do not repeat the limit notice. "
-                + "Resume from the existing observations and progress.\n\nOriginal user request:\n"
-                + resumeContext;
+        return PromptLibrary.text("runtime-resume", Map.of("context", resumeContext));
     }
 
     // ── Token budget ──────────────────────────────────────────────────
@@ -845,7 +847,9 @@ public class PromptCompiler {
             firstConversation++;
         if (firstConversation == out.size() || !"user".equals(out.get(firstConversation).role())) {
             ChatMessage anchor = lastUserMessage(full);
-            out.add(firstConversation, anchor != null ? anchor : ChatMessage.user("(continued)"));
+            out.add(
+                    firstConversation,
+                    anchor != null ? anchor : PromptLibrary.message("runtime-continued", Map.of()));
         }
         return out;
     }

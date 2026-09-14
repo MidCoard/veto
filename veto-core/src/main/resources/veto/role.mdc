@@ -1,0 +1,14 @@
+---
+version: 2
+id: role
+requires: [persona]
+---
+@if persona.role == "STANDALONE"
+@include role-standalone
+@endif
+@if persona.role == "LEADER"
+@include role-leader
+@endif
+@if persona.role == "MATE"
+@include role-mate
+@endif

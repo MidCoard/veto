@@ -1,0 +1,17 @@
+---
+version: 2
+id: identity
+requires: [persona, guidance]
+---
+@if nonempty(persona.name)
+You are {{persona.name}}.
+@else
+You are a Veto agent.
+@endif
+@if nonempty(persona.description)
+{{persona.description}}
+@endif
+@if nonempty(guidance)
+## Additional Role Guidance
+{{guidance}}
+@endif

@@ -3,6 +3,7 @@ package top.focess.veto.llm.core;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.agent.loop.PromptSource;
 
 /**
  * A single chat message in a compiled conversation - the role-mapped form the {@code
@@ -29,10 +30,46 @@ public record ChatMessage(
         String toolArgs,
         String reasoningContent,
         Boolean toolSuccess,
-        @JsonIgnore @NonNull List<Integer> sourceTurns) {
+        @JsonIgnore @NonNull List<Integer> sourceTurns,
+        @JsonIgnore @NonNull List<PromptSource.Span> promptSources) {
 
     public ChatMessage {
         sourceTurns = List.copyOf(sourceTurns);
+        promptSources = List.copyOf(promptSources);
+    }
+
+    public ChatMessage(
+            @NonNull String role,
+            @NonNull String content,
+            String callId,
+            String toolName,
+            String toolArgs,
+            String reasoningContent,
+            Boolean toolSuccess,
+            @NonNull List<Integer> sourceTurns) {
+        this(
+                role,
+                content,
+                callId,
+                toolName,
+                toolArgs,
+                reasoningContent,
+                toolSuccess,
+                sourceTurns,
+                List.of());
+    }
+
+    public @NonNull ChatMessage withPromptSources(@NonNull List<PromptSource.Span> sources) {
+        return new ChatMessage(
+                role,
+                content,
+                callId,
+                toolName,
+                toolArgs,
+                reasoningContent,
+                toolSuccess,
+                sourceTurns,
+                sources);
     }
 
     public ChatMessage(
@@ -49,7 +86,15 @@ public record ChatMessage(
     /** Internal provenance; never rendered into provider message bodies. */
     public @NonNull ChatMessage withSourceTurns(@NonNull List<Integer> turns) {
         return new ChatMessage(
-                role, content, callId, toolName, toolArgs, reasoningContent, toolSuccess, turns);
+                role,
+                content,
+                callId,
+                toolName,
+                toolArgs,
+                reasoningContent,
+                toolSuccess,
+                turns,
+                promptSources);
     }
 
     // ── Backward-compatible factories (structured fields = null) ────────────

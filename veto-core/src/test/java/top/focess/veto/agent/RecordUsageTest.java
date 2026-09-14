@@ -3,6 +3,7 @@ package top.focess.veto.agent;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -52,7 +53,43 @@ class RecordUsageTest {
                 RecordUsage.add(
                         TurnRecord.userPrompt(2, "hello"),
                         Map.of("recordDelta", true, "contextDeltaTokens", 0));
-        assertEquals(Long.valueOf(0), RecordTokenCounter.count(zero.payload()));
+        assertNull(RecordTokenCounter.count(zero.payload()));
+        assertEquals(
+                Long.valueOf(0),
+                RecordTokenCounter.count(Map.of("usedTokens", 0, "tokenCountSource", "measured")));
+    }
+
+    @Test
+    void rejectsHistoricalRequestDeltasWithoutChangingRawAuditOrCallUsage() {
+        var measurement =
+                Map.<String, Object>of(
+                        "inputTokens",
+                        125,
+                        "outputTokens",
+                        8,
+                        "recordDelta",
+                        true,
+                        "contextDeltaTokens",
+                        25);
+        for (Map<String, Object> marker :
+                List.of(
+                        Map.<String, Object>of("tokenDeltaFromTurn", 3),
+                        Map.<String, Object>of("llmUsage", List.of(measurement)))) {
+            var payload = new LinkedHashMap<>(marker);
+            payload.put("usedTokens", 25);
+            payload.put("tokenCountSource", "measured");
+            var raw = new TurnRecord(4, TurnType.USER_PROMPT, payload, null);
+            var projected = RecordUsage.contentRecords(List.of(raw)).getFirst();
+            assertNull(RecordTokenCounter.count(raw.payload()));
+            assertFalse(projected.payload().containsKey("usedTokens"));
+            assertFalse(projected.payload().containsKey("tokenCountSource"));
+            assertEquals(25, raw.payload().get("usedTokens"));
+            var updated = RecordUsage.add(raw, measurement);
+            assertFalse(updated.payload().containsKey("usedTokens"));
+            assertTrue(
+                    updated.payload().get("llmUsage") instanceof List<?> calls
+                            && calls.contains(measurement));
+        }
     }
 
     @Test

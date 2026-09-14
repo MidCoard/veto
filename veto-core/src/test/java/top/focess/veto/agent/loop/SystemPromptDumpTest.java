@@ -75,12 +75,12 @@ class SystemPromptDumpTest {
     private final @NonNull ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
-    void defaultTemplateContainsOnlyOrderedBlocks() {
-        assertTrue(
-                resolver.defaultPrompt()
-                        .lines()
-                        .allMatch(line -> line.isBlank() || line.matches("\\{\\{[A-Z_]+}}")));
-        assertTrue(resolver.commonBlocks().values().stream().noneMatch(String::isBlank));
+    void defaultTemplateContainsSourceOwnedComposition() {
+        String source = PromptLibrary.source("default-system-prompt");
+        assertTrue(source.contains("version: 2"));
+        assertTrue(source.contains("@message system"));
+        assertTrue(source.contains("@include tool-catalog"));
+        assertFalse(source.contains("{{TOOLS}}"));
     }
 
     @Test
@@ -93,7 +93,7 @@ class SystemPromptDumpTest {
                             baseFor(role),
                             ToolResultPresentationMode.BASIC,
                             true);
-            assertTrue(linked.contains(resolver.answerStyle()));
+            assertTrue(linked.contains(PromptLibrary.text("answer-style")));
             assertTrue(
                     linked.contains(
                             "flowchart, sequenceDiagram, stateDiagram-v2, erDiagram, classDiagram"));
@@ -119,7 +119,7 @@ class SystemPromptDumpTest {
                         null,
                         ToolResultPresentationMode.BASIC,
                         false);
-        assertTrue(baseline.contains(resolver.answerStyle()));
+        assertTrue(baseline.contains(PromptLibrary.text("answer-style")));
         assertTrue(baseline.contains("## How to Include Diagrams"));
     }
 
@@ -133,7 +133,7 @@ class SystemPromptDumpTest {
                 translator.translateTools(
                         PromptCompiler.availableTools(mcpEngine.getActiveTools(null), true));
         Workspace renderedWorkspace = dumpWorkspace();
-        String template = resolver.defaultPrompt();
+        String template = PromptLibrary.source("default-system-prompt");
 
         // Raw template, the full tool catalog (reference, pre-role-filter), and a plain inventory.
         // No labels or descriptors are prepended - each file is pure content, exactly what the
@@ -341,7 +341,7 @@ class SystemPromptDumpTest {
         assertFalse(
                 Files.readString(DUMP_DIR.resolve("LEADER.md")).contains("execute in parallel"),
                 "prompt must match ordered runtime tool execution");
-        String sharedInstructions = PromptTemplate.render(template, resolver.commonBlocks());
+        String sharedInstructions = PromptLibrary.text("response-protocol");
         assertFalse(
                 sharedInstructions.contains("veto_pulse"),
                 "internal response-schema names must not be exposed to the model");

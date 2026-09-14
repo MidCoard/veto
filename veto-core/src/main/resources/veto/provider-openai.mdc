@@ -1,0 +1,10 @@
+---
+version: 2
+id: provider-openai
+requires: [system, schema]
+---
+{{system}}
+
+IMPORTANT: You must respond with a valid JSON object matching this schema:
+{{json(schema)}}
+Ensure the 'json' keyword is mentioned in your reasoning.

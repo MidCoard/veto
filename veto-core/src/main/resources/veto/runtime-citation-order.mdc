@@ -1,0 +1,13 @@
+---
+version: 2
+id: runtime-citation-order
+requires: [error, items]
+---
+{{error}}
+Input order (system excluded):
+@for item in items
+{{item.index}}:{{item.role}}
+@if item.toolCall
+(tool call)
+@endif
+@endfor

@@ -72,7 +72,11 @@ final class GeminiLlmClient extends LlmClient {
             var usage = response.usageMetadata().get();
             long prompt = usage.promptTokenCount().map(Number::longValue).orElse(0L);
             long candidates = usage.candidatesTokenCount().map(Number::longValue).orElse(0L);
-            LlmSystemUsage.set(prompt, candidates);
+            LlmSystemUsage.set(
+                    prompt,
+                    candidates,
+                    usage.cachedContentTokenCount().map(Number::longValue).orElse(null),
+                    null);
         }
 
         String text = response.text();

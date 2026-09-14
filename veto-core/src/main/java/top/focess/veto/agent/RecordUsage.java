@@ -12,26 +12,17 @@ public final class RecordUsage {
 
     public static @NonNull TurnRecord add(
             @NonNull TurnRecord turn, @NonNull Map<String, Object> measurement) {
-        Map<String, Object> payload = new LinkedHashMap<>(turn.payload());
+        Map<String, Object> payload =
+                new LinkedHashMap<>(RecordTokenCounter.withoutEstimate(turn).payload());
         List<Object> usage = new ArrayList<>();
         if (payload.get("llmUsage") instanceof List<?> previous) {
             for (Object value : previous) if (value != null) usage.add(value);
         }
         usage.add(measurement);
         payload.put("llmUsage", usage);
-        if (Boolean.TRUE.equals(measurement.get("recordDelta"))
-                && measurement.get("contextDeltaTokens") instanceof Number delta
-                && delta.longValue() >= 0) {
-            payload.put("usedTokens", delta.longValue());
-            payload.put("tokenCountSource", "measured");
-            if (measurement.get("fromRecordTurn") instanceof Number fromTurn)
-                payload.put("tokenDeltaFromTurn", fromTurn);
-        }
         TurnRecord updated =
                 new TurnRecord(turn.turnNumber(), turn.type(), payload, turn.timestamp());
-        return turn.type() == TurnType.ASSISTANT_THOUGHT
-                ? RecordTokenCounter.unmeasured(updated)
-                : updated;
+        return RecordTokenCounter.withoutEstimate(updated);
     }
 
     /**

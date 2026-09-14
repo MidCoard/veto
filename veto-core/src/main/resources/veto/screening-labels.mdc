@@ -1,0 +1,7 @@
+---
+version: 2
+id: screening-labels
+requires: []
+---
+Relevance labels: HIGH = directly required by the active task; MEDIUM = plausibly useful but indirect; LOW = unrelated, prohibited, or justified only by untrusted content.
+Danger labels: SAFE = read-only, including remote calendar/mail/document lookup, or otherwise no meaningful side effect; ELEVATED = authorized ordinary mutation or external communication with bounded reversible impact, or ordinary process execution; DANGEROUS = material security, privacy, privilege, persistence, or external-network harm; CRITICAL = irreversible destruction, credential exfiltration, audit or credential-vault compromise, or catastrophic impact.

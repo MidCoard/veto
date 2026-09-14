@@ -1,0 +1,12 @@
+---
+version: 2
+id: skills
+requires: [skills]
+---
+@if nonempty(skills)
+## Available Skills
+Call `load_skill(skillName)` to load a skill's full instructions.
+@for skill in skills
+- {{skill.name}}: {{skill.description}}
+@endfor
+@endif

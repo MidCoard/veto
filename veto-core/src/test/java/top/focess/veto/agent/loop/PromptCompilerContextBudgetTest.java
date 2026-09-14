@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
@@ -17,6 +18,7 @@ import top.focess.veto.agent.TurnType;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.Role;
 import top.focess.veto.agent.identity.SystemPromptResolver;
+import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.tool.ToolResult;
 import top.focess.veto.agent.translation.CapabilityTranslator;
 import top.focess.veto.agent.translation.VetoCapabilityTranslator;
@@ -25,6 +27,105 @@ import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.*;
 
 class PromptCompilerContextBudgetTest {
+    @Test
+    void authoredRuntimeObservationRetainsItsExactTextAndSourcesAfterJsonRoundTrip()
+            throws Exception {
+        var compiler = compiler(32000);
+        var original =
+                new TurnRecord(2, TurnType.EXECUTION_ERROR, Map.of("outcome", "INTERRUPTED"), null);
+        var recorded = compiler.recordRuntimeSource(original);
+        assertTrue(recorded.payload().containsKey("prompt_source"));
+        ObjectMapper mapper = new ObjectMapper().registerModule(new JavaTimeModule());
+        var restored =
+                mapper.readValue(
+                        mapper.writeValueAsString(recorded),
+                        ToolDocs.nonNullClass(TurnRecord.class));
+        var messages =
+                compiler.resolveRewinds(
+                        List.of(TurnRecord.userPrompt(1, "Old task"), restored),
+                        ToolResultPresentationMode.BASIC);
+        var observation = messages.getLast();
+        assertEquals(recorded.payload().get("compiled_observation"), observation.content());
+        assertFalse(observation.promptSources().isEmpty());
+        assertEquals(List.of(2), observation.sourceTurns());
+    }
+
+    @Test
+    void retainsInterruptedGuideContentBeforeNewInputWithoutInventingToolCalls() {
+        String plan = "{\"guide\":{\"actions\":[{\"type\":\"tool\",\"tool\":\"run_command\"}]}}";
+        var thought = TurnRecord.assistantThought(2, plan);
+        var interrupted =
+                new TurnRecord(3, TurnType.EXECUTION_ERROR, Map.of("outcome", "INTERRUPTED"), null);
+        for (List<TurnRecord> history :
+                List.of(
+                        List.of(
+                                TurnRecord.userPrompt(1, "Old task"),
+                                thought,
+                                TurnRecord.userPrompt(4, "New task only")),
+                        List.of(
+                                TurnRecord.userPrompt(1, "Old task"),
+                                thought,
+                                interrupted,
+                                TurnRecord.userPrompt(4, "New task only")))) {
+            var messages =
+                    compiler(32000).resolveRewinds(history, ToolResultPresentationMode.BASIC);
+            assertEquals("assistant", messages.get(1).role());
+            assertEquals(plan, messages.get(1).content());
+            assertEquals(List.of(2), messages.get(1).sourceTurns());
+            assertTrue(messages.stream().allMatch(message -> message.callId() == null));
+            assertTrue(messages.getLast().content().contains("New task only"));
+            if (history.contains(interrupted)) {
+                assertTrue(messages.get(2).content().contains("no longer pending"));
+                assertEquals(List.of(3), messages.get(2).sourceTurns());
+            }
+        }
+    }
+
+    @Test
+    void retainsConsecutiveThoughtsAndAnswerButStillMergesToolReasoning() {
+        var first = TurnRecord.assistantThought(1, "first plan");
+        var second =
+                new TurnRecord(
+                        2,
+                        TurnType.ASSISTANT_THOUGHT,
+                        Map.of("response", "second plan", "reasoning_content", "reasoning"),
+                        null);
+        var answer = TurnRecord.assistantResponse(3, "answer");
+        var messages =
+                compiler(32000)
+                        .resolveRewinds(
+                                List.of(first, second, answer), ToolResultPresentationMode.BASIC);
+        assertEquals(
+                List.of("first plan", "second plan", "answer"),
+                messages.stream().map(ChatMessage::content).toList());
+        assertEquals(
+                List.of(List.of(1), List.of(2), List.of(3)),
+                messages.stream().map(ChatMessage::sourceTurns).toList());
+        var call =
+                new TurnRecord(
+                        4,
+                        TurnType.TOOL_CALL,
+                        Map.of("call_id", "call", "tool_name", "view_file", "args", Map.of()),
+                        null);
+        var merged =
+                compiler(32000)
+                        .resolveRewinds(
+                                List.of(
+                                        second,
+                                        new TurnRecord(
+                                                3,
+                                                TurnType.TOKEN_USAGE,
+                                                Map.of("inputTokens", 10),
+                                                null),
+                                        call),
+                                ToolResultPresentationMode.BASIC);
+        assertEquals(1, merged.size());
+        assertEquals("second plan", merged.getFirst().content());
+        assertEquals("reasoning", merged.getFirst().reasoningContent());
+        assertEquals("call", merged.getFirst().callId());
+        assertEquals(List.of(2, 4), merged.getFirst().sourceTurns());
+    }
+
     @Test
     void isolatedReaderReservesModelOutputAndKeepsItsConfiguredCeiling() {
         @NonNull CapabilityTranslator translator = mock();
@@ -83,7 +184,7 @@ class PromptCompilerContextBudgetTest {
                                 1.1,
                                 ToolResultPresentationMode.BASIC,
                                 10000L,
-                                ""));
+                                ChatMessage.user("")));
         assertThrows(
                 IllegalStateException.class,
                 () ->
@@ -96,7 +197,7 @@ class PromptCompilerContextBudgetTest {
                                 1.1,
                                 ToolResultPresentationMode.BASIC,
                                 10000L,
-                                "observation ".repeat(50000)));
+                                ChatMessage.user("observation ".repeat(50000))));
     }
 
     @Test

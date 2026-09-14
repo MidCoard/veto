@@ -171,8 +171,9 @@ class VetoCapabilityTranslatorTest {
                         Map.<String, ParamCategory>of());
         List<ToolDefinition> flat = translator.translateTools(List.of(nativeDef, agent));
         assertEquals(2, flat.size());
-        assertEquals("view_file", flat.get(0).name());
-        assertEquals("Read a file.", flat.get(0).description());
+        assertEquals("load_skill", flat.get(0).name());
+        assertEquals("view_file", flat.get(1).name());
+        assertEquals("Read a file.", flat.get(1).description());
         assertNotNull(flat.get(0).inputSchema());
         assertEquals("object", flat.get(0).inputSchema().get("type"));
         assertFalse(

@@ -1,0 +1,6 @@
+---
+version: 2
+id: reader-persona-description
+requires: []
+---
+Read one approved webpage.

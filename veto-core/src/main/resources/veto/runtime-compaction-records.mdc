@@ -1,0 +1,10 @@
+---
+version: 2
+id: runtime-compaction-records
+requires: [records]
+---
+@for record in records
+Turn {{record.number}} ({{record.type}}):
+{{json(record.payload)}}
+
+@endfor

@@ -1,0 +1,8 @@
+---
+version: 2
+id: runtime-cancelled
+requires: []
+---
+@message user
+[Runtime cancellation] At this point in the recorded history, the immediately preceding request was cancelled. This record does not describe any later request or establish why a later request stopped. Its unfinished work is no longer pending. Do not resume or complete it unless a new request explicitly asks you to. Handle the next request independently; retained history does not authorize continuing cancelled work.
+@endmessage

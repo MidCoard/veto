@@ -7,6 +7,7 @@ import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import top.focess.veto.agent.loop.PromptLibrary;
 import top.focess.veto.llm.egress.EgressEndpoint;
 import top.focess.veto.llm.egress.LlmEgress;
 import top.focess.veto.llm.exceptions.LlmException;
@@ -70,11 +71,7 @@ public class DefaultUniformLLMCaller implements UniformLLMCaller {
                 return provider.execute(resolved);
             } catch (LlmException e) {
                 if (e instanceof PlainTextResponseException) {
-                    throw new ModelSchemaException(
-                            "The response was plain text. Return one JSON object with the answer in"
-                                    + " message. When quoting source messages or tool evidence, include"
-                                    + " citations and matching cite: links as specified in the response protocol.",
-                            e);
+                    throw new ModelSchemaException(PromptLibrary.text("runtime-plain-response"), e);
                 }
                 last = e;
                 if (!e.isRetryable() || attempt == MAX_ATTEMPTS) {

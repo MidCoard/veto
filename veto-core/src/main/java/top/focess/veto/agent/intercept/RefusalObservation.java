@@ -1,6 +1,8 @@
 package top.focess.veto.agent.intercept;
 
+import java.util.Map;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.agent.loop.PromptLibrary;
 
 /**
  * Single owner of the refusal-observation grammar ({@code REFUSED - <detail>. The call was not
@@ -32,7 +34,7 @@ public final class RefusalObservation {
      * security policy) so a later turn can tell a user-decline apart from a policy-refusal.
      */
     public static @NonNull String of(@NonNull String detail) {
-        return PREFIX + detail + ". The call was not executed.";
+        return PromptLibrary.text("runtime-refusal", Map.of("prefix", PREFIX, "detail", detail));
     }
 
     /**

@@ -1,0 +1,16 @@
+---
+version: 2
+id: provider-anthropic
+requires: [system, schema, nativeCalls, guide]
+---
+{{system}}
+
+Response schema for this turn:
+{{json(schema)}}
+Emit one JSON object matching this schema.
+@if nativeCalls
+Direct tool execution may instead use native tool calls.
+@endif
+@if guide
+Emit JSON text only: use calls for ordinary execution or guide for a program. Never combine a guided program with native tool calls in the same response.
+@endif

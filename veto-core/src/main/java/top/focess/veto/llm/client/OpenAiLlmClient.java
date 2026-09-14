@@ -18,6 +18,7 @@ import com.openai.models.chat.completions.ChatCompletionToolMessageParam;
 import com.openai.models.chat.completions.ChatCompletionUserMessageParam;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.agent.loop.PromptLibrary;
 import top.focess.veto.agent.translation.CapabilityTranslator;
 import top.focess.veto.llm.core.ChatMessage;
 import top.focess.veto.llm.core.LlmOptions;
@@ -108,7 +109,13 @@ final class OpenAiLlmClient extends LlmClient {
         ChatCompletion completion = sdkClient.chat().completions().create(builder.build());
         if (completion.usage().isPresent()) {
             var usage = completion.usage().get();
-            LlmSystemUsage.set(usage.promptTokens(), usage.completionTokens());
+            LlmSystemUsage.set(
+                    usage.promptTokens(),
+                    usage.completionTokens(),
+                    usage.promptTokensDetails()
+                            .flatMap(details -> details.cachedTokens())
+                            .orElse(null),
+                    null);
         }
         String content =
                 completion
@@ -156,19 +163,9 @@ final class OpenAiLlmClient extends LlmClient {
 
     private @NonNull String augmentPromptWithSchema(
             @NonNull String systemPrompt, @NonNull Map<String, Object> responseSchema) {
-        try {
-            String schemaJson =
-                    objectMapper
-                            .writerWithDefaultPrettyPrinter()
-                            .writeValueAsString(responseSchema);
-            return systemPrompt
-                    + "\n\nIMPORTANT: You must respond with a valid JSON object matching this schema:\n"
-                    + schemaJson
-                    + "\nEnsure the 'json' keyword is mentioned in your reasoning.";
-        } catch (Exception e) {
-            throw new ModelCapabilityException(
-                    providerName + " failed to serialize response schema", e);
-        }
+        return PromptLibrary.compile(
+                        "provider-openai", Map.of("system", systemPrompt, "schema", responseSchema))
+                .text();
     }
 
     /**

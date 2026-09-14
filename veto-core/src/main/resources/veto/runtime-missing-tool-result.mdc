@@ -1,0 +1,6 @@
+---
+version: 2
+id: runtime-missing-tool-result
+requires: []
+---
+(tool call interrupted — no result was recorded; execution and side effects are unknown. Verify actual state before considering another call.)
