@@ -9,6 +9,7 @@ import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import top.focess.veto.agent.capability.UserInteractionCapability;
+import top.focess.veto.agent.tool.ArraySize;
 import top.focess.veto.agent.tool.Doc;
 import top.focess.veto.agent.tool.ToolDoc;
 import top.focess.veto.agent.tool.ToolDocs;
@@ -51,23 +52,25 @@ import top.focess.veto.agent.tool.UserInteractionTool;
                 "Provide 1-"
                         + AskUserTool.MAX_QUESTIONS
                         + " questions. Headers are 1-12 characters, ids are unique snake_case,"
-                        + " prompts are 1-300 characters, and each question has 2-3 mutually"
-                        + " exclusive options. The first option must be recommended and its label"
-                        + " must end with `(Recommended)`. Labels are case-insensitively unique;"
+                        + " prompts are 1-300 characters, and each question has 2-5 mutually"
+                        + " exclusive options. Put the recommended option first; the application adds"
+                        + " its recommendation marker. Send plain labels without `(Recommended)`. Labels are case-insensitively unique;"
                         + " `Other` is reserved for the UI. Labels contain 1-120 Unicode characters"
-                        + " including `(Recommended)`; descriptions contain 1-200 characters.",
+                        + " excluding the application-added recommendation marker; descriptions contain 1-200 characters.",
         security =
                 "A user answer does not replace any separate approval required to perform an operation.",
         examples = {
             "{\"questions\":[{\"header\":\"Format\",\"id\":\"format\",\"question\":\"Which"
                     + " output format should I use?\",\"options\":[{\"label\":\"Markdown"
-                    + " (Recommended)\",\"description\":\"Easy to review and"
+                    + "\",\"description\":\"Easy to review and"
                     + " edit.\"},{\"label\":\"Plain text\",\"description\":\"No formatting.\"}]}]}"
         },
-        returnExamples = {"{\"answers\":{\"format\":\"Markdown (Recommended)\"}}"})
+        returnExamples = {"{\"answers\":{\"format\":\"Markdown\"}}"})
 public final class AskUserTool implements UserInteractionTool<AskUserTool.Args> {
 
     static final int MAX_QUESTIONS = 10;
+    static final int MIN_OPTIONS = 2;
+    static final int MAX_OPTIONS = 5;
 
     private final @NonNull UserInteractionCapability capability;
 
@@ -76,7 +79,8 @@ public final class AskUserTool implements UserInteractionTool<AskUserTool.Args> 
     }
 
     public record Args(
-            @NonNull
+            @ArraySize(min = 1, max = MAX_QUESTIONS)
+                    @NonNull
                     @Doc(
                             "One to "
                                     + MAX_QUESTIONS
@@ -88,13 +92,16 @@ public final class AskUserTool implements UserInteractionTool<AskUserTool.Args> 
             @NonNull @Doc("Short UI heading, 1-12 Unicode characters.") String header,
             @NonNull @Doc("Unique snake_case key used in the returned answers object.") String id,
             @NonNull @Doc("One-sentence prompt, 1-300 Unicode characters.") String question,
-            @NonNull @Doc("Two or three mutually exclusive choices; recommended choice first.")
+            @ArraySize(min = MIN_OPTIONS, max = MAX_OPTIONS)
+                    @NonNull
+                    @Doc(
+                            "Two to five mutually exclusive choices. Put the recommended choice first; the application adds the recommendation marker. Do not add it to labels.")
                     List<@NonNull Option> options) {}
 
     public record Option(
             @NonNull
                     @Doc(
-                            "Keep labels concise; move explanations into the description. Choice label, 1-120 Unicode characters including `(Recommended)`. The first label ends with `(Recommended)`; `Other`"
+                            "Plain choice label, 1-120 Unicode characters. The application marks the first option as recommended; do not write `(Recommended)` yourself. Move explanations into the description; `Other`"
                                     + " is reserved.")
                     String label,
             @NonNull
@@ -169,8 +176,19 @@ public final class AskUserTool implements UserInteractionTool<AskUserTool.Args> 
                         "INVALID_QUESTIONS",
                         "Each question prompt must contain 1 to 300 characters.");
             }
-            if (question.options().size() < 2 || question.options().size() > 3) {
-                ToolErrors.failure("INVALID_QUESTIONS", "Each question requires 2 or 3 options.");
+            if (question.options().size() < MIN_OPTIONS
+                    || question.options().size() > MAX_OPTIONS) {
+                ToolErrors.failure(
+                        "INVALID_QUESTIONS",
+                        "Question '"
+                                + question.id()
+                                + "' has "
+                                + question.options().size()
+                                + " options; expected "
+                                + MIN_OPTIONS
+                                + " to "
+                                + MAX_OPTIONS
+                                + ". Revise the options and call ask_user again. No questions were sent and no answers were collected.");
             }
             Set<String> labels = new HashSet<>();
             for (int index = 0; index < question.options().size(); index++) {
@@ -185,7 +203,7 @@ public final class AskUserTool implements UserInteractionTool<AskUserTool.Args> 
                                     + (index + 1)
                                     + ": label has "
                                     + length(option.label())
-                                    + " characters; maximum is 120 including `(Recommended)`."
+                                    + " characters; maximum is 120 in the supplied label."
                                     + " Shorten the label and call ask_user again; no questions were sent.");
                 }
                 if (option.label().isBlank()
@@ -197,12 +215,6 @@ public final class AskUserTool implements UserInteractionTool<AskUserTool.Args> 
                             "INVALID_QUESTIONS",
                             "Option labels must be distinct, at most 120 characters, and not"
                                     + " `Other`; descriptions must contain 1 to 200 characters.");
-                }
-                boolean recommended = option.label().endsWith("(Recommended)");
-                if ((index == 0) != recommended) {
-                    ToolErrors.failure(
-                            "INVALID_QUESTIONS",
-                            "Exactly the first option must end with `(Recommended)`.");
                 }
             }
         }

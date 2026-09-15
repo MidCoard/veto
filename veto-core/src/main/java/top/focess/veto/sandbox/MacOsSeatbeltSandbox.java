@@ -42,7 +42,11 @@ final class MacOsSeatbeltSandbox {
         List<String> command = new ArrayList<>();
         command.add(SANDBOX_EXEC.toString());
         command.add("-p");
-        command.add(profile(workspace, targetCommand.getFirst()));
+        command.add(
+                profile(workspace, targetCommand.getFirst())
+                        + "\n"
+                        + ancestorMetadataRules(
+                                profile.workspaceRoot().toAbsolutePath().normalize()));
         command.addAll(targetCommand);
         return List.copyOf(command);
     }
@@ -92,7 +96,10 @@ final class MacOsSeatbeltSandbox {
                 "  (global-name \"com.apple.SecurityServer\"))",
                 "",
                 "; read-only operating-system and toolchain roots",
-                "(allow file-read-metadata (literal \"/\"))",
+                // libSystem needs to open the root directory during process initialization.
+                // A literal rule does not grant reads of the root's descendants.
+                "(allow file-read* (literal \"/\"))",
+                ancestorMetadataRules(normalizedWorkspace),
                 "(allow file-read*",
                 "  (subpath \"/System\")",
                 "  (subpath \"/usr\")",
@@ -148,6 +155,18 @@ final class MacOsSeatbeltSandbox {
                 "(allow system-socket",
                 "  (require-all (socket-domain AF_SYSTEM) (socket-protocol 2)))",
                 "");
+    }
+
+    /** Permit path traversal/stat without granting directory listings or file content reads. */
+    private static @NonNull String ancestorMetadataRules(@NonNull Path workspace) {
+        List<String> rules = new ArrayList<>();
+        for (Path parent = workspace.getParent(); parent != null; parent = parent.getParent()) {
+            rules.add(
+                    "(allow file-read-metadata (literal \""
+                            + seatbeltString(parent.toString())
+                            + "\"))");
+        }
+        return String.join("\n", rules);
     }
 
     private static @NonNull String protectedMetadataRules(@NonNull Path workspace) {

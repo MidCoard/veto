@@ -22,6 +22,20 @@ import top.focess.veto.memory.MemoryTools;
  */
 class ToolSchemaCompilerTest {
 
+    @Test
+    void advertisesQuestionAndOptionCardinalityInNestedSchema() {
+        var schema =
+                ToolSchemaCompiler.compileFromRecord(
+                        ToolDocs.nonNullClass(
+                                top.focess.veto.agent.tool.builtin.AskUserTool.Args.class));
+        var questions = schema.path("properties").path("questions");
+        assertEquals(1, questions.path("minItems").asInt());
+        assertEquals(10, questions.path("maxItems").asInt());
+        var options = questions.path("items").path("properties").path("options");
+        assertEquals(2, options.path("minItems").asInt());
+        assertEquals(5, options.path("maxItems").asInt());
+    }
+
     private record ExplicitPrimitive(@Required int count) {}
 
     private record ImplicitPrimitive(int count) {}

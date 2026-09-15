@@ -17,6 +17,34 @@ import top.focess.veto.llm.provider.AbstractLlmProvider;
 import top.focess.veto.observability.AuditLogger;
 
 class NativeToolResponsesTest {
+
+    @Test
+    void doesNotTreatEmbeddedProtocolExamplesAsAnExecutionChannel() {
+        String explanation = "Example only: ```json\n{\"calls\":[]}\n```";
+        assertDoesNotThrow(
+                () ->
+                        NativeToolResponses.normalize(
+                                mapper,
+                                request(),
+                                explanation,
+                                List.of(
+                                        new NativeToolResponses.Call(
+                                                "read", mapper.createObjectNode(), "id"))));
+        assertThrows(
+                ToolDocs.nonNullClass(ModelSchemaException.class),
+                () ->
+                        NativeToolResponses.normalize(
+                                mapper,
+                                request(),
+                                "{\"calls\":[]}",
+                                List.of(
+                                        new NativeToolResponses.Call(
+                                                "read", mapper.createObjectNode(), "id"))));
+        assertEquals(
+                "{\"message\":\"ok\"}",
+                NativeToolResponses.responseCandidate("```json\n{\"message\":\"ok\"}\n```"));
+    }
+
     private final @NonNull ObjectMapper mapper = new ObjectMapper();
     private final @NonNull ToolDefinition tool =
             new ToolDefinition(

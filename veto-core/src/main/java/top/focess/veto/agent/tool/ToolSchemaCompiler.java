@@ -121,6 +121,17 @@ public final class ToolSchemaCompiler {
                 paramNode.put("description", doc.value());
             }
 
+            ArraySize size = component.getAnnotation(ToolDocs.nonNullClass(ArraySize.class));
+            if (size != null) {
+                if (!"array".equals(paramNode.path("type").asText())
+                        || size.min() < 0
+                        || size.max() < size.min()) {
+                    throw new IllegalArgumentException("Invalid @ArraySize on " + name);
+                }
+                paramNode.put("minItems", size.min());
+                paramNode.put("maxItems", size.max());
+            }
+
             properties.set(name, paramNode);
 
             // Repository contracts are nullable by default. JSpecify is @Target(TYPE_USE), so the

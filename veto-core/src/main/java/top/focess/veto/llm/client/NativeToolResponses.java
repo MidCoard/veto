@@ -56,9 +56,27 @@ final class NativeToolResponses {
         }
     }
 
+    /**
+     * Only a whole-response JSON envelope is a protocol candidate. Examples inside prose are data.
+     */
+    static @NonNull String responseCandidate(@NonNull String text) {
+        String trimmed = text.strip();
+        if (trimmed.startsWith("```json\n")
+                || trimmed.startsWith("```\n")
+                || trimmed.startsWith("```json\r\n")
+                || trimmed.startsWith("```\r\n")) {
+            int newline = trimmed.indexOf('\n');
+            int end = trimmed.indexOf("```", newline + 1);
+            if (end > newline && trimmed.substring(end + 3).isBlank()) {
+                return trimmed.substring(newline + 1, end).strip();
+            }
+        }
+        return trimmed;
+    }
+
     static void validateNativeChannel(
             @NonNull ObjectMapper mapper, @NonNull VetoRequest request, @NonNull String text) {
-        String candidate = LlmClient.extractJson(mapper, text);
+        String candidate = responseCandidate(text);
         if (candidate.stripLeading().startsWith("{") || candidate.stripLeading().startsWith("[")) {
             JsonNode envelope = arguments(mapper, candidate);
             if (envelope.hasNonNull("calls") || envelope.hasNonNull("guide"))
@@ -74,7 +92,7 @@ final class NativeToolResponses {
             @NonNull VetoRequest request,
             @NonNull String text,
             @NonNull List<Call> nativeCalls) {
-        String candidate = LlmClient.extractJson(mapper, text);
+        String candidate = responseCandidate(text);
         if (nativeCalls.isEmpty()) return candidate;
         validateNativeChannel(mapper, request, text);
         var pulse = mapper.createObjectNode();

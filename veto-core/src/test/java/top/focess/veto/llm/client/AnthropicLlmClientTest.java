@@ -26,6 +26,25 @@ import top.focess.veto.llm.exceptions.ModelSchemaException;
 import top.focess.veto.util.Nullness;
 
 class AnthropicLlmClientTest {
+
+    @Test
+    void keepsJsonExamplesInsideFinalAnswerInsteadOfParsingThemAsVetoResponse() throws Exception {
+        var sdk = mock(ToolDocs.nonNullClass(AnthropicClient.class), RETURNS_DEEP_STUBS);
+        var response = mock(ToolDocs.nonNullClass(Message.class), RETURNS_DEEP_STUBS);
+        String answer =
+                "骨架已完成。消息格式示例：\n```json\n{\"id\":\"demo\",\"text\":\"hello\"}\n```\n接下来可以编译。";
+        var answerBlock = text(answer);
+        when(response.content()).thenReturn(List.of(answerBlock));
+        when(sdk.messages().create(any(ToolDocs.nonNullClass(MessageCreateParams.class))))
+                .thenReturn(response);
+        var result =
+                new AnthropicLlmClient(sdk, new ObjectMapper())
+                        .complete(new ResolvedRequest(request(), null, "unused"));
+        var json = new ObjectMapper().readTree(result.rawResponse());
+        assertEquals(answer, json.path("message").asText());
+        assertFalse(json.has("id"));
+    }
+
     @Test
     void preservesCacheBreakdownWithoutDoubleCountingInput() {
         var sdk = mock(ToolDocs.nonNullClass(AnthropicClient.class), RETURNS_DEEP_STUBS);

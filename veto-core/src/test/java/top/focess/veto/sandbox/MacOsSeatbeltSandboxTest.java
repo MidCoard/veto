@@ -79,6 +79,39 @@ class MacOsSeatbeltSandboxTest {
         }
     }
 
+    @Test
+    @EnabledOnOs(OS.MAC)
+    void mkdirTraversesWorkspaceAncestorsButCannotWriteOutside(@TempDir @NonNull Path temp)
+            throws Exception {
+        Path workspace = Files.createDirectories(temp.resolve("workspace"));
+        var substrate = new ConstrainedSubprocessSubstrate(new KernelSandboxSubstrate());
+        var handle = substrate.provision(profile(workspace));
+        try {
+            Path child = workspace.resolve("nested/child");
+            var created =
+                    substrate.runCommands(
+                            handle,
+                            List.of(new Command("/bin/mkdir", List.of("-p", child.toString()))),
+                            Path.of("."),
+                            ChainMode.STOP_ON_FAILURE,
+                            Duration.ofSeconds(10));
+            assertEquals(0, created.exitCode(), created.stderr());
+            assertTrue(Files.isDirectory(child));
+            Path outside = temp.resolve("outside");
+            var denied =
+                    substrate.runCommands(
+                            handle,
+                            List.of(new Command("/usr/bin/touch", List.of(outside.toString()))),
+                            Path.of("."),
+                            ChainMode.STOP_ON_FAILURE,
+                            Duration.ofSeconds(10));
+            assertNotEquals(0, denied.exitCode());
+            assertFalse(Files.exists(outside));
+        } finally {
+            substrate.deprovision(handle);
+        }
+    }
+
     private static int occurrences(@NonNull String value, @NonNull String needle) {
         return value.split(Pattern.quote(needle), -1).length - 1;
     }

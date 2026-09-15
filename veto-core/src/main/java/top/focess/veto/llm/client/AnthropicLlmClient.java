@@ -150,7 +150,7 @@ final class AnthropicLlmClient extends LlmClient {
             // Text-only answer. A model following the system prompt's veto_pulse instructions may
             // emit the response JSON as text. Preserve JSON-shaped output even if malformed,
             // so central validation retries it instead of presenting it as a final answer.
-            String candidate = extractJson(objectMapper, text);
+            String candidate = NativeToolResponses.responseCandidate(text);
             if (candidate.stripLeading().startsWith("{")
                     || candidate.stripLeading().startsWith("[")) {
                 rawInput = candidate;

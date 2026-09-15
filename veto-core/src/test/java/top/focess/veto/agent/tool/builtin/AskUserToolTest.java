@@ -32,6 +32,68 @@ import top.focess.veto.util.Nullness;
 
 @Timeout(10)
 class AskUserToolTest {
+
+    @ParameterizedTest
+    @ValueSource(ints = {2, 4, 5})
+    void acceptsPlainLabelsAndTwoToFiveOptions(int count) throws Exception {
+        var options = new ArrayList<AskUserTool.Option>();
+        for (int i = 0; i < count; i++)
+            options.add(new AskUserTool.Option("Choice " + i, "Description " + i));
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var result =
+                    executor.submit(
+                            () ->
+                                    CapabilityTestCalls.execute(
+                                            tool,
+                                            new AskUserTool.Args(
+                                                    List.of(
+                                                            new AskUserTool.Question(
+                                                                    "Scope",
+                                                                    "scope",
+                                                                    "Choose scope",
+                                                                    options)))));
+            assertTrue(
+                    registry.answer(
+                            "test-agent",
+                            awaitPending(),
+                            Map.of("scope", "Choice " + (count - 1))));
+            assertEquals(
+                    "Choice " + (count - 1),
+                    new ObjectMapper()
+                            .readTree(result.get(2, TimeUnit.SECONDS))
+                            .path("answers")
+                            .path("scope")
+                            .asText());
+        }
+    }
+
+    @Test
+    void identifiesSixOptionQuestionAndNeverPublishesAPartialBatch() {
+        var valid = question("language");
+        var invalid =
+                new AskUserTool.Question(
+                        "Scope",
+                        "scope",
+                        "Choose the scope",
+                        List.of(
+                                valid.options().getFirst(),
+                                valid.options().getLast(),
+                                new AskUserTool.Option("Third", "Third choice"),
+                                new AskUserTool.Option("Fourth", "Fourth choice"),
+                                new AskUserTool.Option("Fifth", "Fifth choice"),
+                                new AskUserTool.Option("Sixth", "Sixth choice")));
+        var error =
+                assertThrows(
+                        ToolDocs.nonNullClass(ToolExecutionException.class),
+                        () ->
+                                CapabilityTestCalls.execute(
+                                        tool, new AskUserTool.Args(List.of(valid, invalid))));
+        assertEquals("INVALID_QUESTIONS", error.errorCode());
+        assertTrue(Nullness.requireNonNull(error.getMessage()).contains("'scope' has 6 options"));
+        assertTrue(Nullness.requireNonNull(error.getMessage()).contains("No questions were sent"));
+        assertTrue(registry.pendingFor("test-agent").isEmpty());
+    }
+
     private final @NonNull UserQuestionRegistry registry = new UserQuestionRegistry();
     private final @NonNull AskUserTool tool =
             new AskUserTool(new UserInteractionCapabilityImpl(registry));
@@ -107,25 +169,6 @@ class AskUserToolTest {
                                 List.of(
                                         new AskUserTool.Option("Other", "Reserved choice"),
                                         valid.options().getLast()))));
-        assertInvalid(
-                List.of(
-                        new AskUserTool.Question(
-                                valid.header(),
-                                valid.id(),
-                                valid.question(),
-                                List.of(
-                                        new AskUserTool.Option("First", "Missing recommendation"),
-                                        valid.options().getLast()))));
-        assertInvalid(
-                List.of(
-                        new AskUserTool.Question(
-                                valid.header(),
-                                valid.id(),
-                                valid.question(),
-                                List.of(
-                                        valid.options().getFirst(),
-                                        new AskUserTool.Option(
-                                                "Also (Recommended)", "Extra recommendation")))));
         assertInvalid(
                 List.of(
                         new AskUserTool.Question(
