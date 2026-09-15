@@ -1,17 +1,24 @@
 package top.focess.veto.agent.intercept;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.agent.AgentService;
 import top.focess.veto.agent.drift.ReadHistory;
+import top.focess.veto.agent.loop.ActionsProgram;
 import top.focess.veto.agent.loop.PromptCompiler;
+import top.focess.veto.agent.loop.Scope;
+import top.focess.veto.agent.loop.ToolAction;
 import top.focess.veto.agent.screening.Danger;
 import top.focess.veto.agent.screening.DangerComputation;
 import top.focess.veto.agent.screening.DeployerPolicy;
@@ -21,9 +28,12 @@ import top.focess.veto.agent.screening.Screening;
 import top.focess.veto.agent.screening.SlmScreening;
 import top.focess.veto.agent.screening.SlmScreeningProvider;
 import top.focess.veto.agent.tool.AgentToolDefinition;
+import top.focess.veto.agent.tool.LocalToolDefinition;
+import top.focess.veto.agent.tool.NativeToolArgumentValidator;
 import top.focess.veto.agent.tool.NativeToolDefinition;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDefinition;
+import top.focess.veto.agent.tool.ToolEngine;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.ToolCall;
 
@@ -112,6 +122,23 @@ public class Gateway {
             String activeTask,
             String thought,
             String executionContext) {
+        return screen(call, def, activeTask, thought, executionContext, null);
+    }
+
+    /** GUIDE provenance supplements the original user task; it does not grant permissions. */
+    public @NonNull GatewayResult screen(
+            @NonNull ToolCall call,
+            @NonNull ToolDefinition def,
+            String activeTask,
+            String thought,
+            String executionContext,
+            GuidedStepContext guidedStep) {
+        if (guidedStep != null) {
+            var context = new LinkedHashMap<String, Object>();
+            if (executionContext != null) context.put("execution", executionContext);
+            context.put("guidedStep", guidedStep);
+            executionContext = new ObjectMapper().valueToTree(context).toString();
+        }
         if (def instanceof AgentToolDefinition) {
             return new GatewayResult.NotScreened();
         }
@@ -146,6 +173,35 @@ public class Gateway {
                 executionPermit);
     }
 
+    /** Static checks only: no screening, approval or execution of speculative branches. */
+    public void validateProgram(
+            @NonNull ActionsProgram program,
+            @NonNull ToolEngine engine,
+            @NonNull Set<String> whitelist,
+            @NonNull ObjectMapper mapper) {
+        for (var action : program.actions()) {
+            if (!(action instanceof ToolAction tool)) continue;
+            ToolDefinition definition = engine.resolveDefinition(tool.tool());
+            if (!whitelist.contains(tool.tool()) || definition == null)
+                throw new IllegalArgumentException(
+                        "Tool is not available in this role: " + tool.tool());
+            if (definition instanceof LocalToolDefinition local
+                    && !hasBinding(mapper.valueToTree(tool.inputs()))) {
+                NativeToolArgumentValidator.validate(
+                        local.name(),
+                        mapper.valueToTree(tool.resolveInputs(new Scope(mapper))),
+                        local.argsClass());
+            }
+        }
+    }
+
+    private boolean hasBinding(@NonNull JsonNode node) {
+        if (node.isTextual())
+            return node.asText().startsWith("$") && !node.asText().startsWith("$$");
+        for (var child : node) if (hasBinding(child)) return true;
+        return false;
+    }
+
     /**
      * Re-resolves security-relevant arguments after approval. A target change invalidates the old
      * decision; the caller returns a denied tool observation and the model must issue a fresh call.
@@ -159,8 +215,9 @@ public class Gateway {
         }
         ToolExecutionPermit current =
                 ToolExecutionPermit.capture(call, definition, workspace, policy, protectedSet);
-        if (screenedPermit.taskBinding() != null) {
-            current = current.withTaskBinding(screenedPermit.taskBinding());
+        var taskBinding = screenedPermit.taskBinding();
+        if (taskBinding != null) {
+            current = current.withTaskBinding(taskBinding);
         }
         if (!screenedPermit.sameTargets(current)) {
             throw new SecurityException(

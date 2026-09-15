@@ -21,8 +21,11 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import top.focess.veto.agent.AgentState;
 import top.focess.veto.agent.SessionAgentRegistry;
+import top.focess.veto.agent.TurnRecord;
+import top.focess.veto.agent.TurnType;
 import top.focess.veto.agent.VetoAgent;
 import top.focess.veto.agent.capability.NetworkEgressCapabilityImpl;
 import top.focess.veto.agent.capability.WebReadCapability;
@@ -42,10 +45,12 @@ import top.focess.veto.model.tier.ModelBinding;
 import top.focess.veto.model.tier.ModelTier;
 import top.focess.veto.model.tier.ModelTierConfigException;
 import top.focess.veto.model.tier.ModelTierRegistry;
+import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.UserContext;
 
 class WebFetchExecutorLoopTest {
     private final @NonNull ObjectMapper mapper = new ObjectMapper();
+    private final @NonNull TurnLogService turnLog = spy(new TurnLogService(null, mapper));
     private final @NonNull WebReadCapability access =
             mock(ToolDocs.nonNullClass(WebReadCapability.class));
     private final @NonNull List<@NonNull VetoRequest> requests = new ArrayList<>();
@@ -129,6 +134,19 @@ class WebFetchExecutorLoopTest {
         assertEquals(
                 "The timeout is 30 seconds.", json.path("evidence").get(0).path("quote").asText());
         assertEquals("reader-model", json.path("execution").path("model").asText());
+        var captured = ArgumentCaptor.forClass(ToolDocs.nonNullClass(TurnRecord.class));
+        verify(turnLog, atLeastOnce()).log(captured.capture(), any(), any(), anyString());
+        var lastResult =
+                captured.getAllValues().stream()
+                        .filter(turn -> turn.type() == TurnType.TOOL_RESPONSE)
+                        .reduce((previous, current) -> current)
+                        .orElseThrow();
+        var persisted =
+                mapper.readTree(
+                        Nullness.requireNonNull(lastResult.payload().get("content")).toString());
+        assertEquals(
+                json.path("execution").path("id").asText(),
+                persisted.path("execution").path("id").asText());
         assertFalse(result.contains("UNRELATED_PAGE_BODY"));
         VetoRequest first = requests.getFirst();
         assertEquals("Find timeout units.", first.userPrompt());
@@ -491,7 +509,7 @@ class WebFetchExecutorLoopTest {
                         models,
                         new DefaultCapabilityTranslator(mapper),
                         registry,
-                        new TurnLogService(null, mapper),
+                        turnLog,
                         ModelTier.LOW,
                         rounds,
                         timeout,

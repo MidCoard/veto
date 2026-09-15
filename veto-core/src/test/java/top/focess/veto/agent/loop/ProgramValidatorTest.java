@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.tool.ToolDocs;
 
@@ -41,5 +42,47 @@ class ProgramValidatorTest {
                         () -> ProgramValidator.validate(program));
 
         assertEquals("action finish: label must not be blank", error.getMessage());
+    }
+
+    @Test
+    void rejectsBindingMissingOnOneBranchBeforeExecutingAnyStep() {
+        var program =
+                new ActionsProgram(
+                        List.of(
+                                new ConditionalGotoAction(
+                                        "branch", "Branch", new Check.Empty("optional"), 1, 2),
+                                new GenerateAction(
+                                        "gen",
+                                        "Generate",
+                                        "answer",
+                                        Map.of(),
+                                        Map.of("answer", "message"),
+                                        null,
+                                        null,
+                                        null),
+                                new StopAction("stop", "Stop", "answer")));
+        assertThrows(
+                ToolDocs.nonNullClass(ProgramValidator.InvalidProgramException.class),
+                () -> ProgramValidator.validateInputs(program));
+    }
+
+    @Test
+    void permitsOptionalChecksAndEscapedLiteralInputs() {
+        var program =
+                new ActionsProgram(
+                        List.of(
+                                new ConditionalGotoAction(
+                                        "branch", "Branch", new Check.Empty("optional"), 1, 1),
+                                new GenerateAction(
+                                        "gen",
+                                        "Generate",
+                                        "Use $literal and $$escaped",
+                                        Map.of("literal", "$$literal"),
+                                        Map.of("answer", "message"),
+                                        null,
+                                        null,
+                                        null),
+                                new StopAction("stop", "Stop", "answer")));
+        assertDoesNotThrow(() -> ProgramValidator.validateInputs(program));
     }
 }

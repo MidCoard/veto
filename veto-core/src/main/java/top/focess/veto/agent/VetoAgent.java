@@ -116,16 +116,6 @@ public class VetoAgent implements Agent {
         return runner.result();
     }
 
-    @Override
-    public void pause() {
-        runner.enqueue(new AgentAction.PauseAction());
-    }
-
-    @Override
-    public void resume() {
-        runner.enqueue(new AgentAction.ResumeAction());
-    }
-
     void onTermination(@NonNull Runnable callback) {
         runner.onTermination(callback);
     }

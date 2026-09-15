@@ -55,6 +55,11 @@ class ContextUsageTrackerTest {
                 request("system", List.of(ChatMessage.user("one"), ChatMessage.assistant("two")));
         var measurement = tracker.measure(next, new LlmSystemUsage.Usage(120, 5));
         assertEquals(20L, measurement.get("contextDeltaTokens"));
+        assertEquals(10L, measurement.get("inputDeltaTokens"));
+        assertEquals("request_difference", measurement.get("inputDeltaSource"));
+        assertFalse(
+                tracker.measure(next, new LlmSystemUsage.Usage(120, 5))
+                        .containsKey("inputDeltaTokens"));
         assertEquals(1, measurement.get("appendedMessages"));
         assertEquals(
                 0L,
@@ -69,6 +74,97 @@ class ContextUsageTrackerTest {
         assertFalse(
                 tracker.measure(next, new LlmSystemUsage.Usage(120, 5))
                         .containsKey("contextDeltaTokens"));
+    }
+
+    @Test
+    void subtractsRetainedOutputAndKeepsNegativeDifferences() {
+        var tracker = new ContextUsageTracker();
+        var first = request("system", List.of(ChatMessage.user("one")));
+        tracker.measure(first, new LlmSystemUsage.Usage(100, 10));
+        var next =
+                request(
+                        "system",
+                        List.of(
+                                ChatMessage.user("one"),
+                                ChatMessage.assistant("answer"),
+                                ChatMessage.user("two")));
+        assertEquals(
+                -1L,
+                tracker.measure(next, new LlmSystemUsage.Usage(109, 5)).get("inputDeltaTokens"));
+        var correction =
+                request(
+                        "system",
+                        List.of(
+                                ChatMessage.user("one"),
+                                ChatMessage.assistant("answer"),
+                                ChatMessage.user("two"),
+                                ChatMessage.user("correct")));
+        assertEquals(
+                7L,
+                tracker.measure(correction, new LlmSystemUsage.Usage(116, 2))
+                        .get("inputDeltaTokens"));
+    }
+
+    @Test
+    void measuresToolInputAfterDiscardingTwoEphemeralCorrections() {
+        var tracker = new ContextUsageTracker();
+        var original = request("system", List.of(ChatMessage.user("read file")));
+        tracker.measure(original, new LlmSystemUsage.Usage(32638, 52));
+        var input = tracker.baseline();
+        tracker.measure(
+                request(
+                        "system",
+                        List.of(ChatMessage.user("read file"), ChatMessage.user("fix protocol"))),
+                new LlmSystemUsage.Usage(32682, 48));
+        tracker.measure(
+                request(
+                        "system",
+                        List.of(
+                                ChatMessage.user("read file"),
+                                ChatMessage.user("fix protocol"),
+                                ChatMessage.user("fix JSON"))),
+                new LlmSystemUsage.Usage(32815, 57));
+        tracker.accept(input, tracker.baseline());
+        var next =
+                request(
+                        "system",
+                        List.of(
+                                ChatMessage.user("read file"),
+                                ChatMessage.assistant("accepted call"),
+                                ChatMessage.user("file result")));
+        var measured = tracker.measure(next, new LlmSystemUsage.Usage(32724, 6));
+        assertEquals(false, measured.get("baselineReset"));
+        assertEquals(29L, measured.get("inputDeltaTokens"));
+        assertEquals(57L, measured.get("subtractedOutputTokens"));
+        assertEquals(32724L, measured.get("inputTokens"));
+    }
+
+    @Test
+    void usesSelectedCandidateOutputInsteadOfTheLastRejectedAttempt() {
+        var tracker = new ContextUsageTracker();
+        var original = request("system", List.of(ChatMessage.user("one")));
+        tracker.measure(original, new LlmSystemUsage.Usage(100, 10));
+        var candidate = tracker.baseline();
+        tracker.measure(
+                request("system", List.of(ChatMessage.user("one"), ChatMessage.user("fix"))),
+                new LlmSystemUsage.Usage(120, 80));
+        tracker.accept(candidate, candidate);
+        var next =
+                request(
+                        "system",
+                        List.of(
+                                ChatMessage.user("one"),
+                                ChatMessage.assistant("accepted"),
+                                ChatMessage.user("two")));
+        assertEquals(
+                5L,
+                tracker.measure(next, new LlmSystemUsage.Usage(115, 3)).get("inputDeltaTokens"));
+        assertEquals(
+                true,
+                tracker.measure(
+                                request("changed", next.messages()),
+                                new LlmSystemUsage.Usage(130, 3))
+                        .get("baselineReset"));
     }
 
     @Test

@@ -11,6 +11,19 @@ import top.focess.veto.llm.core.VetoRequest;
 public final class ContextUsageTracker {
     private VetoRequest previous;
     private long previousTokens;
+    private long previousOutputTokens;
+
+    public record Baseline(VetoRequest request, long inputTokens, long outputTokens) {}
+
+    public @NonNull Baseline baseline() {
+        return new Baseline(previous, previousTokens, previousOutputTokens);
+    }
+
+    public void accept(@NonNull Baseline input, @NonNull Baseline output) {
+        previous = input.request();
+        previousTokens = input.inputTokens();
+        previousOutputTokens = output.outputTokens();
+    }
 
     public void reset() {
         previous = null;
@@ -46,11 +59,24 @@ public final class ContextUsageTracker {
         data.put("baselineReset", !comparable);
         if (comparable) {
             data.put("contextDeltaTokens", usage.promptTokens() - previousTokens);
+            var appended =
+                    request.messages().subList(previousMessageCount, request.messages().size());
+            if (!appended.isEmpty()) {
+                long retainedOutput =
+                        appended.stream().anyMatch(message -> message.role().equals("assistant"))
+                                ? previousOutputTokens
+                                : 0;
+                data.put(
+                        "inputDeltaTokens", usage.promptTokens() - previousTokens - retainedOutput);
+                data.put("inputDeltaSource", "request_difference");
+                data.put("subtractedOutputTokens", retainedOutput);
+            }
             data.put("fromMessageIndex", previousMessageCount);
             data.put("appendedMessages", request.messages().size() - previousMessageCount);
         }
         previous = request;
         previousTokens = usage.promptTokens();
+        previousOutputTokens = usage.completionTokens();
         return data;
     }
 }

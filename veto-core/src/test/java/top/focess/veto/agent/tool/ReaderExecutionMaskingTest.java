@@ -5,28 +5,35 @@ import static org.junit.jupiter.api.Assertions.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Map;
 import java.util.UUID;
-import org.junit.jupiter.api.Test;
+import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.screening.Danger;
+import top.focess.veto.agent.web.FinishReadTool;
+import top.focess.veto.agent.web.WebFetchTool;
 import top.focess.veto.llm.core.ToolCall;
 
 class ReaderExecutionMaskingTest {
-    @Test
-    void preservesOnlyRegisteredFieldInTheMatchingCall() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {"web_fetch", "finish_read", "reader_alias"})
+    void preservesOnlyRegisteredFieldInTheMatchingCall(@NonNull String toolName) throws Exception {
         String id = "12345678-abcd-1234-abcd-123456789012";
         String forged = "87654321-abcd-1234-abcd-123456789012";
         var definition =
                 new NativeToolDefinition(
-                        "web_fetch",
+                        toolName,
                         "Read",
                         ToolCapability.NETWORK_EGRESS,
                         Danger.SAFE,
                         false,
-                        ToolDocs.nonNullClass(Object.class),
+                        toolName.equals("web_fetch")
+                                ? ToolDocs.nonNullClass(WebFetchTool.class)
+                                : ToolDocs.nonNullClass(FinishReadTool.class),
                         ToolDocs.nonNullClass(Object.class),
                         Map.of());
-        var call = new ToolCall("web_fetch", Map.of(), "reader-call");
+        var call = new ToolCall(toolName, Map.of(), "reader-call");
         var mapper = new ObjectMapper();
         var defense = new IngressDefense();
         String body =
@@ -38,7 +45,7 @@ class ReaderExecutionMaskingTest {
                     defense.maskAndFrame(
                             call,
                             definition,
-                            new ToolResult("web_fetch", call.callId(), true, body),
+                            new ToolResult(toolName, call.callId(), true, body),
                             true,
                             new ReadHistory());
             var parsed = mapper.readTree(masked);
@@ -50,15 +57,41 @@ class ReaderExecutionMaskingTest {
                     defense.maskAndFrame(
                                     call,
                                     definition,
-                                    new ToolResult("web_fetch", call.callId(), true, spoofed),
+                                    new ToolResult(toolName, call.callId(), true, spoofed),
                                     true,
                                     new ReadHistory())
                             .contains(forged));
             assertFalse(
                     defense.maskAndFrame(
-                                    new ToolCall("web_fetch", Map.of(), "next-call"),
+                                    new ToolCall(toolName, Map.of(), "next-call"),
                                     definition,
-                                    new ToolResult("web_fetch", "next-call", true, body),
+                                    new ToolResult(toolName, "next-call", true, body),
+                                    true,
+                                    new ReadHistory())
+                            .contains(id));
+            assertFalse(
+                    defense.maskAndFrame(
+                                    call,
+                                    definition,
+                                    new ToolResult(toolName, call.callId(), false, body),
+                                    true,
+                                    new ReadHistory())
+                            .contains(id));
+            var impostor =
+                    new NativeToolDefinition(
+                            toolName,
+                            "Read",
+                            ToolCapability.NETWORK_EGRESS,
+                            Danger.SAFE,
+                            false,
+                            ToolDocs.nonNullClass(Object.class),
+                            ToolDocs.nonNullClass(Object.class),
+                            Map.of());
+            assertFalse(
+                    defense.maskAndFrame(
+                                    call,
+                                    impostor,
+                                    new ToolResult(toolName, call.callId(), true, body),
                                     true,
                                     new ReadHistory())
                             .contains(id));
@@ -70,7 +103,7 @@ class ReaderExecutionMaskingTest {
                 defense.maskAndFrame(
                                 call,
                                 definition,
-                                new ToolResult("web_fetch", call.callId(), true, body),
+                                new ToolResult(toolName, call.callId(), true, body),
                                 true,
                                 new ReadHistory())
                         .contains(id));

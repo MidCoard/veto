@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
 import org.springframework.context.ApplicationContext;
 import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.agent.capability.LoopControlCapabilityImpl;
@@ -136,7 +137,7 @@ class GuidedExecutionTest {
                             if (index == 1)
                                 return actions(
                                         """
-                    [{"id":"answer","label":"Answer","type":"generate","prompt":"Answer the new request","outputs":{"answer":"message"}},
+                    [{"id":"answer","label":"Answer","type":"generate","prompt":"Answer the new request","inputs":{},"outputs":{"answer":"message"}},
                      {"id":"stop","label":"Finish","type":"STOP","result_binding":"answer"}]
                     """);
                             return message("new answer");
@@ -177,7 +178,7 @@ class GuidedExecutionTest {
                             if (calls.incrementAndGet() == 1)
                                 return actions(
                                         """
-                [{"id":"answer","label":"Answer","type":"generate","prompt":"Quote the meeting time","outputs":{"answer":"message"}},
+                [{"id":"answer","label":"Answer","type":"generate","prompt":"Quote the meeting time","inputs":{},"outputs":{"answer":"message"}},
                  {"id":"stop","label":"Finish","type":"STOP","result_binding":"answer"}]
                 """);
                             var schema = request.responseSchema();
@@ -327,9 +328,10 @@ class GuidedExecutionTest {
         String program =
                 """
             [{"id":"read","label":"Read","type":"tool","tool":"view_file","inputs":{"absolutePath":PATH,"startLine":1},"outputs":{"text":"content"}},
-             {"id":"judge","label":"Judge","type":"conditional_goto","check":{"kind":"llm","prompt":"Is migration described?","var":"text"},"true_goto":2,"false_goto":3},
+             {"id":"judge","label":"Judge","type":"conditional_goto","check":{"kind":"llm","prompt":"Is migration described?","var":"text"},"true_goto":2,"false_goto":4},
              {"id":"summary","label":"Summary","type":"generate","prompt":"Summarize $document","inputs":{"document":"$text"},"outputs":{"answer":"message"},"temperature":0.2,"thought":false},
-             {"id":"finish","label":"Finish","type":"STOP","result_binding":"answer"}]
+             {"id":"finish","label":"Finish","type":"STOP","result_binding":"answer"},
+             {"id":"empty","label":"No match","type":"STOP"}]
             """
                         .replace("PATH", path);
         AtomicInteger calls = new AtomicInteger();
@@ -339,7 +341,7 @@ class GuidedExecutionTest {
                             int index = calls.getAndIncrement();
                             if (index == 0) return actions(program);
                             assertTrue(request.userPrompt().contains("Migration guide"));
-                            assertTrue(request.tools().isEmpty());
+                            assertFalse(request.tools().isEmpty());
                             if (index == 1) return message("true");
                             assertEquals((Object) 0.2, request.options().temperature());
                             assertFalse(request.userPrompt().contains("$document"));
@@ -686,6 +688,10 @@ class GuidedExecutionTest {
                 3,
                 ordinaryRequests.size(),
                 "two sequential observations plus final model response");
+        assertEquals(guidedRequests.get(0).tools(), guidedRequests.get(1).tools());
+        assertEquals(guidedRequests.get(0).systemPrompt(), guidedRequests.get(1).systemPrompt());
+        assertEquals(
+                guidedRequests.get(0).responseSchema(), guidedRequests.get(1).responseSchema());
         var enabledSchema = guidedRequests.get(0).responseSchema();
         var disabledSchema = ordinaryRequests.get(0).responseSchema();
         if (enabledSchema == null || disabledSchema == null)
@@ -754,5 +760,108 @@ class GuidedExecutionTest {
         assertTrue(result.success(), result.message());
         assertEquals(2, calls.get());
         assertTrue(toolCalls.isEmpty(), "a disabled guide must never execute even its first tool");
+    }
+
+    @Test
+    void generationCannotExecuteAdvertisedTools(@TempDir @NonNull Path root) throws Exception {
+        AtomicInteger calls = new AtomicInteger();
+        var service =
+                service(
+                        request -> {
+                            int index = calls.getAndIncrement();
+                            if (index == 0)
+                                return actions(
+                                        """
+                [{"id":"gen","label":"Answer","type":"generate","prompt":"Answer only","inputs":{},"outputs":{"answer":"message"}},
+                 {"id":"stop","label":"Finish","type":"STOP","result_binding":"answer"}]
+                """);
+                            assertFalse(request.tools().isEmpty());
+                            if (index == 1)
+                                return new VetoResponse(
+                                        null,
+                                        List.of(
+                                                new ToolCall(
+                                                        "view_file",
+                                                        Map.of(
+                                                                "absolutePath",
+                                                                root.resolve("must-not-read")
+                                                                        .toString()))),
+                                        null,
+                                        null);
+                            return message("safe answer");
+                        },
+                        new HitlRegistry(),
+                        root);
+        List<AgentRunner.ToolCallEvent> executed = new ArrayList<>();
+        try {
+            var result =
+                    service.submit(
+                            "read-guided",
+                            "Answer without tools",
+                            binding(),
+                            Duration.ofSeconds(10),
+                            null,
+                            null,
+                            null,
+                            executed::add,
+                            null);
+            assertTrue(result.success(), result.message());
+            assertEquals("safe answer", result.message());
+            assertEquals(3, calls.get());
+            assertTrue(executed.isEmpty(), executed.toString());
+        } finally {
+            service.remove("read-guided");
+        }
+    }
+
+    @Test
+    void generatedPathProvenanceReachesActualGateway(@TempDir @NonNull Path root) throws Exception {
+        Path file = Files.writeString(root.resolve("source.txt"), "source data");
+        AtomicInteger calls = new AtomicInteger();
+        var service =
+                service(
+                        request -> {
+                            if (calls.getAndIncrement() == 0)
+                                return actions(
+                                        """
+                [{"id":"choose","label":"Choose path","type":"generate","prompt":"Return path","inputs":{},"outputs":{"path":"message"}},
+                 {"id":"read","label":"Read chosen file","type":"tool","tool":"view_file","inputs":{"absolutePath":"$path"},"outputs":{"text":"content"}},
+                 {"id":"stop","label":"Finish","type":"STOP","result_binding":"text"}]
+                """);
+                            return message(file.toString());
+                        },
+                        new HitlRegistry(),
+                        root);
+        var agent = service.agent("read-guided");
+        if (agent == null) throw new AssertionError("Missing agent");
+        if (!(ReflectionTestUtils.getField(agent, "runner") instanceof AgentRunner runner))
+            throw new AssertionError("Missing runner");
+        if (!(ReflectionTestUtils.getField(runner, "gateway") instanceof Gateway original))
+            throw new AssertionError("Missing gateway");
+        Gateway observed = spy(original);
+        ReflectionTestUtils.setField(runner, "gateway", observed);
+        try {
+            var result =
+                    service.submit(
+                            "read-guided",
+                            "Read the selected file",
+                            binding(),
+                            Duration.ofSeconds(10));
+            assertTrue(result.success(), result.message());
+            var capture = ArgumentCaptor.forClass(ToolDocs.nonNullClass(GuidedStepContext.class));
+            verify(observed)
+                    .screen(
+                            any(),
+                            any(),
+                            eq("Read the selected file"),
+                            isNull(),
+                            isNull(),
+                            capture.capture());
+            assertEquals("read", capture.getValue().stepId());
+            String source = capture.getValue().inputSources().get("absolutePath");
+            assertTrue(source != null && source.startsWith("choose:"));
+        } finally {
+            service.remove("read-guided");
+        }
     }
 }

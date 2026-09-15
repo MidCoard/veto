@@ -19,6 +19,8 @@ import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.agent.tool.ToolResult;
+import top.focess.veto.agent.web.FinishReadTool;
+import top.focess.veto.agent.web.WebFetchTool;
 import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.util.Nullness;
 import top.focess.veto.vault.SecretCandidateStore;
@@ -86,8 +88,9 @@ public class IngressDefense {
         boolean preserveReaderId = false;
         if (readerId != null
                 && result.success()
-                && def instanceof NativeToolDefinition
-                && def.name().equals("web_fetch")
+                && def instanceof NativeToolDefinition nativeDef
+                && (nativeDef.toolClass() == WebFetchTool.class
+                        || nativeDef.toolClass() == FinishReadTool.class)
                 && def.capability() == ToolCapability.NETWORK_EGRESS) {
             try {
                 var root = JSON.readTree(body);

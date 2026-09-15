@@ -46,10 +46,6 @@ public interface Agent {
     @NonNull CompletableFuture<AgentResult> result();
 
     // --- Lifecycle ---
-    void pause(); // → PAUSED
-
-    void resume(); // → RUNNING
-
     void terminate(); // Request termination; completion is confirmed separately.
 
     /** Confirm actual execution exit. Implementations without confirmation return false. */
