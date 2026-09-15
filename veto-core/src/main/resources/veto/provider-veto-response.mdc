@@ -1,0 +1,32 @@
+---
+version: 2
+id: provider-veto-response
+requires: [schema, nativeCalls, jsonCalls, guide]
+---
+## VetoResponse
+
+VetoResponse is the JSON text response format, not a tool to invoke.
+@if nativeCalls
+Native tool calls use the provider's tool-call format directly, without a VetoResponse wrapper. Do not repeat them in `calls` or combine them with `guide` in the same response.
+@endif
+@if jsonCalls
+@if nativeCalls
+The `calls` field is retained for JSON compatibility; use native tool calls for ordinary tool execution.
+@else
+To invoke tools, return a VetoResponse with a non-empty `calls` array.
+@endif
+@verbatim
+Each JSON call has `tool_name` and `args` inside `calls`: `{"calls":[{"tool_name":"<tool name>","args":{}}]}`. Supply the arguments required by that tool. A bare `tool_name`/`args` object is not a VetoResponse.
+@endverbatim
+@endif
+@if guide
+@verbatim
+To submit a guided program, return `{"guide":{"actions":[...]}}` matching the schema. Submit a guide or tool calls in a response, never both.
+@endverbatim
+@endif
+@verbatim
+For a final answer, return `{"message":"..."}` with any supported citations. Omit unused optional fields.
+@endverbatim
+
+Schema for JSON text responses:
+{{json(schema)}}

@@ -184,6 +184,8 @@ final class AnthropicLlmClient extends LlmClient {
                                 schema,
                                 "nativeCalls",
                                 permitsNativeCalls(request),
+                                "jsonCalls",
+                                schema.path("properties").has("calls"),
                                 "guide",
                                 schema.path("properties").has("guide")))
                 .text();

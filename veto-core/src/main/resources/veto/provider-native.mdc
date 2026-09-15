@@ -1,17 +1,16 @@
 ---
 version: 2
 id: provider-native
-requires: [system, schema, nativeCalls]
+requires: [system, schema, nativeCalls, jsonCalls, guide]
 ---
 {{system}}
 
 ## Provider response channel
 
-JSON response schema:
-{{json(schema)}}
 @if nativeCalls
 Use native tool calls to invoke the registered tools. Pass each tool’s arguments directly as input. Use one execution channel per response.
 @else
 This turn does not enable native tools. Return JSON matching the response schema.
 @endif
-Return a guided program as JSON guide only when the schema permits it. Return final answers as JSON message with optional citations. Do not invent a tool named veto_pulse, message, or submit_guide.
+
+@include provider-veto-response

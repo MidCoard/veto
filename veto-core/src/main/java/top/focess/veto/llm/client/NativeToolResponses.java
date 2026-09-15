@@ -32,7 +32,11 @@ final class NativeToolResponses {
                                 "schema",
                                 schema,
                                 "nativeCalls",
-                                enabled(request)))
+                                enabled(request),
+                                "jsonCalls",
+                                schema.path("properties").has("calls"),
+                                "guide",
+                                schema.path("properties").has("guide")))
                 .text();
     }
 

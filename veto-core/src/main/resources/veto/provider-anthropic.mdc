@@ -1,20 +1,16 @@
 ---
 version: 2
 id: provider-anthropic
-requires: [system, schema, nativeCalls, guide]
+requires: [system, schema, nativeCalls, jsonCalls, guide]
 ---
 {{system}}
 
 ## Anthropic response channel
 
-Response schema for JSON text in this turn:
-{{json(schema)}}
 @if nativeCalls
 Use native tool_use blocks to invoke the registered tools. Pass each tool’s arguments directly as input. Use one execution channel per response.
 @else
 This turn does not enable native tool execution. Return JSON text matching the response schema.
 @endif
-@if guide
-To submit a guided program, return JSON text with guide matching the schema. Do not combine a guide with tool calls in the same response.
-@endif
-For a final answer, return a JSON object with message and any citations. Do not call a tool named message or veto_pulse. Do not duplicate native tool calls in JSON text.
+
+@include provider-veto-response
