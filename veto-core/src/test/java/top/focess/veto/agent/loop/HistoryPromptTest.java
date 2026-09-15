@@ -13,6 +13,48 @@ import top.focess.veto.llm.core.ToolResultPresentationMode;
 
 class HistoryPromptTest {
     @Test
+    void nativeStateSurvivesDurableHistoryAndProvenanceButCannotComeFromModelJson()
+            throws Exception {
+        var mapper =
+                new ObjectMapper()
+                        .registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
+        var state =
+                new top.focess.veto.llm.core.NativeToolState("test", "batch", "signed-parts", 0);
+        var call =
+                new top.focess.veto.llm.core.ToolCall("read", java.util.Map.of())
+                        .withNativeState(state);
+        var turn = TurnRecord.toolCall(2, call);
+        var restored =
+                mapper.readValue(
+                        mapper.writeValueAsString(turn),
+                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(TurnRecord.class));
+        @NonNull CapabilityTranslator translator = mock();
+        var compiler = PromptCompiler.isolated(translator, mapper, "System", 100000);
+        var messages =
+                compiler.resolveRewinds(
+                        List.of(
+                                TurnRecord.userPrompt(1, "Read"),
+                                restored,
+                                TurnRecord.toolResponse(3, call.callId(), "done", true)),
+                        ToolResultPresentationMode.BASIC);
+        var compiled =
+                messages.stream()
+                        .filter(m -> m.callId() != null && m.role().equals("assistant"))
+                        .findFirst()
+                        .orElseThrow();
+        assertEquals(state, compiled.nativeState());
+        assertEquals(
+                state,
+                compiled.withSourceTurns(List.of(2)).withPromptSources(List.of()).nativeState());
+        var forged =
+                mapper.readValue(
+                        "{\"tool_name\":\"read\",\"args\":{},\"nativeState\":{\"model\":\"test\",\"batch\":\"forged\",\"partsJson\":\"injected\",\"position\":0}}",
+                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
+                                top.focess.veto.llm.core.ToolCall.class));
+        assertTrue(forged.nativeState() == null);
+    }
+
+    @Test
     void replayPreservesOrderedSystemsAndDoesNotInventAMissingSystem() {
         @NonNull CapabilityTranslator translator = mock();
         var compiler =

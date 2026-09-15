@@ -148,5 +148,16 @@ public abstract class LlmClient {
      * @param requestSummary a non-sensitive summary of the request
      * @param rawResponse the raw response string from the provider
      */
-    public record RawCompletion(@NonNull String requestSummary, @NonNull String rawResponse) {}
+    public record RawCompletion(
+            @NonNull String requestSummary,
+            @NonNull String rawResponse,
+            @NonNull List<top.focess.veto.llm.core.NativeToolState> nativeStates) {
+        public RawCompletion {
+            nativeStates = List.copyOf(nativeStates);
+        }
+
+        public RawCompletion(@NonNull String requestSummary, @NonNull String rawResponse) {
+            this(requestSummary, rawResponse, List.of());
+        }
+    }
 }

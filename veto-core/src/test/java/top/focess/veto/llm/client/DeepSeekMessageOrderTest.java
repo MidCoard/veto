@@ -78,20 +78,16 @@ class DeepSeekMessageOrderTest {
             var groups = ProviderMessages.groups(request);
             assertEquals(groups.size(), input.size());
             assertEquals(4, input.size());
-            assertEquals("System instructions", body.path("instructions").asText());
+            assertTrue(body.path("instructions").asText().startsWith("System instructions"));
             assertEquals("user", input.get(0).path("role").asText());
-            assertEquals("assistant", input.get(1).path("role").asText());
-            assertEquals(
-                    "web_fetch",
-                    mapper.readTree(input.get(1).path("content").asText())
-                            .path("calls")
-                            .get(0)
-                            .path("tool_name")
-                            .asText());
-            assertEquals("user", input.get(2).path("role").asText());
+            assertEquals("function_call", input.get(1).path("type").asText());
+            assertEquals("web_fetch", input.get(1).path("name").asText());
+            assertEquals("call", input.get(1).path("call_id").asText());
+            assertEquals("function_call_output", input.get(2).path("type").asText());
+            assertEquals("call", input.get(2).path("call_id").asText());
             assertEquals(
                     groups.get(2).getFirst().toolResultContentWithStatus(),
-                    input.get(2).path("content").asText());
+                    input.get(2).path("output").asText());
             assertEquals(groups.get(3).getFirst().content(), input.get(3).path("content").asText());
             assertFalse(sent.contains("sourceTurns"));
         } finally {

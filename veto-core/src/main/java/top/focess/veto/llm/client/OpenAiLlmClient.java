@@ -6,16 +6,20 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openai.client.OpenAIClient;
 import com.openai.core.JsonValue;
 import com.openai.models.ChatModel;
+import com.openai.models.FunctionDefinition;
+import com.openai.models.FunctionParameters;
 import com.openai.models.ResponseFormatJsonObject;
 import com.openai.models.ResponseFormatJsonSchema;
 import com.openai.models.chat.completions.ChatCompletion;
 import com.openai.models.chat.completions.ChatCompletionAssistantMessageParam;
 import com.openai.models.chat.completions.ChatCompletionCreateParams;
+import com.openai.models.chat.completions.ChatCompletionFunctionTool;
 import com.openai.models.chat.completions.ChatCompletionMessageFunctionToolCall;
 import com.openai.models.chat.completions.ChatCompletionMessageParam;
 import com.openai.models.chat.completions.ChatCompletionSystemMessageParam;
 import com.openai.models.chat.completions.ChatCompletionToolMessageParam;
 import com.openai.models.chat.completions.ChatCompletionUserMessageParam;
+import java.util.ArrayList;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.loop.PromptLibrary;
@@ -62,7 +66,7 @@ final class OpenAiLlmClient extends LlmClient {
                 configuredSchema != null
                         ? configuredSchema
                         : capabilityTranslator.vetoResponseSchema(false);
-        String systemPrompt = request.systemPrompt();
+        String systemPrompt = NativeToolResponses.prompt(request, rawSchema);
 
         ChatCompletionCreateParams.Builder builder =
                 ChatCompletionCreateParams.builder().model(ChatModel.of(request.modelName()));
@@ -92,6 +96,27 @@ final class OpenAiLlmClient extends LlmClient {
                             ResponseFormatJsonObject.builder().build()));
         }
 
+        if (NativeToolResponses.enabled(request)) {
+            for (var tool : request.tools()) {
+                var parameters = FunctionParameters.builder();
+                tool.inputSchema()
+                        .forEach(
+                                (key, value) ->
+                                        parameters.putAdditionalProperty(
+                                                key, JsonValue.from(value)));
+                builder.addTool(
+                        ChatCompletionFunctionTool.builder()
+                                .function(
+                                        FunctionDefinition.builder()
+                                                .name(tool.name())
+                                                .description(tool.description())
+                                                .parameters(parameters.build())
+                                                .strict(false)
+                                                .build())
+                                .build());
+            }
+            builder.putAdditionalBodyProperty("tool_choice", JsonValue.from("auto"));
+        }
         builder.addMessage(
                 ChatCompletionMessageParam.ofSystem(
                         ChatCompletionSystemMessageParam.builder().content(systemPrompt).build()));
@@ -104,6 +129,9 @@ final class OpenAiLlmClient extends LlmClient {
             }
             builder.addMessage(toSdkMessage(msg));
         }
+        if (request.messages().isEmpty())
+            builder.addMessage(
+                    ChatCompletionUserMessageParam.builder().content(request.userPrompt()).build());
         applyOptions(builder, request.options());
 
         ChatCompletion completion = sdkClient.chat().completions().create(builder.build());
@@ -117,16 +145,30 @@ final class OpenAiLlmClient extends LlmClient {
                             .orElse(null),
                     null);
         }
+        if (completion.choices().isEmpty())
+            throw new ModelCapabilityException(providerName + " returned no choices");
+        if (completion.choices().getFirst().finishReason().toString().equals("length"))
+            throw new top.focess.veto.llm.exceptions.ModelSchemaException(
+                    "OpenAI returned an incomplete response; no calls were executed");
+        var message = completion.choices().getFirst().message();
+        var calls = new ArrayList<NativeToolResponses.Call>();
+        for (var toolCall : message.toolCalls().orElse(java.util.List.of())) {
+            if (!toolCall.isFunction())
+                throw new top.focess.veto.llm.exceptions.ModelSchemaException(
+                        "Unsupported native tool call type");
+            var function = toolCall.asFunction();
+            calls.add(
+                    new NativeToolResponses.Call(
+                            function.function().name(),
+                            NativeToolResponses.arguments(
+                                    objectMapper, function.function().arguments()),
+                            function.id()));
+        }
         String content =
-                completion
-                        .choices()
-                        .get(0)
-                        .message()
-                        .content()
-                        .orElseThrow(
-                                () ->
-                                        new ModelCapabilityException(
-                                                providerName + " returned empty content"));
+                NativeToolResponses.normalize(
+                        objectMapper, request, message.content().orElse(""), calls);
+        if (content.isBlank())
+            throw new ModelCapabilityException(providerName + " returned empty content");
 
         String summary =
                 "model="

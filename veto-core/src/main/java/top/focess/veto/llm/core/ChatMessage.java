@@ -31,11 +31,49 @@ public record ChatMessage(
         String reasoningContent,
         Boolean toolSuccess,
         @JsonIgnore @NonNull List<Integer> sourceTurns,
-        @JsonIgnore @NonNull List<PromptSource.Span> promptSources) {
+        @JsonIgnore @NonNull List<PromptSource.Span> promptSources,
+        @JsonIgnore NativeToolState nativeState) {
 
     public ChatMessage {
         sourceTurns = List.copyOf(sourceTurns);
         promptSources = List.copyOf(promptSources);
+    }
+
+    public ChatMessage(
+            @NonNull String role,
+            @NonNull String content,
+            String callId,
+            String toolName,
+            String toolArgs,
+            String reasoningContent,
+            Boolean toolSuccess,
+            @NonNull List<Integer> sourceTurns,
+            @NonNull List<PromptSource.Span> promptSources) {
+        this(
+                role,
+                content,
+                callId,
+                toolName,
+                toolArgs,
+                reasoningContent,
+                toolSuccess,
+                sourceTurns,
+                promptSources,
+                null);
+    }
+
+    public @NonNull ChatMessage withNativeState(NativeToolState state) {
+        return new ChatMessage(
+                role,
+                content,
+                callId,
+                toolName,
+                toolArgs,
+                reasoningContent,
+                toolSuccess,
+                sourceTurns,
+                promptSources,
+                state);
     }
 
     public ChatMessage(
@@ -69,7 +107,8 @@ public record ChatMessage(
                 reasoningContent,
                 toolSuccess,
                 sourceTurns,
-                sources);
+                sources,
+                nativeState);
     }
 
     public ChatMessage(
@@ -94,7 +133,8 @@ public record ChatMessage(
                 reasoningContent,
                 toolSuccess,
                 turns,
-                promptSources);
+                promptSources,
+                nativeState);
     }
 
     // ── Backward-compatible factories (structured fields = null) ────────────

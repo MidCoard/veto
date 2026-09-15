@@ -1,5 +1,6 @@
 package top.focess.veto.llm.core;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.node.NullNode;
 import java.util.ArrayList;
@@ -26,18 +27,33 @@ import org.jspecify.annotations.NonNull;
  * @param toolName the name of the tool being called
  * @param args the arguments for the tool call
  * @param callId harness-assigned id for result/HITL pairing (not model-emitted)
+ * @param nativeState adapter-owned signed history, excluded from model JSON and tool arguments
  */
 public record ToolCall(
         @JsonProperty("tool_name") @NonNull String toolName,
         @JsonProperty("args") @NonNull Map<@NonNull String, Object> args,
-        @JsonProperty("call_id") @NonNull String callId) {
+        @JsonProperty("call_id") @NonNull String callId,
+        @JsonIgnore NativeToolState nativeState) {
 
     public ToolCall(
-            @NonNull String toolName, @NonNull Map<@NonNull String, Object> args, String callId) {
+            @NonNull String toolName,
+            @NonNull Map<@NonNull String, Object> args,
+            String callId,
+            NativeToolState nativeState) {
+        this.nativeState = nativeState;
         this.toolName = toolName;
         this.args = immutableMap(args);
         this.callId =
                 callId == null ? "call_" + UUID.randomUUID().toString().substring(0, 8) : callId;
+    }
+
+    public ToolCall(
+            @NonNull String toolName, @NonNull Map<@NonNull String, Object> args, String callId) {
+        this(toolName, args, callId, null);
+    }
+
+    public @NonNull ToolCall withNativeState(@NonNull NativeToolState state) {
+        return new ToolCall(toolName, args, callId, state);
     }
 
     /** Creates a call with a harness-assigned id. */

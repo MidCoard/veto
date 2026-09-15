@@ -1,0 +1,17 @@
+---
+version: 2
+id: provider-native
+requires: [system, schema, nativeCalls]
+---
+{{system}}
+
+## Provider response channel
+
+JSON response schema:
+{{json(schema)}}
+@if nativeCalls
+Prefer native tool calls for ordinary execution, using the registered tools and their exact arguments. Native calls do not require an outer JSON object. JSON calls remain a compatibility alternative. Never emit native calls and JSON calls or guide together, even if they describe the same operation.
+@else
+This turn does not enable native tools. Return JSON matching the response schema.
+@endif
+Return a guided program as JSON guide only when the schema permits it. Return final answers as JSON message with optional citations. Do not invent a tool named veto_pulse, message, or submit_guide.

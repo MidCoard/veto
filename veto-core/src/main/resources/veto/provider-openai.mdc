@@ -5,6 +5,6 @@ requires: [system, schema]
 ---
 {{system}}
 
-IMPORTANT: You must respond with a valid JSON object matching this schema:
+For the JSON text channel, return a valid JSON object matching this schema:
 {{json(schema)}}
-Ensure the 'json' keyword is mentioned in your reasoning.
+Native tool calls remain preferred when enabled above; they do not need this JSON envelope.

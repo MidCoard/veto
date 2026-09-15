@@ -613,20 +613,24 @@ public class PromptCompiler {
                 String toolName = str(turn.payload(), "tool_name");
                 String toolArgs = serializeArgs(turn.payload().get("args"));
                 yield ChatMessage.assistantToolCall(
-                        callId, toolName, toolArgs, thoughtContent, pendingReasoning);
+                                callId, toolName, toolArgs, thoughtContent, pendingReasoning)
+                        .withNativeState(
+                                top.focess.veto.llm.core.NativeToolState.fromPayload(
+                                        turn.payload().get("native_state")));
             }
             case TOOL_RESPONSE -> mapPresentedToolResponse(turn, toolResultPresentation);
             case AGENT_INIT -> null; // handled before role mapping
             case COMPACTION_SUMMARY -> ChatMessage.user(str(turn.payload(), "content"));
-            case EXECUTION_ERROR ->
-                    "INTERRUPTED".equals(turn.payload().get("outcome"))
-                            ? PromptLibrary.message("runtime-interrupted", Map.of())
-                            : "CANCELLED".equals(turn.payload().get("outcome"))
-                                            && turn.payload().get("requestId") instanceof String
-                                    ? PromptLibrary.message("runtime-cancelled", Map.of())
-                                    : PromptLibrary.message(
-                                            "runtime-execution-error",
-                                            Map.of("error", str(turn.payload(), "content")));
+            case EXECUTION_ERROR -> {
+                if ("INTERRUPTED".equals(turn.payload().get("outcome")))
+                    yield PromptLibrary.message("runtime-interrupted", Map.of());
+                if ("CANCELLED".equals(turn.payload().get("outcome")))
+                    yield turn.payload().get("requestId") instanceof String
+                            ? PromptLibrary.message("runtime-cancelled", Map.of())
+                            : null;
+                yield PromptLibrary.message(
+                        "runtime-execution-error", Map.of("error", str(turn.payload(), "content")));
+            }
             case REWIND, TOKEN_USAGE -> null;
         };
     }
@@ -769,6 +773,16 @@ public class PromptCompiler {
                                             "schema",
                                             schema != null ? schema : objectMapper.nullNode()))
                             .length;
+            // Native signed parts are deliberately hidden from ordinary message JSON. Include
+            // their durable wire size so signatures cannot bypass the context budget.
+            for (var message : messages) {
+                var state = message.nativeState();
+                if (state != null)
+                    bytes +=
+                            state.partsJson()
+                                    .getBytes(java.nio.charset.StandardCharsets.UTF_8)
+                                    .length;
+            }
         } catch (Exception error) {
             throw new IllegalStateException("Could not measure model input", error);
         }

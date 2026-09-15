@@ -127,32 +127,21 @@ final class AnthropicLlmClient extends LlmClient {
 
         String rawInput;
         if (!toolUses.isEmpty()) {
-            String candidate = extractJson(objectMapper, text);
-            if (hasExecutableEnvelope(candidate)) {
-                throw new ModelSchemaException(
-                        "Anthropic response mixed native tool calls with JSON calls or a guided program");
-            }
-            // Native tool calls use the same runtime whitelist, argument validation and
-            // Gateway as JSON calls. Guide availability does not disable ordinary tools.
-            JsonNode schema = request.responseSchema();
-            if (schema != null && !schema.path("properties").has("calls")) {
-                throw new ModelSchemaException("This turn does not permit tool calls");
-            }
-            var pulse = objectMapper.createObjectNode();
-            var calls = pulse.putArray("calls");
-            for (ToolUseBlock tu : toolUses) {
-                if (request.tools().stream().noneMatch(tool -> tool.name().equals(tu.name()))) {
-                    throw new ModelSchemaException(
-                            "Tool is not available in this turn: " + tu.name());
-                }
-                var call = calls.addObject();
-                call.put("tool_name", tu.name());
-                call.set("args", objectMapper.valueToTree(toolInputMap(tu)));
-            }
-            if (!text.isEmpty()) {
-                pulse.put("thought", text);
-            }
-            rawInput = pulse.toString();
+            NativeToolResponses.validateNativeChannel(objectMapper, request, text);
+            rawInput =
+                    NativeToolResponses.normalize(
+                            objectMapper,
+                            request,
+                            text,
+                            toolUses.stream()
+                                    .map(
+                                            tu ->
+                                                    new NativeToolResponses.Call(
+                                                            tu.name(),
+                                                            objectMapper.valueToTree(
+                                                                    toolInputMap(tu)),
+                                                            tu.id()))
+                                    .toList());
         } else {
             if (text.isEmpty()) {
                 throw new ModelCapabilityException(
@@ -204,15 +193,6 @@ final class AnthropicLlmClient extends LlmClient {
         JsonNode schema = request.responseSchema();
         return !request.tools().isEmpty()
                 && (schema == null || schema.path("properties").has("calls"));
-    }
-
-    private boolean hasExecutableEnvelope(@NonNull String candidate) {
-        try {
-            JsonNode node = objectMapper.readTree(candidate);
-            return node.isObject() && (node.hasNonNull("guide") || node.hasNonNull("calls"));
-        } catch (Exception e) {
-            return false;
-        }
     }
 
     private static Tool.InputSchema.@NonNull Properties toolProperties(
@@ -375,11 +355,11 @@ final class AnthropicLlmClient extends LlmClient {
         try {
             Map<String, Object> converted = tu._input().convert(new TypeReference<>() {});
             if (converted == null) {
-                throw new ModelCapabilityException("Anthropic tool input decoded to null");
+                throw new ModelSchemaException("Anthropic tool input decoded to null");
             }
             return converted;
         } catch (Exception e) {
-            throw new ModelCapabilityException(
+            throw new ModelSchemaException(
                     "Anthropic tool input was not a JSON object: " + e.getMessage());
         }
     }

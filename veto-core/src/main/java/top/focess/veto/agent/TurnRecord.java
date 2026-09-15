@@ -102,6 +102,8 @@ public record TurnRecord(
         p.put("call_id", call.callId());
         p.put("tool_name", call.toolName());
         p.put("args", call.args());
+        var nativeState = call.nativeState();
+        if (nativeState != null) p.put("native_state", nativeState.toPayload());
         return new TurnRecord(turnNumber, TurnType.TOOL_CALL, p, null);
     }
 

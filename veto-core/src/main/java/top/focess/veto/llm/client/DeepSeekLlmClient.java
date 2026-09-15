@@ -22,23 +22,11 @@ import top.focess.veto.llm.core.LlmSystemUsage;
 import top.focess.veto.llm.core.ResolvedRequest;
 import top.focess.veto.llm.core.VetoRequest;
 import top.focess.veto.llm.exceptions.ModelCapabilityException;
+import top.focess.veto.llm.exceptions.ModelSchemaException;
 
 /**
- * Adapter for DeepSeek's <b>Responses API</b> ({@code POST /responses}).
- *
- * <p>Uses the Responses API with {@code text.format: json_schema} for server-side schema
- * enforcement, which avoids the {@code response_format: json_object} blank-content bug in the Chat
- * Completions API (confirmed DeepSeek API issue: {@code json_object} + multi-turn history returns
- * whitespace instead of JSON, regardless of thinking mode).
- *
- * <p>Thinking mode is disabled via {@code reasoning: {effort: "none"}}. The model still reasons via
- * the veto_pulse JSON {@code thought} field.
- *
- * <p>Tool-call history is rendered as veto_pulse JSON (the same format the model is asked to emit)
- * rather than native {@code tool_calls}/{@code tool} role messages. Rendering prior tool calls as
- * prose ("Calling view_file(...)") taught the model to answer in prose and broke {@code
- * text.format: json_schema} enforcement on multi-turn conversations; keeping the history format
- * uniform with the requested output format keeps the model in JSON mode.
+ * DeepSeek Responses API adapter: native functions with JSON response/guide compatibility. Thinking
+ * remains disabled; function calls and outputs are replayed with matching call ids.
  */
 final class DeepSeekLlmClient extends LlmClient {
 
@@ -85,7 +73,27 @@ final class DeepSeekLlmClient extends LlmClient {
 
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("model", request.modelName());
-            body.put("instructions", request.systemPrompt());
+            body.put("instructions", NativeToolResponses.prompt(request, responseSchema));
+            if (NativeToolResponses.enabled(request)) {
+                body.put(
+                        "tools",
+                        request.tools().stream()
+                                .map(
+                                        tool ->
+                                                Map.of(
+                                                        "type",
+                                                        "function",
+                                                        "name",
+                                                        tool.name(),
+                                                        "description",
+                                                        tool.description(),
+                                                        "parameters",
+                                                        tool.inputSchema(),
+                                                        "strict",
+                                                        false))
+                                .toList());
+                body.put("tool_choice", "auto");
+            }
             body.put("reasoning", Map.of("effort", "none")); // disable thinking
 
             // Build input items from the conversation messages (skip system - it goes in
@@ -97,6 +105,8 @@ final class DeepSeekLlmClient extends LlmClient {
                 }
                 inputItems.add(toInputItem(msg));
             }
+            if (inputItems.isEmpty())
+                inputItems.add(Map.of("role", "user", "content", request.userPrompt()));
             body.put("input", inputItems);
             body.put("text", Map.of("format", textFormat));
 
@@ -142,7 +152,35 @@ final class DeepSeekLlmClient extends LlmClient {
             Map<String, Object> responseMap =
                     objectMapper.readValue(httpResponse.body(), Map.class);
 
+            if ("incomplete".equals(responseMap.get("status"))
+                    || "failed".equals(responseMap.get("status")))
+                throw new ModelSchemaException(
+                        "DeepSeek returned an incomplete response; no calls were executed");
             String content = extractResponsesContent(responseMap);
+            var nativeCalls = new ArrayList<NativeToolResponses.Call>();
+            Object output = responseMap.get("output");
+            if (output instanceof List<?> items)
+                for (Object item : items) {
+                    if (item instanceof Map<?, ?> unsupported
+                            && "custom_tool_call".equals(unsupported.get("type")))
+                        throw new ModelSchemaException("Unsupported native custom tool call");
+                    if (item instanceof Map<?, ?> call
+                            && "function_call".equals(call.get("type"))) {
+                        if (!(call.get("name") instanceof String name)
+                                || !(call.get("arguments") instanceof String arguments)
+                                || !(call.get("call_id") instanceof String id)
+                                || id.isBlank())
+                            throw new ModelSchemaException("Incomplete native function call");
+                        nativeCalls.add(
+                                new NativeToolResponses.Call(
+                                        name,
+                                        NativeToolResponses.arguments(objectMapper, arguments),
+                                        id));
+                    }
+                }
+            content =
+                    NativeToolResponses.normalize(
+                            objectMapper, request, content == null ? "" : content, nativeCalls);
 
             @SuppressWarnings("unchecked")
             Map<String, Object> usage = (Map<String, Object>) responseMap.get("usage");
@@ -178,7 +216,7 @@ final class DeepSeekLlmClient extends LlmClient {
 
             String summary = "model=" + request.modelName() + ", via=responses-api";
             return new RawCompletion(summary, content);
-        } catch (ModelCapabilityException e) {
+        } catch (ModelCapabilityException | ModelSchemaException e) {
             throw e;
         } catch (InterruptedException e) {
             // Restore the flag for the caller, and say WHAT happened - InterruptedException carries
@@ -205,107 +243,60 @@ final class DeepSeekLlmClient extends LlmClient {
      * {@code output_text} (simple string) or an {@code output} array of items containing a message
      * with {@code output_text} content parts.
      */
-    @SuppressWarnings("unchecked")
     private static String extractResponsesContent(@NonNull Map<String, Object> responseMap) {
-        // Try output_text first (simple string field)
-        Object outputText = responseMap.get("output_text");
-        if (outputText instanceof String s && !s.isBlank()) {
-            return s;
-        }
-        // Try the output array
+        var parts = new ArrayList<String>();
         Object output = responseMap.get("output");
-        if (output instanceof List<?> outputList) {
-            for (Object item : outputList) {
-                if (item instanceof Map<?, ?> itemMap) {
-                    String type = (String) itemMap.get("type");
-                    if ("message".equals(type)) {
-                        Object contentArr = itemMap.get("content");
-                        if (contentArr instanceof List<?> contentList) {
-                            for (Object c : contentList) {
-                                if (c instanceof Map<?, ?> contentMap) {
-                                    if ("output_text".equals(contentMap.get("type"))) {
-                                        Object text = contentMap.get("text");
-                                        if (text instanceof String s) {
-                                            return s;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    if ("output_text".equals(type)) {
-                        Object text = itemMap.get("text");
-                        if (text instanceof String s) {
-                            return s;
-                        }
-                    }
-                }
+        if (output instanceof List<?> items)
+            for (Object item : items) {
+                if (!(item instanceof Map<?, ?> map)) continue;
+                if ("output_text".equals(map.get("type")) && map.get("text") instanceof String text)
+                    parts.add(text);
+                if ("message".equals(map.get("type"))
+                        && map.get("content") instanceof List<?> content)
+                    for (Object block : content)
+                        if (block instanceof Map<?, ?> part
+                                && "output_text".equals(part.get("type"))
+                                && part.get("text") instanceof String text) parts.add(text);
             }
-        }
-        return null;
+        if (responseMap.get("output_text") instanceof String text
+                && !text.isBlank()
+                && !text.equals(String.join("\n", parts))) parts.add(text);
+        return String.join("\n", parts);
     }
 
-    /**
-     * Converts a {@link ChatMessage} to a Responses API input item. Tool results are rendered as
-     * user messages; tool-call assistant messages are rendered as the SAME veto_pulse JSON the
-     * model is asked to emit (a {@code thought} + {@code calls} object). This keeps the
-     * conversation history format uniform with the requested output format - rendering prior tool
-     * calls as prose ("Calling view_file(...)") taught the model to answer in prose and broke
-     * {@code text.format: json_schema} enforcement on multi-turn conversations.
-     */
+    /** Replays calls and results as native Responses API items, preserving their pairing. */
     private @NonNull Map<String, Object> toInputItem(@NonNull ChatMessage msg)
             throws JsonProcessingException {
-        if ("tool".equals(msg.role())) {
-            Map<String, Object> m = new LinkedHashMap<>();
-            m.put("role", "user");
-            m.put("content", msg.toolResultContentWithStatus());
-            return m;
+        String callId = msg.callId();
+        if ("tool".equals(msg.role()) && callId != null) {
+            return Map.of(
+                    "type",
+                    "function_call_output",
+                    "call_id",
+                    callId,
+                    "output",
+                    msg.toolResultContentWithStatus());
         }
-        if ("assistant".equals(msg.role())) {
-            // Render EVERY assistant turn as veto_pulse JSON - both tool-call turns
-            // (thought + calls) and message-only answer turns (message). Rendering an answer
-            // turn as raw natural language taught the model to answer in prose on subsequent
-            // turns (it mimicked the history format); keeping the entire history in veto_pulse
-            // JSON keeps the model in JSON mode across the whole conversation.
-            Map<String, Object> root = new LinkedHashMap<>();
-            if (msg.callId() != null) {
-                Map<String, Object> call = new LinkedHashMap<>();
-                String toolName = msg.toolName();
-                call.put("tool_name", toolName != null ? toolName : "");
-                call.put("args", parseArgsObject(msg.toolArgs()));
-                if (!msg.content().isEmpty()) {
-                    root.put("thought", msg.content());
-                }
-                root.put("calls", List.of(call));
-            } else {
-                root.put("message", msg.content());
-            }
-            Map<String, Object> m = new LinkedHashMap<>();
-            m.put("role", "assistant");
-            m.put("content", objectMapper.writeValueAsString(root));
-            return m;
+        if ("assistant".equals(msg.role()) && callId != null) {
+            String name = msg.toolName();
+            String args = msg.toolArgs();
+            return Map.of(
+                    "type",
+                    "function_call",
+                    "call_id",
+                    callId,
+                    "name",
+                    name == null ? "" : name,
+                    "arguments",
+                    args == null ? "{}" : args);
         }
-        Map<String, Object> m = new LinkedHashMap<>();
-        m.put("role", msg.role());
-        m.put("content", msg.content());
-        return m;
-    }
-
-    /**
-     * Parses a tool-args JSON string into a {@link JsonNode} for embedding in the reconstructed
-     * veto_pulse history. Returns an empty object node when the args are null/blank/invalid so the
-     * rendered call is always well-formed JSON.
-     */
-    private @NonNull JsonNode parseArgsObject(String toolArgs) {
-        if (toolArgs == null || toolArgs.isBlank()) {
-            return objectMapper.createObjectNode();
-        }
-        try {
-            JsonNode node = objectMapper.readTree(toolArgs);
-            return node != null && node.isObject() ? node : objectMapper.createObjectNode();
-        } catch (JsonProcessingException e) {
-            return objectMapper.createObjectNode();
-        }
+        return Map.of(
+                "role",
+                "tool".equals(msg.role()) ? "user" : msg.role(),
+                "content",
+                "assistant".equals(msg.role())
+                        ? objectMapper.writeValueAsString(Map.of("message", msg.content()))
+                        : msg.content());
     }
 
     /**

@@ -108,6 +108,22 @@ public abstract class AbstractLlmProvider implements LLMProviderStrategy {
             auditLogger.logLLMExchange(
                     requestId, request.modelName(), raw.requestSummary(), raw.rawResponse());
             VetoResponse response = parse(raw.rawResponse());
+            if (!raw.nativeStates().isEmpty()) {
+                var parsedCalls = response.calls();
+                if (parsedCalls == null || parsedCalls.size() != raw.nativeStates().size())
+                    throw new ModelSchemaException(
+                            "Native response metadata count does not match calls");
+                var restored = new java.util.ArrayList<top.focess.veto.llm.core.ToolCall>();
+                for (int i = 0; i < parsedCalls.size(); i++)
+                    restored.add(parsedCalls.get(i).withNativeState(raw.nativeStates().get(i)));
+                response =
+                        new VetoResponse(
+                                response.thought(),
+                                restored,
+                                response.message(),
+                                response.guide(),
+                                response.citations());
+            }
             var calls = response.calls();
             String message = response.message();
             String thought = response.thought();

@@ -11,10 +11,7 @@ import top.focess.veto.llm.core.ProviderType;
 import top.focess.veto.llm.core.ResolvedRequest;
 import top.focess.veto.observability.AuditLogger;
 
-/**
- * DeepSeek provider: OpenAI-compatible API at a different base URL. DeepSeek only supports {@code
- * json_object}, so the adapter injects the response schema into the system prompt.
- */
+/** DeepSeek provider: Responses API with native functions and JSON response/guide compatibility. */
 @Component
 public class DeepSeekProvider extends OpenAiCompatibleProvider {
     private static final String DEEPSEEK_BASE_URL = "https://api.deepseek.com";
