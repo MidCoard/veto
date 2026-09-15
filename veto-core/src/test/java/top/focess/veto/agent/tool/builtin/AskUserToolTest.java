@@ -222,8 +222,7 @@ class AskUserToolTest {
                         "Create the project?",
                         List.of(
                                 new AskUserTool.Option(
-                                        "Create Xcode project skeleton (Recommended)",
-                                        "Create files."),
+                                        "😀".repeat(107) + " (Recommended)", "Create files."),
                                 new AskUserTool.Option("Show code", "Show the code first.")));
         var error =
                 assertThrows(
@@ -234,9 +233,42 @@ class AskUserToolTest {
         assertEquals("INVALID_QUESTIONS", error.errorCode());
         assertTrue(
                 String.valueOf(error.getMessage())
-                        .contains("Question 'project', option 1: label has 43"));
+                        .contains("Question 'project', option 1: label has 121"));
         assertTrue(String.valueOf(error.getMessage()).contains("no questions were sent"));
         assertTrue(registry.pendingFor("test-agent").isEmpty());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"Create Xcode project skeleton (Recommended)", "unicode-boundary"})
+    void acceptsLongLabelsAndPreservesSelectedAnswer(@NonNull String example) throws Exception {
+        String label =
+                example.equals("unicode-boundary") ? "😀".repeat(106) + " (Recommended)" : example;
+        var question =
+                new AskUserTool.Question(
+                        "Project",
+                        "project",
+                        "Create the project?",
+                        List.of(
+                                new AskUserTool.Option(label, "Create files."),
+                                new AskUserTool.Option("Show code", "Show code first.")));
+        var executor = Executors.newVirtualThreadPerTaskExecutor();
+        try {
+            var result =
+                    executor.submit(
+                            () ->
+                                    CapabilityTestCalls.execute(
+                                            tool, new AskUserTool.Args(List.of(question))));
+            assertTrue(registry.answer("test-agent", awaitPending(), Map.of("project", label)));
+            assertEquals(
+                    label,
+                    new ObjectMapper()
+                            .readTree(result.get(2, TimeUnit.SECONDS))
+                            .path("answers")
+                            .path("project")
+                            .asText());
+        } finally {
+            executor.shutdownNow();
+        }
     }
 
     private void assertInvalid(@NonNull List<AskUserTool.Question> questions) {

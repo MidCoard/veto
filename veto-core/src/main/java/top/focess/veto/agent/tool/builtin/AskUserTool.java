@@ -54,7 +54,7 @@ import top.focess.veto.agent.tool.UserInteractionTool;
                         + " prompts are 1-300 characters, and each question has 2-3 mutually"
                         + " exclusive options. The first option must be recommended and its label"
                         + " must end with `(Recommended)`. Labels are case-insensitively unique;"
-                        + " `Other` is reserved for the UI. Labels contain 1-40 Unicode characters"
+                        + " `Other` is reserved for the UI. Labels contain 1-120 Unicode characters"
                         + " including `(Recommended)`; descriptions contain 1-200 characters.",
         security =
                 "A user answer does not replace any separate approval required to perform an operation.",
@@ -94,7 +94,7 @@ public final class AskUserTool implements UserInteractionTool<AskUserTool.Args> 
     public record Option(
             @NonNull
                     @Doc(
-                            "Choice label, 1-40 Unicode characters including `(Recommended)`. The first label ends with `(Recommended)`; `Other`"
+                            "Keep labels concise; move explanations into the description. Choice label, 1-120 Unicode characters including `(Recommended)`. The first label ends with `(Recommended)`; `Other`"
                                     + " is reserved.")
                     String label,
             @NonNull
@@ -176,7 +176,7 @@ public final class AskUserTool implements UserInteractionTool<AskUserTool.Args> 
             for (int index = 0; index < question.options().size(); index++) {
                 Option option = question.options().get(index);
                 String normalizedLabel = option.label().strip().toLowerCase(Locale.ROOT);
-                if (length(option.label()) > 40) {
+                if (length(option.label()) > 120) {
                     ToolErrors.failure(
                             "INVALID_QUESTIONS",
                             "Question '"
@@ -185,7 +185,7 @@ public final class AskUserTool implements UserInteractionTool<AskUserTool.Args> 
                                     + (index + 1)
                                     + ": label has "
                                     + length(option.label())
-                                    + " characters; maximum is 40 including `(Recommended)`."
+                                    + " characters; maximum is 120 including `(Recommended)`."
                                     + " Shorten the label and call ask_user again; no questions were sent.");
                 }
                 if (option.label().isBlank()
@@ -195,7 +195,7 @@ public final class AskUserTool implements UserInteractionTool<AskUserTool.Args> 
                         || !labels.add(normalizedLabel)) {
                     ToolErrors.failure(
                             "INVALID_QUESTIONS",
-                            "Option labels must be distinct, at most 40 characters, and not"
+                            "Option labels must be distinct, at most 120 characters, and not"
                                     + " `Other`; descriptions must contain 1 to 200 characters.");
                 }
                 boolean recommended = option.label().endsWith("(Recommended)");
