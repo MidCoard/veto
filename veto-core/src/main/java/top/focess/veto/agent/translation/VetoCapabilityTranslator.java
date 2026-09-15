@@ -135,12 +135,18 @@ public class VetoCapabilityTranslator implements CapabilityTranslator {
     private static @NonNull ObjectNode generateActionSchema() {
         ObjectNode properties = actionProperties("generate");
         properties.set("prompt", stringNode("Prompt for the scoped model generation."));
-        properties.set("inputs", MAPPER.createObjectNode().put("type", "object"));
+        properties.set(
+                "inputs",
+                MAPPER.createObjectNode()
+                        .put("type", "object")
+                        .put(
+                                "description",
+                                "Optional local input bindings; omitted means no bindings."));
         properties.set("outputs", stringMapSchema("Result variable name to message or thought."));
         properties.set("thought", typedSchemaNode("boolean", "Whether to request reasoning."));
         properties.set("model_tier", stringNode("Optional model-tier override."));
         properties.set("temperature", typedSchemaNode("number", "Optional temperature override."));
-        return closedObject(properties, "id", "label", "type", "prompt", "inputs", "outputs");
+        return closedObject(properties, "id", "label", "type", "prompt", "outputs");
     }
 
     private static @NonNull ObjectNode gotoActionSchema() {

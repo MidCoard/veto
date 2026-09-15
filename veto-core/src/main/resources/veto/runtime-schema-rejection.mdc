@@ -6,5 +6,5 @@ requires: [error, expected]
 @message user
 Your previous response was rejected due to a schema violation: {{error}}.
 Expected: {{expected}}.
-Correct the response. Invoke tools through native tool calling with arguments matching their definitions. For a text answer or guide, return JSON matching the response schema. VetoResponse has no calls field.
+Correct the response. Invoke tools through native tool calling with arguments matching their definitions. Answer directly in text or Markdown. Submit guided programs only through the registered submit_guide tool.
 @endmessage

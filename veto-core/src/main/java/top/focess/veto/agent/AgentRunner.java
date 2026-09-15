@@ -1459,6 +1459,17 @@ public class AgentRunner {
                 // stored in the ASSISTANT_THOUGHT turn and echoed back on the next request's
                 // assistant message. Cleared immediately (one-shot per model call).
                 lastReasoningContent = ReasoningContentHolder.getAndClear();
+                var submission = top.focess.veto.agent.loop.ResponseTools.submission(response);
+                if (submission != null) {
+                    final String submissionName = submission.toolName();
+                    if (!request.nativeToolsEnabled()
+                            || request.tools().stream()
+                                    .noneMatch(t -> t.name().equals(submissionName)))
+                        throw new ModelSchemaException("Response tool is unavailable in this turn");
+                    response =
+                            top.focess.veto.agent.loop.ResponseTools.decode(
+                                    response, submission, objectMapper);
+                }
                 VetoResponse checked =
                         ResponseEnforcer.enforce(response, allowGuided, whitelistedTools);
                 validateResponseMode(checked, generation);
@@ -1531,6 +1542,14 @@ public class AgentRunner {
                 }
                 if (inputBaseline != null) {
                     contextUsage.accept(inputBaseline, contextUsage.baseline());
+                }
+                if (submission != null) {
+                    appendToolCall(submission);
+                    appendToolResponse(
+                            submission.toolName(),
+                            submission.callId(),
+                            "Submission received by the runtime.",
+                            true);
                 }
                 return checked;
             } catch (ModelSchemaException e) {
@@ -1687,7 +1706,9 @@ public class AgentRunner {
         return new VetoRequest(
                 original.systemPrompt(),
                 prompt,
-                original.tools(),
+                original.tools().stream()
+                        .filter(t -> t.name().equals("answer_with_citations"))
+                        .toList(),
                 selected.provider(),
                 selected.model(),
                 selected.credentialKey(),
@@ -1695,7 +1716,7 @@ public class AgentRunner {
                 messages,
                 original.responseSchema(),
                 selected.baseUrl(),
-                false);
+                true);
     }
 
     private @NonNull CompiledPrompt compilePrompt(

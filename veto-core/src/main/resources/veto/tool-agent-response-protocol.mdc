@@ -3,8 +3,4 @@ version: 2
 id: tool-agent-response-protocol
 requires: []
 ---
-@verbatim
-## Response Protocol
-
-Follow the provider response channel instructions for tool execution. JSON text responses must match the current response schema without outer Markdown fences. An optional `thought` is a short operational rationale, not private chain-of-thought. Omit unused fields. Follow the task's completion procedure rather than inventing a separate final-result format.
-@endverbatim
+Use native tools for actions and ordinary text or Markdown for conversation. Follow the task's completion procedure. Do not wrap answers in a JSON response envelope.

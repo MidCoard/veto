@@ -2,8 +2,6 @@ package top.focess.veto.llm.provider;
 
 import static top.focess.veto.util.LogValues.safe;
 
-import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.SocketTimeoutException;
 import java.util.List;
@@ -12,7 +10,6 @@ import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.llm.client.LlmClient;
 import top.focess.veto.llm.core.ResolvedRequest;
 import top.focess.veto.llm.core.ToolDefinition;
@@ -23,7 +20,6 @@ import top.focess.veto.llm.exceptions.LlmRateLimitException;
 import top.focess.veto.llm.exceptions.LlmTimeoutException;
 import top.focess.veto.llm.exceptions.ModelCapabilityException;
 import top.focess.veto.llm.exceptions.ModelSchemaException;
-import top.focess.veto.llm.exceptions.PlainTextResponseException;
 import top.focess.veto.observability.AuditLogger;
 
 /**
@@ -106,15 +102,18 @@ public abstract class AbstractLlmProvider implements LLMProviderStrategy {
                     raw.rawResponse().length(),
                     raw.rawResponse());
             auditLogger.logLLMExchange(
-                    requestId, request.modelName(), raw.requestSummary(), raw.rawResponse());
-            VetoResponse textResponse = parse(raw.rawResponse());
+                    requestId,
+                    request.modelName(),
+                    raw.requestSummary(),
+                    objectMapper.writeValueAsString(
+                            Map.of("text", raw.rawResponse(), "nativeCalls", raw.nativeCalls())));
             VetoResponse response =
                     new VetoResponse(
-                            textResponse.thought(),
+                            null,
                             raw.nativeCalls().isEmpty() ? null : raw.nativeCalls(),
-                            textResponse.message(),
-                            textResponse.guide(),
-                            textResponse.citations());
+                            raw.rawResponse().isBlank() ? null : raw.rawResponse(),
+                            null,
+                            null);
             if (!raw.nativeStates().isEmpty()) {
                 var parsedCalls = response.calls();
                 if (parsedCalls == null || parsedCalls.size() != raw.nativeStates().size())
@@ -180,42 +179,6 @@ public abstract class AbstractLlmProvider implements LLMProviderStrategy {
             return objectMapper.writeValueAsString(inputSchema);
         } catch (Exception e) {
             return String.valueOf(inputSchema);
-        }
-    }
-
-    private @NonNull VetoResponse parse(@NonNull String rawResponse) {
-        try {
-            var envelope = objectMapper.readTree(rawResponse);
-            if (envelope != null && envelope.has("calls")) {
-                throw new ModelSchemaException(
-                        "VetoResponse no longer accepts calls; use native tools.");
-            }
-            return objectMapper
-                    .readerFor(ToolDocs.nonNullClass(VetoResponse.class))
-                    .with(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
-                    .with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
-                    .with(JsonParser.Feature.STRICT_DUPLICATE_DETECTION)
-                    .readValue(rawResponse);
-        } catch (Exception e) {
-            if (rawResponse.stripLeading().startsWith("{")
-                    || rawResponse.stripLeading().startsWith("[")) {
-                throw new ModelSchemaException(
-                        "Response JSON does not match the current response contract: "
-                                + e.getMessage());
-            }
-            // Not JSON: signal a retryable failure so DefaultUniformLLMCaller's retry loop
-            // re-prompts (the schema enforcement is probabilistic - a retry usually recovers).
-            // The orchestrator converts this back to a plain-text message once its attempts are
-            // exhausted, preserving the graceful-degradation behavior this fallback used to give.
-            if (!rawResponse.isBlank()) {
-                log.warn(
-                        "{} response was not valid JSON, requesting retry ({} chars)",
-                        providerName(),
-                        rawResponse.length());
-                throw new PlainTextResponseException(providerName(), rawResponse.strip());
-            }
-            throw new ModelCapabilityException(
-                    providerName() + " response could not be parsed into VetoResponse", e);
         }
     }
 

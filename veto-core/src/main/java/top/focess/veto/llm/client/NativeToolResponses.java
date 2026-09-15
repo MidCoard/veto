@@ -21,18 +21,10 @@ final class NativeToolResponses {
         return request.nativeToolsEnabled() && !request.tools().isEmpty();
     }
 
-    static @NonNull String prompt(@NonNull VetoRequest request, @NonNull JsonNode schema) {
+    static @NonNull String prompt(@NonNull VetoRequest request) {
         return PromptLibrary.compile(
                         "provider-native",
-                        Map.of(
-                                "system",
-                                request.systemPrompt(),
-                                "schema",
-                                schema,
-                                "nativeCalls",
-                                enabled(request),
-                                "guide",
-                                schema.path("properties").has("guide")))
+                        Map.of("system", request.systemPrompt(), "nativeCalls", enabled(request)))
                 .text();
     }
 
@@ -52,33 +44,8 @@ final class NativeToolResponses {
         }
     }
 
-    /**
-     * Only a whole-response JSON envelope is a protocol candidate. Examples inside prose are data.
-     */
-    static @NonNull String responseCandidate(@NonNull String text) {
-        String trimmed = text.strip();
-        if (trimmed.startsWith("```json\n")
-                || trimmed.startsWith("```\n")
-                || trimmed.startsWith("```json\r\n")
-                || trimmed.startsWith("```\r\n")) {
-            int newline = trimmed.indexOf('\n');
-            int end = trimmed.indexOf("```", newline + 1);
-            if (end > newline && trimmed.substring(end + 3).isBlank()) {
-                return trimmed.substring(newline + 1, end).strip();
-            }
-        }
-        return trimmed;
-    }
-
     static void validateNativeChannel(
             @NonNull ObjectMapper mapper, @NonNull VetoRequest request, @NonNull String text) {
-        String candidate = responseCandidate(text);
-        if (candidate.stripLeading().startsWith("{") || candidate.stripLeading().startsWith("[")) {
-            JsonNode envelope = arguments(mapper, candidate);
-            if (envelope.has("calls") || envelope.hasNonNull("guide"))
-                throw new ModelSchemaException(
-                        "Response mixed native tool calls with JSON calls or guide; return exactly one execution channel");
-        }
         if (!enabled(request))
             throw new ModelSchemaException("This turn does not permit native tool calls");
     }
@@ -91,9 +58,6 @@ final class NativeToolResponses {
             @NonNull List<Call> nativeCalls,
             @NonNull List<top.focess.veto.llm.core.NativeToolState> states) {
         if (nativeCalls.isEmpty()) return new LlmClient.RawCompletion(summary, normalized);
-        var envelope =
-                (com.fasterxml.jackson.databind.node.ObjectNode) arguments(mapper, normalized);
-        envelope.remove("calls");
         var calls = new java.util.ArrayList<top.focess.veto.llm.core.ToolCall>();
         for (var call : nativeCalls) {
             Map<@NonNull String, Object> args =
@@ -101,9 +65,9 @@ final class NativeToolResponses {
                             call.args(),
                             new com.fasterxml.jackson.core.type.TypeReference<
                                     Map<@NonNull String, Object>>() {});
-            calls.add(new top.focess.veto.llm.core.ToolCall(call.name(), args));
+            calls.add(new top.focess.veto.llm.core.ToolCall(call.name(), args, call.id()));
         }
-        return new LlmClient.RawCompletion(summary, envelope.toString(), states, calls);
+        return new LlmClient.RawCompletion(summary, normalized, states, calls);
     }
 
     static @NonNull String normalize(
@@ -111,10 +75,8 @@ final class NativeToolResponses {
             @NonNull VetoRequest request,
             @NonNull String text,
             @NonNull List<Call> nativeCalls) {
-        String candidate = responseCandidate(text);
-        if (nativeCalls.isEmpty()) return candidate;
+        if (nativeCalls.isEmpty()) return text;
         validateNativeChannel(mapper, request, text);
-        var pulse = mapper.createObjectNode();
         var ids = new HashSet<String>();
         for (var call : nativeCalls) {
             if (request.tools().stream().noneMatch(tool -> tool.name().equals(call.name())))
@@ -126,7 +88,6 @@ final class NativeToolResponses {
             if (id != null && !id.isBlank() && !ids.add(id))
                 throw new ModelSchemaException("Duplicate native tool call id");
         }
-        if (!text.isBlank()) pulse.put("thought", text);
-        return pulse.toString();
+        return text;
     }
 }

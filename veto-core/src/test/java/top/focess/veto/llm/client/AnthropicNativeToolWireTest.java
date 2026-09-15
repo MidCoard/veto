@@ -104,7 +104,7 @@ class AnthropicNativeToolWireTest {
                             schema,
                             null);
             var firstRaw = client.complete(new ResolvedRequest(first, null, "unused"));
-            assertFalse(mapper.readTree(firstRaw.rawResponse()).has("calls"));
+            assertEquals("", firstRaw.rawResponse());
             var call = firstRaw.nativeCalls().getFirst();
             assertEquals("view_file", call.toolName());
             assertEquals("/workspace/中文 notes.txt", call.args().get("absolutePath"));
@@ -140,10 +140,7 @@ class AnthropicNativeToolWireTest {
                 var sent = mapper.readTree(body);
                 assertTrue(sent.path("tools").path(0).path("strict").asBoolean());
                 assertTrue(sent.path("tools").path(1).path("strict").asBoolean());
-                assertEquals(
-                        "json_schema",
-                        sent.path("output_config").path("format").path("type").asText());
-                assertEquals(schema, sent.path("output_config").path("format").path("schema"));
+                assertFalse(sent.has("output_config"));
                 assertEquals("auto", sent.path("tool_choice").path("type").asText());
                 assertEquals("view_file", sent.path("tools").path(0).path("name").asText());
                 assertEquals(askSchema, sent.path("tools").path(1).path("input_schema"));
@@ -163,7 +160,7 @@ class AnthropicNativeToolWireTest {
                                 .path("label")
                                 .path("maxLength")
                                 .asInt());
-                assertTrue(sent.path("system").toString().contains("Use native tool_use"));
+                assertTrue(sent.path("system").toString().contains("Invoke registered tools"));
             }
             var history = mapper.readTree(bodies.getLast()).path("messages");
             assertEquals("runtime-1", history.path(1).path("content").path(0).path("id").asText());

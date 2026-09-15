@@ -8,7 +8,8 @@ import java.util.Objects;
 import org.jspecify.annotations.NonNull;
 
 /**
- * A model turn: execute catalog calls, submit a guided program, or answer with a message. The
+ * Internal normalized model turn, constructed by adapters and the runtime, never a model-facing
+ * JSON response format. Execute native calls, submit a guided program, or answer with text. The
  * session controls whether guide is available; a response cannot enable that capability. Calls and
  * guide are mutually exclusive. Thought is an optional operational rationale.
  */

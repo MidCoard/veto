@@ -181,10 +181,11 @@ class GuidedExecutionTest {
                 [{"id":"answer","label":"Answer","type":"generate","prompt":"Quote the meeting time","inputs":{},"outputs":{"answer":"message"}},
                  {"id":"stop","label":"Finish","type":"STOP","result_binding":"answer"}]
                 """);
-                            var schema = request.responseSchema();
-                            if (schema == null)
-                                throw new AssertionError("Expected generation schema");
-                            assertTrue(schema.path("properties").has("citations"));
+                            assertNull(request.responseSchema());
+                            assertTrue(
+                                    request.tools().stream()
+                                            .allMatch(
+                                                    t -> t.name().equals("answer_with_citations")));
                             return new VetoResponse(
                                     null,
                                     null,
@@ -314,7 +315,15 @@ class GuidedExecutionTest {
     private static @NonNull VetoResponse actions(@NonNull String json) {
         try {
             return new VetoResponse(
-                    null, null, null, new VetoResponse.Guide(new ObjectMapper().readTree(json)));
+                    null,
+                    List.of(
+                            new ToolCall(
+                                    "submit_guide",
+                                    Map.of(
+                                            "actions",
+                                            new ObjectMapper().readValue(json, List.class)))),
+                    null,
+                    null);
         } catch (Exception e) {
             throw new AssertionError(e);
         }
@@ -681,23 +690,30 @@ class GuidedExecutionTest {
         assertTrue(ordinaryResult.success(), ordinaryResult.message());
         assertEquals("Stable release, version 42.", guidedResult.message());
         assertEquals(guidedResult.message(), ordinaryResult.message());
-        assertEquals(2, guidedTools.size(), "guide must execute both real sequential file reads");
+        assertEquals(
+                2,
+                guidedTools.stream().filter(t -> !t.toolName().equals("submit_guide")).count(),
+                "guide must execute both real sequential file reads");
         assertEquals(2, ordinaryTools.size());
         assertEquals(2, guidedRequests.size(), "direct program plus one generation request");
         assertEquals(
                 3,
                 ordinaryRequests.size(),
                 "two sequential observations plus final model response");
-        assertEquals(guidedRequests.get(0).tools(), guidedRequests.get(1).tools());
+        assertTrue(
+                guidedRequests.get(1).tools().stream()
+                        .allMatch(t -> t.name().equals("answer_with_citations")));
         assertEquals(guidedRequests.get(0).systemPrompt(), guidedRequests.get(1).systemPrompt());
         assertEquals(
                 guidedRequests.get(0).responseSchema(), guidedRequests.get(1).responseSchema());
-        var enabledSchema = guidedRequests.get(0).responseSchema();
-        var disabledSchema = ordinaryRequests.get(0).responseSchema();
-        if (enabledSchema == null || disabledSchema == null)
-            throw new AssertionError("schema missing");
-        assertTrue(enabledSchema.path("properties").has("guide"));
-        assertFalse(disabledSchema.path("properties").has("guide"));
+        assertNull(guidedRequests.get(0).responseSchema());
+        assertNull(ordinaryRequests.get(0).responseSchema());
+        assertTrue(
+                guidedRequests.get(0).tools().stream()
+                        .anyMatch(t -> t.name().equals("submit_guide")));
+        assertFalse(
+                ordinaryRequests.get(0).tools().stream()
+                        .anyMatch(t -> t.name().equals("submit_guide")));
         String enabledPrompt = guidedRequests.get(0).systemPrompt();
         String disabledPrompt = ordinaryRequests.get(0).systemPrompt();
         System.out.println(
@@ -808,7 +824,9 @@ class GuidedExecutionTest {
             assertTrue(result.success(), result.message());
             assertEquals("safe answer", result.message());
             assertEquals(3, calls.get());
-            assertTrue(executed.isEmpty(), executed.toString());
+            assertTrue(
+                    executed.stream().allMatch(t -> t.toolName().equals("submit_guide")),
+                    executed.toString());
         } finally {
             service.remove("read-guided");
         }

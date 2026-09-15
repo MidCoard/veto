@@ -30,23 +30,19 @@ class NativeToolResponsesTest {
                                 List.of(
                                         new NativeToolResponses.Call(
                                                 "read", mapper.createObjectNode(), "id"))));
-        assertThrows(
-                ToolDocs.nonNullClass(ModelSchemaException.class),
-                () ->
-                        NativeToolResponses.normalize(
-                                mapper,
-                                request(),
-                                "{\"calls\":[]}",
-                                List.of(
-                                        new NativeToolResponses.Call(
-                                                "read", mapper.createObjectNode(), "id"))));
         assertEquals(
-                "{\"message\":\"ok\"}",
-                NativeToolResponses.responseCandidate("```json\n{\"message\":\"ok\"}\n```"));
+                "{\"calls\":[]}",
+                NativeToolResponses.normalize(
+                        mapper,
+                        request(),
+                        "{\"calls\":[]}",
+                        List.of(
+                                new NativeToolResponses.Call(
+                                        "read", mapper.createObjectNode(), "id"))));
     }
 
     @Test
-    void rejectsJsonCallsEvenWhenTheRuntimeRecordHasAnInternalCallList() {
+    void treatsJsonLookingTextAsDataNeverAsExecutableCalls() {
         for (String json :
                 List.of(
                         "{\"calls\":[]}",
@@ -76,9 +72,9 @@ class NativeToolResponsesTest {
                             return new LlmClient.RawCompletion("test", json);
                         }
                     };
-            assertThrows(
-                    ToolDocs.nonNullClass(ModelSchemaException.class),
-                    () -> provider.execute(new ResolvedRequest(request(), null, "unused")));
+            var response = provider.execute(new ResolvedRequest(request(), null, "unused"));
+            assertEquals(json, response.message());
+            assertNull(response.calls());
         }
         assertFalse(
                 mapper.valueToTree(

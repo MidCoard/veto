@@ -281,7 +281,7 @@ public class PromptCompiler {
                         .map(ChatMessage::content)
                         .collect(Collectors.joining("\n\n"));
         if (isolatedInstructions != null) {
-            var schema = translator.vetoResponseSchema(false, flatTools);
+            com.fasterxml.jackson.databind.JsonNode schema = null;
             List<ChatMessage> messages = fitIsolatedBudget(conversation, flatTools, schema);
             return new CompiledPrompt(
                     systemMessage,
@@ -293,7 +293,10 @@ public class PromptCompiler {
         }
         List<ChatMessage> messages = wellFormed(conversation, conversation);
 
-        var responseSchema = translator.vetoResponseSchema(guidedEnabled, flatTools);
+        flatTools =
+                ResponseTools.add(
+                        flatTools, translator.vetoResponseSchema(guidedEnabled, flatTools));
+        com.fasterxml.jackson.databind.JsonNode responseSchema = null;
 
         String provider = "";
         String model = "";

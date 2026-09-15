@@ -1,15 +1,11 @@
 package top.focess.veto.llm.client;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openai.client.OpenAIClient;
 import com.openai.core.JsonValue;
 import com.openai.models.ChatModel;
 import com.openai.models.FunctionDefinition;
 import com.openai.models.FunctionParameters;
-import com.openai.models.ResponseFormatJsonObject;
-import com.openai.models.ResponseFormatJsonSchema;
 import com.openai.models.chat.completions.ChatCompletion;
 import com.openai.models.chat.completions.ChatCompletionAssistantMessageParam;
 import com.openai.models.chat.completions.ChatCompletionCreateParams;
@@ -20,9 +16,7 @@ import com.openai.models.chat.completions.ChatCompletionSystemMessageParam;
 import com.openai.models.chat.completions.ChatCompletionToolMessageParam;
 import com.openai.models.chat.completions.ChatCompletionUserMessageParam;
 import java.util.ArrayList;
-import java.util.Map;
 import org.jspecify.annotations.NonNull;
-import top.focess.veto.agent.loop.PromptLibrary;
 import top.focess.veto.agent.translation.CapabilityTranslator;
 import top.focess.veto.llm.core.ChatMessage;
 import top.focess.veto.llm.core.LlmOptions;
@@ -61,40 +55,10 @@ final class OpenAiLlmClient extends LlmClient {
     @Override
     public @NonNull RawCompletion complete(@NonNull ResolvedRequest resolved) {
         VetoRequest request = resolved.request();
-        JsonNode configuredSchema = request.responseSchema();
-        JsonNode rawSchema =
-                configuredSchema != null
-                        ? configuredSchema
-                        : capabilityTranslator.vetoResponseSchema(false);
-        String systemPrompt = NativeToolResponses.prompt(request, rawSchema);
+        String systemPrompt = NativeToolResponses.prompt(request);
 
         ChatCompletionCreateParams.Builder builder =
                 ChatCompletionCreateParams.builder().model(ChatModel.of(request.modelName()));
-
-        if (supportsJsonSchema) {
-            OpenAiStrictSchemaAdapter.Adapted adapted = OpenAiStrictSchemaAdapter.adapt(rawSchema);
-            Map<String, Object> responseSchema =
-                    objectMapper.convertValue(
-                            adapted.schema(), new TypeReference<Map<String, Object>>() {});
-            builder.responseFormat(
-                    ChatCompletionCreateParams.ResponseFormat.ofJsonSchema(
-                            ResponseFormatJsonSchema.builder()
-                                    .jsonSchema(
-                                            ResponseFormatJsonSchema.JsonSchema.builder()
-                                                    .name("veto_pulse")
-                                                    .strict(adapted.strict())
-                                                    .schema(responseSchemaOf(responseSchema))
-                                                    .build())
-                                    .build()));
-        } else {
-            Map<String, Object> responseSchema =
-                    objectMapper.convertValue(
-                            rawSchema, new TypeReference<Map<String, Object>>() {});
-            systemPrompt = augmentPromptWithSchema(systemPrompt, responseSchema);
-            builder.responseFormat(
-                    ChatCompletionCreateParams.ResponseFormat.ofJsonObject(
-                            ResponseFormatJsonObject.builder().build()));
-        }
 
         if (NativeToolResponses.enabled(request)) {
             for (var tool : request.tools()) {
@@ -147,7 +111,8 @@ final class OpenAiLlmClient extends LlmClient {
         }
         if (completion.choices().isEmpty())
             throw new ModelCapabilityException(providerName + " returned no choices");
-        if (completion.choices().getFirst().finishReason().toString().equals("length"))
+        if (java.util.Set.of("length", "content_filter")
+                .contains(completion.choices().getFirst().finishReason().toString()))
             throw new top.focess.veto.llm.exceptions.ModelSchemaException(
                     "OpenAI returned an incomplete response; no calls were executed");
         var message = completion.choices().getFirst().message();
@@ -166,8 +131,11 @@ final class OpenAiLlmClient extends LlmClient {
         }
         String content =
                 NativeToolResponses.normalize(
-                        objectMapper, request, message.content().orElse(""), calls);
-        if (content.isBlank())
+                        objectMapper,
+                        request,
+                        message.content().orElse(message.refusal().orElse("")),
+                        calls);
+        if (content.isBlank() && calls.isEmpty())
             throw new ModelCapabilityException(providerName + " returned empty content");
 
         String summary =
@@ -179,15 +147,6 @@ final class OpenAiLlmClient extends LlmClient {
                         + supportsJsonSchema;
         return NativeToolResponses.completion(
                 objectMapper, summary, content, calls, java.util.List.of());
-    }
-
-    private static ResponseFormatJsonSchema.JsonSchema.@NonNull Schema responseSchemaOf(
-            @NonNull Map<String, Object> responseSchema) {
-        ResponseFormatJsonSchema.JsonSchema.Schema.Builder builder =
-                ResponseFormatJsonSchema.JsonSchema.Schema.builder();
-        responseSchema.forEach(
-                (name, value) -> builder.putAdditionalProperty(name, JsonValue.from(value)));
-        return builder.build();
     }
 
     private void applyOptions(
@@ -202,13 +161,6 @@ final class OpenAiLlmClient extends LlmClient {
         if (maxTokens != null) {
             builder.maxCompletionTokens(maxTokens.longValue());
         }
-    }
-
-    private @NonNull String augmentPromptWithSchema(
-            @NonNull String systemPrompt, @NonNull Map<String, Object> responseSchema) {
-        return PromptLibrary.compile(
-                        "provider-openai", Map.of("system", systemPrompt, "schema", responseSchema))
-                .text();
     }
 
     /**

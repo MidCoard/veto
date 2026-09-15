@@ -18,8 +18,7 @@ import top.focess.veto.llm.core.VetoRequest;
  *     on a user message, every tool_result immediately follows its tool_call, and no tool_call
  *     dangles unanswered - the shape every strict provider accepts.
  * @param tools the flat, provider-translated tool list (full whitelist, every cycle)
- * @param responseSchema the per-turn {@code veto_pulse} schema variant ({@code null} → provider
- *     default)
+ * @param responseSchema legacy compatibility slot; ordinary native-response turns leave it null
  * @param trimmedTurns removed messages for isolated readers; standard conversations retain all
  *     effective messages and reject input-budget overflow
  */

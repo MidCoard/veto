@@ -1,8 +1,6 @@
 package top.focess.veto.llm.client;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -55,25 +53,10 @@ final class DeepSeekLlmClient extends LlmClient {
     @Override
     public @NonNull RawCompletion complete(@NonNull ResolvedRequest resolved) {
         VetoRequest request = resolved.request();
-        JsonNode configuredSchema = request.responseSchema();
-        JsonNode responseSchema =
-                configuredSchema != null
-                        ? configuredSchema
-                        : capabilityTranslator.vetoResponseSchema(false);
-
         try {
-            // Build the text.format with json_schema for server-side schema enforcement.
-            Map<String, Object> textFormat = new LinkedHashMap<>();
-            textFormat.put("type", "json_schema");
-            textFormat.put("name", "veto_pulse");
-            textFormat.put(
-                    "schema",
-                    objectMapper.convertValue(
-                            responseSchema, new TypeReference<Map<String, Object>>() {}));
-
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("model", request.modelName());
-            body.put("instructions", NativeToolResponses.prompt(request, responseSchema));
+            body.put("instructions", NativeToolResponses.prompt(request));
             if (NativeToolResponses.enabled(request)) {
                 body.put(
                         "tools",
@@ -108,7 +91,6 @@ final class DeepSeekLlmClient extends LlmClient {
             if (inputItems.isEmpty())
                 inputItems.add(Map.of("role", "user", "content", request.userPrompt()));
             body.put("input", inputItems);
-            body.put("text", Map.of("format", textFormat));
 
             LlmOptions options = request.options();
             Integer maxTokens = options.maxTokens();
@@ -205,14 +187,10 @@ final class DeepSeekLlmClient extends LlmClient {
                             content == null ? 0 : content.length(),
                             content == null || content.isBlank());
 
-            if (content == null || content.isBlank()) {
+            if ((content == null || content.isBlank()) && nativeCalls.isEmpty()) {
                 throw new ModelCapabilityException(
                         providerName + " Responses API returned blank content", true);
             }
-
-            // The Responses API's json_schema enforcement is not 100% reliable - the model
-            // sometimes prepends text or wraps JSON in markdown. Extract the JSON.
-            content = extractJson(content);
 
             String summary = "model=" + request.modelName() + ", via=responses-api";
             return NativeToolResponses.completion(
@@ -292,21 +270,6 @@ final class DeepSeekLlmClient extends LlmClient {
                     args == null ? "{}" : args);
         }
         return Map.of(
-                "role",
-                "tool".equals(msg.role()) ? "user" : msg.role(),
-                "content",
-                "assistant".equals(msg.role())
-                        ? objectMapper.writeValueAsString(Map.of("message", msg.content()))
-                        : msg.content());
-    }
-
-    /**
-     * Extracts the JSON object from a response that may have leading/trailing text or markdown code
-     * blocks. The Responses API's json_schema enforcement is not 100% reliable.
-     */
-    // Package-private for DeepSeekLlmClientExtractJsonTest. The implementation lives on the
-    // LlmClient base (shared with AnthropicLlmClient's tool_choice fallback).
-    @NonNull String extractJson(@NonNull String content) {
-        return extractJson(objectMapper, content);
+                "role", "tool".equals(msg.role()) ? "user" : msg.role(), "content", msg.content());
     }
 }

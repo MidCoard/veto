@@ -101,20 +101,20 @@ class NativeProvidersWireTest {
                 var request = request(type, guided, List.of(ChatMessage.user("Read")));
                 reply.set(wire(type, "", true));
                 var raw = client.complete(new ResolvedRequest(request, url, "local-invalid"));
-                var response =
-                        MAPPER.readValue(
-                                raw.rawResponse(), ToolDocs.nonNullClass(VetoResponse.class));
                 var calls = raw.nativeCalls();
-                assertFalse(MAPPER.readTree(raw.rawResponse()).has("calls"));
+                assertEquals("", raw.rawResponse());
                 if (calls == null) throw new AssertionError("Expected calls");
                 assertEquals(2, calls.size());
                 assertEquals("/中文 notes", calls.getFirst().args().get("path"));
                 String sent = captured.get();
                 assertNotNull(sent);
                 var body = MAPPER.readTree(sent);
-                assertTrue(sent.contains("Use native tool calls"));
-                assertFalse(sent.contains("This turn does not enable native tools"));
+                assertTrue(sent.contains("Invoke registered tools"));
+                assertFalse(sent.contains("Tool execution is disabled"));
                 assertTrue(body.has("tools"));
+                assertFalse(body.has("response_format"));
+                assertFalse(body.has("text"));
+                assertFalse(body.path("generationConfig").has("responseSchema"));
                 if (type == ProviderType.GEMINI) {
                     assertEquals(
                             "AUTO",
@@ -152,17 +152,12 @@ class NativeProvidersWireTest {
                     history.add(message);
                     history.add(ChatMessage.toolResult(call.callId(), "result-" + i, i == 0));
                 }
-                reply.set(wire(type, "{\"message\":\"Done\"}", false));
+                reply.set(wire(type, "Done **successfully**", false));
                 var followup = request(type, guided, history);
                 assertEquals(
-                        "Done",
-                        MAPPER.readTree(
-                                        client.complete(
-                                                        new ResolvedRequest(
-                                                                followup, url, "local-invalid"))
-                                                .rawResponse())
-                                .path("message")
-                                .asText());
+                        "Done **successfully**",
+                        client.complete(new ResolvedRequest(followup, url, "local-invalid"))
+                                .rawResponse());
                 String second = captured.get();
                 assertNotNull(second);
                 assertTrue(second.contains("result-1"));
@@ -246,11 +241,10 @@ class NativeProvidersWireTest {
                                 "{\"calls\":[{\"tool_name\":\"read_file\",\"args\":{\"path\":\"different\"}}]}",
                                 "{\"guide\":{\"actions\":[]}}")) {
                     reply.set(wire(type, mixed, true));
-                    assertThrows(
-                            ToolDocs.nonNullClass(ModelSchemaException.class),
-                            () ->
-                                    client.complete(
-                                            new ResolvedRequest(request, url, "local-invalid")));
+                    var withText =
+                            client.complete(new ResolvedRequest(request, url, "local-invalid"));
+                    assertEquals(mixed, withText.rawResponse());
+                    assertEquals(2, withText.nativeCalls().size());
                 }
                 String jsonCall =
                         "{\"calls\":[{\"tool_name\":\"read_file\",\"args\":{\"path\":\"compat\"}}]}";
@@ -259,6 +253,25 @@ class NativeProvidersWireTest {
                         jsonCall,
                         client.complete(new ResolvedRequest(request, url, "local-invalid"))
                                 .rawResponse());
+                var truncated = MAPPER.readTree(wire(type, "partial", true));
+                switch (type) {
+                    case OPENAI ->
+                            ((com.fasterxml.jackson.databind.node.ObjectNode)
+                                            truncated.path("choices").get(0))
+                                    .put("finish_reason", "length");
+                    case GEMINI ->
+                            ((com.fasterxml.jackson.databind.node.ObjectNode)
+                                            truncated.path("candidates").get(0))
+                                    .put("finishReason", "MAX_TOKENS");
+                    case DEEPSEEK ->
+                            ((com.fasterxml.jackson.databind.node.ObjectNode) truncated)
+                                    .put("status", "incomplete");
+                    default -> throw new AssertionError();
+                }
+                reply.set(truncated.toString());
+                assertThrows(
+                        ToolDocs.nonNullClass(ModelSchemaException.class),
+                        () -> client.complete(new ResolvedRequest(request, url, "local-invalid")));
                 var noTools =
                         new VetoRequest(
                                 "System",
@@ -279,8 +292,8 @@ class NativeProvidersWireTest {
                 String disabled = captured.get();
                 assertNotNull(disabled);
                 assertFalse(MAPPER.readTree(disabled).has("tools"));
-                assertTrue(disabled.contains("This turn does not enable native tools"));
-                assertFalse(disabled.contains("Use native tool calls"));
+                assertTrue(disabled.contains("Tool execution is disabled"));
+                assertFalse(disabled.contains("Invoke registered tools"));
             }
         } finally {
             server.stop(0);

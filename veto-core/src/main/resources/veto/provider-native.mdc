@@ -1,16 +1,13 @@
 ---
 version: 2
 id: provider-native
-requires: [system, schema, nativeCalls, guide]
+requires: [system, nativeCalls]
 ---
 {{system}}
 
-## Provider response channel
-
+## Response channel
 @if nativeCalls
-Use native tool calls to invoke the registered tools. Pass each tool’s arguments directly as input. Use one execution channel per response.
+Invoke registered tools using native tool calls with arguments matching their definitions. Text accompanying a tool call is a progress message. Answer directly in ordinary text or Markdown when finished.
 @else
-This turn does not enable native tools. Return JSON matching the response schema.
+Answer directly in ordinary text or Markdown. Tool execution is disabled for this turn.
 @endif
-
-@include provider-veto-response

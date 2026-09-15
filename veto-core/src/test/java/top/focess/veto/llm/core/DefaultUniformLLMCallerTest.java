@@ -13,24 +13,16 @@ import top.focess.veto.llm.egress.LlmEgress;
 import top.focess.veto.llm.exceptions.LlmException;
 import top.focess.veto.llm.exceptions.LlmRateLimitException;
 import top.focess.veto.llm.exceptions.ModelCapabilityException;
-import top.focess.veto.llm.exceptions.ModelSchemaException;
-import top.focess.veto.llm.exceptions.PlainTextResponseException;
 import top.focess.veto.llm.provider.LLMProviderStrategy;
 
 class DefaultUniformLLMCallerTest {
     @Test
-    void plainTextRequiresRunnerCorrectionInsteadOfUnchangedRetriesOrSilentSuccess() {
+    void plainTextIsAcceptedWithoutCorrectionOrRetry() {
         @NonNull LLMProviderStrategy provider = mock();
         when(provider.supports(ProviderType.DEEPSEEK)).thenReturn(true);
-        when(provider.execute(any()))
-                .thenThrow(new PlainTextResponseException("DeepSeek", "Answer"));
+        when(provider.execute(any())).thenReturn(new VetoResponse(null, null, "Answer", null));
         var caller = new DefaultUniformLLMCaller(List.of(provider), egressReturning("secret"));
-        try {
-            caller.call(request(ProviderType.DEEPSEEK));
-            fail("Plain text must not be accepted as a successful response");
-        } catch (ModelSchemaException error) {
-            assertTrue(String.valueOf(error.getMessage()).contains("citations"));
-        }
+        assertEquals("Answer", caller.call(request(ProviderType.DEEPSEEK)).message());
         verify(provider, times(1)).execute(any());
     }
 

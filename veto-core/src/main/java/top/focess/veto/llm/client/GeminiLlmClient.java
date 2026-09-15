@@ -34,15 +34,11 @@ final class GeminiLlmClient extends LlmClient {
     @Override
     public @NonNull RawCompletion complete(@NonNull ResolvedRequest resolved) {
         var request = resolved.request();
-        var configured = request.responseSchema();
-        var schema =
-                configured != null ? configured : capabilityTranslator.vetoResponseSchema(false);
         var config =
                 GenerateContentConfig.builder()
                         .systemInstruction(
                                 Content.fromParts(
-                                        Part.fromText(
-                                                NativeToolResponses.prompt(request, schema))));
+                                        Part.fromText(NativeToolResponses.prompt(request))));
         if (NativeToolResponses.enabled(request)) {
             var declarations =
                     request.tools().stream()
@@ -60,11 +56,6 @@ final class GeminiLlmClient extends LlmClient {
                                     .functionCallingConfig(
                                             FunctionCallingConfig.builder().mode("AUTO").build())
                                     .build());
-            // JSON response MIME/schema and function calling are not composable on all supported
-            // Gemini models. Keep the JSON contract in the prompt on native-tool turns.
-        } else {
-            config.responseMimeType("application/json")
-                    .responseSchema(Schema.fromJson(schema.toString()));
         }
         Double temperature = request.options().temperature();
         if (temperature != null) config.temperature(temperature.floatValue());
@@ -88,14 +79,12 @@ final class GeminiLlmClient extends LlmClient {
         var candidates = response.candidates().orElse(List.of());
         if (candidates.isEmpty())
             throw new ModelCapabilityException("Gemini returned no candidates");
-        if (candidates
-                .getFirst()
-                .finishReason()
-                .map(Object::toString)
-                .orElse("")
-                .equals("MAX_TOKENS"))
+        String finish = candidates.getFirst().finishReason().map(Object::toString).orElse("");
+        if (!finish.isEmpty() && !finish.equals("STOP"))
             throw new ModelSchemaException(
-                    "Gemini returned an incomplete response; no calls were executed");
+                    "Gemini did not complete successfully ("
+                            + finish
+                            + "); no calls were executed");
         var parts = candidates.getFirst().content().flatMap(Content::parts).orElse(List.of());
         var calls = new ArrayList<NativeToolResponses.Call>();
         var segments = new ArrayList<List<Part>>();
@@ -125,7 +114,7 @@ final class GeminiLlmClient extends LlmClient {
         String normalized =
                 NativeToolResponses.normalize(
                         objectMapper, request, String.join("\n", text), calls);
-        if (normalized.isBlank())
+        if (normalized.isBlank() && calls.isEmpty())
             throw new ModelCapabilityException("Gemini returned neither text nor functions");
         var states = new ArrayList<NativeToolState>();
         String batch = UUID.randomUUID().toString();
@@ -199,18 +188,13 @@ final class GeminiLlmClient extends LlmClient {
     }
 
     private @NonNull String renderHistoryMessage(@NonNull ChatMessage message) {
-        if (!message.role().equals("assistant")) return message.content();
-        var root = objectMapper.createObjectNode();
-        if (message.callId() != null) {
-            var call = root.putArray("calls").addObject();
-            String name = message.toolName();
-            call.put("tool_name", name == null ? "" : name);
-            String args = message.toolArgs();
-            call.set(
-                    "args",
-                    NativeToolResponses.arguments(objectMapper, args == null ? "{}" : args));
-            if (!message.content().isEmpty()) root.put("thought", message.content());
-        } else root.put("message", message.content());
-        return root.toString();
+        if (!message.role().equals("assistant") || message.callId() == null)
+            return message.content();
+        return "Previous tool invocation (historical data): "
+                + message.toolName()
+                + "\nArguments: "
+                + message.toolArgs()
+                + "\n"
+                + message.content();
     }
 }

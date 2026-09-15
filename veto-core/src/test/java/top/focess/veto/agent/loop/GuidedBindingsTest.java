@@ -102,9 +102,8 @@ class GuidedBindingsTest {
         int count = 0;
         while (matcher.find()) {
             var json = mapper.readTree(Nullness.requireNonNull(matcher.group(1)));
-            if (json.has("guide")) {
-                ProgramValidator.validate(
-                        ActionsProgramParser.parse(json.path("guide").path("actions")));
+            if (json.has("actions")) {
+                ProgramValidator.validate(ActionsProgramParser.parse(json.path("actions")));
                 count++;
             }
         }

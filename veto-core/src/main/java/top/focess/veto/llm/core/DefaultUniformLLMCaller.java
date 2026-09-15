@@ -7,13 +7,10 @@ import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import top.focess.veto.agent.loop.PromptLibrary;
 import top.focess.veto.llm.egress.EgressEndpoint;
 import top.focess.veto.llm.egress.LlmEgress;
 import top.focess.veto.llm.exceptions.LlmException;
 import top.focess.veto.llm.exceptions.ModelCapabilityException;
-import top.focess.veto.llm.exceptions.ModelSchemaException;
-import top.focess.veto.llm.exceptions.PlainTextResponseException;
 import top.focess.veto.llm.provider.LLMProviderStrategy;
 import top.focess.veto.util.Nullness;
 
@@ -70,9 +67,6 @@ public class DefaultUniformLLMCaller implements UniformLLMCaller {
             try {
                 return provider.execute(resolved);
             } catch (LlmException e) {
-                if (e instanceof PlainTextResponseException) {
-                    throw new ModelSchemaException(PromptLibrary.text("runtime-plain-response"), e);
-                }
                 last = e;
                 if (!e.isRetryable() || attempt == MAX_ATTEMPTS) {
                     throw e;

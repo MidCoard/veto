@@ -45,7 +45,7 @@ public final class ActionsProgramParser {
                             id,
                             label,
                             text(a, "prompt"),
-                            toInputMap(a.get("inputs")),
+                            a.has("inputs") ? toInputMap(a.get("inputs")) : Map.of(),
                             toStringMap(a.get("outputs")),
                             optionalBoolean(a, "thought"),
                             nullableText(a, "model_tier"),

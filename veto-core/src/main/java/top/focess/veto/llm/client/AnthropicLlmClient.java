@@ -14,7 +14,6 @@ import com.anthropic.models.messages.ToolResultBlockParam;
 import com.anthropic.models.messages.ToolUseBlock;
 import com.anthropic.models.messages.ToolUseBlockParam;
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.List;
@@ -24,7 +23,6 @@ import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.agent.loop.PromptLibrary;
-import top.focess.veto.agent.translation.VetoCapabilityTranslator;
 import top.focess.veto.llm.core.ChatMessage;
 import top.focess.veto.llm.core.LlmSystemUsage;
 import top.focess.veto.llm.core.ProviderMessages;
@@ -35,10 +33,10 @@ import top.focess.veto.llm.exceptions.ModelCapabilityException;
 import top.focess.veto.llm.exceptions.ModelSchemaException;
 
 /**
- * Anthropic Messages adapter with strict native tools and structured JSON text output. The
- * configured endpoint must support both features and the supplied schemas. Requests do not silently
+ * Anthropic Messages adapter with strict native tools and ordinary text output. The configured
+ * endpoint must support strict tools and the supplied tool schemas. Requests do not silently
  * downgrade based on endpoint or model names; provider schema errors remain visible. Native tool
- * blocks are normalized into the runtime response envelope.
+ * blocks are decoded separately from ordinary text.
  *
  * <p>All Anthropic SDK types are confined to this class.
  */
@@ -64,23 +62,6 @@ final class AnthropicLlmClient extends LlmClient {
                         .model(Model.of(request.modelName()))
                         .maxTokens(request.options().maxTokensOrDefault())
                         .system(responsePrompt(request));
-        JsonNode outputSchema = request.responseSchema();
-        if (outputSchema == null) {
-            outputSchema =
-                    new VetoCapabilityTranslator().vetoResponseSchema(false, request.tools());
-        }
-        builder.putAdditionalBodyProperty(
-                "output_config",
-                JsonValue.from(
-                        Map.of(
-                                "format",
-                                Map.of(
-                                        "type",
-                                        "json_schema",
-                                        "schema",
-                                        objectMapper.convertValue(
-                                                outputSchema,
-                                                new TypeReference<Map<String, Object>>() {})))));
         Double temperature = request.options().temperature();
         if (temperature != null) {
             builder.putAdditionalBodyProperty("temperature", JsonValue.from(temperature));
@@ -136,46 +117,30 @@ final class AnthropicLlmClient extends LlmClient {
                         .collect(Collectors.joining("\n"))
                         .strip();
 
-        String rawInput;
-        if (!toolUses.isEmpty()) {
-            NativeToolResponses.validateNativeChannel(objectMapper, request, text);
-            rawInput =
-                    NativeToolResponses.normalize(
-                            objectMapper,
-                            request,
-                            text,
-                            toolUses.stream()
-                                    .map(
-                                            tu ->
-                                                    new NativeToolResponses.Call(
-                                                            tu.name(),
-                                                            objectMapper.valueToTree(
-                                                                    toolInputMap(tu)),
-                                                            tu.id()))
-                                    .toList());
-        } else {
-            if (text.isEmpty()) {
-                throw new ModelCapabilityException(
-                        "Anthropic response contained neither text nor tool calls");
-            }
-            // Text-only answer. A model following the system prompt's veto_pulse instructions may
-            // emit the response JSON as text. Preserve JSON-shaped output even if malformed,
-            // so central validation retries it instead of presenting it as a final answer.
-            String candidate = NativeToolResponses.responseCandidate(text);
-            if (candidate.stripLeading().startsWith("{")
-                    || candidate.stripLeading().startsWith("[")) {
-                rawInput = candidate;
-            } else {
-                if (text.contains("]<]minimax[>[")) {
-                    throw new ModelSchemaException(
-                            "Response contains internal tool markers instead of an executable response;"
-                                    + " use native tool calls, JSON guide, or a final message");
-                }
-                var pulse = objectMapper.createObjectNode();
-                pulse.put("message", text);
-                rawInput = pulse.toString();
-            }
-        }
+        String stop = message.stopReason().map(Object::toString).orElse("");
+        if (java.util.Set.of("max_tokens", "model_context_window_exceeded", "pause_turn")
+                .contains(stop))
+            throw new ModelSchemaException(
+                    "Anthropic response was truncated; no calls were executed");
+        if ((!toolUses.isEmpty() && !stop.isEmpty() && !stop.equals("tool_use"))
+                || (toolUses.isEmpty() && stop.equals("tool_use")))
+            throw new ModelSchemaException(
+                    "Anthropic stop_reason does not match its tool_use blocks");
+        String rawInput =
+                NativeToolResponses.normalize(
+                        objectMapper,
+                        request,
+                        text,
+                        toolUses.stream()
+                                .map(
+                                        tu ->
+                                                new NativeToolResponses.Call(
+                                                        tu.name(),
+                                                        objectMapper.valueToTree(toolInputMap(tu)),
+                                                        tu.id()))
+                                .toList());
+        if (text.isBlank() && toolUses.isEmpty())
+            throw new ModelSchemaException("Anthropic returned neither text nor tool calls");
 
         String summary = "model=" + request.modelName() + ", tools=" + request.tools().size();
         return NativeToolResponses.completion(
@@ -194,21 +159,13 @@ final class AnthropicLlmClient extends LlmClient {
     }
 
     private @NonNull String responsePrompt(@NonNull VetoRequest request) {
-        JsonNode schema = request.responseSchema();
-        if (schema == null) {
-            return request.systemPrompt();
-        }
         return PromptLibrary.compile(
                         "provider-anthropic",
                         Map.of(
                                 "system",
                                 request.systemPrompt(),
-                                "schema",
-                                schema,
                                 "nativeCalls",
-                                permitsNativeCalls(request),
-                                "guide",
-                                schema.path("properties").has("guide")))
+                                permitsNativeCalls(request)))
                 .text();
     }
 

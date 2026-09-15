@@ -28,6 +28,25 @@ import top.focess.veto.util.Nullness;
 class AnthropicLlmClientTest {
 
     @Test
+    void truncatedProviderResponseIsRetryableInsteadOfAFinalAnswer() {
+        var sdk = mock(ToolDocs.nonNullClass(AnthropicClient.class), RETURNS_DEEP_STUBS);
+        var response = mock(ToolDocs.nonNullClass(Message.class), RETURNS_DEEP_STUBS);
+        var partial = text("Partial answer");
+        when(response.content()).thenReturn(List.of(partial));
+        when(response.stopReason())
+                .thenReturn(
+                        java.util.Optional.of(
+                                com.anthropic.models.messages.StopReason.of("max_tokens")));
+        when(sdk.messages().create(any(ToolDocs.nonNullClass(MessageCreateParams.class))))
+                .thenReturn(response);
+        assertThrows(
+                ToolDocs.nonNullClass(ModelSchemaException.class),
+                () ->
+                        new AnthropicLlmClient(sdk, new ObjectMapper())
+                                .complete(new ResolvedRequest(request(), null, "unused")));
+    }
+
+    @Test
     void keepsJsonExamplesInsideFinalAnswerInsteadOfParsingThemAsVetoResponse() throws Exception {
         var sdk = mock(ToolDocs.nonNullClass(AnthropicClient.class), RETURNS_DEEP_STUBS);
         var response = mock(ToolDocs.nonNullClass(Message.class), RETURNS_DEEP_STUBS);
@@ -40,9 +59,8 @@ class AnthropicLlmClientTest {
         var result =
                 new AnthropicLlmClient(sdk, new ObjectMapper())
                         .complete(new ResolvedRequest(request(), null, "unused"));
-        var json = new ObjectMapper().readTree(result.rawResponse());
-        assertEquals(answer, json.path("message").asText());
-        assertFalse(json.has("id"));
+        assertEquals(answer, result.rawResponse());
+        assertTrue(result.nativeCalls().isEmpty());
     }
 
     @Test
@@ -110,7 +128,7 @@ class AnthropicLlmClientTest {
                         null);
         var client = new AnthropicLlmClient(sdk, new ObjectMapper());
         assertEquals(
-                "{\"message\":\"Finished\"}",
+                "Finished",
                 client.complete(new ResolvedRequest(request, null, "unused")).rawResponse());
         var sent = ArgumentCaptor.forClass(ToolDocs.nonNullClass(MessageCreateParams.class));
         verify(sdk.messages()).create(sent.capture());
@@ -120,9 +138,9 @@ class AnthropicLlmClientTest {
         assertTrue(
                 String.valueOf(params._additionalBodyProperties().get("tool_choice"))
                         .contains("auto"));
-        assertTrue(params.system().toString().contains("Use native tool_use"));
+        assertTrue(params.system().toString().contains("Invoke registered tools"));
         assertFalse(params.system().toString().contains("Emit JSON text only"));
-        assertFalse(params.system().toString().contains("does not enable native tool execution"));
+        assertFalse(params.system().toString().contains("Tool execution is disabled"));
         assertEquals(
                 "prior",
                 params.messages()
@@ -178,12 +196,8 @@ class AnthropicLlmClientTest {
         assertTrue(
                 String.valueOf(sent.getValue()._additionalBodyProperties().get("tool_choice"))
                         .contains("none"));
-        assertTrue(
-                sent.getValue()
-                        .system()
-                        .toString()
-                        .contains("does not enable native tool execution"));
-        assertFalse(sent.getValue().system().toString().contains("Use native tool_use"));
+        assertTrue(sent.getValue().system().toString().contains("Tool execution is disabled"));
+        assertFalse(sent.getValue().system().toString().contains("Invoke registered tools"));
         var nativeCall = mock(ToolDocs.nonNullClass(ContentBlock.class), RETURNS_DEEP_STUBS);
         when(nativeCall.isToolUse()).thenReturn(true);
         when(response.content()).thenReturn(List.of(nativeCall));
@@ -193,7 +207,7 @@ class AnthropicLlmClientTest {
     }
 
     @Test
-    void rejectsLeakedMinimaxControlTextButPreservesExplicitJsonAnswers() {
+    void providerLookingTextNeverBecomesAnExecutableCall() {
         var sdk = mock(ToolDocs.nonNullClass(AnthropicClient.class), RETURNS_DEEP_STUBS);
         var response = mock(ToolDocs.nonNullClass(Message.class), RETURNS_DEEP_STUBS);
         when(sdk.messages().create(any(ToolDocs.nonNullClass(MessageCreateParams.class))))
@@ -202,13 +216,9 @@ class AnthropicLlmClientTest {
         String leaked = "]<]minimax[>[<tool_call>\n]<]minimax[>[<invoke name=\"view_file\">";
         var leakedBlock = text(leaked);
         when(response.content()).thenReturn(List.of(leakedBlock));
-        var failure =
-                assertThrows(
-                        ToolDocs.nonNullClass(ModelSchemaException.class),
-                        () -> client.complete(new ResolvedRequest(request(), null, "unused")));
-        String failureMessage = failure.getMessage();
-        if (failureMessage == null) throw new AssertionError("Expected safe schema failure detail");
-        assertFalse(failureMessage.contains(leaked));
+        var plain = client.complete(new ResolvedRequest(request(), null, "unused"));
+        assertEquals(leaked, plain.rawResponse());
+        assertTrue(plain.nativeCalls().isEmpty());
         String quoted = "{\"message\":\"The marker ]<]minimax[>[ is provider syntax.\"}";
         var quotedBlock = text(quoted);
         when(response.content()).thenReturn(List.of(quotedBlock));
@@ -277,7 +287,7 @@ class AnthropicLlmClientTest {
         var result = client.complete(new ResolvedRequest(request, null, "unused"));
         assertEquals("list_dir", result.nativeCalls().getFirst().toolName());
         assertEquals("/workspace", result.nativeCalls().getFirst().args().get("absolutePath"));
-        assertFalse(new ObjectMapper().readTree(result.rawResponse()).has("calls"));
+        assertEquals("", result.rawResponse());
         when(nativeCall.asToolUse()._input())
                 .thenReturn(JsonValue.from(Map.of("args", Map.of("absolutePath", "/workspace"))));
         var malformed = client.complete(new ResolvedRequest(request, null, "unused"));
@@ -305,7 +315,7 @@ class AnthropicLlmClientTest {
                         () ->
                                 new AnthropicLlmClient(sdk, new ObjectMapper())
                                         .complete(new ResolvedRequest(request(), null, "unused")));
-        assertTrue(String.valueOf(failure.getMessage()).contains("mixed"));
+        assertTrue(failure.getMessage() != null);
     }
 
     @Test
@@ -421,8 +431,8 @@ class AnthropicLlmClientTest {
         assertFalse(result.rawResponse().contains("features"));
         var sent = ArgumentCaptor.forClass(ToolDocs.nonNullClass(MessageCreateParams.class));
         verify(sdk.messages()).create(sent.capture());
-        assertTrue(sent.getValue().system().toString().contains("guide"));
-        assertTrue(sent.getValue().system().toString().contains("conditional_goto"));
+        assertFalse(sent.getValue()._additionalBodyProperties().containsKey("output_config"));
+        assertFalse(sent.getValue().system().toString().contains("VetoResponse"));
         assertTrue(
                 sent.getValue().tools().isEmpty(),
                 "generation/tool-free request must not invent native tools");

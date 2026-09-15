@@ -1,6 +1,0 @@
----
-version: 2
-id: runtime-plain-response
-requires: []
----
-The response was plain text. Return one JSON object with the answer in message. When quoting source messages or tool evidence, include citations and matching cite: links as specified in the response protocol.
