@@ -36,6 +36,40 @@ class ToolSchemaCompilerTest {
         assertEquals(5, options.path("maxItems").asInt());
     }
 
+    private record InvalidStringConstraint(@StringConstraint(maxLength = 2) Integer value) {}
+
+    @Test
+    void rejectsStringConstraintsOnNonStrings() {
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        ToolSchemaCompiler.compileFromRecord(
+                                ToolDocs.nonNullClass(InvalidStringConstraint.class)));
+    }
+
+    @Test
+    void advertisesQuestionTextConstraints() {
+        var properties =
+                ToolSchemaCompiler.compileFromRecord(
+                                ToolDocs.nonNullClass(
+                                        top.focess.veto.agent.tool.builtin.AskUserTool.Question
+                                                .class))
+                        .path("properties");
+        assertEquals(12, properties.path("header").path("maxLength").asInt());
+        assertEquals(1, properties.path("header").path("minLength").asInt());
+        assertEquals(300, properties.path("question").path("maxLength").asInt());
+        assertEquals("^[a-z][a-z0-9_]*$", properties.path("id").path("pattern").asText());
+        assertEquals(
+                200,
+                properties
+                        .path("options")
+                        .path("items")
+                        .path("properties")
+                        .path("description")
+                        .path("maxLength")
+                        .asInt());
+    }
+
     private record ExplicitPrimitive(@Required int count) {}
 
     private record ImplicitPrimitive(int count) {}

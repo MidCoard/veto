@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 import top.focess.veto.agent.capability.UserInteractionCapability;
 import top.focess.veto.agent.tool.ArraySize;
 import top.focess.veto.agent.tool.Doc;
+import top.focess.veto.agent.tool.StringConstraint;
 import top.focess.veto.agent.tool.ToolDoc;
 import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.tool.ToolErrors;
@@ -89,9 +90,18 @@ public final class AskUserTool implements UserInteractionTool<AskUserTool.Args> 
                     List<@NonNull Question> questions) {}
 
     public record Question(
-            @NonNull @Doc("Short UI heading, 1-12 Unicode characters.") String header,
-            @NonNull @Doc("Unique snake_case key used in the returned answers object.") String id,
-            @NonNull @Doc("One-sentence prompt, 1-300 Unicode characters.") String question,
+            @StringConstraint(minLength = 1, maxLength = 12)
+                    @NonNull
+                    @Doc("Short UI heading, 1-12 Unicode characters.")
+                    String header,
+            @StringConstraint(minLength = 1, pattern = "^[a-z][a-z0-9_]*$")
+                    @NonNull
+                    @Doc("Unique snake_case key used in the returned answers object.")
+                    String id,
+            @StringConstraint(minLength = 1, maxLength = 300)
+                    @NonNull
+                    @Doc("One-sentence prompt, 1-300 Unicode characters.")
+                    String question,
             @ArraySize(min = MIN_OPTIONS, max = MAX_OPTIONS)
                     @NonNull
                     @Doc(
@@ -99,12 +109,14 @@ public final class AskUserTool implements UserInteractionTool<AskUserTool.Args> 
                     List<@NonNull Option> options) {}
 
     public record Option(
-            @NonNull
+            @StringConstraint(minLength = 1, maxLength = 120)
+                    @NonNull
                     @Doc(
                             "Plain choice label, 1-120 Unicode characters. The application marks the first option as recommended; do not write `(Recommended)` yourself. Move explanations into the description; `Other`"
                                     + " is reserved.")
                     String label,
-            @NonNull
+            @StringConstraint(minLength = 1, maxLength = 200)
+                    @NonNull
                     @Doc(
                             "One short sentence, 1-200 Unicode characters, explaining the choice's impact.")
                     String description) {}

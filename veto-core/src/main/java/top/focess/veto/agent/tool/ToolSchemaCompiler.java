@@ -132,6 +132,24 @@ public final class ToolSchemaCompiler {
                 paramNode.put("maxItems", size.max());
             }
 
+            StringConstraint text =
+                    component.getAnnotation(ToolDocs.nonNullClass(StringConstraint.class));
+            if (text != null) {
+                if (type != String.class
+                        || text.minLength() < 0
+                        || text.maxLength() < text.minLength()) {
+                    throw new IllegalArgumentException("Invalid @StringConstraint on " + name);
+                }
+                paramNode.put("minLength", text.minLength());
+                if (text.maxLength() != Integer.MAX_VALUE) {
+                    paramNode.put("maxLength", text.maxLength());
+                }
+                if (!text.pattern().isEmpty()) {
+                    java.util.regex.Pattern.compile(text.pattern());
+                    paramNode.put("pattern", text.pattern());
+                }
+            }
+
             properties.set(name, paramNode);
 
             // Repository contracts are nullable by default. JSpecify is @Target(TYPE_USE), so the

@@ -12,7 +12,10 @@ import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.tool.ToolDocumentation;
+import top.focess.veto.agent.tool.ToolSchemaCompiler;
+import top.focess.veto.agent.tool.builtin.AskUserTool;
 import top.focess.veto.agent.translation.VetoCapabilityTranslator;
 import top.focess.veto.llm.core.*;
 
@@ -71,13 +74,28 @@ class AnthropicNativeToolWireTest {
                             ToolDocumentation.empty(),
                             List.of(),
                             List.of());
+            var askSchema =
+                    ToolSchemaCompiler.compileFromRecord(
+                            ToolDocs.nonNullClass(AskUserTool.Args.class));
+            var askTool =
+                    new ToolDefinition(
+                            "ask_user",
+                            "Ask the user",
+                            mapper.convertValue(
+                                    askSchema,
+                                    new com.fasterxml.jackson.core.type.TypeReference<
+                                            Map<String, Object>>() {}),
+                            List.of(),
+                            ToolDocumentation.empty(),
+                            List.of(),
+                            List.of());
             var schema = new VetoCapabilityTranslator().vetoResponseSchema(guided, List.of(tool));
             var client = new AnthropicLlmClient(sdk, mapper);
             var first =
                     new VetoRequest(
                             "System",
                             "Read",
-                            List.of(tool),
+                            List.of(tool, askTool),
                             ProviderType.ANTHROPIC,
                             "test",
                             "key-ref",
@@ -98,7 +116,7 @@ class AnthropicNativeToolWireTest {
                     new VetoRequest(
                             "System",
                             "Read",
-                            List.of(tool),
+                            List.of(tool, askTool),
                             ProviderType.ANTHROPIC,
                             "test",
                             "key-ref",
@@ -126,6 +144,23 @@ class AnthropicNativeToolWireTest {
                 var sent = mapper.readTree(body);
                 assertEquals("auto", sent.path("tool_choice").path("type").asText());
                 assertEquals("view_file", sent.path("tools").path(0).path("name").asText());
+                assertEquals(askSchema, sent.path("tools").path(1).path("input_schema"));
+                var questions =
+                        sent.path("tools")
+                                .path(1)
+                                .path("input_schema")
+                                .path("properties")
+                                .path("questions");
+                var options = questions.path("items").path("properties").path("options");
+                assertEquals(2, options.path("minItems").asInt());
+                assertEquals(5, options.path("maxItems").asInt());
+                assertEquals(
+                        120,
+                        options.path("items")
+                                .path("properties")
+                                .path("label")
+                                .path("maxLength")
+                                .asInt());
                 assertTrue(sent.path("system").toString().contains("Use native tool_use"));
             }
             var history = mapper.readTree(bodies.getLast()).path("messages");
