@@ -142,6 +142,12 @@ class AnthropicNativeToolWireTest {
             assertEquals(2, bodies.size(), "A valid native response must not trigger a retry");
             for (String body : bodies) {
                 var sent = mapper.readTree(body);
+                assertTrue(sent.path("tools").path(0).path("strict").asBoolean());
+                assertTrue(sent.path("tools").path(1).path("strict").asBoolean());
+                assertEquals(
+                        "json_schema",
+                        sent.path("output_config").path("format").path("type").asText());
+                assertEquals(schema, sent.path("output_config").path("format").path("schema"));
                 assertEquals("auto", sent.path("tool_choice").path("type").asText());
                 assertEquals("view_file", sent.path("tools").path(0).path("name").asText());
                 assertEquals(askSchema, sent.path("tools").path(1).path("input_schema"));

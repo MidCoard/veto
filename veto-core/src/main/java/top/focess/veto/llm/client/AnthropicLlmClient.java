@@ -24,6 +24,7 @@ import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.focess.veto.agent.loop.PromptLibrary;
+import top.focess.veto.agent.translation.VetoCapabilityTranslator;
 import top.focess.veto.llm.core.ChatMessage;
 import top.focess.veto.llm.core.LlmSystemUsage;
 import top.focess.veto.llm.core.ProviderMessages;
@@ -34,18 +35,10 @@ import top.focess.veto.llm.exceptions.ModelCapabilityException;
 import top.focess.veto.llm.exceptions.ModelSchemaException;
 
 /**
- * Adapter wrapping an {@link AnthropicClient} — <b>native tool calling</b>, the way Claude Code
- * drives Anthropic-protocol endpoints: the tool manifest is registered as native tools (the runtime
- * validates every call), the compiled history maps to native assistant {@code tool_use} / user
- * {@code tool_result} blocks, and the response's tool_use blocks translate back into a veto_pulse
- * payload ({@code calls} from the blocks, text becoming {@code thought} or {@code message}). Guided
- * programs use the JSON response envelope; the exact response schema is supplied with the system
- * prompt, and JSON text is preserved for runtime validation.
- *
- * <p>This supersedes the original forced-single-{@code veto_pulse}-tool design: that required the
- * endpoint to honor {@code tool_choice: forced}, which Anthropic-compatible third parties (MiniMax
- * & co) silently ignore, and it sent only the last user message, so the model looped blindly.
- * Native mode works on both real Anthropic models and the compatible clones.
+ * Anthropic Messages adapter with strict native tools and structured JSON text output.
+ * The configured endpoint must support both features and the supplied schemas. Requests do not
+ * silently downgrade based on endpoint or model names; provider schema errors remain visible.
+ * Native tool blocks are normalized into the runtime response envelope.
  *
  * <p>All Anthropic SDK types are confined to this class.
  */
@@ -71,6 +64,23 @@ final class AnthropicLlmClient extends LlmClient {
                         .model(Model.of(request.modelName()))
                         .maxTokens(request.options().maxTokensOrDefault())
                         .system(responsePrompt(request));
+        JsonNode outputSchema = request.responseSchema();
+        if (outputSchema == null) {
+            outputSchema =
+                    new VetoCapabilityTranslator().vetoResponseSchema(false, request.tools());
+        }
+        builder.putAdditionalBodyProperty(
+                "output_config",
+                JsonValue.from(
+                        Map.of(
+                                "format",
+                                Map.of(
+                                        "type",
+                                        "json_schema",
+                                        "schema",
+                                        objectMapper.convertValue(
+                                                outputSchema,
+                                                new TypeReference<Map<String, Object>>() {})))));
         Double temperature = request.options().temperature();
         if (temperature != null) {
             builder.putAdditionalBodyProperty("temperature", JsonValue.from(temperature));
@@ -86,6 +96,7 @@ final class AnthropicLlmClient extends LlmClient {
                     Tool.builder()
                             .name(t.name())
                             .description(t.description())
+                            .putAdditionalProperty("strict", JsonValue.from(true))
                             .inputSchema(toolInputSchema(t.inputSchema()))
                             .build());
         }
