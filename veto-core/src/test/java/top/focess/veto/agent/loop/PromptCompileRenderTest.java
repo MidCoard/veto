@@ -352,6 +352,8 @@ class PromptCompileRenderTest {
         assertTrue(prompt.contains("matching the current response schema"), prompt);
         assertTrue(prompt.contains("When native tool execution is enabled"), prompt);
         assertTrue(prompt.contains("Never duplicate a native call"), prompt);
+        assertTrue(prompt.contains("two invocation formats for the same tools"), prompt);
+        assertFalse(prompt.contains("Call them by populating the `calls` array"), prompt);
     }
 
     @Test
