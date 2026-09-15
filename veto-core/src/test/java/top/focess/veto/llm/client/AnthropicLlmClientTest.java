@@ -116,7 +116,7 @@ class AnthropicLlmClientTest {
         verify(sdk.messages()).create(sent.capture());
         var params = sent.getValue();
         assertEquals(1, params.tools().orElseThrow().size());
-        assertTrue(params.system().toString().contains("absolutePath"));
+        assertTrue(params.tools().toString().contains("absolutePath"));
         assertTrue(
                 String.valueOf(params._additionalBodyProperties().get("tool_choice"))
                         .contains("auto"));
@@ -169,7 +169,8 @@ class AnthropicLlmClientTest {
                         LlmOptions.defaults(),
                         List.of(),
                         schema,
-                        null);
+                        null,
+                        false);
         var client = new AnthropicLlmClient(sdk, new ObjectMapper());
         client.complete(new ResolvedRequest(request, null, "unused"));
         var sent = ArgumentCaptor.forClass(ToolDocs.nonNullClass(MessageCreateParams.class));
@@ -272,31 +273,16 @@ class AnthropicLlmClientTest {
         var jsonCall =
                 text(
                         "{\"calls\":[{\"tool_name\":\"list_dir\",\"args\":{\"absolutePath\":\"/workspace\"}}]}");
-        // The real session alternated formats: a native response must not require a retry
-        // that discards the intended write and causes another directory read instead.
-        for (ContentBlock block : List.of(jsonCall, nativeCall, jsonCall, nativeCall)) {
-            when(response.content()).thenReturn(List.of(block));
-            var result =
-                    new ObjectMapper()
-                            .readTree(
-                                    client.complete(new ResolvedRequest(request, null, "unused"))
-                                            .rawResponse());
-            assertEquals("list_dir", result.path("calls").get(0).path("tool_name").asText());
-            assertEquals(
-                    "/workspace",
-                    result.path("calls").get(0).path("args").path("absolutePath").asText());
-        }
-        // Never silently unwrap malformed provider arguments: the runtime must reject them.
+        when(response.content()).thenReturn(List.of(nativeCall));
+        var result = client.complete(new ResolvedRequest(request, null, "unused"));
+        assertEquals("list_dir", result.nativeCalls().getFirst().toolName());
+        assertEquals("/workspace", result.nativeCalls().getFirst().args().get("absolutePath"));
+        assertFalse(new ObjectMapper().readTree(result.rawResponse()).has("calls"));
         when(nativeCall.asToolUse()._input())
                 .thenReturn(JsonValue.from(Map.of("args", Map.of("absolutePath", "/workspace"))));
-        when(response.content()).thenReturn(List.of(nativeCall));
-        var malformed =
-                new ObjectMapper()
-                        .readTree(
-                                client.complete(new ResolvedRequest(request, null, "unused"))
-                                        .rawResponse());
-        assertTrue(malformed.path("calls").get(0).path("args").has("args"));
-        assertFalse(malformed.path("calls").get(0).path("args").has("absolutePath"));
+        var malformed = client.complete(new ResolvedRequest(request, null, "unused"));
+        assertTrue(malformed.nativeCalls().getFirst().args().containsKey("args"));
+        assertFalse(malformed.nativeCalls().getFirst().args().containsKey("absolutePath"));
         when(nativeCall.asToolUse().name()).thenReturn("unavailable_tool");
         assertThrows(
                 ToolDocs.nonNullClass(ModelSchemaException.class),

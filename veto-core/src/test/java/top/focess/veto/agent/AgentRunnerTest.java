@@ -2375,7 +2375,7 @@ class AgentRunnerTest {
                     service.submit(
                             session, "Validate this request", binding("System"), EPISODE_TIMEOUT);
             assertEquals(recover, result.success());
-            assertEquals(recover ? 2 : 3, attempts.get());
+            assertEquals(recover ? 2 : 50, attempts.get());
             var agent = requireAgent(service.agent(session));
             assertTrue(hitl.pendingFor(agent.id()).isEmpty());
             assertTrue(
@@ -2387,42 +2387,33 @@ class AgentRunnerTest {
     }
 
     @Test
-    void exhaustedSchemaRetriesRetainAnActionableExecutionError() throws Exception {
+    void repeatedSchemaFailuresRecoverInTheSameSession() throws Exception {
         var calls = new java.util.concurrent.atomic.AtomicInteger();
         var service =
                 serviceWith(
                         request -> {
-                            if (calls.incrementAndGet() <= 3)
-                                throw new ModelSchemaException("Malformed guide JSON");
+                            if (calls.incrementAndGet() <= 4)
+                                throw new ModelSchemaException("Malformed JSON");
                             assertTrue(
-                                    request.messages().stream()
-                                            .anyMatch(
-                                                    message ->
-                                                            message.content()
-                                                                            .contains(
-                                                                                    "[Runtime execution failure]")
-                                                                    && message.content()
-                                                                            .contains(
-                                                                                    "Malformed guide JSON")));
-                            return new VetoResponse(
-                                    null,
-                                    null,
-                                    "The preceding model response had an invalid format.",
-                                    null);
+                                    request.messages()
+                                            .getLast()
+                                            .content()
+                                            .contains("Malformed JSON"));
+                            return new VetoResponse(null, null, "Recovered", null);
                         });
         var result =
-                service.submit("schema-exhausted", "Answer", binding("System"), EPISODE_TIMEOUT);
-        assertFalse(result.success());
-        assertEquals(3, calls.get());
-        assertTrue(result.message().contains("Malformed guide JSON"));
-        var agent = requireAgent(service.agent("schema-exhausted"));
+                service.submit("schema-recovery", "Answer", binding("System"), EPISODE_TIMEOUT);
+        assertTrue(result.success());
+        assertEquals(5, calls.get());
+        var errors =
+                requireAgent(service.agent("schema-recovery")).history().stream()
+                        .filter(turn -> turn.type() == TurnType.EXECUTION_ERROR)
+                        .toList();
+        assertEquals(4, errors.size());
         assertTrue(
-                agent.history().stream().anyMatch(turn -> turn.type() == TurnType.EXECUTION_ERROR));
-        var followUp =
-                service.submit(
-                        "schema-exhausted", "What happened?", binding("System"), EPISODE_TIMEOUT);
-        assertTrue(followUp.success(), followUp.message());
-        assertEquals(4, calls.get());
+                errors.stream()
+                        .allMatch(turn -> Boolean.TRUE.equals(turn.payload().get("recoverable"))));
+        service.remove("schema-recovery");
     }
 
     @Test
@@ -2451,7 +2442,11 @@ class AgentRunnerTest {
         assertTrue(
                 agent.history().stream()
                         .noneMatch(
-                                turn -> turn.payload().toString().contains("Malformed guide JSON")),
+                                turn ->
+                                        turn.type() != TurnType.EXECUTION_ERROR
+                                                && turn.payload()
+                                                        .toString()
+                                                        .contains("Malformed guide JSON")),
                 "provider formatting rejection must remain ephemeral");
     }
 
@@ -2496,7 +2491,10 @@ class AgentRunnerTest {
         assertTrue(rejection.contains("schema violation"), "states the violation");
         assertTrue(rejection.contains("message"), "echoes the violation detail");
         assertTrue(rejection.contains("Expected:"), "carries the expected-description guidance");
-        assertTrue(rejection.contains("regenerate"), "asks the model to regenerate");
+        assertTrue(
+                rejection.contains("native tool calling"),
+                "correction preserves the native channel");
+        assertTrue(rejection.contains("VetoResponse has no calls field"));
 
         // The rejection is ephemeral: it must not be recorded in turn history.
         VetoAgent agent = requireAgent(service.agent("schema-retry"));

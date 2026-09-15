@@ -45,6 +45,48 @@ class NativeToolResponsesTest {
                 NativeToolResponses.responseCandidate("```json\n{\"message\":\"ok\"}\n```"));
     }
 
+    @Test
+    void rejectsJsonCallsEvenWhenTheRuntimeRecordHasAnInternalCallList() {
+        for (String json :
+                List.of(
+                        "{\"calls\":[]}",
+                        "{\"calls\":null}",
+                        "{\"message\":\"ok\",\"calls\":[{\"tool_name\":\"read\",\"args\":{}}]}")) {
+            var provider =
+                    new AbstractLlmProvider(
+                            mapper, mock(ToolDocs.nonNullClass(AuditLogger.class))) {
+                        @Override
+                        public boolean supports(@NonNull ProviderType type) {
+                            return true;
+                        }
+
+                        @Override
+                        public @NonNull String defaultBaseUrl() {
+                            return "http://localhost";
+                        }
+
+                        @Override
+                        protected @NonNull String providerName() {
+                            return "test";
+                        }
+
+                        @Override
+                        protected LlmClient.@NonNull RawCompletion invoke(
+                                @NonNull ResolvedRequest request) {
+                            return new LlmClient.RawCompletion("test", json);
+                        }
+                    };
+            assertThrows(
+                    ToolDocs.nonNullClass(ModelSchemaException.class),
+                    () -> provider.execute(new ResolvedRequest(request(), null, "unused")));
+        }
+        assertFalse(
+                mapper.valueToTree(
+                                new VetoResponse(
+                                        null, List.of(new ToolCall("read", Map.of())), null, null))
+                        .has("calls"));
+    }
+
     private final @NonNull ObjectMapper mapper = new ObjectMapper();
     private final @NonNull ToolDefinition tool =
             new ToolDefinition(
@@ -123,8 +165,9 @@ class NativeToolResponsesTest {
                             @NonNull ResolvedRequest request) {
                         return new LlmClient.RawCompletion(
                                 "test",
-                                "{\"calls\":[{\"tool_name\":\"read\",\"args\":{\"path\":\"a\"}}]}",
-                                List.of(state));
+                                "{}",
+                                List.of(state),
+                                List.of(new ToolCall("read", Map.of("path", "a"))));
                     }
                 };
         var response = provider.execute(new ResolvedRequest(request(), null, "unused"));

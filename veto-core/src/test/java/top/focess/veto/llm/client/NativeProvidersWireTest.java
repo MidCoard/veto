@@ -104,7 +104,8 @@ class NativeProvidersWireTest {
                 var response =
                         MAPPER.readValue(
                                 raw.rawResponse(), ToolDocs.nonNullClass(VetoResponse.class));
-                var calls = response.calls();
+                var calls = raw.nativeCalls();
+                assertFalse(MAPPER.readTree(raw.rawResponse()).has("calls"));
                 if (calls == null) throw new AssertionError("Expected calls");
                 assertEquals(2, calls.size());
                 assertEquals("/中文 notes", calls.getFirst().args().get("path"));

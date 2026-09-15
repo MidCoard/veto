@@ -35,10 +35,10 @@ import top.focess.veto.llm.exceptions.ModelCapabilityException;
 import top.focess.veto.llm.exceptions.ModelSchemaException;
 
 /**
- * Anthropic Messages adapter with strict native tools and structured JSON text output.
- * The configured endpoint must support both features and the supplied schemas. Requests do not
- * silently downgrade based on endpoint or model names; provider schema errors remain visible.
- * Native tool blocks are normalized into the runtime response envelope.
+ * Anthropic Messages adapter with strict native tools and structured JSON text output. The
+ * configured endpoint must support both features and the supplied schemas. Requests do not silently
+ * downgrade based on endpoint or model names; provider schema errors remain visible. Native tool
+ * blocks are normalized into the runtime response envelope.
  *
  * <p>All Anthropic SDK types are confined to this class.
  */
@@ -178,7 +178,19 @@ final class AnthropicLlmClient extends LlmClient {
         }
 
         String summary = "model=" + request.modelName() + ", tools=" + request.tools().size();
-        return new RawCompletion(summary, rawInput);
+        return NativeToolResponses.completion(
+                objectMapper,
+                summary,
+                rawInput,
+                toolUses.stream()
+                        .map(
+                                tu ->
+                                        new NativeToolResponses.Call(
+                                                tu.name(),
+                                                objectMapper.valueToTree(toolInputMap(tu)),
+                                                tu.id()))
+                        .toList(),
+                List.of());
     }
 
     private @NonNull String responsePrompt(@NonNull VetoRequest request) {
@@ -195,17 +207,13 @@ final class AnthropicLlmClient extends LlmClient {
                                 schema,
                                 "nativeCalls",
                                 permitsNativeCalls(request),
-                                "jsonCalls",
-                                schema.path("properties").has("calls"),
                                 "guide",
                                 schema.path("properties").has("guide")))
                 .text();
     }
 
     private boolean permitsNativeCalls(@NonNull VetoRequest request) {
-        JsonNode schema = request.responseSchema();
-        return !request.tools().isEmpty()
-                && (schema == null || schema.path("properties").has("calls"));
+        return request.nativeToolsEnabled() && !request.tools().isEmpty();
     }
 
     private static Tool.InputSchema.@NonNull Properties toolProperties(

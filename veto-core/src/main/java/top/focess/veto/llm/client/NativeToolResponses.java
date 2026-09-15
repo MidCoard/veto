@@ -18,9 +18,7 @@ final class NativeToolResponses {
     record Call(@NonNull String name, @NonNull JsonNode args, String id) {}
 
     static boolean enabled(@NonNull VetoRequest request) {
-        var schema = request.responseSchema();
-        return !request.tools().isEmpty()
-                && (schema == null || schema.path("properties").has("calls"));
+        return request.nativeToolsEnabled() && !request.tools().isEmpty();
     }
 
     static @NonNull String prompt(@NonNull VetoRequest request, @NonNull JsonNode schema) {
@@ -33,8 +31,6 @@ final class NativeToolResponses {
                                 schema,
                                 "nativeCalls",
                                 enabled(request),
-                                "jsonCalls",
-                                schema.path("properties").has("calls"),
                                 "guide",
                                 schema.path("properties").has("guide")))
                 .text();
@@ -79,12 +75,35 @@ final class NativeToolResponses {
         String candidate = responseCandidate(text);
         if (candidate.stripLeading().startsWith("{") || candidate.stripLeading().startsWith("[")) {
             JsonNode envelope = arguments(mapper, candidate);
-            if (envelope.hasNonNull("calls") || envelope.hasNonNull("guide"))
+            if (envelope.has("calls") || envelope.hasNonNull("guide"))
                 throw new ModelSchemaException(
                         "Response mixed native tool calls with JSON calls or guide; return exactly one execution channel");
         }
         if (!enabled(request))
             throw new ModelSchemaException("This turn does not permit native tool calls");
+    }
+
+    /** Native calls are adapter-owned data, never deserialized from the model's JSON text. */
+    static LlmClient.@NonNull RawCompletion completion(
+            @NonNull ObjectMapper mapper,
+            @NonNull String summary,
+            @NonNull String normalized,
+            @NonNull List<Call> nativeCalls,
+            @NonNull List<top.focess.veto.llm.core.NativeToolState> states) {
+        if (nativeCalls.isEmpty()) return new LlmClient.RawCompletion(summary, normalized);
+        var envelope =
+                (com.fasterxml.jackson.databind.node.ObjectNode) arguments(mapper, normalized);
+        envelope.remove("calls");
+        var calls = new java.util.ArrayList<top.focess.veto.llm.core.ToolCall>();
+        for (var call : nativeCalls) {
+            Map<@NonNull String, Object> args =
+                    mapper.convertValue(
+                            call.args(),
+                            new com.fasterxml.jackson.core.type.TypeReference<
+                                    Map<@NonNull String, Object>>() {});
+            calls.add(new top.focess.veto.llm.core.ToolCall(call.name(), args));
+        }
+        return new LlmClient.RawCompletion(summary, envelope.toString(), states, calls);
     }
 
     static @NonNull String normalize(
@@ -96,7 +115,6 @@ final class NativeToolResponses {
         if (nativeCalls.isEmpty()) return candidate;
         validateNativeChannel(mapper, request, text);
         var pulse = mapper.createObjectNode();
-        var calls = pulse.putArray("calls");
         var ids = new HashSet<String>();
         for (var call : nativeCalls) {
             if (request.tools().stream().noneMatch(tool -> tool.name().equals(call.name())))
@@ -107,9 +125,6 @@ final class NativeToolResponses {
             String id = call.id();
             if (id != null && !id.isBlank() && !ids.add(id))
                 throw new ModelSchemaException("Duplicate native tool call id");
-            var item = calls.addObject();
-            item.put("tool_name", call.name());
-            item.set("args", call.args());
         }
         if (!text.isBlank()) pulse.put("thought", text);
         return pulse.toString();

@@ -107,7 +107,14 @@ public abstract class AbstractLlmProvider implements LLMProviderStrategy {
                     raw.rawResponse());
             auditLogger.logLLMExchange(
                     requestId, request.modelName(), raw.requestSummary(), raw.rawResponse());
-            VetoResponse response = parse(raw.rawResponse());
+            VetoResponse textResponse = parse(raw.rawResponse());
+            VetoResponse response =
+                    new VetoResponse(
+                            textResponse.thought(),
+                            raw.nativeCalls().isEmpty() ? null : raw.nativeCalls(),
+                            textResponse.message(),
+                            textResponse.guide(),
+                            textResponse.citations());
             if (!raw.nativeStates().isEmpty()) {
                 var parsedCalls = response.calls();
                 if (parsedCalls == null || parsedCalls.size() != raw.nativeStates().size())
@@ -178,6 +185,11 @@ public abstract class AbstractLlmProvider implements LLMProviderStrategy {
 
     private @NonNull VetoResponse parse(@NonNull String rawResponse) {
         try {
+            var envelope = objectMapper.readTree(rawResponse);
+            if (envelope != null && envelope.has("calls")) {
+                throw new ModelSchemaException(
+                        "VetoResponse no longer accepts calls; use native tools.");
+            }
             return objectMapper
                     .readerFor(ToolDocs.nonNullClass(VetoResponse.class))
                     .with(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)

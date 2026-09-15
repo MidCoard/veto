@@ -81,12 +81,6 @@ public class VetoCapabilityTranslator implements CapabilityTranslator {
                 "thought",
                 stringNode("Optional internal reasoning before acting. Include when useful."));
 
-        ObjectNode calls = MAPPER.createObjectNode();
-        calls.put("type", "array");
-        calls.set("items", callItemSchema(tools));
-        calls.put("minItems", 1);
-        calls.put("description", "Ordered catalog tool calls. Mutually exclusive with guide.");
-        properties.set("calls", calls);
         properties.set(
                 "message", stringNode("Final answer, or a progress message accompanying work."));
         properties.set("citations", CitationSchema.create(MAPPER));
@@ -279,82 +273,6 @@ public class VetoCapabilityTranslator implements CapabilityTranslator {
         allowed.add(value);
         schema.set("enum", allowed);
         return schema;
-    }
-
-    /**
-     * Binds every allowed tool name to that tool's exact argument schema. A single name enum beside
-     * a generic object is not sufficient: it allows a model to pair any name with any arguments and
-     * leaves the most important part of the call contract in prose only.
-     */
-    private static @NonNull JsonNode callItemSchema(
-            @NonNull List<top.focess.veto.llm.core.ToolDefinition> tools) {
-        if (tools.isEmpty()) {
-            return callVariant(null);
-        }
-
-        ArrayNode variants = MAPPER.createArrayNode();
-        tools.stream()
-                .sorted(
-                        Comparator.comparing(
-                                top.focess.veto.llm.core.ToolDefinition::name,
-                                String.CASE_INSENSITIVE_ORDER))
-                .forEach(tool -> variants.add(callVariant(tool)));
-        ObjectNode union = MAPPER.createObjectNode();
-        union.set("anyOf", variants);
-        return union;
-    }
-
-    private static @NonNull ObjectNode callVariant(top.focess.veto.llm.core.ToolDefinition tool) {
-        ObjectNode variant = MAPPER.createObjectNode();
-        variant.put("type", "object");
-
-        ObjectNode properties = MAPPER.createObjectNode();
-        ObjectNode toolName =
-                stringNode("The tool name, exactly as listed in the available tool catalog.");
-        if (tool != null) {
-            ArrayNode onlyName = MAPPER.createArrayNode();
-            onlyName.add(tool.name());
-            toolName.set("enum", onlyName);
-        }
-        properties.set("tool_name", toolName);
-        properties.set("args", tool == null ? typedSchemaNode("object", null) : argsSchema(tool));
-        variant.set("properties", properties);
-
-        ArrayNode required = MAPPER.createArrayNode();
-        required.add("tool_name");
-        required.add("args");
-        variant.set("required", required);
-        variant.put("additionalProperties", false);
-        return variant;
-    }
-
-    private static @NonNull JsonNode argsSchema(
-            top.focess.veto.llm.core.@NonNull ToolDefinition tool) {
-        JsonNode converted = MAPPER.valueToTree(tool.inputSchema());
-        if (!converted.isObject()) {
-            return typedSchemaNode("object", null);
-        }
-        ObjectNode schema = (ObjectNode) converted;
-        if (!schema.has("type")) {
-            schema.put("type", "object");
-        }
-        closeDeclaredObjects(schema);
-        return schema;
-    }
-
-    /** Rejects invented object fields while preserving an explicit remote-tool policy. */
-    private static void closeDeclaredObjects(@NonNull JsonNode schema) {
-        if (schema.isObject()) {
-            ObjectNode object = (ObjectNode) schema;
-            if ("object".equals(object.path("type").asText())
-                    && object.has("properties")
-                    && !object.has("additionalProperties")) {
-                object.put("additionalProperties", false);
-            }
-            object.elements().forEachRemaining(VetoCapabilityTranslator::closeDeclaredObjects);
-        } else if (schema.isArray()) {
-            schema.elements().forEachRemaining(VetoCapabilityTranslator::closeDeclaredObjects);
-        }
     }
 
     /** Resolves a manifest tool's inputSchema to a flat {@code Map} for the provider tool list. */

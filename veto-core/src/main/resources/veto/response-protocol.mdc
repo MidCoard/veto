@@ -11,12 +11,11 @@ Follow the provider response channel instructions for tool execution. For JSON t
 Choose the response fields according to the next step:
 
 - To continue with tools, invoke a tool from the current catalog through the provider response channel.
-- To stop, answer, or ask a necessary question, put the final text directly in the top-level `message` field and omit `calls`. Do not call `message` or call `think` first.
+- To stop, answer, or ask a necessary question, put the final text directly in the top-level `message` field. Do not call `message` or call `think` first.
 
 Use each field as defined here:
 
 - `thought` is optional. Use it for a brief reason for the next action. Do not include private chain-of-thought or secrets.
-- `calls` is optional. When present, it must be a non-empty array of ordered tool-call objects. Each `tool_name` must have the exact `args` object accepted by its schema. The runtime checks the batch, executes it in array order, and continues.
 - `message` is optional while work continues and required when stopping. Use the final message to answer the request, ask the necessary question, or explain what prevents progress.
 
 Omit optional fields that you do not need. Do not fill them with placeholder content.
@@ -50,22 +49,6 @@ or reconstruct a longer paragraph from memory. Keep the citation declaration and
 link together in the same response; `[citation:id]` alone is not a citation link.
 
 If two distinct input messages support the answer, declare both message indices under the same id. Cite a tool result's evidence text when the claim comes from a webpage; do not attribute your own earlier paraphrase to that webpage.
-
-### Example: continue with a tool through the JSON compatibility channel
-
-```json
-{
-  "thought": "I need the current file before changing it.",
-  "calls": [
-    {
-      "tool_name": "view_file",
-      "args": {
-        "absolutePath": "<absolute-path-under-a-workspace-root>"
-      }
-    }
-  ]
-}
-```
 
 ### Example: finish after verification
 

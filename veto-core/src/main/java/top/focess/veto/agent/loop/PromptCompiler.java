@@ -181,7 +181,8 @@ public class PromptCompiler {
                 request.options(),
                 messages,
                 request.responseSchema(),
-                request.baseUrl());
+                request.baseUrl(),
+                request.nativeToolsEnabled());
     }
 
     /**
@@ -622,6 +623,7 @@ public class PromptCompiler {
             case AGENT_INIT -> null; // handled before role mapping
             case COMPACTION_SUMMARY -> ChatMessage.user(str(turn.payload(), "content"));
             case EXECUTION_ERROR -> {
+                if (Boolean.TRUE.equals(turn.payload().get("recoverable"))) yield null;
                 if ("INTERRUPTED".equals(turn.payload().get("outcome")))
                     yield PromptLibrary.message("runtime-interrupted", Map.of());
                 if ("CANCELLED".equals(turn.payload().get("outcome")))

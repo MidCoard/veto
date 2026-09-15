@@ -10,7 +10,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.identity.AgentPersona;
@@ -317,12 +316,7 @@ class PromptCompileRenderTest {
     void compiledPromptExplainsNativeAndJsonChannelsAndSkillBoundary() {
         String prompt = render(Role.STANDALONE, DeployerPolicy.FULL_ACCESS, null, sampleTools());
 
-        assertTrue(
-                Pattern.compile(
-                                "\\{\\s*\"tool_name\"\\s*:\\s*\"view_file\"\\s*,\\s*\"args\"\\s*:\\s*\\{")
-                        .matcher(prompt)
-                        .find(),
-                "the documented call envelope must use the schema's tool_name field:\n" + prompt);
+        assertFalse(prompt.contains("\"calls\""), "JSON calls must not be advertised");
         assertFalse(
                 prompt.contains("whose `name` is the tool"),
                 "the obsolete name field must not be advertised:\n" + prompt);

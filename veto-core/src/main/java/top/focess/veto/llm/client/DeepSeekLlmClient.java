@@ -215,7 +215,8 @@ final class DeepSeekLlmClient extends LlmClient {
             content = extractJson(content);
 
             String summary = "model=" + request.modelName() + ", via=responses-api";
-            return new RawCompletion(summary, content);
+            return NativeToolResponses.completion(
+                    objectMapper, summary, content, nativeCalls, java.util.List.of());
         } catch (ModelCapabilityException | ModelSchemaException e) {
             throw e;
         } catch (InterruptedException e) {

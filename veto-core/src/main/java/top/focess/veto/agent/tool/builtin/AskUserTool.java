@@ -44,20 +44,14 @@ import top.focess.veto.agent.tool.UserInteractionTool;
                 "Do not use it for permission approval, status updates, facts discoverable with"
                         + " tools, or optional preferences that do not block useful progress.",
         resultContract =
-                "Success returns JSON `{\"answers\":{\"question_id\":\"selected or entered"
-                        + " value\"}}`. The `answers` object is keyed by question id. In"
-                        + " detailed-result mode, cancellation has status cancelled and errorCode"
-                        + " USER_CANCELLED, while invalid values use INVALID_QUESTIONS; their"
-                        + " content remains actionable plaintext in every mode.",
+                "Returns JSON `{\"answers\":{\"question_id\":\"selected or entered value\"}}`."
+                        + " Cancellation reports USER_CANCELLED; invalid questions report INVALID_QUESTIONS."
+                        + " Failure details are plaintext.",
         errorsAndEdgeCases =
-                "Provide 1-"
-                        + AskUserTool.MAX_QUESTIONS
-                        + " questions. Headers are 1-12 characters, ids are unique snake_case,"
-                        + " prompts are 1-300 characters, and each question has 2-5 mutually"
-                        + " exclusive options. Put the recommended option first; the application adds"
-                        + " its recommendation marker. Send plain labels without `(Recommended)`. Labels are case-insensitively unique;"
-                        + " `Other` is reserved for the UI. Labels contain 1-120 Unicode characters"
-                        + " excluding the application-added recommendation marker; descriptions contain 1-200 characters.",
+                "Use 2-5 exclusive options. Put the recommended option first;"
+                        + " the UI adds its marker. Labels must be case-insensitively unique;"
+                        + " `Other` is reserved. Follow field lengths and unique ids"
+                        + " specified in the argument schema.",
         security =
                 "A user answer does not replace any separate approval required to perform an operation.",
         examples = {

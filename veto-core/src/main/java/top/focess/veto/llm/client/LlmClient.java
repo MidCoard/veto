@@ -151,13 +151,22 @@ public abstract class LlmClient {
     public record RawCompletion(
             @NonNull String requestSummary,
             @NonNull String rawResponse,
-            @NonNull List<top.focess.veto.llm.core.NativeToolState> nativeStates) {
+            @NonNull List<top.focess.veto.llm.core.NativeToolState> nativeStates,
+            @NonNull List<top.focess.veto.llm.core.ToolCall> nativeCalls) {
         public RawCompletion {
             nativeStates = List.copyOf(nativeStates);
+            nativeCalls = List.copyOf(nativeCalls);
+        }
+
+        public RawCompletion(
+                @NonNull String requestSummary,
+                @NonNull String rawResponse,
+                @NonNull List<top.focess.veto.llm.core.NativeToolState> nativeStates) {
+            this(requestSummary, rawResponse, nativeStates, List.of());
         }
 
         public RawCompletion(@NonNull String requestSummary, @NonNull String rawResponse) {
-            this(requestSummary, rawResponse, List.of());
+            this(requestSummary, rawResponse, List.of(), List.of());
         }
     }
 }

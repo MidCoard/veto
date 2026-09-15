@@ -1401,6 +1401,7 @@ public class AgentRunner {
         VetoRequest request = buildRequest(compiled);
         if (generation != null) request = generationRequest(request, generation);
         int schemaRetries = 0;
+        VetoRequest correctionBase = request;
         int citationRetries = 0;
         VetoResponse citationCandidate = null;
         String candidateModelCallId = null;
@@ -1538,20 +1539,29 @@ public class AgentRunner {
                         agentId,
                         schemaRetries + 1,
                         safe(e.getMessage()));
-                if (schemaRetries == MAX_SCHEMA_RETRIES) {
-                    if (citationCandidate != null) {
-                        if (inputBaseline != null && candidateUsage != null) {
-                            contextUsage.accept(inputBaseline, candidateUsage);
-                        }
-                        lastCitations = candidateSources;
-                        lastModelCallId = candidateModelCallId;
-                        return citationCandidate;
+                appendTurn(
+                        new TurnRecord(
+                                ++turnNumber,
+                                TurnType.EXECUTION_ERROR,
+                                Map.of(
+                                        "content",
+                                        String.valueOf(e.getMessage()),
+                                        "recoverable",
+                                        true,
+                                        "errorCode",
+                                        "MODEL_RESPONSE_REJECTED"),
+                                null));
+                if (schemaRetries >= MAX_SCHEMA_RETRIES && citationCandidate != null) {
+                    if (inputBaseline != null && candidateUsage != null) {
+                        contextUsage.accept(inputBaseline, candidateUsage);
                     }
-                    throw e;
+                    lastCitations = candidateSources;
+                    lastModelCallId = candidateModelCallId;
+                    return citationCandidate;
                 }
                 schemaRetries++;
                 // Inject an ephemeral rejection message so the model knows what to fix on retry.
-                request = injectSchemaRejection(request, e);
+                request = injectSchemaRejection(correctionBase, e);
             } catch (LlmException e) {
                 // LLM failure → record error, break the loop ( table: LLM Error → IDLE).
                 TaskCancellation cancellation = activeCancellation;
@@ -1628,7 +1638,8 @@ public class AgentRunner {
                 request.options(),
                 messages,
                 request.responseSchema(),
-                request.baseUrl());
+                request.baseUrl(),
+                request.nativeToolsEnabled());
     }
 
     private @NonNull VetoRequest generationRequest(
@@ -1683,7 +1694,8 @@ public class AgentRunner {
                 options,
                 messages,
                 original.responseSchema(),
-                selected.baseUrl());
+                selected.baseUrl(),
+                false);
     }
 
     private @NonNull CompiledPrompt compilePrompt(
@@ -1790,7 +1802,8 @@ public class AgentRunner {
                 request.options(),
                 augmented,
                 request.responseSchema(),
-                request.baseUrl());
+                request.baseUrl(),
+                request.nativeToolsEnabled());
     }
 
     /** Rejects malformed local arguments before any call in the batch is screened or executed. */

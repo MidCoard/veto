@@ -103,15 +103,11 @@ class AnthropicNativeToolWireTest {
                             List.of(ChatMessage.user("Read")),
                             schema,
                             null);
-            var call =
-                    mapper.readTree(
-                                    client.complete(new ResolvedRequest(first, null, "unused"))
-                                            .rawResponse())
-                            .path("calls")
-                            .path(0);
-            assertEquals("view_file", call.path("tool_name").asText());
-            assertEquals(
-                    "/workspace/中文 notes.txt", call.path("args").path("absolutePath").asText());
+            var firstRaw = client.complete(new ResolvedRequest(first, null, "unused"));
+            assertFalse(mapper.readTree(firstRaw.rawResponse()).has("calls"));
+            var call = firstRaw.nativeCalls().getFirst();
+            assertEquals("view_file", call.toolName());
+            assertEquals("/workspace/中文 notes.txt", call.args().get("absolutePath"));
             var second =
                     new VetoRequest(
                             "System",
@@ -126,7 +122,7 @@ class AnthropicNativeToolWireTest {
                                     ChatMessage.assistantToolCall(
                                             "runtime-1",
                                             "view_file",
-                                            call.path("args").toString(),
+                                            mapper.writeValueAsString(call.args()),
                                             "",
                                             null),
                                     ChatMessage.toolResult("runtime-1", "file contents")),

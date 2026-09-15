@@ -14,7 +14,7 @@ import org.jspecify.annotations.NonNull;
  */
 public record VetoResponse(
         String thought,
-        List<@NonNull ToolCall> calls,
+        @JsonIgnore List<@NonNull ToolCall> calls,
         String message,
         Guide guide,
         List<@NonNull Citation> citations) {

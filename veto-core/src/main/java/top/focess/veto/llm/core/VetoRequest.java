@@ -30,7 +30,33 @@ public record VetoRequest(
         @NonNull LlmOptions options,
         @NonNull List<@NonNull ChatMessage> messages,
         JsonNode responseSchema,
-        String baseUrl) {
+        String baseUrl,
+        boolean nativeToolsEnabled) {
+
+    public VetoRequest(
+            @NonNull String systemPrompt,
+            @NonNull String userPrompt,
+            @NonNull List<@NonNull ToolDefinition> tools,
+            @NonNull ProviderType providerType,
+            @NonNull String modelName,
+            @NonNull String credentialKey,
+            @NonNull LlmOptions options,
+            @NonNull List<@NonNull ChatMessage> messages,
+            JsonNode responseSchema,
+            String baseUrl) {
+        this(
+                systemPrompt,
+                userPrompt,
+                tools,
+                providerType,
+                modelName,
+                credentialKey,
+                options,
+                messages,
+                responseSchema,
+                baseUrl,
+                true);
+    }
 
     public VetoRequest {
         tools = List.copyOf(tools);

@@ -29,25 +29,19 @@ class DelegationExamplesTest {
         int examples = 0;
         while (matcher.find()) {
             String json = Nullness.requireNonNull(matcher.group(1));
-            var response = mapper.readValue(json, ToolDocs.nonNullClass(VetoResponse.class));
-            ResponseEnforcer.enforce(response, false, Set.of("create_group"));
-            assertNull(response.guide(), "delegation examples do not require guided execution");
-            var calls = response.calls();
-            if (calls != null) {
-                assertEquals(1, calls.size());
-                var call = calls.getFirst();
-                assertEquals("create_group", call.toolName());
-                var arguments = mapper.valueToTree(call.args());
+            var arguments = mapper.readTree(json);
+            assertFalse(arguments.has("calls"));
+            if (arguments.has("task")) {
                 NativeToolArgumentValidator.validate(
                         "create_group", arguments, ToolDocs.nonNullClass(Args.class));
                 var args = mapper.treeToValue(arguments, ToolDocs.nonNullClass(Args.class));
                 assertFalse(args.task().isBlank());
-                assertEquals(
-                        Set.of("task"),
-                        call.args().keySet(),
-                        "the actual tool takes only a task brief");
+                assertEquals(1, arguments.size());
                 briefs.add(args.task().toLowerCase(Locale.ROOT));
             } else {
+                var response = mapper.readValue(json, ToolDocs.nonNullClass(VetoResponse.class));
+                ResponseEnforcer.enforce(response, false, Set.of("create_group"));
+                assertNull(response.guide());
                 String message = response.message();
                 if (message == null) throw new AssertionError("direct answer missing");
                 answers.add(message);

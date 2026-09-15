@@ -1,7 +1,7 @@
 ---
 version: 2
 id: provider-anthropic
-requires: [system, schema, nativeCalls, jsonCalls, guide]
+requires: [system, schema, nativeCalls, guide]
 ---
 {{system}}
 

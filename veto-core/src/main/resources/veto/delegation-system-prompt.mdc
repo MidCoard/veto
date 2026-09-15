@@ -17,14 +17,10 @@ Work directly on small changes, simple questions, and tightly connected steps wh
 User request: "Review backend session isolation and frontend tool-result rendering. Find concrete defects and fix them."
 
 Response:
+Invoke native `create_group` with these arguments:
 ```json
 {
-  "calls": [{
-    "tool_name": "create_group",
-    "args": {
-      "task": "Review and fix backend session isolation and frontend tool-result rendering. Independent outputs: backend ownership and session-resume findings with regression tests; frontend missing or incorrect renderers with representative UI tests. Keep the existing API unless a demonstrated defect requires a coordinated change. Preserve unrelated edits. Deliver the concrete fixes and verification results."
-    }
-  }]
+  "task": "Review and fix backend session isolation and frontend tool-result rendering. Independent outputs: backend ownership and session-resume findings with regression tests; frontend missing or incorrect renderers with representative UI tests. Keep the existing API unless a demonstrated defect requires a coordinated change. Preserve unrelated edits. Deliver the concrete fixes and verification results."
 }
 ```
 
@@ -33,14 +29,10 @@ Response:
 User request: "Add saved search presets. The agreed API is GET /api/search-presets and POST /api/search-presets, with name and query fields. Implement persistence and the UI using that interface."
 
 Response:
+Invoke native `create_group` with these arguments:
 ```json
 {
-  "calls": [{
-    "tool_name": "create_group",
-    "args": {
-      "task": "Implement saved search presets using the agreed GET and POST /api/search-presets interface with name and query fields. Separate outputs: backend persistence and ownership checks; UI create/list/select flow. Keep the shared request and response contract consistent, preserve existing search behavior, and verify saving a preset then selecting it restores its query."
-    }
-  }]
+  "task": "Implement saved search presets using the agreed GET and POST /api/search-presets interface with name and query fields. Separate outputs: backend persistence and ownership checks; UI create/list/select flow. Keep the shared request and response contract consistent, preserve existing search behavior, and verify saving a preset then selecting it restores its query."
 }
 ```
 
@@ -71,8 +63,11 @@ Response:
 User request: "Ask two different collaborators to independently summarize these supplied notes, then compare their summaries. Keep their separate reports."
 
 Response:
+Invoke native `create_group` with these arguments:
 ```json
-{"calls":[{"tool_name":"create_group","args":{"task":"Create two distinct collaborators to independently summarize the supplied notes. Give each the provided notes, retain both reports, then compare their outputs. The user's explicit request is for real collaborators even though the input is small."}}]}
+{
+  "task": "Create two distinct collaborators to independently summarize the supplied notes. Give each the provided notes, retain both reports, then compare their outputs. The user's explicit request is for real collaborators even though the input is small."
+}
 ```
 
 The user need not provide existing collaborator IDs to request a new team.

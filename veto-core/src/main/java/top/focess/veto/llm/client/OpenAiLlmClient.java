@@ -177,7 +177,8 @@ final class OpenAiLlmClient extends LlmClient {
                         + request.tools().size()
                         + ", jsonSchema="
                         + supportsJsonSchema;
-        return new RawCompletion(summary, content);
+        return NativeToolResponses.completion(
+                objectMapper, summary, content, calls, java.util.List.of());
     }
 
     private static ResponseFormatJsonSchema.JsonSchema.@NonNull Schema responseSchemaOf(

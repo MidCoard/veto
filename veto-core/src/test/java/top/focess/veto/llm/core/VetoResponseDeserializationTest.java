@@ -38,17 +38,13 @@ class VetoResponseDeserializationTest {
     }
 
     @Test
-    void bindsAutonomousCall() throws Exception {
+    void jsonCannotSupplyNativeCalls() throws Exception {
         String json =
                 "{\"thought\":\"t\",\"calls\":[{\"tool_name\":\"list_files\",\"args\":{\"path\":\"/x\"}}],"
                         + "\"message\":null}";
         VetoResponse response = mapper.readValue(json, ToolDocs.nonNullClass(VetoResponse.class));
         assertEquals("t", response.thought());
-        assertTrue(response.hasCalls());
-        List<@NonNull ToolCall> calls = requireCalls(response.calls());
-        assertEquals(1, calls.size());
-        assertEquals("list_files", calls.get(0).toolName());
-        assertEquals("/x", calls.get(0).args().get("path"));
+        assertFalse(response.hasCalls(), "JSON cannot construct adapter-owned native calls");
         assertNull(response.guide());
     }
 

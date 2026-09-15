@@ -138,9 +138,11 @@ final class GeminiLlmClient extends LlmClient {
                             Content.builder().role("model").parts(segment).build().toJson(),
                             states.size()));
         }
-        return new RawCompletion(
+        return NativeToolResponses.completion(
+                objectMapper,
                 "model=" + request.modelName() + ", tools=" + request.tools().size(),
                 normalized,
+                calls,
                 states);
     }
 

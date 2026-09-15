@@ -6,5 +6,5 @@ requires: [error, expected]
 @message user
 Your previous response was rejected due to a schema violation: {{error}}.
 Expected: {{expected}}.
-Please regenerate valid JSON matching the supplied response schema.
+Correct the response. Invoke tools through native tool calling with arguments matching their definitions. For a text answer or guide, return JSON matching the response schema. VetoResponse has no calls field.
 @endmessage

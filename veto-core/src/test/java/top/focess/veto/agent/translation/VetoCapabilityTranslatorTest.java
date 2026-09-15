@@ -32,7 +32,7 @@ class VetoCapabilityTranslatorTest {
         JsonNode props = schema.get("properties");
         JsonNode required = schema.get("required");
         assertTrue(props.has("thought"), "thought always present (optional)");
-        assertTrue(props.has("calls"), "calls present when autonomous");
+        assertFalse(props.has("calls"), "calls are native transport data");
         assertFalse(props.has("actions"), "actions absent when not guided");
         assertFalse(contains(required, "thought"), "thought never required");
         assertFalse(
@@ -46,7 +46,7 @@ class VetoCapabilityTranslatorTest {
         JsonNode schema = translator.vetoResponseSchema(true);
         JsonNode props = schema.get("properties");
         JsonNode required = schema.get("required");
-        assertTrue(props.has("calls"));
+        assertFalse(props.has("calls"));
         assertTrue(props.has("guide"));
         JsonNode guide = props.path("guide");
         assertEquals(
@@ -73,7 +73,7 @@ class VetoCapabilityTranslatorTest {
             assertFalse(props.has("features"));
             assertFalse(props.has("actions"));
             assertEquals(enabled, props.has("guide"));
-            assertTrue(props.has("calls"));
+            assertFalse(props.has("calls"));
             assertTrue(props.has("message"));
         }
     }
@@ -116,33 +116,8 @@ class VetoCapabilityTranslatorTest {
                                 List.of(ToolResultFormat.PLAINTEXT)));
 
         JsonNode schema = translator.vetoResponseSchema(false, tools);
-        JsonNode variants = schema.path("properties").path("calls").path("items").path("anyOf");
-        assertEquals(2, variants.size());
-
-        JsonNode think = variantFor(variants, "think");
-        JsonNode viewFile = variantFor(variants, "view_file");
-        assertEquals(
-                "string",
-                think.path("properties")
-                        .path("args")
-                        .path("properties")
-                        .path("thought")
-                        .path("type")
-                        .asText());
-        assertFalse(think.path("properties").path("args").path("properties").has("absolutePath"));
-        assertEquals(
-                "string",
-                viewFile.path("properties")
-                        .path("args")
-                        .path("properties")
-                        .path("absolutePath")
-                        .path("type")
-                        .asText());
-        assertFalse(viewFile.path("properties").path("args").path("properties").has("thought"));
-        assertFalse(viewFile.path("additionalProperties").asBoolean());
-        assertFalse(
-                viewFile.path("properties").path("args").path("additionalProperties").asBoolean());
-        assertEquals(1, schema.path("properties").path("calls").path("minItems").asInt());
+        assertFalse(schema.path("properties").has("calls"));
+        assertEquals(viewArgs, tools.getFirst().inputSchema());
     }
 
     @Test

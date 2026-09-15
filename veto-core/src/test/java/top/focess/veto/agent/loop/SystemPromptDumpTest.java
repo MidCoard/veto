@@ -97,7 +97,7 @@ class SystemPromptDumpTest {
             assertTrue(
                     linked.contains(
                             "flowchart, sequenceDiagram, stateDiagram-v2, erDiagram, classDiagram"));
-            assertTrue(linked.contains("required outer JSON object"));
+            assertTrue(linked.contains("one object matching the response schema"));
             assertFalse(linked.contains("presentation profile"));
             assertFalse(linked.contains("{{ANSWER_STYLE}}"));
             assertFalse(linked.contains("{{PRESENTATION_CAPABILITIES}}"));
@@ -435,7 +435,7 @@ class SystemPromptDumpTest {
                             + redundantMetaExplanation);
         }
         assertTrue(
-                catalog.contains("These are the tools available to YOU"),
+                catalog.contains("Available tools and their argument and result contracts"),
                 "the catalog must describe the active persona capabilities");
         assertTrue(
                 catalog.contains("`questions[].header` (string, required)"),
@@ -473,7 +473,7 @@ class SystemPromptDumpTest {
                             "Behavior",
                             "When to use",
                             "When not to use",
-                            "Call examples",
+                            "Argument examples",
                             "Result contract",
                             "Result examples",
                             "Errors and edge cases"),
