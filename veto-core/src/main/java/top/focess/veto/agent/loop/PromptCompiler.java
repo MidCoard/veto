@@ -624,7 +624,9 @@ public class PromptCompiler {
                             : "CANCELLED".equals(turn.payload().get("outcome"))
                                             && turn.payload().get("requestId") instanceof String
                                     ? PromptLibrary.message("runtime-cancelled", Map.of())
-                                    : null;
+                                    : PromptLibrary.message(
+                                            "runtime-execution-error",
+                                            Map.of("error", str(turn.payload(), "content")));
             case REWIND, TOKEN_USAGE -> null;
         };
     }

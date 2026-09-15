@@ -54,7 +54,8 @@ import top.focess.veto.agent.tool.UserInteractionTool;
                         + " prompts are 1-300 characters, and each question has 2-3 mutually"
                         + " exclusive options. The first option must be recommended and its label"
                         + " must end with `(Recommended)`. Labels are case-insensitively unique;"
-                        + " `Other` is reserved for the UI.",
+                        + " `Other` is reserved for the UI. Labels contain 1-40 Unicode characters"
+                        + " including `(Recommended)`; descriptions contain 1-200 characters.",
         security =
                 "A user answer does not replace any separate approval required to perform an operation.",
         examples = {
@@ -93,10 +94,12 @@ public final class AskUserTool implements UserInteractionTool<AskUserTool.Args> 
     public record Option(
             @NonNull
                     @Doc(
-                            "Short choice label. The first label ends with `(Recommended)`; `Other`"
+                            "Choice label, 1-40 Unicode characters including `(Recommended)`. The first label ends with `(Recommended)`; `Other`"
                                     + " is reserved.")
                     String label,
-            @NonNull @Doc("One short sentence explaining the choice's impact.")
+            @NonNull
+                    @Doc(
+                            "One short sentence, 1-200 Unicode characters, explaining the choice's impact.")
                     String description) {}
 
     @Override
@@ -173,8 +176,19 @@ public final class AskUserTool implements UserInteractionTool<AskUserTool.Args> 
             for (int index = 0; index < question.options().size(); index++) {
                 Option option = question.options().get(index);
                 String normalizedLabel = option.label().strip().toLowerCase(Locale.ROOT);
+                if (length(option.label()) > 40) {
+                    ToolErrors.failure(
+                            "INVALID_QUESTIONS",
+                            "Question '"
+                                    + question.id()
+                                    + "', option "
+                                    + (index + 1)
+                                    + ": label has "
+                                    + length(option.label())
+                                    + " characters; maximum is 40 including `(Recommended)`."
+                                    + " Shorten the label and call ask_user again; no questions were sent.");
+                }
                 if (option.label().isBlank()
-                        || length(option.label()) > 40
                         || "other".equals(normalizedLabel)
                         || option.description().isBlank()
                         || length(option.description()) > 200

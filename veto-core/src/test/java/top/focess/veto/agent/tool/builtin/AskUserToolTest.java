@@ -213,6 +213,32 @@ class AskUserToolTest {
         }
     }
 
+    @Test
+    void overlongRecommendationIdentifiesTheQuestionAndIncludesSuffixInLimit() {
+        var question =
+                new AskUserTool.Question(
+                        "Project",
+                        "project",
+                        "Create the project?",
+                        List.of(
+                                new AskUserTool.Option(
+                                        "Create Xcode project skeleton (Recommended)",
+                                        "Create files."),
+                                new AskUserTool.Option("Show code", "Show the code first.")));
+        var error =
+                assertThrows(
+                        ToolDocs.nonNullClass(ToolExecutionException.class),
+                        () ->
+                                CapabilityTestCalls.execute(
+                                        tool, new AskUserTool.Args(List.of(question))));
+        assertEquals("INVALID_QUESTIONS", error.errorCode());
+        assertTrue(
+                String.valueOf(error.getMessage())
+                        .contains("Question 'project', option 1: label has 43"));
+        assertTrue(String.valueOf(error.getMessage()).contains("no questions were sent"));
+        assertTrue(registry.pendingFor("test-agent").isEmpty());
+    }
+
     private void assertInvalid(@NonNull List<AskUserTool.Question> questions) {
         assertTimeoutPreemptively(
                 Duration.ofSeconds(2),

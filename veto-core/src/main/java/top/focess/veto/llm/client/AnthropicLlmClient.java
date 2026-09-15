@@ -127,17 +127,24 @@ final class AnthropicLlmClient extends LlmClient {
         String rawInput;
         if (!toolUses.isEmpty()) {
             String candidate = extractJson(objectMapper, text);
-            if (hasGuide(candidate)) {
+            if (hasExecutableEnvelope(candidate)) {
                 throw new ModelSchemaException(
-                        "Anthropic response mixed native tool calls with a guided program");
+                        "Anthropic response mixed native tool calls with JSON calls or a guided program");
             }
-            if (usesJsonProgramChannel(request)) {
-                throw new ModelSchemaException(
-                        "This turn requires JSON calls or guide, not native tool calls");
+            // A guide-capable turn also permits ordinary calls. Compatible endpoints may
+            // ignore tool_choice:none; normalize that wire format, then let the same runtime
+            // whitelist, argument validation and Gateway screen it as a JSON call.
+            JsonNode schema = request.responseSchema();
+            if (schema != null && !schema.path("properties").has("calls")) {
+                throw new ModelSchemaException("This turn does not permit tool calls");
             }
             var pulse = objectMapper.createObjectNode();
             var calls = pulse.putArray("calls");
             for (ToolUseBlock tu : toolUses) {
+                if (request.tools().stream().noneMatch(tool -> tool.name().equals(tu.name()))) {
+                    throw new ModelSchemaException(
+                            "Tool is not available in this turn: " + tu.name());
+                }
                 var call = calls.addObject();
                 call.put("tool_name", tu.name());
                 call.set("args", objectMapper.valueToTree(toolInputMap(tu)));
@@ -198,10 +205,10 @@ final class AnthropicLlmClient extends LlmClient {
         return schema != null && schema.path("properties").has("guide");
     }
 
-    private boolean hasGuide(@NonNull String candidate) {
+    private boolean hasExecutableEnvelope(@NonNull String candidate) {
         try {
             JsonNode node = objectMapper.readTree(candidate);
-            return node.isObject() && node.hasNonNull("guide");
+            return node.isObject() && (node.hasNonNull("guide") || node.hasNonNull("calls"));
         } catch (Exception e) {
             return false;
         }

@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.anthropic.client.AnthropicClient;
+import com.anthropic.core.JsonValue;
 import com.anthropic.models.messages.ContentBlock;
 import com.anthropic.models.messages.Message;
 import com.anthropic.models.messages.MessageCreateParams;
@@ -148,7 +149,7 @@ class AnthropicLlmClientTest {
     }
 
     @Test
-    void rejectsNativeOnlyWhenJsonProgramChannelIsSelected() {
+    void rejectsNativeCallsWhenNoToolsAreAvailable() {
         var sdk = mock(ToolDocs.nonNullClass(AnthropicClient.class), RETURNS_DEEP_STUBS);
         var response = mock(ToolDocs.nonNullClass(Message.class), RETURNS_DEEP_STUBS);
         var nativeCall = mock(ToolDocs.nonNullClass(ContentBlock.class), RETURNS_DEEP_STUBS);
@@ -161,6 +162,96 @@ class AnthropicLlmClientTest {
                 () ->
                         new AnthropicLlmClient(sdk, new ObjectMapper())
                                 .complete(new ResolvedRequest(request(), null, "unused")));
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void acceptsAlternatingJsonAndNativeCallsWithoutLosingArguments(boolean guided)
+            throws Exception {
+        var sdk = mock(ToolDocs.nonNullClass(AnthropicClient.class), RETURNS_DEEP_STUBS);
+        var response = mock(ToolDocs.nonNullClass(Message.class), RETURNS_DEEP_STUBS);
+        when(sdk.messages().create(any(ToolDocs.nonNullClass(MessageCreateParams.class))))
+                .thenReturn(response);
+        @NonNull ToolDefinition tool = mock();
+        when(tool.name()).thenReturn("list_dir");
+        when(tool.description()).thenReturn("List a directory");
+        when(tool.inputSchema())
+                .thenReturn(
+                        Map.of(
+                                "type",
+                                "object",
+                                "properties",
+                                Map.of("absolutePath", Map.of("type", "string"))));
+        List<ToolDefinition> tools = List.of(tool);
+        var request =
+                new VetoRequest(
+                        "System",
+                        "Continue",
+                        tools,
+                        ProviderType.ANTHROPIC,
+                        "minimax",
+                        "key",
+                        LlmOptions.defaults(),
+                        List.of(),
+                        new VetoCapabilityTranslator().vetoResponseSchema(guided, tools),
+                        null);
+        var client = new AnthropicLlmClient(sdk, new ObjectMapper());
+        var nativeCall = mock(ToolDocs.nonNullClass(ContentBlock.class), RETURNS_DEEP_STUBS);
+        when(nativeCall.isToolUse()).thenReturn(true);
+        when(nativeCall.asToolUse().name()).thenReturn("list_dir");
+        when(nativeCall.asToolUse()._input())
+                .thenReturn(JsonValue.from(Map.of("absolutePath", "/workspace")));
+        var jsonCall =
+                text(
+                        "{\"calls\":[{\"tool_name\":\"list_dir\",\"args\":{\"absolutePath\":\"/workspace\"}}]}");
+        // The real session alternated formats: a native response must not require a retry
+        // that discards the intended write and causes another directory read instead.
+        for (ContentBlock block : List.of(jsonCall, nativeCall, jsonCall, nativeCall)) {
+            when(response.content()).thenReturn(List.of(block));
+            var result =
+                    new ObjectMapper()
+                            .readTree(
+                                    client.complete(new ResolvedRequest(request, null, "unused"))
+                                            .rawResponse());
+            assertEquals("list_dir", result.path("calls").get(0).path("tool_name").asText());
+            assertEquals(
+                    "/workspace",
+                    result.path("calls").get(0).path("args").path("absolutePath").asText());
+        }
+        // Never silently unwrap malformed provider arguments: the runtime must reject them.
+        when(nativeCall.asToolUse()._input())
+                .thenReturn(JsonValue.from(Map.of("args", Map.of("absolutePath", "/workspace"))));
+        when(response.content()).thenReturn(List.of(nativeCall));
+        var malformed =
+                new ObjectMapper()
+                        .readTree(
+                                client.complete(new ResolvedRequest(request, null, "unused"))
+                                        .rawResponse());
+        assertTrue(malformed.path("calls").get(0).path("args").has("args"));
+        assertFalse(malformed.path("calls").get(0).path("args").has("absolutePath"));
+        when(nativeCall.asToolUse().name()).thenReturn("unavailable_tool");
+        assertThrows(
+                ToolDocs.nonNullClass(ModelSchemaException.class),
+                () -> client.complete(new ResolvedRequest(request, null, "unused")));
+    }
+
+    @Test
+    void rejectsMixedJsonCallsAndNativeCallsInsteadOfDroppingEither() {
+        var sdk = mock(ToolDocs.nonNullClass(AnthropicClient.class), RETURNS_DEEP_STUBS);
+        var response = mock(ToolDocs.nonNullClass(Message.class), RETURNS_DEEP_STUBS);
+        var nativeCall = mock(ToolDocs.nonNullClass(ContentBlock.class), RETURNS_DEEP_STUBS);
+        when(nativeCall.isToolUse()).thenReturn(true);
+        var jsonCall = text("{\"calls\":[{\"tool_name\":\"list_dir\",\"args\":{}}]}");
+        when(response.content()).thenReturn(List.of(jsonCall, nativeCall));
+        when(sdk.messages().create(any(ToolDocs.nonNullClass(MessageCreateParams.class))))
+                .thenReturn(response);
+        var failure =
+                assertThrows(
+                        ToolDocs.nonNullClass(ModelSchemaException.class),
+                        () ->
+                                new AnthropicLlmClient(sdk, new ObjectMapper())
+                                        .complete(new ResolvedRequest(request(), null, "unused")));
+        assertTrue(String.valueOf(failure.getMessage()).contains("mixed"));
     }
 
     @Test

@@ -2860,6 +2860,9 @@ public class AgentRunner {
             if (t instanceof LlmAuthException) {
                 return Msg.get(locale, "error.agent.llmAuth");
             }
+            if (t instanceof ModelSchemaException) {
+                return Msg.get(locale, "error.agent.llmSchema", String.valueOf(t.getMessage()));
+            }
             if (t instanceof ModelCapabilityException mce) {
                 // The same type covers transport call failures and unparseable responses
                 // (AbstractLlmProvider); discriminate on the fixed message prefix.

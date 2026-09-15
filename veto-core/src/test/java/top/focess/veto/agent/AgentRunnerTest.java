@@ -2427,6 +2427,45 @@ class AgentRunnerTest {
     }
 
     @Test
+    void exhaustedSchemaRetriesRetainAnActionableExecutionError() throws Exception {
+        var calls = new java.util.concurrent.atomic.AtomicInteger();
+        var service =
+                serviceWith(
+                        request -> {
+                            if (calls.incrementAndGet() <= 3)
+                                throw new ModelSchemaException("Malformed guide JSON");
+                            assertTrue(
+                                    request.messages().stream()
+                                            .anyMatch(
+                                                    message ->
+                                                            message.content()
+                                                                            .contains(
+                                                                                    "[Runtime execution failure]")
+                                                                    && message.content()
+                                                                            .contains(
+                                                                                    "Malformed guide JSON")));
+                            return new VetoResponse(
+                                    null,
+                                    null,
+                                    "The preceding model response had an invalid format.",
+                                    null);
+                        });
+        var result =
+                service.submit("schema-exhausted", "Answer", binding("System"), EPISODE_TIMEOUT);
+        assertFalse(result.success());
+        assertEquals(3, calls.get());
+        assertTrue(result.message().contains("Malformed guide JSON"));
+        var agent = requireAgent(service.agent("schema-exhausted"));
+        assertTrue(
+                agent.history().stream().anyMatch(turn -> turn.type() == TurnType.EXECUTION_ERROR));
+        var followUp =
+                service.submit(
+                        "schema-exhausted", "What happened?", binding("System"), EPISODE_TIMEOUT);
+        assertTrue(followUp.success(), followUp.message());
+        assertEquals(4, calls.get());
+    }
+
+    @Test
     void providerSchemaFailureUsesTheSameEphemeralRetryPath() throws Exception {
         List<VetoRequest> requests = new CopyOnWriteArrayList<>();
         UniformLLMCaller caller =
