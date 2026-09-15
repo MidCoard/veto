@@ -111,7 +111,8 @@ class NativeProvidersWireTest {
                 String sent = captured.get();
                 assertNotNull(sent);
                 var body = MAPPER.readTree(sent);
-                assertTrue(sent.contains("Prefer native tool calls"));
+                assertTrue(sent.contains("Use native tool calls"));
+                assertFalse(sent.contains("This turn does not enable native tools"));
                 assertTrue(body.has("tools"));
                 if (type == ProviderType.GEMINI) {
                     assertEquals(
@@ -277,6 +278,8 @@ class NativeProvidersWireTest {
                 String disabled = captured.get();
                 assertNotNull(disabled);
                 assertFalse(MAPPER.readTree(disabled).has("tools"));
+                assertTrue(disabled.contains("This turn does not enable native tools"));
+                assertFalse(disabled.contains("Use native tool calls"));
             }
         } finally {
             server.stop(0);

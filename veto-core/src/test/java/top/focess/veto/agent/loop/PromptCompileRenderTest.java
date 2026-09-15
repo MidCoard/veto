@@ -305,7 +305,7 @@ class PromptCompileRenderTest {
         assertTrue(
                 block.contains("The name of the skill to load."),
                 "arg description rendered:\n" + block);
-        assertTrue(block.contains("#### Call examples"), "examples label rendered:\n" + block);
+        assertTrue(block.contains("#### Argument examples"), "examples label rendered:\n" + block);
         assertTrue(block.contains("git-rebase"), "example content rendered:\n" + block);
         assertFalse(block.contains("deploy"), "only one schematic example is needed:\n" + block);
         assertTrue(
@@ -319,7 +319,7 @@ class PromptCompileRenderTest {
 
         assertTrue(
                 Pattern.compile(
-                                "\\{\\s*\"tool_name\"\\s*:\\s*\"<catalog name>\"\\s*,\\s*\"args\"\\s*:\\s*\\{")
+                                "\\{\\s*\"tool_name\"\\s*:\\s*\"view_file\"\\s*,\\s*\"args\"\\s*:\\s*\\{")
                         .matcher(prompt)
                         .find(),
                 "the documented call envelope must use the schema's tool_name field:\n" + prompt);
@@ -349,10 +349,10 @@ class PromptCompileRenderTest {
         assertFalse(
                 prompt.contains("For a Mate"),
                 "shared response rules must not leak Mate-only context into other roles");
-        assertTrue(prompt.contains("matching the current response schema"), prompt);
-        assertTrue(prompt.contains("When native tool execution is enabled"), prompt);
-        assertTrue(prompt.contains("Never duplicate a native call"), prompt);
-        assertTrue(prompt.contains("two invocation formats for the same tools"), prompt);
+        assertTrue(prompt.contains("matching the response schema"), prompt);
+        assertFalse(prompt.contains("When native tool execution is enabled"), prompt);
+        assertTrue(prompt.contains("Follow the provider response channel instructions"), prompt);
+        assertFalse(prompt.contains("two invocation formats for the same tools"), prompt);
         assertFalse(prompt.contains("Call them by populating the `calls` array"), prompt);
     }
 
@@ -395,11 +395,11 @@ class PromptCompileRenderTest {
         assertBefore(
                 block,
                 "#### When not to use",
-                "#### Call examples",
+                "#### Argument examples",
                 "examples follow usage guidance");
         assertBefore(
                 block,
-                "#### Call examples",
+                "#### Argument examples",
                 "#### Result contract",
                 "result contract follows the call examples");
         assertBefore(

@@ -6,7 +6,7 @@ requires: []
 @verbatim
 ## How to Use Guided Execution
 
-This session permits guided execution. To submit a complete program, use the optional top-level `guide` field: `{"guide":{"actions":[...]}}`. The runtime validates the whole program before executing it. Use either JSON `guide` or ordinary tool calls in a response, never both. Ordinary calls may use the provider's enabled native tool channel or the JSON `calls` compatibility channel; do not mix execution channels. Do not send a mode-switch flag or a preparatory `think` call.
+This session permits guided execution. To submit a complete program, use the optional top-level `guide` field: `{"guide":{"actions":[...]}}`. The runtime validates the whole program before executing it. Use either JSON `guide` or ordinary tool calls in a response, never both. Invoke ordinary tools through the provider response channel. Do not send a mode-switch flag or a preparatory `think` call.
 
 Choose guided execution when you can specify the tool steps, data dependencies, conditional branches, or bounded repetition in advance. Use ordinary calls when you still need to explore before choosing the next steps. Guided execution is available when useful; it is not required for every answer. The same permission, approval, workspace, and sensitive-data rules apply in both cases.
 

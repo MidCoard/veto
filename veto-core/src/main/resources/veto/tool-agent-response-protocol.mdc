@@ -6,5 +6,5 @@ requires: []
 @verbatim
 ## Response Protocol
 
-Follow the provider response channel instructions: prefer registered native tools when native execution is enabled, without an outer JSON envelope. Otherwise return one JSON object matching the current response schema, without Markdown fences, and put tool calls in `calls`. Never duplicate native calls in JSON calls or combine them with a JSON guide. An optional `thought` is a short operational rationale, not private chain-of-thought. Omit unused fields. Follow the task's completion procedure rather than inventing a separate final-result format.
+Follow the provider response channel instructions for tool execution. JSON text responses must match the current response schema without outer Markdown fences. An optional `thought` is a short operational rationale, not private chain-of-thought. Omit unused fields. Follow the task's completion procedure rather than inventing a separate final-result format.
 @endverbatim

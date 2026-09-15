@@ -126,7 +126,7 @@ class AnthropicNativeToolWireTest {
                 var sent = mapper.readTree(body);
                 assertEquals("auto", sent.path("tool_choice").path("type").asText());
                 assertEquals("view_file", sent.path("tools").path(0).path("name").asText());
-                assertTrue(sent.path("system").toString().contains("prefer native tool_use"));
+                assertTrue(sent.path("system").toString().contains("Use native tool_use"));
             }
             var history = mapper.readTree(bodies.getLast()).path("messages");
             assertEquals("runtime-1", history.path(1).path("content").path(0).path("id").asText());

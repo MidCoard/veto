@@ -5,7 +5,7 @@ requires: [tools]
 ---
 @if nonempty(tools)
 ## Your Tools
-These are the tools available to YOU. When native tool execution is enabled, prefer the registered native tools and pass the arguments below directly as input. JSON `calls` is a compatibility alternative: use the same tool name in `tool_name` and the same arguments in `args`. These are two invocation formats for the same tools, not separate tool catalogs. The JSON examples below illustrate the compatibility format; they do not imply that native tools are unavailable. Use one execution channel per response and never submit the same call through both.
+Available tools and their argument and result contracts are listed below. Follow the provider response channel instructions to invoke them.
 @for tool in tools
 ### `{{tool.name}}`
 {{tool.description}}
@@ -47,7 +47,7 @@ Pass an empty JSON object: `{}`.
 @endif
 @for example in tool.examples
 @if loop.first
-#### Call examples
+#### Argument examples
 ```json
 {{example}}
 ```

@@ -101,7 +101,7 @@ class AnthropicLlmClientTest {
         assertTrue(
                 String.valueOf(params._additionalBodyProperties().get("tool_choice"))
                         .contains("auto"));
-        assertTrue(params.system().toString().contains("prefer native tool_use"));
+        assertTrue(params.system().toString().contains("Use native tool_use"));
         assertFalse(params.system().toString().contains("Emit JSON text only"));
         assertFalse(params.system().toString().contains("does not enable native tool execution"));
         assertEquals(
@@ -163,7 +163,7 @@ class AnthropicLlmClientTest {
                         .system()
                         .toString()
                         .contains("does not enable native tool execution"));
-        assertFalse(sent.getValue().system().toString().contains("prefer native tool_use"));
+        assertFalse(sent.getValue().system().toString().contains("Use native tool_use"));
         var nativeCall = mock(ToolDocs.nonNullClass(ContentBlock.class), RETURNS_DEEP_STUBS);
         when(nativeCall.isToolUse()).thenReturn(true);
         when(response.content()).thenReturn(List.of(nativeCall));

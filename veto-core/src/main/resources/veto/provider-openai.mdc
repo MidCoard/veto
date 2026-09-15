@@ -7,4 +7,4 @@ requires: [system, schema]
 
 For the JSON text channel, return a valid JSON object matching this schema:
 {{json(schema)}}
-Native tool calls remain preferred when enabled above; they do not need this JSON envelope.
+The provider response channel instructions above govern tool execution.

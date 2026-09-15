@@ -6,11 +6,7 @@ requires: []
 @verbatim
 ## Tool Calls
 
-The API response schema defines the allowed tool names and exact argument structures. The tool catalog below describes their behavior, results, and edge cases. When the provider enables native tool execution, prefer its registered tools with arguments passed directly as input. Otherwise use the JSON call envelope:
-
-```json
-{"calls":[{"tool_name":"<catalog name>","args":{"<argument>":"<value>"}}]}
-```
+The tool catalog defines tool names, arguments, behavior, results, and edge cases. Invoke tools through the provider response channel.
 
 - Use only schema-defined arguments and include required fields.
 - Tool results arrive in the next turn, linked by `call_id`. Wait for an observation before making a dependent call.

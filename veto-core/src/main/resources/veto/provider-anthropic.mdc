@@ -10,11 +10,11 @@ requires: [system, schema, nativeCalls, guide]
 Response schema for JSON text in this turn:
 {{json(schema)}}
 @if nativeCalls
-For ordinary tool execution, prefer native tool_use blocks using the registered tools. Pass each tool's arguments directly as input; do not wrap them in args or a veto response. JSON calls shown in the general instructions are a compatibility alternative, not a requirement to avoid native tools. Native tool calls are valid without an outer JSON response object.
+Use native tool_use blocks to invoke the registered tools. Pass each tool’s arguments directly as input. Use one execution channel per response.
 @else
 This turn does not enable native tool execution. Return JSON text matching the response schema.
 @endif
 @if guide
-To submit a guided program, return JSON text with guide matching the schema. Guide availability does not disable native tool calls. Choose one execution channel per response: native tool_use, JSON calls, or JSON guide. Never combine them in one response.
+To submit a guided program, return JSON text with guide matching the schema. Do not combine a guide with tool calls in the same response.
 @endif
 For a final answer, return a JSON object with message and any citations. Do not call a tool named message or veto_pulse. Do not duplicate native tool calls in JSON text.

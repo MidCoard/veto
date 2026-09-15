@@ -6,18 +6,7 @@ requires: []
 @verbatim
 ## How to Call Tools
 
-When the provider enables native tool execution, prefer its registered tools and pass arguments directly as the native input. For the JSON compatibility channel, each item in `calls` pairs an allowed `tool_name` with its exact `args` schema. The Your Tools section explains each tool's arguments, behavior, results, and edge cases.
-
-For the JSON compatibility channel, use this structure for each call:
-
-```json
-{
-  "tool_name": "<catalog name>",
-  "args": {
-    "<argument>": "<value>"
-  }
-}
-```
+Invoke tools through the provider response channel. The Your Tools section defines their arguments, behavior, results, and edge cases.
 
 - Use only tool names and argument names listed in the schema. Include every required argument and do not substitute a similar name.
 - Calls in one response execute in returned order after any required approvals. Group independent calls in one response when useful. Submit a call in a later turn when its arguments depend on an earlier result.

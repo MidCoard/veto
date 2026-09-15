@@ -6,11 +6,11 @@ requires: []
 @verbatim
 ## Response Protocol
 
-Follow the provider response channel instructions. When native tool execution is enabled, prefer the registered native tools for ordinary execution; these calls do not need an outer JSON object. Otherwise return one valid JSON object matching the current response schema. The JSON object is the response itself: do not wrap it in Markdown or send the envelope as a tool call. Put answer text and any Markdown fences inside the `message` string.
+Follow the provider response channel instructions for tool execution. For JSON text responses, return one object matching the response schema, without outer Markdown fences. Put answer text and any Markdown fences inside the `message` string.
 
 Choose the response fields according to the next step:
 
-- To continue with tools, use registered native tools when enabled by the provider. For the JSON compatibility channel, put tools from your current catalog in the top-level `calls` array. Never duplicate a native call in `calls` or combine native calls with a JSON guided program.
+- To continue with tools, invoke a tool from the current catalog through the provider response channel.
 - To stop, answer, or ask a necessary question, put the final text directly in the top-level `message` field and omit `calls`. Do not call `message` or call `think` first.
 
 Use each field as defined here:

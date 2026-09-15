@@ -10,7 +10,7 @@ requires: [system, schema, nativeCalls]
 JSON response schema:
 {{json(schema)}}
 @if nativeCalls
-Prefer native tool calls for ordinary execution, using the registered tools and their exact arguments. Native calls do not require an outer JSON object. JSON calls remain a compatibility alternative. Never emit native calls and JSON calls or guide together, even if they describe the same operation.
+Use native tool calls to invoke the registered tools. Pass each tool’s arguments directly as input. Use one execution channel per response.
 @else
 This turn does not enable native tools. Return JSON matching the response schema.
 @endif
