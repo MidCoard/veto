@@ -6,11 +6,11 @@ requires: []
 @verbatim
 ## Response Protocol
 
-Return one valid JSON object that matches the current response schema. The required outer JSON object is the response itself. Do not wrap it in Markdown or send it as a tool call. Put answer text and any Markdown fences inside the `message` string.
+Follow the provider response channel instructions. When native tool execution is enabled, prefer the registered native tools for ordinary execution; these calls do not need an outer JSON object. Otherwise return one valid JSON object matching the current response schema. The JSON object is the response itself: do not wrap it in Markdown or send the envelope as a tool call. Put answer text and any Markdown fences inside the `message` string.
 
 Choose the response fields according to the next step:
 
-- To continue with tools, put tools from your current catalog in the top-level `calls` array.
+- To continue with tools, use registered native tools when enabled by the provider. For the JSON compatibility channel, put tools from your current catalog in the top-level `calls` array. Never duplicate a native call in `calls` or combine native calls with a JSON guided program.
 - To stop, answer, or ask a necessary question, put the final text directly in the top-level `message` field and omit `calls`. Do not call `message` or call `think` first.
 
 Use each field as defined here:
@@ -51,7 +51,7 @@ link together in the same response; `[citation:id]` alone is not a citation link
 
 If two distinct input messages support the answer, declare both message indices under the same id. Cite a tool result's evidence text when the claim comes from a webpage; do not attribute your own earlier paraphrase to that webpage.
 
-### Example: continue with a tool
+### Example: continue with a tool through the JSON compatibility channel
 
 ```json
 {

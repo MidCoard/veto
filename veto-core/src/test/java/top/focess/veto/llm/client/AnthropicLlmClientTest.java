@@ -98,11 +98,12 @@ class AnthropicLlmClientTest {
         var params = sent.getValue();
         assertEquals(1, params.tools().orElseThrow().size());
         assertTrue(params.system().toString().contains("absolutePath"));
-        assertEquals(guided, params._additionalBodyProperties().containsKey("tool_choice"));
-        if (guided)
-            assertTrue(
-                    String.valueOf(params._additionalBodyProperties().get("tool_choice"))
-                            .contains("none"));
+        assertTrue(
+                String.valueOf(params._additionalBodyProperties().get("tool_choice"))
+                        .contains("auto"));
+        assertTrue(params.system().toString().contains("prefer native tool_use"));
+        assertFalse(params.system().toString().contains("Emit JSON text only"));
+        assertFalse(params.system().toString().contains("does not enable native tool execution"));
         assertEquals(
                 "prior",
                 params.messages()
@@ -121,6 +122,54 @@ class AnthropicLlmClientTest {
                 client.complete(new ResolvedRequest(request, null, "unused"))
                         .rawResponse()
                         .contains("D:/notes.txt"));
+    }
+
+    @Test
+    void generationSchemaDisablesNativeToolsEvenWhenCatalogIsPresent() {
+        var sdk = mock(ToolDocs.nonNullClass(AnthropicClient.class), RETURNS_DEEP_STUBS);
+        var response = mock(ToolDocs.nonNullClass(Message.class), RETURNS_DEEP_STUBS);
+        var finished = text("{\"message\":\"Finished\"}");
+        when(response.content()).thenReturn(List.of(finished));
+        when(sdk.messages().create(any(ToolDocs.nonNullClass(MessageCreateParams.class))))
+                .thenReturn(response);
+        @NonNull ToolDefinition tool = mock();
+        when(tool.name()).thenReturn("view_file");
+        when(tool.description()).thenReturn("Read a file");
+        when(tool.inputSchema()).thenReturn(Map.of("type", "object"));
+        var schema = new ObjectMapper().createObjectNode();
+        schema.put("type", "object");
+        schema.putObject("properties").putObject("message").put("type", "string");
+        var request =
+                new VetoRequest(
+                        "System",
+                        "Generate",
+                        List.of(tool),
+                        ProviderType.ANTHROPIC,
+                        "model",
+                        "key",
+                        LlmOptions.defaults(),
+                        List.of(),
+                        schema,
+                        null);
+        var client = new AnthropicLlmClient(sdk, new ObjectMapper());
+        client.complete(new ResolvedRequest(request, null, "unused"));
+        var sent = ArgumentCaptor.forClass(ToolDocs.nonNullClass(MessageCreateParams.class));
+        verify(sdk.messages()).create(sent.capture());
+        assertTrue(
+                String.valueOf(sent.getValue()._additionalBodyProperties().get("tool_choice"))
+                        .contains("none"));
+        assertTrue(
+                sent.getValue()
+                        .system()
+                        .toString()
+                        .contains("does not enable native tool execution"));
+        assertFalse(sent.getValue().system().toString().contains("prefer native tool_use"));
+        var nativeCall = mock(ToolDocs.nonNullClass(ContentBlock.class), RETURNS_DEEP_STUBS);
+        when(nativeCall.isToolUse()).thenReturn(true);
+        when(response.content()).thenReturn(List.of(nativeCall));
+        assertThrows(
+                ToolDocs.nonNullClass(ModelSchemaException.class),
+                () -> client.complete(new ResolvedRequest(request, null, "unused")));
     }
 
     @Test

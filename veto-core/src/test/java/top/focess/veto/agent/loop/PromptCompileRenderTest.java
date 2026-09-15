@@ -314,7 +314,7 @@ class PromptCompileRenderTest {
     }
 
     @Test
-    void compiledPromptUsesOneToolEnvelopeAndExplainsSkillBoundary() {
+    void compiledPromptExplainsNativeAndJsonChannelsAndSkillBoundary() {
         String prompt = render(Role.STANDALONE, DeployerPolicy.FULL_ACCESS, null, sampleTools());
 
         assertTrue(
@@ -349,7 +349,9 @@ class PromptCompileRenderTest {
         assertFalse(
                 prompt.contains("For a Mate"),
                 "shared response rules must not leak Mate-only context into other roles");
-        assertTrue(prompt.contains("matches the current response schema"), prompt);
+        assertTrue(prompt.contains("matching the current response schema"), prompt);
+        assertTrue(prompt.contains("When native tool execution is enabled"), prompt);
+        assertTrue(prompt.contains("Never duplicate a native call"), prompt);
     }
 
     @Test

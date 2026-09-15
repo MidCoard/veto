@@ -35,12 +35,12 @@ import top.focess.veto.llm.exceptions.ModelSchemaException;
 
 /**
  * Adapter wrapping an {@link AnthropicClient} — <b>native tool calling</b>, the way Claude Code
- * drives Anthropic-protocol endpoints: the tool manifest is registered as native tools (the
- * provider schema-checks every call), the compiled history maps to native assistant {@code
- * tool_use} / user {@code tool_result} blocks, and the response's tool_use blocks translate back
- * into a veto_pulse payload ({@code calls} from the blocks, text becoming {@code thought} or {@code
- * message}). Guided programs use the JSON response envelope; the exact response schema is supplied
- * with the system prompt, and JSON text is preserved for runtime validation.
+ * drives Anthropic-protocol endpoints: the tool manifest is registered as native tools (the runtime
+ * validates every call), the compiled history maps to native assistant {@code tool_use} / user
+ * {@code tool_result} blocks, and the response's tool_use blocks translate back into a veto_pulse
+ * payload ({@code calls} from the blocks, text becoming {@code thought} or {@code message}). Guided
+ * programs use the JSON response envelope; the exact response schema is supplied with the system
+ * prompt, and JSON text is preserved for runtime validation.
  *
  * <p>This supersedes the original forced-single-{@code veto_pulse}-tool design: that required the
  * endpoint to honor {@code tool_choice: forced}, which Anthropic-compatible third parties (MiniMax
@@ -75,9 +75,10 @@ final class AnthropicLlmClient extends LlmClient {
         if (temperature != null) {
             builder.putAdditionalBodyProperty("temperature", JsonValue.from(temperature));
         }
-        if (usesJsonProgramChannel(request)) {
+        if (!request.tools().isEmpty()) {
             builder.putAdditionalBodyProperty(
-                    "tool_choice", JsonValue.from(Map.of("type", "none")));
+                    "tool_choice",
+                    JsonValue.from(Map.of("type", permitsNativeCalls(request) ? "auto" : "none")));
         }
         // Retain tool contracts and native history while choosing the response channel.
         for (ToolDefinition t : request.tools()) {
@@ -131,9 +132,8 @@ final class AnthropicLlmClient extends LlmClient {
                 throw new ModelSchemaException(
                         "Anthropic response mixed native tool calls with JSON calls or a guided program");
             }
-            // A guide-capable turn also permits ordinary calls. Compatible endpoints may
-            // ignore tool_choice:none; normalize that wire format, then let the same runtime
-            // whitelist, argument validation and Gateway screen it as a JSON call.
+            // Native tool calls use the same runtime whitelist, argument validation and
+            // Gateway as JSON calls. Guide availability does not disable ordinary tools.
             JsonNode schema = request.responseSchema();
             if (schema != null && !schema.path("properties").has("calls")) {
                 throw new ModelSchemaException("This turn does not permit tool calls");
@@ -169,7 +169,7 @@ final class AnthropicLlmClient extends LlmClient {
                 if (text.contains("]<]minimax[>[")) {
                     throw new ModelSchemaException(
                             "Response contains internal tool markers instead of an executable response;"
-                                    + " return JSON calls or guide, or a final message");
+                                    + " use native tool calls, JSON guide, or a final message");
                 }
                 var pulse = objectMapper.createObjectNode();
                 pulse.put("message", text);
@@ -194,15 +194,16 @@ final class AnthropicLlmClient extends LlmClient {
                                 "schema",
                                 schema,
                                 "nativeCalls",
-                                !request.tools().isEmpty() && !usesJsonProgramChannel(request),
+                                permitsNativeCalls(request),
                                 "guide",
                                 schema.path("properties").has("guide")))
                 .text();
     }
 
-    private boolean usesJsonProgramChannel(@NonNull VetoRequest request) {
+    private boolean permitsNativeCalls(@NonNull VetoRequest request) {
         JsonNode schema = request.responseSchema();
-        return schema != null && schema.path("properties").has("guide");
+        return !request.tools().isEmpty()
+                && (schema == null || schema.path("properties").has("calls"));
     }
 
     private boolean hasExecutableEnvelope(@NonNull String candidate) {

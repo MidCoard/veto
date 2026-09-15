@@ -105,7 +105,7 @@ class ProtectedProviderBodyTest {
                 assertTrue(body.contains("SECRET_REF:"));
                 assertTrue(body.contains(user));
                 assertTrue(body.contains(file));
-                assertEquals(guided, body.contains("\"tool_choice\""));
+                assertFalse(body.contains("\"tool_choice\""));
             }
         } finally {
             server.stop(0);

@@ -5,12 +5,16 @@ requires: [system, schema, nativeCalls, guide]
 ---
 {{system}}
 
-Response schema for this turn:
+## Anthropic response channel
+
+Response schema for JSON text in this turn:
 {{json(schema)}}
-Emit one JSON object matching this schema.
 @if nativeCalls
-Direct tool execution may instead use native tool calls.
+For ordinary tool execution, prefer native tool_use blocks using the registered tools. Pass each tool's arguments directly as input; do not wrap them in args or a veto response. JSON calls shown in the general instructions are a compatibility alternative, not a requirement to avoid native tools. Native tool calls are valid without an outer JSON response object.
+@else
+This turn does not enable native tool execution. Return JSON text matching the response schema.
 @endif
 @if guide
-Emit JSON text only: use calls for ordinary execution or guide for a program. Never combine a guided program with native tool calls in the same response.
+To submit a guided program, return JSON text with guide matching the schema. Guide availability does not disable native tool calls. Choose one execution channel per response: native tool_use, JSON calls, or JSON guide. Never combine them in one response.
 @endif
+For a final answer, return a JSON object with message and any citations. Do not call a tool named message or veto_pulse. Do not duplicate native tool calls in JSON text.
