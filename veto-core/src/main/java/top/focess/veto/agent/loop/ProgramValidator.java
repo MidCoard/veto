@@ -1,12 +1,19 @@
 package top.focess.veto.agent.loop;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.model.tier.ModelTier;
+import top.focess.veto.util.Nullness;
 
 /**
  * Validates an {@link ActionsProgram} before guided mode loads it. A program that fails validation
@@ -116,6 +123,73 @@ public final class ProgramValidator {
             throw new InvalidProgramException(
                     "goto/conditional_goto graph has a deterministic cycle");
         }
+    }
+
+    /** Definite bindings at strict consumers; optional checks may still inspect UNDEFINED. */
+    public static void validateInputs(@NonNull ActionsProgram program) {
+        int size = program.actions().size();
+        Map<Integer, Set<String>> incoming = new HashMap<>();
+        incoming.put(0, new HashSet<>(Set.of("CURRENT_STEPS")));
+        var pending = new ArrayDeque<Integer>();
+        pending.add(0);
+        while (!pending.isEmpty()) {
+            int index = pending.removeFirst();
+            Set<String> bound = new HashSet<>(Nullness.requireNonNull(incoming.get(index)));
+            Action action = program.actions().get(index);
+            if (action instanceof ToolAction tool) bound.addAll(tool.outputs().keySet());
+            if (action instanceof GenerateAction gen) bound.addAll(gen.outputs().keySet());
+            List<Integer> next = new ArrayList<>();
+            if (action instanceof GotoAction jump) next.add(jump.index());
+            else if (action instanceof ConditionalGotoAction branch) {
+                next.add(branch.trueGoto());
+                next.add(branch.nextPc(false, index + 1));
+            } else if (!(action instanceof StopAction)) next.add(index + 1);
+            for (int target : next) {
+                if (target >= size) continue;
+                Set<String> candidate = new HashSet<>(bound);
+                Set<String> previous = incoming.get(target);
+                if (previous != null) candidate.retainAll(previous);
+                if (previous == null || !previous.equals(candidate)) {
+                    incoming.put(target, candidate);
+                    pending.add(target);
+                }
+            }
+        }
+        var mapper = new ObjectMapper();
+        for (var entry : incoming.entrySet()) {
+            Action action = program.actions().get(entry.getKey());
+            Set<String> needed = new HashSet<>();
+            if (action instanceof ToolAction tool)
+                collectInputs(mapper.valueToTree(tool.inputs()), needed);
+            if (action instanceof GenerateAction gen) {
+                collectInputs(mapper.valueToTree(gen.inputs()), needed);
+                Set<String> promptVars = new HashSet<>();
+                var matcher =
+                        Pattern.compile("\\$\\$|\\$[A-Za-z_][A-Za-z0-9_]*").matcher(gen.prompt());
+                while (matcher.find())
+                    if (!matcher.group().equals("$$")) promptVars.add(matcher.group().substring(1));
+                promptVars.removeAll(gen.inputs().keySet());
+                needed.addAll(promptVars);
+            }
+            if (action instanceof StopAction stop) {
+                String binding = stop.resultBinding();
+                if (binding != null) needed.add(binding);
+            }
+            if (action instanceof ConditionalGotoAction branch
+                    && branch.check() instanceof Check.Llm check)
+                needed.add(check.var().replaceFirst("^\\$", ""));
+            needed.removeAll(entry.getValue());
+            if (!needed.isEmpty())
+                throw new InvalidProgramException(
+                        "Action " + action.id() + " has inputs not bound on every path: " + needed);
+        }
+    }
+
+    private static void collectInputs(@NonNull JsonNode node, @NonNull Set<String> needed) {
+        if (node.isTextual()) {
+            String value = node.asText();
+            if (value.startsWith("$") && !value.startsWith("$$")) needed.add(value.substring(1));
+        } else for (var child : node) collectInputs(child, needed);
     }
 
     private static void validateCheck(@NonNull Check check, @NonNull Set<String> ids) {

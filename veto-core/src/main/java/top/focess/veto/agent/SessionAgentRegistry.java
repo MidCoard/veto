@@ -27,27 +27,6 @@ import top.focess.veto.monitor.MonitorService;
 public final class SessionAgentRegistry {
     private SessionInvalidations invalidations;
 
-    /** Serializes live pause controls with runner registration and removal. */
-    public synchronized void controlPause(
-            @NonNull UUID sessionId, @NonNull String agentId, boolean paused) {
-        if (repository == null) throw new IllegalStateException("Agent control is unavailable");
-        AgentEntity entity =
-                repository
-                        .findById(agentId)
-                        .filter(row -> row.getSessionId().equals(sessionId.toString()))
-                        .orElseThrow(() -> new IllegalArgumentException("Agent is unavailable"));
-        Entry entry = live.get(agentId);
-        if (entry != null && !entry.sessionId().equals(sessionId))
-            throw new IllegalArgumentException("Agent is unavailable");
-        if (entity.getEndedAt() != null
-                || (entry != null && entry.agent().state() == AgentState.TERMINATED))
-            throw new IllegalStateException("Agent has terminated");
-        if (entry == null) throw new IllegalStateException("Agent is not running");
-        if (paused) entry.agent().pause();
-        else entry.agent().resume();
-        if (invalidations != null) invalidations.changed(sessionId, "agents", "execution");
-    }
-
     @Autowired
     public void attachInvalidations(@NonNull SessionInvalidations invalidations) {
         this.invalidations = invalidations;

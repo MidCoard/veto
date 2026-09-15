@@ -15,7 +15,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.NonNull;
@@ -656,7 +655,6 @@ class AgentRunnerTest {
         agent.attachMonitor(monitor);
         try {
             assertEquals(AgentState.WAITING, agent.state());
-            agent.resume();
             agent.signalMonitor();
             assertFalse(called.await(150, TimeUnit.MILLISECONDS));
             Mockito.verify(monitor, Mockito.never())
@@ -672,44 +670,6 @@ class AgentRunnerTest {
                             .anyMatch(turn -> "INTERRUPTED".equals(turn.payload().get("outcome"))));
         } finally {
             service.remove(session.toString());
-            assertTrue(agent.awaitTermination(Duration.ofSeconds(5)));
-        }
-    }
-
-    @Test
-    void pauseDuringModelCallHoldsCorrectionAndCancellationStopsTheWait() throws Exception {
-        CountDownLatch entered = new CountDownLatch(1);
-        CountDownLatch release = new CountDownLatch(1);
-        AtomicInteger calls = new AtomicInteger();
-        var service =
-                serviceWith(
-                        request -> {
-                            calls.incrementAndGet();
-                            entered.countDown();
-                            try {
-                                assertTrue(release.await(5, TimeUnit.SECONDS));
-                            } catch (InterruptedException e) {
-                                Thread.currentThread().interrupt();
-                                throw new IllegalStateException(e);
-                            }
-                            throw new ModelSchemaException("retry needed");
-                        });
-        service.submitNow("pause-active", "Review", binding("System"));
-        var agent = requireAgent(service.agent("pause-active"));
-        try {
-            assertTrue(entered.await(5, TimeUnit.SECONDS));
-            agent.pause();
-            release.countDown();
-            assertThrows(
-                    ToolDocs.nonNullClass(TimeoutException.class),
-                    () -> agent.result().get(150, TimeUnit.MILLISECONDS));
-            assertEquals(1, calls.get());
-            assertTrue(agent.cancelTask(agent.result(), Duration.ofSeconds(5)));
-            assertFalse(agent.result().get().success());
-            assertEquals(1, calls.get());
-        } finally {
-            release.countDown();
-            service.remove("pause-active");
             assertTrue(agent.awaitTermination(Duration.ofSeconds(5)));
         }
     }

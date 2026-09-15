@@ -13,6 +13,7 @@ import top.focess.veto.agent.capability.CapabilityAccess;
 import top.focess.veto.agent.capability.WebDocumentCapability;
 import top.focess.veto.agent.capability.WebReadCapability;
 import top.focess.veto.agent.tool.ToolCallContext;
+import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolErrors;
 import top.focess.veto.agent.tool.ToolExecutionException;
@@ -121,6 +122,7 @@ final class WebReadSession implements WebDocumentCapability, AutoCloseable {
         String content = json(completed);
         WebFetchExecutor.checkDeadline(deadline);
         result = completed;
+        ToolCallContextHolder.registerReaderExecution(UUID.fromString(agentId));
         return content;
     }
 

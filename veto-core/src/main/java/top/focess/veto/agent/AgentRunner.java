@@ -37,6 +37,7 @@ import top.focess.veto.agent.identity.Role;
 import top.focess.veto.agent.intercept.ApprovalDecision;
 import top.focess.veto.agent.intercept.Gateway;
 import top.focess.veto.agent.intercept.GatewayResult;
+import top.focess.veto.agent.intercept.GuidedStepContext;
 import top.focess.veto.agent.intercept.HitlRegistry;
 import top.focess.veto.agent.intercept.IngressDefense;
 import top.focess.veto.agent.intercept.InterceptResolution;
@@ -82,7 +83,6 @@ import top.focess.veto.bus.DeltaBroker;
 import top.focess.veto.bus.DeltaFrame;
 import top.focess.veto.i18n.Msg;
 import top.focess.veto.llm.core.ChatMessage;
-import top.focess.veto.llm.core.CitationSchema;
 import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.llm.core.LlmSystemUsage;
 import top.focess.veto.llm.core.ProviderMessages;
@@ -191,8 +191,6 @@ public class AgentRunner {
     private final @NonNull List<AgentAction.@NonNull DirectUserPromptAction> deferredUserPrompts =
             new ArrayList<>();
     private volatile @NonNull AgentState state = AgentState.IDLE;
-    private final @NonNull Object pauseLock = new Object();
-    private volatile boolean userPaused;
     private KeysteadVault monitorVault;
 
     public void attachMonitorVault(@NonNull KeysteadVault vault) {
@@ -219,28 +217,7 @@ public class AgentRunner {
         return reason == null ? null : reason.name();
     }
 
-    public void setUserPaused(boolean paused) {
-        synchronized (pauseLock) {
-            if (!sessionAlive) throw new IllegalStateException("Agent has terminated");
-            userPaused = paused;
-            pauseLock.notifyAll();
-        }
-        notifyExecutionChanged();
-        if (!paused) signalMonitor();
-    }
-
-    private void awaitUserResume() {
-        synchronized (pauseLock) {
-            while (userPaused && sessionAlive) {
-                checkTaskCancellation();
-                try {
-                    pauseLock.wait();
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    throw new IllegalStateException("Agent pause wait interrupted", e);
-                }
-            }
-        }
+    private void checkExecutionBoundary() {
         if (!sessionAlive) throw new CancellationException("Agent terminated");
         checkTaskCancellation();
     }
@@ -536,7 +513,7 @@ public class AgentRunner {
     private boolean injectMonitorEvents() {
         MonitorService service = monitorService;
         if (service == null) return false;
-        awaitUserResume();
+        checkExecutionBoundary();
         boolean inserted = false;
         for (MonitorRecord.Event event : pendingActiveRequestEvents(service)) {
             if (!belongsToActiveRequest(event)) continue;
@@ -594,7 +571,6 @@ public class AgentRunner {
         if (vault != null && (monitorOwner == null || !vault.isUnlocked(monitorOwner))) return;
         MonitorService service = monitorService;
         if (service == null
-                || userPaused
                 || recoveredWait
                 || executionWait != null
                 || awaitingBreakerContinuation
@@ -706,18 +682,10 @@ public class AgentRunner {
                         transitionTo(AgentState.TERMINATED);
                         break;
                     }
-                    if (action instanceof AgentAction.PauseAction) {
-                        setUserPaused(true);
-                        continue;
-                    }
-                    if (action instanceof AgentAction.ResumeAction) {
-                        setUserPaused(false);
-                        continue;
-                    }
                     if (action instanceof AgentAction.CompactAction) {
                         transitionTo(AgentState.RUNNING);
                         try {
-                            awaitUserResume();
+                            checkExecutionBoundary();
                             processCompaction();
                             completeSuccess();
                         } catch (Exception e) {
@@ -758,7 +726,7 @@ public class AgentRunner {
                         try {
                             checkTaskCancellation();
                             waitingForMonitor = false;
-                            awaitUserResume();
+                            checkExecutionBoundary();
                             processUserPrompt(prompt);
                             checkTaskCancellation();
                             completeOrWaitForMonitor();
@@ -1190,8 +1158,11 @@ public class AgentRunner {
 
     // ── Guided loop (drives the actions program IR) ─────────────────────────
 
+    private GuidedStepContext currentGuidedStep;
+    private final @NonNull Map<String, String> guidedSources = new HashMap<>();
+
     @SuppressWarnings(
-            "ConstantValue") // activeProgram can be cleared concurrently after the state read.
+            "ConstantValue") // The role can replace the active program during a tool call.
     private void runGuided() {
         while (state == AgentState.RUNNING) {
             checkTaskCancellation();
@@ -1218,16 +1189,30 @@ public class AgentRunner {
                     ToolCall call = new ToolCall(tool.tool(), tool.resolveInputs(scope));
                     ToolResult result;
                     currentToolModelCallId = programModelCallId;
+                    Map<String, String> sources =
+                            GuidedStepContext.sources(objectMapper, tool.inputs(), guidedSources);
+                    currentGuidedStep =
+                            new GuidedStepContext(
+                                    programModelCallId,
+                                    tool.id(),
+                                    programCounter,
+                                    tool.label(),
+                                    sources);
                     try {
                         result = executeOneCall(call);
                     } finally {
                         currentToolModelCallId = null;
+                        currentGuidedStep = null;
                     }
                     if (activeProgram != program) {
                         return; // The tool replaced the role and cleared this program and scope.
                     }
                     scope.put("step_ok:" + tool.id(), result.success());
                     scope.bindTool(tool.outputs(), result);
+                    tool.outputs()
+                            .keySet()
+                            .forEach(
+                                    key -> guidedSources.put(key, tool.id() + ":" + call.callId()));
                     if (tool.outputs() != null)
                         tool.outputs().keySet().forEach(generatedCitations::remove);
                     programCounter++;
@@ -1250,6 +1235,12 @@ public class AgentRunner {
                     }
                     VetoResponse response = callGenerate(gen);
                     scope.bindGenerate(gen.outputs(), response);
+                    gen.outputs()
+                            .keySet()
+                            .forEach(
+                                    key ->
+                                            guidedSources.put(
+                                                    key, gen.id() + ":" + lastModelCallId));
                     String generatedMessage = response.message();
                     MessageCitations.Bound generatedSources = lastCitations;
                     if (gen.outputs() != null) {
@@ -1321,7 +1312,8 @@ public class AgentRunner {
                                             && citation.scope() == scope
                                             && citation.message().equals(result)
                                     ? citation.modelCallId()
-                                    : null);
+                                    : null,
+                            citation == null);
                     generatedCitations.clear();
                     activeProgram = null;
                     programCounter = 0;
@@ -1355,19 +1347,17 @@ public class AgentRunner {
         try {
             ActionsProgram program = ActionsProgramParser.parse(node);
             ProgramValidator.validate(program);
-            for (var action : program.actions()) {
-                if (action instanceof ToolAction tool
-                        && (!whitelistedTools.contains(tool.tool())
-                                || toolEngine.resolveDefinition(tool.tool()) == null))
-                    throw new ProgramValidator.InvalidProgramException(
-                            "Tool is not available in this role: " + tool.tool());
-            }
+            ProgramValidator.validateInputs(program);
+            gateway.validateProgram(program, toolEngine, whitelistedTools, objectMapper);
+            guidedSources.clear();
             this.activeProgram = program;
             this.programModelCallId = lastModelCallId;
             this.programCounter = 0;
             this.currentSteps = 0;
             return true;
-        } catch (IllegalArgumentException | ProgramValidator.InvalidProgramException e) {
+        } catch (IllegalArgumentException
+                | ProgramValidator.InvalidProgramException
+                | ToolExecutionException e) {
             this.guided = false;
             appendObservation(
                     "guided_validation_error",
@@ -1402,7 +1392,9 @@ public class AgentRunner {
         preparedFirstPrompt = null;
         if (compiled == null) {
             refreshSystemHistory();
-            compiled = compilePrompt(List.copyOf(history), allowGuided);
+            compiled =
+                    compilePrompt(
+                            List.copyOf(history), generation != null ? guidedEnabled : allowGuided);
         }
         long estimatedTokens = compiled.estimatedTokens();
         double estimateFactor = correctionFactor;
@@ -1412,6 +1404,8 @@ public class AgentRunner {
         int citationRetries = 0;
         VetoResponse citationCandidate = null;
         String candidateModelCallId = null;
+        ContextUsageTracker.Baseline inputBaseline = null;
+        ContextUsageTracker.Baseline candidateUsage = null;
         MessageCitations.Bound candidateSources = null;
         for (; ; ) {
             VetoResponse response;
@@ -1420,7 +1414,7 @@ public class AgentRunner {
                     tripBreaker();
                     throw new BreakerTripException();
                 }
-                awaitUserResume();
+                checkExecutionBoundary();
                 if (completionOnly(breaker.count())) {
                     request = completionRequest(request);
                 }
@@ -1444,6 +1438,7 @@ public class AgentRunner {
                     List<LlmSystemUsage.Usage> measurements = LlmSystemUsage.drain();
                     for (LlmSystemUsage.Usage measured : measurements) {
                         Map<String, Object> measurement = contextUsage.measure(request, measured);
+                        if (inputBaseline == null) inputBaseline = contextUsage.baseline();
                         measurement.put("throughTurn", requestThroughTurn);
                         lastModelCallId = UUID.randomUUID().toString();
                         measurement.put("modelCallId", lastModelCallId);
@@ -1518,6 +1513,7 @@ public class AgentRunner {
                                         Map.of("error", citationError, "items", order));
                         citationCandidate = checked;
                         candidateModelCallId = lastModelCallId;
+                        candidateUsage = contextUsage.baseline();
                         candidateSources = bound;
                         citationRetries++;
                         log.warn(
@@ -1532,6 +1528,9 @@ public class AgentRunner {
                     }
                     lastCitations = bound;
                 }
+                if (inputBaseline != null) {
+                    contextUsage.accept(inputBaseline, contextUsage.baseline());
+                }
                 return checked;
             } catch (ModelSchemaException e) {
                 log.warn(
@@ -1541,6 +1540,9 @@ public class AgentRunner {
                         safe(e.getMessage()));
                 if (schemaRetries == MAX_SCHEMA_RETRIES) {
                     if (citationCandidate != null) {
+                        if (inputBaseline != null && candidateUsage != null) {
+                            contextUsage.accept(inputBaseline, candidateUsage);
+                        }
                         lastCitations = candidateSources;
                         lastModelCallId = candidateModelCallId;
                         return citationCandidate;
@@ -1665,16 +1667,6 @@ public class AgentRunner {
                             options.maxTokens(),
                             options.timeout(),
                             options.contextWindowTokens());
-        var schema =
-                objectMapper
-                        .createObjectNode()
-                        .put("type", "object")
-                        .put("additionalProperties", false);
-        var properties = schema.putObject("properties");
-        properties.putObject("message").put("type", "string").put("minLength", 1);
-        properties.putObject("thought").put("type", "string");
-        properties.set("citations", CitationSchema.create(objectMapper));
-        schema.putArray("required").add("message");
         List<ChatMessage> messages = new ArrayList<>(original.messages());
         ChatMessage generated =
                 PromptLibrary.message(
@@ -1684,13 +1676,13 @@ public class AgentRunner {
         return new VetoRequest(
                 original.systemPrompt(),
                 prompt,
-                List.of(),
+                original.tools(),
                 selected.provider(),
                 selected.model(),
                 selected.credentialKey(),
                 options,
                 messages,
-                schema,
+                original.responseSchema(),
                 selected.baseUrl());
     }
 
@@ -2005,7 +1997,7 @@ public class AgentRunner {
             @NonNull ToolDefinition def,
             @NonNull ApprovalDecision decision,
             @NonNull ToolExecutionPermit screenedPermit) {
-        awaitUserResume();
+        checkExecutionBoundary();
         appendToolCall(call);
 
         ToolExecutionPermit executionPermit;
@@ -2120,6 +2112,10 @@ public class AgentRunner {
         if (def == null) {
             return toolNotFound(call);
         }
+
+        if (def instanceof LocalToolDefinition local)
+            NativeToolArgumentValidator.validate(
+                    local.name(), objectMapper.valueToTree(call.args()), local.argsClass());
 
         // (a) early-route agent tools past the Gateway + HITL.
         ApprovalDecision decision = ApprovalDecision.AUTO_APPROVE;
@@ -2262,7 +2258,8 @@ public class AgentRunner {
                         definition,
                         activeUserTask,
                         thought,
-                        processInput == null ? null : processInput.screeningContext());
+                        processInput == null ? null : processInput.screeningContext(),
+                        currentGuidedStep);
         if (processInput == null) {
             return result;
         }
@@ -2422,7 +2419,16 @@ public class AgentRunner {
 
     private void emitMessage(
             @NonNull String message, MessageCitations.Bound citations, String modelCallId) {
+        emitMessage(message, citations, modelCallId, false);
+    }
+
+    private void emitMessage(
+            @NonNull String message,
+            MessageCitations.Bound citations,
+            String modelCallId,
+            boolean runtimeForwarded) {
         Map<String, Object> payload = new LinkedHashMap<>();
+        if (runtimeForwarded) payload.put("runtimeOutputTokens", 0L);
         payload.put("content", message);
         if (modelCallId != null) payload.put("model_call_id", modelCallId);
         if (citations != null && !citations.checks().isEmpty())
@@ -3008,14 +3014,6 @@ public class AgentRunner {
             }
             return;
         }
-        if (action instanceof AgentAction.PauseAction) {
-            setUserPaused(true);
-            return;
-        }
-        if (action instanceof AgentAction.ResumeAction) {
-            setUserPaused(false);
-            return;
-        }
         actionQueue.add(action);
         notifyExecutionChanged();
     }
@@ -3115,9 +3113,8 @@ public class AgentRunner {
     }
 
     public @NonNull AgentState state() {
-        if (recoveredWait && state != AgentState.TERMINATED && !userPaused)
-            return AgentState.WAITING;
-        return userPaused && state != AgentState.TERMINATED ? AgentState.PAUSED : state;
+        if (recoveredWait && state != AgentState.TERMINATED) return AgentState.WAITING;
+        return state;
     }
 
     public synchronized @NonNull List<TurnRecord> history() {

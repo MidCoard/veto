@@ -5,7 +5,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -16,24 +15,8 @@ import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.identity.Role;
 import top.focess.veto.agent.tool.ToolDocs;
-import top.focess.veto.memory.TurnRecordRepository;
-import top.focess.veto.model.AgentEntity;
-import top.focess.veto.model.AgentInstanceRepository;
 
 class SessionAgentRegistryTest {
-    @Test
-    void offlinePauseDoesNotCreatePersistentControlState() {
-        @NonNull AgentInstanceRepository repository = mock();
-        @NonNull TurnRecordRepository turns = mock();
-        var registry = new SessionAgentRegistry(repository, turns);
-        UUID session = UUID.randomUUID();
-        String id = UUID.randomUUID().toString();
-        when(repository.findById(id))
-                .thenReturn(Optional.of(AgentEntity.spawned(id, session.toString(), "Worker")));
-        assertThrows(IllegalStateException.class, () -> registry.controlPause(session, id, true));
-        verify(repository, never()).save(any());
-    }
-
     @Test
     void independentAgentJoinsActiveSessionButCannotRestartRemovedSession() {
         SessionAgentRegistry registry = new SessionAgentRegistry();

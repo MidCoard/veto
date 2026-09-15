@@ -14,8 +14,6 @@ public sealed interface AgentAction
         permits AgentAction.UserPromptAction,
                 AgentAction.DirectUserPromptAction,
                 AgentAction.MonitorAction,
-                AgentAction.PauseAction,
-                AgentAction.ResumeAction,
                 AgentAction.TerminateAction,
                 AgentAction.CompactAction {
 
@@ -31,12 +29,6 @@ public sealed interface AgentAction
 
     /** A wake hint; sourced observations are read from the Monitor inbox by the same Runner. */
     record MonitorAction() implements AgentAction {}
-
-    /** Persist pause at submission; subsequent execution boundaries wait for explicit resume. */
-    record PauseAction() implements AgentAction {}
-
-    /** Persist resume at submission so a paused runner can leave its wait without draining work. */
-    record ResumeAction() implements AgentAction {}
 
     /** Terminate the session → {@link AgentState#TERMINATED}; the virtual thread stops. */
     record TerminateAction() implements AgentAction {}
