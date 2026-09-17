@@ -65,6 +65,7 @@ class ResponseSubmissionToolsTest {
         for (String bad :
                 List.of(
                         "{\"message\":\"Answer\",\"citations\":[]}",
+                        "{\"message\":\"[source](cite:meeting)\",\"citations\":[{\"id\":\"meeting\",\"sources\":{\"quote\":\"The meeting starts at 14:30.\"}}]}",
                         example.replace("\"meeting\"", "\"bad id\"")))
             assertThrows(
                     ToolDocs.nonNullClass(ToolExecutionException.class),

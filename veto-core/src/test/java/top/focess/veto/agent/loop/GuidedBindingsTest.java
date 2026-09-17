@@ -8,9 +8,40 @@ import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.tool.ToolResult;
+import top.focess.veto.agent.tool.ToolResultFormat;
+import top.focess.veto.agent.tool.ToolResultStatus;
 import top.focess.veto.util.Nullness;
 
 class GuidedBindingsTest {
+    @Test
+    void statusBindingsUseTheDocumentedValuesForBranching() {
+        Scope scope = new Scope(new ObjectMapper());
+        for (ToolResultStatus status :
+                List.of(
+                        ToolResultStatus.SUCCESS,
+                        ToolResultStatus.FAILURE,
+                        ToolResultStatus.REFUSED,
+                        ToolResultStatus.CANCELLED,
+                        ToolResultStatus.INTERRUPTED)) {
+            scope.bindTool(
+                    Map.of("operation_status", "status"),
+                    new ToolResult(
+                            "operation",
+                            "call",
+                            status,
+                            ToolResultFormat.PLAINTEXT,
+                            "result",
+                            null));
+            assertTrue(
+                    CheckEvaluator.evaluate(
+                            new Check.Equals("operation_status", status.id()), scope, 1));
+            assertEquals(
+                    status == ToolResultStatus.SUCCESS,
+                    CheckEvaluator.evaluate(
+                            new Check.Equals("operation_status", "success"), scope, 1));
+        }
+    }
+
     @Test
     void typedInputsAliasesAndOutputsPreserveData() throws Exception {
         ObjectMapper mapper = new ObjectMapper();

@@ -22,7 +22,6 @@ import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import top.focess.veto.agent.loop.PromptLibrary;
 import top.focess.veto.llm.core.ChatMessage;
 import top.focess.veto.llm.core.LlmSystemUsage;
 import top.focess.veto.llm.core.ProviderMessages;
@@ -174,14 +173,7 @@ final class AnthropicLlmClient extends LlmClient {
     }
 
     private @NonNull String responsePrompt(@NonNull VetoRequest request) {
-        return PromptLibrary.compile(
-                        "provider-anthropic",
-                        Map.of(
-                                "system",
-                                request.systemPrompt(),
-                                "nativeCalls",
-                                permitsNativeCalls(request)))
-                .text();
+        return NativeToolResponses.prompt("provider-native", request);
     }
 
     private boolean permitsNativeCalls(@NonNull VetoRequest request) {

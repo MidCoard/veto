@@ -1,0 +1,8 @@
+---
+version: 2
+id: fixture-custom-entry
+requires: [name]
+---
+@message system
+@include fixture-custom-shared
+@endmessage

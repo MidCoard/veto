@@ -16,7 +16,22 @@ final class PromptBlocks {
     private PromptBlocks() {}
 
     static @NonNull String law(String law) {
-        return PromptLibrary.text("law", Map.of("law", law == null ? "" : law));
+        return PromptLibrary.text(
+                "law",
+                Map.of(
+                        "lawSources",
+                        law == null || law.isBlank()
+                                ? List.of()
+                                : List.of(
+                                        Map.of(
+                                                "root",
+                                                "/workspace",
+                                                "file",
+                                                "VETO.md",
+                                                "override",
+                                                false,
+                                                "content",
+                                                law))));
     }
 
     static @NonNull String identity(String name, String description) {

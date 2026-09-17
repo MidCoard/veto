@@ -1,0 +1,7 @@
+---
+version: 2
+id: runtime-judgment
+requires: [prompt]
+---
+{{prompt}}
+Evaluate this evidence against the predicate above: $judgment_input

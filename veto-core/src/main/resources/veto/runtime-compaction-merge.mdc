@@ -1,9 +1,0 @@
----
-version: 2
-id: runtime-compaction-merge
-requires: []
----
-@message system
-Summarize the following combined conversation summaries into a single final structured record. Output ONLY valid JSON matching this schema:
-@include compaction-schema
-@endmessage

@@ -11,7 +11,7 @@ import top.focess.veto.agent.tool.*;
 @ResponseSubmission(ResponseSubmission.Kind.ANSWER)
 @ToolDoc(
         description =
-                "Publish an answer citing supplied text, including the current user message. Supply message with [label](cite:id) links and exact quotes; runtime finds their sources without message counting or external lookup. This publishes the answer, requires no memory write, and must be the only call.",
+                "Use only for answers that need verified, clickable citations to conversation text or tool results. Ordinary answers use plain text, without this tool. Supply message with [label](cite:id) links and a nonempty citations array of exact source quotes. Call this tool alone; it publishes the answer.",
         behavior =
                 "Locates each exact quote in the visible conversation and verifies its source and returns the answer with verified source metadata. In a conversation this publishes the answer and finishes the turn; in guided generation it becomes the step output. Call this tool alone. Its message is the answer; no extra final text is needed after success.",
         whenToUse =
@@ -21,7 +21,7 @@ import top.focess.veto.agent.tool.*;
         resultContract =
                 "Success: JSON {\"status\":\"accepted\"}; the submitted answer is published with verified source links. Failure returns a diagnostic, publishes no answer, and keeps the conversation active so you can correct the source reference or answer without a citation.",
         errorsAndEdgeCases =
-                "Use [label](cite:id) links in message and declare each id once. Supply a short exact quote from visible conversation text or a tool result; the runtime locates its source. Omit message_index normally: do not count messages. If a quote occurs in several messages, use a longer unique quote or select a message_index from the returned candidates. Copy punctuation and whitespace verbatim. Each citation supports 1-8 passages, each up to 4000 characters; at most 32 citations. References attach to this answer; no memory write or file creation is needed.",
+                "Use [label](cite:id) links in message and declare each id once; every declaration must have a link and every link must have a declaration. Both citations and each sources value are nonempty arrays, even for one item. Omit message_index normally: do not count messages. Identical complete results from the same tool and arguments retain all repeated occurrences as sources. Otherwise, use a longer unique quote or select a message_index from the returned candidates. Copy punctuation and whitespace verbatim. Each citation supports 1-8 passages, each up to 4000 characters; at most 32 citations. References attach to this answer; no memory write or file creation is needed.",
         security =
                 "References are limited to the calling agent's current visible input. This tool cannot retrieve other sessions or access files. A matched quote establishes its source, not the truth of its claim.",
         resultFormats = {ToolResultFormat.JSON},
@@ -82,7 +82,7 @@ public final class AnswerWithCitationsTool
             @NonNull
                     @ArraySize(min = 1, max = 32)
                     @Doc(
-                            "Exact source passages for every cite: link. The runtime locates quotes in the current visible conversation.")
+                            "Nonempty array of declarations for every cite: link. Do not call this tool with [] or for an answer without citation links; reply in plain text instead.")
                     List<@NonNull Citation> citations) {}
 
     public record Citation(
@@ -90,7 +90,10 @@ public final class AnswerWithCitationsTool
                     @StringConstraint(minLength = 1, maxLength = 64, pattern = "^[A-Za-z0-9_-]+$")
                     @Doc("Unique link identifier matching cite:id in message.")
                     String id,
-            @NonNull @ArraySize(min = 1, max = 8) @Doc("Exact passages supporting this citation.")
+            @NonNull
+                    @ArraySize(min = 1, max = 8)
+                    @Doc(
+                            "Nonempty array of exact passages supporting this citation, even when there is only one passage.")
                     List<@NonNull Source> sources) {}
 
     public record Source(

@@ -8,7 +8,11 @@ import org.jspecify.annotations.NonNull;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import top.focess.veto.llm.core.ChatMessage;
 
-/** Bundled trusted source package. No missing-source or Java-text fallback is permitted. */
+/**
+ * Bundled trusted source package, recursively discovered under {@code prompts/}. Folder names
+ * organize sources; globally unique file basenames remain the lookup and include IDs. No
+ * missing-source or Java-text fallback is permitted.
+ */
 public final class PromptLibrary {
     private static final @NonNull Map<String, String> SOURCES = load();
 
@@ -46,7 +50,7 @@ public final class PromptLibrary {
         try {
             for (var resource :
                     new PathMatchingResourcePatternResolver()
-                            .getResources("classpath*:veto/**/*.mdc")) {
+                            .getResources("classpath*:prompts/**/*.mdc")) {
                 String filename = resource.getFilename();
                 if (filename == null) throw new IllegalStateException("Unnamed prompt source");
                 String key = filename.substring(0, filename.length() - 4);

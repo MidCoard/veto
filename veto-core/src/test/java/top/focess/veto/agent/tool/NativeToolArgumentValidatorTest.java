@@ -13,6 +13,26 @@ class NativeToolArgumentValidatorTest {
     private final @NonNull ObjectMapper mapper = new ObjectMapper();
 
     @Test
+    void constraintDiagnosticsPreserveTheFieldWithoutEchoingRejectedValues() throws Exception {
+        var schema =
+                mapper.readTree(
+                        """
+                {"type":"object","properties":{"mode":{"type":"string","enum":["brief","full"]}},"required":["mode"]}
+                """);
+        var arguments = mapper.readTree("{\"mode\":\"malformed-secret-value\"}");
+        var error =
+                assertThrows(
+                        ToolDocs.nonNullClass(ToolExecutionException.class),
+                        () ->
+                                NativeToolArgumentValidator.validateAgainstSchema(
+                                        "sample", arguments, schema));
+        String message = String.valueOf(error.getMessage());
+        assertTrue(message.contains("parameter 'mode' must be one of"), message);
+        assertTrue(message.contains("brief"), message);
+        assertFalse(message.contains("malformed-secret-value"), message);
+    }
+
+    @Test
     void misplacedDiscriminatorDoesNotInventAnUnrelatedVariant() throws Exception {
         var error =
                 invalidPlan(

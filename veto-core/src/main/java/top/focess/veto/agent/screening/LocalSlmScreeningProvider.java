@@ -71,22 +71,19 @@ public class LocalSlmScreeningProvider implements SlmScreeningProvider {
         return PromptLibrary.text(
                 "screening",
                 Map.of(
-                        "task",
-                        safe(activeTask),
-                        "thought",
-                        safe(thought),
-                        "context",
-                        safe(executionContext, 4000),
-                        "description",
-                        def.description(),
-                        "capability",
-                        def.capability(),
-                        "danger",
-                        def.defaultDanger(),
-                        "tool",
-                        call.toolName(),
-                        "args",
-                        call.args()));
+                        "candidate",
+                        Map.of(
+                                "active_user_task", activeTask == null ? "" : activeTask,
+                                "agent_thought", thought == null ? "" : thought,
+                                "execution_context",
+                                        executionContext == null ? "" : executionContext,
+                                "tool",
+                                        Map.of(
+                                                "name", call.toolName(),
+                                                "description", def.description(),
+                                                "capability", def.capability(),
+                                                "default_danger", def.defaultDanger(),
+                                                "arguments", call.args()))));
     }
 
     private static Relevance parseRelevance(@NonNull String value) {

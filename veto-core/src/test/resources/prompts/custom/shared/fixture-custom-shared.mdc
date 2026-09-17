@@ -1,0 +1,6 @@
+---
+version: 2
+id: fixture-custom-shared
+requires: [name]
+---
+Hello, {{name}}.

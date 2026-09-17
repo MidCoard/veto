@@ -1,0 +1,13 @@
+---
+version: 2
+id: workspace-law-source
+requires: [source]
+---
+### Root `{{source.root}}`
+@if source.override
+Source: `{{source.file}}` (root-local override)
+@else
+Source: `{{source.file}}`
+@endif
+
+{{source.content}}

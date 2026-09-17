@@ -109,7 +109,13 @@ public final class PlanProgramSchema implements InputSchemaSource {
                         .put("type", "object")
                         .put(
                                 "description",
-                                "Optional local input bindings; omitted means no bindings."));
+                                "Optional named inputs supplied to the generation as data. Values may reference $variables. Prompt placeholders are optional; omitted inputs means no inputs."));
+        var responseMode =
+                stringNode(
+                        "Output channel: TEXT (default) returns the requested content without tool calls. CITATIONS requires an answer with clickable conversation-source references; select it when the requested output needs those links.");
+        responseMode.putArray("enum").add("TEXT").add("CITATIONS");
+        responseMode.put("default", "TEXT");
+        properties.set("response_mode", responseMode);
         var outputs =
                 stringMapSchema(
                         "New variable name to the generated text field. Example: answer maps to message.");

@@ -1,0 +1,16 @@
+---
+version: 2
+id: default-tool-agent-system-prompt
+requires: [persona, guidance, instructions, tools, presentation]
+---
+@message system
+@include identity
+@include tool-agent-operating-contract
+## Task Instructions
+{{instructions}}
+@include tool-agent-tool-calls
+@include tool-catalog
+@if nonempty(tools)
+@include result-conventions
+@endif
+@endmessage

@@ -114,14 +114,16 @@ class AgentEndToEndTest {
      * A caller that replays a fixed main-loop script but routes the compactor (invoked inside a
      * delegation transform) to a fixed {@code "{}"} summary. The compactor shares this caller with
      * the main loop; without routing it, every transform would consume a main-script response. The
-     * empty summary also means no {@link TurnType#COMPACTION_SUMMARY} turn is appended, keeping the
-     * transform's appended sequence minimal for assertions.
+     * invalid summary exercises the transform fallback: no COMPACTION_SUMMARY is appended and
+     * original non-system history must remain available under the new role.
      */
     private static @NonNull UniformLLMCaller scriptedWithCompactor(
             @NonNull VetoResponse @NonNull ... mainResponses) {
         ArrayDeque<VetoResponse> queue = new ArrayDeque<>(List.of(mainResponses));
         return request -> {
-            if (request.systemPrompt().startsWith("Summarize the following conversation segment")) {
+            if (request.messages().stream()
+                    .flatMap(message -> message.promptSources().stream())
+                    .anyMatch(source -> source.source().equals("runtime-compaction.mdc"))) {
                 return new VetoResponse(null, null, "{}");
             }
             VetoResponse r = queue.poll();
@@ -206,6 +208,7 @@ class AgentEndToEndTest {
         List<String> streamed = Collections.synchronizedList(new ArrayList<>());
         AgentService service =
                 serviceWith(
+                        new CalculatorToolEngine(),
                         scripted(
                                 thoughtOnWithCall(
                                         "I'll compute 2+2 via calc.",
@@ -231,6 +234,7 @@ class AgentEndToEndTest {
         assertTrue(types.contains(TurnType.TOOL_CALL), "the tool call was recorded");
         assertTrue(types.contains(TurnType.TOOL_RESPONSE), "the tool observation was recorded");
         assertTrue(types.contains(TurnType.ASSISTANT_RESPONSE));
+        assertCompletedTool(HistoryProjection.effective(agent.history()), "calc");
         assertReturnsToIdle(agent);
     }
 
@@ -244,6 +248,7 @@ class AgentEndToEndTest {
     void oneToolCallProducesExactlyOneToolResponse() throws Exception {
         AgentService service =
                 serviceWith(
+                        new CalculatorToolEngine(),
                         scripted(
                                 thoughtOnWithCall(
                                         "I'll compute 2+2 via calc.",
@@ -272,6 +277,7 @@ class AgentEndToEndTest {
                 toolResponses,
                 "exactly one TOOL_RESPONSE turn should be recorded"
                         + " (regression: a duplicate appendTurn doubled this)");
+        assertCompletedTool(HistoryProjection.effective(agent.history()), "calc");
     }
 
     @Test
@@ -285,6 +291,7 @@ class AgentEndToEndTest {
         // record.
         AgentService service =
                 serviceWith(
+                        new CalculatorToolEngine(),
                         scripted(
                                 thoughtOnWithCall(
                                         "I'll compute 2+2 via calc.",
@@ -302,6 +309,7 @@ class AgentEndToEndTest {
 
         assertTrue(result.success(), "episode should finish successfully");
         VetoAgent agent = requireAgent(service.agent("turn-numbers-test"));
+        assertCompletedTool(HistoryProjection.effective(agent.history()), "calc");
         List<Integer> numbers = agent.history().stream().map(TurnRecord::turnNumber).toList();
         assertFalse(numbers.isEmpty(), "history should contain turns");
         for (int i = 1; i < numbers.size(); i++) {
@@ -383,6 +391,16 @@ class AgentEndToEndTest {
                                                 && String.valueOf(t.payload().get("content"))
                                                         .contains("Ship the feature.")),
                 "the original request survives the delegation brief");
+        var retained = HistoryProjection.effective(history);
+        assertTrue(
+                retained.stream()
+                        .anyMatch(
+                                turn ->
+                                        turn.type() == TurnType.USER_PROMPT
+                                                && "Ship the feature."
+                                                        .equals(turn.payload().get("content"))),
+                "Failed compaction must retain the original request itself");
+        assertCompletedTool(retained, "create_group");
         assertReturnsToIdle(agent);
     }
 
@@ -395,7 +413,9 @@ class AgentEndToEndTest {
                         "leader-key",
                         LlmOptions.defaults(),
                         "leader base");
-        TransformToolEngine engine = new TransformToolEngine(leaderBinding, Set.of());
+        TransformToolEngine engine =
+                new TransformToolEngine(
+                        leaderBinding, Set.of(transformDefinition("disband_group")));
         AgentService service =
                 serviceWith(
                         engine,
@@ -459,6 +479,17 @@ class AgentEndToEndTest {
                                                 && String.valueOf(t.payload().get("content"))
                                                         .contains("Ship the feature.")),
                 "the disband brief was seeded as a user prompt");
+        var retained = HistoryProjection.effective(history);
+        assertTrue(
+                retained.stream()
+                        .anyMatch(
+                                turn ->
+                                        turn.type() == TurnType.USER_PROMPT
+                                                && "Ship the feature."
+                                                        .equals(turn.payload().get("content"))),
+                "Failed compaction must retain the original request itself");
+        assertCompletedTool(retained, "create_group");
+        assertCompletedTool(retained, "disband_group");
         assertReturnsToIdle(agent);
     }
 
@@ -611,6 +642,38 @@ class AgentEndToEndTest {
         assertReturnsToIdle(requireAgent(service.agent("batch-transform")));
     }
 
+    public record CalculatorArgs(@NonNull String expr) {}
+
+    /** A registered, executable tool so loop tests exercise successful dispatch. */
+    private static final class CalculatorToolEngine implements ToolEngine {
+        private final @NonNull ToolDefinition definition =
+                new AgentToolDefinition(
+                        "calc",
+                        "Evaluate the test arithmetic expression",
+                        ToolCapability.WORKSPACE_READ,
+                        Danger.SAFE,
+                        Object.class,
+                        ToolDocs.nonNullClass(CalculatorArgs.class),
+                        Map.of());
+
+        @Override
+        public @NonNull List<ToolDefinition> getActiveTools(Set<String> whitelist) {
+            return List.of(definition);
+        }
+
+        @Override
+        public ToolDefinition resolveDefinition(@NonNull String toolName) {
+            return "calc".equals(toolName) ? definition : null;
+        }
+
+        @Override
+        public @NonNull ToolResult execute(@NonNull ToolCall call, @NonNull ToolDefinition tool) {
+            assertEquals("calc", call.toolName());
+            assertEquals(Map.of("expr", "2+2"), call.args());
+            return new ToolResult(call.toolName(), call.callId(), true, "4");
+        }
+    }
+
     public record CreateGroupArgs(@NonNull String task) {}
 
     public record DisbandGroupArgs() {}
@@ -720,6 +783,34 @@ class AgentEndToEndTest {
             }
             return new ToolResult(call.toolName(), call.callId(), false, "unknown tool");
         }
+    }
+
+    private static void assertCompletedTool(
+            @NonNull List<TurnRecord> retained, @NonNull String toolName) {
+        var calls =
+                retained.stream()
+                        .filter(
+                                turn ->
+                                        turn.type() == TurnType.TOOL_CALL
+                                                && toolName.equals(turn.payload().get("tool_name")))
+                        .toList();
+        assertEquals(1, calls.size(), "Retained history must contain one " + toolName + " call");
+        Object callId = calls.getFirst().payload().get("call_id");
+        if (callId == null)
+            throw new AssertionError("A tool call must have its result correlation id");
+        var responses =
+                retained.stream()
+                        .filter(
+                                turn ->
+                                        turn.type() == TurnType.TOOL_RESPONSE
+                                                && callId.equals(turn.payload().get("call_id")))
+                        .toList();
+        assertEquals(
+                1, responses.size(), "Retained history must contain the " + toolName + " result");
+        assertEquals(
+                true,
+                responses.getFirst().payload().get("success"),
+                "The retained " + toolName + " result must record successful execution");
     }
 
     /**

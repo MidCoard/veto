@@ -61,6 +61,37 @@ class VetoMdResolverTest {
     }
 
     @Test
+    void sourceFactsPreserveRootAndOverrideOrderWithoutChangingResolve(@TempDir @NonNull Path tmp)
+            throws Exception {
+        Path first = Files.createDirectories(tmp.resolve("first"));
+        Path second = Files.createDirectories(tmp.resolve("second"));
+        for (Path root : List.of(first, second)) {
+            Files.createDirectories(root.resolve(".veto"));
+            Files.writeString(root.resolve("VETO.md"), root.getFileName() + " primary");
+            Files.writeString(root.resolve(".veto/VETO.md"), root.getFileName() + " override");
+        }
+        var resolver =
+                new VetoMdResolver(
+                        List.of(
+                                WorkspaceRoot.of(first, TrustMarker.OWNED),
+                                WorkspaceRoot.of(second, TrustMarker.OWNED)));
+        var sources = resolver.sources();
+
+        assertEquals(
+                List.of(first, first, second, second),
+                sources.stream().map(VetoMdResolver.LawSource::root).toList());
+        assertEquals(
+                List.of("VETO.md", ".veto/VETO.md", "VETO.md", ".veto/VETO.md"),
+                sources.stream().map(VetoMdResolver.LawSource::relativePath).toList());
+        assertEquals(
+                List.of(false, true, false, true),
+                sources.stream().map(VetoMdResolver.LawSource::override).toList());
+        assertEquals(
+                "first primary\n\nfirst override\n\nsecond primary\n\nsecond override",
+                resolver.resolve());
+    }
+
+    @Test
     void unreadableVetoMdIsSkipped(@TempDir @NonNull Path tmp) throws Exception {
         Path root = tmp.resolve("r1");
         Files.createDirectories(root);

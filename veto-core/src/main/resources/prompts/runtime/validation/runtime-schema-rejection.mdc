@@ -1,0 +1,10 @@
+---
+version: 2
+id: runtime-schema-rejection
+requires: [error, expected]
+---
+@message user
+Your previous response was rejected due to a schema violation: {{error}}.
+Expected: {{expected}}.
+Correct the response using this invocation's response contract. Calls in the rejected response were not executed; earlier tool results and effects remain unchanged.
+@endmessage

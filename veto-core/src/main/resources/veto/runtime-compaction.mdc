@@ -1,9 +1,0 @@
----
-version: 2
-id: runtime-compaction
-requires: [index, count]
----
-@message system
-Summarize the following conversation segment into a structured record. This is chunk {{index}} of {{count}}. Preserve specific facts. Output ONLY valid JSON matching this schema:
-@include compaction-schema
-@endmessage

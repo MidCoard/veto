@@ -23,6 +23,7 @@ class ResponseEnforcerTest {
         for (String text :
                 List.of(
                         "Example: `[Friday](cite:launch)`",
+                        "Example: `[citation:launch]`",
                         "```markdown\n[Friday](cite:launch)\n```",
                         "[External](https://example.com)"))
             assertDoesNotThrow(() -> ResponseEnforcer.enforce(new VetoResponse(null, null, text)));
@@ -40,7 +41,14 @@ class ResponseEnforcerTest {
                                 new VetoResponse(
                                         null, null, "[Original](cite:source)", citations)));
         for (String message :
-                List.of("Original [citation:source]", "Original", "[Original](cite:other)")) {
+                List.of(
+                        "Original [citation:source]",
+                        "Original",
+                        "[Original](cite:other)",
+                        "Example: `[Original](cite:source)`",
+                        "](cite:source)",
+                        "![Original](cite:source)",
+                        "\\[Original](cite:source)")) {
             try {
                 ResponseEnforcer.enforce(new VetoResponse(null, null, message, citations));
                 fail("Declared source must have a corresponding clickable link");

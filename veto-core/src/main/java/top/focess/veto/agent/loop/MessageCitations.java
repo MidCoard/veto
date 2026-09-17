@@ -6,10 +6,13 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.TurnRecord;
 import top.focess.veto.agent.TurnType;
+import top.focess.veto.agent.tool.ToolResultStatus;
+import top.focess.veto.llm.core.ChatMessage;
 import top.focess.veto.llm.core.ProviderMessages;
 import top.focess.veto.llm.core.VetoRequest;
 import top.focess.veto.llm.core.VetoResponse;
@@ -36,7 +39,33 @@ public final class MessageCitations {
      */
     public static @NonNull VetoResponse resolve(
             @NonNull VetoRequest request, ResponseRequest.@NonNull Answer answer) {
+        if (answer.citations().isEmpty())
+            throw new IllegalArgumentException(
+                    "answer_with_citations requires at least one linked source. Reply in ordinary text when the answer does not need verified citation links.");
+        // Validate the answer itself before asking the model to repair a source selector. An
+        // unlinked declaration cannot become a citation, even when its quote is valid.
+        ResponseEnforcer.enforce(
+                new VetoResponse(
+                        null,
+                        null,
+                        answer.message(),
+                        answer.citations().stream()
+                                .map(
+                                        citation ->
+                                                new VetoResponse.Citation(
+                                                        citation.id(),
+                                                        citation.sources().stream()
+                                                                .map(
+                                                                        source ->
+                                                                                new VetoResponse
+                                                                                        .Source(
+                                                                                        -1,
+                                                                                        source
+                                                                                                .quote()))
+                                                                .toList()))
+                                .toList()));
         var messages = ProviderMessages.groups(request);
+        var repeatedEvidence = toolEvidence(request);
         var citations = new ArrayList<VetoResponse.Citation>();
         for (var citation : answer.citations()) {
             var sources = new ArrayList<VetoResponse.Source>();
@@ -45,19 +74,7 @@ public final class MessageCitations {
                 if (selected == null) {
                     var candidates = new ArrayList<Integer>();
                     for (int index = 0; index < messages.size(); index++) {
-                        boolean matches =
-                                messages.get(index).stream()
-                                        .anyMatch(
-                                                message ->
-                                                        !message.sourceTurns().isEmpty()
-                                                                && !Boolean.FALSE.equals(
-                                                                        message.toolSuccess())
-                                                                && (message.toolName() == null
-                                                                        || message.role()
-                                                                                .equals("tool"))
-                                                                && contains(
-                                                                        message.content(),
-                                                                        source.quote()));
+                        boolean matches = !evidence(messages.get(index), source.quote()).isEmpty();
                         if (matches) candidates.add(index);
                     }
                     if (candidates.isEmpty())
@@ -65,6 +82,33 @@ public final class MessageCitations {
                                 "Citation "
                                         + citation.id()
                                         + ": quote was not found in visible conversation evidence. Copy a longer exact passage from the source; do not paraphrase or invent a message index.");
+                    if (candidates.size() > 1
+                            && repeatedResults(
+                                    candidates, messages, source.quote(), repeatedEvidence)) {
+                        // Repeated identical observations are all cited. Never guess which
+                        // execution the model intended, or collapse their durable provenance.
+                        var repeatedSources =
+                                candidates.stream()
+                                        .map(
+                                                index ->
+                                                        new VetoResponse.Source(
+                                                                index, source.quote()))
+                                        .toList();
+                        if (sources.size()
+                                        + repeatedSources.stream()
+                                                .filter(item -> !sources.contains(item))
+                                                .count()
+                                > 8)
+                            throw new IllegalArgumentException(
+                                    "Citation "
+                                            + citation.id()
+                                            + ": repeated evidence exceeds the 8-source limit. Select the intended message_index from "
+                                            + candidates
+                                            + ", or use a more specific quote.");
+                        for (var repeatedSource : repeatedSources)
+                            addSource(sources, repeatedSource);
+                        continue;
+                    }
                     if (candidates.size() > 1)
                         throw new IllegalArgumentException(
                                 "Citation "
@@ -83,11 +127,88 @@ public final class MessageCitations {
                                                 .toList());
                     selected = candidates.getFirst();
                 }
-                sources.add(new VetoResponse.Source(selected, source.quote()));
+                if (selected < 0
+                        || selected >= messages.size()
+                        || evidence(messages.get(selected), source.quote()).isEmpty())
+                    throw new IllegalArgumentException(
+                            "Citation "
+                                    + citation.id()
+                                    + ": message_index "
+                                    + selected
+                                    + " does not contain that quote in eligible conversation evidence. Omit message_index to locate the exact quote automatically; tool-call arguments, failed tool results, and runtime instructions are not citation evidence.");
+                addSource(sources, new VetoResponse.Source(selected, source.quote()));
             }
             citations.add(new VetoResponse.Citation(citation.id(), sources));
         }
         return new VetoResponse(null, null, answer.message(), citations);
+    }
+
+    private static void addSource(
+            @NonNull List<VetoResponse.Source> sources, VetoResponse.@NonNull Source source) {
+        if (sources.contains(source)) return;
+        if (sources.size() == 8)
+            throw new IllegalArgumentException(
+                    "Citation resolves to more than 8 source passages. Select the intended message_index from the reported input candidates or use a more specific quote.");
+        sources.add(source);
+    }
+
+    private static @NonNull List<ChatMessage> evidence(
+            @NonNull List<ChatMessage> messages, @NonNull String quote) {
+        return messages.stream()
+                .filter(
+                        message ->
+                                !message.sourceTurns().isEmpty()
+                                        && !Boolean.FALSE.equals(message.toolSuccess())
+                                        && message.toolName() == null
+                                        && contains(message.content(), quote))
+                .toList();
+    }
+
+    private record ToolEvidence(
+            @NonNull String tool, @NonNull JsonNode args, @NonNull String content) {}
+
+    private static @NonNull Map<ChatMessage, ToolEvidence> toolEvidence(
+            @NonNull VetoRequest request) {
+        var calls = new HashMap<String, ChatMessage>();
+        var results = new HashMap<ChatMessage, ToolEvidence>();
+        for (var message : request.messages()) {
+            var callId = message.callId();
+            if (callId == null) continue;
+            if (message.role().equals("assistant") && message.toolName() != null)
+                calls.put(callId, message);
+            if (!message.role().equals("tool") || !Boolean.TRUE.equals(message.toolSuccess()))
+                continue;
+            var call = calls.get(callId);
+            if (call == null || call.sourceTurns().isEmpty()) continue;
+            var name = call.toolName();
+            var args = call.toolArgs();
+            if (name == null || args == null) continue;
+            try {
+                var parsed = MAPPER.readTree(args);
+                if (parsed != null && parsed.isObject())
+                    results.put(message, new ToolEvidence(name, parsed, message.content()));
+            } catch (Exception ignored) {
+                // Unknown call identity must remain ambiguous, even if the output text matches.
+            }
+        }
+        return results;
+    }
+
+    private static boolean repeatedResults(
+            @NonNull List<Integer> candidates,
+            @NonNull List<List<ChatMessage>> messages,
+            @NonNull String quote,
+            @NonNull Map<ChatMessage, ToolEvidence> results) {
+        ToolEvidence expected = null;
+        for (int index : candidates) {
+            for (var message : evidence(messages.get(index), quote)) {
+                var observed = results.get(message);
+                if (observed == null || (expected != null && !expected.equals(observed)))
+                    return false;
+                expected = observed;
+            }
+        }
+        return expected != null;
     }
 
     public static @NonNull Bound bind(
@@ -115,12 +236,19 @@ public final class MessageCitations {
                             && !quote.isBlank()
                             && quote.length() <= 4000) {
                         for (var message : messages.get(index)) {
-                            if (!contains(message.content(), quote)
-                                    && !contains(message.toolArgs(), quote)) continue;
+                            if (message.toolName() != null
+                                    || Boolean.FALSE.equals(message.toolSuccess())
+                                    || !contains(message.content(), quote)) continue;
                             visible = true;
                             for (var sourceTurn : message.sourceTurns()) {
                                 var record = records.get(sourceTurn);
                                 if (record == null) continue;
+                                if (record.type() == TurnType.TOOL_RESPONSE
+                                        && (Boolean.FALSE.equals(record.payload().get("success"))
+                                                || ToolResultStatus.from(
+                                                                record.payload().get("status"),
+                                                                true)
+                                                        != ToolResultStatus.SUCCESS)) continue;
                                 JsonNode payload = MAPPER.valueToTree(record.payload());
                                 if (payload != null)
                                     collect(

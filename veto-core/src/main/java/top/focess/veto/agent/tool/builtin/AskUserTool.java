@@ -26,9 +26,9 @@ import top.focess.veto.agent.tool.UserInteractionTool;
 @ToolDoc(
         resultFormats = {ToolResultFormat.JSON},
         description =
-                "Ask the user up to "
-                        + AskUserTool.MAX_QUESTIONS
-                        + " short questions and wait for their answers.",
+                "Ask the user for necessary information or a requested interview step, then wait"
+                        + " for their answers. Follow the requested question count and pacing; use"
+                        + " the answers to continue the task.",
         behavior =
                 "Publishes one pending question batch to the session UI and pauses this agent"
                         + " call until the user answers or cancels. The UI adds a free-form Other"
@@ -36,13 +36,13 @@ import top.focess.veto.agent.tool.UserInteractionTool;
                         + " batches are in-memory and are cancelled by a backend restart.",
         whenToUse =
                 "Use it when a missing user choice materially changes the result and cannot be"
-                        + " inferred safely. Usually ask 1-3 questions; combine additional independent questions"
-                        + " when needed, up to "
-                        + AskUserTool.MAX_QUESTIONS
-                        + ". Ask dependent questions in separate batches after receiving earlier answers.",
+                        + " inferred safely, or when the user explicitly requests an interview or guided choice."
+                        + " Batch independent questions when useful; wait for earlier answers before"
+                        + " asking dependent questions.",
         whenNotToUse =
                 "Do not use it for permission approval, status updates, facts discoverable with"
-                        + " tools, or optional preferences that do not block useful progress.",
+                        + " tools, or unsolicited optional preferences that do not block useful progress."
+                        + " Preferences are relevant when learning them is the user's requested task.",
         resultContract =
                 "Returns JSON `{\"answers\":{\"question_id\":\"selected or entered value\"}}`."
                         + " Cancellation reports USER_CANCELLED; invalid questions report INVALID_QUESTIONS."
@@ -76,7 +76,9 @@ public final class AskUserTool implements UserInteractionTool<AskUserTool.Args> 
                     @Doc(
                             "One to "
                                     + MAX_QUESTIONS
-                                    + " questions shown together. Each object contains required"
+                                    + " questions shown together. Match the user's requested question count"
+                                    + " and pacing; keep sequentially requested questions in separate batches."
+                                    + " Each object contains required"
                                     + " `header`, `id`, `question`, and `options` fields.")
                     List<@NonNull Question> questions) {}
 

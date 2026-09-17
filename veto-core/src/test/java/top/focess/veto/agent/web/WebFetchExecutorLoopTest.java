@@ -35,6 +35,7 @@ import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.tool.ToolExecutionException;
 import top.focess.veto.agent.translation.DefaultCapabilityTranslator;
 import top.focess.veto.llm.core.ProviderType;
+import top.focess.veto.llm.core.ResponseContract;
 import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.llm.core.ToolDefinition;
 import top.focess.veto.llm.core.UniformLLMCaller;
@@ -149,6 +150,7 @@ class WebFetchExecutorLoopTest {
                 persisted.path("execution").path("id").asText());
         assertFalse(result.contains("UNRELATED_PAGE_BODY"));
         VetoRequest first = requests.getFirst();
+        assertEquals(ResponseContract.completion("finish_read", false), first.responseContract());
         assertEquals("Find timeout units.", first.userPrompt());
         assertEquals(2, first.messages().size());
         assertEquals("Find timeout units.", first.messages().get(1).content());
@@ -161,6 +163,38 @@ class WebFetchExecutorLoopTest {
         verify(access).close();
         verify(models, never()).resolve("test-owner", ModelTier.MID);
         verify(models, never()).resolve("test-owner", ModelTier.TOP);
+    }
+
+    @Test
+    void freeformReaderAnswersAreRepairedWithTheSameCompletionContract() throws Exception {
+        String result =
+                execute(
+                        tool(
+                                script(
+                                        List.of(
+                                                fetch(),
+                                                read(),
+                                                new VetoResponse(
+                                                        null, null, "The timeout is 30 seconds."),
+                                                new VetoResponse(null, null, "Done."),
+                                                finish("s1"))),
+                                6,
+                                10));
+        assertEquals("complete", mapper.readTree(result).path("outcome").asText());
+        assertEquals(5, requests.size());
+        for (VetoRequest request : requests) {
+            assertEquals(ResponseContract.Mode.COMPLETION, request.responseContract().mode());
+            assertEquals("finish_read", request.responseContract().completionTool());
+        }
+        String correction = requests.get(3).messages().getLast().content();
+        assertTrue(correction.contains("exactly one native tool call"));
+        assertFalse(correction.contains("A tool call is not required"));
+        VetoRequest last = requests.getLast();
+        assertTrue(last.responseContract().completionOnly());
+        assertEquals(
+                List.of("finish_read"), last.tools().stream().map(ToolDefinition::name).toList());
+        assertFalse(last.systemPrompt().contains("### `fetch_page`"));
+        verify(access).fetch(anyLong());
     }
 
     @Test
@@ -204,7 +238,7 @@ class WebFetchExecutorLoopTest {
         assertTrue(requests.get(2).messages().getLast().content().contains("s300"));
         for (VetoRequest request : requests) {
             var schema = request.responseSchema();
-            if (schema == null) throw new AssertionError("Missing reader response schema");
+            assertNull(schema, "The reader uses native tools, not a JSON response envelope");
             int bytes =
                     request.messages().stream()
                             .mapToInt(
@@ -223,7 +257,7 @@ class WebFetchExecutorLoopTest {
             assertTrue(
                     bytes
                                     + mapper.writeValueAsBytes(request.tools()).length
-                                    + mapper.writeValueAsBytes(schema).length
+                                    + (schema == null ? 4 : mapper.writeValueAsBytes(schema).length)
                             <= 32000,
                     "Each child request stays within its configured input bound");
         }

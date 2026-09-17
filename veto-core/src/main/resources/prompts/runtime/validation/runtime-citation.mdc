@@ -1,0 +1,12 @@
+---
+version: 2
+id: runtime-citation
+requires: [id, index, selected, count]
+---
+Citation {{id}} does not occur in message_index {{index}}. That input item is:
+@if nonempty(selected)
+{{selected}}
+@else
+outside the input
+@endif
+This request contains {{count}} non-system input items. Copy a short exact passage from visible evidence and omit message_index so the runtime can locate it. Use an explicit index only from source candidates supplied by a citation diagnostic; do not guess or count messages. Preserve punctuation, URLs, and whitespace. Correct both the citation source and its cite: link.

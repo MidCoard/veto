@@ -567,11 +567,12 @@ class AgentRunnerTest {
         AtomicInteger calls = new AtomicInteger();
         var service =
                 serviceWith(
-                        request ->
-                                calls.getAndIncrement() == 0
-                                        ? new VetoResponse(
-                                                "Need a format", List.of(questionCall()), null)
-                                        : new VetoResponse(null, null, "Handled"),
+                        request -> {
+                            if (calls.getAndIncrement() == 0)
+                                return new VetoResponse(
+                                        "Need a format", List.of(questionCall()), null);
+                            return new VetoResponse(null, null, "Handled");
+                        },
                         5,
                         questionEngine(questions),
                         new HitlRegistry());
@@ -2324,6 +2325,8 @@ class AgentRunnerTest {
                                 assertTrue(
                                         guidance.contains(
                                                 "advertised argument schema for run_task"));
+                                assertTrue(guidance.contains("parameter 'commands'"));
+                                assertTrue(guidance.contains("got string"));
                                 assertFalse(guidance.contains("malformed-secret-value"));
                                 if (recover) return new VetoResponse(null, null, "Recovered");
                             }

@@ -18,6 +18,42 @@ import top.focess.veto.llm.core.ToolDefinition;
 class PlanProgramSchemaTest {
     private static final @NonNull ObjectMapper MAPPER = new ObjectMapper();
 
+    @Test
+    void generationResponseModeDefaultsToTextAndAcceptsOnlyDeclaredChannels() throws Exception {
+        var schema = PlanProgramSchema.create(List.of());
+        var mode = schema.at("/properties/actions/items/anyOf/0/properties/response_mode");
+        assertEquals("TEXT", mode.path("default").asText());
+        assertEquals(
+                List.of("TEXT", "CITATIONS"), MAPPER.convertValue(mode.path("enum"), List.class));
+        for (String field :
+                List.of("", ",\"response_mode\":\"TEXT\"", ",\"response_mode\":\"CITATIONS\"")) {
+            var args = generationArguments(field);
+            assertDoesNotThrow(
+                    () ->
+                            NativeToolArgumentValidator.validateAgainstSchema(
+                                    "submit_plan", args, schema));
+        }
+        for (String value : List.of("null", "true", "1", "\"text\"", "\"AUTO\"")) {
+            var args = generationArguments(",\"response_mode\":" + value);
+            assertThrows(
+                    ToolDocs.nonNullClass(ToolExecutionException.class),
+                    () ->
+                            NativeToolArgumentValidator.validateAgainstSchema(
+                                    "submit_plan", args, schema));
+        }
+    }
+
+    private @NonNull JsonNode generationArguments(@NonNull String modeField) throws Exception {
+        return MAPPER.readTree(
+                """
+                {"actions":[{"id":"draft","label":"Draft","type":"generate",
+                  "prompt":"Summarize the supplied source.","inputs":{"source":"$source"},
+                  "outputs":{"answer":"message"}%s},
+                  {"id":"done","label":"Done","type":"STOP","result_binding":"answer"}]}
+                """
+                        .formatted(modeField));
+    }
+
     private @NonNull JsonNode planSchema(@NonNull String toolSchema) throws Exception {
         var tool =
                 new ToolDefinition(

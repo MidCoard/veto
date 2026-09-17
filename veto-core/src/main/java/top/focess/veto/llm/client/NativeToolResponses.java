@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
@@ -22,10 +23,14 @@ final class NativeToolResponses {
     }
 
     static @NonNull String prompt(@NonNull VetoRequest request) {
-        return PromptLibrary.compile(
-                        "provider-native",
-                        Map.of("system", request.systemPrompt(), "nativeCalls", enabled(request)))
-                .text();
+        return prompt("provider-native", request);
+    }
+
+    static @NonNull String prompt(@NonNull String entry, @NonNull VetoRequest request) {
+        var data =
+                new LinkedHashMap<String, Object>(request.responseContract().promptData(request));
+        data.put("system", request.systemPrompt());
+        return PromptLibrary.compile(entry, data).text();
     }
 
     static @NonNull JsonNode arguments(@NonNull ObjectMapper mapper, @NonNull String value) {
@@ -75,6 +80,8 @@ final class NativeToolResponses {
             @NonNull VetoRequest request,
             @NonNull String text,
             @NonNull List<Call> nativeCalls) {
+        request.responseContract()
+                .validate(request, text, nativeCalls.stream().map(Call::name).toList());
         if (nativeCalls.isEmpty()) return text;
         validateNativeChannel(mapper, request, text);
         var ids = new HashSet<String>();

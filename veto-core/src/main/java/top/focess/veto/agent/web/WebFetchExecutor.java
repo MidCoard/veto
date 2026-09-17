@@ -211,7 +211,9 @@ public final class WebFetchExecutor {
                                         remaining,
                                         request.messages(),
                                         request.responseSchema(),
-                                        request.baseUrl());
+                                        request.baseUrl(),
+                                        request.nativeToolsEnabled(),
+                                        request.responseContract());
                         try {
                             return caller.call(bounded);
                         } finally {

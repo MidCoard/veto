@@ -1,0 +1,7 @@
+---
+version: 2
+id: environment
+requires: [environment]
+---
+## Environment
+- OS: {{environment.os}} ({{environment.arch}}).

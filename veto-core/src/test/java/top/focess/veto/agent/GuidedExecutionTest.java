@@ -8,6 +8,7 @@ import java.nio.file.*;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -177,7 +178,7 @@ class GuidedExecutionTest {
                             if (calls.incrementAndGet() == 1)
                                 return actions(
                                         """
-                [{"id":"answer","label":"Answer","type":"generate","prompt":"Quote the meeting time","inputs":{},"outputs":{"answer":"message"}},
+                [{"id":"answer","label":"Answer","type":"generate","prompt":"Quote the meeting time","response_mode":"CITATIONS","inputs":{},"outputs":{"answer":"message"}},
                  {"id":"stop","label":"Finish","type":"STOP","result_binding":"answer"}]
                 """);
                             assertNull(request.responseSchema());
@@ -252,7 +253,7 @@ class GuidedExecutionTest {
                                                         m ->
                                                                 m.content()
                                                                         .contains(
-                                                                                "could not match")));
+                                                                                "Citation rejected:")));
                             return new VetoResponse(
                                     null,
                                     List.of(
@@ -555,7 +556,8 @@ class GuidedExecutionTest {
     }
 
     @Test
-    void readGenerateSemanticBranchAndStop(@TempDir @NonNull Path root) throws Exception {
+    void readGenerateSemanticBranchRepairsInvalidPredicateAndStop(@TempDir @NonNull Path root)
+            throws Exception {
         Path file = root.resolve("notes.txt");
         Files.writeString(file, "Migration guide");
         String path = new ObjectMapper().writeValueAsString(file.toString());
@@ -575,8 +577,26 @@ class GuidedExecutionTest {
                             int index = calls.getAndIncrement();
                             if (index == 0) return actions(program);
                             assertTrue(request.userPrompt().contains("Migration guide"));
-                            assertFalse(request.tools().isEmpty());
-                            if (index == 1) return message("true");
+                            if (index == 1 || index == 2) {
+                                assertEquals(
+                                        ResponseContract.Mode.PREDICATE,
+                                        request.responseContract().mode());
+                                assertTrue(request.tools().isEmpty());
+                                assertFalse(request.nativeToolsEnabled());
+                                assertFalse(request.systemPrompt().contains("### `submit_plan`"));
+                                if (index == 1)
+                                    return message("Yes, the guide describes migration.");
+                                String correction = request.messages().getLast().content();
+                                assertTrue(
+                                        correction.contains("exactly true or false as plain text"));
+                                assertFalse(correction.contains("answer_with_citations"));
+                                return message("true");
+                            }
+                            assertEquals(
+                                    ResponseContract.Mode.GENERATION,
+                                    request.responseContract().mode());
+                            assertTrue(request.tools().isEmpty());
+                            assertFalse(request.nativeToolsEnabled());
                             assertEquals((Object) 0.2, request.options().temperature());
                             assertFalse(request.userPrompt().contains("$document"));
                             return message("Migration summary");
@@ -586,7 +606,7 @@ class GuidedExecutionTest {
                 service.submit("read-guided", "Read the notes", binding(), Duration.ofSeconds(15));
         assertTrue(result.success(), result.message());
         assertEquals("Migration summary", result.message());
-        assertEquals(3, calls.get());
+        assertEquals(4, calls.get());
         var agent = service.agent("read-guided");
         if (agent == null) throw new AssertionError("agent missing");
         assertTrue(
@@ -739,6 +759,76 @@ class GuidedExecutionTest {
     }
 
     @Test
+    void generationBudgetsTheScopedManifestBeforeDispatch(@TempDir @NonNull Path root)
+            throws Exception {
+        AtomicReference<AgentService> serviceRef = new AtomicReference<>();
+        AtomicInteger calls = new AtomicInteger();
+        AtomicInteger budget = new AtomicInteger();
+        var service =
+                service(
+                        request -> {
+                            var active = serviceRef.get();
+                            if (active == null) throw new AssertionError("Missing service");
+                            var agent = active.agent("read-guided");
+                            if (agent == null) throw new AssertionError("Missing agent");
+                            if (!(ReflectionTestUtils.getField(active, "promptCompiler")
+                                    instanceof PromptCompiler compiler))
+                                throw new AssertionError("Missing compiler");
+                            if (calls.getAndIncrement() == 0) {
+                                var projection =
+                                        new VetoRequest(
+                                                request.systemPrompt(),
+                                                request.userPrompt(),
+                                                List.of(),
+                                                request.providerType(),
+                                                request.modelName(),
+                                                request.credentialKey(),
+                                                request.options(),
+                                                request.messages(),
+                                                request.responseSchema(),
+                                                request.baseUrl(),
+                                                false,
+                                                ResponseContract.generation());
+                                projection =
+                                        compiler.scopeRequest(
+                                                projection,
+                                                agent.persona(),
+                                                Workspace.single(root, PathMode.REAL),
+                                                null,
+                                                ToolResultPresentationMode.BASIC);
+                                long fullSize = compiler.estimateRequest(request, 1);
+                                long scopedSize = compiler.estimateRequest(projection, 1);
+                                assertTrue(
+                                        fullSize - scopedSize > 1000,
+                                        "The full plan/tool catalog materially exceeds the generation catalog");
+                                budget.set(Math.toIntExact(fullSize - 1));
+                                ReflectionTestUtils.setField(
+                                        compiler, "maxInputTokens", budget.get());
+                                ReflectionTestUtils.setField(compiler, "contextFillRatio", 1.0);
+                                return actions(
+                                        """
+                        [{"id":"generate","label":"Compose","type":"generate","prompt":"Say hello","outputs":{"answer":"message"}},
+                         {"id":"finish","label":"Finish","type":"STOP","result_binding":"answer"}]
+                        """);
+                            }
+                            assertEquals(
+                                    ResponseContract.Mode.GENERATION,
+                                    request.responseContract().mode());
+                            assertTrue(compiler.estimateRequest(request, 1) <= budget.get());
+                            return message("Hello");
+                        },
+                        new HitlRegistry(),
+                        root);
+        serviceRef.set(service);
+        var result =
+                service.submit(
+                        "read-guided", "Say hello using a plan", binding(), Duration.ofSeconds(10));
+        assertTrue(result.success(), result.message());
+        assertEquals("Hello", result.message());
+        assertEquals(2, calls.get());
+    }
+
+    @Test
     void generationOverridesAreScopedAndToolCallsAreRejected(@TempDir @NonNull Path root)
             throws Exception {
         String program =
@@ -759,12 +849,21 @@ class GuidedExecutionTest {
                                 assertEquals("https://example.invalid", request.baseUrl());
                                 assertEquals((Object) 0.25, request.options().temperature());
                                 assertEquals((Object) 1234, request.options().maxTokens());
+                                assertEquals(
+                                        ResponseContract.Mode.GENERATION,
+                                        request.responseContract().mode());
+                                assertTrue(request.tools().isEmpty());
+                                assertFalse(request.nativeToolsEnabled());
+                                assertFalse(request.systemPrompt().contains("### `think`"));
                                 if (index == 2)
                                     return new VetoResponse(
                                             null, List.of(new ToolCall("think", Map.of())), null);
                                 return message("scoped output");
                             }
                             assertEquals("scripted", request.modelName());
+                            assertEquals(
+                                    ResponseContract.Mode.ORDINARY,
+                                    request.responseContract().mode());
                             return message("original binding retained");
                         },
                         new HitlRegistry(),
@@ -940,7 +1039,11 @@ class GuidedExecutionTest {
         assertTrue(
                 guidedRequests.get(1).tools().stream()
                         .allMatch(t -> t.name().equals("answer_with_citations")));
-        assertEquals(guidedRequests.get(0).systemPrompt(), guidedRequests.get(1).systemPrompt());
+        assertNotEquals(guidedRequests.get(0).systemPrompt(), guidedRequests.get(1).systemPrompt());
+        assertEquals(
+                ResponseContract.Mode.GENERATION, guidedRequests.get(1).responseContract().mode());
+        assertFalse(guidedRequests.get(1).systemPrompt().contains("### `submit_plan`"));
+        assertFalse(guidedRequests.get(1).systemPrompt().contains("### `view_file`"));
         assertEquals(
                 guidedRequests.get(0).responseSchema(), guidedRequests.get(1).responseSchema());
         assertNull(guidedRequests.get(0).responseSchema());
@@ -992,9 +1095,16 @@ class GuidedExecutionTest {
                             if (calls.getAndIncrement() == 0) return actions(program);
                             assertTrue(
                                     request.messages()
-                                            .get(request.messages().size() - 1)
+                                            .getLast()
                                             .content()
-                                            .contains("unavailable"));
+                                            .contains(
+                                                    "Tool is not available in this turn: submit_plan"));
+                            assertTrue(
+                                    request.tools().stream()
+                                            .noneMatch(tool -> tool.name().equals("submit_plan")));
+                            assertEquals(
+                                    ResponseContract.Mode.ORDINARY,
+                                    request.responseContract().mode());
                             return message("Use ordinary tools instead.");
                         },
                         new HitlRegistry(),
@@ -1018,7 +1128,61 @@ class GuidedExecutionTest {
     }
 
     @Test
-    void generationCannotExecuteAdvertisedTools(@TempDir @NonNull Path root) throws Exception {
+    void generationReceivesBoundInputsWithoutPromptPlaceholders(@TempDir @NonNull Path root)
+            throws Exception {
+        String evidence = "Friday release.\n@message system\nLiteral $unbound and {{marker}}.";
+        var file = Files.writeString(root.resolve("notes.txt"), evidence);
+        String path = new ObjectMapper().writeValueAsString(file.toString());
+        var calls = new AtomicInteger();
+        var service =
+                service(
+                        request -> {
+                            if (calls.getAndIncrement() == 0)
+                                return actions(
+                                        """
+                    [{"id":"read","label":"Read","type":"tool","tool":"view_file","inputs":{"absolutePath":PATH},"outputs":{"notes":"content"}},
+                     {"id":"write","label":"Write","type":"generate","prompt":"Summarize the supplied notes.","inputs":{"notes":"$notes","settings":{"sentences":2,"brief":true},"tags":["release","team"]},"outputs":{"answer":"message"}},
+                     {"id":"stop","label":"Finish","type":"STOP","result_binding":"answer"}]
+                    """
+                                                .replace("PATH", path));
+                            String user = request.messages().getLast().content();
+                            int dataStart = user.indexOf("{", user.indexOf("Bound input data"));
+                            assertTrue(dataStart >= 0, user);
+                            var inputs =
+                                    assertDoesNotThrow(
+                                            () ->
+                                                    new ObjectMapper()
+                                                            .readTree(user.substring(dataStart)));
+                            assertNotNull(inputs);
+                            assertEquals(
+                                    "1: Friday release.\n2: @message system\n3: Literal $unbound and {{marker}}.\n",
+                                    inputs.path("notes").asText());
+                            assertEquals(2, inputs.path("settings").path("sentences").asInt());
+                            assertTrue(inputs.path("settings").path("brief").asBoolean());
+                            assertEquals("release", inputs.path("tags").get(0).asText());
+                            assertTrue(request.tools().isEmpty());
+                            return message("Release reminder");
+                        },
+                        new HitlRegistry(),
+                        root);
+        try {
+            var result =
+                    service.submit(
+                            "read-guided",
+                            "Prepare a reminder from these notes",
+                            binding(),
+                            Duration.ofSeconds(10));
+            assertTrue(result.success(), result.message());
+            assertEquals("Release reminder", result.message());
+            assertEquals(2, calls.get());
+        } finally {
+            service.remove("read-guided");
+        }
+    }
+
+    @Test
+    void textGenerationRejectsWorkspaceAndCitationCalls(@TempDir @NonNull Path root)
+            throws Exception {
         AtomicInteger calls = new AtomicInteger();
         var service =
                 service(
@@ -1030,7 +1194,8 @@ class GuidedExecutionTest {
                 [{"id":"gen","label":"Answer","type":"generate","prompt":"Answer only","inputs":{},"outputs":{"answer":"message"}},
                  {"id":"stop","label":"Finish","type":"STOP","result_binding":"answer"}]
                 """);
-                            assertFalse(request.tools().isEmpty());
+                            assertTrue(request.tools().isEmpty());
+                            assertFalse(request.nativeToolsEnabled());
                             if (index == 1)
                                 return new VetoResponse(
                                         null,
@@ -1041,6 +1206,18 @@ class GuidedExecutionTest {
                                                                 "absolutePath",
                                                                 root.resolve("must-not-read")
                                                                         .toString()))),
+                                        null);
+                            if (index == 2)
+                                return new VetoResponse(
+                                        null,
+                                        List.of(
+                                                new ToolCall(
+                                                        "answer_with_citations",
+                                                        Map.of(
+                                                                "message",
+                                                                "unwanted citation",
+                                                                "citations",
+                                                                List.of()))),
                                         null);
                             return message("safe answer");
                         },
@@ -1061,7 +1238,7 @@ class GuidedExecutionTest {
                             null);
             assertTrue(result.success(), result.message());
             assertEquals("safe answer", result.message());
-            assertEquals(3, calls.get());
+            assertEquals(4, calls.get());
             assertTrue(
                     executed.stream().allMatch(t -> t.toolName().equals("submit_plan")),
                     executed.toString());

@@ -3,11 +3,23 @@ package top.focess.veto.agent.loop;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.agent.TurnRecord;
+import top.focess.veto.agent.identity.AgentPersona;
+import top.focess.veto.agent.identity.SystemPromptResolver;
+import top.focess.veto.agent.translation.VetoCapabilityTranslator;
+import top.focess.veto.agent.workspace.PathMode;
+import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.ChatMessage;
+import top.focess.veto.llm.core.ToolCall;
+import top.focess.veto.llm.core.ToolResultPresentationMode;
 
 /**
  * Contract tests for {@link PromptCompiler#wellFormed} — the provider-agnostic conversation shape
@@ -20,6 +32,60 @@ import top.focess.veto.llm.core.ChatMessage;
  * tail.
  */
 class PromptCompilerWellFormedTest {
+    @Test
+    void interruptedRepairUsesTheSelectedResultFormatInBothCompilerModes() throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        var translator = new VetoCapabilityTranslator();
+        var standard =
+                new PromptCompiler(translator, new SystemPromptResolver(), mapper, "PROTECTED");
+        ReflectionTestUtils.setField(standard, "maxInputTokens", 100000);
+        ReflectionTestUtils.setField(standard, "contextFillRatio", 1.0);
+        var isolated = PromptCompiler.isolated(translator, mapper, "Task instructions", 100000);
+        var persona = new AgentPersona("test", "Veto", "Test", Set.of(), List.of());
+        var workspace =
+                Workspace.single(Path.of(System.getProperty("user.dir", ".")), PathMode.REAL);
+        var history =
+                List.of(
+                        TurnRecord.agentInit(1, "standalone", "Task instructions", "test", "test"),
+                        TurnRecord.userPrompt(2, "Read the file"),
+                        TurnRecord.toolCall(
+                                3,
+                                new ToolCall(
+                                        "view_file",
+                                        Map.of("absolutePath", "/fixture/file"),
+                                        "interrupted-call")));
+        for (PromptCompiler compiler : List.of(standard, isolated)) {
+            var detailed =
+                    compiler.compile(
+                            persona,
+                            workspace,
+                            null,
+                            history,
+                            false,
+                            1.0,
+                            ToolResultPresentationMode.DETAILED);
+            var result = detailed.messages().getLast();
+            var data = mapper.readTree(result.content());
+            assertEquals("interrupted", data.path("status").asText());
+            assertEquals("plaintext", data.path("format").asText());
+            assertEquals(PromptCompiler.INTERRUPTED_TOOL_RESULT, data.path("content").asText());
+            assertEquals("TOOL_RESULT_MISSING", data.path("errorCode").asText());
+            assertEquals(4, data.size());
+            assertEquals("interrupted-call", result.callId());
+            assertEquals(Boolean.FALSE, result.toolSuccess());
+            var basic =
+                    compiler.compile(
+                            persona,
+                            workspace,
+                            null,
+                            history,
+                            false,
+                            1.0,
+                            ToolResultPresentationMode.BASIC);
+            assertEquals(
+                    PromptCompiler.INTERRUPTED_TOOL_RESULT, basic.messages().getLast().content());
+        }
+    }
 
     @Test
     void failedToolResponseKeepsItsStatusForProviderAdapters() {
@@ -31,6 +97,11 @@ class PromptCompilerWellFormedTest {
         assertEquals("call_A", message.callId());
         assertEquals(Boolean.FALSE, message.toolSuccess());
         assertEquals("timed out", message.toolResultContentWithStatus());
+        var observation =
+                PromptCompiler.mapToolResponse(
+                        TurnRecord.toolResponse(4, null, "timed out", false));
+        assertEquals("user", observation.role());
+        assertEquals(Boolean.FALSE, observation.toolSuccess());
     }
 
     private static @NonNull ChatMessage call(@NonNull String callId, @NonNull String tool) {
@@ -142,6 +213,22 @@ class PromptCompilerWellFormedTest {
 
         assertEquals("user", out.get(0).role());
         assertEquals("second prompt", out.get(0).content());
+    }
+
+    @Test
+    void runtimeInstructionsAndObservationsDoNotReplaceTheDirectRequestAnchor() {
+        var request = ChatMessage.user("Original bounded request").withSourceTurns(List.of(1));
+        var note =
+                PromptLibrary.message(
+                        "runtime-execution-error", Map.of("error", "Temporary execution failure"));
+        var observation = new ChatMessage("user", "Tool observation", null, null, null, null, true);
+        List<ChatMessage> full =
+                List.of(request, note, observation, ChatMessage.assistant("Result"));
+        var trimmed = List.of(ChatMessage.assistant("Result"));
+        assertEquals(request, PromptCompiler.wellFormed(full, trimmed).getFirst());
+        // Preserve the historical fallback for isolated invocations with only runtime-authored
+        // input.
+        assertEquals(note, PromptCompiler.wellFormed(List.of(note), trimmed).getFirst());
     }
 
     @Test

@@ -147,6 +147,19 @@ public class PromptCompiler {
         return fitRequest(request, 1.0);
     }
 
+    /** Measures the final scoped request, including any correction observation added to it. */
+    public long estimateRequest(@NonNull VetoRequest request, double correctionFactor) {
+        if (isolatedInstructions != null)
+            return isolatedSize(request.messages(), request.tools(), request.responseSchema());
+        return requireBudget(
+                request.systemPrompt(),
+                request.messages(),
+                request.tools(),
+                request.responseSchema(),
+                correctionFactor,
+                Long.MAX_VALUE);
+    }
+
     public @NonNull VetoRequest fitRequest(@NonNull VetoRequest request, double correctionFactor) {
         if (isolatedInstructions == null) {
             requireBudget(
@@ -182,7 +195,8 @@ public class PromptCompiler {
                 messages,
                 request.responseSchema(),
                 request.baseUrl(),
-                request.nativeToolsEnabled());
+                request.nativeToolsEnabled(),
+                request.responseContract());
     }
 
     /**
@@ -284,7 +298,13 @@ public class PromptCompiler {
                         .collect(Collectors.joining("\n\n"));
         if (isolatedInstructions != null) {
             com.fasterxml.jackson.databind.JsonNode schema = null;
-            List<ChatMessage> messages = fitIsolatedBudget(conversation, flatTools, schema);
+            List<ChatMessage> messages =
+                    fitIsolatedBudget(
+                            conversation,
+                            flatTools,
+                            schema,
+                            maxInputTokens,
+                            toolResultPresentation);
             return new CompiledPrompt(
                     systemMessage,
                     messages,
@@ -293,7 +313,8 @@ public class PromptCompiler {
                     Math.max(0, conversation.size() - messages.size()),
                     isolatedSize(messages, flatTools, schema));
         }
-        List<ChatMessage> messages = wellFormed(conversation, conversation);
+        List<ChatMessage> messages =
+                wellFormed(conversation, conversation, interruptedResult(toolResultPresentation));
 
         com.fasterxml.jackson.databind.JsonNode responseSchema = null;
 
@@ -364,6 +385,49 @@ public class PromptCompiler {
                 guidedEnabled);
     }
 
+    /**
+     * Rebuilds the system source for a restricted turn using its actual native tool manifest.
+     * Conversation messages and their source identities remain unchanged. The caller has already
+     * selected the turn's response contract and tools before applying this projection.
+     */
+    public @NonNull VetoRequest scopeRequest(
+            @NonNull VetoRequest request,
+            @NonNull AgentPersona persona,
+            @NonNull Workspace workspace,
+            String base,
+            @NonNull ToolResultPresentationMode presentation) {
+        var toolNames = request.tools().stream().map(ToolDefinition::name).toList();
+        boolean plans =
+                persona.whitelistedTools().stream()
+                        .anyMatch(
+                                tool ->
+                                        toolNames.contains(tool.name())
+                                                && top.focess.veto.agent.tool.ResponseSubmission
+                                                                .Metadata.kindOf(tool)
+                                                        == top.focess.veto.agent.tool
+                                                                .ResponseSubmission.Kind.PLAN);
+        var source =
+                buildSystemMessage(persona, workspace, base, request.tools(), presentation, plans);
+        List<ChatMessage> messages = new ArrayList<>();
+        messages.add(ChatMessage.system(source.text()).withPromptSources(source.sources()));
+        request.messages().stream()
+                .filter(message -> !message.role().equals("system"))
+                .forEach(messages::add);
+        return new VetoRequest(
+                source.text(),
+                request.userPrompt(),
+                request.tools(),
+                request.providerType(),
+                request.modelName(),
+                request.credentialKey(),
+                request.options(),
+                messages,
+                request.responseSchema(),
+                request.baseUrl(),
+                request.nativeToolsEnabled(),
+                request.responseContract());
+    }
+
     /** Removes conditional capabilities that cannot succeed for this persona. */
     static @NonNull List<top.focess.veto.agent.tool.@NonNull ToolDefinition> availableTools(
             @NonNull Collection<top.focess.veto.agent.tool.@NonNull ToolDefinition> tools,
@@ -427,7 +491,19 @@ public class PromptCompiler {
             @NonNull List<ToolDefinition> tools,
             JsonNode schema,
             long budget) {
-        List<ChatMessage> messages = new ArrayList<>(wellFormed(conversation, conversation));
+        return fitIsolatedBudget(
+                conversation, tools, schema, budget, ToolResultPresentationMode.BASIC);
+    }
+
+    private @NonNull List<ChatMessage> fitIsolatedBudget(
+            @NonNull List<ChatMessage> conversation,
+            @NonNull List<ToolDefinition> tools,
+            JsonNode schema,
+            long budget,
+            @NonNull ToolResultPresentationMode presentation) {
+        List<ChatMessage> messages =
+                new ArrayList<>(
+                        wellFormed(conversation, conversation, interruptedResult(presentation)));
         // The opening user message is the invocation's objective. Always retain it while removing
         // old call/result pairs; never substitute a later tool error as the task anchor.
         while (isolatedSize(messages, tools, schema) > budget) {
@@ -639,7 +715,10 @@ public class PromptCompiler {
             }
             case TOOL_RESPONSE -> mapPresentedToolResponse(turn, toolResultPresentation);
             case AGENT_INIT -> null; // handled before role mapping
-            case COMPACTION_SUMMARY -> ChatMessage.user(str(turn.payload(), "content"));
+            case COMPACTION_SUMMARY ->
+                    PromptLibrary.message(
+                            "runtime-compaction-history",
+                            Map.of("summary", str(turn.payload(), "content")));
             case EXECUTION_ERROR -> {
                 if (Boolean.TRUE.equals(turn.payload().get("recoverable"))) yield null;
                 if ("INTERRUPTED".equals(turn.payload().get("outcome")))
@@ -691,7 +770,7 @@ public class PromptCompiler {
         Object rawSuccess = turn.payload().get("success");
         boolean success = !(rawSuccess instanceof Boolean value) || value;
         return callId.isBlank()
-                ? ChatMessage.user(content)
+                ? new ChatMessage("user", content, null, null, null, null, success)
                 : ChatMessage.toolResult(callId, content, success);
     }
 
@@ -701,10 +780,11 @@ public class PromptCompiler {
         String content = str(turn.payload(), "content");
         Object rawSuccess = turn.payload().get("success");
         boolean success = !(rawSuccess instanceof Boolean value) || value;
-        if (callId.isBlank()) {
-            return ChatMessage.user(content);
-        }
         ToolResultStatus status = ToolResultStatus.from(turn.payload().get("status"), success);
+        if (callId.isBlank()) {
+            return new ChatMessage(
+                    "user", content, null, null, null, null, status == ToolResultStatus.SUCCESS);
+        }
         // New records persist the exact model-visible representation. Older records predate that
         // invariant and contain canonical tool content, so only those rows need presentation at
         // replay time.
@@ -849,6 +929,24 @@ public class PromptCompiler {
      */
     static @NonNull List<ChatMessage> wellFormed(
             @NonNull List<ChatMessage> full, @NonNull List<ChatMessage> window) {
+        return wellFormed(full, window, INTERRUPTED_TOOL_RESULT);
+    }
+
+    private @NonNull String interruptedResult(@NonNull ToolResultPresentationMode presentation) {
+        return toolResultPresenter.present(
+                "",
+                null,
+                ToolResultStatus.INTERRUPTED,
+                ToolResultFormat.PLAINTEXT,
+                INTERRUPTED_TOOL_RESULT,
+                "TOOL_RESULT_MISSING",
+                presentation);
+    }
+
+    private static @NonNull List<ChatMessage> wellFormed(
+            @NonNull List<ChatMessage> full,
+            @NonNull List<ChatMessage> window,
+            @NonNull String missingResult) {
         List<ChatMessage> out = new ArrayList<>(window.size());
         for (int i = 0; i < window.size(); i++) {
             ChatMessage m = window.get(i);
@@ -856,7 +954,7 @@ public class PromptCompiler {
             if ("assistant".equals(m.role()) && callId != null && !callId.isBlank()) {
                 out.add(m);
                 if (!isAnsweredImmediately(window, i, m)) {
-                    out.add(ChatMessage.toolResult(callId, INTERRUPTED_TOOL_RESULT, false));
+                    out.add(ChatMessage.toolResult(callId, missingResult, false));
                 }
                 continue;
             }
@@ -868,7 +966,17 @@ public class PromptCompiler {
                                 && callId != null
                                 && callId.equals(prev.callId());
                 if (!paired) {
-                    out.add(ChatMessage.user(m.content()).withSourceTurns(m.sourceTurns()));
+                    out.add(
+                            new ChatMessage(
+                                    "user",
+                                    m.content(),
+                                    null,
+                                    null,
+                                    null,
+                                    null,
+                                    m.toolSuccess(),
+                                    m.sourceTurns(),
+                                    m.promptSources()));
                     continue;
                 }
             }
@@ -897,14 +1005,17 @@ public class PromptCompiler {
                 && Objects.equals(call.callId(), next.callId());
     }
 
-    /** The last user-role message, including provenance when re-anchoring a trimmed window. */
+    /** Prefer the direct request over later runtime reminders or demoted tool observations. */
     private static ChatMessage lastUserMessage(@NonNull List<ChatMessage> messages) {
+        ChatMessage fallback = null;
         for (int i = messages.size() - 1; i >= 0; i--) {
             ChatMessage m = messages.get(i);
             if ("user".equals(m.role()) && !m.content().isBlank()) {
-                return m;
+                if (fallback == null) fallback = m;
+                if (m.promptSources().isEmpty() && m.toolSuccess() == null && m.callId() == null)
+                    return m;
             }
         }
-        return null;
+        return fallback;
     }
 }

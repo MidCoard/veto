@@ -18,6 +18,134 @@ import top.focess.veto.observability.AuditLogger;
 class NativeToolResponsesTest {
 
     @Test
+    void predicateContractRejectsExplanationsAndToolsAtTheProviderBoundary() {
+        var request = request().withResponseContract(ResponseContract.predicate());
+        for (String valid : List.of("true", "false", " true\n"))
+            assertEquals(valid, NativeToolResponses.normalize(mapper, request, valid, List.of()));
+        for (String invalid :
+                List.of("True", "true because the task is done", "{\"result\":true}", ""))
+            assertThrows(
+                    ToolDocs.nonNullClass(ModelSchemaException.class),
+                    () -> NativeToolResponses.normalize(mapper, request, invalid, List.of()));
+        assertThrows(
+                ToolDocs.nonNullClass(ModelSchemaException.class),
+                () ->
+                        NativeToolResponses.normalize(
+                                mapper,
+                                request,
+                                "true",
+                                List.of(
+                                        new NativeToolResponses.Call(
+                                                "read", mapper.createObjectNode(), "id"))));
+    }
+
+    @Test
+    void mandatoryCompletionCannotEndWithTextOrMultipleCalls() {
+        var request = request().withResponseContract(ResponseContract.completion("read", false));
+        var call = new NativeToolResponses.Call("read", mapper.createObjectNode(), "id");
+        assertEquals("", NativeToolResponses.normalize(mapper, request, "", List.of(call)));
+        assertThrows(
+                ToolDocs.nonNullClass(ModelSchemaException.class),
+                () -> NativeToolResponses.normalize(mapper, request, "Finished", List.of()));
+        assertThrows(
+                ToolDocs.nonNullClass(ModelSchemaException.class),
+                () -> NativeToolResponses.normalize(mapper, request, "Progress", List.of(call)));
+        assertThrows(
+                ToolDocs.nonNullClass(ModelSchemaException.class),
+                () ->
+                        NativeToolResponses.normalize(
+                                mapper,
+                                request,
+                                "",
+                                List.of(
+                                        call,
+                                        new NativeToolResponses.Call(
+                                                "read", mapper.createObjectNode(), "id2"))));
+        var finalOnly = request.withResponseContract(ResponseContract.completion("finish", true));
+        assertThrows(
+                ToolDocs.nonNullClass(ModelSchemaException.class),
+                () -> NativeToolResponses.normalize(mapper, finalOnly, "", List.of(call)));
+    }
+
+    @Test
+    void textGenerationKeepsOrdinaryJsonAsContentAndExcludesTools() {
+        var request = request(List.of()).withResponseContract(ResponseContract.generation());
+        assertEquals(
+                "{\"summary\":\"done\"}",
+                NativeToolResponses.normalize(
+                        mapper, request, "{\"summary\":\"done\"}", List.of()));
+        assertThrows(
+                ToolDocs.nonNullClass(ModelSchemaException.class),
+                () ->
+                        NativeToolResponses.normalize(
+                                mapper,
+                                request,
+                                "",
+                                List.of(
+                                        new NativeToolResponses.Call(
+                                                "read", mapper.createObjectNode(), "id"))));
+    }
+
+    @Test
+    void citationGenerationRequiresOneAnswerSubmissionWithNoAccompanyingText() {
+        var answerTool =
+                new ToolDefinition(
+                        "answer_with_citations",
+                        "Submit a cited answer",
+                        Map.of("type", "object"),
+                        List.of(),
+                        ToolDocumentation.empty(),
+                        List.of(),
+                        List.of());
+        var request =
+                request(List.of(answerTool)).withResponseContract(ResponseContract.generation());
+        var call =
+                new NativeToolResponses.Call(
+                        "answer_with_citations", mapper.createObjectNode(), "id");
+        assertEquals("", NativeToolResponses.normalize(mapper, request, "", List.of(call)));
+        for (String text : List.of("", "Plain answer", "{\"summary\":\"done\"}"))
+            assertThrows(
+                    ToolDocs.nonNullClass(ModelSchemaException.class),
+                    () -> NativeToolResponses.normalize(mapper, request, text, List.of()));
+        assertThrows(
+                ToolDocs.nonNullClass(ModelSchemaException.class),
+                () ->
+                        NativeToolResponses.normalize(
+                                mapper, request, "Accompanying text", List.of(call)));
+        assertThrows(
+                ToolDocs.nonNullClass(ModelSchemaException.class),
+                () ->
+                        NativeToolResponses.normalize(
+                                mapper,
+                                request,
+                                "",
+                                List.of(
+                                        call,
+                                        new NativeToolResponses.Call(
+                                                "answer_with_citations",
+                                                mapper.createObjectNode(),
+                                                "id2"))));
+    }
+
+    @Test
+    void wrapperUsesActualInvocationContractAndAvailableToolNames() {
+        var original = request();
+        var predicate = original.withResponseContract(ResponseContract.predicate());
+        assertEquals(original.tools(), predicate.tools());
+        assertEquals(original.messages(), predicate.messages());
+        assertTrue(NativeToolResponses.prompt(predicate).contains("exactly true or false"));
+        assertFalse(NativeToolResponses.prompt(predicate).contains("Invoke registered tools"));
+        String ordinary = NativeToolResponses.prompt(original);
+        assertTrue(ordinary.contains("[\"read\"]"));
+        assertFalse(ordinary.contains("ask_user"));
+        String completion =
+                NativeToolResponses.prompt(
+                        original.withResponseContract(ResponseContract.completion("read", true)));
+        assertTrue(completion.contains("Call `read` exactly once"));
+        assertFalse(completion.contains("A tool call is not required"));
+    }
+
+    @Test
     void doesNotTreatEmbeddedProtocolExamplesAsAnExecutionChannel() {
         String explanation = "Example only: ```json\n{\"calls\":[]}\n```";
         assertDoesNotThrow(
@@ -94,10 +222,14 @@ class NativeToolResponsesTest {
                     List.of());
 
     private @NonNull VetoRequest request() {
+        return request(List.of(tool));
+    }
+
+    private @NonNull VetoRequest request(@NonNull List<ToolDefinition> tools) {
         return new VetoRequest(
                 "System",
                 "Read",
-                List.of(tool),
+                tools,
                 ProviderType.GEMINI,
                 "test",
                 "key",

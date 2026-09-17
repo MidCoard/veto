@@ -3,7 +3,9 @@ package top.focess.veto.agent.workspace;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,37 +23,38 @@ public record VetoMdResolver(@NonNull List<@NonNull WorkspaceRoot> roots) {
 
     /** Resolves the concatenated Law across all roots (empty string if none). */
     public @NonNull String resolve() {
-        StringBuilder sb = new StringBuilder();
+        return sources().stream().map(LawSource::content).collect(Collectors.joining("\n\n"));
+    }
+
+    /** Source facts in root order, with the local override after its root's primary file. */
+    public @NonNull List<@NonNull LawSource> sources() {
+        List<@NonNull LawSource> result = new ArrayList<>();
         for (WorkspaceRoot root : roots) {
-            String perRoot = resolveRoot(root.hostPath());
-            if (!perRoot.isBlank()) {
-                if (!sb.isEmpty()) {
-                    sb.append("\n\n");
-                }
-                sb.append(perRoot);
-            }
+            appendIfReadable(result, root.hostPath(), "VETO.md", false);
+            appendIfReadable(result, root.hostPath(), ".veto/VETO.md", true);
         }
-        return sb.toString();
+        return List.copyOf(result);
     }
 
-    private @NonNull String resolveRoot(@NonNull Path rootHost) {
-        StringBuilder sb = new StringBuilder();
-        appendIfReadable(sb, rootHost.resolve("VETO.md"));
-        appendIfReadable(sb, rootHost.resolve(".veto/VETO.md"));
-        return sb.toString().strip();
-    }
+    public record LawSource(
+            @NonNull Path root,
+            @NonNull String relativePath,
+            boolean override,
+            @NonNull String content) {}
 
-    private void appendIfReadable(@NonNull StringBuilder sb, @NonNull Path file) {
+    private void appendIfReadable(
+            @NonNull List<@NonNull LawSource> result,
+            @NonNull Path root,
+            @NonNull String relativePath,
+            boolean override) {
+        Path file = root.resolve(relativePath);
         if (!Files.isRegularFile(file) || !Files.isReadable(file)) {
             return;
         }
         try {
             String content = Files.readString(file).strip();
             if (!content.isEmpty()) {
-                if (!sb.isEmpty()) {
-                    sb.append("\n\n");
-                }
-                sb.append(content);
+                result.add(new LawSource(root, relativePath, override, content));
             }
         } catch (IOException e) {
             log.warn("Could not read {} — skipping", file, e);

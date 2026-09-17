@@ -1,0 +1,14 @@
+---
+version: 2
+id: tool-agent-tool-calls
+requires: []
+---
+@verbatim
+## Tool Calls
+
+The tool catalog defines tool names, arguments, behavior, results, and edge cases. Invoke tools through the provider response channel.
+
+- Use only schema-defined arguments and include required fields.
+- Tool results arrive in the next turn, linked to their corresponding invocation by the supplied call identifier. Wait for an observation before making a dependent call.
+- Follow the task instructions for how many calls may be submitted per turn.
+@endverbatim

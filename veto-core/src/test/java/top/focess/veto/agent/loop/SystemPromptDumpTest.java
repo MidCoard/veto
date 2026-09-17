@@ -11,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -343,7 +344,9 @@ class SystemPromptDumpTest {
         assertFalse(
                 Files.readString(DUMP_DIR.resolve("LEADER.md")).contains("execute in parallel"),
                 "prompt must match ordered runtime tool execution");
-        String sharedInstructions = PromptLibrary.text("response-protocol");
+        String sharedInstructions =
+                PromptLibrary.text(
+                        "response-protocol", Map.of("toolNames", List.of("answer_with_citations")));
         assertFalse(
                 sharedInstructions.contains("veto_pulse"),
                 "internal response-schema names must not be exposed to the model");
@@ -364,9 +367,9 @@ class SystemPromptDumpTest {
         assertTrue(
                 count(catalog, "\n### `") == flatTools.size(),
                 "every registered tool has one catalog entry");
-        assertTrue(
-                count(catalog, "\n#### Args\n") == flatTools.size(),
-                "every registered tool exposes an Args section");
+        assertFalse(
+                catalog.contains("\n#### Args\n"),
+                "native schemas own argument contracts; the catalogue must not duplicate them");
         assertFalse(
                 catalog.contains("error-special-plaintext"),
                 "failure status must not be exposed as a content format");

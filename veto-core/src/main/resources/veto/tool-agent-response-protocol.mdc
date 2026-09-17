@@ -1,6 +1,0 @@
----
-version: 2
-id: tool-agent-response-protocol
-requires: []
----
-Use native tools for actions and ordinary text or Markdown for conversation. Follow the task's completion procedure. Do not wrap answers in a JSON response envelope.

@@ -1,0 +1,9 @@
+---
+version: 2
+id: provider-native
+requires: [system, responseMode, toolNames, completionTool, completionOnly]
+---
+{{system}}
+
+## Response channel
+@include response-contract

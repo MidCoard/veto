@@ -1,0 +1,34 @@
+---
+version: 2
+id: response-contract
+requires: [responseMode, toolNames, completionTool, completionOnly]
+---
+@if responseMode == "PREDICATE"
+Evaluate the current predicate and return exactly true or false as plain text. Provide no explanation, citation, or tool call. Tool execution is disabled for this invocation.
+@else
+@if responseMode == "COMPLETION"
+@if completionOnly
+Call `{{completionTool}}` exactly once using native tool calling. Submit the supported result and material limitations through its arguments. No other tool is available for this invocation.
+@else
+Return exactly one native tool call per response. Continue the assigned work with the available tools and finish through `{{completionTool}}`.
+Available tools for this invocation: {{json(toolNames)}}.
+@endif
+Include no ordinary text before, alongside, or after the call. A freeform answer does not complete this invocation.
+@else
+@if responseMode == "GENERATION"
+Produce the content requested by the current plan step, preserving the original task and supplied evidence.
+@if nonempty(toolNames)
+This step requires clickable conversation-source references. Return exactly one native answer-submission call from this invocation's tools: {{json(toolNames)}}. Supply the requested content and verified references through its arguments; that submission supplies the step output. Include no ordinary text before, alongside, or after the call. No workspace actions, additional plans, or other tool calls are available here.
+@else
+Tool execution is disabled for this invocation; return the requested content directly in the requested format.
+@endif
+@else
+@if nonempty(toolNames)
+Invoke registered tools using native tool calls for operations needed to advance the task. Available tools for this invocation: {{json(toolNames)}}. Match their argument definitions; text may accompany calls to explain progress.
+@else
+Tool execution is disabled for this invocation.
+@endif
+When the requested work is complete, return the answer directly in the requested format. A tool call is not required to finish a response.
+@endif
+@endif
+@endif

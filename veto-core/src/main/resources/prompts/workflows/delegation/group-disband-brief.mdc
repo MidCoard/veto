@@ -1,0 +1,22 @@
+---
+version: 2
+id: group-disband-brief
+requires: [group]
+---
+The group has ended. The snapshot below records its task states and reports; ending the group does not imply that every task completed.
+@if group.available
+Group id: {{group.id}}
+Original brief:
+@if nonempty(group.brief)
+{{group.brief}}
+@else
+(unspecified)
+@endif
+Node outcomes (COMPLETED means a Mate returned a report, not independent verification):
+@for node in group.nodes
+@include group-node
+@endfor
+You are back in single-agent autonomous mode. Use the recorded outcomes to determine what remains for the original request.
+@else
+(group record no longer available)
+@endif

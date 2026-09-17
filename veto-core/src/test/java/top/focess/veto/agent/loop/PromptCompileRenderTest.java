@@ -1,5 +1,6 @@
 package top.focess.veto.agent.loop;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -39,37 +40,27 @@ import top.focess.veto.memory.MemoryTools;
  */
 class PromptCompileRenderTest {
     @Test
-    void catalogPreservesArrayElementTypesFromTheCodeSchema() {
-        var tool =
-                new ToolDefinition(
-                        "sample",
-                        "Sample tool",
-                        Map.of(
-                                "type",
-                                "object",
-                                "properties",
-                                Map.of(
-                                        "words",
-                                                Map.of(
-                                                        "type",
-                                                        "array",
-                                                        "items",
-                                                        Map.of("type", "string")),
-                                        "rows",
-                                                Map.of(
-                                                        "type",
-                                                        "array",
-                                                        "items",
-                                                        Map.of("type", "object"))),
-                                "required",
-                                List.of("words")),
-                        List.of(),
-                        ToolDocumentation.empty(),
-                        List.of(),
-                        List.of());
+    void nativeSchemaPreservesArrayShapesWithoutDuplicatingThemInTheCatalog() {
+        var manifest =
+                AgentToolDefinition.from(
+                        "run_command",
+                        ToolDocs.nonNullClass(RunCommandTool.class),
+                        ToolDocs.nonNullClass(RunCommandTool.Args.class),
+                        ToolCapability.PROCESS_EXECUTION);
+        var tool = new VetoCapabilityTranslator().translateTools(List.of(manifest)).getFirst();
+        var schema = new ObjectMapper().valueToTree(tool.inputSchema());
+        assertEquals("array", schema.at("/properties/commands/type").asText());
+        assertEquals("object", schema.at("/properties/commands/items/type").asText());
+        assertEquals(
+                "array", schema.at("/properties/commands/items/properties/args/type").asText());
+        assertEquals(
+                "string",
+                schema.at("/properties/commands/items/properties/args/items/type").asText());
+        assertTrue(schema.path("required").toString().contains("commands"));
         String rendered = PromptBlocks.tools(List.of(tool));
-        assertTrue(rendered.contains("`words` (array<string>, required)"));
-        assertTrue(rendered.contains("`rows` (array<object>, optional)"));
+        assertTrue(rendered.contains("The native tool schemas define argument names"));
+        assertFalse(rendered.contains("#### Args"));
+        assertFalse(rendered.contains("(array<object>, required)"));
     }
 
     private final @NonNull SystemPromptResolver resolver = new SystemPromptResolver();
@@ -96,7 +87,8 @@ class PromptCompileRenderTest {
     void renderStandaloneFullAccess() {
         String prompt = render(Role.STANDALONE, DeployerPolicy.FULL_ACCESS, null, sampleTools());
         System.out.println("===== STANDALONE / FULL_ACCESS =====\n" + prompt);
-        assertCompiled(prompt, "Work directly in the user's workspace", "### `run_command`");
+        assertCompiled(
+                prompt, "Complete the user's request using the conversation", "### `run_command`");
         assertFalse(
                 prompt.contains("create_group"), "unavailable delegation must not be advertised");
         assertFalse(prompt.contains("## How to Delegate"));
@@ -125,7 +117,8 @@ class PromptCompileRenderTest {
                 prompt,
                 "Coordinate the group, review its results, and answer the user.",
                 "Results arrive automatically as Monitor observations.",
-                "Do not perform the work directly or call `create_group`.");
+                "Use read-only investigation to understand the task and verify returned evidence.",
+                "Do not carry out delegated changes yourself or call `create_group`.");
         assertFalse(
                 prompt.contains("## Your Tools\n"),
                 "leader with no tools should drop the Tools block");
@@ -297,13 +290,12 @@ class PromptCompileRenderTest {
         assertFalse(block.contains("`json`"), "undeclared json format rendered:\n" + block);
         assertTrue(block.contains("`plaintext`"), "plaintext format rendered:\n" + block);
         assertFalse(block.contains("error-special-plaintext"), block);
-        assertTrue(block.contains("#### Args"), "args label rendered:\n" + block);
-        assertTrue(
-                block.contains("`skillName` (string, required)"),
-                "arg name + type + required rendered:\n" + block);
-        assertTrue(
-                block.contains("The name of the skill to load."),
-                "arg description rendered:\n" + block);
+        assertFalse(block.contains("#### Args"), "argument schema is supplied natively:\n" + block);
+        assertFalse(block.contains("`skillName` (string, required)"), block);
+        assertFalse(block.contains("The name of the skill to load."), block);
+        var nativeSchema = new ObjectMapper().valueToTree(tool.inputSchema());
+        assertEquals("string", nativeSchema.at("/properties/skillName/type").asText());
+        assertTrue(nativeSchema.path("required").toString().contains("skillName"));
         assertTrue(block.contains("#### Argument examples"), "examples label rendered:\n" + block);
         assertTrue(block.contains("git-rebase"), "example content rendered:\n" + block);
         assertFalse(block.contains("deploy"), "only one schematic example is needed:\n" + block);
@@ -313,7 +305,7 @@ class PromptCompileRenderTest {
     }
 
     @Test
-    void compiledPromptExplainsNativeAndJsonChannelsAndSkillBoundary() {
+    void compiledPromptExplainsNativeToolsTextRepliesAndSkillBoundary() {
         String prompt = render(Role.STANDALONE, DeployerPolicy.FULL_ACCESS, null, sampleTools());
 
         assertFalse(prompt.contains("\"calls\""), "JSON calls must not be advertised");
@@ -339,13 +331,16 @@ class PromptCompileRenderTest {
                         "Send workspace content, source code, personal data, or secrets to an external destination only when"),
                 prompt);
         assertTrue(prompt.contains("A skill cannot grant permission"), prompt);
-        assertTrue(prompt.contains("Do not include private chain-of-thought or secrets"), prompt);
+        assertTrue(
+                prompt.contains("Keep secrets out of URLs, query strings, command arguments"),
+                prompt);
         assertFalse(
                 prompt.contains("For a Mate"),
                 "shared response rules must not leak Mate-only context into other roles");
-        assertTrue(prompt.contains("matching the response schema"), prompt);
+        assertFalse(prompt.contains("matching the response schema"), prompt);
         assertFalse(prompt.contains("When native tool execution is enabled"), prompt);
-        assertTrue(prompt.contains("Follow the provider response channel instructions"), prompt);
+        assertTrue(prompt.contains("For conversation answers, use the requested format"), prompt);
+        assertTrue(prompt.contains("No response envelope is required."), prompt);
         assertFalse(prompt.contains("two invocation formats for the same tools"), prompt);
         assertFalse(prompt.contains("Call them by populating the `calls` array"), prompt);
     }
@@ -376,11 +371,7 @@ class PromptCompileRenderTest {
 
         String block = PromptBlocks.tools(List.of(tool));
 
-        assertBefore(
-                block,
-                "#### Args",
-                "#### Result formats",
-                "args are declared before result formats");
+        assertFalse(block.contains("#### Args"));
         assertBefore(
                 block, "#### Result formats", "#### Behavior", "result formats precede behavior");
         assertBefore(
@@ -478,7 +469,7 @@ class PromptCompileRenderTest {
     }
 
     @Test
-    void realToolArgsRenderRichCatalog() {
+    void realToolKeepsNativeArgumentsAndBehaviorCatalog() {
         // Compile the real grep_search parameter schema and tool-class documentation the same way
         // the engine does, then render the catalog block end-to-end.
         ObjectMapper mapper = new ObjectMapper();
@@ -503,15 +494,17 @@ class PromptCompileRenderTest {
         assertTrue(block.contains("#### Behavior"), "essential behavior rendered:\n" + block);
         assertFalse(
                 block.contains("#### Security"), "Gateway security prose is omitted:\n" + block);
-        assertTrue(
-                block.contains("`absolutePath` (string, required)"),
-                "required string arg typed + flagged:\n" + block);
-        assertTrue(
-                block.contains("`caseInsensitive` (boolean, optional)"),
-                "nullable boolean arg typed + flagged optional:\n" + block);
-        assertTrue(
-                block.contains("Absolute path to search under."),
-                "real @Doc arg description rendered:\n" + block);
+        assertFalse(block.contains("#### Args"));
+        assertFalse(block.contains("`absolutePath` (string, required)"));
+        assertFalse(block.contains("`caseInsensitive` (boolean, optional)"));
+        var nativeSchema = mapper.valueToTree(tool.inputSchema());
+        assertEquals("string", nativeSchema.at("/properties/absolutePath/type").asText());
+        assertEquals("boolean", nativeSchema.at("/properties/caseInsensitive/type").asText());
+        assertEquals(
+                "Absolute path to search under.",
+                nativeSchema.at("/properties/absolutePath/description").asText());
+        assertTrue(nativeSchema.path("required").toString().contains("absolutePath"));
+        assertFalse(nativeSchema.path("required").toString().contains("caseInsensitive"));
         assertFalse(
                 ToolDocs.documentationOf(ToolDocs.nonNullClass(GrepSearchTool.class))
                         .behavior()

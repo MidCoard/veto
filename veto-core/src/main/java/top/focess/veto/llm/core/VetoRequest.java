@@ -28,7 +28,35 @@ public record VetoRequest(
         @NonNull List<@NonNull ChatMessage> messages,
         JsonNode responseSchema,
         String baseUrl,
-        boolean nativeToolsEnabled) {
+        boolean nativeToolsEnabled,
+        @NonNull ResponseContract responseContract) {
+
+    public VetoRequest(
+            @NonNull String systemPrompt,
+            @NonNull String userPrompt,
+            @NonNull List<@NonNull ToolDefinition> tools,
+            @NonNull ProviderType providerType,
+            @NonNull String modelName,
+            @NonNull String credentialKey,
+            @NonNull LlmOptions options,
+            @NonNull List<@NonNull ChatMessage> messages,
+            JsonNode responseSchema,
+            String baseUrl,
+            boolean nativeToolsEnabled) {
+        this(
+                systemPrompt,
+                userPrompt,
+                tools,
+                providerType,
+                modelName,
+                credentialKey,
+                options,
+                messages,
+                responseSchema,
+                baseUrl,
+                nativeToolsEnabled,
+                ResponseContract.ordinary());
+    }
 
     public VetoRequest(
             @NonNull String systemPrompt,
@@ -64,5 +92,21 @@ public record VetoRequest(
     /** Whether this request carries a compiled multi-turn message list. */
     public boolean hasMessages() {
         return !messages.isEmpty();
+    }
+
+    public @NonNull VetoRequest withResponseContract(@NonNull ResponseContract contract) {
+        return new VetoRequest(
+                systemPrompt,
+                userPrompt,
+                tools,
+                providerType,
+                modelName,
+                credentialKey,
+                options,
+                messages,
+                responseSchema,
+                baseUrl,
+                nativeToolsEnabled,
+                contract);
     }
 }

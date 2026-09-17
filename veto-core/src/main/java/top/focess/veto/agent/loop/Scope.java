@@ -142,7 +142,7 @@ public class Scope {
             Object value =
                     switch (field) {
                         case "success" -> result.success();
-                        case "status" -> result.status().name();
+                        case "status" -> result.status().id();
                         case "errorCode" -> result.errorCode();
                         default ->
                                 !result.success() && !"content".equals(field)

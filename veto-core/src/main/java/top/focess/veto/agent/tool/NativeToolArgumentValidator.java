@@ -210,13 +210,9 @@ public final class NativeToolArgumentValidator {
         }
         JsonNode allowed = schema.path("enum");
         if (allowed.isArray() && !allowed.isEmpty() && !containsValue(allowed, value)) {
-            issues.add(
-                    "parameter '"
-                            + displayPath(path)
-                            + "' must be one of "
-                            + allowed
-                            + ", got "
-                            + value);
+            // Diagnostics are replayed to the model and persisted; describe the constraint
+            // without copying a possibly sensitive rejected value into another record.
+            issues.add("parameter '" + displayPath(path) + "' must be one of " + allowed);
             return;
         }
         if (schema.has("const") && !schema.path("const").equals(value)) {

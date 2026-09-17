@@ -145,7 +145,7 @@ class MessageCitationsTest {
     }
 
     @Test
-    void decodedToolTextAndCallArgumentsHaveNavigableJsonPaths() {
+    void decodedToolTextHasNavigableJsonPathsButCallArgumentsAreNotEvidence() {
         String text = "{\"text/#\":\"line one\\nline two\"}";
         var request =
                 request(
@@ -176,9 +176,8 @@ class MessageCitationsTest {
                         request(ProviderType.OPENAI, List.of(call)),
                         response(0, "line one\nline two"),
                         List.of(record));
-        assertEquals(
-                "json:[\"args\",\"text/#\"]",
-                argument.checks().getFirst().matches().getFirst().field());
+        assertEquals("not_found", argument.checks().getFirst().status());
+        assertTrue(argument.checks().getFirst().matches().isEmpty());
     }
 
     @Test
@@ -203,7 +202,7 @@ class MessageCitationsTest {
         var repaired = PromptCompiler.wellFormed(compiled, compiled);
         var summary =
                 repaired.stream()
-                        .filter(message -> message.content().equals("Summary"))
+                        .filter(message -> message.sourceTurns().equals(List.of(4)))
                         .findFirst()
                         .orElseThrow();
         assertEquals(List.of(4), summary.sourceTurns());
@@ -381,5 +380,209 @@ class MessageCitationsTest {
         assertEquals(
                 mapper.writeValueAsString(original),
                 mapper.writeValueAsString(original.withSourceTurns(List.of(71))));
+    }
+
+    @ParameterizedTest
+    @EnumSource(ProviderType.class)
+    void identicalRepeatedToolObservationsKeepBothSources(@NonNull ProviderType provider) {
+        var request =
+                request(
+                        provider,
+                        List.of(
+                                ChatMessage.assistantToolCall(
+                                                "first",
+                                                "view_file",
+                                                "{\"path\":\"notes\",\"start\":1}",
+                                                "",
+                                                null)
+                                        .withSourceTurns(List.of(1)),
+                                ChatMessage.toolResult("first", "Launch Friday.")
+                                        .withSourceTurns(List.of(2)),
+                                ChatMessage.assistantToolCall(
+                                                "second",
+                                                "view_file",
+                                                "{\"start\":1,\"path\":\"notes\"}",
+                                                "",
+                                                null)
+                                        .withSourceTurns(List.of(3)),
+                                ChatMessage.toolResult("second", "Launch Friday.")
+                                        .withSourceTurns(List.of(4))));
+        var response = MessageCitations.resolve(request, answer(null, "Launch Friday."));
+        var citations = response.citations();
+        if (citations == null) throw new AssertionError("Missing citations");
+        assertEquals(
+                List.of(1, 3),
+                citations.getFirst().sources().stream()
+                        .map(VetoResponse.Source::messageIndex)
+                        .toList());
+        var bound =
+                MessageCitations.bind(
+                        request,
+                        response,
+                        List.of(
+                                TurnRecord.toolResponse(2, "first", "Launch Friday.", true),
+                                TurnRecord.toolResponse(4, "second", "Launch Friday.", true)));
+        assertEquals(
+                List.of(2, 4),
+                bound.checks().getFirst().matches().stream().map(match -> match.turn()).toList());
+        assertTrue(
+                bound.checks().getFirst().references().stream()
+                        .allMatch(ref -> ref.status().equals("matched")));
+    }
+
+    @Test
+    void identicalPassagesFromDistinctToolObservationsRemainAmbiguous() {
+        for (var other :
+                List.of(
+                        List.of("view_file", "{\"path\":\"other\"}", "Launch Friday."),
+                        List.of("search", "{\"path\":\"notes\"}", "Launch Friday."),
+                        List.of(
+                                "view_file",
+                                "{\"path\":\"notes\"}",
+                                "Launch Friday. Updated owner."))) {
+            var request =
+                    request(
+                            ProviderType.OPENAI,
+                            List.of(
+                                    ChatMessage.assistantToolCall(
+                                                    "a",
+                                                    "view_file",
+                                                    "{\"path\":\"notes\"}",
+                                                    "",
+                                                    null)
+                                            .withSourceTurns(List.of(1)),
+                                    ChatMessage.toolResult("a", "Launch Friday.")
+                                            .withSourceTurns(List.of(2)),
+                                    ChatMessage.assistantToolCall(
+                                                    "b", other.get(0), other.get(1), "", null)
+                                            .withSourceTurns(List.of(3)),
+                                    ChatMessage.toolResult("b", other.get(2))
+                                            .withSourceTurns(List.of(4))));
+            var error =
+                    assertThrows(
+                            top.focess.veto.agent.tool.ToolDocs.nonNullClass(
+                                    IllegalArgumentException.class),
+                            () ->
+                                    MessageCitations.resolve(
+                                            request, answer(null, "Launch Friday.")));
+            assertTrue(String.valueOf(error.getMessage()).contains("[1, 3]"));
+            assertDoesNotThrow(
+                    () -> MessageCitations.resolve(request, answer(3, "Launch Friday.")));
+        }
+    }
+
+    @Test
+    void explicitIndexCannotCiteFailedToolsCallArgumentsOrEphemeralInstructions() {
+        for (var message :
+                List.of(
+                        ChatMessage.toolResult("bad", "Launch Friday.", false)
+                                .withSourceTurns(List.of(1)),
+                        ChatMessage.assistantToolCall(
+                                        "call",
+                                        "draft",
+                                        "{\"text\":\"Launch Friday.\"}",
+                                        "Launch Friday.",
+                                        null)
+                                .withSourceTurns(List.of(1)),
+                        ChatMessage.user("Launch Friday."))) {
+            var request = request(ProviderType.OPENAI, List.of(message));
+            assertThrows(
+                    top.focess.veto.agent.tool.ToolDocs.nonNullClass(
+                            IllegalArgumentException.class),
+                    () -> MessageCitations.resolve(request, answer(0, "Launch Friday.")));
+        }
+    }
+
+    @Test
+    void failedOrphanResultsRemainIneligibleAfterReplayAndLegacyUserDemotion() {
+        var compiler =
+                PromptCompiler.isolated(
+                        new VetoCapabilityTranslator(), new ObjectMapper(), "Read", 8000);
+        for (String callId : List.of("", "orphan-call")) {
+            var record = TurnRecord.toolResponse(5, callId, "Unverified claim", false);
+            for (var presentation :
+                    List.of(
+                            ToolResultPresentationMode.BASIC,
+                            ToolResultPresentationMode.DETAILED)) {
+                var replayed = compiler.resolveRewinds(List.of(record), presentation);
+                var repaired = PromptCompiler.wellFormed(replayed, replayed);
+                assertEquals("user", repaired.getFirst().role());
+                assertEquals(Boolean.FALSE, repaired.getFirst().toolSuccess());
+                assertEquals(List.of(5), repaired.getFirst().sourceTurns());
+                assertThrows(
+                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
+                                IllegalArgumentException.class),
+                        () ->
+                                MessageCitations.resolve(
+                                        request(ProviderType.OPENAI, repaired),
+                                        answer(0, "Unverified claim")));
+            }
+            // Old compiled conversations may have already lost the flag during role conversion.
+            var oldRequest =
+                    request(
+                            ProviderType.OPENAI,
+                            List.of(
+                                    ChatMessage.user("Unverified claim")
+                                            .withSourceTurns(List.of(5))));
+            assertTrue(
+                    MessageCitations.bind(
+                                    oldRequest, response(0, "Unverified claim"), List.of(record))
+                            .checks()
+                            .getFirst()
+                            .matches()
+                            .isEmpty());
+        }
+        var legacy =
+                new TurnRecord(
+                        5, TurnType.TOOL_RESPONSE, Map.of("content", "Legacy observation"), null);
+        var oldRequest =
+                request(
+                        ProviderType.OPENAI,
+                        List.of(
+                                ChatMessage.user("Legacy observation")
+                                        .withSourceTurns(List.of(5))));
+        assertEquals(
+                "matched",
+                MessageCitations.bind(
+                                oldRequest, response(0, "Legacy observation"), List.of(legacy))
+                        .checks()
+                        .getFirst()
+                        .status());
+    }
+
+    @Test
+    void malformedAnswerIsRejectedBeforeAmbiguousSourcesAreResolved() {
+        var request =
+                request(
+                        ProviderType.OPENAI,
+                        List.of(
+                                ChatMessage.user("Launch Friday.").withSourceTurns(List.of(1)),
+                                ChatMessage.assistant("Launch Friday.")
+                                        .withSourceTurns(List.of(2))));
+        var error =
+                assertThrows(
+                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
+                                top.focess.veto.llm.exceptions.ModelSchemaException.class),
+                        () ->
+                                MessageCitations.resolve(
+                                        request,
+                                        new ResponseRequest.Answer(
+                                                "Launch Friday.",
+                                                answer(null, "Launch Friday.").citations())));
+        assertTrue(String.valueOf(error.getMessage()).contains("ordinary text"));
+        assertFalse(String.valueOf(error.getMessage()).contains("matches several"));
+        assertThrows(
+                top.focess.veto.agent.tool.ToolDocs.nonNullClass(IllegalArgumentException.class),
+                () ->
+                        MessageCitations.resolve(
+                                request, new ResponseRequest.Answer("Launch Friday.", List.of())));
+    }
+
+    private static ResponseRequest.@NonNull Answer answer(Integer index, @NonNull String quote) {
+        return new ResponseRequest.Answer(
+                "[source](cite:source)",
+                List.of(
+                        new ResponseRequest.Citation(
+                                "source", List.of(new ResponseRequest.Source(index, quote)))));
     }
 }

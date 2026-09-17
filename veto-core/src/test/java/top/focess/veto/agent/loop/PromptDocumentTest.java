@@ -101,12 +101,12 @@ class PromptDocumentTest {
         inputs.put("persona", Map.of("name", "test", "description", "", "role", "STANDALONE"));
         inputs.put("workspace", Map.of("roots", List.of(), "pathMode", "REAL"));
         inputs.put("environment", Map.of("os", "Linux", "arch", "amd64", "windows", false));
-        inputs.put("law", "");
+        inputs.put("lawSources", List.of());
         inputs.put("guidance", "");
         inputs.put("policy", "PROTECTED");
         inputs.put("presentation", "BASIC");
         inputs.put("tools", List.of());
-        inputs.put("toolNames", List.of());
+        inputs.put("toolNames", List.of("submit_plan"));
         inputs.put("skills", List.of());
         for (boolean guided : List.of(false, true)) {
             inputs.put("guided", guided);

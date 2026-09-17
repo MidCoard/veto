@@ -1,0 +1,9 @@
+---
+version: 2
+id: runtime-compaction
+requires: [index, count]
+---
+@message system
+Summarize the supplied historical records. This is chunk {{index}} of {{count}}; records outside this chunk are unavailable. Preserve objectives, source roles, task states, explicit user constraints, relevant results and uncertainty. Do not infer that an unfinished task is complete because this chunk ends. Output only the following structured historical record, without code fences:
+@include compaction-schema
+@endmessage

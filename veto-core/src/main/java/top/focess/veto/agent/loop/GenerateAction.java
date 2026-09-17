@@ -18,8 +18,36 @@ public record GenerateAction(
         @NonNull Map<String, String> outputs,
         Boolean thought,
         String modelTier,
-        Double temperature)
+        Double temperature,
+        @NonNull ResponseMode responseMode)
         implements Action {
+
+    public enum ResponseMode {
+        TEXT,
+        CITATIONS
+    }
+
+    /** Existing programs generate ordinary text unless they request source-linked output. */
+    public GenerateAction(
+            @NonNull String id,
+            @NonNull String label,
+            @NonNull String prompt,
+            @NonNull Map<String, Object> inputs,
+            @NonNull Map<String, String> outputs,
+            Boolean thought,
+            String modelTier,
+            Double temperature) {
+        this(
+                id,
+                label,
+                prompt,
+                inputs,
+                outputs,
+                thought,
+                modelTier,
+                temperature,
+                ResponseMode.TEXT);
+    }
 
     public GenerateAction {
         if (prompt.isBlank()) {
@@ -38,7 +66,10 @@ public record GenerateAction(
         return resolved;
     }
 
-    /** Resolves {@code $var} references inside the prompt text against the scope. */
+    /**
+     * Resolves optional {@code $var} substitutions in the prompt. Resolved inputs are also supplied
+     * separately to the invocation, so an input need not appear as a prompt placeholder.
+     */
     public @NonNull String resolvePrompt(@NonNull Scope scope) {
         Scope local = scope.child();
         resolveInputs(scope).forEach(local::put);

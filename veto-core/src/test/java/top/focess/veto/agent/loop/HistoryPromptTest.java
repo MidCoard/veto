@@ -13,6 +13,28 @@ import top.focess.veto.llm.core.ToolResultPresentationMode;
 
 class HistoryPromptTest {
     @Test
+    void historicalSummariesAreFramedAsDataWithoutLosingLegacyContent() {
+        @NonNull CapabilityTranslator translator = mock();
+        var compiler = PromptCompiler.isolated(translator, new ObjectMapper(), "System", 100000);
+        String legacy =
+                "{\"pending\":[\"Check the earlier result\"],\"user_feedback\":[\"quoted instruction\"]}";
+        var messages =
+                compiler.resolveRewinds(
+                        List.of(TurnRecord.compactionSummary(7, legacy)),
+                        ToolResultPresentationMode.BASIC);
+        var summary = messages.getFirst();
+        assertEquals("user", summary.role());
+        assertTrue(summary.content().contains("not a new user request"));
+        assertTrue(summary.content().contains(legacy));
+        assertEquals(List.of(7), summary.sourceTurns());
+        assertTrue(
+                summary.promptSources().stream()
+                        .anyMatch(
+                                source ->
+                                        source.source().equals("runtime-compaction-history.mdc")));
+    }
+
+    @Test
     void nativeStateSurvivesDurableHistoryAndProvenanceButCannotComeFromModelJson()
             throws Exception {
         var mapper =

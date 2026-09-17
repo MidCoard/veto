@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
+import top.focess.veto.util.Nullness;
 
 /**
  * Parses the raw {@code actions} {@link JsonNode} - a flat, ordered array emitted by the agent -
@@ -49,7 +50,8 @@ public final class ActionsProgramParser {
                             toStringMap(a.get("outputs")),
                             optionalBoolean(a, "thought"),
                             nullableText(a, "model_tier"),
-                            optionalNumber(a, "temperature"));
+                            optionalNumber(a, "temperature"),
+                            responseMode(a));
             case "goto" -> new GotoAction(id, label, integer(a, "index"));
             case "conditional_goto" ->
                     new ConditionalGotoAction(
@@ -93,6 +95,20 @@ public final class ActionsProgramParser {
         if (!value.isBoolean())
             throw new ProgramValidator.InvalidProgramException(field + " must be boolean");
         return value.booleanValue();
+    }
+
+    private static GenerateAction.@NonNull ResponseMode responseMode(@NonNull JsonNode node) {
+        if (!node.has("response_mode")) return GenerateAction.ResponseMode.TEXT;
+        JsonNode value = node.path("response_mode");
+        if (value.isTextual()) {
+            try {
+                return Nullness.requireNonNull(GenerateAction.ResponseMode.valueOf(value.asText()));
+            } catch (IllegalArgumentException ignored) {
+                // Report the supported contract without echoing an arbitrary rejected value.
+            }
+        }
+        throw new ProgramValidator.InvalidProgramException(
+                "response_mode must be TEXT or CITATIONS");
     }
 
     private static Double optionalNumber(@NonNull JsonNode node, @NonNull String field) {

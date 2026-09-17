@@ -1,0 +1,6 @@
+---
+version: 2
+id: runtime-expected
+requires: [responseMode, toolNames, completionTool, completionOnly]
+---
+@include response-contract

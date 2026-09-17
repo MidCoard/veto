@@ -1,7 +1,0 @@
----
-version: 2
-id: runtime-judgment
-requires: [prompt]
----
-{{prompt}}
-Return exactly true or false as plain text. Evaluate this input: $judgment_input

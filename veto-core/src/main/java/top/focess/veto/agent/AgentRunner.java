@@ -52,6 +52,7 @@ import top.focess.veto.agent.loop.ActionsProgram;
 import top.focess.veto.agent.loop.ActionsProgramParser;
 import top.focess.veto.agent.loop.Check;
 import top.focess.veto.agent.loop.CheckEvaluator;
+import top.focess.veto.agent.loop.CompactionSupport;
 import top.focess.veto.agent.loop.CompiledPrompt;
 import top.focess.veto.agent.loop.ConditionalGotoAction;
 import top.focess.veto.agent.loop.GenerateAction;
@@ -89,6 +90,7 @@ import top.focess.veto.llm.core.LlmSystemUsage;
 import top.focess.veto.llm.core.ProviderMessages;
 import top.focess.veto.llm.core.ProviderType;
 import top.focess.veto.llm.core.ReasoningContentHolder;
+import top.focess.veto.llm.core.ResponseContract;
 import top.focess.veto.llm.core.ToolCall;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
 import top.focess.veto.llm.core.ToolResultPresenter;
@@ -1004,50 +1006,83 @@ public class AgentRunner {
         if (workTurns.isEmpty()) {
             return "{}";
         }
-        List<Map<String, Object>> records = new ArrayList<>();
+        List<JsonNode> records = new ArrayList<>();
         for (TurnRecord turn : HistoryProjection.effective(workTurns)) {
             if (turn.type() == TurnType.AGENT_INIT || turn.type() == TurnType.TOKEN_USAGE) continue;
-            JsonNode payload = objectMapper.valueToTree(turn.payload());
-            if (payload == null) throw new IllegalStateException("Missing compaction payload");
-            records.add(
-                    Map.of(
-                            "number",
-                            turn.turnNumber(),
-                            "type",
-                            turn.type().name(),
-                            "payload",
-                            payload));
+            var record = objectMapper.createObjectNode();
+            record.put("number", turn.turnNumber());
+            record.put("type", turn.type().name());
+            record.set("payload", objectMapper.valueToTree(turn.payload()));
+            record.put("origin", CompactionSupport.sourceOrigin(record));
+            records.add(record);
         }
-        String contentToCompact =
-                PromptLibrary.text("runtime-compaction-records", Map.of("records", records));
-        if (contentToCompact.isBlank()) {
+        if (records.isEmpty()) return "{}";
+        Map<Integer, String> originalOrigins =
+                CompactionSupport.sourceOrigins(objectMapper.valueToTree(records));
+        List<JsonNode> chunks;
+        try {
+            // Keep each source's type, number and payload together. A source too large for one
+            // bounded input leaves the original history in place instead of losing provenance.
+            // There cannot be more chunks than records, so these index/count values bound the
+            // rendered header. Include the provider's response wrapper in the actual overhead.
+            var largestHeader =
+                    PromptLibrary.message(
+                            "runtime-compaction",
+                            Map.of("index", records.size(), "count", records.size()));
+            var emptyRecords =
+                    ChatMessage.user(
+                            PromptLibrary.text(
+                                    "runtime-compaction-records", Map.of("records", List.of())));
+            int overhead = compactionInputChars(compactionRequest(largestHeader, emptyRecords)) - 2;
+            chunks =
+                    CompactionSupport.chunks(records, CompactionSupport.MAX_INPUT_CHARS - overhead);
+        } catch (IllegalArgumentException oversized) {
+            log.warn("Compaction not performed: {}", String.valueOf(oversized.getMessage()));
             return "{}";
         }
-
-        List<String> chunks = new ArrayList<>();
-        int chunkSize = 60000;
-        for (int i = 0; i < contentToCompact.length(); i += chunkSize) {
-            chunks.add(
-                    contentToCompact.substring(
-                            i, Math.min(i + chunkSize, contentToCompact.length())));
-        }
-
-        List<String> summaries = new ArrayList<>();
+        List<JsonNode> summaries = new ArrayList<>();
         for (int i = 0; i < chunks.size(); i++) {
-            String chunk = chunks.get(i);
+            JsonNode chunk = chunks.get(i);
+            Map<Integer, String> sources = CompactionSupport.sourceOrigins(chunk);
             ChatMessage systemPrompt =
                     PromptLibrary.message(
                             "runtime-compaction", Map.of("index", i + 1, "count", chunks.size()));
-            String rawSummary = callCompactor(systemPrompt, ChatMessage.user(chunk));
-            summaries.add(rawSummary);
+            String rawSummary =
+                    callCompactor(
+                            systemPrompt,
+                            ChatMessage.user(
+                                    PromptLibrary.text(
+                                            "runtime-compaction-records",
+                                            Map.of("records", chunk))),
+                            sources);
+            // Any failed chunk aborts compaction. Never merge a missing chunk away and rewind.
+            if ("{}".equals(rawSummary)) return "{}";
+            summaries.add(CompactionSupport.validate(rawSummary, sources));
         }
-
-        if (summaries.size() == 1) {
-            return summaries.get(0);
+        // Pairwise merge keeps each request bounded even for many source chunks. Each accepted
+        // summary is capped at 20k characters, so two fit within the 60k input allowance.
+        while (summaries.size() > 1) {
+            List<JsonNode> merged = new ArrayList<>();
+            for (int i = 0; i < summaries.size(); i += 2) {
+                if (i + 1 == summaries.size()) {
+                    merged.add(summaries.get(i));
+                    continue;
+                }
+                List<JsonNode> pair = List.of(summaries.get(i), summaries.get(i + 1));
+                Map<Integer, String> sources =
+                        CompactionSupport.summaryOrigins(pair, originalOrigins);
+                String raw =
+                        callCompactor(
+                                PromptLibrary.message("runtime-compaction-merge", Map.of()),
+                                PromptLibrary.message(
+                                        "runtime-compaction-input", Map.of("summaries", pair)),
+                                sources);
+                if ("{}".equals(raw)) return "{}";
+                merged.add(CompactionSupport.validate(raw, sources));
+            }
+            summaries = merged;
         }
-        return callCompactor(
-                PromptLibrary.message("runtime-compaction-merge", Map.of()),
-                PromptLibrary.message("runtime-compaction-input", Map.of("summaries", summaries)));
+        return summaries.getFirst().toString();
     }
 
     private static void clearTaskInterrupt() {
@@ -1072,8 +1107,14 @@ public class AgentRunner {
     }
 
     private @NonNull String callCompactor(
-            @NonNull ChatMessage systemPrompt, @NonNull ChatMessage userPrompt) {
+            @NonNull ChatMessage systemPrompt,
+            @NonNull ChatMessage userPrompt,
+            @NonNull Map<Integer, String> sourceOrigins) {
         VetoRequest request = compactionRequest(systemPrompt, userPrompt);
+        if (compactionInputChars(request) > CompactionSupport.MAX_INPUT_CHARS) {
+            log.warn("Compaction input exceeds its rendered size limit; original history retained");
+            return "{}";
+        }
         VetoResponse response;
         LlmSystemUsage.begin();
         try {
@@ -1091,12 +1132,21 @@ public class AgentRunner {
         String message = response.message();
         if (message == null || message.isBlank()) return "{}";
         try {
-            var summary = objectMapper.readTree(message);
-            return summary != null && summary.isObject() ? message : "{}";
-        } catch (Exception invalid) {
-            log.warn("Compactor returned an invalid summary; retaining the explicit task brief");
+            return CompactionSupport.validate(message, sourceOrigins).toString();
+        } catch (IllegalArgumentException invalid) {
+            log.warn(
+                    "Compactor returned an invalid summary; original history will not be compacted: {}",
+                    String.valueOf(invalid.getMessage()));
             return "{}";
         }
+    }
+
+    private int compactionInputChars(@NonNull VetoRequest request) {
+        var data =
+                new LinkedHashMap<String, Object>(request.responseContract().promptData(request));
+        data.put("system", request.systemPrompt());
+        return PromptLibrary.compile("provider-native", data).text().length()
+                + request.userPrompt().length();
     }
 
     private VetoRequest submissionRequest;
@@ -1143,6 +1193,17 @@ public class AgentRunner {
                 ProgramValidator.validateInputs(program);
                 gateway.validateProgram(program, toolEngine, whitelistedTools, objectMapper);
                 for (var action : program.actions()) {
+                    if (action instanceof GenerateAction gen
+                            && gen.responseMode() == GenerateAction.ResponseMode.CITATIONS
+                            && request.tools().stream()
+                                    .noneMatch(
+                                            t ->
+                                                    submissionKind(t.name())
+                                                            == top.focess.veto.agent.tool
+                                                                    .ResponseSubmission.Kind
+                                                                    .ANSWER))
+                        throw new IllegalArgumentException(
+                                "CITATIONS generation requires an available answer submission tool");
                     if (action instanceof ToolAction tool && submissionKind(tool.tool()) != null)
                         throw new IllegalArgumentException(
                                 "Response submission tools cannot be nested as plan tool steps; use generate for a cited answer and STOP to finish");
@@ -1156,27 +1217,34 @@ public class AgentRunner {
                         "Plan rejected before execution: " + String.valueOf(error.getMessage()));
             }
         }
-        var answer = (ResponseRequest.Answer) submission;
-        VetoResponse response = MessageCitations.resolve(request, answer);
-        ResponseEnforcer.enforce(response, whitelistedTools);
-        MessageCitations.Bound bound = null;
-        var citations = response.citations();
-        if (citations != null) {
-            bound = MessageCitations.bind(request, response, List.copyOf(history));
-            for (var check : bound.checks()) {
-                for (var reference : check.references()) {
-                    if (!reference.status().equals("matched"))
-                        throw new IllegalArgumentException(
-                                "Citation "
-                                        + check.id()
-                                        + " could not match the exact quote in input message "
-                                        + reference.messageIndex()
-                                        + "; count the current non-system input messages from zero. Input message count: "
-                                        + bound.messageCount());
+        try {
+            var answer = (ResponseRequest.Answer) submission;
+            VetoResponse response = MessageCitations.resolve(request, answer);
+            ResponseEnforcer.enforce(response, whitelistedTools);
+            MessageCitations.Bound bound = null;
+            var citations = response.citations();
+            if (citations != null) {
+                bound = MessageCitations.bind(request, response, List.copyOf(history));
+                for (var check : bound.checks()) {
+                    for (var reference : check.references()) {
+                        if (!reference.status().equals("matched"))
+                            throw new IllegalArgumentException(
+                                    "Citation "
+                                            + check.id()
+                                            + " could not match the exact quote in input message "
+                                            + reference.messageIndex()
+                                            + "; omit message_index and provide an exact quote from a successful source. If the runtime returns ambiguous candidates, select one of those indices.");
+                    }
                 }
             }
+            return new ToolCallContextHolder.ResponseDirective.Answer(response, bound);
+        } catch (IllegalArgumentException | ModelSchemaException error) {
+            throw new ToolExecutionException(
+                    top.focess.veto.agent.tool.ToolResultStatus.FAILURE,
+                    top.focess.veto.agent.tool.ToolResultFormat.PLAINTEXT,
+                    "INVALID_CITATION",
+                    "Citation rejected: " + String.valueOf(error.getMessage()));
         }
-        return new ToolCallContextHolder.ResponseDirective.Answer(response, bound);
     }
 
     private top.focess.veto.agent.tool.ResponseSubmission.Kind submissionKind(
@@ -1358,7 +1426,8 @@ public class AgentRunner {
                                         false,
                                         null,
                                         0.0);
-                        String answer = callGenerate(judgment).message();
+                        String answer =
+                                callGenerate(judgment, ResponseContract.predicate()).message();
                         if (answer == null
                                 || !(answer.strip().equals("true")
                                         || answer.strip().equals("false")))
@@ -1415,13 +1484,18 @@ public class AgentRunner {
     }
 
     private @NonNull VetoResponse callGenerate(@NonNull GenerateAction gen) {
+        return callGenerate(gen, ResponseContract.generation());
+    }
+
+    private @NonNull VetoResponse callGenerate(
+            @NonNull GenerateAction gen, @NonNull ResponseContract contract) {
         if (breaker.shouldTrip()) {
             tripBreaker();
             throw new BreakerTripException();
         }
         VetoResponse response;
         while (true) {
-            response = callModel(false, gen);
+            response = callModel(false, gen, contract);
             var calls = response.calls();
             if (calls == null || calls.isEmpty()) break;
             executeToolCalls(calls, response.thought());
@@ -1464,10 +1538,17 @@ public class AgentRunner {
     // ── The model call (compile + dispatch + enforce, with schema retry) ────
 
     private @NonNull VetoResponse callModel(boolean allowGuided) {
-        return callModel(allowGuided, null);
+        String completion = completionTool;
+        return callModel(
+                allowGuided,
+                null,
+                completion == null
+                        ? ResponseContract.ordinary()
+                        : ResponseContract.completion(completion, false));
     }
 
-    private @NonNull VetoResponse callModel(boolean allowGuided, GenerateAction generation) {
+    private @NonNull VetoResponse callModel(
+            boolean allowGuided, GenerateAction generation, @NonNull ResponseContract contract) {
         lastCitations = null;
         CompiledPrompt compiled = preparedFirstPrompt;
         preparedFirstPrompt = null;
@@ -1475,11 +1556,13 @@ public class AgentRunner {
             refreshSystemHistory();
             compiled =
                     compilePrompt(
-                            List.copyOf(history), generation != null ? guidedEnabled : allowGuided);
+                            List.copyOf(history),
+                            generation != null ? guidedEnabled : allowGuided,
+                            generation != null);
         }
         long estimatedTokens = compiled.estimatedTokens();
         double estimateFactor = correctionFactor;
-        VetoRequest request = buildRequest(compiled);
+        VetoRequest request = buildRequest(compiled).withResponseContract(contract);
         if (generation != null) request = generationRequest(request, generation);
         int schemaRetries = 0;
         VetoRequest correctionBase = request;
@@ -1497,11 +1580,14 @@ public class AgentRunner {
                     throw new BreakerTripException();
                 }
                 checkExecutionBoundary();
-                if (completionOnly(breaker.count())) {
+                if (completionOnly(breaker.count())
+                        && !request.responseContract().completionOnly()) {
                     request = completionRequest(request);
+                    correctionBase = request;
                 }
                 reserveRequestCall();
                 request = promptCompiler.fitRequest(request, correctionFactor);
+                estimatedTokens = promptCompiler.estimateRequest(request, estimateFactor);
                 log.debug(
                         "Agent {} input: model={}, messages={}, estimatedTokens={}, correctionFactor={}",
                         agentId,
@@ -1541,7 +1627,7 @@ public class AgentRunner {
                 // assistant message. Cleared immediately (one-shot per model call).
                 lastReasoningContent = ReasoningContentHolder.getAndClear();
                 VetoResponse checked = ResponseEnforcer.enforce(response, whitelistedTools);
-                validateResponseMode(checked, generation);
+                validateResponseMode(checked, request);
                 validateLocalCallArguments(checked);
                 var declaredCitations = checked.citations();
                 if (declaredCitations != null && !declaredCitations.isEmpty()) {
@@ -1660,36 +1746,15 @@ public class AgentRunner {
         }
     }
 
-    private void validateResponseMode(@NonNull VetoResponse checked, GenerateAction generation) {
-        validateCompletionResponse(checked);
-        var generatedCalls = checked.calls();
-        if (generation != null
-                && ((generatedCalls != null
-                        && generatedCalls.stream()
-                                .anyMatch(
-                                        c ->
-                                                submissionKind(c.toolName())
-                                                        != top.focess.veto.agent.tool
-                                                                .ResponseSubmission.Kind.ANSWER))))
-            throw new ModelSchemaException(
-                    "generate accepts text or the answer submission tool only");
-    }
-
-    private void validateCompletionResponse(@NonNull VetoResponse checked) {
-        if (completionTool == null) return;
-        var generatedCalls = checked.calls();
-        String checkedMessage = checked.message();
-        if (generatedCalls == null
-                || generatedCalls.size() != 1
-                || (checkedMessage != null && !checkedMessage.isBlank()))
-            throw new ModelSchemaException(
-                    "This agent requires exactly one tool call per turn and must complete through "
-                            + completionTool
-                            + "; freeform answers are not accepted");
-        if (completionOnly(breaker.count() - 1)
-                && !generatedCalls.getFirst().toolName().equals(completionTool)) {
-            throw new ModelSchemaException("The remaining model calls must use " + completionTool);
-        }
+    private void validateResponseMode(@NonNull VetoResponse checked, @NonNull VetoRequest request) {
+        var calls = checked.calls();
+        request.responseContract()
+                .validate(
+                        request,
+                        checked.message(),
+                        calls == null
+                                ? List.of()
+                                : calls.stream().map(ToolCall::toolName).toList());
     }
 
     private boolean completionOnly(long completedCalls) {
@@ -1712,20 +1777,23 @@ public class AgentRunner {
                                 tool,
                                 "remaining",
                                 breaker.maxCallsPerEpisode() - breaker.count())));
-        return new VetoRequest(
-                request.systemPrompt(),
-                request.userPrompt(),
-                request.tools().stream()
-                        .filter(definition -> definition.name().equals(tool))
-                        .toList(),
-                request.providerType(),
-                request.modelName(),
-                request.credentialKey(),
-                request.options(),
-                messages,
-                request.responseSchema(),
-                request.baseUrl(),
-                request.nativeToolsEnabled());
+        VetoRequest scoped =
+                new VetoRequest(
+                        request.systemPrompt(),
+                        request.userPrompt(),
+                        request.tools().stream()
+                                .filter(definition -> definition.name().equals(tool))
+                                .toList(),
+                        request.providerType(),
+                        request.modelName(),
+                        request.credentialKey(),
+                        request.options(),
+                        messages,
+                        request.responseSchema(),
+                        request.baseUrl(),
+                        request.nativeToolsEnabled(),
+                        ResponseContract.completion(tool, true));
+        return scopeResponseRequest(scoped);
     }
 
     private @NonNull VetoRequest generationRequest(
@@ -1767,31 +1835,71 @@ public class AgentRunner {
         List<ChatMessage> messages = new ArrayList<>(original.messages());
         ChatMessage generated =
                 PromptLibrary.message(
-                        "runtime-generation", Map.of("prompt", generation.resolvePrompt(scope)));
+                        "runtime-generation",
+                        Map.of(
+                                "prompt",
+                                generation.resolvePrompt(scope),
+                                "inputs",
+                                generation.resolveInputs(scope)));
         String prompt = generated.content();
         messages.add(generated);
-        return new VetoRequest(
-                original.systemPrompt(),
-                prompt,
+        boolean predicate = original.responseContract().mode() == ResponseContract.Mode.PREDICATE;
+        boolean cited =
+                !predicate && generation.responseMode() == GenerateAction.ResponseMode.CITATIONS;
+        var tools =
                 original.tools().stream()
                         .filter(
                                 t ->
-                                        submissionKind(t.name())
-                                                == top.focess.veto.agent.tool.ResponseSubmission
-                                                        .Kind.ANSWER)
-                        .toList(),
-                selected.provider(),
-                selected.model(),
-                selected.credentialKey(),
-                options,
-                messages,
-                original.responseSchema(),
-                selected.baseUrl(),
-                true);
+                                        cited
+                                                && submissionKind(t.name())
+                                                        == top.focess.veto.agent.tool
+                                                                .ResponseSubmission.Kind.ANSWER)
+                        .toList();
+        if (cited && tools.isEmpty())
+            throw new IllegalStateException(
+                    "Citation generation requires an available answer submission tool");
+        VetoRequest scoped =
+                new VetoRequest(
+                        original.systemPrompt(),
+                        prompt,
+                        tools,
+                        selected.provider(),
+                        selected.model(),
+                        selected.credentialKey(),
+                        options,
+                        messages,
+                        original.responseSchema(),
+                        selected.baseUrl(),
+                        cited,
+                        original.responseContract());
+        return scopeResponseRequest(scoped);
+    }
+
+    private @NonNull VetoRequest scopeResponseRequest(@NonNull VetoRequest request) {
+        return promptCompiler.scopeRequest(
+                request,
+                persona,
+                gateway.workspace(),
+                binding.systemPromptBase(),
+                toolResultPresentation);
     }
 
     private @NonNull CompiledPrompt compilePrompt(
             @NonNull List<TurnRecord> sourceHistory, boolean allowGuided) {
+        return compilePrompt(sourceHistory, allowGuided, false);
+    }
+
+    private @NonNull CompiledPrompt compilePrompt(
+            @NonNull List<TurnRecord> sourceHistory,
+            boolean allowGuided,
+            boolean scopedInvocation) {
+        // Generation/predicate calls first assemble history, then rebuild the system with their
+        // restricted tool manifest. The dispatch guard budgets that final request and selected
+        // model; budgeting this temporary full manifest could reject an otherwise fitting call.
+        Long inputBudgetOverride = null;
+        if (scopedInvocation) inputBudgetOverride = Long.MAX_VALUE;
+        else if (binding.options().contextWindowTokens() != null)
+            inputBudgetOverride = binding.options().inputBudget();
         return promptCompiler.compile(
                 persona,
                 gateway.workspace(),
@@ -1800,9 +1908,7 @@ public class AgentRunner {
                 allowGuided,
                 this.correctionFactor,
                 toolResultPresentation,
-                binding.options().contextWindowTokens() != null
-                        ? binding.options().inputBudget()
-                        : null,
+                inputBudgetOverride,
                 recoveryContext);
     }
 
@@ -1883,7 +1989,7 @@ public class AgentRunner {
                                 "error",
                                 String.valueOf(e.getMessage()),
                                 "expected",
-                                getExpectedDescription(e))));
+                                getExpectedDescription(request))));
         return new VetoRequest(
                 request.systemPrompt(),
                 request.userPrompt(),
@@ -1895,7 +2001,8 @@ public class AgentRunner {
                 augmented,
                 request.responseSchema(),
                 request.baseUrl(),
-                request.nativeToolsEnabled());
+                request.nativeToolsEnabled(),
+                request.responseContract());
     }
 
     /** Rejects malformed local arguments before any call in the batch is screened or executed. */
@@ -1911,18 +2018,19 @@ public class AgentRunner {
                             local.name(), objectMapper.valueToTree(call.args()), local.argsClass());
                 } catch (ToolExecutionException invalid) {
                     throw new ModelSchemaException(
-                            "calls[].args must match the advertised argument schema for "
+                            "native tool arguments must match the advertised argument schema for "
                                     + local.name()
-                                    + "; correct the parameters before submitting the batch");
+                                    + ": "
+                                    + String.valueOf(invalid.getMessage()));
                 }
             }
         }
     }
 
     /** Describes the response correction required for the bounded schema retry. */
-    private @NonNull String getExpectedDescription(@NonNull ModelSchemaException e) {
+    private @NonNull String getExpectedDescription(@NonNull VetoRequest request) {
         return PromptLibrary.text(
-                "runtime-expected", Map.of("error", String.valueOf(e.getMessage())));
+                "runtime-expected", request.responseContract().promptData(request));
     }
 
     // ── executeToolCalls — the canonical chain ─────────────────────
@@ -3375,7 +3483,7 @@ public class AgentRunner {
             summary = computeCompactionSummary(priorTurns);
         } catch (RuntimeException e) {
             log.warn(
-                    "Agent {} transform compaction failed; continuing with empty summary",
+                    "Agent {} transform compaction failed; preserving original history",
                     agentId,
                     e);
             summary = "{}";
@@ -3389,10 +3497,14 @@ public class AgentRunner {
         bind(directive.leaderBinding());
         setGroupId(directive.groupId());
 
-        appendTurn(TurnRecord.rewind(++turnNumber, 0));
-        appendAgentInit(linkCurrentSystemMessage());
         if (!summary.isBlank() && !"{}".equals(summary)) {
+            appendTurn(TurnRecord.rewind(++turnNumber, 0));
+            appendAgentInit(linkCurrentSystemMessage());
             appendTurn(TurnRecord.compactionSummary(++turnNumber, summary));
+        } else {
+            // The role/tool change already happened. Preserve the full conversation when no
+            // valid summary exists, replacing only the system context for the new role.
+            refreshSystemHistory();
         }
         appendTurn(
                 PromptCompiler.sourcedUserPrompt(
@@ -3433,7 +3545,7 @@ public class AgentRunner {
             summary = computeCompactionSummary(priorTurns);
         } catch (RuntimeException e) {
             log.warn(
-                    "Agent {} reverse-transform compaction failed; continuing with empty summary",
+                    "Agent {} reverse-transform compaction failed; preserving original history",
                     agentId,
                     e);
             summary = "{}";
@@ -3452,10 +3564,14 @@ public class AgentRunner {
         this.preTransformPersona = null;
         this.preTransformBinding = null;
 
-        appendTurn(TurnRecord.rewind(++turnNumber, 0));
-        appendAgentInit(linkCurrentSystemMessage());
         if (!summary.isBlank() && !"{}".equals(summary)) {
+            appendTurn(TurnRecord.rewind(++turnNumber, 0));
+            appendAgentInit(linkCurrentSystemMessage());
             appendTurn(TurnRecord.compactionSummary(++turnNumber, summary));
+        } else {
+            // The role/tool change already happened. Preserve the full conversation when no
+            // valid summary exists, replacing only the system context for the new role.
+            refreshSystemHistory();
         }
         appendTurn(
                 PromptCompiler.sourcedUserPrompt(
