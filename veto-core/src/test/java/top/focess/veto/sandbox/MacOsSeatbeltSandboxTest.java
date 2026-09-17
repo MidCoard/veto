@@ -184,6 +184,25 @@ class MacOsSeatbeltSandboxTest {
 
     @Test
     @EnabledOnOs(OS.MAC)
+    void readOnlySymlinkIncludesItsCanonicalEntryAndTarget(@TempDir @NonNull Path temp)
+            throws Exception {
+        Path settings = Files.createDirectories(temp.resolve("settings"));
+        Path alias = Files.createSymbolicLink(temp.resolve("settings-alias"), settings);
+        Path target = Files.writeString(temp.resolve("selected-toolchain"), "selected");
+        Path selector = Files.createSymbolicLink(settings.resolve("selector"), target);
+
+        String rules = MacOsSeatbeltSandbox.readOnlyPathRules(alias.resolve("selector"));
+
+        assertTrue(rules.contains("(literal \"" + alias.resolve("selector") + "\")"));
+        assertTrue(
+                rules.contains("(literal \"" + settings.toRealPath().resolve("selector") + "\")"));
+        assertTrue(rules.contains("(literal \"" + selector.toRealPath() + "\")"));
+        assertFalse(rules.contains("subpath"));
+        assertFalse(rules.contains("file-write"));
+    }
+
+    @Test
+    @EnabledOnOs(OS.MAC)
     void developerToolSelectionMatchesTheHostWithoutBroadVarAccess(@TempDir @NonNull Path workspace)
             throws Exception {
         var outside = new ProcessBuilder("/usr/bin/xcode-select", "-p").start();

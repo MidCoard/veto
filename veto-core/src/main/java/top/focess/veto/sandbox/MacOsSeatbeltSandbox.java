@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
 
@@ -113,9 +114,10 @@ final class MacOsSeatbeltSandbox {
                 "  (subpath \"/dev\")",
                 "  (subpath \"" + workspace + "\"))",
                 executableRule,
-                // Apple's developer-tool shims read this selector before falling back to the
-                // default installation. Even an absent selector must report ENOENT, not EPERM.
+                // Apple's developer-tool shims inspect both current and legacy selectors before
+                // falling back to the default installation. Absent selectors must report ENOENT.
                 readOnlyPathRules(Path.of("/var/select/developer_dir")),
+                readOnlyPathRules(Path.of("/var/db/xcode_select_link")),
                 "",
                 "; standard character devices and PTY support",
                 "(allow file-write-data",
@@ -196,40 +198,34 @@ final class MacOsSeatbeltSandbox {
     /** Read one path and inspect its ancestors, including aliases of a missing final component. */
     static @NonNull String readOnlyPathRules(@NonNull Path path) {
         Path absolute = path.toAbsolutePath().normalize();
-        Path real = absolute;
-        try {
-            real = absolute.toRealPath();
-        } catch (IOException ignored) {
-            // Canonicalize an existing parent so a missing selector/executable remains observable
-            // as missing through directory aliases instead of being denied at its canonical path.
-            Path parent = absolute.getParent();
-            Path name = absolute.getFileName();
-            if (parent != null && name != null) {
-                try {
-                    real = parent.toRealPath().resolve(name);
-                } catch (IOException unavailableParent) {
-                    // The operation still fails normally if its parent cannot be inspected.
-                }
+        var paths = new LinkedHashSet<Path>();
+        paths.add(absolute);
+        // Preserve the canonical location of the symlink itself, not just its final target:
+        // readlink() inspects that entry, and a missing leaf must remain observable as missing.
+        Path parent = absolute.getParent();
+        Path name = absolute.getFileName();
+        if (parent != null && name != null) {
+            try {
+                paths.add(parent.toRealPath().resolve(name));
+            } catch (IOException ignored) {
+                // The operation still fails normally if its parent cannot be inspected.
             }
         }
-        String absoluteValue = seatbeltString(absolute.toString());
-        String realValue = seatbeltString(real.toString());
+        try {
+            paths.add(absolute.toRealPath());
+        } catch (IOException ignored) {
+            // Missing paths have no resolved target; retain only their observable path entries.
+        }
         // Starting the executable can require realpath/stat on its lexical and resolved parents.
         // Reading a permitted subtree does not grant metadata access to its ancestors. Keep
         // those grants literal and metadata-only: sibling content and directory listings remain
         // inaccessible unless another existing rule explicitly permits them.
-        String ancestors = ancestorMetadataRules(absolute);
-        if (absoluteValue.equals(realValue)) {
-            return ancestors + "\n(allow file-read* (literal \"" + absoluteValue + "\"))";
+        var rules = new ArrayList<String>();
+        for (Path entry : paths) {
+            rules.add(ancestorMetadataRules(entry));
+            rules.add("(allow file-read* (literal \"" + seatbeltString(entry.toString()) + "\"))");
         }
-        return ancestors
-                + "\n"
-                + ancestorMetadataRules(real)
-                + "\n(allow file-read* (literal \""
-                + absoluteValue
-                + "\") (literal \""
-                + realValue
-                + "\"))";
+        return String.join("\n", rules);
     }
 
     private static @NonNull String seatbeltString(@NonNull String value) {
