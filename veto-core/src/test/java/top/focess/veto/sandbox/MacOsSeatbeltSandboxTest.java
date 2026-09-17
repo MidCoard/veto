@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
@@ -158,6 +159,58 @@ class MacOsSeatbeltSandboxTest {
             assertFalse(Files.exists(forbiddenWrite));
         } finally {
             substrate.deprovision(handle);
+        }
+    }
+
+    @Test
+    @EnabledOnOs(OS.MAC)
+    void childRuntimeCanInspectReadOnlyRootAncestorsWithoutReadingOrWritingSiblings(
+            @TempDir @NonNull Path temp) throws Exception {
+        Path workspace = Files.createDirectories(temp.resolve("workspace"));
+        Path distribution = Files.createDirectories(temp.resolve("distribution"));
+        Path parent = Files.createDirectories(distribution.resolve("versions"));
+        Path runtime = Files.createDirectories(parent.resolve("current"));
+        Path executable = runtime.resolve("probe");
+        Files.writeString(
+                executable,
+                """
+                #!/bin/sh
+                /usr/bin/stat -f '%N' "$1" "$2" || exit 10
+                if /bin/cat "$3"; then exit 11; fi
+                if /usr/bin/touch "$4"; then exit 12; fi
+                if /bin/ls "$2"; then exit 13; fi
+                /usr/bin/printf 'child-runtime-ok'
+                """);
+        assertTrue(executable.toFile().setExecutable(true, true));
+        Path secret = Files.writeString(parent.resolve("private.txt"), "unrelated-private-data");
+        Path forbiddenWrite = parent.resolve("created.txt");
+        String profile =
+                MacOsSeatbeltSandbox.profile(workspace)
+                        + "\n"
+                        + MacOsSeatbeltSandbox.readOnlySubtreeRules(runtime);
+        var child =
+                new ProcessBuilder(
+                                "/usr/bin/sandbox-exec",
+                                "-p",
+                                profile,
+                                "/usr/bin/env",
+                                executable.toString(),
+                                distribution.toString(),
+                                parent.toString(),
+                                secret.toString(),
+                                forbiddenWrite.toString())
+                        .directory(workspace.toFile())
+                        .redirectErrorStream(true)
+                        .start();
+        try {
+            assertTrue(child.waitFor(10, TimeUnit.SECONDS));
+            String output = new String(child.getInputStream().readAllBytes());
+            assertEquals(0, child.exitValue(), output);
+            assertTrue(output.contains("child-runtime-ok"));
+            assertFalse(output.contains("unrelated-private-data"));
+            assertFalse(Files.exists(forbiddenWrite));
+        } finally {
+            child.destroyForcibly();
         }
     }
 

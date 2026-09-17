@@ -19,6 +19,18 @@ import org.jspecify.annotations.NonNull;
 final class MacOsSeatbeltSandbox {
 
     static final @NonNull Path SANDBOX_EXEC = Path.of("/usr/bin/sandbox-exec");
+    private static final List<Path> READ_ONLY_ROOTS =
+            List.of(
+                    Path.of("/System"),
+                    Path.of("/usr"),
+                    Path.of("/bin"),
+                    Path.of("/sbin"),
+                    Path.of("/Library"),
+                    Path.of("/Applications"),
+                    Path.of("/opt/homebrew"),
+                    Path.of("/private/etc"),
+                    Path.of("/private/var/db/timezone"),
+                    Path.of("/dev"));
 
     boolean isAvailable() {
         return Files.isRegularFile(SANDBOX_EXEC) && Files.isExecutable(SANDBOX_EXEC);
@@ -101,18 +113,10 @@ final class MacOsSeatbeltSandbox {
                 // A literal rule does not grant reads of the root's descendants.
                 "(allow file-read* (literal \"/\"))",
                 ancestorMetadataRules(normalizedWorkspace),
-                "(allow file-read*",
-                "  (subpath \"/System\")",
-                "  (subpath \"/usr\")",
-                "  (subpath \"/bin\")",
-                "  (subpath \"/sbin\")",
-                "  (subpath \"/Library\")",
-                "  (subpath \"/Applications\")",
-                "  (subpath \"/opt/homebrew\")",
-                "  (subpath \"/private/etc\")",
-                "  (subpath \"/private/var/db/timezone\")",
-                "  (subpath \"/dev\")",
-                "  (subpath \"" + workspace + "\"))",
+                READ_ONLY_ROOTS.stream()
+                        .map(MacOsSeatbeltSandbox::readOnlySubtreeRules)
+                        .reduce("", (left, right) -> left + "\n" + right),
+                "(allow file-read* (subpath \"" + workspace + "\"))",
                 executableRule,
                 // Apple's developer-tool shims inspect both current and legacy selectors before
                 // falling back to the default installation. Absent selectors must report ENOENT.
@@ -182,6 +186,24 @@ final class MacOsSeatbeltSandbox {
             rules.add("(deny file-write* (subpath \"" + protectedPath + "\"))");
         }
         return String.join("\n", rules);
+    }
+
+    /** Child processes need ancestor metadata for every already-readable toolchain root. */
+    static @NonNull String readOnlySubtreeRules(@NonNull Path root) {
+        Path absolute = root.toAbsolutePath().normalize();
+        String ancestors = ancestorMetadataRules(absolute);
+        try {
+            Path real = absolute.toRealPath();
+            if (!absolute.equals(real)) {
+                ancestors += "\n" + ancestorMetadataRules(real);
+            }
+        } catch (IOException ignored) {
+            // Keep the declared read policy if an optional operating-system root is absent.
+        }
+        return ancestors
+                + "\n(allow file-read* (subpath \""
+                + seatbeltString(absolute.toString())
+                + "\"))";
     }
 
     private static @NonNull String executableReadRule(@NonNull String executable) {
