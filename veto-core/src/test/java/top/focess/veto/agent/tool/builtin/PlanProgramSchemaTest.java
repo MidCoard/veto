@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.tool.NativeToolArgumentValidator;
@@ -20,7 +21,7 @@ class PlanProgramSchemaTest {
 
     @Test
     void generationResponseModeDefaultsToTextAndAcceptsOnlyDeclaredChannels() throws Exception {
-        var schema = PlanProgramSchema.create(List.of());
+        var schema = PlanProgramSchema.create(List.of(), Set.of(), true);
         var mode = schema.at("/properties/actions/items/anyOf/0/properties/response_mode");
         assertEquals("TEXT", mode.path("default").asText());
         assertEquals(
@@ -41,6 +42,26 @@ class PlanProgramSchemaTest {
                             NativeToolArgumentValidator.validateAgainstSchema(
                                     "submit_plan", args, schema));
         }
+    }
+
+    @Test
+    void generationCannotRequestCitationsWithoutAnAnswerCapability() throws Exception {
+        var schema = PlanProgramSchema.create(List.of(), Set.of(), false);
+        var mode = schema.at("/properties/actions/items/anyOf/0/properties/response_mode");
+        assertEquals(1, mode.path("enum").size());
+        assertEquals("TEXT", mode.path("enum").get(0).asText());
+        assertFalse(mode.path("description").asText().contains("CITATIONS"));
+        assertDoesNotThrow(
+                () ->
+                        NativeToolArgumentValidator.validateAgainstSchema(
+                                "submit_plan", generationArguments(""), schema));
+        assertThrows(
+                ToolDocs.nonNullClass(ToolExecutionException.class),
+                () ->
+                        NativeToolArgumentValidator.validateAgainstSchema(
+                                "submit_plan",
+                                generationArguments(",\"response_mode\":\"CITATIONS\""),
+                                schema));
     }
 
     private @NonNull JsonNode generationArguments(@NonNull String modeField) throws Exception {

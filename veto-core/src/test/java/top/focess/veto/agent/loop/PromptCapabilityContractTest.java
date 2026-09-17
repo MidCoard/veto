@@ -2,6 +2,7 @@ package top.focess.veto.agent.loop;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -19,7 +20,9 @@ import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.tool.ToolDocumentation;
 import top.focess.veto.agent.tool.ToolSchemaCompiler;
+import top.focess.veto.agent.tool.builtin.AnswerWithCitationsTool;
 import top.focess.veto.agent.tool.builtin.AskUserTool;
+import top.focess.veto.agent.tool.builtin.SubmitPlanTool;
 import top.focess.veto.agent.translation.VetoCapabilityTranslator;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.TrustMarker;
@@ -29,6 +32,59 @@ import top.focess.veto.llm.core.ToolDefinition;
 import top.focess.veto.llm.core.ToolResultPresentationMode;
 
 class PromptCapabilityContractTest {
+    @Test
+    void planSchemaAndInstructionsExposeCitationsOnlyForAnAvailableAnswerCapability() {
+        var plan =
+                AgentToolDefinition.from(
+                        "submit_plan",
+                        ToolDocs.nonNullClass(SubmitPlanTool.class),
+                        ToolDocs.nonNullClass(SubmitPlanTool.Args.class),
+                        ToolCapability.LOOP_CONTROL);
+        var answer =
+                AgentToolDefinition.from(
+                        "answer_with_citations",
+                        ToolDocs.nonNullClass(AnswerWithCitationsTool.class),
+                        ToolDocs.nonNullClass(AnswerWithCitationsTool.Args.class),
+                        ToolCapability.LOOP_CONTROL);
+        for (boolean citationsAvailable : List.of(false, true)) {
+            List<top.focess.veto.agent.tool.ToolDefinition> manifest =
+                    citationsAvailable ? List.of(plan, answer) : List.of(plan);
+            var persona =
+                    new AgentPersona("fixture", "Fixture", "", Set.copyOf(manifest), List.of());
+            var flat = new VetoCapabilityTranslator().translateTools(manifest);
+            var planSchema =
+                    new ObjectMapper()
+                            .valueToTree(
+                                    flat.stream()
+                                            .filter(tool -> tool.name().equals("submit_plan"))
+                                            .findFirst()
+                                            .orElseThrow()
+                                            .inputSchema());
+            var modes =
+                    planSchema.at(
+                            "/properties/actions/items/anyOf/0/properties/response_mode/enum");
+            assertEquals(citationsAvailable ? 2 : 1, modes.size());
+            assertEquals("TEXT", modes.get(0).asText());
+            if (citationsAvailable) assertEquals("CITATIONS", modes.get(1).asText());
+            var inputs =
+                    PromptInputs.standard(
+                            persona,
+                            Workspace.single(
+                                    Path.of(System.getProperty("user.dir", ".")), PathMode.REAL),
+                            null,
+                            flat,
+                            DeployerPolicy.FULL_ACCESS,
+                            ToolResultPresentationMode.BASIC,
+                            true);
+            inputs.put("lawSources", List.of());
+            String prompt = PromptLibrary.text("default-system-prompt", inputs);
+            assertTrue(prompt.contains("## Plan execution"));
+            assertEquals(citationsAvailable, prompt.contains("Use `CITATIONS`"));
+            assertEquals(citationsAvailable, prompt.contains("CITATIONS"));
+            assertFalse(prompt.contains("@if"));
+        }
+    }
+
     private static @NonNull ToolDefinition tool(
             @NonNull String name, @NonNull Map<String, Object> schema) {
         return new ToolDefinition(

@@ -17,25 +17,34 @@ public final class PlanProgramSchema implements InputSchemaSource {
 
     @Override
     public @NonNull JsonNode schema() {
-        return create(List.of(), Set.of(), true);
+        return create(List.of(), Set.of(), true, true);
     }
 
     public static @NonNull JsonNode create(
             @NonNull List<top.focess.veto.llm.core.ToolDefinition> tools) {
-        return create(tools, Set.of(), false);
+        return create(tools, Set.of(), false, false);
     }
 
     /** Java record tools preserve their optional-null convention; remote schemas remain exact. */
     public static @NonNull JsonNode create(
             @NonNull List<top.focess.veto.llm.core.ToolDefinition> tools,
             @NonNull Set<String> javaRecordTools) {
-        return create(tools, javaRecordTools, false);
+        return create(tools, javaRecordTools, false, false);
+    }
+
+    /** Expose cited generation only when this invocation has an answer-submission capability. */
+    public static @NonNull JsonNode create(
+            @NonNull List<top.focess.veto.llm.core.ToolDefinition> tools,
+            @NonNull Set<String> javaRecordTools,
+            boolean citationsAvailable) {
+        return create(tools, javaRecordTools, false, citationsAvailable);
     }
 
     private static @NonNull JsonNode create(
             @NonNull List<top.focess.veto.llm.core.ToolDefinition> tools,
             @NonNull Set<String> javaRecordTools,
-            boolean genericTools) {
+            boolean genericTools,
+            boolean citationsAvailable) {
         var root =
                 MAPPER.createObjectNode().put("type", "object").put("additionalProperties", false);
         var actions = root.putObject("properties").putObject("actions");
@@ -44,7 +53,9 @@ public final class PlanProgramSchema implements InputSchemaSource {
                 .put(
                         "description",
                         "Ordered program actions. Each has id, label, type. End with STOP. See the action variants and tool examples.");
-        actions.set("items", actionItemSchema(tools, javaRecordTools, genericTools));
+        actions.set(
+                "items",
+                actionItemSchema(tools, javaRecordTools, genericTools, citationsAvailable));
         root.putArray("required").add("actions");
         return root;
     }
@@ -53,7 +64,8 @@ public final class PlanProgramSchema implements InputSchemaSource {
     private static @NonNull JsonNode actionItemSchema(
             @NonNull List<top.focess.veto.llm.core.ToolDefinition> tools,
             @NonNull Set<String> javaRecordTools,
-            boolean genericTools) {
+            boolean genericTools,
+            boolean citationsAvailable) {
         ArrayNode variants = MAPPER.createArrayNode();
         tools.stream()
                 .sorted(
@@ -82,7 +94,7 @@ public final class PlanProgramSchema implements InputSchemaSource {
             variants.add(
                     closedObject(properties, "id", "label", "type", "tool", "inputs", "outputs"));
         }
-        variants.add(generateActionSchema());
+        variants.add(generateActionSchema(citationsAvailable));
         variants.add(gotoActionSchema());
         variants.add(conditionalGotoActionSchema());
         variants.add(stopActionSchema());
@@ -100,7 +112,7 @@ public final class PlanProgramSchema implements InputSchemaSource {
         return closedObject(properties, "id", "label", "type", "tool", "inputs", "outputs");
     }
 
-    private static @NonNull ObjectNode generateActionSchema() {
+    private static @NonNull ObjectNode generateActionSchema(boolean citationsAvailable) {
         ObjectNode properties = actionProperties("generate");
         properties.set("prompt", stringNode("Prompt for the scoped model generation."));
         properties.set(
@@ -112,8 +124,12 @@ public final class PlanProgramSchema implements InputSchemaSource {
                                 "Optional named inputs supplied to the generation as data. Values may reference $variables. Prompt placeholders are optional; omitted inputs means no inputs."));
         var responseMode =
                 stringNode(
-                        "Output channel: TEXT (default) returns the requested content without tool calls. CITATIONS requires an answer with clickable conversation-source references; select it when the requested output needs those links.");
-        responseMode.putArray("enum").add("TEXT").add("CITATIONS");
+                        "Output channel: TEXT (default) returns the requested content without tool calls."
+                                + (citationsAvailable
+                                        ? " CITATIONS requires an answer with clickable conversation-source references; select it when the requested output needs those links."
+                                        : ""));
+        var modes = responseMode.putArray("enum").add("TEXT");
+        if (citationsAvailable) modes.add("CITATIONS");
         responseMode.put("default", "TEXT");
         properties.set("response_mode", responseMode);
         var outputs =

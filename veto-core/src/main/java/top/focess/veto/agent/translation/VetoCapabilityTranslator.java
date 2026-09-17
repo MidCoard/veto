@@ -28,6 +28,12 @@ public class VetoCapabilityTranslator implements CapabilityTranslator {
         List<top.focess.veto.llm.core.ToolDefinition> planTools = new ArrayList<>();
         var javaRecordTools = new HashSet<String>();
         if (manifest == null) return flat;
+        boolean citationsAvailable =
+                manifest.stream()
+                        .anyMatch(
+                                def ->
+                                        ResponseSubmission.Metadata.kindOf(def)
+                                                == ResponseSubmission.Kind.ANSWER);
         for (ToolDefinition def : manifest) {
             Map<String, Object> inputSchema = inputSchemaOf(def);
             var translated =
@@ -55,7 +61,8 @@ public class VetoCapabilityTranslator implements CapabilityTranslator {
                             plan.name(),
                             plan.description(),
                             MAPPER.convertValue(
-                                    PlanProgramSchema.create(planTools, javaRecordTools),
+                                    PlanProgramSchema.create(
+                                            planTools, javaRecordTools, citationsAvailable),
                                     new TypeReference<Map<String, Object>>() {}),
                             plan.examples(),
                             plan.documentation(),

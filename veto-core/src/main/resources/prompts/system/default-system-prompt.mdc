@@ -1,7 +1,7 @@
 ---
 version: 2
 id: default-system-prompt
-requires: [persona, workspace, environment, lawSources, guidance, policy, presentation, guided, tools, toolNames, skills]
+requires: [persona, workspace, environment, lawSources, guidance, policy, presentation, guided, planCitations, tools, toolNames, skills]
 ---
 @message system
 @include law

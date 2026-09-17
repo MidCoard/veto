@@ -10,6 +10,7 @@ import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.identity.AgentPersona;
 import top.focess.veto.agent.screening.DeployerPolicy;
+import top.focess.veto.agent.tool.ResponseSubmission;
 import top.focess.veto.agent.workspace.PathMode;
 import top.focess.veto.agent.workspace.VetoMdResolver;
 import top.focess.veto.agent.workspace.Workspace;
@@ -64,6 +65,21 @@ public final class PromptInputs {
         data.put("policy", policy.name());
         data.put("presentation", presentation.name());
         data.put("guided", guided);
+        data.put(
+                "planCitations",
+                persona.whitelistedTools().stream()
+                        .anyMatch(
+                                tool ->
+                                        ResponseSubmission.Metadata.kindOf(tool)
+                                                        == ResponseSubmission.Kind.ANSWER
+                                                && tools.stream()
+                                                        .anyMatch(
+                                                                available ->
+                                                                        available
+                                                                                .name()
+                                                                                .equals(
+                                                                                        tool
+                                                                                                .name()))));
         data.put("tools", tools(tools));
         data.put("toolNames", tools.stream().map(ToolDefinition::name).toList());
         data.put(

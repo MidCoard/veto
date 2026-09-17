@@ -127,7 +127,7 @@ class GuidedBindingsTest {
 
     @Test
     void fewShotProgramsParseAndValidate() throws Exception {
-        String prompt = PromptLibrary.text("plan-system-prompt");
+        String prompt = PromptLibrary.text("plan-system-prompt", Map.of("planCitations", true));
         var matcher = Pattern.compile("```json\\s*([\\s\\S]*?)```").matcher(prompt);
         ObjectMapper mapper = new ObjectMapper();
         int count = 0;
