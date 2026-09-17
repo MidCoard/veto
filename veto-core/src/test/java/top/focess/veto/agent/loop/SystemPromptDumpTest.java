@@ -425,11 +425,24 @@ class SystemPromptDumpTest {
                             + redundantMetaExplanation);
         }
         assertTrue(
-                catalog.contains("Available tools and their argument and result contracts"),
+                catalog.contains("The native tool schemas define argument names"),
                 "the catalog must describe the active persona capabilities");
+        var questionTool =
+                flatTools.stream()
+                        .filter(t -> t.name().equals("ask_user"))
+                        .findFirst()
+                        .orElseThrow();
+        var questionSchema =
+                new ObjectMapper()
+                        .valueToTree(questionTool.inputSchema())
+                        .path("properties")
+                        .path("questions")
+                        .path("items");
+        assertEquals(
+                "string", questionSchema.path("properties").path("header").path("type").asText());
         assertTrue(
-                catalog.contains("`questions[].header` (string, required)"),
-                "nested ask_user arguments must be explicit in the tool catalog");
+                questionSchema.path("required").toString().contains("\"header\""),
+                "nested ask_user arguments must remain explicit in its native schema");
         assertTrue(
                 catalog.contains("RESULT_LIMIT, VISIT_LIMIT, TIME_LIMIT, or OUTPUT_LIMIT"),
                 "find_files must enumerate its truncation reasons");
@@ -458,7 +471,6 @@ class SystemPromptDumpTest {
             String entry = end < 0 ? catalog.substring(start) : catalog.substring(start, end);
             assertEquals(
                     List.of(
-                            "Args",
                             "Result formats",
                             "Behavior",
                             "When to use",
