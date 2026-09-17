@@ -3,6 +3,7 @@ package top.focess.veto.agent.translation;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.NonNull;
@@ -13,9 +14,11 @@ import top.focess.veto.agent.tool.NativeToolDefinition;
 import top.focess.veto.agent.tool.ParamCategory;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDocs;
-import top.focess.veto.agent.tool.ToolDocumentation;
-import top.focess.veto.agent.tool.ToolResultFormat;
+import top.focess.veto.agent.tool.ToolSchemaCompiler;
+import top.focess.veto.agent.tool.builtin.AnswerWithCitationsTool;
 import top.focess.veto.agent.tool.builtin.LoadSkillTool;
+import top.focess.veto.agent.tool.builtin.SubmitPlanTool;
+import top.focess.veto.agent.tool.builtin.ViewFileTool;
 import top.focess.veto.llm.core.ToolDefinition;
 
 /**
@@ -25,100 +28,6 @@ import top.focess.veto.llm.core.ToolDefinition;
 class VetoCapabilityTranslatorTest {
 
     private final @NonNull VetoCapabilityTranslator translator = new VetoCapabilityTranslator();
-
-    @Test
-    void autonomousHasOptionalThoughtCallsNoActions() {
-        JsonNode schema = translator.vetoResponseSchema(false);
-        JsonNode props = schema.get("properties");
-        JsonNode required = schema.get("required");
-        assertTrue(props.has("thought"), "thought always present (optional)");
-        assertFalse(props.has("calls"), "calls are native transport data");
-        assertFalse(props.has("actions"), "actions absent when not guided");
-        assertFalse(contains(required, "thought"), "thought never required");
-        assertFalse(
-                contains(required, "message"),
-                "message not schema-required (enforcer handles stop)");
-        assertFalse(contains(required, "features"));
-    }
-
-    @Test
-    void enabledGuideIsOptionalAndKeepsNormalCallsAvailable() {
-        JsonNode schema = translator.vetoResponseSchema(true);
-        JsonNode props = schema.get("properties");
-        JsonNode required = schema.get("required");
-        assertFalse(props.has("calls"));
-        assertTrue(props.has("guide"));
-        JsonNode guide = props.path("guide");
-        assertEquals(
-                "array",
-                guide.path("properties").path("actions").get("type").asText(),
-                "actions is a flat array");
-        assertFalse(contains(required, "guide"));
-        assertTrue(contains(guide.path("required"), "actions"));
-        assertFalse(contains(required, "features"));
-        assertFalse(contains(required, "thought"), "thought never required");
-        JsonNode actionVariants =
-                guide.path("properties").path("actions").path("items").path("anyOf");
-        assertEquals(4, actionVariants.size(), "four non-tool guided action kinds without tools");
-        assertTrue(hasDiscriminator(actionVariants, "generate"));
-        assertTrue(hasDiscriminator(actionVariants, "goto"));
-        assertTrue(hasDiscriminator(actionVariants, "conditional_goto"));
-        assertTrue(hasDiscriminator(actionVariants, "STOP"));
-    }
-
-    @Test
-    void featureBagIsAbsentAndGuideIsOnlyAdvertisedWhenEnabled() {
-        for (boolean enabled : new boolean[] {true, false}) {
-            JsonNode props = translator.vetoResponseSchema(enabled).path("properties");
-            assertFalse(props.has("features"));
-            assertFalse(props.has("actions"));
-            assertEquals(enabled, props.has("guide"));
-            assertFalse(props.has("calls"));
-            assertTrue(props.has("message"));
-        }
-    }
-
-    @Test
-    void autonomousCallVariantsBindEachToolNameToItsOwnArgsSchema() {
-        Map<String, Object> viewArgs =
-                Map.of(
-                        "type",
-                        "object",
-                        "properties",
-                        Map.of("absolutePath", Map.of("type", "string")),
-                        "required",
-                        List.of("absolutePath"));
-        Map<String, Object> thinkArgs =
-                Map.of(
-                        "type",
-                        "object",
-                        "properties",
-                        Map.of("thought", Map.of("type", "string")),
-                        "required",
-                        List.of("thought"));
-        List<ToolDefinition> tools =
-                List.of(
-                        new ToolDefinition(
-                                "view_file",
-                                "Read a file.",
-                                viewArgs,
-                                List.of(),
-                                ToolDocumentation.empty(),
-                                List.of(),
-                                List.of(ToolResultFormat.PLAINTEXT)),
-                        new ToolDefinition(
-                                "think",
-                                "Continue deliberately.",
-                                thinkArgs,
-                                List.of(),
-                                ToolDocumentation.empty(),
-                                List.of(),
-                                List.of(ToolResultFormat.PLAINTEXT)));
-
-        JsonNode schema = translator.vetoResponseSchema(false, tools);
-        assertFalse(schema.path("properties").has("calls"));
-        assertEquals(viewArgs, tools.getFirst().inputSchema());
-    }
 
     @Test
     void translateToolsFlattensManifestToNameDescriptionSchema() {
@@ -174,30 +83,19 @@ class VetoCapabilityTranslatorTest {
     }
 
     @Test
-    void guidedToolActionsBindToolNameAndInputNames() {
-        Map<String, Object> args =
-                Map.of(
-                        "type",
-                        "object",
-                        "properties",
-                        Map.of("absolutePath", Map.of("type", "string")),
-                        "required",
-                        List.of("absolutePath"));
-        var tool =
-                new ToolDefinition(
-                        "view_file",
-                        "Read a file.",
-                        args,
-                        List.of(),
-                        ToolDocumentation.empty(),
-                        List.of(),
-                        List.of(ToolResultFormat.PLAINTEXT));
-
+    void translatedPlanBindsAllowedToolNamesAndInputsAndExcludesResponseSubmissions() {
+        var tool = ToolSchemaCompiler.compileNative(new ViewFileTool());
+        var plan = planDefinition("renamed_plan_submission");
+        var answer =
+                AgentToolDefinition.from(
+                        "renamed_answer_submission",
+                        ToolDocs.nonNullClass(AnswerWithCitationsTool.class),
+                        ToolDocs.nonNullClass(AnswerWithCitationsTool.Args.class),
+                        ToolCapability.LOOP_CONTROL);
+        var flat = translator.translateTools(List.of(tool, plan, answer));
         JsonNode variants =
-                translator
-                        .vetoResponseSchema(true, List.of(tool))
-                        .path("properties")
-                        .path("guide")
+                new ObjectMapper()
+                        .valueToTree(flat.get(1).inputSchema())
                         .path("properties")
                         .path("actions")
                         .path("items")
@@ -219,6 +117,52 @@ class VetoCapabilityTranslatorTest {
                         action.path("properties").path("inputs").path("required"), "absolutePath"));
         assertFalse(
                 action.path("properties").path("inputs").path("additionalProperties").asBoolean());
+        assertEquals(
+                List.of("view_file"),
+                java.util.stream.StreamSupport.stream(variants.spliterator(), false)
+                        .filter(
+                                variant ->
+                                        contains(
+                                                variant.path("properties")
+                                                        .path("type")
+                                                        .path("enum"),
+                                                "tool"))
+                        .map(
+                                variant ->
+                                        variant.path("properties")
+                                                .path("tool")
+                                                .path("enum")
+                                                .get(0)
+                                                .asText())
+                        .toList());
+        assertEquals(
+                flat,
+                new DefaultCapabilityTranslator(new ObjectMapper())
+                        .translateTools(List.of(tool, plan, answer)),
+                "Reduced contexts must emit the same contextual native contracts");
+    }
+
+    @Test
+    void planWithoutExecutableCatalogToolsStillAllowsGenerateButNoArbitraryToolNames() {
+        var flat = translator.translateTools(List.of(planDefinition("submit_plan")));
+        JsonNode variants =
+                new ObjectMapper()
+                        .valueToTree(flat.getFirst().inputSchema())
+                        .path("properties")
+                        .path("actions")
+                        .path("items")
+                        .path("anyOf");
+        assertFalse(hasDiscriminator(variants, "tool"));
+        assertTrue(hasDiscriminator(variants, "generate"));
+        assertTrue(hasDiscriminator(variants, "STOP"));
+    }
+
+    private static @NonNull AgentToolDefinition planDefinition(@NonNull String name) {
+        return AgentToolDefinition.from(
+                name,
+                ToolDocs.nonNullClass(SubmitPlanTool.class),
+                ToolDocs.nonNullClass(SubmitPlanTool.Args.class),
+                ToolCapability.LOOP_CONTROL);
     }
 
     private static @NonNull JsonNode variantFor(

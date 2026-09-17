@@ -153,7 +153,7 @@ class AgentRunnerTest {
                         request -> {
                             requests.add(request);
                             if (repair && limit != 4 && requests.size() == 1)
-                                return new VetoResponse(null, null, null, null);
+                                return new VetoResponse(null, null, null);
                             String tool =
                                     !obey
                                                     || (limit == 4 && requests.size() <= 3)
@@ -161,7 +161,7 @@ class AgentRunnerTest {
                                             ? "think"
                                             : "finish";
                             return new VetoResponse(
-                                    null, List.of(new ToolCall(tool, Map.of())), null, null);
+                                    null, List.of(new ToolCall(tool, Map.of())), null);
                         },
                         limit,
                         engine,
@@ -232,9 +232,8 @@ class AgentRunnerTest {
                                         List.of(
                                                 new ToolCall(
                                                         "missing_tool", Map.of(), "usage-tool")),
-                                        null,
                                         null);
-                            return new VetoResponse("thinking", null, "answer", null);
+                            return new VetoResponse("thinking", null, "answer");
                         });
         try {
             service.submitNow("usage-reference", "New request", binding("System"));
@@ -320,8 +319,7 @@ class AgentRunnerTest {
                 serviceWith(
                         request -> {
                             requests.add(request);
-                            return new VetoResponse(
-                                    "Processed the safe context.", null, "Done.", null);
+                            return new VetoResponse("Processed the safe context.", null, "Done.");
                         });
         var candidates = new SecretCandidateStore();
         service.attachSecretCandidates(candidates);
@@ -389,7 +387,7 @@ class AgentRunnerTest {
                 serviceWith(
                         request -> {
                             calls.incrementAndGet();
-                            return new VetoResponse("Safe.", null, "Done.", null);
+                            return new VetoResponse("Safe.", null, "Done.");
                         });
         service.attachSecretCandidates(new SecretCandidateStore());
         String session = UUID.randomUUID().toString();
@@ -442,7 +440,7 @@ class AgentRunnerTest {
                                     request.messages().toString().contains("Earlier conversation"));
                             calls.incrementAndGet();
                             called.countDown();
-                            return new VetoResponse(null, null, "Notification handled", null);
+                            return new VetoResponse(null, null, "Notification handled");
                         });
         @NonNull KeysteadVault vault = Mockito.mock();
         runtime.attachMonitorVault(vault);
@@ -572,11 +570,8 @@ class AgentRunnerTest {
                         request ->
                                 calls.getAndIncrement() == 0
                                         ? new VetoResponse(
-                                                "Need a format",
-                                                List.of(questionCall()),
-                                                null,
-                                                null)
-                                        : new VetoResponse(null, null, "Handled", null),
+                                                "Need a format", List.of(questionCall()), null)
+                                        : new VetoResponse(null, null, "Handled"),
                         5,
                         questionEngine(questions),
                         new HitlRegistry());
@@ -634,7 +629,7 @@ class AgentRunnerTest {
                         request -> {
                             requests.add(request);
                             called.countDown();
-                            return new VetoResponse(null, null, "Handled", null);
+                            return new VetoResponse(null, null, "Handled");
                         });
         UUID session = UUID.randomUUID();
         String id = UUID.randomUUID().toString();
@@ -724,7 +719,7 @@ class AgentRunnerTest {
                                 throw new IllegalStateException(error);
                             }
                             if (!success) throw new IllegalStateException("Provider unavailable");
-                            return new VetoResponse(null, null, "Review finished", null);
+                            return new VetoResponse(null, null, "Review finished");
                         });
         try {
             var agent =
@@ -813,7 +808,7 @@ class AgentRunnerTest {
                     assertFalse(
                             durable.isEmpty(), "Budget must be saved before provider execution");
                     requests.add(request);
-                    return new VetoResponse(null, null, "done", null);
+                    return new VetoResponse(null, null, "done");
                 };
         UUID session = UUID.randomUUID();
         var first = serviceWith(caller, maxCalls);
@@ -903,7 +898,7 @@ class AgentRunnerTest {
                 serviceWith(
                         request -> {
                             calls.incrementAndGet();
-                            return new VetoResponse(null, null, "unexpected", null);
+                            return new VetoResponse(null, null, "unexpected");
                         });
         @NonNull RequestContinuationStore store = Mockito.mock();
         Mockito.doThrow(new IllegalStateException("Checkpoint unavailable"))
@@ -952,7 +947,7 @@ class AgentRunnerTest {
                 serviceWith(
                         request -> {
                             calls.incrementAndGet();
-                            return new VetoResponse(null, null, "unexpected", null);
+                            return new VetoResponse(null, null, "unexpected");
                         },
                         1L);
         UUID session = UUID.randomUUID();
@@ -1018,7 +1013,7 @@ class AgentRunnerTest {
                 serviceWith(
                         request -> {
                             requests.add(request);
-                            return new VetoResponse(null, null, "new report", null);
+                            return new VetoResponse(null, null, "new report");
                         });
         UUID session = UUID.randomUUID();
         UUID user = UUID.randomUUID();
@@ -1262,7 +1257,7 @@ class AgentRunnerTest {
     void completedResultDoesNotConfirmTaskExitWhileCallbackStillRuns() throws Exception {
         CountDownLatch entered = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
-        var service = serviceWith(request -> new VetoResponse(null, null, "done", null));
+        var service = serviceWith(request -> new VetoResponse(null, null, "done"));
         try {
             service.submit("callback-exit", "Warm up", binding("System"), EPISODE_TIMEOUT);
             var agent = requireAgent(service.agent("callback-exit"));
@@ -1295,7 +1290,7 @@ class AgentRunnerTest {
                 serviceWith(
                         request -> {
                             calls.incrementAndGet();
-                            return new VetoResponse(null, null, "New task done", null);
+                            return new VetoResponse(null, null, "New task done");
                         });
         UUID session = UUID.randomUUID();
         String agentId = UUID.randomUUID().toString();
@@ -1407,7 +1402,7 @@ class AgentRunnerTest {
                                                                         .contains(
                                                                                 "[Runtime cancellation]")));
                             }
-                            return new VetoResponse(null, null, "completed", null);
+                            return new VetoResponse(null, null, "completed");
                         });
         try {
             service.submitNow("cancel-task", "First task", binding("System"));
@@ -1493,7 +1488,7 @@ class AgentRunnerTest {
                             } catch (InterruptedException error) {
                                 throw new LlmException("provider call failed", error, false);
                             }
-                            return new VetoResponse(null, null, "unexpected", null);
+                            return new VetoResponse(null, null, "unexpected");
                         });
         try {
             service.submitNow("wrapped-cancel", "Cancelled work", binding("System"));
@@ -1519,7 +1514,7 @@ class AgentRunnerTest {
 
     @Test
     void successiveUserRequestsHaveDistinctDurableIdentities() throws Exception {
-        var service = serviceWith(request -> new VetoResponse(null, null, "done", null));
+        var service = serviceWith(request -> new VetoResponse(null, null, "done"));
         try {
             service.submit("request-ids", "First task", binding("System"), EPISODE_TIMEOUT);
             service.submit("request-ids", "Second task", binding("System"), EPISODE_TIMEOUT);
@@ -1550,7 +1545,6 @@ class AgentRunnerTest {
                                     null,
                                     null,
                                     "[Meeting](cite:meeting)",
-                                    null,
                                     List.of(
                                             new VetoResponse.Citation(
                                                     "meeting",
@@ -1581,7 +1575,6 @@ class AgentRunnerTest {
                                     null,
                                     null,
                                     "[Meeting](cite:meeting)",
-                                    null,
                                     List.of(
                                             new VetoResponse.Citation(
                                                     "meeting",
@@ -1618,7 +1611,6 @@ class AgentRunnerTest {
                                     null,
                                     null,
                                     "The meeting is [at 14:30](cite:meeting).",
-                                    null,
                                     List.of(
                                             new VetoResponse.Citation(
                                                     "meeting",
@@ -1662,7 +1654,6 @@ class AgentRunnerTest {
                                     null,
                                     null,
                                     "[Meeting](cite:meeting)",
-                                    null,
                                     List.of(
                                             new VetoResponse.Citation(
                                                     "meeting",
@@ -1701,12 +1692,11 @@ class AgentRunnerTest {
                             if (calls.incrementAndGet() == 1)
                                 throw new ModelSchemaException("try again");
                             if (calls.get() == 3)
-                                return new VetoResponse(null, null, "No citation", null);
+                                return new VetoResponse(null, null, "No citation");
                             return new VetoResponse(
                                     null,
                                     null,
                                     "[Meeting](cite:meeting)",
-                                    null,
                                     List.of(
                                             new VetoResponse.Citation(
                                                     "meeting",
@@ -1771,7 +1761,7 @@ class AgentRunnerTest {
                 serviceWith(
                         request -> {
                             int call = calls.incrementAndGet();
-                            return new VetoResponse(null, null, "result-" + call, null);
+                            return new VetoResponse(null, null, "result-" + call);
                         });
         try {
             service.submit("direct-monitor", "Initial task", binding("System"), EPISODE_TIMEOUT);
@@ -1852,7 +1842,7 @@ class AgentRunnerTest {
                             } catch (InterruptedException error) {
                                 throw new AssertionError(error);
                             }
-                            return new VetoResponse(null, null, "result-" + call, null);
+                            return new VetoResponse(null, null, "result-" + call);
                         });
         try {
             service.submitNow("direct-user", "Group task", binding("System"));
@@ -1902,7 +1892,7 @@ class AgentRunnerTest {
                         request -> {
                             seen.add(request);
                             if (seen.size() > 1) resumed.countDown();
-                            return new VetoResponse(null, null, "Done", null);
+                            return new VetoResponse(null, null, "Done");
                         });
         service.submit("monitor-wake", "Initial task", binding("System"), EPISODE_TIMEOUT);
         var agent = requireAgent(service.agent("monitor-wake"));
@@ -1963,7 +1953,7 @@ class AgentRunnerTest {
                 serviceWith(
                         request -> {
                             calls.incrementAndGet();
-                            return new VetoResponse(null, null, "Done", null);
+                            return new VetoResponse(null, null, "Done");
                         },
                         1L);
         service.submit("monitor-budget", "Initial task", binding("System"), EPISODE_TIMEOUT);
@@ -2016,7 +2006,7 @@ class AgentRunnerTest {
                         request -> {
                             seen.add(request);
                             if (seen.size() == 3) resumed.countDown();
-                            return new VetoResponse(null, null, "done", null);
+                            return new VetoResponse(null, null, "done");
                         });
         try {
             service.submit("origin-wake", "Review apples", binding("System"), EPISODE_TIMEOUT);
@@ -2100,7 +2090,7 @@ class AgentRunnerTest {
                                 Thread.currentThread().interrupt();
                                 throw new IllegalStateException(e);
                             }
-                            return new VetoResponse(null, null, "reply-" + call, null);
+                            return new VetoResponse(null, null, "reply-" + call);
                         });
         try {
             service.submit("future-wake", "Original", binding("System"), EPISODE_TIMEOUT);
@@ -2150,7 +2140,7 @@ class AgentRunnerTest {
                         request -> {
                             if (calls.incrementAndGet() == 1)
                                 throw new ModelSchemaException("Retry once");
-                            return new VetoResponse(null, null, "done", null);
+                            return new VetoResponse(null, null, "done");
                         },
                         2L);
         try {
@@ -2249,14 +2239,12 @@ class AgentRunnerTest {
                         return new VetoResponse(
                                 "I need to inspect one more thing.",
                                 List.of(new ToolCall("missing_tool", Map.of(), "breaker-call")),
-                                null,
                                 null);
                     }
                     return new VetoResponse(
                             "The prior task context is available.",
                             null,
-                            "Finished after resuming.",
-                            null);
+                            "Finished after resuming.");
                 };
 
         AgentService service = serviceWith(caller, 1L);
@@ -2337,7 +2325,7 @@ class AgentRunnerTest {
                                         guidance.contains(
                                                 "advertised argument schema for run_task"));
                                 assertFalse(guidance.contains("malformed-secret-value"));
-                                if (recover) return new VetoResponse(null, null, "Recovered", null);
+                                if (recover) return new VetoResponse(null, null, "Recovered");
                             }
                             return new VetoResponse(
                                     null,
@@ -2363,7 +2351,6 @@ class AgentRunnerTest {
                                                             "timeout",
                                                             10),
                                                     "invalid-second")),
-                                    null,
                                     null);
                         },
                         50,
@@ -2399,7 +2386,7 @@ class AgentRunnerTest {
                                             .getLast()
                                             .content()
                                             .contains("Malformed JSON"));
-                            return new VetoResponse(null, null, "Recovered", null);
+                            return new VetoResponse(null, null, "Recovered");
                         });
         var result =
                 service.submit("schema-recovery", "Answer", binding("System"), EPISODE_TIMEOUT);
@@ -2429,7 +2416,7 @@ class AgentRunnerTest {
                                     .get(request.messages().size() - 1)
                                     .content()
                                     .contains("Malformed guide JSON"));
-                    return new VetoResponse(null, null, "Recovered", null);
+                    return new VetoResponse(null, null, "Recovered");
                 };
         var service = serviceWith(caller);
         var result =
@@ -2461,10 +2448,9 @@ class AgentRunnerTest {
                 request -> {
                     seenRequests.add(request);
                     if (seenRequests.size() == 1) {
-                        return new VetoResponse(null, null, null, null);
+                        return new VetoResponse(null, null, null);
                     }
-                    return new VetoResponse(
-                            "I'll answer directly.", null, "The answer is 4.", null);
+                    return new VetoResponse("I'll answer directly.", null, "The answer is 4.");
                 };
 
         AgentService service = serviceWith(caller);
@@ -2521,10 +2507,9 @@ class AgentRunnerTest {
                     if (seenRequests.size() == 1) {
                         // thought present + stopping (no calls) + message missing → Rule 3 throws
                         // "message required (thought OFF or stopping)".
-                        return new VetoResponse("thinking...", null, null, null);
+                        return new VetoResponse("thinking...", null, null);
                     }
-                    return new VetoResponse(
-                            "I'll answer directly.", null, "The answer is 4.", null);
+                    return new VetoResponse("I'll answer directly.", null, "The answer is 4.");
                 };
 
         AgentService service = serviceWith(caller);
@@ -2554,9 +2539,7 @@ class AgentRunnerTest {
     @Test
     void thoughtStreamsToThoughtSinkBeforeMessage() throws Exception {
         UniformLLMCaller caller =
-                request ->
-                        new VetoResponse(
-                                "I should answer directly.", null, "The answer is 4.", null);
+                request -> new VetoResponse("I should answer directly.", null, "The answer is 4.");
 
         AgentService service = serviceWith(caller);
         List<String> thoughts = new CopyOnWriteArrayList<>();

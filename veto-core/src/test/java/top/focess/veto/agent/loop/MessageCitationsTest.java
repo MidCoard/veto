@@ -21,6 +21,91 @@ import top.focess.veto.llm.core.VetoRequest;
 import top.focess.veto.llm.core.VetoResponse;
 
 class MessageCitationsTest {
+    @ParameterizedTest
+    @EnumSource(ProviderType.class)
+    void resolvesQuoteWithoutModelCountingAcrossProviders(@NonNull ProviderType provider) {
+        var messages =
+                List.of(
+                        ChatMessage.user("Launch Friday.").withSourceTurns(List.of(2)),
+                        ChatMessage.assistant("Understood.").withSourceTurns(List.of(3)),
+                        ChatMessage.assistantToolCall(
+                                        "old-call",
+                                        "answer_with_citations",
+                                        "{\"quote\":\"Launch Friday.\"}",
+                                        "",
+                                        null)
+                                .withSourceTurns(List.of(4)),
+                        ChatMessage.toolResult("old-call", "Quote mismatch")
+                                .withSourceTurns(List.of(5)));
+        var request = request(provider, messages);
+        var response =
+                MessageCitations.resolve(
+                        request,
+                        new ResponseRequest.Answer(
+                                "Launch [Friday](cite:launch).",
+                                List.of(
+                                        new ResponseRequest.Citation(
+                                                "launch",
+                                                List.of(
+                                                        new ResponseRequest.Source(
+                                                                null, "Launch Friday."))))));
+        var citations = response.citations();
+        if (citations == null) throw new AssertionError("Missing citations");
+        assertEquals(0, citations.getFirst().sources().getFirst().messageIndex());
+        assertEquals(
+                "matched",
+                MessageCitations.bind(
+                                request,
+                                response,
+                                List.of(TurnRecord.userPrompt(2, "Launch Friday.")))
+                        .checks()
+                        .getFirst()
+                        .status());
+    }
+
+    @Test
+    void ambiguousQuotesNeedAnObservedSelectorAndMissingQuotesAreNotInvented() {
+        var request =
+                request(
+                        ProviderType.OPENAI,
+                        List.of(
+                                ChatMessage.user("Same quote").withSourceTurns(List.of(1)),
+                                ChatMessage.assistant("Same quote").withSourceTurns(List.of(2)),
+                                ChatMessage.user("runtime correction")));
+        var error =
+                assertThrows(
+                        top.focess.veto.agent.tool.ToolDocs.nonNullClass(
+                                IllegalArgumentException.class),
+                        () ->
+                                MessageCitations.resolve(
+                                        request,
+                                        new ResponseRequest.Answer(
+                                                "[source](cite:s)",
+                                                List.of(
+                                                        new ResponseRequest.Citation(
+                                                                "s",
+                                                                List.of(
+                                                                        new ResponseRequest.Source(
+                                                                                null,
+                                                                                "Same quote")))))));
+        assertTrue(String.valueOf(error.getMessage()).contains("[0, 1]"));
+        for (String quote : List.of("Missing", "runtime correction"))
+            assertThrows(
+                    top.focess.veto.agent.tool.ToolDocs.nonNullClass(
+                            IllegalArgumentException.class),
+                    () ->
+                            MessageCitations.resolve(
+                                    request,
+                                    new ResponseRequest.Answer(
+                                            "[source](cite:s)",
+                                            List.of(
+                                                    new ResponseRequest.Citation(
+                                                            "s",
+                                                            List.of(
+                                                                    new ResponseRequest.Source(
+                                                                            null, quote)))))));
+    }
+
     @Test
     void pendingThoughtSourcesSurviveFlushMergeAndTrailingEmission() {
         var compiler =
@@ -170,7 +255,6 @@ class MessageCitationsTest {
                 null,
                 null,
                 "[source](cite:one)",
-                null,
                 List.of(
                         new VetoResponse.Citation(
                                 "one", List.of(new VetoResponse.Source(index, quote)))));
@@ -252,7 +336,6 @@ class MessageCitationsTest {
                         null,
                         null,
                         "[source](cite:one)",
-                        null,
                         List.of(
                                 new VetoResponse.Citation(
                                         "one",

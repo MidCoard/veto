@@ -31,9 +31,11 @@ import top.focess.veto.agent.tool.AgentToolDefinition;
 import top.focess.veto.agent.tool.LocalToolDefinition;
 import top.focess.veto.agent.tool.NativeToolArgumentValidator;
 import top.focess.veto.agent.tool.NativeToolDefinition;
+import top.focess.veto.agent.tool.RemoteToolDefinition;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.agent.tool.ToolEngine;
+import top.focess.veto.agent.tool.ToolSchemaReferences;
 import top.focess.veto.agent.workspace.Workspace;
 import top.focess.veto.llm.core.ToolCall;
 
@@ -185,12 +187,29 @@ public class Gateway {
             if (!whitelist.contains(tool.tool()) || definition == null)
                 throw new IllegalArgumentException(
                         "Tool is not available in this role: " + tool.tool());
-            if (definition instanceof LocalToolDefinition local
-                    && !hasBinding(mapper.valueToTree(tool.inputs()))) {
-                NativeToolArgumentValidator.validate(
-                        local.name(),
-                        mapper.valueToTree(tool.resolveInputs(new Scope(mapper))),
-                        local.argsClass());
+            if (definition instanceof LocalToolDefinition local) {
+                JsonNode inputs = mapper.valueToTree(tool.inputs());
+                if (hasBinding(inputs)) {
+                    // Only a referenced value is unknown before execution. Its literal siblings,
+                    // required fields and argument names still belong to the selected tool's
+                    // contract, including inside nested objects and arrays.
+                    NativeToolArgumentValidator.validate(
+                            local.name(), inputs, local.argsClass(), true);
+                } else {
+                    NativeToolArgumentValidator.validate(
+                            local.name(),
+                            mapper.valueToTree(tool.resolveInputs(new Scope(mapper))),
+                            local.argsClass());
+                }
+            } else if (definition instanceof RemoteToolDefinition remote) {
+                // This preflight covers the validator's supported JSON Schema keywords, not the
+                // remote server's entire dialect. Defer unresolved values only, and decode $$
+                // once even when no actual binding occurs anywhere in the input object.
+                NativeToolArgumentValidator.validateAgainstSchema(
+                        remote.name(),
+                        mapper.valueToTree(tool.inputs()),
+                        ToolSchemaReferences.inlineForEmbedding(remote.inputSchema()),
+                        true);
             }
         }
     }

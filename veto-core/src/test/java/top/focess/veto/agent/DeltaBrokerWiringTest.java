@@ -89,7 +89,7 @@ class DeltaBrokerWiringTest {
     }
 
     private static @NonNull VetoResponse thoughtOn(String thought, String message) {
-        return new VetoResponse(thought, null, message, null);
+        return new VetoResponse(thought, null, message);
     }
 
     @Test

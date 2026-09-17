@@ -11,16 +11,84 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
+import top.focess.veto.agent.tool.AgentToolDefinition;
+import top.focess.veto.agent.tool.RemoteToolDefinition;
+import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.tool.ToolDocumentation;
 import top.focess.veto.agent.tool.ToolSchemaCompiler;
 import top.focess.veto.agent.tool.builtin.AskUserTool;
+import top.focess.veto.agent.tool.builtin.SubmitPlanTool;
 import top.focess.veto.agent.translation.VetoCapabilityTranslator;
 import top.focess.veto.llm.core.*;
+import top.focess.veto.llm.exceptions.ModelSchemaException;
 
 /** Verifies real SDK serialization and native response decoding without a remote model or key. */
 class AnthropicNativeToolWireTest {
+    @ParameterizedTest
+    @CsvSource({"tool_use, 0", "end_turn, 1", "max_tokens, 1"})
+    void invalidStopReportsOnlyReasonAndBlockCount(String stopReason, int toolUseBlocks)
+            throws Exception {
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext(
+                "/v1/messages",
+                exchange -> {
+                    exchange.getRequestBody().readAllBytes();
+                    String blocks =
+                            toolUseBlocks == 0
+                                    ? "[{\"type\":\"text\",\"text\":\"private-text-marker\"}]"
+                                    : "[{\"type\":\"tool_use\",\"id\":\"test-call\",\"name\":\"view_file\",\"input\":{\"absolutePath\":\"private-argument-marker\"}}]";
+                    byte[] response =
+                            ("{\"id\":\"test\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"test\",\"content\":"
+                                            + blocks
+                                            + ",\"stop_reason\":\""
+                                            + stopReason
+                                            + "\",\"usage\":{\"input_tokens\":10,\"output_tokens\":5}}")
+                                    .getBytes(StandardCharsets.UTF_8);
+                    exchange.getResponseHeaders().set("Content-Type", "application/json");
+                    exchange.sendResponseHeaders(200, response.length);
+                    try (var out = exchange.getResponseBody()) {
+                        out.write(response);
+                    }
+                });
+        server.start();
+        var sdk =
+                AnthropicOkHttpClient.builder()
+                        .apiKey("invalid-local-test-key")
+                        .baseUrl("http://127.0.0.1:" + server.getAddress().getPort())
+                        .build();
+        try {
+            var request =
+                    new VetoRequest(
+                            "System",
+                            "Read",
+                            List.of(),
+                            ProviderType.ANTHROPIC,
+                            "test",
+                            "key-ref",
+                            LlmOptions.defaults(),
+                            List.of(ChatMessage.user("Read")),
+                            null,
+                            null);
+            var client = new AnthropicLlmClient(sdk, new ObjectMapper());
+            var error =
+                    assertThrows(
+                            ToolDocs.nonNullClass(ModelSchemaException.class),
+                            () -> client.complete(new ResolvedRequest(request, null, "unused")));
+            String diagnostic = String.valueOf(error.getMessage());
+            assertTrue(diagnostic.contains("stop_reason=" + stopReason), diagnostic);
+            assertTrue(diagnostic.contains("tool_use_blocks=" + toolUseBlocks), diagnostic);
+            assertTrue(diagnostic.contains("no calls were executed"), diagnostic);
+            assertFalse(diagnostic.contains("private-text-marker"), diagnostic);
+            assertFalse(diagnostic.contains("private-argument-marker"), diagnostic);
+        } finally {
+            server.stop(0);
+            LlmSystemUsage.drain();
+        }
+    }
+
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
     void nativeCallAndItsResultRoundTripWithGuideEnabledOrDisabled(boolean guided)
@@ -69,7 +137,11 @@ class AnthropicNativeToolWireTest {
                                     "properties",
                                     Map.of("absolutePath", Map.of("type", "string")),
                                     "required",
-                                    List.of("absolutePath")),
+                                    List.of("absolutePath"),
+                                    "additionalProperties",
+                                    false,
+                                    "description",
+                                    "Canonical argument object retained on the wire"),
                             List.of(),
                             ToolDocumentation.empty(),
                             List.of(),
@@ -89,19 +161,34 @@ class AnthropicNativeToolWireTest {
                             ToolDocumentation.empty(),
                             List.of(),
                             List.of());
-            var schema = new VetoCapabilityTranslator().vetoResponseSchema(guided, List.of(tool));
+            var planTool =
+                    new VetoCapabilityTranslator()
+                            .translateTools(
+                                    List.of(
+                                            new RemoteToolDefinition(
+                                                    tool.name(),
+                                                    tool.description(),
+                                                    "local-test",
+                                                    mapper.valueToTree(tool.inputSchema())),
+                                            AgentToolDefinition.from(
+                                                    "submit_plan",
+                                                    ToolDocs.nonNullClass(SubmitPlanTool.class),
+                                                    ToolDocs.nonNullClass(
+                                                            SubmitPlanTool.Args.class),
+                                                    ToolCapability.LOOP_CONTROL)))
+                            .getFirst();
             var client = new AnthropicLlmClient(sdk, mapper);
             var first =
                     new VetoRequest(
                             "System",
                             "Read",
-                            List.of(tool, askTool),
+                            List.of(tool, askTool, planTool),
                             ProviderType.ANTHROPIC,
                             "test",
                             "key-ref",
                             LlmOptions.defaults(),
                             List.of(ChatMessage.user("Read")),
-                            schema,
+                            null,
                             null);
             var firstRaw = client.complete(new ResolvedRequest(first, null, "unused"));
             assertEquals("", firstRaw.rawResponse());
@@ -112,7 +199,7 @@ class AnthropicNativeToolWireTest {
                     new VetoRequest(
                             "System",
                             "Read",
-                            List.of(tool, askTool),
+                            List.of(tool, askTool, planTool),
                             ProviderType.ANTHROPIC,
                             "test",
                             "key-ref",
@@ -126,7 +213,7 @@ class AnthropicNativeToolWireTest {
                                             "",
                                             null),
                                     ChatMessage.toolResult("runtime-1", "file contents")),
-                            schema,
+                            null,
                             null);
             assertEquals(
                     "Read complete",
@@ -139,7 +226,34 @@ class AnthropicNativeToolWireTest {
             for (String body : bodies) {
                 var sent = mapper.readTree(body);
                 assertTrue(sent.path("tools").path(0).path("strict").asBoolean());
-                assertTrue(sent.path("tools").path(1).path("strict").asBoolean());
+                assertFalse(
+                        sent.path("tools").path(1).path("strict").asBoolean(),
+                        "ask_user retains unsupported length and array constraints with local validation");
+                assertFalse(
+                        sent.path("tools").path(2).path("strict").asBoolean(),
+                        "Plan bindings require free maps, which are outside the strict subset");
+                assertEquals(
+                        mapper.valueToTree(tool.inputSchema()),
+                        sent.path("tools").path(0).path("input_schema"));
+                assertEquals(
+                        mapper.valueToTree(planTool.inputSchema()),
+                        sent.path("tools").path(2).path("input_schema"),
+                        "Actual SDK serialization must retain the contextual plan schema");
+                assertEquals(
+                        "view_file",
+                        sent.path("tools")
+                                .path(2)
+                                .path("input_schema")
+                                .path("properties")
+                                .path("actions")
+                                .path("items")
+                                .path("anyOf")
+                                .path(0)
+                                .path("properties")
+                                .path("tool")
+                                .path("enum")
+                                .path(0)
+                                .asText());
                 assertFalse(sent.has("output_config"));
                 assertEquals("auto", sent.path("tool_choice").path("type").asText());
                 assertEquals("view_file", sent.path("tools").path(0).path("name").asText());

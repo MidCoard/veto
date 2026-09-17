@@ -112,7 +112,7 @@ class AgentServiceHistorySeedTest {
         UUID sessionId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
         AgentRunner.LlmBinding binding = binding();
-        UniformLLMCaller finishingCaller = request -> new VetoResponse("done", null, "done", null);
+        UniformLLMCaller finishingCaller = request -> new VetoResponse("done", null, "done");
 
         AgentService beforeRestart = serviceWith(finishingCaller);
         Agent first =
@@ -134,7 +134,7 @@ class AgentServiceHistorySeedTest {
                 serviceWith(
                         request -> {
                             resumedRequest.set(request);
-                            return new VetoResponse("done", null, "done", null);
+                            return new VetoResponse("done", null, "done");
                         });
         AgentRunner.LlmBinding updatedPromptBinding = binding("updated after restart");
         Agent resumed =

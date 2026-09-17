@@ -2,6 +2,7 @@ package top.focess.veto.agent.loop;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -57,7 +58,8 @@ import top.focess.veto.llm.core.ToolResultPresentationMode;
 class SystemPromptDumpTest {
 
     private static final @NonNull Path DUMP_DIR = Path.of("build", "prompt-dump");
-    private static final int MAX_TOOL_CATALOG_CHARS = 64 * 1024;
+    // Includes the two response submission tools, now documented in the real catalog.
+    private static final int MAX_TOOL_CATALOG_CHARS = 72 * 1024;
 
     @Autowired private @NonNull ToolEngine mcpEngine;
     @Autowired private @NonNull CapabilityTranslator translator;
@@ -97,7 +99,8 @@ class SystemPromptDumpTest {
             assertTrue(
                     linked.contains(
                             "flowchart, sequenceDiagram, stateDiagram-v2, erDiagram, classDiagram"));
-            assertTrue(linked.contains("one object matching the response schema"));
+            assertTrue(linked.contains("ordinary text or Markdown"));
+            assertFalse(linked.contains("one object matching the response schema"));
             assertFalse(linked.contains("presentation profile"));
             assertFalse(linked.contains("{{ANSWER_STYLE}}"));
             assertFalse(linked.contains("{{PRESENTATION_CAPABILITIES}}"));
@@ -143,8 +146,9 @@ class SystemPromptDumpTest {
         write("01-tool-catalog.md", catalog);
         write("02-tool-inventory.md", inventory(flatTools));
         write("02-registered-tool-inventory.md", inventory(registeredFlatTools));
-        writeJson("04-response-autonomous.json", translator.vetoResponseSchema(false, flatTools));
-        writeJson("05-response-guided.json", translator.vetoResponseSchema(true, flatTools));
+        write(
+                "03-native-tools.json",
+                objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(flatTools));
 
         // Full compiled prompt per role, using the production compiler and configured role bases.
         Role[] roles = roles();
@@ -220,12 +224,10 @@ class SystemPromptDumpTest {
         assertFalse(
                 disabled.systemMessage().contains("conditional_goto"),
                 "persisted enabled prompt must not restore a disabled capability");
-        var enabledSchema = enabled.responseSchema();
-        var disabledSchema = disabled.responseSchema();
-        if (enabledSchema == null || disabledSchema == null)
-            throw new AssertionError("schema missing");
-        assertTrue(enabledSchema.path("properties").has("guide"));
-        assertFalse(disabledSchema.path("properties").has("guide"));
+        assertNull(enabled.responseSchema());
+        assertNull(disabled.responseSchema());
+        assertTrue(enabled.tools().stream().anyMatch(tool -> tool.name().equals("submit_plan")));
+        assertFalse(disabled.tools().stream().anyMatch(tool -> tool.name().equals("submit_plan")));
         deleteLegacyRolePolicyDumps(roles);
         String standalone = Files.readString(DUMP_DIR.resolve("STANDALONE.md"));
         assertFalse(
@@ -348,21 +350,6 @@ class SystemPromptDumpTest {
         assertFalse(
                 sharedInstructions.contains("For a Mate"),
                 "the shared response protocol must not contain role-specific behavior");
-        assertFalse(
-                objectMapper
-                        .writeValueAsString(translator.vetoResponseSchema(false, flatTools))
-                        .contains("parallel tool calls"),
-                "the response schema must match ordered runtime execution");
-        assertFalse(
-                objectMapper
-                        .writeValueAsString(translator.vetoResponseSchema(false, flatTools))
-                        .contains("this turn's catalog"),
-                "the response schema must describe the stable available catalog");
-        assertFalse(
-                objectMapper
-                        .writeValueAsString(translator.vetoResponseSchema(false, flatTools))
-                        .contains("User-facing text"),
-                "the shared response schema must also be accurate for Mate internal reports");
         assertFalse(
                 Files.readString(DUMP_DIR.resolve("LEADER.md"))
                         .contains("## Additional Role Guidance"),

@@ -153,8 +153,7 @@ class NewRequirementsTest {
                                                         "path",
                                                         root.resolve("after.txt").toString()),
                                                 "call-after")),
-                                "Starting...",
-                                null));
+                                "Starting..."));
 
         ObjectMapper mapper = new ObjectMapper();
         PromptCompiler compiler =

@@ -85,6 +85,14 @@ public final class ToolSchemaCompiler {
      * {@link Required} because nullability annotations do not apply to primitives.
      */
     public static @NonNull JsonNode compileFromRecord(@NonNull Class<?> recordClass) {
+        var custom = recordClass.getAnnotation(ToolDocs.nonNullClass(ToolInputSchema.class));
+        if (custom != null) {
+            try {
+                return custom.value().getDeclaredConstructor().newInstance().schema();
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalArgumentException("Cannot construct tool schema", e);
+            }
+        }
         if (!recordClass.isRecord()) {
             throw new IllegalArgumentException("Class must be a Java Record");
         }

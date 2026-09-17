@@ -26,6 +26,6 @@ requires: [persona, workspace, environment, law, guidance, policy, presentation,
 @include tool-catalog
 @include response-protocol
 @if guided
-@include guided-system-prompt
+@include plan-system-prompt
 @endif
 @endmessage

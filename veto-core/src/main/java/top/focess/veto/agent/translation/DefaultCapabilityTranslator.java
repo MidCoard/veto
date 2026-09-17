@@ -1,6 +1,5 @@
 package top.focess.veto.agent.translation;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Objects;
@@ -18,17 +17,6 @@ public class DefaultCapabilityTranslator implements CapabilityTranslator {
 
     public DefaultCapabilityTranslator(@NonNull ObjectMapper objectMapper) {
         Objects.requireNonNull(objectMapper, "objectMapper");
-    }
-
-    @Override
-    public @NonNull JsonNode vetoResponseSchema(boolean guidedEnabled) {
-        return delegate.vetoResponseSchema(guidedEnabled);
-    }
-
-    @Override
-    public @NonNull JsonNode vetoResponseSchema(
-            boolean guidedEnabled, @NonNull List<top.focess.veto.llm.core.ToolDefinition> tools) {
-        return delegate.vetoResponseSchema(guidedEnabled, tools);
     }
 
     @Override

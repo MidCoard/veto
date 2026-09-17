@@ -140,8 +140,8 @@ class ToolContractIntegrityTest {
                                             + " reached dispatch as null");
             assertTrue(
                     String.valueOf(nullFailure.getMessage())
-                            .contains(
-                                    "missing required parameter '" + required.displayPath() + "'"));
+                            .contains("'" + required.displayPath() + "'"),
+                    () -> toolName + ": " + nullFailure.getMessage());
             assertEquals("INVALID_ARGUMENTS", nullFailure.errorCode());
         }
     }

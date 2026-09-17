@@ -6,9 +6,9 @@ import org.jspecify.annotations.NonNull;
 
 /**
  * A model-invoked content action. The only action that calls the model — invoked within the same
- * shared conversation, with bound inputs resolved from the {@link Scope}. {@code thought} is
- * per-action (nullable → use the agent's global flag, fill-in semantics); {@code modelTier}/{@code
- * temperature} are frozen at IR-authoring time.
+ * shared conversation, with bound inputs resolved from the {@link Scope}. {@code thought} is a
+ * legacy per-action recording preference, not a provider thinking-mode switch; {@code
+ * modelTier}/{@code temperature} are frozen at IR-authoring time.
  */
 public record GenerateAction(
         @NonNull String id,

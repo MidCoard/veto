@@ -38,7 +38,11 @@ public final class ProgramValidator {
         }
         // (A) STOP termination.
         if (!(program.actions().get(program.actions().size() - 1) instanceof StopAction)) {
-            throw new InvalidProgramException("final action must be STOP");
+            throw new InvalidProgramException(
+                    "actions["
+                            + (program.actions().size() - 1)
+                            + "] is not STOP: submit the complete executable plan, ending with a STOP action. "
+                            + "Bind its result_binding to the intended result when returning generated content. No steps executed.");
         }
         int n = program.actions().size();
         Set<String> ids = new HashSet<>();

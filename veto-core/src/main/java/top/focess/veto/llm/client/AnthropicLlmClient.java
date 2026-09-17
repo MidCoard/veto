@@ -33,10 +33,10 @@ import top.focess.veto.llm.exceptions.ModelCapabilityException;
 import top.focess.veto.llm.exceptions.ModelSchemaException;
 
 /**
- * Anthropic Messages adapter with strict native tools and ordinary text output. The configured
- * endpoint must support strict tools and the supplied tool schemas. Requests do not silently
- * downgrade based on endpoint or model names; provider schema errors remain visible. Native tool
- * blocks are decoded separately from ordinary text.
+ * Anthropic Messages adapter with native tools and ordinary text output. Strict decoding is used
+ * only when the unchanged tool schema fits Anthropic's supported subset and request limits. The
+ * complete argument schemas are retained for every tool; provider schema errors remain visible.
+ * Native tool blocks are decoded separately from ordinary text.
  *
  * <p>All Anthropic SDK types are confined to this class.
  */
@@ -72,12 +72,19 @@ final class AnthropicLlmClient extends LlmClient {
                     JsonValue.from(Map.of("type", permitsNativeCalls(request) ? "auto" : "none")));
         }
         // Retain tool contracts and native history while choosing the response channel.
+        var strictPolicy = new AnthropicStrictToolPolicy();
         for (ToolDefinition t : request.tools()) {
+            var selection = strictPolicy.select(objectMapper.valueToTree(t.inputSchema()));
+            if (!selection.strict())
+                log.debug(
+                        "Anthropic native tool {} uses local schema validation: {}",
+                        t.name(),
+                        selection.reason());
             builder.addTool(
                     Tool.builder()
                             .name(t.name())
                             .description(t.description())
-                            .putAdditionalProperty("strict", JsonValue.from(true))
+                            .putAdditionalProperty("strict", JsonValue.from(selection.strict()))
                             .inputSchema(toolInputSchema(t.inputSchema()))
                             .build());
         }
@@ -121,11 +128,19 @@ final class AnthropicLlmClient extends LlmClient {
         if (java.util.Set.of("max_tokens", "model_context_window_exceeded", "pause_turn")
                 .contains(stop))
             throw new ModelSchemaException(
-                    "Anthropic response was truncated; no calls were executed");
+                    "Anthropic response was truncated (stop_reason="
+                            + stop
+                            + ", tool_use_blocks="
+                            + toolUses.size()
+                            + "); no calls were executed");
         if ((!toolUses.isEmpty() && !stop.isEmpty() && !stop.equals("tool_use"))
                 || (toolUses.isEmpty() && stop.equals("tool_use")))
             throw new ModelSchemaException(
-                    "Anthropic stop_reason does not match its tool_use blocks");
+                    "Anthropic stop_reason does not match its tool_use blocks (stop_reason="
+                            + stop
+                            + ", tool_use_blocks="
+                            + toolUses.size()
+                            + "); no calls were executed");
         String rawInput =
                 NativeToolResponses.normalize(
                         objectMapper,
@@ -194,17 +209,15 @@ final class AnthropicLlmClient extends LlmClient {
 
     private static Tool.@NonNull InputSchema toolInputSchema(
             @NonNull Map<String, Object> inputSchema) {
-        Tool.InputSchema.Builder builder =
-                Tool.InputSchema.builder().properties(toolProperties(inputSchema));
-        Object required = inputSchema.get("required");
-        if (required != null) {
-            builder.putAdditionalProperty("required", JsonValue.from(required));
-        }
-        Object additionalProperties = inputSchema.get("additionalProperties");
-        if (additionalProperties != null) {
-            builder.putAdditionalProperty(
-                    "additionalProperties", JsonValue.from(additionalProperties));
-        }
+        Tool.InputSchema.Builder builder = Tool.InputSchema.builder();
+        if (inputSchema.containsKey("properties")) builder.properties(toolProperties(inputSchema));
+        // The SDK models type/properties directly. Preserve every other canonical keyword,
+        // including root-level definitions/composition from remote tools, without rewriting it.
+        inputSchema.forEach(
+                (key, value) -> {
+                    if (!key.equals("properties") && !key.equals("type"))
+                        builder.putAdditionalProperty(key, JsonValue.from(value));
+                });
         return builder.build();
     }
 

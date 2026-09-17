@@ -312,7 +312,7 @@ class NativeProvidersWireTest {
                 "key",
                 LlmOptions.defaults(),
                 history,
-                new VetoCapabilityTranslator().vetoResponseSchema(guided, List.of(TOOL)),
+                null,
                 null);
     }
 

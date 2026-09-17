@@ -295,6 +295,6 @@ class WebReadChildAuthorityTest {
 
     private static @NonNull VetoResponse call(
             @NonNull String name, @NonNull Map<@NonNull String, Object> args) {
-        return new VetoResponse(null, List.of(new ToolCall(name, args)), null, null);
+        return new VetoResponse(null, List.of(new ToolCall(name, args)), null);
     }
 }

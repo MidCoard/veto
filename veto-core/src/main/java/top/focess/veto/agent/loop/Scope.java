@@ -4,11 +4,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.NullNode;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
@@ -30,7 +30,7 @@ public class Scope {
     /** Sentinel for unset slots — a value, not an error (checks branch on it). */
     public static final @NonNull Object UNDEFINED = new Object();
 
-    private final @NonNull Map<String, Object> bindings = new HashMap<>();
+    private final @NonNull Map<String, Object> bindings = new LinkedHashMap<>();
     private final Scope parent;
     private final @NonNull ObjectMapper objectMapper;
 
@@ -215,7 +215,12 @@ public class Scope {
             return "";
         }
         StringBuilder sb = new StringBuilder();
-        for (var entry : bindings.entrySet()) {
+        // An action's output map need not retain JSON insertion order. Sort at publication so
+        // equivalent bindings produce the same result regardless of map implementation.
+        for (var entry : new TreeMap<>(bindings).entrySet()) {
+            if (entry.getKey().equals("CURRENT_STEPS")
+                    || entry.getKey().startsWith("step_ok:")
+                    || entry.getValue() == UNDEFINED) continue;
             if (!sb.isEmpty()) {
                 sb.append("\n");
             }

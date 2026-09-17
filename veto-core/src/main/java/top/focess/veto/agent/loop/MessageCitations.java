@@ -30,6 +30,66 @@ public final class MessageCitations {
             int messageCount,
             @NonNull List<@NonNull Check> checks) {}
 
+    /**
+     * Locate exact evidence in the same request that produced the call, without model-side
+     * counting.
+     */
+    public static @NonNull VetoResponse resolve(
+            @NonNull VetoRequest request, ResponseRequest.@NonNull Answer answer) {
+        var messages = ProviderMessages.groups(request);
+        var citations = new ArrayList<VetoResponse.Citation>();
+        for (var citation : answer.citations()) {
+            var sources = new ArrayList<VetoResponse.Source>();
+            for (var source : citation.sources()) {
+                Integer selected = source.messageIndex();
+                if (selected == null) {
+                    var candidates = new ArrayList<Integer>();
+                    for (int index = 0; index < messages.size(); index++) {
+                        boolean matches =
+                                messages.get(index).stream()
+                                        .anyMatch(
+                                                message ->
+                                                        !message.sourceTurns().isEmpty()
+                                                                && !Boolean.FALSE.equals(
+                                                                        message.toolSuccess())
+                                                                && (message.toolName() == null
+                                                                        || message.role()
+                                                                                .equals("tool"))
+                                                                && contains(
+                                                                        message.content(),
+                                                                        source.quote()));
+                        if (matches) candidates.add(index);
+                    }
+                    if (candidates.isEmpty())
+                        throw new IllegalArgumentException(
+                                "Citation "
+                                        + citation.id()
+                                        + ": quote was not found in visible conversation evidence. Copy a longer exact passage from the source; do not paraphrase or invent a message index.");
+                    if (candidates.size() > 1)
+                        throw new IllegalArgumentException(
+                                "Citation "
+                                        + citation.id()
+                                        + ": quote matches several input messages "
+                                        + candidates
+                                        + ". Use a longer unique quote, or choose the intended source with message_index from these candidates in this request. Roles: "
+                                        + candidates.stream()
+                                                .map(
+                                                        index ->
+                                                                index
+                                                                        + "="
+                                                                        + messages.get(index)
+                                                                                .getFirst()
+                                                                                .role())
+                                                .toList());
+                    selected = candidates.getFirst();
+                }
+                sources.add(new VetoResponse.Source(selected, source.quote()));
+            }
+            citations.add(new VetoResponse.Citation(citation.id(), sources));
+        }
+        return new VetoResponse(null, null, answer.message(), citations);
+    }
+
     public static @NonNull Bound bind(
             @NonNull VetoRequest request,
             @NonNull VetoResponse response,

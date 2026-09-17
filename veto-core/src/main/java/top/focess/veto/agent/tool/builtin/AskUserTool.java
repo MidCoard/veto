@@ -55,12 +55,9 @@ import top.focess.veto.agent.tool.UserInteractionTool;
         security =
                 "A user answer does not replace any separate approval required to perform an operation.",
         examples = {
-            "{\"questions\":[{\"header\":\"Format\",\"id\":\"format\",\"question\":\"Which"
-                    + " output format should I use?\",\"options\":[{\"label\":\"Markdown"
-                    + "\",\"description\":\"Easy to review and"
-                    + " edit.\"},{\"label\":\"Plain text\",\"description\":\"No formatting.\"}]}]}"
+            "{\"questions\":[{\"header\":\"Target\",\"id\":\"target\",\"question\":\"Which environment should receive the requested deployment?\",\"options\":[{\"label\":\"Staging\",\"description\":\"Validate the release with internal testers.\"},{\"label\":\"Production\",\"description\":\"Release to users.\"}]}]}"
         },
-        returnExamples = {"{\"answers\":{\"format\":\"Markdown\"}}"})
+        returnExamples = {"{\"answers\":{\"target\":\"Staging\"}}"})
 public final class AskUserTool implements UserInteractionTool<AskUserTool.Args> {
 
     static final int MAX_QUESTIONS = 10;

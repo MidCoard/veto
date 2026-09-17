@@ -47,8 +47,8 @@ import top.focess.veto.llm.core.VetoRequest;
  *       {@link #wellFormed} so the result is the conversation every strict provider accepts (opens
  *       on a user message; every tool_call is answered by a tool_result immediately after it —
  *       unanswered calls get a synthesized "interrupted" result).
- *   <li><b>tools[]</b> + <b>response_schema</b> - via the {@link CapabilityTranslator} (flat tools
- *       + the per-turn {@code veto_pulse} schema variant).
+ *   <li><b>tools[]</b> - native tool definitions from {@link CapabilityTranslator}. Answers remain
+ *       ordinary provider text; no response-envelope schema is supplied.
  * </ol>
  */
 @Component
@@ -269,7 +269,9 @@ public class PromptCompiler {
         List<ToolDefinition> flatTools =
                 translator.translateTools(
                         availableTools(
-                                persona.whitelistedTools(), persona.registeredSkills().isEmpty()));
+                                persona.whitelistedTools(),
+                                persona.registeredSkills().isEmpty(),
+                                guidedEnabled));
         List<ChatMessage> conversation = resolveRewinds(history, toolResultPresentation);
         if (!recoveryContext.content().isBlank()) {
             conversation = new ArrayList<>(conversation);
@@ -293,9 +295,6 @@ public class PromptCompiler {
         }
         List<ChatMessage> messages = wellFormed(conversation, conversation);
 
-        flatTools =
-                ResponseTools.add(
-                        flatTools, translator.vetoResponseSchema(guidedEnabled, flatTools));
         com.fasterxml.jackson.databind.JsonNode responseSchema = null;
 
         String provider = "";
@@ -353,7 +352,9 @@ public class PromptCompiler {
         List<ToolDefinition> flatTools =
                 translator.translateTools(
                         availableTools(
-                                persona.whitelistedTools(), persona.registeredSkills().isEmpty()));
+                                persona.whitelistedTools(),
+                                persona.registeredSkills().isEmpty(),
+                                guidedEnabled));
         return buildSystemMessage(
                 persona,
                 sessionWorkspace,
@@ -367,7 +368,21 @@ public class PromptCompiler {
     static @NonNull List<top.focess.veto.agent.tool.@NonNull ToolDefinition> availableTools(
             @NonNull Collection<top.focess.veto.agent.tool.@NonNull ToolDefinition> tools,
             boolean skillsEmpty) {
+        return availableTools(tools, skillsEmpty, true);
+    }
+
+    static @NonNull List<top.focess.veto.agent.tool.@NonNull ToolDefinition> availableTools(
+            @NonNull Collection<top.focess.veto.agent.tool.@NonNull ToolDefinition> tools,
+            boolean skillsEmpty,
+            boolean guidedEnabled) {
         return tools.stream()
+                .filter(
+                        tool ->
+                                guidedEnabled
+                                        || top.focess.veto.agent.tool.ResponseSubmission.Metadata
+                                                        .kindOf(tool)
+                                                != top.focess.veto.agent.tool.ResponseSubmission
+                                                        .Kind.PLAN)
                 .filter(tool -> !skillsEmpty || !"load_skill".equals(tool.name()))
                 .toList();
     }

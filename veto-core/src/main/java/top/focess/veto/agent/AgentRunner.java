@@ -63,6 +63,7 @@ import top.focess.veto.agent.loop.PromptCompiler;
 import top.focess.veto.agent.loop.PromptLibrary;
 import top.focess.veto.agent.loop.PromptSource;
 import top.focess.veto.agent.loop.ResponseEnforcer;
+import top.focess.veto.agent.loop.ResponseRequest;
 import top.focess.veto.agent.loop.Scope;
 import top.focess.veto.agent.loop.StopAction;
 import top.focess.veto.agent.loop.ToolAction;
@@ -641,6 +642,8 @@ public class AgentRunner {
             activeProgram = null;
             guided = false;
             completionToolFinished = false;
+            pendingResponse = null;
+            submissionRequest = null;
             runAutonomous();
             completeOrWaitForMonitor();
         } catch (BreakerTripException e) {
@@ -809,6 +812,8 @@ public class AgentRunner {
                             null));
         }
         completionToolFinished = false;
+        pendingResponse = null;
+        submissionRequest = null;
         declinedCallSignatures.clear();
         // Actively tell the agent about background tasks that ended since it last ran — drained
         // into the context BEFORE the new user prompt so the model reads them together. This is
@@ -1094,6 +1099,92 @@ public class AgentRunner {
         }
     }
 
+    private VetoRequest submissionRequest;
+    private boolean submissionGeneration;
+    private ToolCallContextHolder.ResponseDirective pendingResponse;
+
+    private @NonNull VetoResponse takeResponse(
+            ToolCallContextHolder.ResponseDirective.@NonNull Answer directive) {
+        pendingResponse = null;
+        lastCitations = directive.citations();
+        return directive.response();
+    }
+
+    private ToolCallContextHolder.@NonNull ResponseDirective validateSubmission(
+            @NonNull ResponseRequest submission) throws Exception {
+        var request = submissionRequest;
+        if (request == null)
+            throw new IllegalStateException("No active model request for response submission");
+        if (completionTool != null)
+            throw new IllegalArgumentException("This agent must finish through " + completionTool);
+        if (submission instanceof ResponseRequest.Plan plan) {
+            try {
+                if (!guidedEnabled || submissionGeneration)
+                    throw new IllegalArgumentException(
+                            "Plan submission is unavailable in this context");
+                var planDefinition =
+                        request.tools().stream()
+                                .filter(
+                                        tool ->
+                                                submissionKind(tool.name())
+                                                        == top.focess.veto.agent.tool
+                                                                .ResponseSubmission.Kind.PLAN)
+                                .findFirst()
+                                .orElseThrow(
+                                        () ->
+                                                new IllegalArgumentException(
+                                                        "Plan tool was not available in the current request"));
+                NativeToolArgumentValidator.validateAgainstSchema(
+                        planDefinition.name(),
+                        objectMapper.createObjectNode().set("actions", plan.actions()),
+                        objectMapper.valueToTree(planDefinition.inputSchema()));
+                var program = ActionsProgramParser.parse(plan.actions());
+                ProgramValidator.validate(program);
+                ProgramValidator.validateInputs(program);
+                gateway.validateProgram(program, toolEngine, whitelistedTools, objectMapper);
+                for (var action : program.actions()) {
+                    if (action instanceof ToolAction tool && submissionKind(tool.tool()) != null)
+                        throw new IllegalArgumentException(
+                                "Response submission tools cannot be nested as plan tool steps; use generate for a cited answer and STOP to finish");
+                }
+                return new ToolCallContextHolder.ResponseDirective.Plan(program);
+            } catch (IllegalArgumentException | ProgramValidator.InvalidProgramException error) {
+                throw new ToolExecutionException(
+                        top.focess.veto.agent.tool.ToolResultStatus.FAILURE,
+                        top.focess.veto.agent.tool.ToolResultFormat.PLAINTEXT,
+                        "INVALID_PLAN",
+                        "Plan rejected before execution: " + String.valueOf(error.getMessage()));
+            }
+        }
+        var answer = (ResponseRequest.Answer) submission;
+        VetoResponse response = MessageCitations.resolve(request, answer);
+        ResponseEnforcer.enforce(response, whitelistedTools);
+        MessageCitations.Bound bound = null;
+        var citations = response.citations();
+        if (citations != null) {
+            bound = MessageCitations.bind(request, response, List.copyOf(history));
+            for (var check : bound.checks()) {
+                for (var reference : check.references()) {
+                    if (!reference.status().equals("matched"))
+                        throw new IllegalArgumentException(
+                                "Citation "
+                                        + check.id()
+                                        + " could not match the exact quote in input message "
+                                        + reference.messageIndex()
+                                        + "; count the current non-system input messages from zero. Input message count: "
+                                        + bound.messageCount());
+                }
+            }
+        }
+        return new ToolCallContextHolder.ResponseDirective.Answer(response, bound);
+    }
+
+    private top.focess.veto.agent.tool.ResponseSubmission.Kind submissionKind(
+            @NonNull String name) {
+        return top.focess.veto.agent.tool.ResponseSubmission.Metadata.kindOf(
+                toolEngine.resolveDefinition(name));
+    }
+
     private void runAutonomous() {
         while (state == AgentState.RUNNING) {
             checkTaskCancellation();
@@ -1106,35 +1197,25 @@ public class AgentRunner {
                 injectPendingTaskExitNotices();
                 injectMonitorEvents();
             }
-            if (breaker.shouldTrip()) {
+            if (pendingResponse == null && breaker.shouldTrip()) {
                 tripBreaker();
                 throw new BreakerTripException();
             }
-            VetoResponse response = callModel(guidedEnabled);
-            checkTaskCancellation();
-            var guide = response.guide();
-            if (guide != null) {
-                this.guided = true;
-                var actions = guide.actions();
-                if (loadProgram(actions)) {
-                    appendThought(response);
-                    String message = response.message();
-                    if (message != null && !message.isBlank()) {
-                        emitMessage(message, lastCitations, lastModelCallId);
-                    }
-                    AgentPersona programPersona = persona;
-                    runGuided();
-                    if (persona != programPersona) {
-                        continue; // A role transformation starts a fresh reasoning episode.
-                    }
-                    return; // guided mode finished, back to idle
-                }
-                // invalid program → stay autonomous (rejection fed back as observation)
-                appendObservation(
-                        "guided_program_rejected",
-                        "actions failed validation; staying autonomous.");
-                continue;
+            var accepted = pendingResponse;
+            if (accepted instanceof ToolCallContextHolder.ResponseDirective.Plan plan) {
+                pendingResponse = null;
+                checkTaskCancellation();
+                installProgram(plan.program());
+                AgentPersona programPersona = persona;
+                runGuided();
+                if (persona != programPersona) continue;
+                return;
             }
+            VetoResponse response =
+                    accepted instanceof ToolCallContextHolder.ResponseDirective.Answer answer
+                            ? takeResponse(answer)
+                            : callModel(guidedEnabled);
+            checkTaskCancellation();
 
             appendThought(response);
             String message = response.message();
@@ -1338,33 +1419,33 @@ public class AgentRunner {
             tripBreaker();
             throw new BreakerTripException();
         }
-        VetoResponse response = callModel(false, gen);
+        VetoResponse response;
+        while (true) {
+            response = callModel(false, gen);
+            var calls = response.calls();
+            if (calls == null || calls.isEmpty()) break;
+            executeToolCalls(calls, response.thought());
+            var accepted = pendingResponse;
+            if (accepted instanceof ToolCallContextHolder.ResponseDirective.Answer answer) {
+                response = takeResponse(answer);
+                break;
+            }
+            checkTaskCancellation();
+        }
         if (!Boolean.FALSE.equals(gen.thought())) appendThought(response);
         return response;
     }
 
-    private boolean loadProgram(@NonNull JsonNode node) {
-        try {
-            ActionsProgram program = ActionsProgramParser.parse(node);
-            ProgramValidator.validate(program);
-            ProgramValidator.validateInputs(program);
-            gateway.validateProgram(program, toolEngine, whitelistedTools, objectMapper);
-            guidedSources.clear();
-            this.activeProgram = program;
-            this.programModelCallId = lastModelCallId;
-            this.programCounter = 0;
-            this.currentSteps = 0;
-            return true;
-        } catch (IllegalArgumentException
-                | ProgramValidator.InvalidProgramException
-                | ToolExecutionException e) {
-            this.guided = false;
-            appendObservation(
-                    "guided_validation_error",
-                    e.getMessage() == null ? "Invalid guided program" : e.getMessage());
-            log.warn("Agent {} actions program rejected: {}", agentId, safe(e.getMessage()));
-            return false;
-        }
+    /** Acceptance compiled and validated this exact program before any step could run. */
+    private void installProgram(@NonNull ActionsProgram program) {
+        scope = new Scope(objectMapper);
+        generatedCitations.clear();
+        guidedSources.clear();
+        activeProgram = program;
+        programModelCallId = lastModelCallId;
+        programCounter = 0;
+        currentSteps = 0;
+        guided = true;
     }
 
     private void escapeToAutonomous(@NonNull String reason) {
@@ -1459,19 +1540,7 @@ public class AgentRunner {
                 // stored in the ASSISTANT_THOUGHT turn and echoed back on the next request's
                 // assistant message. Cleared immediately (one-shot per model call).
                 lastReasoningContent = ReasoningContentHolder.getAndClear();
-                var submission = top.focess.veto.agent.loop.ResponseTools.submission(response);
-                if (submission != null) {
-                    final String submissionName = submission.toolName();
-                    if (!request.nativeToolsEnabled()
-                            || request.tools().stream()
-                                    .noneMatch(t -> t.name().equals(submissionName)))
-                        throw new ModelSchemaException("Response tool is unavailable in this turn");
-                    response =
-                            top.focess.veto.agent.loop.ResponseTools.decode(
-                                    response, submission, objectMapper);
-                }
-                VetoResponse checked =
-                        ResponseEnforcer.enforce(response, allowGuided, whitelistedTools);
+                VetoResponse checked = ResponseEnforcer.enforce(response, whitelistedTools);
                 validateResponseMode(checked, generation);
                 validateLocalCallArguments(checked);
                 var declaredCitations = checked.citations();
@@ -1543,14 +1612,8 @@ public class AgentRunner {
                 if (inputBaseline != null) {
                     contextUsage.accept(inputBaseline, contextUsage.baseline());
                 }
-                if (submission != null) {
-                    appendToolCall(submission);
-                    appendToolResponse(
-                            submission.toolName(),
-                            submission.callId(),
-                            "Submission received by the runtime.",
-                            true);
-                }
+                submissionRequest = request;
+                submissionGeneration = generation != null;
                 return checked;
             } catch (ModelSchemaException e) {
                 log.warn(
@@ -1601,24 +1664,28 @@ public class AgentRunner {
         validateCompletionResponse(checked);
         var generatedCalls = checked.calls();
         if (generation != null
-                && ((generatedCalls != null && !generatedCalls.isEmpty())
-                        || checked.guide() != null))
+                && ((generatedCalls != null
+                        && generatedCalls.stream()
+                                .anyMatch(
+                                        c ->
+                                                submissionKind(c.toolName())
+                                                        != top.focess.veto.agent.tool
+                                                                .ResponseSubmission.Kind.ANSWER))))
             throw new ModelSchemaException(
-                    "generate requires message output and no calls or guide");
+                    "generate accepts text or the answer submission tool only");
     }
 
     private void validateCompletionResponse(@NonNull VetoResponse checked) {
         if (completionTool == null) return;
         var generatedCalls = checked.calls();
         String checkedMessage = checked.message();
-        if (checked.guide() != null
-                || generatedCalls == null
+        if (generatedCalls == null
                 || generatedCalls.size() != 1
                 || (checkedMessage != null && !checkedMessage.isBlank()))
             throw new ModelSchemaException(
                     "This agent requires exactly one tool call per turn and must complete through "
                             + completionTool
-                            + "; freeform answers and guide are not accepted");
+                            + "; freeform answers are not accepted");
         if (completionOnly(breaker.count() - 1)
                 && !generatedCalls.getFirst().toolName().equals(completionTool)) {
             throw new ModelSchemaException("The remaining model calls must use " + completionTool);
@@ -1707,7 +1774,11 @@ public class AgentRunner {
                 original.systemPrompt(),
                 prompt,
                 original.tools().stream()
-                        .filter(t -> t.name().equals("answer_with_citations"))
+                        .filter(
+                                t ->
+                                        submissionKind(t.name())
+                                                == top.focess.veto.agent.tool.ResponseSubmission
+                                                        .Kind.ANSWER)
                         .toList(),
                 selected.provider(),
                 selected.model(),
@@ -1832,6 +1903,7 @@ public class AgentRunner {
         var calls = response.calls();
         if (calls == null) return;
         for (var call : calls) {
+            if (submissionKind(call.toolName()) != null) continue;
             if (toolEngine.resolveDefinition(call.toolName())
                     instanceof LocalToolDefinition local) {
                 try {
@@ -1860,6 +1932,18 @@ public class AgentRunner {
         currentToolModelCallId = lastModelCallId;
         try {
 
+            if (calls.size() > 1
+                    && calls.stream().anyMatch(c -> submissionKind(c.toolName()) != null)) {
+                for (var call : calls) {
+                    appendToolCall(call);
+                    appendToolResponse(
+                            call.toolName(),
+                            call.callId(),
+                            "A response submission must be the only tool call. No calls in this batch were executed; resubmit separately.",
+                            false);
+                }
+                return;
+            }
             List<ToolCall> callsNeedingDecision = new ArrayList<>(calls.size());
             for (ToolCall call : calls) {
                 if (declinedCallSignatures.contains(toolCallSignature(call))) {
@@ -2003,6 +2087,7 @@ public class AgentRunner {
                         completionToolFinished = true;
                         return;
                     }
+                    if (pendingResponse != null) return;
                     if (persona != callPersona) {
                         return; // Remaining calls were authored for the previous role.
                     }
@@ -2065,6 +2150,13 @@ public class AgentRunner {
                         executionPermit.withCaller(agentId, userId, groupId, owner, sessionId),
                         activeRequestId));
         try {
+            if (submissionKind(call.toolName()) != null) {
+                var request = submissionRequest;
+                if (request != null
+                        && request.nativeToolsEnabled()
+                        && request.tools().stream().anyMatch(t -> t.name().equals(call.toolName())))
+                    ToolCallContextHolder.setResponseHandler(this::validateSubmission);
+            }
             // (e) plugin postAction chain
             checkTaskCancellation();
             boolean waitsForAnswer = def.capability() == ToolCapability.USER_INTERACTION;
@@ -2106,6 +2198,9 @@ public class AgentRunner {
 
             ToolResult observed = transformed.withContent(observation);
             appendToolResponse(observed);
+            var responseDirective = ToolCallContextHolder.drainResponse();
+            if (observed.success() && responseDirective != null)
+                pendingResponse = responseDirective;
             if (waitsForAnswer && sessionAlive) saveExecutionWait(null);
 
             // Drain any turn directives the tool requested during execution (e.g. a REWIND seeded
@@ -2411,10 +2506,7 @@ public class AgentRunner {
         // reasoning_content is echoed back on the next request's assistant message so DeepSeek
         // thinking mode accepts the conversation history.
         Map<String, Object> payload = new HashMap<>();
-        if (response.guide() != null) {
-            JsonNode responseJson = objectMapper.valueToTree(response);
-            payload.put("response", responseJson.toString());
-        } else if (thought != null && !thought.isBlank()) {
+        if (thought != null && !thought.isBlank()) {
             payload.put("response", thought);
         } else {
             return;

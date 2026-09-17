@@ -39,7 +39,7 @@ public final class ProviderMessages {
             var first = messages.get(i);
             var state = first.nativeState();
             if (state == null
-                    || !state.model().equals(request.modelName())
+                    || !state.supports("GEMINI", request.modelName())
                     || !first.role().equals("assistant")) {
                 out.add(List.of(first));
                 i++;
@@ -53,7 +53,7 @@ public final class ProviderMessages {
                 var next = call.nativeState();
                 if (next == null
                         || !next.batch().equals(state.batch())
-                        || !next.model().equals(state.model())) break;
+                        || !next.supports("GEMINI", request.modelName())) break;
                 calls.add(call);
                 i++;
                 if (i < messages.size()

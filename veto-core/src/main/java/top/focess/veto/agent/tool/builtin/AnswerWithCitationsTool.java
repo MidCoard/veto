@@ -1,0 +1,105 @@
+package top.focess.veto.agent.tool.builtin;
+
+import java.util.List;
+import org.jspecify.annotations.NonNull;
+import org.springframework.stereotype.Component;
+import top.focess.veto.agent.capability.LoopControlCapability;
+import top.focess.veto.agent.loop.ResponseRequest;
+import top.focess.veto.agent.tool.*;
+
+@Component
+@ResponseSubmission(ResponseSubmission.Kind.ANSWER)
+@ToolDoc(
+        description =
+                "Publish an answer citing supplied text, including the current user message. Supply message with [label](cite:id) links and exact quotes; runtime finds their sources without message counting or external lookup. This publishes the answer, requires no memory write, and must be the only call.",
+        behavior =
+                "Locates each exact quote in the visible conversation and verifies its source and returns the answer with verified source metadata. In a conversation this publishes the answer and finishes the turn; in guided generation it becomes the step output. Call this tool alone. Its message is the answer; no extra final text is needed after success.",
+        whenToUse =
+                "Use when the user requests clickable conversation sources or the answer attributes an exact passage to a prior message or tool result. The current user message is also a valid source. String values inside JSON tool results can be quoted.",
+        whenNotToUse =
+                "Reply directly in text for answers without verified conversation references. Ordinary external URLs do not require this tool. A plain blockquote or a handwritten citation marker does not create source metadata.",
+        resultContract =
+                "Success: JSON {\"status\":\"accepted\"}; the submitted answer is published with verified source links. Failure returns a diagnostic, publishes no answer, and keeps the conversation active so you can correct the source reference or answer without a citation.",
+        errorsAndEdgeCases =
+                "Use [label](cite:id) links in message and declare each id once. Supply a short exact quote from visible conversation text or a tool result; the runtime locates its source. Omit message_index normally: do not count messages. If a quote occurs in several messages, use a longer unique quote or select a message_index from the returned candidates. Copy punctuation and whitespace verbatim. Each citation supports 1-8 passages, each up to 4000 characters; at most 32 citations. References attach to this answer; no memory write or file creation is needed.",
+        security =
+                "References are limited to the calling agent's current visible input. This tool cannot retrieve other sessions or access files. A matched quote establishes its source, not the truth of its claim.",
+        resultFormats = {ToolResultFormat.JSON},
+        examples = {
+            "{\"message\":\"The meeting starts at [14:30](cite:meeting).\",\"citations\":[{\"id\":\"meeting\",\"sources\":[{\"quote\":\"The meeting starts at 14:30.\"}]}]}"
+        },
+        returnExamples = {"{\"status\":\"accepted\"}"})
+public final class AnswerWithCitationsTool
+        implements LoopControlTool<AnswerWithCitationsTool.Args> {
+    private final @NonNull LoopControlCapability capability;
+
+    public AnswerWithCitationsTool(@NonNull LoopControlCapability capability) {
+        this.capability = capability;
+    }
+
+    @Override
+    public @NonNull String getName() {
+        return "answer_with_citations";
+    }
+
+    @Override
+    public @NonNull Class<Args> getArgsClass() {
+        return ToolDocs.nonNullClass(Args.class);
+    }
+
+    @Override
+    public @NonNull LoopControlCapability loopControlCapability() {
+        return capability;
+    }
+
+    @Override
+    public @NonNull String execute(@NonNull Args args, @NonNull LoopControlCapability capability)
+            throws Exception {
+        var citations =
+                args.citations().stream()
+                        .map(
+                                c ->
+                                        new ResponseRequest.Citation(
+                                                c.id(),
+                                                c.sources().stream()
+                                                        .map(
+                                                                s ->
+                                                                        new ResponseRequest.Source(
+                                                                                s.message_index(),
+                                                                                s.quote()))
+                                                        .toList()))
+                        .toList();
+        capability.answerWithCitations(new ResponseRequest.Answer(args.message(), citations));
+        return "{\"status\":\"accepted\"}";
+    }
+
+    public record Args(
+            @NonNull
+                    @StringConstraint(minLength = 1)
+                    @Doc(
+                            "Complete final answer, with [label](cite:id) links matching the citation declarations. Published only after validation.")
+                    String message,
+            @NonNull
+                    @ArraySize(min = 1, max = 32)
+                    @Doc(
+                            "Exact source passages for every cite: link. The runtime locates quotes in the current visible conversation.")
+                    List<@NonNull Citation> citations) {}
+
+    public record Citation(
+            @NonNull
+                    @StringConstraint(minLength = 1, maxLength = 64, pattern = "^[A-Za-z0-9_-]+$")
+                    @Doc("Unique link identifier matching cite:id in message.")
+                    String id,
+            @NonNull @ArraySize(min = 1, max = 8) @Doc("Exact passages supporting this citation.")
+                    List<@NonNull Source> sources) {}
+
+    public record Source(
+            @Doc(
+                            "Optional disambiguation index supplied by a tool error when a quote has multiple sources. Omit normally; never guess or count messages.")
+                    Integer message_index,
+            @NonNull
+                    @StringConstraint(minLength = 1, maxLength = 4000)
+                    @Doc(
+                            "Exact contiguous text copied from that message. JSON string values may be quoted. Preserve punctuation and whitespace.")
+                    String quote) {}
+}

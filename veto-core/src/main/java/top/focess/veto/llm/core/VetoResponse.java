@@ -2,31 +2,28 @@ package top.focess.veto.llm.core;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.databind.JsonNode;
 import java.util.List;
-import java.util.Objects;
 import org.jspecify.annotations.NonNull;
 
 /**
- * Internal normalized model turn, constructed by adapters and the runtime, never a model-facing
- * JSON response format. Execute native calls, submit a guided program, or answer with text. The
- * session controls whether guide is available; a response cannot enable that capability. Calls and
- * guide are mutually exclusive. Thought is an optional operational rationale.
+ * Internal adapter result: model text, native calls and resolved answer citations. Execution plans
+ * are control directives created by submit_plan, never model response fields. thought is legacy
+ * operational text, not a provider thinking configuration.
  */
+@com.fasterxml.jackson.annotation.JsonInclude(
+        com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
 public record VetoResponse(
         String thought,
         @JsonIgnore List<@NonNull ToolCall> calls,
         String message,
-        Guide guide,
         List<@NonNull Citation> citations) {
 
     public VetoResponse {
         if (citations != null) citations = List.copyOf(citations);
     }
 
-    public VetoResponse(
-            String thought, List<@NonNull ToolCall> calls, String message, Guide guide) {
-        this(thought, calls, message, guide, null);
+    public VetoResponse(String thought, List<@NonNull ToolCall> calls, String message) {
+        this(thought, calls, message, null);
     }
 
     public record Citation(@NonNull String id, @NonNull List<@NonNull Source> sources) {
@@ -49,12 +46,5 @@ public record VetoResponse(
     @JsonIgnore
     public boolean hasCalls() {
         return calls != null && !calls.isEmpty();
-    }
-
-    /** A complete program, validated by the runtime before any action executes. */
-    public record Guide(@NonNull JsonNode actions) {
-        public Guide {
-            Objects.requireNonNull(actions, "guide.actions");
-        }
     }
 }

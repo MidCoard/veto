@@ -13,7 +13,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import top.focess.veto.agent.loop.PromptDocument;
-import top.focess.veto.agent.translation.VetoCapabilityTranslator;
 import top.focess.veto.llm.core.ChatMessage;
 import top.focess.veto.llm.core.LlmOptions;
 import top.focess.veto.llm.core.LlmSystemUsage;
@@ -82,7 +81,7 @@ class ProtectedProviderBodyTest {
                                     ChatMessage.assistantToolCall(
                                             "read", "view_file", "{}", "", null),
                                     ChatMessage.toolResult("read", file)),
-                            new VetoCapabilityTranslator().vetoResponseSchema(guided, List.of()),
+                            null,
                             null);
             var client = new AnthropicLlmClient(sdk, new ObjectMapper());
             // Repeat the same protected history as a resend/recovery boundary check.

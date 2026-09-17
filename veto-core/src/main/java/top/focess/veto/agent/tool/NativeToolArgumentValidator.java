@@ -1,6 +1,7 @@
 package top.focess.veto.agent.tool;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.TextNode;
 import java.lang.reflect.AnnotatedArrayType;
 import java.lang.reflect.AnnotatedParameterizedType;
 import java.lang.reflect.AnnotatedType;
@@ -8,6 +9,7 @@ import java.lang.reflect.RecordComponent;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import org.jspecify.annotations.NonNull;
 
@@ -18,10 +20,46 @@ public final class NativeToolArgumentValidator {
 
     public static void validate(
             @NonNull String toolName, @NonNull JsonNode arguments, @NonNull Class<?> argsClass) {
+        validate(toolName, arguments, argsClass, false);
+    }
+
+    public static void validate(
+            @NonNull String toolName,
+            @NonNull JsonNode arguments,
+            @NonNull Class<?> argsClass,
+            boolean allowBindings) {
         JsonNode schema = ToolSchemaCompiler.compileFromRecord(argsClass);
         List<String> issues = new ArrayList<>();
-        validateNode(arguments, schema, "", issues);
+        validateNode(
+                arguments,
+                schema,
+                "",
+                issues,
+                !argsClass.isAnnotationPresent(ToolDocs.nonNullClass(ToolInputSchema.class)),
+                allowBindings);
         validateConditionalRequirements(arguments, argsClass, "", issues);
+        throwIfInvalid(toolName, schema, issues);
+    }
+
+    /** Validates a contextual schema, including tool catalog constraints captured for a request. */
+    public static void validateAgainstSchema(
+            @NonNull String toolName, @NonNull JsonNode arguments, @NonNull JsonNode schema) {
+        validateAgainstSchema(toolName, arguments, schema, false);
+    }
+
+    /** During plan preflight, defer only individual references; validate all known siblings. */
+    public static void validateAgainstSchema(
+            @NonNull String toolName,
+            @NonNull JsonNode arguments,
+            @NonNull JsonNode schema,
+            boolean allowBindings) {
+        List<String> issues = new ArrayList<>();
+        validateNode(arguments, schema, "", issues, false, allowBindings);
+        throwIfInvalid(toolName, schema, issues);
+    }
+
+    private static void throwIfInvalid(
+            @NonNull String toolName, @NonNull JsonNode schema, @NonNull List<String> issues) {
         if (!issues.isEmpty()) {
             List<String> expected = fieldNames(schema.path("properties"));
             throw new ToolExecutionException(
@@ -123,23 +161,51 @@ public final class NativeToolArgumentValidator {
     }
 
     private static void validateNode(
-            @NonNull JsonNode value,
+            @NonNull JsonNode originalValue,
             @NonNull JsonNode schema,
             @NonNull String path,
-            @NonNull List<String> issues) {
-        String expectedType = schema.path("type").asText();
-        if ((path.isEmpty() && !value.isObject()) || !matchesType(value, expectedType)) {
+            @NonNull List<String> issues,
+            boolean javaNulls,
+            boolean allowBindings) {
+        validateNode(originalValue, schema, path, issues, javaNulls, allowBindings, false);
+    }
+
+    private static void validateNode(
+            @NonNull JsonNode originalValue,
+            @NonNull JsonNode schema,
+            @NonNull String path,
+            @NonNull List<String> issues,
+            boolean javaNulls,
+            boolean allowBindings,
+            boolean currentResolved) {
+        if (schema.isBoolean()) {
+            if (!schema.asBoolean())
+                issues.add("parameter '" + displayPath(path) + "' is forbidden by its schema");
+            return;
+        }
+        JsonNode value = originalValue;
+        if (allowBindings && !currentResolved && value.isTextual()) {
+            String text = value.asText();
+            if (text.startsWith("$") && !text.startsWith("$$")) return;
+            // Escape once, before matching literals; recursive anyOf checks must not unescape
+            // again.
+            if (text.startsWith("$$")) value = TextNode.valueOf(text.substring(1));
+        }
+        var variants = schema.path("anyOf");
+        if (variants.isArray()) {
+            List<JsonNode> choices = new ArrayList<>();
+            variants.forEach(choices::add);
+            validateVariants(value, choices, path, issues, javaNulls, allowBindings);
+        }
+        JsonNode type = schema.path("type");
+        if ((path.isEmpty() && !value.isObject()) || !matchesType(value, type, javaNulls)) {
             issues.add(
                     "parameter '"
                             + displayPath(path)
                             + "' must be "
-                            + expectedType
+                            + type
                             + ", got "
                             + actualType(value));
-            return;
-        }
-        if (value.isNull()) {
-            // Nullability is checked from the annotated Java type, including collection elements.
             return;
         }
         JsonNode allowed = schema.path("enum");
@@ -153,38 +219,203 @@ public final class NativeToolArgumentValidator {
                             + value);
             return;
         }
-
-        if ("object".equals(expectedType)) {
+        if (schema.has("const") && !schema.path("const").equals(value)) {
+            issues.add("parameter '" + displayPath(path) + "' must equal " + schema.path("const"));
+            return;
+        }
+        if (value.isNull()) return;
+        if (value.isObject()) {
             JsonNode properties = schema.path("properties");
-            List<String> actualNames = fieldNames(value);
-            for (String name : actualNames) {
-                if (!properties.has(name)) {
-                    issues.add("unknown parameter '" + childPath(path, name) + "'");
+            for (String name : fieldNames(value)) {
+                if (schema.has("propertyNames"))
+                    validateNode(
+                            TextNode.valueOf(name),
+                            schema.path("propertyNames"),
+                            childPath(path, name),
+                            issues,
+                            javaNulls,
+                            false);
+                boolean matchedProperty = properties.has(name);
+                for (var pattern : schema.path("patternProperties").properties()) {
+                    if (!java.util.regex.Pattern.compile(pattern.getKey()).matcher(name).find())
+                        continue;
+                    matchedProperty = true;
+                    validateNode(
+                            value.path(name),
+                            pattern.getValue(),
+                            childPath(path, name),
+                            issues,
+                            javaNulls,
+                            allowBindings);
+                }
+                if (!matchedProperty) {
+                    var additional = schema.path("additionalProperties");
+                    if (additional.isBoolean() && !additional.asBoolean())
+                        issues.add("unknown parameter '" + childPath(path, name) + "'");
+                    else if (additional.isObject())
+                        validateNode(
+                                value.path(name),
+                                additional,
+                                childPath(path, name),
+                                issues,
+                                javaNulls,
+                                allowBindings);
                 }
             }
             for (JsonNode required : schema.path("required")) {
                 String name = required.asText();
-                if (!value.has(name) || value.get(name).isNull()) {
+                if (!value.has(name) || (javaNulls && value.path(name).isNull()))
                     issues.add("missing required parameter '" + childPath(path, name) + "'");
-                }
             }
             for (String name : fieldNames(properties)) {
-                if (value.has(name) && !value.get(name).isNull()) {
+                if (value.has(name) && !(javaNulls && value.path(name).isNull()))
                     validateNode(
-                            value.get(name), properties.get(name), childPath(path, name), issues);
-                }
+                            value.path(name),
+                            properties.path(name),
+                            childPath(path, name),
+                            issues,
+                            javaNulls,
+                            allowBindings);
             }
-        } else if ("array".equals(expectedType)) {
-            JsonNode itemSchema = schema.path("items");
-            for (int i = 0; i < value.size(); i++) {
-                validateNode(value.get(i), itemSchema, path + "[" + i + "]", issues);
-            }
+        } else if (value.isArray()) {
+            if (schema.has("minItems") && value.size() < schema.path("minItems").asInt())
+                issues.add("parameter '" + displayPath(path) + "' has too few items");
+            if (schema.has("maxItems") && value.size() > schema.path("maxItems").asInt())
+                issues.add("parameter '" + displayPath(path) + "' has too many items");
+            for (int i = 0; i < value.size(); i++)
+                validateNode(
+                        value.path(i),
+                        schema.path("items"),
+                        path + "[" + i + "]",
+                        issues,
+                        javaNulls,
+                        allowBindings);
+        } else if (value.isTextual()) {
+            String text = value.asText();
+            int length = text.codePointCount(0, text.length());
+            if (schema.has("minLength") && length < schema.path("minLength").asInt())
+                issues.add("parameter '" + displayPath(path) + "' is too short");
+            if (schema.has("maxLength") && length > schema.path("maxLength").asInt())
+                issues.add("parameter '" + displayPath(path) + "' is too long");
+            if (schema.has("pattern")
+                    && !java.util.regex.Pattern.compile(schema.path("pattern").asText())
+                            .matcher(text)
+                            .find())
+                issues.add(
+                        "parameter '"
+                                + displayPath(path)
+                                + "' does not match its required pattern");
+        } else if (value.isNumber()) {
+            if (schema.has("minimum")
+                    && value.decimalValue().compareTo(schema.path("minimum").decimalValue()) < 0)
+                issues.add("parameter '" + displayPath(path) + "' is below its minimum");
+            if (schema.has("maximum")
+                    && value.decimalValue().compareTo(schema.path("maximum").decimalValue()) > 0)
+                issues.add("parameter '" + displayPath(path) + "' exceeds its maximum");
         }
     }
 
-    private static boolean matchesType(@NonNull JsonNode value, @NonNull String expectedType) {
-        if (value.isNull()) return true;
-        return switch (expectedType) {
+    /** Use declared discriminators, never error count, to select an object variant. */
+    private static void validateVariants(
+            @NonNull JsonNode value,
+            @NonNull List<JsonNode> variants,
+            @NonNull String path,
+            @NonNull List<String> issues,
+            boolean javaNulls,
+            boolean allowBindings) {
+        if (value.isObject() && variants.size() > 1) {
+            for (String key : fieldNames(variants.getFirst().path("properties"))) {
+                var allowed = new LinkedHashSet<JsonNode>();
+                boolean discriminator = true;
+                for (var variant : variants) {
+                    var choices = variant.path("properties").path(key).path("enum");
+                    if (!choices.isArray()
+                            || choices.isEmpty()
+                            || !containsValue(variant.path("required"), TextNode.valueOf(key))) {
+                        discriminator = false;
+                        break;
+                    }
+                    choices.forEach(allowed::add);
+                }
+                if (!discriminator || allowed.size() < 2) continue;
+                if (!value.has(key)) {
+                    String at = childPath(path, key);
+                    issues.add(
+                            "missing required discriminator '"
+                                    + at
+                                    + "'; expected one of "
+                                    + allowed
+                                    + ". Put it directly on '"
+                                    + displayPath(path)
+                                    + "', alongside that variant's fields");
+                    // Locate misplaced discriminator fields as a diagnostic only; never repair or
+                    // execute a guessed variant.
+                    for (String child : fieldNames(value)) {
+                        if (value.path(child).isObject() && value.path(child).has(key))
+                            issues.add(
+                                    "found '"
+                                            + childPath(childPath(path, child), key)
+                                            + "'; it does not define '"
+                                            + at
+                                            + "'");
+                    }
+                    return;
+                }
+                JsonNode selectedValue = value.path(key);
+                if (allowBindings
+                        && selectedValue.isTextual()
+                        && selectedValue.asText().startsWith("$")) {
+                    if (!selectedValue.asText().startsWith("$$")) continue;
+                    selectedValue = TextNode.valueOf(selectedValue.asText().substring(1));
+                }
+                List<JsonNode> matching = new ArrayList<>();
+                for (var variant : variants)
+                    if (containsValue(
+                            variant.path("properties").path(key).path("enum"), selectedValue))
+                        matching.add(variant);
+                if (matching.isEmpty()) {
+                    issues.add(
+                            "discriminator '"
+                                    + childPath(path, key)
+                                    + "' must be one of "
+                                    + allowed);
+                    return;
+                }
+                if (matching.size() < variants.size()) {
+                    validateVariants(value, matching, path, issues, javaNulls, allowBindings);
+                    return;
+                }
+            }
+        }
+        if (variants.size() == 1) {
+            validateNode(value, variants.getFirst(), path, issues, javaNulls, allowBindings, true);
+            return;
+        }
+        List<List<String>> failures = new ArrayList<>();
+        for (var variant : variants) {
+            List<String> candidate = new ArrayList<>();
+            validateNode(value, variant, path, candidate, javaNulls, allowBindings, true);
+            if (candidate.isEmpty()) return;
+            failures.add(candidate);
+        }
+        issues.add(
+                "parameter '"
+                        + displayPath(path)
+                        + "' does not match any allowed shape: "
+                        + failures);
+    }
+
+    private static boolean matchesType(
+            @NonNull JsonNode value, @NonNull JsonNode expected, boolean javaNulls) {
+        if (expected.isArray()) {
+            for (var type : expected) if (matchesType(value, type, javaNulls)) return true;
+            return false;
+        }
+        if (expected.isMissingNode()) return true;
+        String name = expected.asText();
+        if (name.equals("null")) return value.isNull();
+        if (value.isNull()) return javaNulls;
+        return switch (name) {
             case "object" -> value.isObject();
             case "array" -> value.isArray();
             case "string" -> value.isTextual();

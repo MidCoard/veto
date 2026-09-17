@@ -45,7 +45,6 @@ class VetoResponseDeserializationTest {
         VetoResponse response = mapper.readValue(json, ToolDocs.nonNullClass(VetoResponse.class));
         assertEquals("t", response.thought());
         assertFalse(response.hasCalls(), "JSON cannot construct adapter-owned native calls");
-        assertNull(response.guide());
     }
 
     @Test
@@ -54,7 +53,6 @@ class VetoResponseDeserializationTest {
         VetoResponse response = mapper.readValue(json, ToolDocs.nonNullClass(VetoResponse.class));
         assertFalse(response.hasCalls());
         assertEquals("done", response.message());
-        assertNull(response.guide());
     }
 
     private static @NonNull List<@NonNull ToolCall> requireCalls(List<@NonNull ToolCall> calls) {
@@ -65,15 +63,16 @@ class VetoResponseDeserializationTest {
     }
 
     @Test
-    void bindsDirectGuideWithoutHandshake() throws Exception {
-        VetoResponse response =
-                mapper.readValue(
-                        "{\"guide\":{\"actions\":[{\"id\":\"done\",\"label\":\"Finish\",\"type\":\"STOP\"}]}}",
-                        ToolDocs.nonNullClass(VetoResponse.class));
-        var guide = response.guide();
-        if (guide == null) throw new AssertionError("guide missing");
-        assertEquals("STOP", guide.actions().get(0).path("type").asText());
-        assertFalse(response.hasCalls());
+    void planIsNotAResponseFieldAndNullFieldsAreNotSerialized() throws Exception {
+        assertThrows(
+                ToolDocs.nonNullClass(JsonProcessingException.class),
+                () ->
+                        mapper.readValue(
+                                "{\"guide\":{\"actions\":[]}}",
+                                ToolDocs.nonNullClass(VetoResponse.class)));
+        assertEquals(
+                "{\"message\":\"done\"}",
+                mapper.writeValueAsString(new VetoResponse(null, null, "done")));
     }
 
     @Test

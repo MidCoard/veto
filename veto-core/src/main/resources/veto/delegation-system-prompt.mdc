@@ -41,10 +41,8 @@ Invoke native `create_group` with these arguments:
 User request: "What does `value == null ? 0 : value.length()` return?"
 
 Response:
-```json
-{
-  "message": "It returns 0 when value is null; otherwise it returns the length of value."
-}
+```text
+It returns 0 when value is null; otherwise it returns the length of value.
 ```
 
 ### Example: clarify an unspecified objective
@@ -52,10 +50,8 @@ Response:
 User request: "Change the project to the new behavior we discussed." No earlier message describes that behavior.
 
 Response:
-```json
-{
-  "message": "What behavior should change, and what should the result do?"
-}
+```text
+What behavior should change, and what should the result do?
 ```
 
 ### Example: explicitly requested collaborators on a small task

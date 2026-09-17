@@ -4,10 +4,15 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import top.focess.veto.agent.tool.ToolDocs;
+import top.focess.veto.util.Nullness;
 
 class ProgramValidatorTest {
 
@@ -84,5 +89,40 @@ class ProgramValidatorTest {
                                         null),
                                 new StopAction("stop", "Stop", "answer")));
         assertDoesNotThrow(() -> ProgramValidator.validateInputs(program));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"answer", "$answer"})
+    void stopResultReferenceUsesSameBindingAtValidationAndExecution(@NonNull String reference)
+            throws Exception {
+        var mapper = new ObjectMapper();
+        var program =
+                ActionsProgramParser.parse(
+                        mapper.readTree(
+                                """
+                [{"id":"write","label":"Write answer","type":"generate",
+                  "prompt":"Write a greeting","outputs":{"answer":"message"}},
+                 {"id":"finish","label":"Return answer","type":"STOP","result_binding":"%s"}]
+                """
+                                        .formatted(reference)));
+
+        assertDoesNotThrow(() -> ProgramValidator.validate(program));
+        assertDoesNotThrow(() -> ProgramValidator.validateInputs(program));
+        var stop = (StopAction) program.actions().getLast();
+        assertEquals("answer", stop.resultBinding());
+        Scope scope = new Scope(mapper);
+        scope.put("answer", "Hello.");
+        assertEquals(
+                "Hello.", scope.opt(Nullness.requireNonNull(stop.resultBinding())).orElseThrow());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"answer", "$answer"})
+    void bothStopReferenceFormsRejectAnUnboundResult(@NonNull String reference) {
+        var program =
+                new ActionsProgram(List.of(new StopAction("finish", "Return answer", reference)));
+        assertThrows(
+                ToolDocs.nonNullClass(ProgramValidator.InvalidProgramException.class),
+                () -> ProgramValidator.validateInputs(program));
     }
 }

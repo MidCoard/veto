@@ -168,7 +168,13 @@ class WebReadAgentIntegrationTest {
         var network = mock(ToolDocs.nonNullClass(NetworkEgressCapabilityImpl.class));
         when(network.openReader(any())).thenReturn(access);
         var context = mock(ToolDocs.nonNullClass(ApplicationContext.class));
-        when(context.getBeansOfType(AgentTool.class)).thenReturn(Map.of());
+        when(context.getBeansOfType(AgentTool.class))
+                .thenReturn(
+                        Map.of(
+                                "submit_plan",
+                                new top.focess.veto.agent.tool.builtin.SubmitPlanTool(
+                                        new top.focess.veto.agent.capability
+                                                .LoopControlCapabilityImpl())));
         ToolEngineImpl engine =
                 new ToolEngineImpl(mapper, List.of(new WebFetchTool(network)), context);
         engine.afterSingletonsInstantiated();
@@ -178,7 +184,7 @@ class WebReadAgentIntegrationTest {
                 request -> {
                     parentRequests.add(request);
                     if (parentTurn.getAndIncrement() > 0)
-                        return new VetoResponse(null, null, "Timeout is 30 seconds.", null);
+                        return new VetoResponse(null, null, "Timeout is 30 seconds.");
                     if (!guided)
                         return new VetoResponse(
                                 null,
@@ -190,20 +196,22 @@ class WebReadAgentIntegrationTest {
                                                         "https://example.com/docs",
                                                         "objective",
                                                         "Find timeout units."))),
-                                null,
                                 null);
                     try {
                         return new VetoResponse(
                                 null,
-                                null,
-                                null,
-                                new VetoResponse.Guide(
-                                        mapper.readTree(
-                                                """
+                                java.util.List.of(
+                                        new top.focess.veto.llm.core.ToolCall(
+                                                "submit_plan",
+                                                java.util.Map.of(
+                                                        "actions",
+                                                        mapper.readTree(
+                                                                """
                         [{"id":"read","label":"Read","type":"tool","tool":"web_fetch","inputs":{"url":"https://example.com/docs","objective":"Find timeout units."},"outputs":{"reading":"content"}},
                          {"id":"answer","label":"Answer","type":"generate","prompt":"Answer from $reading","inputs":{"reading":"$reading"},"outputs":{"answer":"message"}},
                          {"id":"done","label":"Done","type":"STOP","result_binding":"answer"}]
-                        """)));
+                        """)))),
+                                null);
                     } catch (Exception error) {
                         throw new AssertionError(error);
                     }
@@ -302,7 +310,8 @@ class WebReadAgentIntegrationTest {
         assertTrue(childSystem.contains("## Operating Contract"));
         assertTrue(childSystem.contains("## Task Instructions"));
         assertTrue(childSystem.contains("## Your Tools"));
-        assertTrue(childSystem.contains("## Response Protocol"));
+        assertTrue(childSystem.contains("Use native tools for actions"));
+        assertTrue(childSystem.contains("Do not wrap answers in a JSON response envelope."));
         for (String name : List.of("fetch_page", "find_sections", "read_sections", "finish_read")) {
             assertTrue(childSystem.contains("### `" + name + "`"));
         }
@@ -448,7 +457,13 @@ class WebReadAgentIntegrationTest {
         var network = mock(ToolDocs.nonNullClass(NetworkEgressCapabilityImpl.class));
         when(network.openReader(any())).thenReturn(access);
         var context = mock(ToolDocs.nonNullClass(ApplicationContext.class));
-        when(context.getBeansOfType(AgentTool.class)).thenReturn(Map.of());
+        when(context.getBeansOfType(AgentTool.class))
+                .thenReturn(
+                        Map.of(
+                                "submit_plan",
+                                new top.focess.veto.agent.tool.builtin.SubmitPlanTool(
+                                        new top.focess.veto.agent.capability
+                                                .LoopControlCapabilityImpl())));
         ToolEngineImpl engine =
                 new ToolEngineImpl(mapper, List.of(new WebFetchTool(network)), context);
         engine.afterSingletonsInstantiated();
@@ -456,7 +471,7 @@ class WebReadAgentIntegrationTest {
         UniformLLMCaller parentCaller =
                 request ->
                         parentCalls.incrementAndGet() > 1
-                                ? new VetoResponse(null, null, "Next task complete", null)
+                                ? new VetoResponse(null, null, "Next task complete")
                                 : call(
                                         "web_fetch",
                                         Map.of(
@@ -636,7 +651,6 @@ class WebReadAgentIntegrationTest {
 
     private static @NonNull VetoResponse call(
             @NonNull String name, @NonNull Map<@NonNull String, Object> args) {
-        return new VetoResponse(
-                "CHILD_THOUGHT_SENTINEL", List.of(new ToolCall(name, args)), null, null);
+        return new VetoResponse("CHILD_THOUGHT_SENTINEL", List.of(new ToolCall(name, args)), null);
     }
 }

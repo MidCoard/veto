@@ -12,28 +12,19 @@ public final class ResponseEnforcer {
     private static final @NonNull Pattern BARE_CITATION =
             Pattern.compile("\\[citation:([A-Za-z0-9_-]+)]");
 
+    private static final @NonNull Pattern CITATION_LINK = Pattern.compile("\\]\\(cite:([^)]*)\\)");
+    private static final @NonNull Pattern CODE =
+            Pattern.compile("(?s)```.*?```|~~~.*?~~~|`[^`\\n]*`");
+
     private ResponseEnforcer() {}
 
-    public static @NonNull VetoResponse enforce(
-            @NonNull VetoResponse response, boolean guidedEnabled) {
-        return enforce(response, guidedEnabled, Set.of());
+    public static @NonNull VetoResponse enforce(@NonNull VetoResponse response) {
+        return enforce(response, Set.of());
     }
 
     public static @NonNull VetoResponse enforce(
-            @NonNull VetoResponse response,
-            boolean guidedEnabled,
-            @NonNull Set<@NonNull String> allowedToolNames) {
+            @NonNull VetoResponse response, @NonNull Set<@NonNull String> allowedToolNames) {
         var calls = response.calls();
-        var guide = response.guide();
-        if (guide != null) {
-            if (!guidedEnabled)
-                throw new ModelSchemaException("guide is disabled for this session");
-            if (calls != null)
-                throw new ModelSchemaException("calls and guide are mutually exclusive");
-            var actions = guide.actions();
-            if (!actions.isArray() || actions.isEmpty())
-                throw new ModelSchemaException("guide.actions must be a non-empty array");
-        }
         if (calls != null) {
             if (calls.isEmpty())
                 throw new ModelSchemaException("calls must be non-empty when present");
@@ -68,8 +59,19 @@ public final class ResponseEnforcer {
                                     + " source declarations and use the required Markdown link syntax.");
             }
         }
-        if (calls == null && guide == null && (message == null || message.isBlank()))
-            throw new ModelSchemaException("message required (no tool calls or guide to execute)");
+        if (message != null) {
+            var ids = new HashSet<String>();
+            if (citations != null) for (var citation : citations) ids.add(citation.id());
+            var links = CITATION_LINK.matcher(CODE.matcher(message).replaceAll(""));
+            while (links.find()) {
+                String id = links.group(1);
+                if (id == null || !ids.contains(id))
+                    throw new ModelSchemaException(
+                            "A [label](cite:id) link requires a verified source declaration. Call answer_with_citations with message and citations containing exact source quotes, or answer in ordinary text without a cite: link. Handwritten links alone cannot create source metadata.");
+            }
+        }
+        if (calls == null && (message == null || message.isBlank()))
+            throw new ModelSchemaException("message required (no native tool calls to execute)");
         return response;
     }
 }

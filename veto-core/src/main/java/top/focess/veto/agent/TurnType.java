@@ -13,7 +13,7 @@ public enum TurnType {
     USER_INTERRUPT,
     /** A sourced runtime observation, never a new user request. */
     MONITOR_EVENT,
-    /** The agent's reasoning — the raw {@code VetoResponse} JSON for a thought-ON turn. */
+    /** Operational reasoning text. Older records may contain legacy response JSON. */
     ASSISTANT_THOUGHT,
     /** A user-facing message the agent emitted ({@code response.message}). */
     ASSISTANT_RESPONSE,

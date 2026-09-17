@@ -59,7 +59,6 @@ class GuidedExecutionTest {
                                                             "view_file",
                                                             Map.of("absolutePath", file.toString()),
                                                             "read-secret")),
-                                            null,
                                             null);
                                 return actions(
                                         """
@@ -188,13 +187,23 @@ class GuidedExecutionTest {
                                                     t -> t.name().equals("answer_with_citations")));
                             return new VetoResponse(
                                     null,
-                                    null,
-                                    "[14:30](cite:meeting)",
-                                    null,
                                     List.of(
-                                            new VetoResponse.Citation(
-                                                    "meeting",
-                                                    List.of(new VetoResponse.Source(0, "14:30")))));
+                                            new ToolCall(
+                                                    "answer_with_citations",
+                                                    Map.of(
+                                                            "message",
+                                                            "[14:30](cite:meeting)",
+                                                            "citations",
+                                                            List.of(
+                                                                    Map.of(
+                                                                            "id",
+                                                                            "meeting",
+                                                                            "sources",
+                                                                            List.of(
+                                                                                    Map.of(
+                                                                                            "quote",
+                                                                                            "14:30"))))))),
+                                    null);
                         },
                         new HitlRegistry(),
                         root);
@@ -219,6 +228,212 @@ class GuidedExecutionTest {
         assertEquals("[14:30](cite:meeting)", result.message());
     }
 
+    @Test
+    void failedCitationReturnsToolResultAndCanBeCorrected(@TempDir @NonNull Path root)
+            throws Exception {
+        var calls = new AtomicInteger();
+        var service =
+                service(
+                        request -> {
+                            int attempt = calls.getAndIncrement();
+                            var definition =
+                                    request.tools().stream()
+                                            .filter(t -> t.name().equals("answer_with_citations"))
+                                            .findFirst()
+                                            .orElseThrow();
+                            assertFalse(definition.examples().isEmpty());
+                            assertTrue(
+                                    request.systemPrompt()
+                                            .contains("Copy punctuation and whitespace verbatim"));
+                            if (attempt == 1)
+                                assertTrue(
+                                        request.messages().stream()
+                                                .anyMatch(
+                                                        m ->
+                                                                m.content()
+                                                                        .contains(
+                                                                                "could not match")));
+                            return new VetoResponse(
+                                    null,
+                                    List.of(
+                                            new ToolCall(
+                                                    "answer_with_citations",
+                                                    Map.of(
+                                                            "message",
+                                                            "Launch [Friday](cite:launch).",
+                                                            "citations",
+                                                            List.of(
+                                                                    Map.of(
+                                                                            "id",
+                                                                            "launch",
+                                                                            "sources",
+                                                                            List.of(
+                                                                                    Map.of(
+                                                                                            "message_index",
+                                                                                            0,
+                                                                                            "quote",
+                                                                                            attempt
+                                                                                                            == 0
+                                                                                                    ? "Monday"
+                                                                                                    : "Friday"))))))),
+                                    null);
+                        },
+                        new HitlRegistry(),
+                        root);
+        try {
+            var result =
+                    service.submit(
+                            "citation-retry", "Launch Friday", binding(), Duration.ofSeconds(10));
+            assertTrue(result.success(), result.message());
+            assertEquals("Launch [Friday](cite:launch).", result.message());
+            assertEquals(2, calls.get());
+            var agent = service.agent("citation-retry");
+            if (agent == null) throw new AssertionError("Agent missing");
+            assertEquals(
+                    2,
+                    agent.history().stream()
+                            .filter(t -> t.type() == TurnType.TOOL_RESPONSE)
+                            .count());
+            assertFalse(
+                    agent.history().stream().anyMatch(t -> t.type() == TurnType.EXECUTION_ERROR));
+        } finally {
+            service.remove("citation-retry");
+        }
+    }
+
+    @Test
+    void responseSubmissionCannotExecuteAlongsideOtherCalls(@TempDir @NonNull Path root)
+            throws Exception {
+        var calls = new AtomicInteger();
+        var service =
+                service(
+                        request -> {
+                            if (calls.getAndIncrement() == 0)
+                                return new VetoResponse(
+                                        null,
+                                        List.of(
+                                                new ToolCall(
+                                                        "submit_plan",
+                                                        Map.of(
+                                                                "actions",
+                                                                List.of(
+                                                                        Map.of(
+                                                                                "id", "stop",
+                                                                                "label", "Finish",
+                                                                                "type", "STOP")))),
+                                                new ToolCall("think", Map.of())),
+                                        null);
+                            assertTrue(
+                                    request.messages().stream()
+                                            .anyMatch(
+                                                    m ->
+                                                            m.content()
+                                                                    .contains(
+                                                                            "No calls in this batch were executed")));
+                            return message("Corrected");
+                        },
+                        new HitlRegistry(),
+                        root);
+        try {
+            var result =
+                    service.submit("exclusive-submit", "Hello", binding(), Duration.ofSeconds(10));
+            assertTrue(result.success(), result.message());
+            assertEquals("Corrected", result.message());
+            assertEquals(2, calls.get());
+        } finally {
+            service.remove("exclusive-submit");
+        }
+    }
+
+    @Test
+    void boundInputCannotHideAMalformedLaterStepBeforeTheFirstToolRuns(@TempDir @NonNull Path root)
+            throws Exception {
+        Path notes = root.resolve("notes.txt");
+        Files.writeString(notes, "A source document");
+        String program =
+                """
+                [{"id":"read","label":"Read source","type":"tool","tool":"view_file",
+                  "inputs":{"absolutePath":PATH},"outputs":{"document":"content"}},
+                 {"id":"bad","label":"Invalid later read","type":"tool","tool":"view_file",
+                  "inputs":{"absolutePath":"$document","unknownArgument":true},"outputs":{}},
+                 {"id":"stop","label":"Finish","type":"STOP","result_binding":"document"}]
+                """
+                        .replace("PATH", new ObjectMapper().writeValueAsString(notes.toString()));
+        AtomicInteger calls = new AtomicInteger();
+        var service =
+                service(
+                        request ->
+                                calls.getAndIncrement() == 0
+                                        ? actions(program)
+                                        : message("Plan rejected; no file read."),
+                        new HitlRegistry(),
+                        root);
+        try {
+            List<AgentRunner.ToolCallEvent> events = new ArrayList<>();
+            var result =
+                    service.submit(
+                            "invalid-bound-plan",
+                            "Hello",
+                            binding(),
+                            Duration.ofSeconds(10),
+                            null,
+                            null,
+                            null,
+                            events::add,
+                            null);
+            assertTrue(result.success(), result.message());
+            assertTrue(
+                    events.stream().allMatch(event -> event.toolName().equals("submit_plan")),
+                    "The complete plan must pass before even its first valid file step can execute");
+            var agent = service.agent("invalid-bound-plan");
+            if (agent == null) throw new AssertionError("agent missing");
+            assertTrue(
+                    agent.history().stream()
+                            .anyMatch(
+                                    turn ->
+                                            turn.type() == TurnType.TOOL_RESPONSE
+                                                    && Boolean.FALSE.equals(
+                                                            turn.payload().get("success"))
+                                                    && String.valueOf(turn.payload().get("content"))
+                                                            .contains("unknownArgument")));
+        } finally {
+            service.remove("invalid-bound-plan");
+        }
+    }
+
+    @Test
+    void invalidProgramIsRejectedAsToolFailureAndSessionContinues(@TempDir @NonNull Path root)
+            throws Exception {
+        var calls = new AtomicInteger();
+        var service =
+                service(
+                        request -> {
+                            int attempt = calls.getAndIncrement();
+                            if (attempt == 0)
+                                return actions(
+                                        "[{\"id\":\"jump\",\"label\":\"Jump\",\"type\":\"goto\",\"index\":99},{\"id\":\"end\",\"label\":\"Finish\",\"type\":\"STOP\"}]");
+                            if (attempt == 1) {
+                                assertTrue(
+                                        request.messages().stream()
+                                                .anyMatch(m -> m.role().equals("tool")));
+                                return actions(
+                                        "[{\"id\":\"g\",\"label\":\"Answer\",\"type\":\"generate\",\"prompt\":\"Say hello\",\"outputs\":{\"answer\":\"message\"}},{\"id\":\"end\",\"label\":\"Finish\",\"type\":\"STOP\",\"result_binding\":\"answer\"}]");
+                            }
+                            return message("Hello");
+                        },
+                        new HitlRegistry(),
+                        root);
+        try {
+            var result =
+                    service.submit("program-retry", "Hello", binding(), Duration.ofSeconds(10));
+            assertTrue(result.success(), result.message());
+            assertEquals("Hello", result.message());
+            assertEquals(3, calls.get());
+        } finally {
+            service.remove("program-retry");
+        }
+    }
+
     private static AgentRunner.@NonNull LlmBinding binding() {
         return new AgentRunner.LlmBinding(
                 ProviderType.DEEPSEEK, "scripted", "key", LlmOptions.defaults(), null);
@@ -230,7 +445,14 @@ class GuidedExecutionTest {
         var candidates = new SecretCandidateStore();
         var context = mock(ToolDocs.nonNullClass(ApplicationContext.class));
         when(context.getBeansOfType(AgentTool.class))
-                .thenReturn(Map.of("think", new ThinkTool(new LoopControlCapabilityImpl())));
+                .thenReturn(
+                        Map.of(
+                                "think",
+                                new ThinkTool(new LoopControlCapabilityImpl()),
+                                "submit_plan",
+                                new SubmitPlanTool(new LoopControlCapabilityImpl()),
+                                "answer_with_citations",
+                                new AnswerWithCitationsTool(new LoopControlCapabilityImpl())));
         SandboxManager sandbox = new SandboxManager(TestSandboxFactory.uncontainedSubprocesses());
         ToolEngineImpl engine =
                 new ToolEngineImpl(
@@ -274,6 +496,10 @@ class GuidedExecutionTest {
         for (String id :
                 List.of(
                         "read-guided",
+                        "citation-retry",
+                        "exclusive-submit",
+                        "invalid-bound-plan",
+                        "program-retry",
                         "command-guided",
                         "bounded-guided",
                         "failed-guided",
@@ -309,7 +535,7 @@ class GuidedExecutionTest {
     }
 
     private static @NonNull VetoResponse message(@NonNull String value) {
-        return new VetoResponse(null, null, value, null);
+        return new VetoResponse(null, null, value);
     }
 
     private static @NonNull VetoResponse actions(@NonNull String json) {
@@ -318,11 +544,10 @@ class GuidedExecutionTest {
                     null,
                     List.of(
                             new ToolCall(
-                                    "submit_guide",
+                                    "submit_plan",
                                     Map.of(
                                             "actions",
                                             new ObjectMapper().readValue(json, List.class)))),
-                    null,
                     null);
         } catch (Exception e) {
             throw new AssertionError(e);
@@ -338,7 +563,7 @@ class GuidedExecutionTest {
                 """
             [{"id":"read","label":"Read","type":"tool","tool":"view_file","inputs":{"absolutePath":PATH,"startLine":1},"outputs":{"text":"content"}},
              {"id":"judge","label":"Judge","type":"conditional_goto","check":{"kind":"llm","prompt":"Is migration described?","var":"text"},"true_goto":2,"false_goto":4},
-             {"id":"summary","label":"Summary","type":"generate","prompt":"Summarize $document","inputs":{"document":"$text"},"outputs":{"answer":"message"},"temperature":0.2,"thought":false},
+             {"id":"summary","label":"Summary","type":"generate","prompt":"Summarize $document","inputs":{"document":"$text"},"outputs":{"answer":"message"},"temperature":0.2},
              {"id":"finish","label":"Finish","type":"STOP","result_binding":"answer"},
              {"id":"empty","label":"No match","type":"STOP"}]
             """
@@ -364,6 +589,23 @@ class GuidedExecutionTest {
         assertEquals(3, calls.get());
         var agent = service.agent("read-guided");
         if (agent == null) throw new AssertionError("agent missing");
+        assertTrue(
+                agent.history().stream()
+                        .noneMatch(turn -> turn.type() == TurnType.ASSISTANT_THOUGHT),
+                "A submitted plan must not be serialized as model reasoning");
+        var submitted =
+                agent.history().stream()
+                        .filter(
+                                turn ->
+                                        turn.type() == TurnType.TOOL_CALL
+                                                && "submit_plan"
+                                                        .equals(turn.payload().get("tool_name")))
+                        .toList();
+        assertEquals(1, submitted.size(), "The native call is the single canonical plan record");
+        var planArgs = new ObjectMapper().valueToTree(submitted.getFirst().payload()).path("args");
+        assertTrue(planArgs.has("actions"));
+        assertFalse(planArgs.has("thought"));
+        assertFalse(planArgs.has("message"));
         assertEquals(
                 List.of("Migration summary"),
                 agent.history().stream()
@@ -519,10 +761,7 @@ class GuidedExecutionTest {
                                 assertEquals((Object) 1234, request.options().maxTokens());
                                 if (index == 2)
                                     return new VetoResponse(
-                                            null,
-                                            List.of(new ToolCall("think", Map.of())),
-                                            null,
-                                            null);
+                                            null, List.of(new ToolCall("think", Map.of())), null);
                                 return message("scoped output");
                             }
                             assertEquals("scripted", request.modelName());
@@ -635,7 +874,6 @@ class GuidedExecutionTest {
                                                 new ToolCall(
                                                         "view_file",
                                                         Map.of("absolutePath", index.toString()))),
-                                        null,
                                         null);
                             if (ordinaryRequests.size() == 2) {
                                 assertTrue(
@@ -651,7 +889,6 @@ class GuidedExecutionTest {
                                                 new ToolCall(
                                                         "view_file",
                                                         Map.of("absolutePath", file.toString()))),
-                                        null,
                                         null);
                             }
                             assertTrue(
@@ -692,7 +929,7 @@ class GuidedExecutionTest {
         assertEquals(guidedResult.message(), ordinaryResult.message());
         assertEquals(
                 2,
-                guidedTools.stream().filter(t -> !t.toolName().equals("submit_guide")).count(),
+                guidedTools.stream().filter(t -> !t.toolName().equals("submit_plan")).count(),
                 "guide must execute both real sequential file reads");
         assertEquals(2, ordinaryTools.size());
         assertEquals(2, guidedRequests.size(), "direct program plus one generation request");
@@ -710,10 +947,10 @@ class GuidedExecutionTest {
         assertNull(ordinaryRequests.get(0).responseSchema());
         assertTrue(
                 guidedRequests.get(0).tools().stream()
-                        .anyMatch(t -> t.name().equals("submit_guide")));
+                        .anyMatch(t -> t.name().equals("submit_plan")));
         assertFalse(
                 ordinaryRequests.get(0).tools().stream()
-                        .anyMatch(t -> t.name().equals("submit_guide")));
+                        .anyMatch(t -> t.name().equals("submit_plan")));
         String enabledPrompt = guidedRequests.get(0).systemPrompt();
         String disabledPrompt = ordinaryRequests.get(0).systemPrompt();
         System.out.println(
@@ -757,7 +994,7 @@ class GuidedExecutionTest {
                                     request.messages()
                                             .get(request.messages().size() - 1)
                                             .content()
-                                            .contains("guide"));
+                                            .contains("unavailable"));
                             return message("Use ordinary tools instead.");
                         },
                         new HitlRegistry(),
@@ -775,7 +1012,9 @@ class GuidedExecutionTest {
                         null);
         assertTrue(result.success(), result.message());
         assertEquals(2, calls.get());
-        assertTrue(toolCalls.isEmpty(), "a disabled guide must never execute even its first tool");
+        assertTrue(
+                toolCalls.stream().noneMatch(call -> call.toolName().equals("view_file")),
+                "a disabled guide must never execute its program tools");
     }
 
     @Test
@@ -802,7 +1041,6 @@ class GuidedExecutionTest {
                                                                 "absolutePath",
                                                                 root.resolve("must-not-read")
                                                                         .toString()))),
-                                        null,
                                         null);
                             return message("safe answer");
                         },
@@ -825,7 +1063,7 @@ class GuidedExecutionTest {
             assertEquals("safe answer", result.message());
             assertEquals(3, calls.get());
             assertTrue(
-                    executed.stream().allMatch(t -> t.toolName().equals("submit_guide")),
+                    executed.stream().allMatch(t -> t.toolName().equals("submit_plan")),
                     executed.toString());
         } finally {
             service.remove("read-guided");

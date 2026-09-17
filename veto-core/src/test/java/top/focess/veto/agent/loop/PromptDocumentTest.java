@@ -113,8 +113,7 @@ class PromptDocumentTest {
             var result = PromptLibrary.compile("default-system-prompt", inputs);
             assertEquals(1, result.messages().size());
             assertTrue(result.text().contains(PromptLibrary.text("answer-style")));
-            assertEquals(
-                    guided, result.text().contains(PromptLibrary.text("guided-system-prompt")));
+            assertEquals(guided, result.text().contains(PromptLibrary.text("plan-system-prompt")));
             assertFalse(result.text().contains("## Your Tools"));
             assertTrue(
                     result.sources().stream()

@@ -148,7 +148,7 @@ final class GeminiLlmClient extends LlmClient {
                 var state = message.nativeState();
                 String callId = message.callId();
                 if (state != null
-                        && state.model().equals(request.modelName())
+                        && state.supports("GEMINI", request.modelName())
                         && callId != null
                         && replayNative) {
                     var original = Content.fromJson(state.partsJson()).parts().orElse(List.of());

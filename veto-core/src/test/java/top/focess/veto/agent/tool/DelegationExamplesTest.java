@@ -6,13 +6,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.Set;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.loop.PromptLibrary;
-import top.focess.veto.agent.loop.ResponseEnforcer;
 import top.focess.veto.group.GroupTools.CreateGroup.Args;
-import top.focess.veto.llm.core.VetoResponse;
 import top.focess.veto.util.Nullness;
 
 class DelegationExamplesTest {
@@ -22,31 +19,30 @@ class DelegationExamplesTest {
         assertFalse(
                 Pattern.compile("(?i)\\b(leader|mates?)\\b").matcher(prompt).find(),
                 "delegation guidance must not introduce later roles");
-        var matcher = Pattern.compile("```json\\s*([\\s\\S]*?)```").matcher(prompt);
+        var matcher = Pattern.compile("```(json|text)\\s*([\\s\\S]*?)```").matcher(prompt);
         ObjectMapper mapper = new ObjectMapper();
         List<String> briefs = new ArrayList<>();
         List<String> answers = new ArrayList<>();
         int examples = 0;
         while (matcher.find()) {
-            String json = Nullness.requireNonNull(matcher.group(1));
+            String example = Nullness.requireNonNull(matcher.group(2)).strip();
+            examples++;
+            if ("text".equals(matcher.group(1))) {
+                assertFalse(
+                        example.startsWith("{"), "direct replies must not use a response envelope");
+                answers.add(example);
+                continue;
+            }
+            String json = example;
             var arguments = mapper.readTree(json);
             assertFalse(arguments.has("calls"));
-            if (arguments.has("task")) {
-                NativeToolArgumentValidator.validate(
-                        "create_group", arguments, ToolDocs.nonNullClass(Args.class));
-                var args = mapper.treeToValue(arguments, ToolDocs.nonNullClass(Args.class));
-                assertFalse(args.task().isBlank());
-                assertEquals(1, arguments.size());
-                briefs.add(args.task().toLowerCase(Locale.ROOT));
-            } else {
-                var response = mapper.readValue(json, ToolDocs.nonNullClass(VetoResponse.class));
-                ResponseEnforcer.enforce(response, false, Set.of("create_group"));
-                assertNull(response.guide());
-                String message = response.message();
-                if (message == null) throw new AssertionError("direct answer missing");
-                answers.add(message);
-            }
-            examples++;
+            assertTrue(arguments.has("task"), "JSON examples must be native tool arguments");
+            NativeToolArgumentValidator.validate(
+                    "create_group", arguments, ToolDocs.nonNullClass(Args.class));
+            var args = mapper.treeToValue(arguments, ToolDocs.nonNullClass(Args.class));
+            assertFalse(args.task().isBlank());
+            assertEquals(1, arguments.size());
+            briefs.add(args.task().toLowerCase(Locale.ROOT));
         }
         assertEquals(5, examples);
         assertEquals(3, briefs.size());

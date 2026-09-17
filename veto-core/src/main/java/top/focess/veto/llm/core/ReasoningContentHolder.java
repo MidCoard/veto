@@ -13,7 +13,7 @@ import org.jspecify.annotations.NonNull;
  * assistant messages).
  *
  * <p>Same pattern as {@link LlmSystemUsage} - a side channel for per-call metadata that doesn't fit
- * in the {@link VetoResponse} JSON schema.
+ * in the normalized {@link VetoResponse} text/tool result.
  */
 public final class ReasoningContentHolder {
 

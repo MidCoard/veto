@@ -72,8 +72,17 @@ class CredentialJourneyTest {
         var reader = new GitHubRepositoryReader(vault, mapper);
         ReflectionTestUtils.setField(reader, "client", client);
         network.attachRepositoryReader(reader);
+        var toolContext =
+                mock(ToolDocs.nonNullClass(org.springframework.context.ApplicationContext.class));
+        when(toolContext.getBeansOfType(top.focess.veto.agent.tool.AgentTool.class))
+                .thenReturn(
+                        Map.of(
+                                "submit_plan",
+                                new top.focess.veto.agent.tool.builtin.SubmitPlanTool(
+                                        new top.focess.veto.agent.capability
+                                                .LoopControlCapabilityImpl())));
         var engine =
-                ToolEngineImpl.isolated(
+                new ToolEngineImpl(
                         mapper,
                         List.of(
                                 new ViewFileTool(
@@ -81,7 +90,9 @@ class CredentialJourneyTest {
                                 new ImportDetectedCredentialTool(
                                         new CredentialImportCapabilityImpl(
                                                 candidates, vault, mapper)),
-                                new ReadGitHubRepositoryTool(network)));
+                                new ReadGitHubRepositoryTool(network)),
+                        toolContext);
+        engine.afterSingletonsInstantiated();
         var compiler =
                 new PromptCompiler(
                         new DefaultCapabilityTranslator(mapper),
@@ -116,14 +127,19 @@ class CredentialJourneyTest {
                         try {
                             return new VetoResponse(
                                     null,
-                                    null,
-                                    null,
-                                    new VetoResponse.Guide(
-                                            mapper.readTree(
-                                                    program.replace(
-                                                            "PATH",
-                                                            mapper.writeValueAsString(
-                                                                    file.toString())))));
+                                    java.util.List.of(
+                                            new top.focess.veto.llm.core.ToolCall(
+                                                    "submit_plan",
+                                                    java.util.Map.of(
+                                                            "actions",
+                                                            mapper.readTree(
+                                                                    program.replace(
+                                                                            "PATH",
+                                                                            mapper
+                                                                                    .writeValueAsString(
+                                                                                            file
+                                                                                                    .toString())))))),
+                                    null);
                         } catch (Exception error) {
                             throw new AssertionError(error);
                         }
@@ -280,10 +296,10 @@ class CredentialJourneyTest {
     private static @NonNull VetoResponse tool(
             @NonNull String name, @NonNull Map<String, Object> args) {
         return new VetoResponse(
-                null, List.of(new ToolCall(name, args, UUID.randomUUID().toString())), null, null);
+                null, List.of(new ToolCall(name, args, UUID.randomUUID().toString())), null);
     }
 
     private static @NonNull VetoResponse message(@NonNull String value) {
-        return new VetoResponse(null, null, value, null);
+        return new VetoResponse(null, null, value);
     }
 }

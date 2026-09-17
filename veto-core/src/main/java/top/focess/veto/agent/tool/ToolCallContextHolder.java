@@ -46,6 +46,47 @@ public final class ToolCallContextHolder {
         record ToStandalone(@NonNull String brief) implements TransformRequest {}
     }
 
+    /** Validated control flow, separate from the model's text/tool-call result. */
+    public sealed interface ResponseDirective {
+        record Plan(top.focess.veto.agent.loop.@NonNull ActionsProgram program)
+                implements ResponseDirective {}
+
+        record Answer(
+                top.focess.veto.llm.core.@NonNull VetoResponse response,
+                top.focess.veto.agent.loop.MessageCitations.Bound citations)
+                implements ResponseDirective {}
+    }
+
+    @FunctionalInterface
+    public interface ResponseHandler {
+        @NonNull ResponseDirective validate(
+                top.focess.veto.agent.loop.@NonNull ResponseRequest response) throws Exception;
+    }
+
+    public static void setResponseHandler(@NonNull ResponseHandler handler) {
+        state().responseHandler = handler;
+    }
+
+    public static void requestResponse(top.focess.veto.agent.loop.@NonNull ResponseRequest response)
+            throws Exception {
+        var state = state();
+        var handler = state.responseHandler;
+        if (handler == null)
+            throw new IllegalStateException(
+                    "Response submission is unavailable outside a model tool call");
+        if (state.response != null)
+            throw new IllegalStateException("Only one response submission is allowed per call");
+        state.response = handler.validate(response);
+    }
+
+    public static ResponseDirective drainResponse() {
+        var state = STATE.get();
+        if (state == null) return null;
+        var response = state.response;
+        state.response = null;
+        return response;
+    }
+
     private ToolCallContextHolder() {}
 
     /** Sets the tool call context for the current thread. */
@@ -162,6 +203,8 @@ public final class ToolCallContextHolder {
     }
 
     private static final class ThreadState {
+        private ResponseHandler responseHandler;
+        private ResponseDirective response;
         private ToolCallContext context;
         private String currentCallId;
         private String readerCallId;

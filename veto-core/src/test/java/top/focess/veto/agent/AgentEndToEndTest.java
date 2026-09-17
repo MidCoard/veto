@@ -122,7 +122,7 @@ class AgentEndToEndTest {
         ArrayDeque<VetoResponse> queue = new ArrayDeque<>(List.of(mainResponses));
         return request -> {
             if (request.systemPrompt().startsWith("Summarize the following conversation segment")) {
-                return new VetoResponse(null, null, "{}", null);
+                return new VetoResponse(null, null, "{}");
             }
             VetoResponse r = queue.poll();
             if (r == null) {
@@ -167,12 +167,12 @@ class AgentEndToEndTest {
     }
 
     private static @NonNull VetoResponse thoughtOn(String thought, String message) {
-        return new VetoResponse(thought, null, message, null);
+        return new VetoResponse(thought, null, message);
     }
 
     private static @NonNull VetoResponse thoughtOnWithCall(
             String thought, String message, @NonNull ToolCall call) {
-        return new VetoResponse(thought, List.of(call), message, null);
+        return new VetoResponse(thought, List.of(call), message);
     }
 
     @Test
@@ -517,30 +517,39 @@ class AgentEndToEndTest {
         var leaderBinding = binding("leader base");
         var engine =
                 new TransformToolEngine(
-                        leaderBinding, Set.of(transformDefinition("disband_group")));
+                        leaderBinding,
+                        Set.of(
+                                transformDefinition("disband_group"),
+                                TransformToolEngine.planDefinition()));
         var mapper = new ObjectMapper();
         var forward =
                 new VetoResponse(
                         null,
-                        null,
-                        null,
-                        new VetoResponse.Guide(
-                                mapper.readTree(
-                                        """
+                        java.util.List.of(
+                                new top.focess.veto.llm.core.ToolCall(
+                                        "submit_plan",
+                                        java.util.Map.of(
+                                                "actions",
+                                                mapper.readTree(
+                                                        """
                 [{"id":"delegate","label":"Delegate","type":"tool","tool":"create_group","inputs":{"task":"ship it"},"outputs":{"stale":"content"}},
                  {"id":"stop","label":"Old stop","type":"STOP","result_binding":"stale"}]
-                """)));
+                """)))),
+                        null);
         var reverse =
                 new VetoResponse(
                         null,
-                        null,
-                        null,
-                        new VetoResponse.Guide(
-                                mapper.readTree(
-                                        """
+                        java.util.List.of(
+                                new top.focess.veto.llm.core.ToolCall(
+                                        "submit_plan",
+                                        java.util.Map.of(
+                                                "actions",
+                                                mapper.readTree(
+                                                        """
                 [{"id":"disband","label":"Disband","type":"tool","tool":"disband_group","inputs":{},"outputs":{"stale":"content"}},
                  {"id":"stop","label":"Old stop","type":"STOP","result_binding":"stale"}]
-                """)));
+                """)))),
+                        null);
         var service =
                 serviceWith(
                         engine,
@@ -588,7 +597,6 @@ class AgentEndToEndTest {
                                                 new ToolCall(
                                                         "create_group",
                                                         Map.of("task", "stale duplicate"))),
-                                        null,
                                         null),
                                 thoughtOn("Leading", "Leader continued.")));
         var result =
@@ -631,6 +639,17 @@ class AgentEndToEndTest {
      * letting the call flow straight into the drain pass that applies the transform.
      */
     private static final class TransformToolEngine implements ToolEngine {
+        static @NonNull AgentToolDefinition planDefinition() {
+            var tool =
+                    new top.focess.veto.agent.tool.builtin.SubmitPlanTool(
+                            new top.focess.veto.agent.capability.LoopControlCapabilityImpl());
+            return AgentToolDefinition.from(
+                    tool.getName(),
+                    ToolDocs.nonNullClass(top.focess.veto.agent.tool.builtin.SubmitPlanTool.class),
+                    tool.getArgsClass(),
+                    tool.getCapability());
+        }
+
         private final AgentRunner.@NonNull LlmBinding leaderBinding;
         private final @NonNull Set<ToolDefinition> leaderTools;
         private final @NonNull UUID groupId = UUID.randomUUID();
@@ -653,12 +672,15 @@ class AgentEndToEndTest {
         @Override
         public @NonNull List<ToolDefinition> getActiveTools(Set<String> whitelist) {
             return List.of(
-                    transformDefinition("create_group"), transformDefinition("disband_group"));
+                    transformDefinition("create_group"),
+                    transformDefinition("disband_group"),
+                    planDefinition());
         }
 
         @Override
         @SuppressWarnings("type.arguments.not.inferred")
         public ToolDefinition resolveDefinition(@NonNull String toolName) {
+            if ("submit_plan".equals(toolName)) return planDefinition();
             if ("create_group".equals(toolName) || "disband_group".equals(toolName)) {
                 return transformDefinition(toolName);
             }
@@ -667,6 +689,18 @@ class AgentEndToEndTest {
 
         @Override
         public @NonNull ToolResult execute(@NonNull ToolCall call, @NonNull ToolDefinition def) {
+            if ("submit_plan".equals(call.toolName())) {
+                try {
+                    Object actions = call.args().get("actions");
+                    if (actions == null) throw new IllegalArgumentException("Missing actions");
+                    ToolCallContextHolder.requestResponse(
+                            new top.focess.veto.agent.loop.ResponseRequest.Plan(
+                                    new ObjectMapper().valueToTree(actions)));
+                    return new ToolResult(call.toolName(), call.callId(), true, "accepted");
+                } catch (Exception e) {
+                    return new ToolResult(call.toolName(), call.callId(), false, e.toString());
+                }
+            }
             executed.add(call.toolName());
             if ("create_group".equals(call.toolName())) {
                 ToolCallContextHolder.TransformDirective directive =

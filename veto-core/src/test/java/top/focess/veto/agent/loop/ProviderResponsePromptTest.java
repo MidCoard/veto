@@ -7,6 +7,14 @@ import org.junit.jupiter.api.Test;
 
 class ProviderResponsePromptTest {
     @Test
+    void semanticPlanJudgmentRequestsPlainTextWithoutAnEnvelope() {
+        String prompt =
+                PromptLibrary.text("runtime-judgment", Map.of("prompt", "Is this complete?"));
+        assertTrue(prompt.contains("Return exactly true or false as plain text"));
+        assertFalse(prompt.contains("in message"));
+    }
+
+    @Test
     void responseInstructionsFollowRuntimeCapabilities() {
         for (String entry : new String[] {"provider-native", "provider-anthropic"}) {
             for (boolean enabled : new boolean[] {false, true}) {

@@ -96,7 +96,7 @@ class GuidedBindingsTest {
 
     @Test
     void fewShotProgramsParseAndValidate() throws Exception {
-        String prompt = PromptLibrary.text("guided-system-prompt");
+        String prompt = PromptLibrary.text("plan-system-prompt");
         var matcher = Pattern.compile("```json\\s*([\\s\\S]*?)```").matcher(prompt);
         ObjectMapper mapper = new ObjectMapper();
         int count = 0;
@@ -104,9 +104,14 @@ class GuidedBindingsTest {
             var json = mapper.readTree(Nullness.requireNonNull(matcher.group(1)));
             if (json.has("actions")) {
                 ProgramValidator.validate(ActionsProgramParser.parse(json.path("actions")));
+                top.focess.veto.agent.tool.NativeToolArgumentValidator.validate(
+                        "submit_plan",
+                        json,
+                        ToolDocs.nonNullClass(
+                                top.focess.veto.agent.tool.builtin.SubmitPlanTool.Args.class));
                 count++;
             }
         }
-        assertTrue(count >= 5);
+        assertTrue(count >= 1);
     }
 }

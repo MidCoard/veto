@@ -10,7 +10,6 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import top.focess.veto.agent.tool.ToolDocs;
 import top.focess.veto.agent.tool.ToolDocumentation;
-import top.focess.veto.agent.translation.VetoCapabilityTranslator;
 import top.focess.veto.llm.core.*;
 import top.focess.veto.llm.exceptions.ModelSchemaException;
 import top.focess.veto.llm.provider.AbstractLlmProvider;
@@ -79,7 +78,7 @@ class NativeToolResponsesTest {
         assertFalse(
                 mapper.valueToTree(
                                 new VetoResponse(
-                                        null, List.of(new ToolCall("read", Map.of())), null, null))
+                                        null, List.of(new ToolCall("read", Map.of())), null))
                         .has("calls"));
     }
 
@@ -104,7 +103,7 @@ class NativeToolResponsesTest {
                 "key",
                 LlmOptions.defaults(),
                 List.of(),
-                new VetoCapabilityTranslator().vetoResponseSchema(true, List.of(tool)),
+                null,
                 null);
     }
 

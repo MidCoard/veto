@@ -97,7 +97,7 @@ class PerUserIdentityTest {
         UniformLLMCaller caller =
                 request -> {
                     seenRequests.add(request);
-                    return new VetoResponse("Done.", null, "Task complete.", null);
+                    return new VetoResponse("Done.", null, "Task complete.");
                 };
 
         AgentService service = serviceWith(caller, turnLog);
@@ -132,8 +132,7 @@ class PerUserIdentityTest {
         TurnRecordRepository repo = Mockito.mock(ToolDocs.nonNullClass(TurnRecordRepository.class));
         TurnLogService turnLog = new TurnLogService(repo, new ObjectMapper());
 
-        UniformLLMCaller caller =
-                request -> new VetoResponse("Done.", null, "Task complete.", null);
+        UniformLLMCaller caller = request -> new VetoResponse("Done.", null, "Task complete.");
 
         AgentService service = serviceWith(caller, turnLog);
 
@@ -166,7 +165,7 @@ class PerUserIdentityTest {
                 request -> {
                     String currentUser = UserContext.get();
                     if (currentUser != null) seen.add(currentUser);
-                    return new VetoResponse("Done.", null, "Task complete.", null);
+                    return new VetoResponse("Done.", null, "Task complete.");
                 };
 
         AgentService service = serviceWith(caller, turnLog);
@@ -206,7 +205,7 @@ class PerUserIdentityTest {
         UniformLLMCaller caller =
                 request -> {
                     sawNullContext.set(UserContext.get() == null);
-                    return new VetoResponse("Done.", null, "Task complete.", null);
+                    return new VetoResponse("Done.", null, "Task complete.");
                 };
 
         AgentService service = serviceWith(caller, turnLog);

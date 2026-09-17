@@ -175,7 +175,7 @@ public final class MemoryTools {
                     """,
             whenToUse =
                     """
-                    Use `write_memory` to persist knowledge that will be useful in future sessions - \
+                    Use `write_memory` when the user requests future recall or verified durable knowledge clearly benefits future sessions - \
                     project conventions, recurring patterns, architectural decisions, or lessons \
                     learned. Also use it to promote a Session LTM memory to Cross-Session LTM when \
                     its value extends beyond this session.
@@ -183,7 +183,7 @@ public final class MemoryTools {
             whenNotToUse =
                     """
                     - Do not use `write_memory` for transient context that only matters this session - \
-                    Session LTM captures automatically.
+                    Conversation history already retains task context. Answering or citing existing context needs no memory write.
                     - Do not use it to record verbatim file contents - reference the file path instead.
                     - Do not write trivial or obvious facts; insights should be non-obvious, reusable \
                     knowledge.

@@ -20,7 +20,6 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
 import top.focess.veto.agent.tool.ToolDocs;
-import top.focess.veto.agent.translation.VetoCapabilityTranslator;
 import top.focess.veto.llm.core.*;
 import top.focess.veto.llm.exceptions.ModelSchemaException;
 import top.focess.veto.util.Nullness;
@@ -124,7 +123,7 @@ class AnthropicLlmClientTest {
                                 ChatMessage.user("Read"),
                                 ChatMessage.assistantToolCall("prior", "view_file", "{}", "", null),
                                 ChatMessage.toolResult("prior", "Known content")),
-                        new VetoCapabilityTranslator().vetoResponseSchema(guided, tools),
+                        null,
                         null);
         var client = new AnthropicLlmClient(sdk, new ObjectMapper());
         assertEquals(
@@ -272,7 +271,7 @@ class AnthropicLlmClientTest {
                         "key",
                         LlmOptions.defaults(),
                         List.of(),
-                        new VetoCapabilityTranslator().vetoResponseSchema(guided, tools),
+                        null,
                         null);
         var client = new AnthropicLlmClient(sdk, new ObjectMapper());
         var nativeCall = mock(ToolDocs.nonNullClass(ContentBlock.class), RETURNS_DEEP_STUBS);
@@ -404,7 +403,7 @@ class AnthropicLlmClientTest {
                 "test-key",
                 LlmOptions.defaults(),
                 List.of(),
-                new VetoCapabilityTranslator().vetoResponseSchema(true),
+                null,
                 null);
     }
 

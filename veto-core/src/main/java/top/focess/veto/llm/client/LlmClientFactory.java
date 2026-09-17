@@ -44,7 +44,7 @@ public class LlmClientFactory {
      * Constructs a new LlmClientFactory with the specified dependencies.
      *
      * @param objectMapper the mapper for JSON serialization (used by adapters)
-     * @param capabilityTranslator the translator that emits the per-turn veto_pulse schema
+     * @param capabilityTranslator the native capability translator
      */
     public LlmClientFactory(
             @Qualifier(LlmJacksonConfig.LLM_OBJECT_MAPPER) @NonNull ObjectMapper objectMapper,

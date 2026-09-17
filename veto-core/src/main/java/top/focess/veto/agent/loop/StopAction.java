@@ -7,4 +7,9 @@ import org.jspecify.annotations.NonNull;
  * exits).
  */
 public record StopAction(@NonNull String id, @NonNull String label, String resultBinding)
-        implements Action {}
+        implements Action {
+    public StopAction {
+        if (resultBinding != null && resultBinding.startsWith("$"))
+            resultBinding = resultBinding.substring(1);
+    }
+}

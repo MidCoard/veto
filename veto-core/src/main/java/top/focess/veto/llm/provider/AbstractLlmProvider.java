@@ -112,7 +112,6 @@ public abstract class AbstractLlmProvider implements LLMProviderStrategy {
                             null,
                             raw.nativeCalls().isEmpty() ? null : raw.nativeCalls(),
                             raw.rawResponse().isBlank() ? null : raw.rawResponse(),
-                            null,
                             null);
             if (!raw.nativeStates().isEmpty()) {
                 var parsedCalls = response.calls();
@@ -127,7 +126,6 @@ public abstract class AbstractLlmProvider implements LLMProviderStrategy {
                                 response.thought(),
                                 restored,
                                 response.message(),
-                                response.guide(),
                                 response.citations());
             }
             var calls = response.calls();
@@ -137,14 +135,12 @@ public abstract class AbstractLlmProvider implements LLMProviderStrategy {
             // loop signature: calls=0 means the turn stops (the runAutonomous no-calls
             // termination). is_finished was removed - termination routes on call presence.
             log.debug(
-                    "LLM call done requestId={} model={} calls={} msgLen={} thoughtLen={}"
-                            + " guided={}",
+                    "LLM call done requestId={} model={} calls={} msgLen={} thoughtLen={}",
                     requestId,
                     request.modelName(),
                     calls == null ? 0 : calls.size(),
                     message != null ? message.length() : 0,
-                    thought != null ? thought.length() : 0,
-                    response.guide() != null);
+                    thought != null ? thought.length() : 0);
             return response;
         } catch (ModelSchemaException e) {
             throw e;
