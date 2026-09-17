@@ -113,6 +113,9 @@ final class MacOsSeatbeltSandbox {
                 "  (subpath \"/dev\")",
                 "  (subpath \"" + workspace + "\"))",
                 executableRule,
+                // Apple's developer-tool shims read this selector before falling back to the
+                // default installation. Even an absent selector must report ENOENT, not EPERM.
+                readOnlyPathRules(Path.of("/var/select/developer_dir")),
                 "",
                 "; standard character devices and PTY support",
                 "(allow file-write-data",
@@ -187,12 +190,27 @@ final class MacOsSeatbeltSandbox {
         if (!path.isAbsolute()) {
             return "";
         }
+        return readOnlyPathRules(path);
+    }
+
+    /** Read one path and inspect its ancestors, including aliases of a missing final component. */
+    static @NonNull String readOnlyPathRules(@NonNull Path path) {
         Path absolute = path.toAbsolutePath().normalize();
         Path real = absolute;
         try {
             real = absolute.toRealPath();
         } catch (IOException ignored) {
-            // The subsequent exec fails normally if the approved executable disappeared.
+            // Canonicalize an existing parent so a missing selector/executable remains observable
+            // as missing through directory aliases instead of being denied at its canonical path.
+            Path parent = absolute.getParent();
+            Path name = absolute.getFileName();
+            if (parent != null && name != null) {
+                try {
+                    real = parent.toRealPath().resolve(name);
+                } catch (IOException unavailableParent) {
+                    // The operation still fails normally if its parent cannot be inspected.
+                }
+            }
         }
         String absoluteValue = seatbeltString(absolute.toString());
         String realValue = seatbeltString(real.toString());

@@ -161,6 +161,56 @@ class MacOsSeatbeltSandboxTest {
         }
     }
 
+    @Test
+    @EnabledOnOs(OS.MAC)
+    void missingReadOnlyPathRetainsItsCanonicalAliasWithoutGrantingTheParentSubtree(
+            @TempDir @NonNull Path temp) throws Exception {
+        Path canonicalParent = Files.createDirectories(temp.resolve("settings"));
+        Path alias = Files.createSymbolicLink(temp.resolve("settings-alias"), canonicalParent);
+        Path missing = alias.resolve("not-selected");
+
+        String rules = MacOsSeatbeltSandbox.readOnlyPathRules(missing);
+
+        assertTrue(rules.contains("(literal \"" + missing + "\")"));
+        assertTrue(
+                rules.contains(
+                        "(literal \""
+                                + canonicalParent.toRealPath().resolve("not-selected")
+                                + "\")"));
+        assertTrue(rules.contains("(allow file-read-metadata (literal \"" + alias + "\"))"));
+        assertFalse(rules.contains("subpath"));
+        assertFalse(rules.contains("file-write"));
+    }
+
+    @Test
+    @EnabledOnOs(OS.MAC)
+    void developerToolSelectionMatchesTheHostWithoutBroadVarAccess(@TempDir @NonNull Path workspace)
+            throws Exception {
+        var outside = new ProcessBuilder("/usr/bin/xcode-select", "-p").start();
+        String expectedOutput = new String(outside.getInputStream().readAllBytes());
+        String expectedError = new String(outside.getErrorStream().readAllBytes());
+        int expectedExit = outside.waitFor();
+        var substrate = new ConstrainedSubprocessSubstrate(new KernelSandboxSubstrate());
+        var handle = substrate.provision(profile(workspace));
+        try {
+            var result =
+                    substrate.runCommands(
+                            handle,
+                            List.of(new Command("/usr/bin/xcode-select", List.of("-p"))),
+                            Path.of("."),
+                            ChainMode.STOP_ON_FAILURE,
+                            Duration.ofSeconds(10));
+            assertEquals(expectedExit, result.exitCode(), result.stderr());
+            assertEquals(expectedOutput, result.stdout());
+            assertEquals(expectedError, result.stderr());
+            assertFalse(MacOsSeatbeltSandbox.profile(workspace).contains("(subpath \"/var\")"));
+            assertFalse(
+                    MacOsSeatbeltSandbox.profile(workspace).contains("(subpath \"/private/var\")"));
+        } finally {
+            substrate.deprovision(handle);
+        }
+    }
+
     private static int occurrences(@NonNull String value, @NonNull String needle) {
         return value.split(Pattern.quote(needle), -1).length - 1;
     }
