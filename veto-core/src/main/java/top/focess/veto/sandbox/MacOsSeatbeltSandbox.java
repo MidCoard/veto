@@ -158,9 +158,9 @@ final class MacOsSeatbeltSandbox {
     }
 
     /** Permit path traversal/stat without granting directory listings or file content reads. */
-    private static @NonNull String ancestorMetadataRules(@NonNull Path workspace) {
+    private static @NonNull String ancestorMetadataRules(@NonNull Path path) {
         List<String> rules = new ArrayList<>();
-        for (Path parent = workspace.getParent(); parent != null; parent = parent.getParent()) {
+        for (Path parent = path.getParent(); parent != null; parent = parent.getParent()) {
             rules.add(
                     "(allow file-read-metadata (literal \""
                             + seatbeltString(parent.toString())
@@ -196,10 +196,18 @@ final class MacOsSeatbeltSandbox {
         }
         String absoluteValue = seatbeltString(absolute.toString());
         String realValue = seatbeltString(real.toString());
+        // Starting the executable can require realpath/stat on its lexical and resolved parents.
+        // Reading a permitted subtree does not grant metadata access to its ancestors. Keep
+        // those grants literal and metadata-only: sibling content and directory listings remain
+        // inaccessible unless another existing rule explicitly permits them.
+        String ancestors = ancestorMetadataRules(absolute);
         if (absoluteValue.equals(realValue)) {
-            return "(allow file-read* (literal \"" + absoluteValue + "\"))";
+            return ancestors + "\n(allow file-read* (literal \"" + absoluteValue + "\"))";
         }
-        return "(allow file-read* (literal \""
+        return ancestors
+                + "\n"
+                + ancestorMetadataRules(real)
+                + "\n(allow file-read* (literal \""
                 + absoluteValue
                 + "\") (literal \""
                 + realValue

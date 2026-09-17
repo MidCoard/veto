@@ -112,6 +112,55 @@ class MacOsSeatbeltSandboxTest {
         }
     }
 
+    @Test
+    @EnabledOnOs(OS.MAC)
+    void executableSymlinkParentsPermitMetadataButNotSiblingReadsOrWrites(
+            @TempDir @NonNull Path temp) throws Exception {
+        Path workspace = Files.createDirectories(temp.resolve("workspace"));
+        Path links = Files.createDirectories(temp.resolve("discovery/bin"));
+        Path runtime = Files.createDirectories(temp.resolve("installation/version/bin"));
+        Path executable = runtime.resolve("probe");
+        Files.writeString(
+                executable,
+                """
+                #!/bin/sh
+                /usr/bin/stat -f '%N' "$1" "$2" || exit 10
+                if /bin/cat "$3"; then exit 11; fi
+                if /usr/bin/touch "$4"; then exit 12; fi
+                if /bin/ls "$2"; then exit 13; fi
+                /usr/bin/printf 'metadata-only-ok'
+                """);
+        assertTrue(executable.toFile().setExecutable(true, true));
+        Path discovered = Files.createSymbolicLink(links.resolve("probe"), executable);
+        Path secret = Files.writeString(runtime.resolve("private.txt"), "unrelated-private-data");
+        Path forbiddenWrite = runtime.resolve("created.txt");
+        var substrate = new ConstrainedSubprocessSubstrate(new KernelSandboxSubstrate());
+        var handle = substrate.provision(profile(workspace));
+        try {
+            var result =
+                    substrate.runCommands(
+                            handle,
+                            List.of(
+                                    new Command(
+                                            discovered.toString(),
+                                            List.of(
+                                                    links.toString(),
+                                                    runtime.toString(),
+                                                    secret.toString(),
+                                                    forbiddenWrite.toString()))),
+                            Path.of("."),
+                            ChainMode.STOP_ON_FAILURE,
+                            Duration.ofSeconds(10));
+            assertEquals(0, result.exitCode(), result.stderr());
+            assertTrue(result.stdout().contains("metadata-only-ok"));
+            assertFalse(result.stdout().contains("unrelated-private-data"));
+            assertFalse(result.stdout().contains("private.txt"));
+            assertFalse(Files.exists(forbiddenWrite));
+        } finally {
+            substrate.deprovision(handle);
+        }
+    }
+
     private static int occurrences(@NonNull String value, @NonNull String needle) {
         return value.split(Pattern.quote(needle), -1).length - 1;
     }
