@@ -27,8 +27,16 @@ public final class MonitorTools {
                     "Invalid times, missing purpose, inaccessible rules and exhausted active-rule limits are rejected. Offline wake-ups can be delayed.",
             security =
                     "Owner, Session and Agent are taken from the execution permit. No arbitrary resource access is granted.",
-            examples = "{\"purpose\":\"Remind me to review the report\",\"afterSeconds\":600}",
-            returnExamples = "{\"state\":\"ACTIVE\",\"kind\":\"TIME_ONCE\"}")
+            examples = {
+                "{\"purpose\":\"Remind me to review the report\",\"afterSeconds\":600}",
+                "{\"purpose\":\"Summarize the CI results for the nightly build\",\"at\":\"2026-09-20T07:30:00+08:00\"}",
+                "{\"purpose\":\"Re-check whether the example.com certificate renewal completed and report the new expiry date\",\"afterSeconds\":86400}"
+            },
+            returnExamples = {
+                "{\"id\":\"3f6c9f4e-7b1a-4c2d-9e5f-2a8b6d1c4e70\",\"kind\":\"TIME_ONCE\",\"purpose\":\"Remind me to review the report\",\"state\":\"ACTIVE\"}",
+                "{\"id\":\"7a1e2c5b-3d6f-4e8a-9b0c-1d2e3f4a5b6c\",\"kind\":\"TIME_ONCE\",\"purpose\":\"Summarize the CI results for the nightly build\",\"state\":\"ACTIVE\"}",
+                "{\"id\":\"b8d2e4f6-1a3c-4b5d-9e7f-0a1b2c3d4e5f\",\"kind\":\"TIME_ONCE\",\"purpose\":\"Re-check whether the example.com certificate renewal completed and report the new expiry date\",\"state\":\"ACTIVE\"}"
+            })
     public static final class CreateMonitor implements MonitorTool<CreateMonitor.Args> {
         private final @NonNull MonitorCapability capability;
 
@@ -81,7 +89,8 @@ public final class MonitorTools {
             security =
                     "Owner, Session and Agent are taken from the execution permit. No arbitrary resource access is granted.",
             examples = "{}",
-            returnExamples = "{\"state\":\"ACTIVE\",\"kind\":\"TIME_ONCE\"}")
+            returnExamples =
+                    "[{\"id\":\"3f6c9f4e-7b1a-4c2d-9e5f-2a8b6d1c4e70\",\"kind\":\"TIME_ONCE\",\"purpose\":\"Remind me to review the report\",\"state\":\"ACTIVE\"}]")
     public static final class InspectMonitor implements MonitorTool<InspectMonitor.Args> {
         private final @NonNull MonitorCapability capability;
 
@@ -129,8 +138,16 @@ public final class MonitorTools {
                     "Invalid times, missing purpose, inaccessible rules and exhausted active-rule limits are rejected. Offline wake-ups can be delayed.",
             security =
                     "Owner, Session and Agent are taken from the execution permit. No arbitrary resource access is granted.",
-            examples = "{\"monitorId\":\"<monitor-id>\"}",
-            returnExamples = "{\"state\":\"ACTIVE\",\"kind\":\"TIME_ONCE\"}")
+            examples = {
+                "{\"monitorId\":\"3f6c9f4e-7b1a-4c2d-9e5f-2a8b6d1c4e70\"}",
+                "{\"monitorId\":\"7a1e2c5b-3d6f-4e8a-9b0c-1d2e3f4a5b6c\"}",
+                "{\"monitorId\":\"b8d2e4f6-1a3c-4b5d-9e7f-0a1b2c3d4e5f\"}"
+            },
+            returnExamples = {
+                "{\"id\":\"3f6c9f4e-7b1a-4c2d-9e5f-2a8b6d1c4e70\",\"kind\":\"TIME_ONCE\",\"state\":\"PAUSED\"}",
+                "{\"id\":\"7a1e2c5b-3d6f-4e8a-9b0c-1d2e3f4a5b6c\",\"kind\":\"TIME_ONCE\",\"state\":\"PAUSED\"}",
+                "{\"id\":\"b8d2e4f6-1a3c-4b5d-9e7f-0a1b2c3d4e5f\",\"kind\":\"TIME_ONCE\",\"state\":\"PAUSED\"}"
+            })
     public static final class PauseMonitor implements MonitorTool<PauseMonitor.Args> {
         private final @NonNull MonitorCapability capability;
 
@@ -179,8 +196,16 @@ public final class MonitorTools {
                     "Invalid times, missing purpose, inaccessible rules and exhausted active-rule limits are rejected. Offline wake-ups can be delayed.",
             security =
                     "Owner, Session and Agent are taken from the execution permit. No arbitrary resource access is granted.",
-            examples = "{\"monitorId\":\"<monitor-id>\"}",
-            returnExamples = "{\"state\":\"ACTIVE\",\"kind\":\"TIME_ONCE\"}")
+            examples = {
+                "{\"monitorId\":\"3f6c9f4e-7b1a-4c2d-9e5f-2a8b6d1c4e70\"}",
+                "{\"monitorId\":\"7a1e2c5b-3d6f-4e8a-9b0c-1d2e3f4a5b6c\"}",
+                "{\"monitorId\":\"b8d2e4f6-1a3c-4b5d-9e7f-0a1b2c3d4e5f\"}"
+            },
+            returnExamples = {
+                "{\"id\":\"3f6c9f4e-7b1a-4c2d-9e5f-2a8b6d1c4e70\",\"kind\":\"TIME_ONCE\",\"state\":\"ACTIVE\"}",
+                "{\"id\":\"7a1e2c5b-3d6f-4e8a-9b0c-1d2e3f4a5b6c\",\"kind\":\"TIME_ONCE\",\"state\":\"ACTIVE\"}",
+                "{\"id\":\"b8d2e4f6-1a3c-4b5d-9e7f-0a1b2c3d4e5f\",\"kind\":\"TIME_ONCE\",\"state\":\"ACTIVE\"}"
+            })
     public static final class ResumeMonitor implements MonitorTool<ResumeMonitor.Args> {
         private final @NonNull MonitorCapability capability;
 
@@ -229,8 +254,16 @@ public final class MonitorTools {
                     "Invalid times, missing purpose, inaccessible rules and exhausted active-rule limits are rejected. Offline wake-ups can be delayed.",
             security =
                     "Owner, Session and Agent are taken from the execution permit. No arbitrary resource access is granted.",
-            examples = "{\"monitorId\":\"<monitor-id>\"}",
-            returnExamples = "{\"state\":\"ACTIVE\",\"kind\":\"TIME_ONCE\"}")
+            examples = {
+                "{\"monitorId\":\"3f6c9f4e-7b1a-4c2d-9e5f-2a8b6d1c4e70\"}",
+                "{\"monitorId\":\"7a1e2c5b-3d6f-4e8a-9b0c-1d2e3f4a5b6c\"}",
+                "{\"monitorId\":\"b8d2e4f6-1a3c-4b5d-9e7f-0a1b2c3d4e5f\"}"
+            },
+            returnExamples = {
+                "{\"id\":\"3f6c9f4e-7b1a-4c2d-9e5f-2a8b6d1c4e70\",\"kind\":\"TIME_ONCE\",\"state\":\"CANCELLED\"}",
+                "{\"id\":\"7a1e2c5b-3d6f-4e8a-9b0c-1d2e3f4a5b6c\",\"kind\":\"TIME_ONCE\",\"state\":\"CANCELLED\"}",
+                "{\"id\":\"b8d2e4f6-1a3c-4b5d-9e7f-0a1b2c3d4e5f\",\"kind\":\"TIME_ONCE\",\"state\":\"CANCELLED\"}"
+            })
     public static final class CancelMonitor implements MonitorTool<CancelMonitor.Args> {
         private final @NonNull MonitorCapability capability;
 

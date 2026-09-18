@@ -21,8 +21,9 @@ import top.focess.veto.agent.tool.ToolResultFormat;
  * @param documentation typed LLM-facing documentation sections. Prompt-side metadata only; never
  *     sent to a provider.
  * @param returnExamples illustrative result shapes rendered after the tool's own result contract;
- *     they are not current observations and are not positionally aligned with {@code examples}.
- *     Prompt-side metadata only; never sent to a provider.
+ *     they are not current observations. Positionally aligned with {@code examples}: entry {@code
+ *     i} is the success result of the call shown in {@code examples.get(i)}. Prompt-side metadata
+ *     only; never sent to a provider.
  * @param resultFormats explicit wire-visible result shapes rendered before the rest of the tool
  *     contract
  */

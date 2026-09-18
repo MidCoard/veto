@@ -79,16 +79,19 @@ import top.focess.veto.sandbox.CommandResult;
         security =
                 "Commands spawn directly without a shell, so executable and args cannot be combined to smuggle shell operators or extra flags.",
         examples = {
-            "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"build\"]}], \"connect\": \"STOP_ON_FAILURE\", \"timeout\": 300}",
-            "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"test\"]}], \"timeout\": 300}",
             "{\"commands\": [{\"executable\": \"git\", \"args\": [\"status\"]}], \"timeout\": 60}",
-            "{\"commands\": [{\"executable\": \"git\", \"args\": [\"log\", \"--oneline\", \"-10\"]}], \"timeout\": 60}",
             "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"build\"]}, {\"executable\": \"gradle\", \"args\": [\"test\"]}], \"connect\": \"STOP_ON_FAILURE\", \"timeout\": 600}",
             "{\"commands\": [{\"executable\": \"grep\", \"args\": [\"-r\", \"TODO\", \"src\"]}, {\"executable\": \"wc\", \"args\": [\"-l\"]}], \"connect\": \"PIPE\", \"timeout\": 120}",
-            "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"clean\", \"build\", \"test\"]}], \"connect\": \"RUN_ALL\", \"timeout\": 900}",
-            "{\"commands\": [{\"executable\": \"node\", \"args\": [\"script.js\"]}], \"timeout\": 120}"
+            "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"clean\"]}, {\"executable\": \"gradle\", \"args\": [\"build\"]}, {\"executable\": \"gradle\", \"args\": [\"test\"]}], \"connect\": \"RUN_ALL\", \"timeout\": 900}",
+            "{\"commands\": [{\"executable\": \"npm\", \"args\": [\"install\"]}], \"network\": true, \"timeout\": 600}"
         },
-        returnExamples = {"BUILD SUCCESSFUL in 12s"})
+        returnExamples = {
+            "On branch main\nnothing to commit, working tree clean",
+            "BUILD SUCCESSFUL in 12s",
+            "42",
+            "BUILD SUCCESSFUL in 45s",
+            "added 214 packages in 18s"
+        })
 public final class RunCommandTool implements ProcessExecutionTool<RunCommandTool.Args> {
     private final @NonNull ProcessExecutionCapability capability;
 

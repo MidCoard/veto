@@ -21,9 +21,15 @@ import top.focess.veto.agent.tool.*;
         security =
                 "The credential is used by reference only; its secret never enters arguments, results, or URLs. Requests go only to api.github.com.",
         resultFormats = {ToolResultFormat.JSON},
-        returnExamples = {"{\"id\":12,\"private\":true,\"full_name\":\"example/project\"}"},
+        returnExamples = {
+            "{\"id\":12,\"private\":true,\"full_name\":\"example/project\"}",
+            "{\"id\":1296269,\"private\":false,\"full_name\":\"octo-cat/hello-world\",\"description\":\"My first repository\",\"default_branch\":\"main\"}",
+            "{\"id\":48151623,\"private\":false,\"full_name\":\"upstream-org/shared-library\",\"default_branch\":\"main\"}"
+        },
         examples = {
-            "{\"credentialRef\":\"cred_01234567-89ab-cdef-0123-456789abcdef\",\"repositoryOwner\":\"example\",\"repositoryName\":\"project\"}"
+            "{\"credentialRef\":\"cred_01234567-89ab-cdef-0123-456789abcdef\",\"repositoryOwner\":\"example\",\"repositoryName\":\"project\"}",
+            "{\"credentialRef\":\"cred_01234567-89ab-cdef-0123-456789abcdef\",\"repositoryOwner\":\"octo-cat\",\"repositoryName\":\"hello-world\"}",
+            "{\"credentialRef\":\"cred_01234567-89ab-cdef-0123-456789abcdef\",\"repositoryOwner\":\"upstream-org\",\"repositoryName\":\"shared-library\"}"
         })
 public final class ReadGitHubRepositoryTool
         implements NetworkEgressTool<ReadGitHubRepositoryTool.Args> {

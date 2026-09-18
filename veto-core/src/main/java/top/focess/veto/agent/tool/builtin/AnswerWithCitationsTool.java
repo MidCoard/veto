@@ -26,9 +26,17 @@ import top.focess.veto.agent.tool.*;
                 "References are limited to the calling agent's current visible input. This tool cannot retrieve other sessions or access files. A matched quote establishes its source, not the truth of its claim.",
         resultFormats = {ToolResultFormat.JSON},
         examples = {
-            "{\"message\":\"The meeting starts at [14:30](cite:meeting).\",\"citations\":[{\"id\":\"meeting\",\"sources\":[{\"quote\":\"The meeting starts at 14:30.\"}]}]}"
+            "{\"message\":\"The meeting starts at [14:30](cite:meeting).\",\"citations\":[{\"id\":\"meeting\",\"sources\":[{\"quote\":\"The meeting starts at 14:30.\"}]}]}",
+            "{\"message\":\"The build uses [Gradle 8.5](cite:gradle) and targets [Java 21](cite:java).\",\"citations\":[{\"id\":\"gradle\",\"sources\":[{\"quote\":\"The build uses Gradle 8.5\"}]},{\"id\":\"java\",\"sources\":[{\"quote\":\"and targets Java 21\"}]}]}",
+            "{\"message\":\"Both reviewers approved the change: [the approvals](cite:approvals).\",\"citations\":[{\"id\":\"approvals\",\"sources\":[{\"quote\":\"Alice approved the pull request.\"},{\"quote\":\"Bob approved the pull request.\"}]}]}",
+            "{\"message\":\"The configured timeout is [30 seconds](cite:timeout).\",\"citations\":[{\"id\":\"timeout\",\"sources\":[{\"message_index\":7,\"quote\":\"\\\"timeout\\\": \\\"30 seconds\\\"\"}]}]}"
         },
-        returnExamples = {"{\"status\":\"accepted\"}"})
+        returnExamples = {
+            "{\"status\":\"accepted\"}",
+            "{\"status\":\"accepted\"}",
+            "{\"status\":\"accepted\"}",
+            "{\"status\":\"accepted\"}"
+        })
 public final class AnswerWithCitationsTool
         implements LoopControlTool<AnswerWithCitationsTool.Args> {
     private final @NonNull LoopControlCapability capability;

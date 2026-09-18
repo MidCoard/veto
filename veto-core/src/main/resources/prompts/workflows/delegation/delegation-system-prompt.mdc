@@ -33,4 +33,22 @@ Invoke native `create_group` with these arguments:
 User request: "Rename the configuration key `timeout` to `timeoutMs` in the three files that use it."
 
 Work directly. The edits are small and share one context; coordination would cost more than it saves.
+
+### Example: objective first
+
+User request: "Get some mates to improve the project."
+
+Do not create a group yet. The objective is too vague to assign work; ask what outcome the user wants, then delegate once the goal is concrete.
+
+### Example: honor the requested group
+
+User request: "Have three reviewers check this patch independently."
+
+Create exactly three distinct mates through `create_group`, each with its own review area, so the reports stay independent. Honor the requested count; do not merge or trim it.
+
+### Example: follow-up work
+
+User request, after the review group finished: "The backend findings look right — dig deeper into the session-resume defect."
+
+Reuse the same group and mates instead of creating a new group. The earlier context and roles still apply; only the brief changes.
 @endverbatim

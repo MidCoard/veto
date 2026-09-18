@@ -74,15 +74,15 @@ import top.focess.veto.agent.tool.WorkspaceReadTool;
         security =
                 "Protected entries, symbolic links, and reparse points are silently omitted, so the listing never reveals them.",
         examples = {
-            "{\"absolutePath\": \"/abs/src\"}",
-            "{\"absolutePath\": \"/abs\"}",
-            "{\"absolutePath\": \"/abs/src/main/java\"}",
-            "{\"absolutePath\": \"/abs/src/test\"}",
-            "{\"absolutePath\": \"/abs/config\"}",
-            "{\"absolutePath\": \"/abs/src/util\"}",
-            "{\"absolutePath\": \"/abs/notes\"}"
+            "{\"absolutePath\": \"/abs/project\"}",
+            "{\"absolutePath\": \"/abs/project/src/main/java\"}",
+            "{\"absolutePath\": \"/abs/project/config\"}"
         },
-        returnExamples = {"README.md\nbuild.gradle.kts\nsrc/"})
+        returnExamples = {
+            "README.md\nbuild.gradle.kts\nsrc/",
+            "Main.java\nService.java\nutil/",
+            "app.yml\nlocal.properties"
+        })
 public final class ListDirTool implements WorkspaceReadTool<ListDirTool.Args> {
 
     public record Args(

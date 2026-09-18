@@ -84,15 +84,19 @@ import top.focess.veto.agent.tool.WorkspaceWriteTool;
         security =
                 "The matched block is replaced in place, so an unintended unique match overwrites the wrong text; quote enough context to pin the target. A failed match leaves the file unchanged.",
         examples = {
-            "{\"absolutePath\": \"/abs/src/Main.java\", \"startLine\": 5, \"endLine\": 8, \"targetContent\": \"old\", \"replacementContent\": \"new\"}",
-            "{\"absolutePath\": \"/abs/src/Main.java\", \"startLine\": 12, \"endLine\": 12, \"targetContent\": \"int x = 1;\", \"replacementContent\": \"int x = 2;\"}",
-            "{\"absolutePath\": \"/abs/src/Main.java\", \"startLine\": 1, \"endLine\": 1, \"targetContent\": \"package old;\", \"replacementContent\": \"package new;\"}",
-            "{\"absolutePath\": \"/abs/README.md\", \"startLine\": 3, \"endLine\": 3, \"targetContent\": \"# Old Title\", \"replacementContent\": \"# New Title\"}",
-            "{\"absolutePath\": \"/abs/config/app.yml\", \"startLine\": 10, \"endLine\": 10, \"targetContent\": \"port: 8080\", \"replacementContent\": \"port: 8443\"}",
-            "{\"absolutePath\": \"/abs/src/Main.java\", \"startLine\": 20, \"endLine\": 24, \"targetContent\": \"// TODO\\n\", \"replacementContent\": \"// done\\n\"}",
-            "{\"absolutePath\": \"/abs/src/Main.java\", \"startLine\": 8, \"endLine\": 8, \"targetContent\": \"    return null;\", \"replacementContent\": \"    return value;\"}"
+            "{\"absolutePath\": \"/abs/project/src/Main.java\", \"startLine\": 12, \"endLine\": 12, \"targetContent\": \"int x = 1;\", \"replacementContent\": \"int x = 2;\"}",
+            "{\"absolutePath\": \"/abs/project/config/app.yml\", \"startLine\": 10, \"endLine\": 10, \"targetContent\": \"port: 8080\", \"replacementContent\": \"port: 8443\"}",
+            "{\"absolutePath\": \"/abs/project/src/Main.java\", \"startLine\": 5, \"endLine\": 8, \"targetContent\": \"    void run() {\\n        start();\\n    }\", \"replacementContent\": \"    void run() {\\n        prepare();\\n        start();\\n    }\"}",
+            "{\"absolutePath\": \"/abs/project/src/Main.java\", \"startLine\": 20, \"endLine\": 22, \"targetContent\": \"    // TODO: drop debug logging\\n    log.debug(\\\"state\\\");\\n\", \"replacementContent\": \"\"}",
+            "{\"absolutePath\": \"/abs/project/src/Service.java\", \"startLine\": 40, \"endLine\": 46, \"targetContent\": \"    @Override\\n    public String name() {\\n        return \\\"legacy\\\";\\n    }\", \"replacementContent\": \"    @Override\\n    public String name() {\\n        return \\\"modern\\\";\\n    }\"}"
         },
-        returnExamples = {"{\"status\":\"ok\",\"file\":\"/abs/src/Main.java\"}"})
+        returnExamples = {
+            "{\"status\":\"ok\",\"file\":\"/abs/project/src/Main.java\"}",
+            "{\"status\":\"ok\",\"file\":\"/abs/project/config/app.yml\"}",
+            "{\"status\":\"ok\",\"file\":\"/abs/project/src/Main.java\"}",
+            "{\"status\":\"ok\",\"file\":\"/abs/project/src/Main.java\"}",
+            "{\"status\":\"ok\",\"file\":\"/abs/project/src/Service.java\"}"
+        })
 public final class ReplaceFileContentTool
         implements WorkspaceWriteTool<ReplaceFileContentTool.Args> {
     private static final int MAX_TEXT_BYTES = 16 * 1024 * 1024;

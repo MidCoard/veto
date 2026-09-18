@@ -27,9 +27,17 @@ import top.focess.veto.agent.tool.*;
                 "Available only in plan-enabled sessions and for authorized callers. Every plan tool step retains its own permission and workspace checks. Submitting a plan grants no extra authority.",
         resultFormats = {ToolResultFormat.JSON},
         examples = {
-            "{\"actions\":[{\"id\":\"greet\",\"label\":\"Write greeting\",\"type\":\"generate\",\"prompt\":\"Write a brief welcome message\",\"outputs\":{\"answer\":\"message\"}},{\"id\":\"finish\",\"label\":\"Return greeting\",\"type\":\"STOP\",\"result_binding\":\"answer\"}]}"
+            "{\"actions\":[{\"id\":\"greet\",\"label\":\"Write greeting\",\"type\":\"generate\",\"prompt\":\"Write a brief welcome message\",\"outputs\":{\"answer\":\"message\"}},{\"id\":\"finish\",\"label\":\"Return greeting\",\"type\":\"STOP\",\"result_binding\":\"answer\"}]}",
+            "{\"actions\":[{\"id\":\"read\",\"label\":\"Read the config file\",\"type\":\"tool\",\"tool\":\"view_file\",\"inputs\":{\"absolutePath\":\"/workspace/app.conf\"},\"outputs\":{\"config\":\"text\"}},{\"id\":\"summarize\",\"label\":\"Summarize the config\",\"type\":\"generate\",\"prompt\":\"Summarize the key settings in the supplied configuration.\",\"inputs\":{\"config\":\"$config\"},\"outputs\":{\"answer\":\"message\"}},{\"id\":\"finish\",\"label\":\"Return the summary\",\"type\":\"STOP\",\"result_binding\":\"answer\"}]}",
+            "{\"actions\":[{\"id\":\"test\",\"label\":\"Run the test suite\",\"type\":\"tool\",\"tool\":\"run_command\",\"inputs\":{\"commands\":[{\"executable\":\"gradle\",\"args\":[\"test\"]}]},\"outputs\":{\"result\":\"text\"}},{\"id\":\"check\",\"label\":\"Check the test outcome\",\"type\":\"conditional_goto\",\"check\":{\"kind\":\"exit_ok\",\"step_id\":\"test\"},\"true_goto\":2,\"false_goto\":4},{\"id\":\"passed\",\"label\":\"Report the passing run\",\"type\":\"generate\",\"prompt\":\"Confirm that the test suite passed.\",\"outputs\":{\"answer\":\"message\"}},{\"id\":\"done\",\"label\":\"Return the result\",\"type\":\"STOP\",\"result_binding\":\"answer\"},{\"id\":\"failed\",\"label\":\"Summarize the failures\",\"type\":\"generate\",\"prompt\":\"Summarize the failures in the supplied test output.\",\"inputs\":{\"output\":\"$result\"},\"outputs\":{\"answer\":\"message\"}},{\"id\":\"stop\",\"label\":\"Return the failure summary\",\"type\":\"STOP\",\"result_binding\":\"answer\"}]}",
+            "{\"actions\":[{\"id\":\"draft\",\"label\":\"Draft the release notes\",\"type\":\"generate\",\"prompt\":\"Draft concise release notes for version 1.1.\",\"outputs\":{\"notes\":\"message\"},\"model_tier\":\"TOP\",\"temperature\":0.3},{\"id\":\"finish\",\"label\":\"Return the notes\",\"type\":\"STOP\",\"result_binding\":\"notes\"}]}"
         },
-        returnExamples = {"{\"status\":\"accepted\"}"})
+        returnExamples = {
+            "{\"status\":\"accepted\"}",
+            "{\"status\":\"accepted\"}",
+            "{\"status\":\"accepted\"}",
+            "{\"status\":\"accepted\"}"
+        })
 public final class SubmitPlanTool implements LoopControlTool<SubmitPlanTool.Args> {
     private final @NonNull LoopControlCapability capability;
     private static final @NonNull ObjectMapper MAPPER = new ObjectMapper();

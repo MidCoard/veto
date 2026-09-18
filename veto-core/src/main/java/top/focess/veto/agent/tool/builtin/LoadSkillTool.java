@@ -51,13 +51,21 @@ import top.focess.veto.agent.tool.ToolResultFormat;
                 """,
         errorsAndEdgeCases =
                 """
-                `skillName` is case-sensitive; copy it from "## Available Skills" rather than guessing. Loading \
+                `skillName` is case-sensitive; copy it from "## Available skills" rather than guessing. Loading \
                 a skill does not execute anything; it only provides instructions.
                 """,
         security =
                 "Loaded instructions remain subordinate to higher-authority system and user instructions.",
-        examples = {"{\"skillName\": \"verify_suite\"}"},
-        returnExamples = {"# verify_suite\n1. Run the focused checks ..."})
+        examples = {
+            "{\"skillName\": \"commit\"}",
+            "{\"skillName\": \"verify_suite\"}",
+            "{\"skillName\": \"git-rebase\"}"
+        },
+        returnExamples = {
+            "# commit\n1. Review the staged diff and draft the commit message ...",
+            "# verify_suite\n1. Run the focused checks ...",
+            "# git-rebase\n1. Fetch the target branch, then replay local commits ..."
+        })
 public final class LoadSkillTool implements SkillReadTool<LoadSkillTool.Args> {
 
     private final @NonNull SkillReadCapability capability;

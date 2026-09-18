@@ -70,8 +70,8 @@ class ToolEngineImplTest {
             resultContract = "One JSON value.",
             errorsAndEdgeCases = "Malformed output is rejected by the engine.",
             security = "Test-only agent tool.",
-            examples = {"{\"output\":\"{}\"}"},
-            returnExamples = {"{}"})
+            examples = {"{\"output\":\"{}\"}", "{\"output\":\"[]\"}", "{\"output\":\"42\"}"},
+            returnExamples = {"{}", "[]", "42"})
     private static class JsonAgentTool implements LoopControlTool<JsonAgentArgs> {
         @Override
         public @NonNull LoopControlCapability loopControlCapability() {
@@ -120,8 +120,10 @@ class ToolEngineImplTest {
                 AgentToolDefinition.from(
                         tool.getName(), tool.getClass(), tool.getArgsClass(), tool.getCapability());
         assertEquals("Returns JSON for boundary tests.", definition.description());
-        assertEquals(List.of("{\"output\":\"{}\"}"), definition.examples());
-        assertEquals(List.of("{}"), definition.returnExamples());
+        assertEquals(
+                List.of("{\"output\":\"{}\"}", "{\"output\":\"[]\"}", "{\"output\":\"42\"}"),
+                definition.examples());
+        assertEquals(List.of("{}", "[]", "42"), definition.returnExamples());
         assertEquals(List.of(ToolResultFormat.JSON), definition.resultFormats());
         assertEquals("Returns the supplied output.", definition.documentation().behavior());
         assertEquals("One JSON value.", definition.documentation().resultContract());
@@ -294,8 +296,12 @@ class ToolEngineImplTest {
             resultContract = "Plain text.",
             errorsAndEdgeCases = "The supplied reason is returned as a failure.",
             security = "Test-only agent tool.",
-            examples = {"{\"reason\":\"bad input\"}"},
-            returnExamples = {"ok"})
+            examples = {
+                "{\"reason\":\"bad input\"}",
+                "{\"reason\":\"missing field\"}",
+                "{\"reason\":\"timeout\"}"
+            },
+            returnExamples = {"ok", "ok", "ok"})
     private static final class FailingAgentTool implements LoopControlTool<FailingAgentArgs> {
         @Override
         public @NonNull LoopControlCapability loopControlCapability() {

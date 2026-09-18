@@ -1,5 +1,6 @@
 package top.focess.veto.agent.tool;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import java.lang.reflect.Modifier;
 import java.util.stream.Stream;
 import org.jspecify.annotations.NonNull;
@@ -18,6 +19,7 @@ public final class ToolContractValidator {
         validateResultFormats(definition);
         if (!(definition instanceof RemoteToolDefinition)) {
             validateDocumentation(definition);
+            validateExamples(definition);
         }
         switch (definition) {
             case NativeToolDefinition nativeDefinition -> validateNative(nativeDefinition);
@@ -149,6 +151,36 @@ public final class ToolContractValidator {
                 definition,
                 !embedsHeading,
                 "documentation fields must not embed Markdown section headings");
+    }
+
+    /**
+     * Argument and result examples form positionally aligned pairs: {@code returnExamples[i]} shows
+     * the success result of the call in {@code examples[i]}. Tools with arguments declare three to
+     * five pairs, each example teaching a distinct usage; a no-argument tool declares exactly one
+     * empty-call pair.
+     */
+    private static void validateExamples(@NonNull ToolDefinition definition) {
+        int examples = definition.examples().size();
+        require(
+                definition,
+                examples == definition.returnExamples().size(),
+                "examples and returnExamples must correspond one-to-one: returnExamples[i] is the"
+                        + " success result of the call in examples[i]");
+        JsonNode properties = definition.inputSchema().path("properties");
+        boolean noArgs = !properties.isObject() || properties.isEmpty();
+        if (noArgs) {
+            require(
+                    definition,
+                    examples == 1,
+                    "a no-argument tool declares exactly one empty-call example and one matching"
+                            + " return example");
+        } else {
+            require(
+                    definition,
+                    examples >= 3 && examples <= 5,
+                    "declare three to five argument examples, each paired with its positionally"
+                            + " matching return example");
+        }
     }
 
     private static void validateNative(@NonNull NativeToolDefinition definition) {

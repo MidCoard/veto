@@ -113,13 +113,16 @@ public final class MemoryTools {
                     "Session results belong to the current session; all results belong to the current user.",
             examples = {
                 "{\"query\": \"UserService authentication\"}",
-                "{\"query\": \"build configuration\"}"
+                "{\"query\": \"build configuration\"}",
+                "{\"query\": \"deployment rollback procedure\"}"
             },
             returnExamples = {
                 "2 memories:\n- [CROSS_SESSION] id=123e4567-e89b-12d3-a456-426614174000 score=0.880 src=INSIGHT {}\n"
                         + "  Prefer constructor injection over field injection...\n"
                         + "- [SESSION] id=123e4567-e89b-12d3-a456-426614174001 score=0.820 src=turn_range {from=12, to=12}\n"
                         + "  UserService.authenticate validates the JWT expiry and...",
+                "1 memories:\n- [CROSS_SESSION] id=123e4567-e89b-12d3-a456-426614174002 score=0.910 src=INSIGHT {}\n"
+                        + "  This project uses Gradle 8.5 with Kotlin DSL...",
                 "no matching memories"
             })
     public static final class RecallMemory implements MemoryReadTool<RecallMemory.Args> {
@@ -213,12 +216,15 @@ public final class MemoryTools {
                     "Content is stored as supplied and persists across sessions. Never include secrets.",
             examples = {
                 "{\"mode\": \"WRITE\", \"content\": \"This project uses Gradle 8.5 with Kotlin DSL\"}",
-                "{\"mode\": \"PROMOTE\", \"promoteMemoryId\": \"123e4567-e89b-12d3-a456-426614174000\"}",
-                "{\"mode\": \"WRITE\", \"content\": \"Prefer constructor injection\", \"projectId\": \"123e4567-e89b-12d3-a456-426614174000\"}"
+                "{\"mode\": \"WRITE\", \"content\": \"Decision: audit records are append-only; corrections are written as new compensating entries, never edits.\"}",
+                "{\"mode\": \"WRITE\", \"content\": \"Prefer constructor injection\", \"projectId\": \"123e4567-e89b-12d3-a456-426614174000\"}",
+                "{\"mode\": \"PROMOTE\", \"promoteMemoryId\": \"123e4567-e89b-12d3-a456-426614174000\"}"
             },
             returnExamples = {
                 "memory written: 123e4567-e89b-12d3-a456-426614174000",
-                "promoted: 123e4567-e89b-12d3-a456-426614174000"
+                "memory written: 123e4567-e89b-12d3-a456-426614174001",
+                "memory written: 123e4567-e89b-12d3-a456-426614174002",
+                "promoted: 123e4567-e89b-12d3-a456-426614174003"
             })
     public static final class WriteMemory implements MemoryWriteTool<WriteMemory.Args> {
 
@@ -340,8 +346,16 @@ public final class MemoryTools {
                     """,
             security =
                     "Deletion is permanent. Remove only a memory you have verified should be removed.",
-            examples = {"{\"memoryId\": \"123e4567-e89b-12d3-a456-426614174000\"}"},
-            returnExamples = {"forgotten: 123e4567-e89b-12d3-a456-426614174000"})
+            examples = {
+                "{\"memoryId\": \"123e4567-e89b-12d3-a456-426614174000\"}",
+                "{\"memoryId\": \"123e4567-e89b-12d3-a456-426614174001\"}",
+                "{\"memoryId\": \"123e4567-e89b-12d3-a456-426614174002\"}"
+            },
+            returnExamples = {
+                "forgotten: 123e4567-e89b-12d3-a456-426614174000",
+                "forgotten: 123e4567-e89b-12d3-a456-426614174001",
+                "forgotten: 123e4567-e89b-12d3-a456-426614174002"
+            })
     public static final class ForgetMemory implements MemoryWriteTool<ForgetMemory.Args> {
 
         private final @NonNull MemoryWriteCapability capability;

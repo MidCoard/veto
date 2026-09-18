@@ -70,11 +70,13 @@ public @interface ToolDoc {
     @NonNull String @NonNull [] examples();
 
     /**
-     * One or two representative successful return-value shapes, not positionally aligned with
-     * {@link #examples()}. Stable expected failure bodies belong in the normative Return format
-     * section; their triggers and recovery belong under Errors &amp; edge cases. Failures never
-     * belong in this example array. Rendered as explicitly illustrative fenced blocks after the
-     * {@link #resultContract()}. REQUIRED.
+     * Representative successful return-value shapes, positionally aligned with {@link #examples()}:
+     * entry {@code i} is the success result of the call shown in {@code examples()[i]}. Tools with
+     * arguments declare three to five pairs; a no-argument tool declares exactly one empty-call
+     * pair. Stable expected failure bodies belong in the normative Return format section; their
+     * triggers and recovery belong under Errors &amp; edge cases. Failures never belong in this
+     * example array. Rendered as explicitly illustrative fenced blocks after the {@link
+     * #resultContract()}. REQUIRED.
      */
     @NonNull String @NonNull [] returnExamples();
 }

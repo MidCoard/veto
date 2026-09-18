@@ -70,13 +70,20 @@ import top.focess.veto.sandbox.BackgroundTaskManager;
                 at 65536 bytes; older or excess output cannot be recovered through this tool.
                 """,
         security = "You can view only your own tasks.",
-        examples = {"{\"taskId\": \"bg-3\"}", "{}"},
+        examples = {
+            "{}",
+            "{\"taskId\": \"bg-3\"}",
+            "{\"taskId\": \"bg-3\", \"waitForExit\": true}"
+        },
         returnExamples = {
+            "{\"count\": 1, \"tasks\": [{\"taskId\": \"bg-3\", \"command\": \"npm run dev\","
+                    + " \"alive\": true}]}",
             "{\"taskId\": \"bg-3\", \"alive\": true, \"pid\": 12345, \"startedAt\":"
                     + " \"2026-01-01T00:00:00Z\", \"uptimeSeconds\": 42, \"command\": \"npm run"
-                    + " dev\", \"cwd\": \"/abs/app\", \"recentOutput\": \"VITE ready in 300 ms\"}",
-            "{\"count\": 1, \"tasks\": [{\"taskId\": \"bg-3\", \"command\": \"npm run dev\","
-                    + " \"alive\": true}]}"
+                    + " dev\", \"cwd\": \"/abs/project\", \"recentOutput\": \"VITE ready in 300 ms\"}",
+            "{\"taskId\": \"bg-3\", \"alive\": false, \"exitCode\": 0, \"pid\": 12345, \"startedAt\":"
+                    + " \"2026-01-01T00:00:00Z\", \"uptimeSeconds\": 184, \"command\": \"npm run"
+                    + " dev\", \"cwd\": \"/abs/project\", \"recentOutput\": \"Server stopped.\"}"
         })
 public final class ViewTaskTool implements TaskControlTool<ViewTaskTool.Args> {
     private final @NonNull TaskControlCapability capability;

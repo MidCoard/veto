@@ -87,7 +87,10 @@ import top.focess.veto.agent.tool.ToolSecurity;
             "{\"query\": \"Gradle toolchain auto-detect JDK 25\", \"allowed_domains\":"
                     + " [\"docs.gradle.org\"]}",
             "{\"query\": \"jsoup select main content\", \"blocked_domains\":"
-                    + " [\"pinterest.com\"]}"
+                    + " [\"pinterest.com\"]}",
+            "{\"query\": \"Spring Boot 4 release notes\", \"allowed_domains\":"
+                    + " [\"spring.io\", \"github.com\"], \"blocked_domains\":"
+                    + " [\"stackoverflow.com\"]}"
         },
         returnExamples = {
             "Found 3 results:\n\n"
@@ -96,7 +99,32 @@ import top.focess.veto.agent.tool.ToolSecurity;
                     + "   Learn how to bind external configuration to beans...\n\n"
                     + "Sources:\n"
                     + "- https://www.baeldung.com/configuration-properties-in-spring-boot",
-            "(no results)"
+            "Found 2 results:\n\n"
+                    + "1. Toolchains for JVM projects\n"
+                    + "   https://docs.gradle.org/current/userguide/toolchains.html\n"
+                    + "   Gradle can auto-detect installed JDKs or download a matching toolchain...\n\n"
+                    + "2. Toolchain resolution\n"
+                    + "   https://docs.gradle.org/current/userguide/toolchain_resolution.html\n"
+                    + "   How a requested toolchain is resolved against detected installations...\n\n"
+                    + "Sources:\n"
+                    + "- https://docs.gradle.org/current/userguide/toolchains.html\n"
+                    + "- https://docs.gradle.org/current/userguide/toolchain_resolution.html",
+            "Found 1 results:\n\n"
+                    + "1. jsoup: Selector syntax\n"
+                    + "   https://jsoup.org/cookbook/extracting-data/selector-syntax\n"
+                    + "   Use select to find elements, for example doc.select(\"main\")...\n\n"
+                    + "Sources:\n"
+                    + "- https://jsoup.org/cookbook/extracting-data/selector-syntax",
+            "Found 2 results:\n\n"
+                    + "1. Spring Boot 4.0 Release Notes\n"
+                    + "   https://github.com/spring-projects/spring-boot/wiki/Spring-Boot-4.0-Release-Notes\n"
+                    + "   New and noteworthy in Spring Boot 4.0...\n\n"
+                    + "2. Spring Boot 4.0 announcement\n"
+                    + "   https://spring.io/blog/spring-boot-4-0\n"
+                    + "   The Spring Boot 4.0 release and its highlights...\n\n"
+                    + "Sources:\n"
+                    + "- https://github.com/spring-projects/spring-boot/wiki/Spring-Boot-4.0-Release-Notes\n"
+                    + "- https://spring.io/blog/spring-boot-4-0"
         })
 public final class WebSearchTool implements NetworkEgressTool<WebSearchTool.Args> {
     private static final int DEFAULT_MAX_RESULTS = 10;

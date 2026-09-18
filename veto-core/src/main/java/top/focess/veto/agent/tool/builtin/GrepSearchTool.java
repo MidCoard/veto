@@ -79,13 +79,16 @@ import top.focess.veto.agent.tool.WorkspaceReadTool;
         security =
                 "Symbolic links are never followed and protected files are never opened. Matched lines are returned verbatim, including any sensitive file content.",
         examples = {
-            "{\"absolutePath\": \"/abs/src\", \"query\": \"TODO\"}",
-            "{\"absolutePath\": \"/abs/src\", \"query\": \"todo\", \"caseInsensitive\": true}",
-            "{\"absolutePath\": \"/abs/src\", \"query\": \"public class \", \"includes\": [\"*.java\"]}"
+            "{\"absolutePath\": \"/abs/project/src\", \"query\": \"TODO\"}",
+            "{\"absolutePath\": \"/abs/project/src\", \"query\": \"todo\", \"caseInsensitive\": true}",
+            "{\"absolutePath\": \"/abs/project/src\", \"query\": \"public class \", \"includes\": [\"*.java\"]}",
+            "{\"absolutePath\": \"/abs/project/config/app.yml\", \"query\": \"password\"}"
         },
         returnExamples = {
-            "/abs/src/Main.java:12: // TODO: refactor\n/abs/src/util/Helper.java:30: // TODO(jess): cleanup",
-            "(no matches)"
+            "/abs/project/src/Main.java:12: // TODO: refactor\n/abs/project/src/util/Helper.java:30: // TODO(jess): cleanup",
+            "/abs/project/src/Main.java:12: // TODO: refactor\n/abs/project/src/notes.md:3: - todo: write docs",
+            "/abs/project/src/Main.java:3: public class Main {\n/abs/project/src/util/Helper.java:7: public class Helper {",
+            "/abs/project/config/app.yml:7: password: ${DB_PASSWORD}"
         })
 public final class GrepSearchTool implements WorkspaceReadTool<GrepSearchTool.Args> {
 

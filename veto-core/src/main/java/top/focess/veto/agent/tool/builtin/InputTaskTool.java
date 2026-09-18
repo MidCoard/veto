@@ -60,10 +60,15 @@ import top.focess.veto.agent.tool.ToolSecurity;
                 "You can send input only to your own task in this session. Queued content is delivered to the process stdin verbatim.",
         examples = {
             "{\"taskId\":\"bg-3\",\"content\":\"yes\",\"appendNewline\":true,\"closeStdin\":false}",
+            "{\"taskId\":\"bg-3\",\"content\":\"partial input\",\"appendNewline\":false,\"closeStdin\":false}",
+            "{\"taskId\":\"bg-3\",\"content\":\"quit\",\"appendNewline\":true,\"closeStdin\":true}",
             "{\"taskId\":\"bg-3\",\"content\":\"\",\"appendNewline\":false,\"closeStdin\":true}"
         },
         returnExamples = {
-            "{\"status\":\"queued\",\"taskId\":\"bg-3\",\"bytes\":4,\"newline\":true,\"closeQueued\":false}"
+            "{\"status\":\"queued\",\"taskId\":\"bg-3\",\"bytes\":4,\"newline\":true,\"closeQueued\":false}",
+            "{\"status\":\"queued\",\"taskId\":\"bg-3\",\"bytes\":13,\"newline\":false,\"closeQueued\":false}",
+            "{\"status\":\"queued\",\"taskId\":\"bg-3\",\"bytes\":5,\"newline\":true,\"closeQueued\":true}",
+            "{\"status\":\"queued\",\"taskId\":\"bg-3\",\"bytes\":0,\"newline\":false,\"closeQueued\":true}"
         })
 public final class InputTaskTool implements TaskControlTool<InputTaskTool.Args> {
     private final @NonNull TaskControlCapability capability;

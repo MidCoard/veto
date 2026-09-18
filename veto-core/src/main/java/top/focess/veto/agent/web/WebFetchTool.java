@@ -34,10 +34,15 @@ import top.focess.veto.agent.tool.ToolSecurity;
                 "NETWORK_EGRESS with invocation-scoped destination authority. Reader has no workspace, process, memory, skill, MCP, search, or delegation access.",
         examples = {
             "{\"url\":\"https://example.com/config\",\"objective\":\"Find requestTimeout units and quote the definition.\"}",
-            "{\"url\":\"https://example.com/migration\",\"objective\":\"Locate v3 retry changes, including exceptions.\"}"
+            "{\"url\":\"https://example.com/migration\",\"objective\":\"Locate v3 retry changes, including exceptions.\"}",
+            "{\"url\":\"https://example.com/api/reference\",\"objective\":\"Extract the authentication section verbatim, including required headers and error codes.\"}",
+            "{\"url\":\"https://example.com/changelog\",\"objective\":\"List every breaking change in v2.0; quote the exact wording and note any exceptions or deprecations.\"}"
         },
         returnExamples = {
-            "{\"outcome\":\"complete\",\"answer\":\"The timeout is 30 seconds.\",\"evidence\":[{\"url\":\"https://example.com/config\",\"section\":\"Timeout\",\"quote\":\"The timeout is 30 seconds.\"}],\"limitations\":[]}"
+            "{\"outcome\":\"complete\",\"answer\":\"The timeout is 30 seconds.\",\"evidence\":[{\"url\":\"https://example.com/config\",\"section\":\"Timeout\",\"quote\":\"The timeout is 30 seconds.\"}],\"limitations\":[]}",
+            "{\"outcome\":\"complete\",\"answer\":\"v3 retries failed requests up to 3 times, except on 4xx responses.\",\"evidence\":[{\"url\":\"https://example.com/migration\",\"section\":\"v3 retry changes\",\"quote\":\"Requests are retried up to 3 times; 4xx responses are never retried.\"}],\"limitations\":[]}",
+            "{\"outcome\":\"complete\",\"answer\":\"Authentication requires an Authorization: Bearer header; invalid tokens return 401 TOKEN_INVALID.\",\"evidence\":[{\"url\":\"https://example.com/api/reference\",\"section\":\"Authentication\",\"quote\":\"Send Authorization: Bearer <token>. Invalid tokens return 401 with code TOKEN_INVALID.\"}],\"limitations\":[]}",
+            "{\"outcome\":\"partial\",\"answer\":\"v2.0 removes the XML formatter and renames retryLimit to maxRetries; the deprecations section was truncated.\",\"evidence\":[{\"url\":\"https://example.com/changelog\",\"section\":\"Breaking changes\",\"quote\":\"The XML formatter is removed; retryLimit is renamed to maxRetries.\"}],\"limitations\":[\"Deprecations section truncated; the full deprecation list is not verified.\"]}"
         })
 public final class WebFetchTool implements NetworkEgressTool<WebFetchTool.Args> {
     private final @NonNull NetworkEgressCapability network;

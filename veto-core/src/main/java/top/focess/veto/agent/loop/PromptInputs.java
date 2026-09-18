@@ -21,6 +21,10 @@ import top.focess.veto.llm.core.ToolResultPresentationMode;
 
 /** Model inputs contain facts and executable contracts, never pre-rendered prompt sections. */
 public final class PromptInputs {
+
+    /** Bound argument/result examples per tool in the catalogue; the authoring standard is four. */
+    private static final int MAX_CATALOG_EXAMPLES = 5;
+
     private PromptInputs() {}
 
     public static @NonNull Map<String, Object> standard(
@@ -143,8 +147,14 @@ public final class PromptInputs {
                             value.put("name", tool.name());
                             value.put("description", tool.description());
                             value.put("arguments", arguments(tool.inputSchema(), ""));
-                            value.put("examples", tool.examples());
-                            value.put("returnExamples", tool.returnExamples());
+                            value.put(
+                                    "examples",
+                                    tool.examples().stream().limit(MAX_CATALOG_EXAMPLES).toList());
+                            value.put(
+                                    "returnExamples",
+                                    tool.returnExamples().stream()
+                                            .limit(MAX_CATALOG_EXAMPLES)
+                                            .toList());
                             value.put(
                                     "formats",
                                     tool.resultFormats().stream()

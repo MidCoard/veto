@@ -56,9 +56,11 @@ public final class GroupTools {
             security =
                     "Delegation remains within the user's authorized task and workspace boundaries.",
             examples = {
-                "{\"task\": \"Review the persistence implementation and its callers, and verify the affected modules\"}"
+                "{\"task\": \"Review the persistence implementation and its callers, and verify the affected modules\"}",
+                "{\"task\": \"Migrate the billing module from JPA to jOOQ; deliver the converted repositories and passing integration tests\"}",
+                "{\"task\": \"Compare the three shortlisted message queues for the notification service and recommend one with a rationale\"}"
             },
-            returnExamples = {""})
+            returnExamples = {"", "", ""})
     public static final class CreateGroup implements DelegationTool<CreateGroup.Args> {
 
         private final @NonNull DelegationCapability capability;
@@ -222,9 +224,17 @@ public final class GroupTools {
                     """
                     Inspect only your current group. Use returned state and reports as evidence; do not infer completion from elapsed time.
                     """,
-            examples = {"{}", "{\"sinceSeq\": 4, \"waitSeconds\": 15}"},
+            examples = {
+                "{}",
+                "{\"sinceSeq\": 4}",
+                "{\"waitSeconds\": 30}",
+                "{\"sinceSeq\": 4, \"waitSeconds\": 15}"
+            },
             returnExamples = {
-                "Group state: ACTIVE\nNodes:\n- node-1 [RUNNING] mate=mate-1 skillset=coding\nNew Mate messages:\n- seq=5 sender=mate-1 type=FEEDBACK payload=node-1:feedback:test failed\nnextSinceSeq: 5"
+                "Group state: ACTIVE\nA completed task means the assigned mate returned a report; it does not imply independent verification.\nMates:\n- 3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f: review backend session isolation\nTasks:\n- node-1 [RUNNING] mate=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f skillset=coding dependsOn=[]\nImplement JWT login in UserService\nMessages are historical observations; task state above is authoritative.\nNew mate messages:\n- seq=2 sender=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f type=FEEDBACK\ndispatch=(uncorrelated) currentDispatch=false\npayload=node-1:feedback:started review\nnextSinceSeq: 3",
+                "Group state: ACTIVE\nA completed task means the assigned mate returned a report; it does not imply independent verification.\nMates:\n- 3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f: review backend session isolation\nTasks:\n- node-1 [RUNNING] mate=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f skillset=coding dependsOn=[]\nImplement JWT login in UserService\nMessages are historical observations; task state above is authoritative.\nNew mate messages:\n- (none)\nnextSinceSeq: 4",
+                "Group state: ACTIVE\nA completed task means the assigned mate returned a report; it does not imply independent verification.\nMates:\n- 3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f: review backend session isolation\nTasks:\n- node-1 [COMPLETED] mate=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f skillset=coding dependsOn=[]\nImplement JWT login in UserService\nMessages are historical observations; task state above is authoritative.\nNew mate messages:\n- seq=6 sender=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f type=ACCEPT\ndispatch=node-1-dispatch-3 currentDispatch=true\npayload=node-1: login implemented; session isolation verified\nnextSinceSeq: 6",
+                "Group state: ACTIVE\nA completed task means the assigned mate returned a report; it does not imply independent verification.\nMates:\n- 3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f: review backend session isolation\nTasks:\n- node-1 [RUNNING] mate=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f skillset=coding dependsOn=[]\nImplement JWT login in UserService\nMessages are historical observations; task state above is authoritative.\nNew mate messages:\n- seq=5 sender=3f8a2c10-9b2e-4c1d-8e5f-2a6b7c8d9e0f type=FEEDBACK\ndispatch=(uncorrelated) currentDispatch=false\npayload=node-1:feedback:test failed\nnextSinceSeq: 5"
             })
     public static final class InspectGroup implements GroupControlTool<InspectGroup.Args> {
 
@@ -301,9 +311,12 @@ public final class GroupTools {
                     "Only receiver LEADER is accepted. Disbanded groups, blank payloads and payloads over 4096 characters are rejected.",
             security = "Notes cannot create tasks or mark work completed.",
             examples = {
-                "{\"type\":\"STATUS\",\"payload\":\"Review the failed node before scheduling replacement work.\"}"
+                "{\"type\":\"STATUS\",\"payload\":\"Review the failed node before scheduling replacement work.\"}",
+                "{\"type\":\"ARTIFACT_REF\",\"payload\":\"Draft report: reports/drift-analysis.md\"}",
+                "{\"type\":\"LOG_REF\",\"payload\":\"Failed node output: logs/build-2026-09-19.log\"}",
+                "{\"type\":\"FEEDBACK\",\"receiver\":\"LEADER\",\"payload\":\"The retry fix addressed the race; re-run the soak test before closing.\"}"
             },
-            returnExamples = {"posted"})
+            returnExamples = {"posted", "posted", "posted", "posted"})
     @Component
     public static final class PostMessage implements GroupControlTool<PostMessage.Args> {
 

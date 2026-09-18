@@ -71,7 +71,12 @@ import top.focess.veto.vault.SecretCandidateStore;
             "{\"absolutePath\": \"/abs/src/Main.java\", \"startLine\": 100}",
             "{\"absolutePath\": \"/abs/config/app.yml\", \"endLine\": 30}"
         },
-        returnExamples = {"1: package com.example;\n2: \n3: public class Main {"})
+        returnExamples = {
+            "1: package com.example;\n2: \n3: public class Main {",
+            "10:     public static void main(String[] args) {\n11:         System.out.println(\"hi\");\n12:     }",
+            "100: }\n101: ",
+            "1: server:\n2:   port: 8443\n3:   host: 0.0.0.0"
+        })
 public final class ViewFileTool implements WorkspaceReadTool<ViewFileTool.Args> {
     private final @NonNull WorkspaceReadCapability protectedFiles;
 

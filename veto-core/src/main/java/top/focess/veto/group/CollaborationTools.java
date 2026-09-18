@@ -29,9 +29,16 @@ public final class CollaborationTools {
             errorsAndEdgeCases =
                     "Unknown or already successful tasks are rejected. Cancelled tasks are idempotent. Cancellation does not undo completed side effects or satisfy dependencies.",
             security = "Caller must lead the current owner and Session scoped group.",
-            examples = "{\"taskId\":\"analysis\"}",
-            returnExamples =
-                    "Task cancelled; execution exit confirmed. Dependent tasks remain blocked.")
+            examples = {
+                "{\"taskId\":\"analysis\"}",
+                "{\"taskId\":\"legacy-import\"}",
+                "{\"taskId\":\"soak-test\"}"
+            },
+            returnExamples = {
+                "Task cancelled; execution exit confirmed. Dependent tasks remain blocked; explicitly replan or cancel them. Mate identity and history retained. Independent background processes are not stopped.",
+                "Task cancelled; execution exit confirmed. Dependent tasks remain blocked; explicitly replan or cancel them. Mate identity and history retained. Independent background processes are not stopped.",
+                "Task cancelled; execution exit confirmed. Dependent tasks remain blocked; explicitly replan or cancel them. Mate identity and history retained. Independent background processes are not stopped."
+            })
     public static final class CancelTask implements GroupControlTool<CancelTask.Args> {
         private final @NonNull GroupControlCapability capability;
 
@@ -80,8 +87,16 @@ public final class CollaborationTools {
             errorsAndEdgeCases =
                     "Unfinished task ids are listed. A stopping member cannot receive new work. Independent background processes are not stopped.",
             security = "Caller must lead the current owner and Session scoped group.",
-            examples = "{\"mateId\":\"<mate-id>\"}",
-            returnExamples = "Mate removed; execution exit confirmed. History retained.")
+            examples = {
+                "{\"mateId\":\"9b2e8c1a-4d5f-4e7b-8c9d-0a1b2c3d4e5f\"}",
+                "{\"mateId\":\"5c1a2b3d-7e8f-4a5b-9c0d-1e2f3a4b5c6d\"}",
+                "{\"mateId\":\"7d3e5f1a-2b4c-4d6e-8f0a-1b2c3d4e5f6a\"}"
+            },
+            returnExamples = {
+                "Mate removed; execution exit confirmed. History retained. Independent background processes are not stopped.",
+                "Mate removed; execution exit confirmed. History retained. Independent background processes are not stopped.",
+                "Mate removed; execution exit confirmed. History retained. Independent background processes are not stopped."
+            })
     public static final class RemoveMate implements GroupControlTool<RemoveMate.Args> {
         private final @NonNull GroupControlCapability capability;
 
@@ -130,9 +145,16 @@ public final class CollaborationTools {
             errorsAndEdgeCases =
                     "Blank names or responsibilities and unavailable groups are rejected.",
             security = "Caller must lead the current owner and Session scoped group.",
-            examples =
-                    "{\"name\":\"Alice\",\"responsibility\":\"Review the supplied calculations\"}",
-            returnExamples = "Mate created: <mate-id>")
+            examples = {
+                "{\"name\":\"Alice\",\"responsibility\":\"Review the supplied calculations\"}",
+                "{\"name\":\"Priya\",\"responsibility\":\"Implement and test the retry logic in the billing client\"}",
+                "{\"name\":\"Kenji\",\"responsibility\":\"Investigate the memory regression and report findings with evidence\"}"
+            },
+            returnExamples = {
+                "Mate created: 9b2e8c1a-4d5f-4e7b-8c9d-0a1b2c3d4e5f",
+                "Mate created: 5c1a2b3d-7e8f-4a5b-9c0d-1e2f3a4b5c6d",
+                "Mate created: 7d3e5f1a-2b4c-4d6e-8f0a-1b2c3d4e5f6a"
+            })
     public static final class CreateMate implements GroupControlTool<CreateMate.Args> {
         private final @NonNull GroupControlCapability capability;
 
@@ -182,9 +204,18 @@ public final class CollaborationTools {
             errorsAndEdgeCases =
                     "Unknown members, duplicate ids and missing dependencies are rejected. A busy member causes queueing, not substitution.",
             security = "Caller must lead the current owner and Session scoped group.",
-            examples =
-                    "{\"taskId\":\"calculation\",\"description\":\"Calculate the supplied order total\",\"mateId\":\"<mate-id>\"}",
-            returnExamples = "Task registered: calculation; assigned Mate: <mate-id>.")
+            examples = {
+                "{\"taskId\":\"calculation\",\"description\":\"Calculate the supplied order total\",\"mateId\":\"9b2e8c1a-4d5f-4e7b-8c9d-0a1b2c3d4e5f\"}",
+                "{\"taskId\":\"integration-tests\",\"description\":\"Run the integration suite against the migrated schema and report failures\",\"mateId\":\"5c1a2b3d-7e8f-4a5b-9c0d-1e2f3a4b5c6d\",\"dependsOn\":[\"schema-migration\"]}",
+                "{\"taskId\":\"release-notes\",\"description\":\"Draft the release notes from the completed feature and fix reports\",\"mateId\":\"9b2e8c1a-4d5f-4e7b-8c9d-0a1b2c3d4e5f\",\"dependsOn\":[\"feature-api\",\"fix-retry\"]}",
+                "{\"taskId\":\"retry-regression-test\",\"description\":\"Add a regression test for the race fixed in fix-retry\",\"mateId\":\"5c1a2b3d-7e8f-4a5b-9c0d-1e2f3a4b5c6d\",\"dependsOn\":[\"integration-tests\"]}"
+            },
+            returnExamples = {
+                "Task registered: calculation; assigned Mate: 9b2e8c1a-4d5f-4e7b-8c9d-0a1b2c3d4e5f. It waits for its dependencies and this Mate to become available.",
+                "Task registered: integration-tests; assigned Mate: 5c1a2b3d-7e8f-4a5b-9c0d-1e2f3a4b5c6d. It waits for its dependencies and this Mate to become available.",
+                "Task registered: release-notes; assigned Mate: 9b2e8c1a-4d5f-4e7b-8c9d-0a1b2c3d4e5f. It waits for its dependencies and this Mate to become available.",
+                "Task registered: retry-regression-test; assigned Mate: 5c1a2b3d-7e8f-4a5b-9c0d-1e2f3a4b5c6d. It waits for its dependencies and this Mate to become available."
+            })
     public static final class CreateTask implements GroupControlTool<CreateTask.Args> {
         private final @NonNull GroupControlCapability capability;
 

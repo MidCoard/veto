@@ -51,10 +51,14 @@ import top.focess.veto.agent.tool.WorkspaceWriteTool;
         security =
                 "An existing destination is never overwritten, and a cross-filesystem move fails rather than falling back to copy-and-delete, so the source is never lost mid-move.",
         examples = {
-            "{\"sourceAbsolutePath\":\"<workspace-root>/old.txt\",\"destinationAbsolutePath\":\"<workspace-root>/new.txt\"}"
+            "{\"sourceAbsolutePath\":\"/abs/project/old.txt\",\"destinationAbsolutePath\":\"/abs/project/new.txt\"}",
+            "{\"sourceAbsolutePath\":\"/abs/project/downloads/report.pdf\",\"destinationAbsolutePath\":\"/abs/project/reports/report.pdf\"}",
+            "{\"sourceAbsolutePath\":\"/abs/project/src/legacy\",\"destinationAbsolutePath\":\"/abs/project/archive/legacy\"}"
         },
         returnExamples = {
-            "{\"status\":\"moved\",\"source\":\"<workspace-root>/old.txt\",\"destination\":\"<workspace-root>/new.txt\",\"kind\":\"file\"}"
+            "{\"status\":\"moved\",\"source\":\"/abs/project/old.txt\",\"destination\":\"/abs/project/new.txt\",\"kind\":\"file\"}",
+            "{\"status\":\"moved\",\"source\":\"/abs/project/downloads/report.pdf\",\"destination\":\"/abs/project/reports/report.pdf\",\"kind\":\"file\"}",
+            "{\"status\":\"moved\",\"source\":\"/abs/project/src/legacy\",\"destination\":\"/abs/project/archive/legacy\",\"kind\":\"directory\"}"
         })
 public final class MovePathTool implements WorkspaceWriteTool<MovePathTool.Args> {
 

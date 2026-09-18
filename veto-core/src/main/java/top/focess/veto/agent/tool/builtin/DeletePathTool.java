@@ -66,11 +66,16 @@ import top.focess.veto.agent.tool.WorkspaceWriteTool;
         security =
                 "Deletion is irreversible and not transactional; entries already deleted cannot be rolled back. Verify the target and recursive flag before calling.",
         examples = {
-            "{\"absolutePath\":\"<workspace-root>/obsolete.txt\",\"recursive\":false}",
-            "{\"absolutePath\":\"<workspace-root>/generated\",\"recursive\":true}"
+            "{\"absolutePath\":\"/abs/project/obsolete.txt\",\"recursive\":false}",
+            "{\"absolutePath\":\"/abs/project/build/empty-out\",\"recursive\":false}",
+            "{\"absolutePath\":\"/abs/project/out/current-link\",\"recursive\":false}",
+            "{\"absolutePath\":\"/abs/project/generated\",\"recursive\":true}"
         },
         returnExamples = {
-            "{\"status\":\"deleted\",\"path\":\"<workspace-root>/obsolete.txt\",\"kind\":\"file\",\"entriesDeleted\":1}"
+            "{\"status\":\"deleted\",\"path\":\"/abs/project/obsolete.txt\",\"kind\":\"file\",\"entriesDeleted\":1}",
+            "{\"status\":\"deleted\",\"path\":\"/abs/project/build/empty-out\",\"kind\":\"directory\",\"entriesDeleted\":1}",
+            "{\"status\":\"deleted\",\"path\":\"/abs/project/out/current-link\",\"kind\":\"symbolic_link\",\"entriesDeleted\":1}",
+            "{\"status\":\"deleted\",\"path\":\"/abs/project/generated\",\"kind\":\"directory\",\"entriesDeleted\":42}"
         })
 public final class DeletePathTool implements WorkspaceWriteTool<DeletePathTool.Args> {
     private static final int MAX_ENTRIES = 50_000;

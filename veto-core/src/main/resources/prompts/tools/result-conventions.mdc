@@ -24,6 +24,18 @@ Every tool result is a JSON object with exactly four fields:
 ### Example: after a refusal
 
 A `delete_path` call on a protected directory returns `refused`: the call did not execute. Do not retry the same call or route around the refusal with another tool; report that the target is protected and continue with the rest of the task.
+
+### Example: after an invalid-arguments failure
+
+A `grep_search` call returns `failure` because the include filter `"[broken"` is not a valid glob. Correct the argument, for example to `"*.java"`, and retry once; a retry with unchanged arguments fails the same way.
+
+### Example: after truncation
+
+A `view_file` result ends with `[truncated; request a narrower line range]`. The missing lines were never returned, so re-read a narrower window with `startLine` and `endLine` instead of assuming what the unseen remainder contains.
+
+### Example: after an interruption
+
+A long-running call returns `interrupted` before normal completion. Inspect the partial state it left behind before deciding next steps — the operation may have partially executed.
 @else
 ## Tool result conventions
 
@@ -41,4 +53,16 @@ A `delete_path` call on a protected directory returns `refused`: the call did no
 ### Example: after a refusal
 
 A `delete_path` call on a protected directory returns `refused`: the call did not execute. Do not retry the same call or route around the refusal with another tool; report that the target is protected and continue with the rest of the task.
+
+### Example: after an invalid-arguments failure
+
+A `grep_search` call fails because the include filter `"[broken"` is not a valid glob. Correct the argument, for example to `"*.java"`, and retry once; a retry with unchanged arguments fails the same way.
+
+### Example: after truncation
+
+A `view_file` result ends with `[truncated; request a narrower line range]`. The missing lines were never returned, so re-read a narrower window with `startLine` and `endLine` instead of assuming what the unseen remainder contains.
+
+### Example: after an interruption
+
+A long-running call comes back interrupted before normal completion. Inspect the partial state it left behind before deciding next steps — the operation may have partially executed.
 @endif

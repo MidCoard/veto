@@ -88,11 +88,14 @@ public final class DagTools {
             examples = {
                 "{\"nodeId\": \"node-1\", \"description\": \"Implement JWT login in UserService\", \"skillset\": \"coding\"}",
                 "{\"nodeId\": \"node-2\", \"description\": \"Test the login flow\", \"skillset\": \"testing\", \"dependsOn\": [\"node-1\"]}",
-                "{\"nodeId\": \"node-2\", \"description\": \"Verify\", \"skillset\": \"testing\", \"dependsOn\": [\"node-9\"]}"
+                "{\"nodeId\": \"node-3\", \"description\": \"Apply the reviewer feedback to the parser\", \"skillset\": \"coding\", \"mateId\": \"9b2e8c1a-4d5f-4e7b-8c9d-0a1b2c3d4e5f\"}",
+                "{\"nodeId\": \"node-4\", \"description\": \"Audit the authentication flow independently\", \"skillset\": \"security-review\", \"newMate\": true}"
             },
             returnExamples = {
                 "Node created: node-1 (skillset: coding). It is eligible for dispatch.",
-                "Node created: node-2 (skillset: testing, depends on: node-1). It becomes eligible after its dependencies verify."
+                "Node created: node-2 (skillset: testing, depends on: node-1). It becomes eligible after its dependencies verify.",
+                "Node created: node-3 (skillset: coding). It is eligible for dispatch.",
+                "Node created: node-4 (skillset: security-review). It is eligible for dispatch."
             })
     public static final class CreateNode implements GroupControlTool<CreateNode.Args> {
 
@@ -228,8 +231,16 @@ public final class DagTools {
                     - RUNNING -> refused; removing a node is not cancellation.
                     """,
             security = "Only the group coordinator can remove task nodes.",
-            examples = {"{\"nodeId\": \"node-2\"}", "{\"nodeId\": \"node-1\"}"},
-            returnExamples = {"Node removed: node-2 (marked stale)."})
+            examples = {
+                "{\"nodeId\": \"node-2\"}",
+                "{\"nodeId\": \"node-4\"}",
+                "{\"nodeId\": \"node-7\"}"
+            },
+            returnExamples = {
+                "Node removed: node-2 (marked stale).",
+                "Node removed: node-4 (marked stale).",
+                "Node removed: node-7 (marked stale)."
+            })
     public static final class RemoveNode implements GroupControlTool<RemoveNode.Args> {
 
         private final @NonNull GroupControlCapability capability;

@@ -73,15 +73,17 @@ import top.focess.veto.agent.tool.WorkspaceWriteTool;
         security =
                 "With overwrite=true the file's previous contents are lost and cannot be recovered. Do not write secrets into files.",
         examples = {
-            "{\"absolutePath\": \"/abs/src/Main.java\", \"codeContent\": \"package x;\\n\", \"overwrite\": false}",
-            "{\"absolutePath\": \"/abs/src/Main.java\", \"codeContent\": \"package x;\\npublic class Main {}\\n\", \"overwrite\": true}",
-            "{\"absolutePath\": \"/abs/notes/todo.md\", \"codeContent\": \"# Todo\\n- [ ] x\\n\", \"overwrite\": false}",
-            "{\"absolutePath\": \"/abs/src/util/Helper.java\", \"codeContent\": \"package util;\\npublic class Helper {}\\n\", \"overwrite\": false}",
-            "{\"absolutePath\": \"/abs/empty.txt\", \"codeContent\": \"\", \"overwrite\": true}",
-            "{\"absolutePath\": \"/abs/config/local.properties\", \"codeContent\": \"debug=true\\n\", \"overwrite\": false}",
-            "{\"absolutePath\": \"/abs/src/Main.java\", \"codeContent\": \"// rewritten\\n\", \"overwrite\": true}"
+            "{\"absolutePath\": \"/abs/project/src/Main.java\", \"codeContent\": \"package x;\\n\\npublic class Main {}\\n\", \"overwrite\": false}",
+            "{\"absolutePath\": \"/abs/project/notes/todo.md\", \"codeContent\": \"# Todo\\n- [ ] first task\\n\", \"overwrite\": false}",
+            "{\"absolutePath\": \"/abs/project/src/Main.java\", \"codeContent\": \"package x;\\n\\npublic class Main {\\n    public static void main(String[] args) {}\\n}\\n\", \"overwrite\": true}",
+            "{\"absolutePath\": \"/abs/project/build/marker.txt\", \"codeContent\": \"\", \"overwrite\": false}"
         },
-        returnExamples = {"{\"status\":\"ok\",\"file\":\"/abs/src/Main.java\",\"bytes\":128}"})
+        returnExamples = {
+            "{\"status\":\"ok\",\"file\":\"/abs/project/src/Main.java\",\"bytes\":33}",
+            "{\"status\":\"ok\",\"file\":\"/abs/project/notes/todo.md\",\"bytes\":24}",
+            "{\"status\":\"ok\",\"file\":\"/abs/project/src/Main.java\",\"bytes\":80}",
+            "{\"status\":\"ok\",\"file\":\"/abs/project/build/marker.txt\",\"bytes\":0}"
+        })
 public final class WriteToFileTool implements WorkspaceWriteTool<WriteToFileTool.Args> {
     private static final int MAX_TEXT_BYTES = 16 * 1024 * 1024;
 

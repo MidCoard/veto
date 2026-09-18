@@ -60,8 +60,10 @@ import top.focess.veto.llm.core.ToolResultPresentationMode;
 class SystemPromptDumpTest {
 
     private static final @NonNull Path DUMP_DIR = Path.of("build", "prompt-dump");
-    // Includes the two response submission tools, per-tool argument lists, and security sections.
-    private static final int MAX_TOOL_CATALOG_CHARS = 80 * 1024;
+    // Includes the two response submission tools, per-tool argument lists, security sections, and
+    // up to five positionally paired argument/result examples per tool (actual catalog is ~100 KiB
+    // at this writing).
+    private static final int MAX_TOOL_CATALOG_CHARS = 108 * 1024;
 
     @Autowired private @NonNull ToolEngine mcpEngine;
     @Autowired private @NonNull CapabilityTranslator translator;
@@ -446,9 +448,9 @@ class SystemPromptDumpTest {
                             "Behavior",
                             "When to use",
                             "When not to use",
-                            "Argument example",
+                            "Argument examples",
                             "Result contract",
-                            "Result example",
+                            "Result examples",
                             "Errors and edge cases",
                             "Security"),
                     sectionHeadings(entry),

@@ -59,11 +59,16 @@ import top.focess.veto.agent.tool.WorkspaceReadTool;
         security =
                 "Protected paths, symbolic links, and reparse points are skipped without being opened; they are counted in `skippedEntries`.",
         examples = {
-            "{\"absolutePath\":\"<workspace-root>\",\"pattern\":\"**/*.java\"}",
-            "{\"absolutePath\":\"<workspace-root>\",\"pattern\":\"*.md\"}"
+            "{\"absolutePath\":\"/abs/project\",\"pattern\":\"**/*.java\"}",
+            "{\"absolutePath\":\"/abs/project\",\"pattern\":\"*.md\"}",
+            "{\"absolutePath\":\"/abs/project\",\"pattern\":\"**/build.gradle.kts\"}",
+            "{\"absolutePath\":\"/abs/project/src\",\"pattern\":\"**/test_?.py\"}"
         },
         returnExamples = {
-            "{\"base\":\"<workspace-root>\",\"pattern\":\"**/*.java\",\"matches\":[\"src/Main.java\"],\"truncated\":false,\"truncationReason\":null,\"skippedEntries\":0}"
+            "{\"base\":\"/abs/project\",\"pattern\":\"**/*.java\",\"matches\":[\"src/Main.java\",\"src/util/Helper.java\"],\"truncated\":false,\"truncationReason\":null,\"skippedEntries\":0}",
+            "{\"base\":\"/abs/project\",\"pattern\":\"*.md\",\"matches\":[\"README.md\"],\"truncated\":false,\"truncationReason\":null,\"skippedEntries\":0}",
+            "{\"base\":\"/abs/project\",\"pattern\":\"**/build.gradle.kts\",\"matches\":[\"build.gradle.kts\",\"veto-core/build.gradle.kts\"],\"truncated\":false,\"truncationReason\":null,\"skippedEntries\":0}",
+            "{\"base\":\"/abs/project/src\",\"pattern\":\"**/test_?.py\",\"matches\":[\"test/test_1.py\"],\"truncated\":false,\"truncationReason\":null,\"skippedEntries\":0}"
         })
 public final class FindFilesTool implements WorkspaceReadTool<FindFilesTool.Args> {
 

@@ -84,12 +84,19 @@ import top.focess.veto.sandbox.Command;
                 "The task runs with the same direct-execution rules as run_command: no shell, and executable and args cannot be combined to smuggle flags. Background execution does not grant additional file or network access.",
         examples = {
             "{\"commands\": [{\"executable\": \"npm\", \"args\": [\"run\", \"dev\"]}], \"timeout\": 0}",
-            "{\"commands\": [{\"executable\": \"python\", \"args\": [\"-m\", \"http.server\", \"8000\"]}], \"timeout\": 3600}",
-            "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"test\", \"--continuous\"]}], \"timeout\": 1800}"
+            "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"build\"]}], \"timeout\": 1200}",
+            "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"test\", \"--continuous\"]}], \"timeout\": 1800}",
+            "{\"commands\": [{\"executable\": \"python\", \"args\": [\"-m\", \"http.server\", \"8000\"]}], \"network\": true, \"timeout\": 3600}"
         },
         returnExamples = {
             "{\"status\": \"started\", \"taskId\": \"bg-3\", \"pid\": 12345, \"command\": \"npm run dev\","
-                    + " \"cwd\": \"/abs/app\", \"requestedTimeoutSeconds\": 0, \"effectiveTimeoutSeconds\": 600}"
+                    + " \"cwd\": \"/abs/project\", \"requestedTimeoutSeconds\": 0, \"effectiveTimeoutSeconds\": 600}",
+            "{\"status\": \"started\", \"taskId\": \"bg-4\", \"pid\": 12351, \"command\": \"gradle build\","
+                    + " \"cwd\": \"/abs/project\", \"requestedTimeoutSeconds\": 1200, \"effectiveTimeoutSeconds\": 600}",
+            "{\"status\": \"started\", \"taskId\": \"bg-5\", \"pid\": 12387, \"command\": \"gradle test --continuous\","
+                    + " \"cwd\": \"/abs/project\", \"requestedTimeoutSeconds\": 1800, \"effectiveTimeoutSeconds\": 600}",
+            "{\"status\": \"started\", \"taskId\": \"bg-6\", \"pid\": 12402, \"command\": \"python -m http.server 8000\","
+                    + " \"cwd\": \"/abs/project\", \"requestedTimeoutSeconds\": 3600, \"effectiveTimeoutSeconds\": 600}"
         })
 public final class RunTaskTool implements ProcessExecutionTool<RunTaskTool.Args> {
     private final @NonNull ProcessExecutionCapability capability;

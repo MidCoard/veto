@@ -276,7 +276,13 @@ class PromptCompileRenderTest {
                         "load_skill",
                         "Loads a skill.",
                         schema,
-                        List.of("{\"skillName\": \"git-rebase\"}", "{\"skillName\": \"deploy\"}"),
+                        List.of(
+                                "{\"skillName\": \"git-rebase\"}",
+                                "{\"skillName\": \"deploy\"}",
+                                "{\"skillName\": \"rollback\"}",
+                                "{\"skillName\": \"release\"}",
+                                "{\"skillName\": \"hotfix\"}",
+                                "{\"skillName\": \"archive\"}"),
                         new ToolDocumentation(
                                 "Loads the selected skill body.",
                                 "Call this to load a skill.",
@@ -298,9 +304,12 @@ class PromptCompileRenderTest {
         var nativeSchema = new ObjectMapper().valueToTree(tool.inputSchema());
         assertEquals("string", nativeSchema.at("/properties/skillName/type").asText());
         assertTrue(nativeSchema.path("required").toString().contains("skillName"));
-        assertTrue(block.contains("#### Argument example"), "example label rendered:\n" + block);
-        assertTrue(block.contains("git-rebase"), "example content rendered:\n" + block);
-        assertFalse(block.contains("deploy"), "only one schematic example is needed:\n" + block);
+        assertTrue(block.contains("#### Argument examples"), "example label rendered:\n" + block);
+        assertTrue(block.contains("git-rebase"), "first declared example rendered:\n" + block);
+        assertTrue(block.contains("hotfix"), "up to five declared examples render:\n" + block);
+        assertFalse(
+                block.contains("archive"),
+                "examples beyond the five-example cap are dropped:\n" + block);
         assertTrue(
                 block.contains("#### When to use"),
                 "tool selection guidance must be model-visible:\n" + block);
@@ -385,21 +394,21 @@ class PromptCompileRenderTest {
         assertBefore(
                 block,
                 "#### When not to use",
-                "#### Argument example",
+                "#### Argument examples",
                 "examples follow usage guidance");
         assertBefore(
                 block,
-                "#### Argument example",
+                "#### Argument examples",
                 "#### Result contract",
                 "result contract follows the call example");
         assertBefore(
                 block,
                 "#### Result contract",
-                "#### Result example",
+                "#### Result examples",
                 "result example follows its contract");
         assertBefore(
                 block,
-                "#### Result example",
+                "#### Result examples",
                 "#### Errors and edge cases",
                 "edge-case guidance follows the success example");
         assertBefore(
@@ -459,7 +468,7 @@ class PromptCompileRenderTest {
                 new VetoCapabilityTranslator().translateTools(List.of(manifest));
         String block = PromptBlocks.tools(flat);
         int contractStart = block.indexOf("#### Result contract");
-        int examplesStart = block.indexOf("#### Result example");
+        int examplesStart = block.indexOf("#### Result examples");
         String contract = block.substring(contractStart, examplesStart);
 
         assertTrue(contract.contains("Success -> `forgotten: <memoryId>`"));

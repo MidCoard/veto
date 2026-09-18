@@ -57,26 +57,26 @@ This tool takes no arguments.
 
 {{tool.documentation.whenNotToUse}}
 @endif
-@for example in tool.examples
-@if loop.first
+@if nonempty(tool.examples)
 
-#### Argument example
+#### Argument examples
+@for example in tool.examples
 
 ```json
 {{example}}
 ```
-@endif
 @endfor
+@endif
 @if nonempty(tool.documentation.resultContract)
 
 #### Result contract
 
 {{tool.documentation.resultContract}}
 @endif
-@for example in tool.returnExamples
-@if loop.first
+@if nonempty(tool.returnExamples)
 
-#### Result example
+#### Result examples
+@for example in tool.returnExamples
 
 @if isjson(example)
 ```json
@@ -85,8 +85,8 @@ This tool takes no arguments.
 @endif
 {{example}}
 ```
-@endif
 @endfor
+@endif
 @if nonempty(tool.documentation.errorsAndEdgeCases)
 
 #### Errors and edge cases
