@@ -57,7 +57,7 @@ import top.focess.veto.agent.tool.WorkspaceReadTool;
                         + " traversed. `**/*.java` also matches a Java file directly below the"
                         + " base.",
         security =
-                "Read-only. Protected paths, symbolic links, and reparse points are skipped. Follow the current Boundaries rules.",
+                "Protected paths, symbolic links, and reparse points are skipped without being opened; they are counted in `skippedEntries`.",
         examples = {
             "{\"absolutePath\":\"<workspace-root>\",\"pattern\":\"**/*.java\"}",
             "{\"absolutePath\":\"<workspace-root>\",\"pattern\":\"*.md\"}"

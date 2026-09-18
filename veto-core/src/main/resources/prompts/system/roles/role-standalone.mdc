@@ -4,7 +4,7 @@ id: role-standalone
 requires: []
 ---
 @verbatim
-## Your Role
+## Your role
 
 Complete the user's request using the conversation and, when relevant, the workspace or other tools.
 @endverbatim

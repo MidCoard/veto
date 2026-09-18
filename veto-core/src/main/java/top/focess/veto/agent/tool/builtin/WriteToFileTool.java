@@ -71,7 +71,7 @@ import top.focess.veto.agent.tool.WorkspaceWriteTool;
                 reparse-point targets are rejected; the tool does not write through them or replace them.
                 """,
         security =
-                "Follow the current Boundaries rules. Writing may require approval. If access is refused, change approach. Do not write secrets into files.",
+                "With overwrite=true the file's previous contents are lost and cannot be recovered. Do not write secrets into files.",
         examples = {
             "{\"absolutePath\": \"/abs/src/Main.java\", \"codeContent\": \"package x;\\n\", \"overwrite\": false}",
             "{\"absolutePath\": \"/abs/src/Main.java\", \"codeContent\": \"package x;\\npublic class Main {}\\n\", \"overwrite\": true}",

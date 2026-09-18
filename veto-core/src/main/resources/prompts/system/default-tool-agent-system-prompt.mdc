@@ -6,7 +6,7 @@ requires: [persona, guidance, instructions, tools, presentation]
 @message system
 @include identity
 @include tool-agent-operating-contract
-## Task Instructions
+## Task instructions
 
 {{instructions}}
 @include tool-agent-tool-calls

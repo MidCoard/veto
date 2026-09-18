@@ -4,8 +4,8 @@ id: group-inspect
 requires: [group, messages, next]
 ---
 Group state: {{group.state}}
-Completed means the assigned Mate returned a report; it does not imply independent verification.
-Members:
+A completed task means the assigned mate returned a report; it does not imply independent verification.
+Mates:
 @for mate in group.mates
 - {{mate.id}}: {{mate.responsibility}}
 @endfor
@@ -17,8 +17,8 @@ Tasks:
 @else
 - (none)
 @endif
-Messages are historical observations; task state above is authoritative. A completed task means a report was received, not independently verified.
-New Mate messages:
+Messages are historical observations; task state above is authoritative.
+New mate messages:
 @if nonempty(messages)
 @for message in messages
 - seq={{message.sequence}} sender={{message.sender}} type={{message.type}}

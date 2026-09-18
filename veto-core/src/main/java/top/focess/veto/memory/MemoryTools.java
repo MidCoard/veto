@@ -209,7 +209,8 @@ public final class MemoryTools {
                     promotion failure so tenant isolation leaks nothing. Never store secrets or verbatim file \
                     contents in durable memory.
                     """,
-            security = "Content is stored as supplied. Never include secrets.",
+            security =
+                    "Content is stored as supplied and persists across sessions. Never include secrets.",
             examples = {
                 "{\"mode\": \"WRITE\", \"content\": \"This project uses Gradle 8.5 with Kotlin DSL\"}",
                 "{\"mode\": \"PROMOTE\", \"promoteMemoryId\": \"123e4567-e89b-12d3-a456-426614174000\"}",

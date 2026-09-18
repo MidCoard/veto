@@ -4,11 +4,11 @@ id: runtime-completion
 requires: [tool, remaining]
 ---
 @message user
-Runtime budget:
+[Runtime budget]
 @if remaining == 1
-this is your final allowed model call.
+This is your final allowed model call.
 @else
-two model calls remain, reserved for completion and any necessary correction.
+Two model calls remain, reserved for completion and any necessary correction.
 @endif
 Call {{tool}} now using only evidence already inspected. If coverage is incomplete, return a partial result with supported findings and concrete limitations. Do not invent evidence or claim completion of unread material. No further reading is available. Keep the result concise and within the tool's output limits.
 @endmessage

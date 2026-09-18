@@ -81,7 +81,7 @@ import top.focess.veto.sandbox.Command;
                 - Only the latest 5000 output lines are retained; an unterminated line is capped at 65536 bytes.
                 """,
         security =
-                "The working directory is the session workspace root. Execution and requested network access may require approval. Background execution does not grant additional file or network access.",
+                "The task runs with the same direct-execution rules as run_command: no shell, and executable and args cannot be combined to smuggle flags. Background execution does not grant additional file or network access.",
         examples = {
             "{\"commands\": [{\"executable\": \"npm\", \"args\": [\"run\", \"dev\"]}], \"timeout\": 0}",
             "{\"commands\": [{\"executable\": \"python\", \"args\": [\"-m\", \"http.server\", \"8000\"]}], \"timeout\": 3600}",

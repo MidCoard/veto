@@ -57,7 +57,7 @@ import top.focess.veto.agent.tool.ToolSecurity;
                         + " Use view_task to inspect bounded asynchronous inputFailures and"
                         + " stop_task if the process must be terminated.",
         security =
-                "You can send input only to your own task in this session. Input does not grant the process additional file or network access and may require approval.",
+                "You can send input only to your own task in this session. Queued content is delivered to the process stdin verbatim.",
         examples = {
             "{\"taskId\":\"bg-3\",\"content\":\"yes\",\"appendNewline\":true,\"closeStdin\":false}",
             "{\"taskId\":\"bg-3\",\"content\":\"\",\"appendNewline\":false,\"closeStdin\":true}"

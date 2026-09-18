@@ -72,7 +72,7 @@ import top.focess.veto.agent.tool.WorkspaceReadTool;
                     partial success.
                     """,
         security =
-                "Read-only. Follow the current Boundaries rules. If access is refused, change scope instead of retrying the same path.",
+                "Protected entries, symbolic links, and reparse points are silently omitted, so the listing never reveals them.",
         examples = {
             "{\"absolutePath\": \"/abs/src\"}",
             "{\"absolutePath\": \"/abs\"}",

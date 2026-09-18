@@ -12,7 +12,7 @@ Original brief:
 @else
 (unspecified)
 @endif
-Node outcomes (COMPLETED means a Mate returned a report, not independent verification):
+Node outcomes (COMPLETED means the assigned mate returned a report; it does not imply independent verification):
 @for node in group.nodes
 @include group-node
 @endfor

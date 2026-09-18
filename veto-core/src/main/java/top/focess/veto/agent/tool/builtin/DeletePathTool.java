@@ -64,7 +64,7 @@ import top.focess.veto.agent.tool.WorkspaceWriteTool;
                         + " with the number already deleted in its message. Earlier deletions cannot"
                         + " be rolled back.",
         security =
-                "Deletion is destructive and may require approval. Verify the target and recursive flag before calling.",
+                "Deletion is irreversible and not transactional; entries already deleted cannot be rolled back. Verify the target and recursive flag before calling.",
         examples = {
             "{\"absolutePath\":\"<workspace-root>/obsolete.txt\",\"recursive\":false}",
             "{\"absolutePath\":\"<workspace-root>/generated\",\"recursive\":true}"

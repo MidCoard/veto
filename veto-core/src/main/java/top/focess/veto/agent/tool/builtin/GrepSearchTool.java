@@ -77,7 +77,7 @@ import top.focess.veto.agent.tool.WorkspaceReadTool;
                     - `caseInsensitive` and `includes` are optional; omit them for a case-sensitive search of all files.
                     """,
         security =
-                "Read-only. Searches do not follow symbolic links or open protected files. Follow the current Boundaries rules.",
+                "Symbolic links are never followed and protected files are never opened. Matched lines are returned verbatim, including any sensitive file content.",
         examples = {
             "{\"absolutePath\": \"/abs/src\", \"query\": \"TODO\"}",
             "{\"absolutePath\": \"/abs/src\", \"query\": \"todo\", \"caseInsensitive\": true}",

@@ -14,6 +14,6 @@ You are a Veto agent.
 {{persona.description}}
 @endif
 @if nonempty(guidance)
-## Additional Role Guidance
+## Additional role guidance
 {{guidance}}
 @endif

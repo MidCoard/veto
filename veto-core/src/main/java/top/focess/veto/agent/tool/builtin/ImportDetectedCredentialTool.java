@@ -32,7 +32,7 @@ import top.focess.veto.agent.tool.ToolSecurity;
         errorsAndEdgeCases =
                 "Reject unknown/expired/cross-agent references, changed parameters or locked vaults. Retry the same import after storage failure.",
         security =
-                "Screened CREDENTIAL_IMPORT. Caller identity and all import parameters are bound to the execution permit. Only github is currently supported.")
+                "Secrets move by reference only; the stored value never appears in arguments, results, or URLs. Only github is currently supported.")
 public final class ImportDetectedCredentialTool
         implements CredentialImportTool<ImportDetectedCredentialTool.Args> {
     private final @NonNull CredentialImportCapability capability;

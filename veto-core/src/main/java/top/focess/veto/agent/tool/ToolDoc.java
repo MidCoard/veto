@@ -22,10 +22,10 @@ import org.jspecify.annotations.NonNull;
  * wire-visible success and failure shape; {@link #errorsAndEdgeCases()} explains distinct triggers,
  * recovery, limits, and policy implications without repeating result bodies.
  *
- * <p>Each example string is a concrete {@code args} object (the JSON the model would place in a
- * {@code calls[]} entry), e.g. one showing a required argument and another showing an optional one.
- * Declare one or more to convey arg shapes the description alone cannot. Tools without a
- * {@code @ToolDoc} render exactly as before (short description only).
+ * <p>Each example string is a concrete arguments object (the JSON arguments of one native call),
+ * e.g. one showing a required argument and another showing an optional one. Declare one or more to
+ * convey argument shapes the description alone cannot. Tools without a {@code @ToolDoc} render
+ * exactly as before (short description only).
  */
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
@@ -64,8 +64,8 @@ public @interface ToolDoc {
     @NonNull ToolResultFormat @NonNull [] resultFormats();
 
     /**
-     * Concrete usage examples (args-object strings). REQUIRED: one or more concrete {@code args}
-     * objects the model would place in a {@code calls[]} entry.
+     * Concrete usage examples (arguments-object strings). REQUIRED: one or more concrete arguments
+     * objects passed to a native call.
      */
     @NonNull String @NonNull [] examples();
 

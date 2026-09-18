@@ -53,7 +53,7 @@ import top.focess.veto.agent.tool.UserInteractionTool;
                         + " `Other` is reserved. Follow field lengths and unique ids"
                         + " specified in the argument schema.",
         security =
-                "A user answer does not replace any separate approval required to perform an operation.",
+                "Questions are shown to the user verbatim. A user answer does not replace any separate approval required to perform an operation.",
         examples = {
             "{\"questions\":[{\"header\":\"Target\",\"id\":\"target\",\"question\":\"Which environment should receive the requested deployment?\",\"options\":[{\"label\":\"Staging\",\"description\":\"Validate the release with internal testers.\"},{\"label\":\"Production\",\"description\":\"Release to users.\"}]}]}"
         },

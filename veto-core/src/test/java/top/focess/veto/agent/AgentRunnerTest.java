@@ -224,7 +224,10 @@ class AgentRunnerTest {
             assertTrue(
                     agent.history().stream()
                             .noneMatch(
-                                    turn -> turn.payload().toString().contains("Runtime budget:")));
+                                    turn ->
+                                            turn.payload()
+                                                    .toString()
+                                                    .contains("[Runtime budget]")));
         } finally {
             service.remove(session);
         }

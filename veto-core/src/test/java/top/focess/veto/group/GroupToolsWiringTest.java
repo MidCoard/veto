@@ -485,13 +485,16 @@ class GroupToolsWiringTest {
             String first = CapabilityTestCalls.execute(inspect, new InspectGroup.Args(0L, 0));
             assertTrue(first.contains("sender=mate-1 type=ACCEPT"));
             assertTrue(first.contains("dispatch=(uncorrelated) currentDispatch=false"));
-            assertTrue(first.contains("not independently verified"));
+            assertTrue(
+                    first.contains(
+                            "A completed task means the assigned mate returned a report; it does"
+                                    + " not imply independent verification."));
             assertTrue(first.contains("nextSinceSeq: 1"));
             assertTrue(first.contains("Report: tests passed."));
             assertFalse(first.contains("accept-base64"));
 
             String second = CapabilityTestCalls.execute(inspect, new InspectGroup.Args(1L, 0));
-            assertTrue(second.contains("New Mate messages:\n- (none)"));
+            assertTrue(second.contains("New mate messages:\n- (none)"));
         } finally {
             ToolCallContextHolder.clear();
             spawner.disband(g.groupId());

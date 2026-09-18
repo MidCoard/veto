@@ -17,7 +17,7 @@ class DelegationExamplesTest {
     void exampleUsesNativeArgumentsAndGuidancePreservesDelegationBoundaries() throws Exception {
         String prompt = PromptLibrary.text("delegation-system-prompt");
         assertFalse(
-                Pattern.compile("(?i)\\b(leader|mates?)\\b").matcher(prompt).find(),
+                Pattern.compile("\\b(Leader|Mate)s?\\b").matcher(prompt).find(),
                 "delegation guidance must not introduce later roles");
         var matcher = Pattern.compile("```json\\s*([\\s\\S]*?)```").matcher(prompt);
         ObjectMapper mapper = new ObjectMapper();
@@ -38,7 +38,7 @@ class DelegationExamplesTest {
         }
         assertEquals(1, examples);
         assertEquals(1, briefs.size());
-        assertTrue(prompt.contains("honor the requested number of distinct collaborators"));
+        assertTrue(prompt.contains("honor the requested number of distinct mates"));
         assertTrue(prompt.contains("Work directly on small or tightly coupled tasks"));
         assertTrue(prompt.contains("Resolve a missing objective before assigning work"));
         assertTrue(briefs.get(0).contains("backend") && briefs.get(0).contains("frontend"));

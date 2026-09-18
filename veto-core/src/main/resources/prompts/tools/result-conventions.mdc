@@ -4,7 +4,7 @@ id: result-conventions
 requires: [presentation]
 ---
 @if presentation == "DETAILED"
-## Tool Result Conventions
+## Tool result conventions
 
 Every tool result is a JSON object with exactly four fields:
 
@@ -17,11 +17,15 @@ Every tool result is a JSON object with exactly four fields:
 ### Failure and truncation
 
 - Never report a non-`success` operation as completed.
-- Do not retry `refused` calls unchanged.
+- A `refused` call did not execute; do not retry it unchanged — narrow the scope or choose another approach.
 - Retry transient failures such as timeouts only a limited number of times.
 - A truncation marker means content is missing; never assume the unseen remainder.
+
+### Example: after a refusal
+
+A `delete_path` call on a protected directory returns `refused`: the call did not execute. Do not retry the same call or route around the refusal with another tool; report that the target is protected and continue with the rest of the task.
 @else
-## Tool Result Conventions
+## Tool result conventions
 
 ### Result content
 
@@ -31,6 +35,10 @@ Every tool result is a JSON object with exactly four fields:
 ### Failure and truncation
 
 - Read the diagnostic, correct the cause when possible, and never report an operation as completed unless its result confirms success.
-- A policy refusal means the call did not execute, so do not retry it unchanged.
+- A policy refusal means the call did not execute; do not retry it unchanged — narrow the scope or choose another approach.
 - A truncation marker means content is missing; never assume the unseen remainder.
+
+### Example: after a refusal
+
+A `delete_path` call on a protected directory returns `refused`: the call did not execute. Do not retry the same call or route around the refusal with another tool; report that the target is protected and continue with the rest of the task.
 @endif

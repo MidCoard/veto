@@ -5,7 +5,7 @@ requires: [skills]
 ---
 @if nonempty(skills)
 
-## Available Skills
+## Available skills
 
 Call `load_skill(skillName)` to load a skill's full instructions.
 @for skill in skills

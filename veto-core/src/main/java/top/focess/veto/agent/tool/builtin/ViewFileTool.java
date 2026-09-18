@@ -64,7 +64,7 @@ import top.focess.veto.vault.SecretCandidateStore;
                     - Directories, device files, and sockets are rejected as "not a regular file".
                     """,
         security =
-                "Read-only. Follow the current Boundaries rules. If access is refused, change scope instead of retrying the same path.",
+                "Detected secrets are replaced with session references before lines are returned, so file secrets do not enter the conversation.",
         examples = {
             "{\"absolutePath\": \"/abs/src/Main.java\"}",
             "{\"absolutePath\": \"/abs/src/Main.java\", \"startLine\": 10, \"endLine\": 20}",

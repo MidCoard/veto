@@ -82,7 +82,7 @@ import top.focess.veto.agent.tool.WorkspaceWriteTool;
                     Windows reparse-point targets are rejected rather than followed or replaced.
                     """,
         security =
-                "Follow the current Boundaries rules. Changes may require approval. If access is refused, change approach; never conceal disallowed content.",
+                "The matched block is replaced in place, so an unintended unique match overwrites the wrong text; quote enough context to pin the target. A failed match leaves the file unchanged.",
         examples = {
             "{\"absolutePath\": \"/abs/src/Main.java\", \"startLine\": 5, \"endLine\": 8, \"targetContent\": \"old\", \"replacementContent\": \"new\"}",
             "{\"absolutePath\": \"/abs/src/Main.java\", \"startLine\": 12, \"endLine\": 12, \"targetContent\": \"int x = 1;\", \"replacementContent\": \"int x = 2;\"}",

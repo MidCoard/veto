@@ -40,7 +40,7 @@ import top.focess.veto.memory.MemoryTools;
  */
 class PromptCompileRenderTest {
     @Test
-    void nativeSchemaPreservesArrayShapesWithoutDuplicatingThemInTheCatalog() {
+    void catalogueRendersArgumentsFromTheNativeSchema() {
         var manifest =
                 AgentToolDefinition.from(
                         "run_command",
@@ -58,9 +58,12 @@ class PromptCompileRenderTest {
                 schema.at("/properties/commands/items/properties/args/items/type").asText());
         assertTrue(schema.path("required").toString().contains("commands"));
         String rendered = PromptBlocks.tools(List.of(tool));
-        assertTrue(rendered.contains("The native tool schemas define argument names"));
-        assertFalse(rendered.contains("#### Args"));
-        assertFalse(rendered.contains("(array<object>, required)"));
+        assertTrue(
+                rendered.contains(
+                        "The arguments of each tool are listed from its native schema, the same"
+                                + " definition sent to the provider with every request."));
+        assertTrue(rendered.contains("#### Arguments"));
+        assertTrue(rendered.contains("(array<object>, required)"));
     }
 
     private final @NonNull SystemPromptResolver resolver = new SystemPromptResolver();
@@ -91,9 +94,9 @@ class PromptCompileRenderTest {
                 prompt, "Complete the user's request using the conversation", "### `run_command`");
         assertFalse(
                 prompt.contains("create_group"), "unavailable delegation must not be advertised");
-        assertFalse(prompt.contains("## How to Delegate"));
+        assertFalse(prompt.contains("## How to delegate"));
         assertTrue(
-                prompt.contains("## Your Tools"),
+                prompt.contains("## Your tools"),
                 "standalone with tools should show the Tools block");
         assertFalse(prompt.contains("FULL_ACCESS"));
         assertFalse(prompt.contains("Path mode:"));
@@ -120,7 +123,7 @@ class PromptCompileRenderTest {
                 "Use read-only investigation to understand the task and verify returned evidence.",
                 "Do not carry out delegated changes yourself or call `create_group`.");
         assertFalse(
-                prompt.contains("## Your Tools\n"),
+                prompt.contains("## Your tools\n"),
                 "leader with no tools should drop the Tools block");
         assertFalse(prompt.contains("PROTECTED"));
         assertTrue(prompt.contains("Protected targets cannot be accessed or approved"));
@@ -144,7 +147,7 @@ class PromptCompileRenderTest {
                 "Do not delegate further",
                 "You may recall existing session memories and insights from other sessions",
                 "cannot create, promote, delete, or otherwise change those memories or insights");
-        assertTrue(prompt.contains("## Additional Role Guidance"));
+        assertTrue(prompt.contains("## Additional role guidance"));
         assertTrue(prompt.contains("You are a Mate agent. Execute the assigned task."));
         assertFalse(prompt.contains("SANDBOXED"));
         assertTrue(prompt.contains("session workspace roots are hard path boundaries"));
@@ -178,7 +181,7 @@ class PromptCompileRenderTest {
                             DeployerPolicy.SANDBOXED,
                             DeployerPolicy.TENANT)) {
                 String prompt = render(role, policy, null, List.of());
-                assertCompiled(prompt, "## Your Role", "## Boundaries");
+                assertCompiled(prompt, "## Your role", "## Boundaries");
                 assertFalse(prompt.contains("Role: " + role + "."), prompt);
                 assertFalse(prompt.contains(policy.name()), prompt);
                 for (String internalName :
@@ -289,13 +292,13 @@ class PromptCompileRenderTest {
         assertFalse(block.contains("`json`"), "undeclared json format rendered:\n" + block);
         assertTrue(block.contains("`plaintext`"), "plaintext format rendered:\n" + block);
         assertFalse(block.contains("error-special-plaintext"), block);
-        assertFalse(block.contains("#### Args"), "argument schema is supplied natively:\n" + block);
-        assertFalse(block.contains("`skillName` (string, required)"), block);
-        assertFalse(block.contains("The name of the skill to load."), block);
+        assertTrue(block.contains("#### Arguments"), "argument list rendered:\n" + block);
+        assertTrue(block.contains("`skillName` (string, required)"), block);
+        assertTrue(block.contains("The name of the skill to load."), block);
         var nativeSchema = new ObjectMapper().valueToTree(tool.inputSchema());
         assertEquals("string", nativeSchema.at("/properties/skillName/type").asText());
         assertTrue(nativeSchema.path("required").toString().contains("skillName"));
-        assertTrue(block.contains("#### Argument examples"), "examples label rendered:\n" + block);
+        assertTrue(block.contains("#### Argument example"), "example label rendered:\n" + block);
         assertTrue(block.contains("git-rebase"), "example content rendered:\n" + block);
         assertFalse(block.contains("deploy"), "only one schematic example is needed:\n" + block);
         assertTrue(
@@ -320,8 +323,8 @@ class PromptCompileRenderTest {
                 "disabled prompt must not advertise guided programs");
         assertBefore(
                 prompt,
-                "\n## Tool Result Conventions\n",
-                "\n## Your Tools\n",
+                "\n## Tool result conventions\n",
+                "\n## Your tools\n",
                 "shared result grammar must precede per-tool contracts");
         assertTrue(prompt.contains("while keeping earlier requirements that still apply"), prompt);
         assertTrue(prompt.contains("as read-only unless the user also requests a change"), prompt);
@@ -370,7 +373,10 @@ class PromptCompileRenderTest {
 
         String block = PromptBlocks.tools(List.of(tool));
 
-        assertFalse(block.contains("#### Args"));
+        assertTrue(block.contains("#### Arguments"));
+        assertTrue(block.contains("`absolutePath` (string, required): File to read."));
+        assertBefore(
+                block, "#### Arguments", "#### Result formats", "arguments precede result formats");
         assertBefore(
                 block, "#### Result formats", "#### Behavior", "result formats precede behavior");
         assertBefore(
@@ -379,24 +385,29 @@ class PromptCompileRenderTest {
         assertBefore(
                 block,
                 "#### When not to use",
-                "#### Argument examples",
+                "#### Argument example",
                 "examples follow usage guidance");
         assertBefore(
                 block,
-                "#### Argument examples",
+                "#### Argument example",
                 "#### Result contract",
-                "result contract follows the call examples");
+                "result contract follows the call example");
         assertBefore(
                 block,
                 "#### Result contract",
-                "#### Result examples",
-                "result examples follow their contract");
+                "#### Result example",
+                "result example follows its contract");
         assertBefore(
                 block,
-                "#### Result examples",
+                "#### Result example",
                 "#### Errors and edge cases",
-                "edge-case guidance follows success examples");
-        assertFalse(block.contains("#### Security"), block);
+                "edge-case guidance follows the success example");
+        assertBefore(
+                block,
+                "#### Errors and edge cases",
+                "#### Security",
+                "security guidance closes the entry");
+        assertTrue(block.contains("Read-only filesystem capability."), block);
         assertFalse(block.contains("Example output only; no tool call was made."));
         assertTrue(block.contains("```json\n{\"absolutePath\":"));
         assertTrue(block.contains("```text\n1: class Main {}"));
@@ -448,7 +459,7 @@ class PromptCompileRenderTest {
                 new VetoCapabilityTranslator().translateTools(List.of(manifest));
         String block = PromptBlocks.tools(flat);
         int contractStart = block.indexOf("#### Result contract");
-        int examplesStart = block.indexOf("#### Result examples");
+        int examplesStart = block.indexOf("#### Result example");
         String contract = block.substring(contractStart, examplesStart);
 
         assertTrue(contract.contains("Success -> `forgotten: <memoryId>`"));
@@ -462,7 +473,7 @@ class PromptCompileRenderTest {
     void workspaceLawIsClearlyFramedAsInstructions() {
         String law = PromptBlocks.law("# Project rules\nNever overwrite generated files.");
 
-        assertTrue(law.startsWith("## Workspace Law\n"), law);
+        assertTrue(law.startsWith("## Workspace law\n"), law);
         assertTrue(law.contains("VETO.md instructions apply"), law);
         assertTrue(law.endsWith("Never overwrite generated files."), law);
     }
@@ -491,11 +502,10 @@ class PromptCompileRenderTest {
         assertTrue(block.contains("### `grep_search`"), "tool heading rendered:\n" + block);
         assertTrue(block.contains("#### When to use"), "usage advice is rendered:\n" + block);
         assertTrue(block.contains("#### Behavior"), "essential behavior rendered:\n" + block);
-        assertFalse(
-                block.contains("#### Security"), "Gateway security prose is omitted:\n" + block);
-        assertFalse(block.contains("#### Args"));
-        assertFalse(block.contains("`absolutePath` (string, required)"));
-        assertFalse(block.contains("`caseInsensitive` (boolean, optional)"));
+        assertTrue(block.contains("#### Security"), "security guidance is rendered:\n" + block);
+        assertTrue(block.contains("#### Arguments"));
+        assertTrue(block.contains("`absolutePath` (string, required)"));
+        assertTrue(block.contains("`caseInsensitive` (boolean, optional)"));
         var nativeSchema = mapper.valueToTree(tool.inputSchema());
         assertEquals("string", nativeSchema.at("/properties/absolutePath/type").asText());
         assertEquals("boolean", nativeSchema.at("/properties/caseInsensitive/type").asText());

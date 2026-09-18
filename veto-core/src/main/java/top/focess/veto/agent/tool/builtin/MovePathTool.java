@@ -49,7 +49,7 @@ import top.focess.veto.agent.tool.WorkspaceWriteTool;
                         + " changes after preflight, the move stops with TREE_CHANGED before"
                         + " mutation.",
         security =
-                "Both source and destination must be allowed by the current Boundaries rules. Moving files may require approval.",
+                "An existing destination is never overwritten, and a cross-filesystem move fails rather than falling back to copy-and-delete, so the source is never lost mid-move.",
         examples = {
             "{\"sourceAbsolutePath\":\"<workspace-root>/old.txt\",\"destinationAbsolutePath\":\"<workspace-root>/new.txt\"}"
         },

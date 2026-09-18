@@ -120,7 +120,7 @@ class PromptDocumentTest {
                             .contains(
                                     PromptLibrary.text(
                                             "plan-system-prompt", Map.of("planCitations", false))));
-            assertFalse(result.text().contains("## Your Tools"));
+            assertFalse(result.text().contains("## Your tools"));
             assertTrue(
                     result.sources().stream()
                             .anyMatch(span -> span.source().equals("answer-style.mdc")));

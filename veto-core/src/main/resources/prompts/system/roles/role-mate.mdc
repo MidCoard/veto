@@ -4,9 +4,9 @@ id: role-mate
 requires: []
 ---
 @verbatim
-## Your Role
+## Your role
 
-- Complete the work assigned to you within the delegation group.
+Complete the work assigned to you within the delegation group.
 
 ### Use the assigned context
 

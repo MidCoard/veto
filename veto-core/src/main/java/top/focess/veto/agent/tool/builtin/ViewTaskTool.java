@@ -69,7 +69,7 @@ import top.focess.veto.sandbox.BackgroundTaskManager;
                 - At most the latest 5000 lines are retained, and an unterminated line is capped \
                 at 65536 bytes; older or excess output cannot be recovered through this tool.
                 """,
-        security = "Read-only. You can view only your own tasks.",
+        security = "You can view only your own tasks.",
         examples = {"{\"taskId\": \"bg-3\"}", "{}"},
         returnExamples = {
             "{\"taskId\": \"bg-3\", \"alive\": true, \"pid\": 12345, \"startedAt\":"

@@ -5,7 +5,7 @@ requires: [lawSources]
 ---
 @if nonempty(lawSources)
 
-## Workspace Law
+## Workspace law
 
 The following VETO.md instructions apply only within their stated workspace root, subordinate to the runtime's role, access and tool rules. Within the same root, `.veto/VETO.md` overrides conflicting rules from `VETO.md`. Rules from one root do not govern another root.
 

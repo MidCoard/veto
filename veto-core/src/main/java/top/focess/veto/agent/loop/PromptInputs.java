@@ -1,11 +1,13 @@
 package top.focess.veto.agent.loop;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.NonNull;
 import top.focess.veto.agent.identity.AgentPersona;
@@ -140,6 +142,7 @@ public final class PromptInputs {
                             Map<String, Object> value = new LinkedHashMap<>();
                             value.put("name", tool.name());
                             value.put("description", tool.description());
+                            value.put("arguments", arguments(tool.inputSchema(), ""));
                             value.put("examples", tool.examples());
                             value.put("returnExamples", tool.returnExamples());
                             value.put(
@@ -157,5 +160,53 @@ public final class PromptInputs {
                             return value;
                         })
                 .toList();
+    }
+
+    /**
+     * Flattens a tool's effective input schema into per-argument rows for the catalogue. The schema
+     * here is the same translated definition sent to the provider, so the rendered Args list and
+     * the native schema never diverge. Nested objects and array items are listed with dotted and
+     * {@code []} path prefixes.
+     */
+    private static @NonNull List<Map<String, Object>> arguments(
+            @NonNull Map<?, ?> schema, @NonNull String prefix) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        if (!(schema.get("properties") instanceof Map<?, ?> properties)) return result;
+        Map<String, Object> ordered = new TreeMap<>();
+        properties.forEach(
+                (key, value) -> {
+                    if (value != null) ordered.put(String.valueOf(key), value);
+                });
+        List<?> required = schema.get("required") instanceof List<?> list ? list : List.of();
+        ordered.forEach(
+                (key, value) -> {
+                    if (!(value instanceof Map<?, ?> property)) return;
+                    String name = prefix + key;
+                    String type = property.get("type") instanceof String text ? text : "any";
+                    Object rawItems = property.get("items");
+                    String itemType =
+                            rawItems instanceof Map<?, ?> itemSchema
+                                            && itemSchema.get("type") instanceof String text
+                                    ? text
+                                    : "";
+                    result.add(
+                            Map.of(
+                                    "name",
+                                    name,
+                                    "type",
+                                    type,
+                                    "itemType",
+                                    itemType,
+                                    "required",
+                                    required.contains(key),
+                                    "description",
+                                    property.get("description") instanceof String text
+                                            ? text
+                                            : ""));
+                    result.addAll(arguments(property, name + "."));
+                    if (property.get("items") instanceof Map<?, ?> items)
+                        result.addAll(arguments(items, name + "[]."));
+                });
+        return result;
     }
 }

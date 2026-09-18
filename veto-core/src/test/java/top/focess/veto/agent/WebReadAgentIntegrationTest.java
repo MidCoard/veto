@@ -306,9 +306,9 @@ class WebReadAgentIntegrationTest {
                                                         finishCall.payload().get("call_id"),
                                                         turn.payload().get("call_id"))));
         String childSystem = childRequests.getFirst().systemPrompt();
-        assertTrue(childSystem.contains("### Read with a purpose"));
-        assertTrue(childSystem.contains("## Task Instructions"));
-        assertTrue(childSystem.contains("## Your Tools"));
+        assertTrue(childSystem.contains("## Read with a purpose"));
+        assertTrue(childSystem.contains("## Task instructions"));
+        assertTrue(childSystem.contains("## Your tools"));
         assertTrue(childSystem.contains("Call one tool per turn"));
         assertTrue(childSystem.contains("Finish through finish_read"));
         for (String name : List.of("fetch_page", "find_sections", "read_sections", "finish_read")) {
@@ -316,7 +316,7 @@ class WebReadAgentIntegrationTest {
         }
         assertFalse(childSystem.contains("### `run_command`"));
         assertFalse(childSystem.contains("## Workspace"));
-        assertFalse(childSystem.contains("## How to Delegate"));
+        assertFalse(childSystem.contains("## How to delegate"));
         assertFalse(childSystem.contains("{{TASK_INSTRUCTIONS}}"));
         assertFalse(childSystem.contains("{{TOOLS}}"));
         ArgumentCaptor<@NonNull TurnRecordEntity> captured = ArgumentCaptor.captor();
@@ -340,7 +340,7 @@ class WebReadAgentIntegrationTest {
         assertTrue(afterRead.contains("https://example.com/docs"));
         assertFalse(afterRead.contains("RAW_CHILD_PAGE_SENTINEL"));
         assertFalse(afterRead.contains("CHILD_THOUGHT_SENTINEL"));
-        assertFalse(afterRead.contains("Runtime budget:"));
+        assertFalse(afterRead.contains("[Runtime budget]"));
         if (maxRounds == 3) {
             assertTrue(afterRead.contains("partial"));
             assertTrue(afterRead.contains("Other timeout behavior is not established"));

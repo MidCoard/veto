@@ -4,9 +4,9 @@ id: tool-calls
 requires: []
 ---
 @verbatim
-## How to Call Tools
+## How to call tools
 
-- Invoke tools through the provider response channel. The Your Tools section defines their arguments, behavior, results, and edge cases.
+- Invoke tools through the provider response channel. The Your tools section defines their arguments, behavior, results, and edge cases.
 
 - Use only tool names and argument names allowed by the tool schema. Include every required argument and do not substitute a similar name.
 - Calls in one response execute in returned order after any required approvals. Group independent calls in one response when useful. Submit a call in a later turn when its arguments depend on an earlier result.

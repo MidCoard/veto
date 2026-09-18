@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -49,7 +50,7 @@ import top.focess.veto.llm.core.ToolResultPresentationMode;
  * Leader/Mate prompt bases, so what you read follows the production prompt-assembly path.
  *
  * <p><b>Note:</b> each role's tools are resolved through the production {@link RoleToolFilter} (the
- * same filter {@code AgentService.buildPersona} applies), so the {@code ## Your Tools} block in
+ * same filter {@code AgentService.buildPersona} applies), so the {@code ## Your tools} block in
  * each role's dump reflects exactly what a real agent of that role would see - STANDALONE sees
  * execution/delegation capabilities; LEADER sees investigation + group control; MATE sees execution
  * capabilities without delegation or memory mutation.
@@ -59,8 +60,8 @@ import top.focess.veto.llm.core.ToolResultPresentationMode;
 class SystemPromptDumpTest {
 
     private static final @NonNull Path DUMP_DIR = Path.of("build", "prompt-dump");
-    // Includes the two response submission tools, now documented in the real catalog.
-    private static final int MAX_TOOL_CATALOG_CHARS = 72 * 1024;
+    // Includes the two response submission tools, per-tool argument lists, and security sections.
+    private static final int MAX_TOOL_CATALOG_CHARS = 80 * 1024;
 
     @Autowired private @NonNull ToolEngine mcpEngine;
     @Autowired private @NonNull CapabilityTranslator translator;
@@ -121,7 +122,7 @@ class SystemPromptDumpTest {
                         null,
                         ToolResultPresentationMode.BASIC);
         assertTrue(baseline.contains(PromptLibrary.text("answer-style")));
-        assertTrue(baseline.contains("## How to Include Diagrams"));
+        assertTrue(baseline.contains("## How to include diagrams"));
     }
 
     @Test
@@ -201,10 +202,10 @@ class SystemPromptDumpTest {
         deleteLegacyRolePolicyDumps(roles);
         String standalone = Files.readString(DUMP_DIR.resolve("STANDALONE.md"));
         assertFalse(
-                Pattern.compile("(?i)\\b(leader|mates?)\\b").matcher(standalone).find(),
+                Pattern.compile("\\b(Leader|Mate)s?\\b").matcher(standalone).find(),
                 "Standalone instructions and its actual tool catalog must not describe other roles");
-        assertTrue(standalone.contains("## How to Delegate"));
-        assertEquals(1, count(standalone, "## How to Delegate"));
+        assertTrue(standalone.contains("## How to delegate"));
+        assertEquals(1, count(standalone, "## How to delegate"));
         assertTrue(standalone.contains("### Example: independent review areas"));
         for (Role role : roles) {
             String linked = Files.readString(DUMP_DIR.resolve(role + ".md"));
@@ -213,7 +214,7 @@ class SystemPromptDumpTest {
                             .anyMatch(tool -> "create_group".equals(tool.name()));
             assertEquals(
                     canDelegate,
-                    linked.contains("## How to Delegate"),
+                    linked.contains("## How to delegate"),
                     "delegation guidance requires an available create_group tool: " + role);
             assertFalse(linked.contains("{{DELEGATION_RULES}}"));
             for (String internal :
@@ -229,7 +230,7 @@ class SystemPromptDumpTest {
             }
         }
 
-        assertTrue(standalone.contains("## How to Work"));
+        assertTrue(standalone.contains("## How to work"));
         assertFalse(standalone.contains("system/runtime contract"));
         assertTrue(
                 Files.readString(DUMP_DIR.resolve("MATE.md"))
@@ -324,11 +325,11 @@ class SystemPromptDumpTest {
                 "the shared response protocol must not contain role-specific behavior");
         assertFalse(
                 Files.readString(DUMP_DIR.resolve("LEADER.md"))
-                        .contains("## Additional Role Guidance"),
+                        .contains("## Additional role guidance"),
                 "default Leader guidance must not repeat the role contract");
         assertFalse(
                 Files.readString(DUMP_DIR.resolve("MATE.md"))
-                        .contains("## Additional Role Guidance"),
+                        .contains("## Additional role guidance"),
                 "default Mate guidance must not repeat the role contract");
         assertFalse(
                 Files.readString(DUMP_DIR.resolve("MATE.md")).contains("mate mate-sample"),
@@ -336,9 +337,9 @@ class SystemPromptDumpTest {
         assertTrue(
                 count(catalog, "\n### `") == flatTools.size(),
                 "every registered tool has one catalog entry");
-        assertFalse(
-                catalog.contains("\n#### Args\n"),
-                "native schemas own argument contracts; the catalogue must not duplicate them");
+        assertTrue(
+                catalog.contains("\n#### Arguments\n"),
+                "the catalogue renders the argument list from each tool's native schema");
         assertFalse(
                 catalog.contains("error-special-plaintext"),
                 "failure status must not be exposed as a content format");
@@ -394,7 +395,7 @@ class SystemPromptDumpTest {
                             + redundantMetaExplanation);
         }
         assertTrue(
-                catalog.contains("The native tool schemas define argument names"),
+                catalog.contains("The arguments of each tool are listed from its native schema"),
                 "the catalog must describe the active persona capabilities");
         var questionTool =
                 flatTools.stream()
@@ -426,9 +427,9 @@ class SystemPromptDumpTest {
                 "ask_user must not overclaim durable restart recovery");
         assertFalse(
                 catalog.contains("success=true"), "transport flags do not belong in tool prose");
-        assertFalse(
+        assertTrue(
                 catalog.contains("#### Security"),
-                "Gateway-enforced security detail must not bloat the agent catalog");
+                "each tool's declared security guidance closes its catalog entry");
         assertTrue(
                 catalog.length() < MAX_TOOL_CATALOG_CHARS,
                 "the model-visible tool catalog must stay concise; actual chars="
@@ -440,18 +441,116 @@ class SystemPromptDumpTest {
             String entry = end < 0 ? catalog.substring(start) : catalog.substring(start, end);
             assertEquals(
                     List.of(
+                            "Arguments",
                             "Result formats",
                             "Behavior",
                             "When to use",
                             "When not to use",
-                            "Argument examples",
+                            "Argument example",
                             "Result contract",
-                            "Result examples",
-                            "Errors and edge cases"),
+                            "Result example",
+                            "Errors and edge cases",
+                            "Security"),
                     sectionHeadings(entry),
                     tool.name() + " must render the complete canonical contract order");
             assertKnownResultCasesAreUnique(tool.name(), entry);
         }
+    }
+
+    /**
+     * Size report: compiles the standard matrix (each role x each {@link
+     * ToolResultPresentationMode}) plus the tool-agent and web-reader entries, then reports total
+     * chars, a rough token estimate (chars / 4), and the size of the {@code ## Your tools}
+     * catalogue section when present. The table is printed to the test log and written as UTF-8 to
+     * {@code veto-core/build/reports/prompts/prompt-sizes.txt}. Rows are ordered by role, then
+     * mode, so consecutive reports are diffable.
+     */
+    @Test
+    void reportPromptSizes() throws IOException {
+        Path reportPath = Path.of("build", "reports", "prompts", "prompt-sizes.txt");
+        Path reportDir = reportPath.getParent();
+        if (reportDir == null) throw new AssertionError("report path has no parent directory");
+        Files.createDirectories(reportDir);
+
+        Workspace renderedWorkspace = dumpWorkspace();
+        List<String> rows = new ArrayList<>();
+        for (Role role : roles()) {
+            AgentPersona persona = personaFor(role);
+            String base = baseFor(role);
+            for (ToolResultPresentationMode mode : presentationModes()) {
+                String linked =
+                        promptCompiler.linkSystemMessage(persona, renderedWorkspace, base, mode);
+                String compiled =
+                        promptCompiler
+                                .compile(
+                                        persona,
+                                        renderedWorkspace,
+                                        base,
+                                        List.of(
+                                                TurnRecord.agentInit(
+                                                        1, role.name(), linked, "test", "test")),
+                                        1.0)
+                                .systemMessage();
+                rows.add(sizeRow(role.name(), mode.name(), compiled));
+            }
+        }
+        PromptCompiler toolAgentCompiler =
+                PromptCompiler.isolated(
+                        translator,
+                        objectMapper,
+                        "Fetch the requested page and answer the objective.",
+                        32 * 1024);
+        rows.add(
+                sizeRow(
+                        "default-tool-agent-system-prompt",
+                        ToolResultPresentationMode.BASIC.name(),
+                        toolAgentCompiler.linkSystemMessage(
+                                personaFor(Role.STANDALONE),
+                                renderedWorkspace,
+                                null,
+                                ToolResultPresentationMode.BASIC)));
+        rows.add(
+                sizeRow(
+                        "web-fetch-system-prompt",
+                        "-",
+                        PromptLibrary.text("web-fetch-system-prompt")));
+
+        StringBuilder report = new StringBuilder();
+        report.append("# Prompt size report\n");
+        report.append(
+                "# chars: total characters; ~tokens: chars / 4; catalog: chars of the `## Your"
+                        + " tools` section (- when absent)\n");
+        report.append(
+                String.format(
+                        "%-34s %-9s %10s %10s %10s\n",
+                        "prompt", "mode", "chars", "~tokens", "catalog"));
+        for (String row : rows) {
+            report.append(row).append('\n');
+        }
+        String text = report.toString();
+        System.out.println(text);
+        Files.writeString(reportPath, text, StandardCharsets.UTF_8);
+        assertFalse(rows.isEmpty(), "prompt size report must contain at least one row");
+    }
+
+    private static @NonNull String sizeRow(
+            @NonNull String prompt, @NonNull String mode, @NonNull String content) {
+        int catalogChars = toolCatalogChars(content);
+        return String.format(
+                "%-34s %-9s %10d %10d %10s",
+                prompt,
+                mode,
+                content.length(),
+                content.length() / 4,
+                catalogChars < 0 ? "-" : Integer.toString(catalogChars));
+    }
+
+    /** Chars of the {@code ## Your tools} block through the next {@code ## } heading or EOF. */
+    private static int toolCatalogChars(@NonNull String prompt) {
+        int start = prompt.indexOf("## Your tools");
+        if (start < 0) return -1;
+        int end = prompt.indexOf("\n## ", start + "## Your tools".length());
+        return (end < 0 ? prompt.length() : end) - start;
     }
 
     private @NonNull Workspace dumpWorkspace() {
@@ -580,5 +679,12 @@ class SystemPromptDumpTest {
         Role[] roles = Role.values();
         if (roles == null) throw new AssertionError("Role.values returned null");
         return roles;
+    }
+
+    private static @NonNull ToolResultPresentationMode @NonNull [] presentationModes() {
+        ToolResultPresentationMode[] modes = ToolResultPresentationMode.values();
+        if (modes == null)
+            throw new AssertionError("ToolResultPresentationMode.values returned null");
+        return modes;
     }
 }

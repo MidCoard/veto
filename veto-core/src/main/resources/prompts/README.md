@@ -28,9 +28,10 @@ behavior changes. Related workflow instructions and runtime messages stay togeth
 ## One owner for each contract
 
 - Native tool schemas define argument types, required fields, and constraints.
-  The tool catalogue describes behavior, results, errors, and examples; it does
-  not produce a second, incomplete argument schema in prose.
-- `protocol/response-contract.mdc` defines the output channel from actual runtime
+  The catalogue renders the argument list from the same translated schema the
+  provider receives — never a second, hand-written schema — and adds behavior,
+  results, errors, and examples around it.
+- `protocol/response-contract.mdc` defines the response channel from actual runtime
   capabilities. All provider adapters use `provider-native`; validation retries
   reuse the same response contract.
 - Runtime validation messages report real runtime state or validator failures.

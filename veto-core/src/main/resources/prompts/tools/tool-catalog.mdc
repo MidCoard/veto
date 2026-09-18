@@ -5,17 +5,37 @@ requires: [tools]
 ---
 @if nonempty(tools)
 
-## Your Tools
+## Your tools
 
-The native tool schemas define argument names, types, required fields and constraints. The catalogue below describes tool behavior, usage and results. Follow the provider response channel instructions to invoke them.
+The arguments of each tool are listed from its native schema, the same definition sent to the provider with every request. The catalogue adds behavior, usage, results, and examples. Follow the provider response channel instructions to invoke the tools.
 @for tool in tools
 
 ### `{{tool.name}}`
 
 {{tool.description}}
 
-#### Result formats
+#### Arguments
+@if nonempty(tool.arguments)
+@for argument in tool.arguments
+@if nonempty(argument.itemType)
+@if argument.required
+- `{{argument.name}}` ({{argument.type}}<{{argument.itemType}}>, required): {{argument.description}}
+@else
+- `{{argument.name}}` ({{argument.type}}<{{argument.itemType}}>, optional): {{argument.description}}
+@endif
+@else
+@if argument.required
+- `{{argument.name}}` ({{argument.type}}, required): {{argument.description}}
+@else
+- `{{argument.name}}` ({{argument.type}}, optional): {{argument.description}}
+@endif
+@endif
+@endfor
+@else
+This tool takes no arguments.
+@endif
 
+#### Result formats
 @for format in tool.formats
 - `{{format.id}}`: {{format.description}}.
 @endfor
@@ -40,7 +60,7 @@ The native tool schemas define argument names, types, required fields and constr
 @for example in tool.examples
 @if loop.first
 
-#### Argument examples
+#### Argument example
 
 ```json
 {{example}}
@@ -56,7 +76,7 @@ The native tool schemas define argument names, types, required fields and constr
 @for example in tool.returnExamples
 @if loop.first
 
-#### Result examples
+#### Result example
 
 @if isjson(example)
 ```json
@@ -72,6 +92,12 @@ The native tool schemas define argument names, types, required fields and constr
 #### Errors and edge cases
 
 {{tool.documentation.errorsAndEdgeCases}}
+@endif
+@if nonempty(tool.documentation.security)
+
+#### Security
+
+{{tool.documentation.security}}
 @endif
 @endfor
 @endif

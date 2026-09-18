@@ -19,7 +19,7 @@ import top.focess.veto.agent.tool.*;
         errorsAndEdgeCases =
                 "Invalid repository names, unavailable or wrong-owner credentials, HTTP errors, timeouts and oversized responses fail safely.",
         security =
-                "NETWORK_EGRESS with DANGEROUS default risk. Exact credential reference and repository parameters are bound to this call's permit.",
+                "The credential is used by reference only; its secret never enters arguments, results, or URLs. Requests go only to api.github.com.",
         resultFormats = {ToolResultFormat.JSON},
         returnExamples = {"{\"id\":12,\"private\":true,\"full_name\":\"example/project\"}"},
         examples = {

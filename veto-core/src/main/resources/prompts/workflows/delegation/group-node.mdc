@@ -17,7 +17,7 @@ mate=(unassigned)
 skillset={{node.skillset}} dependsOn={{json(node.dependencies)}}
 {{node.description}}
 @if nonempty(node.artifact)
-Artifact: {{node.artifact}}
+artifact: {{node.artifact}}
 @endif
 @if nonempty(node.report)
 report: {{node.report}}
@@ -26,5 +26,5 @@ report: {{node.report}}
 failure: {{node.failure}}
 @endif
 @if nonempty(node.logs)
-Logs: {{json(node.logs)}}
+logs: {{json(node.logs)}}
 @endif

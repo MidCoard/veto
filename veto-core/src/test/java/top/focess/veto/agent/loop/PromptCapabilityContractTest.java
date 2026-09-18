@@ -143,7 +143,7 @@ class PromptCapabilityContractTest {
                                 "default-system-prompt", inputs(role, PathMode.REAL, capabilities));
                 assertEquals(capabilities, prompt.contains("## Plan execution"));
                 assertEquals(capabilities, prompt.contains("For clickable references"));
-                assertEquals(capabilities, prompt.contains("## Available Skills"));
+                assertEquals(capabilities, prompt.contains("## Available skills"));
                 assertEquals(capabilities, prompt.contains("fixture-skill"));
                 assertFalse(prompt.contains("@if"));
             }
@@ -189,7 +189,7 @@ class PromptCapabilityContractTest {
                                 "Use the repository formatter.")));
         String prompt = PromptLibrary.text("default-system-prompt", data);
 
-        assertTrue(prompt.contains("This tier excludes the separately labeled Workspace Law"));
+        assertTrue(prompt.contains("This tier excludes the separately labeled Workspace law"));
         assertTrue(prompt.contains("subordinate to the runtime's role, access and tool rules"));
         assertTrue(prompt.contains("Use the repository formatter."));
     }

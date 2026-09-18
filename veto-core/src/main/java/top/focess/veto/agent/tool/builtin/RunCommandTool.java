@@ -77,7 +77,7 @@ import top.focess.veto.sandbox.CommandResult;
                 an observed executable path rather than guessing repeatedly.
                 """,
         security =
-                "The working directory is the session workspace root. Execution and requested network access may require approval. Approval does not expand filesystem access or permit combining executable and arguments.",
+                "Commands spawn directly without a shell, so executable and args cannot be combined to smuggle shell operators or extra flags.",
         examples = {
             "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"build\"]}], \"connect\": \"STOP_ON_FAILURE\", \"timeout\": 300}",
             "{\"commands\": [{\"executable\": \"gradle\", \"args\": [\"test\"]}], \"timeout\": 300}",

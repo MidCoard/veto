@@ -4,5 +4,5 @@ id: runtime-feedback
 requires: [feedback]
 ---
 @message user
-[User feedback]: {{feedback}}
+[User feedback] {{feedback}}
 @endmessage
