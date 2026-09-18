@@ -98,6 +98,8 @@ final class ToolCatalog {
             case RegisteredTool.Agent agentTool ->
                     ToolContractValidator.validateHandler(
                             agentTool.handler(), agentTool.definition());
+            case RegisteredTool.Plugin plugin ->
+                    ToolContractValidator.validate(plugin.definition());
             case RegisteredTool.Remote remoteTool ->
                     ToolContractValidator.validate(remoteTool.definition());
         }

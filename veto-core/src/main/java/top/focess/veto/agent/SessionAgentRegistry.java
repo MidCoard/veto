@@ -79,7 +79,8 @@ public final class SessionAgentRegistry {
             Instant endedAt,
             String responsibility,
             boolean userInteractionEnabled,
-            String executionWait) {}
+            String executionWait,
+            PluginContextSnapshot pluginContext) {}
 
     /** Session membership survives runtime cleanup; histories remain in their own streams. */
     public synchronized @NonNull List<@NonNull AgentSummary> records(@NonNull UUID sessionId) {
@@ -102,6 +103,7 @@ public final class SessionAgentRegistry {
                                 entity.getEndedAt(),
                                 entity.getResponsibility(),
                                 entity.isUserInteractionEnabled(),
+                                null,
                                 null));
             }
         }
@@ -112,7 +114,7 @@ public final class SessionAgentRegistry {
                             id,
                             new AgentSummary(
                                     id, id, null, null, null, null, false, null, null, null, null,
-                                    false, null));
+                                    false, null, null));
                 }
             }
         }
@@ -134,7 +136,8 @@ public final class SessionAgentRegistry {
                             null,
                             agent.persona().description(),
                             agent.userInteractionEnabled(),
-                            agent.executionWaitReason()));
+                            agent.executionWaitReason(),
+                            agent.pluginContext()));
         }
         return result.values().stream().sorted(Comparator.comparing(AgentSummary::id)).toList();
     }

@@ -114,10 +114,28 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
                 staged.add(new RegisteredTool.Agent(definition, bean));
             }
         }
+        if (context != null) {
+            for (var manager :
+                    context.getBeansOfType(top.focess.veto.plugin.runtime.ScriptPlugins.class)
+                            .values()) {
+                for (var plugin : manager.plugins()) {
+                    for (var descriptor : plugin.tools()) {
+                        var definition =
+                                new PluginToolDefinition(
+                                        "plugin_" + plugin.id() + "__" + descriptor.id(),
+                                        plugin.bindingId(),
+                                        plugin.id(),
+                                        plugin.version(),
+                                        descriptor);
+                        staged.add(new RegisteredTool.Plugin(definition, plugin));
+                    }
+                }
+            }
+        }
         // Validation and construction complete before readers can observe any new registration.
         catalog = catalog.append(staged);
         initialized = true;
-        log.info("ToolEngine: published {} builtin tools.", staged.size());
+        log.info("ToolEngine: published {} tools.", staged.size());
     }
 
     /** Discover tools from a remote MCP server via JSON-RPC tools/list and register them. */
@@ -173,6 +191,7 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
             }
             ToolResult result =
                     switch (registration) {
+                        case RegisteredTool.Plugin plugin -> executePlugin(call, plugin);
                         case RegisteredTool.Native nativeTool ->
                                 executeNative(call, nativeTool.definition(), nativeTool.handler());
                         case RegisteredTool.Agent agentTool ->
@@ -221,6 +240,33 @@ public class ToolEngineImpl implements ToolEngine, SmartInitializingSingleton {
     // ── Implementation-detail API (not on the shared interface) ──────────────
 
     // ── Flavour dispatch ───────────────────────────────────────────────────────
+
+    private @NonNull ToolResult executePlugin(
+            @NonNull ToolCall call, RegisteredTool.@NonNull Plugin registration) {
+        requirePermit(call, registration.definition());
+        try {
+            JsonNode result =
+                    registration
+                            .runtime()
+                            .invoke(
+                                    registration.definition().descriptor(),
+                                    mapper.valueToTree(call.args()));
+            return new ToolResult(
+                    call.toolName(),
+                    call.callId(),
+                    ToolResultStatus.SUCCESS,
+                    ToolResultFormat.JSON,
+                    mapper.writeValueAsString(result),
+                    null);
+        } catch (Exception e) {
+            // Worker messages and argument values must not enter logs or model-visible errors.
+            throw new ToolExecutionException(
+                    ToolResultStatus.FAILURE,
+                    ToolResultFormat.PLAINTEXT,
+                    "PLUGIN_CALL_FAILED",
+                    "Plugin call failed or its contract was not satisfied.");
+        }
+    }
 
     private @NonNull ToolResult executeNative(
             @NonNull ToolCall call, @NonNull NativeToolDefinition def, @NonNull NativeTool<?> bean)

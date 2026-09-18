@@ -31,7 +31,6 @@ import top.focess.veto.agent.tool.AgentToolDefinition;
 import top.focess.veto.agent.tool.LocalToolDefinition;
 import top.focess.veto.agent.tool.NativeToolArgumentValidator;
 import top.focess.veto.agent.tool.NativeToolDefinition;
-import top.focess.veto.agent.tool.RemoteToolDefinition;
 import top.focess.veto.agent.tool.ToolCapability;
 import top.focess.veto.agent.tool.ToolDefinition;
 import top.focess.veto.agent.tool.ToolEngine;
@@ -201,14 +200,14 @@ public class Gateway {
                             mapper.valueToTree(tool.resolveInputs(new Scope(mapper))),
                             local.argsClass());
                 }
-            } else if (definition instanceof RemoteToolDefinition remote) {
+            } else {
                 // This preflight covers the validator's supported JSON Schema keywords, not the
                 // remote server's entire dialect. Defer unresolved values only, and decode $$
                 // once even when no actual binding occurs anywhere in the input object.
                 NativeToolArgumentValidator.validateAgainstSchema(
-                        remote.name(),
+                        definition.name(),
                         mapper.valueToTree(tool.inputs()),
-                        ToolSchemaReferences.inlineForEmbedding(remote.inputSchema()),
+                        ToolSchemaReferences.inlineForEmbedding(definition.inputSchema()),
                         true);
             }
         }

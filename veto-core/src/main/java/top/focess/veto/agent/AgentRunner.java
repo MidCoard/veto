@@ -306,6 +306,15 @@ public class AgentRunner {
 
     private volatile boolean sessionAlive = true;
     private double correctionFactor = 1.0;
+    private volatile PluginContextSnapshot lastPluginContext;
+
+    public @NonNull PluginContextSnapshot pluginContext() {
+        var snapshot = lastPluginContext;
+        return snapshot == null
+                ? PluginContextSnapshot.from(persona.whitelistedTools(), false)
+                : snapshot;
+    }
+
     private final @NonNull ContextUsageTracker contextUsage = new ContextUsageTracker();
     // Set only when the model-call ceiling trips. The next exact "continue" prompt consumes it and
     // carries the prior task into a self-contained resume turn; any other prompt starts a new task.
@@ -1600,6 +1609,15 @@ public class AgentRunner {
                 LlmSystemUsage.begin();
                 try {
                     checkTaskCancellation();
+                    lastPluginContext =
+                            PluginContextSnapshot.from(
+                                    toolEngine.getActiveTools(
+                                            request.tools().stream()
+                                                    .map(
+                                                            top.focess.veto.llm.core.ToolDefinition
+                                                                    ::name)
+                                                    .collect(Collectors.toSet())),
+                                    true);
                     response = caller.call(request);
                     checkTaskCancellation();
                 } finally {
@@ -2814,11 +2832,16 @@ public class AgentRunner {
     private void appendToolCall(@NonNull ToolCall call) {
         TurnRecord turn = TurnRecord.toolCall(++turnNumber, call);
         String origin = currentToolModelCallId;
-        if (origin != null) {
-            Map<String, Object> payload = new LinkedHashMap<>(turn.payload());
-            payload.put("model_call_id", origin);
-            turn = new TurnRecord(turn.turnNumber(), turn.type(), payload, turn.timestamp());
+        Map<String, Object> payload = new LinkedHashMap<>(turn.payload());
+        if (origin != null) payload.put("model_call_id", origin);
+        ToolDefinition definition = toolEngine.resolveDefinition(call.toolName());
+        if (definition != null) {
+            payload.put("tool_origin", definition.origin());
+            if (definition instanceof top.focess.veto.agent.tool.PluginToolDefinition plugin) {
+                payload.put("plugin_id", plugin.pluginId());
+            }
         }
+        turn = new TurnRecord(turn.turnNumber(), turn.type(), payload, turn.timestamp());
         appendTurn(turn);
     }
 

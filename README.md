@@ -72,6 +72,7 @@ veto/
 |-- veto-terminal/   JLine/Mordant terminal application; depends on veto-protocol, not veto-core
 |-- veto-extension/  Shared registration layer and experimental extension architecture
 |-- veto-plugin-api/ Experimental Java plugin lifecycle binding
+|-- veto-plugin-runtime/ Operator-configured script workers and example package
 |-- veto-plugin-fixture/ Standalone plugin test fixture; not an installable production feature
 |-- veto-secret-protection/ Extracted secret-protection library
 |-- RELEASE.md      Release-user guide template
@@ -351,13 +352,21 @@ through the in-process tool engine and their declared capability boundary.
 
 ## Plugins and extensions — experimental
 
-The shared extension catalog and Veto's production tool-catalog adapter are implemented.
-External plugin installation/activation, configuration-driven script handlers, portable model
-hooks, and adapters for other agent clients are not available yet. The fixture package is for
-development tests; building it does not install or activate a plugin.
+Veto can activate explicitly configured local JavaScript plugin packages at startup.
+The experimental script runtime validates descriptors, starts persistent Node workers,
+and registers namespaced tools through the shared catalog. Plugin calls retain ordinary
+Gateway approval and role restrictions. `GET /api/plugins` provides administrator-only
+status information.
 
-- [Extension module README](veto-extension/README.md): implemented behavior and developer checks.
-- [Java plugin API README](veto-plugin-api/README.md): fixture and lifecycle-binding details.
+Scripts are trusted local code running as the server user, not sandboxed extensions.
+Activation requires explicit operator configuration; Node and plugin packages are not
+bundled. Model hooks, credential-service access, cross-client adapters and external Java
+JAR activation remain unavailable.
+
+- [Script plugin README](veto-plugin-runtime/README.md): configuration, executable example,
+  protocol, trust boundaries and tests.
+- [Extension module README](veto-extension/README.md): shared registration behavior.
+- [Java plugin API README](veto-plugin-api/README.md): separate experimental lifecycle fixture.
 
 These APIs are experimental and are not a stable cross-client compatibility contract.
 

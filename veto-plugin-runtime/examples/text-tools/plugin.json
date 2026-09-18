@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "text",
+  "version": "0.1.0",
+  "entryPoint": "worker.mjs",
+  "tools": [{
+    "id": "length",
+    "description": "Count Unicode code points in a text string. Returns an integer, including zero for empty text.",
+    "handler": "text.length",
+    "inputSchema": {
+      "type": "object",
+      "properties": {"text": {"type": "string"}},
+      "required": ["text"],
+      "additionalProperties": false
+    },
+    "outputSchema": {"type": "integer"}
+  }]
+}

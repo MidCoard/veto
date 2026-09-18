@@ -76,8 +76,9 @@ on `PATH` and configure a compatible GGUF model; confirm model loading in the lo
 Without it, deterministic screening remains active. Do not assume semantic
 screening is active merely because a model path is configured.
 
-External plugin activation and portable script/model-hook adapters are not shipped
-features yet. A development fixture is not a production plugin installer.
+Operator-configured JavaScript plugins are experimental and run as trusted server-user
+code. Node and plugin packages are not bundled. Portable model hooks and external
+Java-JAR activation are not available. A Java development fixture is not a plugin installer.
 
 Keep audit/vault data and database credentials private. See `LICENSE` for the
 GNU Affero General Public License v3.0-only terms.

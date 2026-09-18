@@ -14,6 +14,7 @@ import top.focess.veto.agent.drift.ReadHistory;
 import top.focess.veto.agent.tool.AgentToolDefinition;
 import top.focess.veto.agent.tool.NativeToolDefinition;
 import top.focess.veto.agent.tool.ParamCategory;
+import top.focess.veto.agent.tool.PluginToolDefinition;
 import top.focess.veto.agent.tool.RemoteToolDefinition;
 import top.focess.veto.agent.tool.ToolCallContextHolder;
 import top.focess.veto.agent.tool.ToolCapability;
@@ -227,6 +228,7 @@ public class IngressDefense {
                     case NativeToolDefinition n -> n.paramHints();
                     case AgentToolDefinition a -> a.paramHints();
                     case RemoteToolDefinition r -> Map.of();
+                    case PluginToolDefinition p -> Map.of();
                 };
         for (var entry : hints.entrySet()) {
             if (entry.getValue() == ParamCategory.FILESYSTEM_PATH) {

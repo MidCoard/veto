@@ -91,6 +91,10 @@ public class VetoAgent implements Agent {
         return runner.state();
     }
 
+    public @NonNull PluginContextSnapshot pluginContext() {
+        return runner.pluginContext();
+    }
+
     public String executionWaitReason() {
         return runner.executionWaitReason();
     }

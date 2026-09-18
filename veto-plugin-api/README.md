@@ -1,8 +1,8 @@
 # Veto plugin packaging API — experimental
 
 For building and running Veto, start with the [project README](../README.md).
-This module is the provisional Java plugin lifecycle binding. A production
-external-plugin installation and activation flow is not available.
+This module is the provisional Java plugin lifecycle binding. External Java-JAR activation is not available. For working script plugins, use
+the separate [script runtime](../veto-plugin-runtime/README.md).
 
 ## Implemented behavior
 
@@ -34,7 +34,7 @@ Building or copying this package does not activate it in Veto.
 
 ## Limitations
 
-The manifest and Java SPI are experimental. Production package loading, runtime
-schema validation, script workers, portable model hooks and cross-client adapters
-are not implemented. The fixture demonstrates lifecycle and registration mechanics,
+The manifest and Java SPI are experimental. Java package activation, portable model hooks and cross-client adapters are not
+implemented by this module. The separate script runtime supports a different
+manifest and validates its own descriptors and messages. The fixture demonstrates lifecycle and registration mechanics,
 not production protection or plugin installation.

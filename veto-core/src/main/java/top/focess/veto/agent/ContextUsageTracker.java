@@ -32,6 +32,10 @@ public final class ContextUsageTracker {
     public @NonNull Map<String, Object> measure(
             @NonNull VetoRequest request, LlmSystemUsage.@NonNull Usage usage) {
         Map<String, Object> data = new LinkedHashMap<>();
+        // Context percentage uses this request's inputTokens / contextMaxTokens.
+        // It excludes the latest outputTokens: these are only reflected in context if replayed
+        // in a later measured request. Keep this boundary in sync with UI occupancy calculations
+        // if the context accounting semantics change.
         data.put("inputTokens", usage.promptTokens());
         data.put("outputTokens", usage.completionTokens());
         Long cacheRead = usage.cacheReadInputTokens();

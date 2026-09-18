@@ -47,8 +47,9 @@ are preserved. Dispatch pins the resolved registration and retains the existing
 caller and full-call authorization checks.
 
 `RegisteredTool` and the private `veto:runtime-tools` point are host implementation
-details, not public plugin contracts. Public plugin activation, generic model hooks,
-script workers and bound plugin services are not implemented.
+details, not public plugin contracts. The [script runtime](../veto-plugin-runtime/README.md) adds operator-configured plugin
+tools through this catalog. Generic model hooks and bound plugin services are not
+implemented.
 
 ## Verify
 
